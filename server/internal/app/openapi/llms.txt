@@ -1,0 +1,43 @@
+# Solidping
+This service provides a platform for monitoring and managing the health of various systems and services. It offers a range of features including real-time monitoring, alerting, and reporting capabilities.
+
+It's open-source, can be deployed on-premises or in the cloud and has a SaaS offering.
+
+## Features
+- Real-time monitoring
+- Alerting on email, slack
+
+
+## Register
+To register you can use the following command:
+
+```
+curl \
+  https://solidping.com/api/v1/register -X POST -H "Content-Type: application/json" \
+  -d '{"email": "user@example.com", "password": "password"}'
+```
+
+Then you'll have to verify your email address by clicking on the link sent to your email.
+
+You can also register using the web interface at https://solidping.com/register with a google, github, azure, azure account.
+
+## Adding a check
+### http check
+```bash
+curl \
+  https://solidping.com/api/v1/org/$org/checks -X POST -H "Content-Type: application/json" \
+  -d '{"type": "http","config":{"url": "https://example.com"}}'
+```
+
+### ICMP check
+```bash
+curl \
+  https://solidping.com/api/v1/org/$org/checks -X POST -H "Content-Type: application/json" \
+  -d '{"type": "icmp","config":{"url": "icmp://example.com"}}'
+```
+
+## Listing checks
+```bash
+curl \
+  https://solidping.com/api/v1/org/$org/checks -X GET -H "Content-Type: application/json"
+```

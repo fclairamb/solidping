@@ -1,0 +1,11 @@
+{
+  "setup": [
+    "make build"
+  ],
+  "teardown": [
+    "make kill"
+  ],
+  "run": [
+    "make run"
+  ]
+}

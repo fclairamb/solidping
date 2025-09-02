@@ -1,0 +1,19 @@
+{
+  "dashboard": "Dashboard",
+  "checks": "Checks",
+  "incidents": "Incidents",
+  "events": "Events",
+  "statusPages": "Status Pages",
+  "badges": "Badges",
+  "testTools": "Test Tools",
+  "new": "New",
+  "edit": "Edit",
+  "profile": "Profile",
+  "tokens": "Tokens",
+  "invitations": "Invitations",
+  "settings": "Settings",
+  "web": "Web",
+  "mail": "Mail",
+  "authentication": "Authentication",
+  "performance": "Performance"
+}

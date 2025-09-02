@@ -1,0 +1,38 @@
+{
+  "title": "Événements",
+  "subtitle": "Journal d'audit des activités système",
+  "noEvents": "Aucun événement trouvé",
+  "noEventsMatchFilter": "Aucun événement ne correspond au filtre sélectionné",
+  "noEventsRecorded": "Aucun événement enregistré pour le moment",
+  "allEvents": "Tous les événements",
+  "filterByType": "Filtrer par type",
+  "table": {
+    "time": "Heure",
+    "event": "Événement",
+    "actor": "Acteur",
+    "related": "Associé",
+    "timestamp": "Horodatage",
+    "type": "Type",
+    "resource": "Ressource",
+    "details": "Détails"
+  },
+  "types": {
+    "check.created": "Contrôle créé",
+    "check.updated": "Contrôle mis à jour",
+    "check.deleted": "Contrôle supprimé",
+    "incident.created": "Incident créé",
+    "incident.opened": "Incident ouvert",
+    "incident.resolved": "Incident résolu",
+    "incident.escalated": "Incident escaladé",
+    "incident.acknowledged": "Incident acquitté"
+  },
+  "links": {
+    "check": "Contrôle",
+    "incident": "Incident"
+  },
+  "actorTypes": {
+    "user": "utilisateur",
+    "system": "système"
+  },
+  "unknown": "Inconnu"
+}

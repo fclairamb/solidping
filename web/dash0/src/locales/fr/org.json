@@ -1,0 +1,48 @@
+{
+  "settings": {
+    "title": "Paramètres de l'organisation",
+    "autoJoin": "Inscription automatique",
+    "autoJoinDescription": "Ajouter automatiquement les utilisateurs correspondant à ce modèle d'e-mail à l'organisation.",
+    "autoJoinFullDescription": "Les utilisateurs dont l'e-mail correspond à ce modèle rejoindront automatiquement cette organisation lors de leur inscription ou connexion via OAuth.",
+    "emailPattern": "Modèle d'e-mail (regex)",
+    "emailPlaceholder": "@exemple\\.com$",
+    "autoJoinHelp": "Laissez vide pour désactiver l'inscription automatique. Exemple : <code>@exemple\\.com$</code> correspond à tous les e-mails @exemple.com.",
+    "saved": "Paramètres enregistrés.",
+    "unexpectedError": "Une erreur inattendue s'est produite"
+  },
+  "invitations": {
+    "title": "Invitations",
+    "subtitle": "Gérer les invitations de l'organisation.",
+    "inviteUser": "Inviter un utilisateur",
+    "email": "Adresse e-mail",
+    "role": "Rôle",
+    "pending": "En attente",
+    "accepted": "Acceptée",
+    "revoke": "Révoquer",
+    "revoked": "Invitation révoquée",
+    "sent": "Invitation envoyée",
+    "invite": "Inviter",
+    "inviteMember": "Inviter un membre",
+    "sendDescription": "Envoyer une invitation à rejoindre cette organisation",
+    "invitationCreated": "Invitation créée. Partagez ce lien :",
+    "sendInvitation": "Envoyer l'invitation",
+    "sending": "Envoi...",
+    "pendingTitle": "Invitations en attente",
+    "pendingDescription": "Les invitations qui n'ont pas encore été acceptées",
+    "noPending": "Aucune invitation en attente",
+    "emailPlaceholder": "collegue@exemple.com",
+    "expires": "Expire",
+    "unexpectedError": "Une erreur inattendue s'est produite"
+  },
+  "members": {
+    "title": "Membres",
+    "subtitle": "Gérer les membres de l'organisation.",
+    "role": "Rôle",
+    "admin": "Administrateur",
+    "user": "Utilisateur",
+    "viewer": "Lecteur",
+    "remove": "Retirer",
+    "removed": "Membre retiré",
+    "roleUpdated": "Rôle mis à jour"
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "title": "Paramètres du serveur",
+  "subtitle": "Gérer les paramètres de configuration du serveur",
+  "web": {
+    "title": "Paramètres web",
+    "baseUrl": "URL de base",
+    "appName": "Nom de l'application"
+  },
+  "mail": {
+    "title": "Paramètres de messagerie",
+    "host": "Hôte SMTP",
+    "port": "Port SMTP",
+    "from": "Adresse d'expédition",
+    "username": "Nom d'utilisateur",
+    "password": "Mot de passe",
+    "protocol": "Protocole",
+    "enabled": "Messagerie activée"
+  },
+  "auth": {
+    "title": "Paramètres d'authentification",
+    "registrationEnabled": "Inscription activée",
+    "registrationEnabledDescription": "Autoriser les nouveaux utilisateurs à s'inscrire."
+  },
+  "performance": {
+    "title": "Paramètres de performance",
+    "subtitle": "Configurer les paramètres liés aux performances."
+  },
+  "saved": "Paramètres enregistrés."
+}

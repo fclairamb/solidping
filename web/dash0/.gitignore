@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
+
+# Local env files
+.env.local
+.env.*.local
+
+# TypeScript build info
+*.tsbuildinfo
+
+# Bun
+bun.lockb

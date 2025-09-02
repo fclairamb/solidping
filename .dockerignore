@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+docs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node
+apps/dash/node_modules/
+apps/dash/dist/
+
+# Go
+back/tmp/
+*.test
+*.out
+
+# Build artifacts
+solidping
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose.yml
+
+# Testing
+apps/dash/playwright-report/
+apps/dash/test-results/
+
+# Specs
+specs/
+.claude/

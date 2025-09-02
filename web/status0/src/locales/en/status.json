@@ -1,0 +1,17 @@
+{
+  "operational": "Operational",
+  "outage": "Outage",
+  "degraded": "Degraded",
+  "unknown": "Unknown",
+  "allSystemsOperational": "All Systems Operational",
+  "someSystemsDegraded": "Some Systems Degraded",
+  "systemOutage": "System Outage",
+  "noResourcesConfigured": "No resources configured",
+  "noSectionsConfigured": "No sections configured yet",
+  "poweredBy": "Powered by SolidPing",
+  "loading": "Loading...",
+  "statusPageNotFound": "Status Page Not Found",
+  "statusPageNotFoundDescription": "The requested status page could not be found.",
+  "solidpingStatus": "SolidPing Status",
+  "visitStatusPage": "Visit a specific status page to see service health."
+}

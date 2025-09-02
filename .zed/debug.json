@@ -1,0 +1,15 @@
+[
+  {
+    "label": "Run server",
+    "adapter": "Delve",
+    "request": "launch",
+    "mode": "debug",
+    "program": "./back",
+    "cwd": "./back",
+    "env": {
+      "SP_LOG_LEVEL": "debug",
+      "SP_DB_LOGSQL": "true",
+      "SP_RUN_MODE": "test"
+    },
+  },
+]

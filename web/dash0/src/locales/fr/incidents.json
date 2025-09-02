@@ -1,0 +1,37 @@
+{
+  "title": "Incidents",
+  "subtitle": "Suivre et gérer les incidents de surveillance",
+  "allIncidents": "Tous les incidents",
+  "activeOnly": "Actifs uniquement",
+  "resolvedOnly": "Résolus uniquement",
+  "table": {
+    "incident": "Incident",
+    "check": "Contrôle",
+    "started": "Début",
+    "duration": "Durée",
+    "failures": "Échecs"
+  },
+  "allOperational": "Tous les systèmes sont opérationnels",
+  "noResolved": "Aucun incident résolu pour le moment",
+  "noIncidents": "Aucun incident enregistré",
+  "noIncidentsFound": "Aucun incident trouvé",
+  "filterByState": "Filtrer par état",
+  "relapse": "{{count}}x rechute",
+  "active": "Actif",
+  "resolved": "Résolu",
+  "detail": {
+    "incidentDetail": "Détail de l'incident",
+    "startedAt": "Début",
+    "resolvedAt": "Résolu le",
+    "acknowledgedAt": "Acquitté le",
+    "escalatedAt": "Escaladé le",
+    "failureCount": "Nombre d'échecs",
+    "relapseCount": "Nombre de rechutes"
+  },
+  "time": {
+    "daysAgo": "il y a {{count}}j",
+    "hoursAgo": "il y a {{count}}h",
+    "minutesAgo": "il y a {{count}}min",
+    "justNow": "à l'instant"
+  }
+}

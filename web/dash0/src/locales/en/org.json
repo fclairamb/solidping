@@ -1,0 +1,48 @@
+{
+  "settings": {
+    "title": "Organization Settings",
+    "autoJoin": "Auto-join",
+    "autoJoinDescription": "Automatically add users matching this email pattern to the organization.",
+    "autoJoinFullDescription": "Users whose email matches this pattern will automatically join this organization when they register or sign in via OAuth.",
+    "emailPattern": "Email pattern (regex)",
+    "emailPlaceholder": "@example\\.com$",
+    "autoJoinHelp": "Leave empty to disable auto-join. Example: <code>@example\\.com$</code> matches all @example.com emails.",
+    "saved": "Settings saved.",
+    "unexpectedError": "An unexpected error occurred"
+  },
+  "invitations": {
+    "title": "Invitations",
+    "subtitle": "Manage organization invitations.",
+    "inviteUser": "Invite User",
+    "email": "Email address",
+    "role": "Role",
+    "pending": "Pending",
+    "accepted": "Accepted",
+    "revoke": "Revoke",
+    "revoked": "Invitation revoked",
+    "sent": "Invitation sent",
+    "invite": "Invite",
+    "inviteMember": "Invite a member",
+    "sendDescription": "Send an invitation to join this organization",
+    "invitationCreated": "Invitation created. Share this link:",
+    "sendInvitation": "Send invitation",
+    "sending": "Sending...",
+    "pendingTitle": "Pending invitations",
+    "pendingDescription": "Invitations that haven't been accepted yet",
+    "noPending": "No pending invitations",
+    "emailPlaceholder": "colleague@example.com",
+    "expires": "Expires",
+    "unexpectedError": "An unexpected error occurred"
+  },
+  "members": {
+    "title": "Members",
+    "subtitle": "Manage organization members.",
+    "role": "Role",
+    "admin": "Admin",
+    "user": "User",
+    "viewer": "Viewer",
+    "remove": "Remove",
+    "removed": "Member removed",
+    "roleUpdated": "Role updated"
+  }
+}

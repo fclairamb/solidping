@@ -1,0 +1,1867 @@
+openapi: 3.0.0
+info:
+  title: SolidPing API
+  description: Multi-protocol monitoring and health checking API
+  version: 1.0.0
+  contact:
+    name: Florent Clairambault - https://github.com/fclairamb/solidping/issues
+  license:
+    name: AGPL-3.0
+
+servers:
+  - url: http://localhost:4000
+    description: Local development server
+
+tags:
+  - name: Management
+    description: System management endpoints
+  - name: Authentication
+    description: Authentication and token management
+  - name: Checks
+    description: Monitoring check management
+  - name: Badges
+    description: Status badge generation
+  - name: Results
+    description: Check results and statistics
+  - name: Incidents
+    description: Incident management and tracking
+  - name: Events
+    description: Audit events and activity log
+  - name: Members
+    description: Organization member management
+  - name: Jobs
+    description: Background job management
+  - name: System
+    description: System-wide configuration (super admin only)
+
+paths:
+  # Management APIs
+  /api/mgmt/version:
+    get:
+      tags: [Management]
+      summary: Get system version
+      operationId: getVersion
+      responses:
+        "200":
+          description: Version information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionResponse"
+
+  /api/mgmt/health:
+    get:
+      tags: [Management]
+      summary: System health check
+      operationId: getHealth
+      responses:
+        "200":
+          description: Health status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  # System Parameters APIs (Super Admin Only)
+  /api/v1/system/parameters:
+    get:
+      tags: [System]
+      summary: List all system parameters
+      description: Returns all system-wide configuration parameters. Secret values are masked.
+      operationId: listSystemParameters
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of system parameters
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemParameterListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/parameters/{key}:
+    get:
+      tags: [System]
+      summary: Get a system parameter
+      description: Returns a single system parameter by key. Secret values are masked.
+      operationId: getSystemParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Parameter key
+          schema:
+            type: string
+      responses:
+        "200":
+          description: System parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      tags: [System]
+      summary: Set a system parameter
+      description: Creates or updates a system parameter value.
+      operationId: setSystemParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Parameter key
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SetSystemParameterRequest"
+      responses:
+        "200":
+          description: Parameter updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SystemParameter"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+    delete:
+      tags: [System]
+      summary: Delete a system parameter
+      description: Soft-deletes a system parameter.
+      operationId: deleteSystemParameter
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: key
+          in: path
+          required: true
+          description: Parameter key
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Parameter deleted
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Authentication APIs (root-level)
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login with email/password
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Logout current session
+      operationId: logout
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LogoutRequest"
+      responses:
+        "200":
+          description: Logout successful
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LogoutResponse"
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: Token refreshed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RefreshResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user info
+      operationId: getCurrentUser
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: User information
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/switch-org:
+    post:
+      tags: [Authentication]
+      summary: Switch organization context
+      operationId: switchOrg
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SwitchOrgRequest"
+      responses:
+        "200":
+          description: Organization switched
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LoginResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/auth/tokens:
+    get:
+      tags: [Authentication]
+      summary: List all user's tokens across orgs
+      operationId: listAllTokens
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: type
+          in: query
+          description: Filter by token type
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenListResponse"
+
+  /api/v1/auth/tokens/{tokenUid}:
+    delete:
+      tags: [Authentication]
+      summary: Revoke API token
+      operationId: revokeToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/TokenUidPath"
+      responses:
+        "204":
+          description: Token revoked
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Org-scoped token management
+  /api/v1/orgs/{org}/tokens:
+    get:
+      tags: [Authentication]
+      summary: List user's tokens for an organization
+      operationId: listOrgTokens
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: query
+          description: Filter by token type
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of tokens
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenListResponse"
+    post:
+      tags: [Authentication]
+      summary: Create Personal Access Token for organization
+      operationId: createToken
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateTokenRequest"
+      responses:
+        "201":
+          description: Token created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateTokenResponse"
+
+  # Check APIs
+  /api/v1/orgs/{org}/checks:
+    get:
+      tags: [Checks]
+      summary: List monitoring checks
+      operationId: listChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: labels
+          in: query
+          description: Filter by labels (format key1:value1,key2:value2 for AND logic)
+          schema:
+            type: string
+          example: "env:prod,app:api"
+        - name: with
+          in: query
+          description: Comma-separated list of additional data to include (e.g., "last_result", "last_status_change")
+          schema:
+            type: string
+        - name: internal
+          in: query
+          description: Filter by internal status. "false" (default) shows only non-internal checks, "true" shows only internal checks, "all" shows all checks.
+          schema:
+            type: string
+            enum: ["true", "false", "all"]
+            default: "false"
+      responses:
+        "200":
+          description: List of checks
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckListResponse"
+    post:
+      tags: [Checks]
+      summary: Create monitoring check
+      operationId: createCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCheckRequest"
+      responses:
+        "201":
+          description: Check created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/checks/{slug}:
+    put:
+      tags: [Checks]
+      summary: Create or update check by slug (upsert)
+      operationId: upsertCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: slug
+          in: path
+          required: true
+          description: Check slug
+          schema:
+            type: string
+            pattern: "^[a-z0-9-]{3,40}$"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpsertCheckRequest"
+      responses:
+        "200":
+          description: Check updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "201":
+          description: Check created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "422":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/checks/{checkUid}:
+    get:
+      tags: [Checks]
+      summary: Get check details
+      operationId: getCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "200":
+          description: Check details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Checks]
+      summary: Update monitoring check
+      operationId: updateCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCheckRequest"
+      responses:
+        "200":
+          description: Check updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Check"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Checks]
+      summary: Soft delete check
+      operationId: deleteCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+      responses:
+        "204":
+          description: Check deleted
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Check has active incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/checks/{checkUid}/events:
+    get:
+      tags: [Events]
+      summary: List events for a check
+      operationId: listCheckEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/CheckUidPath"
+        - name: cursor
+          in: query
+          description: Cursor for pagination
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Results per page (default 20, max 100)
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Badge APIs
+  /api/v1/orgs/{org}/checks/{check}/badges/{format}:
+    get:
+      tags: [Badges]
+      summary: Get status badge for a check
+      operationId: getBadge
+      description: Returns an SVG badge showing the check's current status. No authentication required.
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID or slug
+          schema:
+            type: string
+        - name: format
+          in: path
+          required: true
+          description: Badge format
+          schema:
+            type: string
+            enum: [status, uptime, response-time]
+        - name: period
+          in: query
+          description: Time period for uptime calculation
+          schema:
+            type: string
+        - name: label
+          in: query
+          description: Custom label for the badge
+          schema:
+            type: string
+        - name: style
+          in: query
+          description: Badge style
+          schema:
+            type: string
+            enum: [flat, flat-square, plastic]
+      responses:
+        "200":
+          description: SVG badge image
+          content:
+            image/svg+xml:
+              schema:
+                type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Results APIs
+  /api/v1/orgs/{org}/results:
+    get:
+      tags: [Results]
+      summary: List results across all checks in organization
+      operationId: listOrgResults
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: checkUid
+          in: query
+          description: Filter by check UID or slug (comma-separated for multiple)
+          schema:
+            type: string
+        - name: checkType
+          in: query
+          description: Filter by check type (comma-separated for multiple)
+          schema:
+            type: string
+          example: "http,dns"
+        - name: status
+          in: query
+          description: Filter by status (comma-separated for multiple)
+          schema:
+            type: string
+          example: "up,down"
+        - name: region
+          in: query
+          description: Filter by region (comma-separated for multiple)
+          schema:
+            type: string
+        - name: periodType
+          in: query
+          description: Filter by period type (comma-separated for multiple)
+          schema:
+            type: string
+          example: "raw,hour"
+        - name: cursor
+          in: query
+          description: Cursor for pagination
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Results per page (default 20, max 100)
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: with
+          in: query
+          description: Comma-separated optional fields to include
+          schema:
+            type: string
+          example: "metrics,output,durationMs,region"
+      responses:
+        "200":
+          description: List of results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrgResultListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Incident APIs
+  /api/v1/orgs/{org}/incidents:
+    get:
+      tags: [Incidents]
+      summary: List incidents
+      operationId: listIncidents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: checkUid
+          in: query
+          description: Filter by check UID (comma-separated for multiple)
+          schema:
+            type: string
+        - name: state
+          in: query
+          description: Filter by state (comma-separated, e.g., "active,resolved")
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Cursor for pagination
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Results per page (default 20, max 100)
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: with
+          in: query
+          description: Comma-separated optional fields to include (e.g., "check")
+          schema:
+            type: string
+          example: "check"
+      responses:
+        "200":
+          description: List of incidents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}:
+    get:
+      tags: [Incidents]
+      summary: Get incident details
+      operationId: getIncident
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+      responses:
+        "200":
+          description: Incident details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IncidentDetail"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/incidents/{uid}/events:
+    get:
+      tags: [Events]
+      summary: List events for an incident
+      operationId: listIncidentEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/IncidentUidPath"
+        - name: cursor
+          in: query
+          description: Cursor for pagination
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Results per page (default 20, max 100)
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Event APIs
+  /api/v1/orgs/{org}/events:
+    get:
+      tags: [Events]
+      summary: List events
+      operationId: listEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: eventType
+          in: query
+          description: Filter by event type (comma-separated)
+          schema:
+            type: string
+        - name: checkUid
+          in: query
+          description: Filter by check UID
+          schema:
+            type: string
+        - name: incidentUid
+          in: query
+          description: Filter by incident UID
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: Cursor for pagination
+          schema:
+            type: string
+        - name: size
+          in: query
+          description: Results per page (default 20, max 100)
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          description: List of events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  # Member APIs
+  /api/v1/orgs/{org}/members:
+    get:
+      tags: [Members]
+      summary: List organization members
+      operationId: listMembers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of members
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Members]
+      summary: Add member to organization
+      operationId: addMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AddMemberRequest"
+      responses:
+        "201":
+          description: Member added
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: User is already a member
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/members/{uid}:
+    get:
+      tags: [Members]
+      summary: Get member details
+      operationId: getMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      responses:
+        "200":
+          description: Member details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      tags: [Members]
+      summary: Update member role
+      operationId: updateMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+      responses:
+        "200":
+          description: Member updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot demote last admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [Members]
+      summary: Remove member from organization
+      operationId: removeMember
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/MemberUidPath"
+      responses:
+        "204":
+          description: Member removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Cannot remove last admin
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # Job APIs
+  /api/v1/orgs/{org}/jobs:
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      operationId: listJobs
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: type
+          in: query
+          description: Filter by job type
+          schema:
+            type: string
+        - name: status
+          in: query
+          description: Filter by job status
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      tags: [Jobs]
+      summary: Create a job
+      operationId: createJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobRequest"
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+
+  /api/v1/orgs/{org}/jobs/{uid}:
+    get:
+      tags: [Jobs]
+      summary: Get job details
+      operationId: getJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Job details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Jobs]
+      summary: Cancel a pending job
+      operationId: cancelJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "204":
+          description: Job cancelled
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    OrgPath:
+      name: org
+      in: path
+      required: true
+      description: Organization slug
+      schema:
+        type: string
+        pattern: "^[a-z0-9-]{3,20}$"
+
+    TokenUidPath:
+      name: tokenUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    CheckUidPath:
+      name: checkUid
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Check UID (UUID) or slug
+
+    IncidentUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Incident UID
+
+    MemberUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Member UID
+
+    JobUidPath:
+      name: uid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Job UID
+
+  responses:
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    Forbidden:
+      description: Permission denied
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      required: [title, code]
+      properties:
+        title:
+          type: string
+          description: Human-readable error description
+        code:
+          type: string
+          description: Machine-readable error code
+          enum:
+            - INTERNAL_ERROR
+            - VALIDATION_ERROR
+            - NOT_FOUND
+            - UNAUTHORIZED
+            - FORBIDDEN
+            - CONFLICT
+            - ORGANIZATION_NOT_FOUND
+            - USER_NOT_FOUND
+            - CHECK_NOT_FOUND
+            - TOKEN_NOT_FOUND
+            - NO_TOKEN
+            - INVALID_TOKEN
+            - INVALID_ORG
+            - INVALID_CREDENTIALS
+            - CHECK_HAS_ACTIVE_INCIDENTS
+        detail:
+          type: string
+          description: Detailed error explanation
+        fields:
+          type: array
+          description: Field-level validation errors (present for VALIDATION_ERROR)
+          items:
+            $ref: "#/components/schemas/ValidationErrorField"
+
+    ValidationErrorField:
+      type: object
+      required: [name, message]
+      properties:
+        name:
+          type: string
+          description: Field name that failed validation
+        message:
+          type: string
+          description: Validation error message for this field
+
+    # Management schemas
+    VersionResponse:
+      type: object
+      properties:
+        version:
+          type: string
+        commit:
+          type: string
+        gitTime:
+          type: string
+        runMode:
+          type: string
+
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok]
+
+    # Authentication schemas
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        org:
+          type: string
+          description: Organization slug (optional, defaults to user's most recent org)
+        email:
+          type: string
+          format: email
+        password:
+          type: string
+          minLength: 8
+
+    SwitchOrgRequest:
+      type: object
+      required: [org]
+      properties:
+        org:
+          type: string
+          description: Target organization slug
+
+    LoginResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        organization:
+          $ref: "#/components/schemas/OrganizationSummary"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationMemberSummary"
+          description: Available organizations for the user
+        loginAction:
+          type: string
+          enum: ["", orgRedirect, orgChoice, noOrg]
+          description: Indicates how the frontend should handle the login result
+
+    LogoutRequest:
+      type: object
+      properties:
+        deleteAllTokens:
+          type: boolean
+
+    LogoutResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        tokensDeleted:
+          type: integer
+        message:
+          type: string
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    RefreshResponse:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        expiresIn:
+          type: integer
+
+    MeResponse:
+      type: object
+      properties:
+        user:
+          $ref: "#/components/schemas/UserSummary"
+        organization:
+          $ref: "#/components/schemas/OrganizationSummary"
+        organizations:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationMemberSummary"
+
+    OrganizationSummary:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    OrganizationMemberSummary:
+      type: object
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+
+    UserSummary:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+
+    CreateTokenRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+
+    CreateTokenResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        name:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    Token:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        orgSlug:
+          type: string
+          description: Organization slug the token belongs to
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+
+    TokenListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Token"
+
+    # Check schemas
+    Check:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+          description: Optional documentation describing what this check monitors
+        type:
+          type: string
+          enum: [http, tcp, icmp, dns, ssl, domain]
+        config:
+          type: object
+        enabled:
+          type: boolean
+        internal:
+          type: boolean
+          description: Whether this check is internal (hidden from default listings)
+        period:
+          type: string
+          description: Interval duration (e.g., "00:01:00" for 1 minute)
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value pairs for organizing and filtering checks
+          example:
+            env: prod
+            app: api
+        lastResult:
+          $ref: "#/components/schemas/LastResult"
+        lastStatusChange:
+          type: object
+          nullable: true
+          description: Information about when the check last transitioned between states (only included when with=last_status_change)
+          properties:
+            time:
+              type: string
+              format: date-time
+              description: ISO 8601 timestamp of when the status change occurred
+            status:
+              type: string
+              enum: [INITIAL, UP, DOWN, TIMEOUT, ERROR, UNKNOWN]
+              description: The status that the check transitioned to
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    LastResult:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [up, down, timeout, error]
+          description: Result status
+        timestamp:
+          type: string
+          format: date-time
+          description: When the check was executed
+        output:
+          type: object
+          description: Diagnostic output and error messages
+        metrics:
+          type: object
+          description: Performance metrics (e.g., response time, DNS time)
+
+    CheckListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Check"
+
+    CreateCheckRequest:
+      type: object
+      required: [config]
+      properties:
+        name:
+          type: string
+          description: Check name (auto-generated from URL if not provided)
+        slug:
+          type: string
+          pattern: "^[a-z0-9_-]{3,40}$"
+          description: URL-friendly identifier (auto-generated from URL if not provided)
+        description:
+          type: string
+          description: Optional documentation about the check
+        type:
+          type: string
+          enum: [http, tcp, icmp, dns, ssl, domain]
+          description: Check type (auto-inferred from URL if not provided)
+        config:
+          type: object
+          description: Check-specific configuration (e.g., url, port, timeout)
+        enabled:
+          type: boolean
+          default: true
+        internal:
+          type: boolean
+          default: false
+          description: Whether this check is internal (hidden from default listings)
+        period:
+          type: string
+          default: "00:01:00"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value pairs for organizing checks
+          example:
+            env: prod
+            app: api
+
+    UpdateCheckRequest:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+          pattern: "^[a-z0-9_-]{3,40}$"
+        description:
+          type: string
+          description: Optional documentation about the check
+        config:
+          type: object
+        enabled:
+          type: boolean
+        internal:
+          type: boolean
+          description: Whether this check is internal (hidden from default listings)
+        period:
+          type: string
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value pairs (null = no change, empty object = clear all)
+
+    UpsertCheckRequest:
+      type: object
+      required: [config]
+      properties:
+        name:
+          type: string
+          description: Check name (auto-generated from URL if not provided)
+        description:
+          type: string
+          description: Optional documentation about the check
+        type:
+          type: string
+          enum: [http, tcp, icmp, dns, ssl, domain]
+          description: Check type (auto-inferred from URL if not provided)
+        config:
+          type: object
+          description: Check-specific configuration
+        enabled:
+          type: boolean
+          default: true
+        internal:
+          type: boolean
+          default: false
+          description: Whether this check is internal (hidden from default listings)
+        period:
+          type: string
+          default: "00:01:00"
+        labels:
+          type: object
+          additionalProperties:
+            type: string
+          description: Key-value pairs for organizing checks
+          example:
+            env: prod
+            app: api
+
+    # Result schemas
+    OrgResultListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrgResult"
+        pagination:
+          $ref: "#/components/schemas/CursorPagination"
+
+    OrgResult:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        periodType:
+          type: string
+        periodStart:
+          type: string
+          format: date-time
+        periodEnd:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [up, down, unknown]
+        durationMs:
+          type: number
+          description: Duration in milliseconds (with=durationMs)
+        durationMinMs:
+          type: number
+          description: Minimum duration in milliseconds (with=durationMinMs)
+        durationMaxMs:
+          type: number
+          description: Maximum duration in milliseconds (with=durationMaxMs)
+        region:
+          type: string
+          description: Region identifier (with=region)
+        checkSlug:
+          type: string
+          description: Check slug (with=checkSlug)
+        checkName:
+          type: string
+          description: Check name (with=checkName)
+        metrics:
+          type: object
+          description: Performance metrics (with=metrics)
+        output:
+          type: object
+          description: Diagnostic output (with=output)
+        availabilityPct:
+          type: number
+          description: Availability percentage for aggregated periods (with=availabilityPct)
+
+    CursorPagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        cursor:
+          type: string
+          description: Cursor for next page (empty if no more results)
+        size:
+          type: integer
+
+    # Incident schemas
+    IncidentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/IncidentDetail"
+        pagination:
+          $ref: "#/components/schemas/CursorPagination"
+
+    IncidentDetail:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        checkSlug:
+          type: string
+        checkName:
+          type: string
+        state:
+          type: string
+          enum: [active, resolved]
+        startedAt:
+          type: string
+          format: date-time
+        resolvedAt:
+          type: string
+          format: date-time
+        escalatedAt:
+          type: string
+          format: date-time
+        acknowledgedAt:
+          type: string
+          format: date-time
+        failureCount:
+          type: integer
+        title:
+          type: string
+        description:
+          type: string
+        check:
+          $ref: "#/components/schemas/IncidentCheck"
+
+    IncidentCheck:
+      type: object
+      description: Embedded check details for incidents
+      properties:
+        slug:
+          type: string
+        type:
+          type: string
+        config:
+          type: object
+
+    # Event schemas
+    EventListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Event"
+        pagination:
+          $ref: "#/components/schemas/CursorPagination"
+
+    Event:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        incidentUid:
+          type: string
+          format: uuid
+        checkUid:
+          type: string
+          format: uuid
+        eventType:
+          type: string
+          enum:
+            - incident.created
+            - incident.escalated
+            - incident.resolved
+            - incident.acknowledged
+            - check.created
+            - check.updated
+            - check.deleted
+        actorType:
+          type: string
+          enum: [system, user]
+        actorUid:
+          type: string
+          format: uuid
+        payload:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+
+    # Member schemas
+    MemberListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+
+    Member:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        userUid:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        avatarUrl:
+          type: string
+        role:
+          type: string
+          enum: [admin, user, viewer]
+        joinedAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    AddMemberRequest:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+          enum: [admin, user, viewer]
+
+    UpdateMemberRequest:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [admin, user, viewer]
+
+    # Job schemas
+    JobListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/Job"
+
+    JobResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/Job"
+
+    Job:
+      type: object
+      properties:
+        uid:
+          type: string
+          format: uuid
+        organizationUid:
+          type: string
+          format: uuid
+        type:
+          type: string
+        config:
+          type: object
+        status:
+          type: string
+          enum: [pending, running, completed, failed, cancelled]
+        createdAt:
+          type: string
+          format: date-time
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        result:
+          type: object
+
+    CreateJobRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+        config:
+          type: object
+
+    # System Parameters
+    SystemParameter:
+      type: object
+      properties:
+        key:
+          type: string
+          description: Parameter key
+        value:
+          description: Parameter value (masked with "******" for secrets)
+        secret:
+          type: boolean
+          description: Whether this is a secret parameter
+        updatedAt:
+          type: string
+          format: date-time
+          description: When the parameter was last updated
+
+    SystemParameterListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/SystemParameter"
+
+    SetSystemParameterRequest:
+      type: object
+      properties:
+        value:
+          description: The parameter value to set
+        secret:
+          type: boolean
+          description: Whether this is a secret parameter (optional, defaults to false)

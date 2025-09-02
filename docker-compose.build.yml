@@ -1,0 +1,45 @@
+# Build & Run configuration
+# Usage: docker compose -f docker-compose.build.yml up --build
+services:
+  postgres:
+    image: postgres:18.3
+    container_name: solidping-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    ports:
+      - "55432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker-compose/scripts/init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${VERSION:-dev}
+        COMMIT: ${COMMIT:-unknown}
+        GIT_TIME: ${GIT_TIME:-unknown}
+    container_name: solidping-server
+    ports:
+      - "4000:4000"
+    environment:
+      - SP_DB_TYPE=postgres
+      - SP_DB_URL=postgres://solidping:solidping@postgres:5432/solidping?sslmode=disable
+      - SP_AUTH_JWT_SECRET=dev-secret-change-in-production
+      - SP_SERVER_LISTEN=:4000
+      - SP_SERVER_JOB_RUNNERS=1
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

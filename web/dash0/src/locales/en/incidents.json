@@ -1,0 +1,37 @@
+{
+  "title": "Incidents",
+  "subtitle": "Track and manage monitoring incidents",
+  "allIncidents": "All Incidents",
+  "activeOnly": "Active Only",
+  "resolvedOnly": "Resolved Only",
+  "table": {
+    "incident": "Incident",
+    "check": "Check",
+    "started": "Started",
+    "duration": "Duration",
+    "failures": "Failures"
+  },
+  "allOperational": "All systems are operational",
+  "noResolved": "No resolved incidents yet",
+  "noIncidents": "No incidents have been recorded",
+  "noIncidentsFound": "No incidents found",
+  "filterByState": "Filter by state",
+  "relapse": "{{count}}x relapse",
+  "active": "Active",
+  "resolved": "Resolved",
+  "detail": {
+    "incidentDetail": "Incident Detail",
+    "startedAt": "Started at",
+    "resolvedAt": "Resolved at",
+    "acknowledgedAt": "Acknowledged at",
+    "escalatedAt": "Escalated at",
+    "failureCount": "Failure count",
+    "relapseCount": "Relapse count"
+  },
+  "time": {
+    "daysAgo": "{{count}}d ago",
+    "hoursAgo": "{{count}}h ago",
+    "minutesAgo": "{{count}}m ago",
+    "justNow": "just now"
+  }
+}

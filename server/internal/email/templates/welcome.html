@@ -1,0 +1,14 @@
+{{template "base.html" .}}
+{{define "content"}}
+<div class="content">
+    <h2>Welcome to SolidPing!</h2>
+    {{if .message}}
+    <p>{{.message}}</p>
+    {{else}}
+    <p>Thank you for joining SolidPing. We're excited to help you monitor your services and keep them running smoothly.</p>
+    {{end}}
+    {{if .DashboardURL}}
+    <p><a href="{{.DashboardURL}}" class="button button-success">Go to Dashboard</a></p>
+    {{end}}
+</div>
+{{end}}

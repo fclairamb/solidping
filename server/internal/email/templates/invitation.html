@@ -1,0 +1,10 @@
+{{template "base.html" .}}
+{{define "content"}}
+<div class="content">
+    <h2>You're Invited!</h2>
+    <p>You've been invited to join <strong>{{.OrgName}}</strong> on SolidPing as a <strong>{{.Role}}</strong>.</p>
+    {{if .InviterName}}<p>Invited by: {{.InviterName}}</p>{{end}}
+    <p><a href="{{.InviteURL}}" class="button button-success">Accept Invitation</a></p>
+    <p style="color: #666; font-size: 14px;">This invitation will expire in 7 days.</p>
+</div>
+{{end}}

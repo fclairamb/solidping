@@ -1,0 +1,33 @@
+{
+  "title": "Pages de statut",
+  "subtitle": "Gérez vos pages de statut publiques",
+  "newStatusPage": "Nouvelle page de statut",
+  "noStatusPages": "Aucune page de statut pour le moment",
+  "viewDetails": "Voir les détails",
+  "edit": "Modifier",
+  "enabled": "Activée",
+  "disabled": "Désactivée",
+  "form": {
+    "title": "Titre",
+    "slug": "Identifiant",
+    "description": "Description",
+    "checks": "Contrôles",
+    "selectChecks": "Sélectionner les contrôles à afficher",
+    "historyDays": "Jours d'historique",
+    "showAvailability": "Afficher la disponibilité",
+    "showResponseTime": "Afficher le temps de réponse",
+    "language": "Langue",
+    "createStatusPage": "Créer la page de statut",
+    "saveChanges": "Enregistrer les modifications"
+  },
+  "detail": {
+    "configuration": "Configuration",
+    "preview": "Aperçu",
+    "publicUrl": "URL publique"
+  },
+  "toast": {
+    "created": "Page de statut créée",
+    "updated": "Page de statut mise à jour",
+    "deleted": "Page de statut supprimée"
+  }
+}

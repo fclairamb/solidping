@@ -1,0 +1,12 @@
+package: client
+output: client_generated.go
+generate:
+  client: true
+  models: true
+  embedded-spec: false
+compatibility:
+  always-prefix-enum-values: true
+output-options:
+  response-type-suffix: Result
+import-mapping:
+  time: time.Time

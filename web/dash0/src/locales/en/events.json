@@ -1,0 +1,38 @@
+{
+  "title": "Events",
+  "subtitle": "Audit log of system activities",
+  "noEvents": "No events found",
+  "noEventsMatchFilter": "No events match the selected filter",
+  "noEventsRecorded": "No events have been recorded yet",
+  "allEvents": "All Events",
+  "filterByType": "Filter by type",
+  "table": {
+    "time": "Time",
+    "event": "Event",
+    "actor": "Actor",
+    "related": "Related",
+    "timestamp": "Timestamp",
+    "type": "Type",
+    "resource": "Resource",
+    "details": "Details"
+  },
+  "types": {
+    "check.created": "Check Created",
+    "check.updated": "Check Updated",
+    "check.deleted": "Check Deleted",
+    "incident.created": "Incident Created",
+    "incident.opened": "Incident Opened",
+    "incident.resolved": "Incident Resolved",
+    "incident.escalated": "Incident Escalated",
+    "incident.acknowledged": "Incident Acknowledged"
+  },
+  "links": {
+    "check": "Check",
+    "incident": "Incident"
+  },
+  "actorTypes": {
+    "user": "user",
+    "system": "system"
+  },
+  "unknown": "Unknown"
+}

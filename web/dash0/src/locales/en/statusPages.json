@@ -1,0 +1,33 @@
+{
+  "title": "Status Pages",
+  "subtitle": "Manage your public status pages",
+  "newStatusPage": "New Status Page",
+  "noStatusPages": "No status pages yet",
+  "viewDetails": "View Details",
+  "edit": "Edit",
+  "enabled": "Enabled",
+  "disabled": "Disabled",
+  "form": {
+    "title": "Title",
+    "slug": "Slug",
+    "description": "Description",
+    "checks": "Checks",
+    "selectChecks": "Select checks to display",
+    "historyDays": "History Days",
+    "showAvailability": "Show Availability",
+    "showResponseTime": "Show Response Time",
+    "language": "Language",
+    "createStatusPage": "Create Status Page",
+    "saveChanges": "Save Changes"
+  },
+  "detail": {
+    "configuration": "Configuration",
+    "preview": "Preview",
+    "publicUrl": "Public URL"
+  },
+  "toast": {
+    "created": "Status page created",
+    "updated": "Status page updated",
+    "deleted": "Status page deleted"
+  }
+}

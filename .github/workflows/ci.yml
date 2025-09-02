@@ -1,0 +1,353 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+permissions:
+  contents: read
+  packages: write
+  pull-requests: read
+
+jobs:
+  backend-lint:
+    name: Backend Lint & Test
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Create embed placeholders for lint/test
+        run: |
+          mkdir -p internal/app/res && echo "placeholder" > internal/app/res/index.html
+          mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
+          mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v9.2.0
+        with:
+          # https://github.com/golangci/golangci-lint/releases
+          version: v2.11.3
+          install-mode: goinstall
+          working-directory: server
+          # only-new-issues: true
+
+      - name: Clear Go build cache before tests
+        run: go clean -cache
+
+      - name: Run tests
+        run: go test -count=1 ./... -short
+
+  dash:
+    name: Dash Build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web/dash
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run lint
+        run: bunx eslint .
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload dash dist
+        uses: actions/upload-artifact@v6
+        with:
+          name: dash-dist
+          path: web/dash/dist
+          retention-days: 1
+
+  dash0:
+    name: Dash0 Build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web/dash0
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload dash0 dist
+        uses: actions/upload-artifact@v6
+        with:
+          name: dash0-dist
+          path: web/dash0/dist
+          retention-days: 1
+
+  status0:
+    name: Status0 Build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: web/status0
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Build
+        run: bun run build
+
+      - name: Upload status0 dist
+        uses: actions/upload-artifact@v6
+        with:
+          name: status0-dist
+          path: web/status0/dist
+          retention-days: 1
+
+  build:
+    name: Build Binary
+    runs-on: ubuntu-24.04
+    needs: [dash, dash0, status0]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: false
+
+      - name: Clear local Go build cache
+        working-directory: server
+        run: go clean -cache
+
+      - name: Download dash dist
+        uses: actions/download-artifact@v7
+        with:
+          name: dash-dist
+          path: server/internal/app/res
+
+      - name: Download dash0 dist
+        uses: actions/download-artifact@v7
+        with:
+          name: dash0-dist
+          path: server/internal/app/dash0res
+
+      - name: Download status0 dist
+        uses: actions/download-artifact@v7
+        with:
+          name: status0-dist
+          path: server/internal/app/status0res
+
+      - name: Build binary
+        working-directory: server
+        run: |
+          VERSION=$(git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
+          COMMIT=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+
+          go build \
+            -ldflags "\
+              -X 'github.com/fclairamb/solidping/server/internal/version.Version=${VERSION}' \
+              -X 'github.com/fclairamb/solidping/server/internal/version.Commit=${COMMIT}' \
+              -X 'github.com/fclairamb/solidping/server/internal/version.GitTime=${GIT_TIME}'" \
+            -o ../solidping .
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: solidping-linux-amd64
+          path: solidping
+          retention-days: 7
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-24.04
+    needs: [build]
+    defaults:
+      run:
+        working-directory: web/dash0
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Install Playwright browsers
+        run: bunx playwright install chromium --with-deps
+
+      - name: Download solidping binary
+        uses: actions/download-artifact@v7
+        with:
+          name: solidping-linux-amd64
+          path: .
+
+      - name: Make binary executable
+        working-directory: .
+        run: chmod +x solidping
+
+      - name: Start solidping server
+        working-directory: .
+        run: |
+          ./solidping serve &
+          disown
+        env:
+          SOLIDPING_LISTEN: ":4000"
+          SP_RUNMODE: test
+          SP_DB_RESET: "true"
+
+      - name: Wait for server
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:4000/api/mgmt/health && exit 0
+            sleep 1
+          done
+          echo "Server failed to start" && exit 1
+
+      - name: Run E2E tests
+        run: bun run test:e2e
+        env:
+          CI: "true"
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: playwright-report
+          path: |
+            web/dash0/playwright-report/
+            web/dash0/test-results/
+          retention-days: 7
+
+
+  ci:
+    name: CI
+    runs-on: ubuntu-24.04
+    needs: [backend-lint, dash, dash0, status0, build, e2e-tests]
+    steps:
+      - run: echo "All checks passed"
+
+  docker:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-24.04
+    needs: [backend-lint, dash, dash0, status0]
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-tag: ${{ steps.version.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set version variables
+        id: version
+        run: |
+          VERSION=$(git describe --tags --always)
+          GIT_HASH=$(git rev-parse --short HEAD)
+          GIT_TIME=$(TZ=UTC git log -1 --format=%cd --date=format-local:%Y-%m-%dT%H:%M:%SZ)
+          TAG_NAME="${GITHUB_REF#refs/tags/}"
+          IMAGE_TAG="${TAG_NAME#v}"
+
+          echo "VERSION=${VERSION}" >> $GITHUB_OUTPUT
+          echo "GIT_HASH=${GIT_HASH}" >> $GITHUB_OUTPUT
+          echo "GIT_TIME=${GIT_TIME}" >> $GITHUB_OUTPUT
+          echo "image_tag=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v4.0.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v6.0.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ steps.version.outputs.VERSION }}
+            COMMIT=${{ steps.version.outputs.GIT_HASH }}
+            GIT_TIME=${{ steps.version.outputs.GIT_TIME }}
+
+  deploy:
+    name: Deploy to k8xp
+    runs-on: ubuntu-24.04
+    needs: [docker]
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Deploy to k8xp.com
+        run: |
+          IMAGE_TAG="${{ needs.docker.outputs.image-tag }}"
+
+          # Install kubectl
+          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          chmod +x kubectl
+
+          # Configure kubeconfig
+          mkdir -p ~/.kube
+          echo "${{ secrets.K8XP_KUBECONFIG }}" | base64 -d > ~/.kube/config
+
+          # Update the image in the deployment
+          ./kubectl set image deployment/solidping backend=ghcr.io/${{ env.IMAGE_NAME }}:${IMAGE_TAG} -n solidping-dev --context=k8xp
+
+          # Wait for rollout to complete
+          ./kubectl rollout status deployment/solidping -n solidping-dev --context=k8xp --timeout=5m

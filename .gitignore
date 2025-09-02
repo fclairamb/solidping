@@ -1,0 +1,23 @@
+# Binary
+solidping
+bin/
+
+# Private stuff
+*.local*
+*.priv*
+
+# Frontend builds
+server/internal/app/dash0res/
+server/internal/app/status0res/
+
+# Test data
+test-results/
+playwright-report/
+
+# Resources
+server/internal/app/res/
+
+# Various garbage
+.DS_Store
+*.db
+logs/

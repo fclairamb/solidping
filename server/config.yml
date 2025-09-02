@@ -1,0 +1,10 @@
+# SolidPing Configuration File
+#
+# This file contains configuration for integrations and services.
+# Values can be overridden by environment variables using the pattern:
+# SP_<SECTION>_<KEY> (uppercase with underscores)
+
+# Slack App Configuration
+# Get these values from: https://api.slack.com/apps
+# Configure via environment variables or config.local.yml:
+#   SP_SLACK_APP_ID, SP_SLACK_CLIENT_ID, SP_SLACK_CLIENT_SECRET, SP_SLACK_SIGNING_SECRET

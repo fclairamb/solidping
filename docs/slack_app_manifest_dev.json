@@ -1,0 +1,87 @@
+{
+  "url": "https://api.slack.com/apps/A0AF77410MP/oauth?success=1",
+  "display_information": {
+    "name": "SolidPing (dev)",
+    "description": "Solidping (dev)",
+    "background_color": "#bf1336",
+    "long_description": "Development version of the SolidPing app. SolidPing performs various kinds of checks around internet hosts.\r\nIt can check HTTP, ICMP, FTP, TCP / UDP, DNS servers and send alerts when something is wrong."
+  },
+  "features": {
+    "bot_user": {
+      "display_name": "SolidPing (dev)",
+      "always_online": true
+    },
+    "shortcuts": [
+      {
+        "name": "Add an endpoint check",
+        "type": "global",
+        "callback_id": "add_check",
+        "description": "Endpoint check"
+      }
+    ],
+    "slash_commands": [
+      {
+        "command": "/solidping",
+        "url": "https://solidping.k8xp.com/api/v1/integrations/slack/command",
+        "description": "Manage your SolidPing monitoring",
+        "usage_hint": "[setup|create|list|config|incidents|ack|help]",
+        "should_escape": false
+      },
+      {
+        "command": "/check",
+        "url": "https://solidping.k8xp.com/api/v1/integrations/slack/command",
+        "description": "Quick shortcut to create a check",
+        "usage_hint": "https://example.com",
+        "should_escape": false
+      }
+    ],
+    "unfurl_domains": ["solidping.io", "solidping.k8xp.com"]
+  },
+  "oauth_config": {
+    "redirect_urls": [
+      "https://solidping.k8xp.com/api/v1/integrations/slack/oauth",
+      "https://solidping.k8xp.com/api/v1/auth/slack/callback"
+    ],
+    "scopes": {
+      "user": ["openid", "profile", "email"],
+      "bot": [
+        "chat:write",
+        "chat:write.public",
+        "channels:read",
+        "groups:read",
+        "groups:write",
+        "im:write",
+        "im:read",
+        "im:history",
+        "users:read",
+        "users:read.email",
+        "team:read",
+        "commands",
+        "app_mentions:read",
+        "reactions:write",
+        "links:read",
+        "links:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "request_url": "https://solidping.k8xp.com/api/v1/integrations/slack/events",
+      "bot_events": [
+        "app_home_opened",
+        "app_mention",
+        "app_uninstalled",
+        "link_shared",
+        "message.im",
+        "profile_opened"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true,
+      "request_url": "https://solidping.k8xp.com/api/v1/integrations/slack/interaction"
+    },
+    "org_deploy_enabled": true,
+    "socket_mode_enabled": false,
+    "token_rotation_enabled": false
+  }
+}

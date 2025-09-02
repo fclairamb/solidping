@@ -1,0 +1,29 @@
+{
+  "title": "Server Settings",
+  "subtitle": "Manage server-wide configuration parameters",
+  "web": {
+    "title": "Web Settings",
+    "baseUrl": "Base URL",
+    "appName": "Application Name"
+  },
+  "mail": {
+    "title": "Mail Settings",
+    "host": "SMTP Host",
+    "port": "SMTP Port",
+    "from": "From Address",
+    "username": "Username",
+    "password": "Password",
+    "protocol": "Protocol",
+    "enabled": "Mail Enabled"
+  },
+  "auth": {
+    "title": "Authentication Settings",
+    "registrationEnabled": "Registration Enabled",
+    "registrationEnabledDescription": "Allow new users to register."
+  },
+  "performance": {
+    "title": "Performance Settings",
+    "subtitle": "Configure performance-related parameters."
+  },
+  "saved": "Settings saved."
+}
