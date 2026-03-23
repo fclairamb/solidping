@@ -208,9 +208,13 @@ export function ResponseTimeChart({
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
+  // Use hourly aggregations for longer ranges to avoid fetching thousands of raw results
+  const periodType = timeRange === "week" || timeRange === "month" ? "hour" : "raw";
+
   const { data: results, isLoading } = useAllResults(org, {
     checkUid,
     periodStartAfter,
+    periodType,
     with: "durationMs,region",
     size: 1000,
     refetchInterval,

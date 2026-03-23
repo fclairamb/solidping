@@ -89,9 +89,11 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return cli.Exit(validationErr.Error(), 1)
 	}
 
-	// Apply user-agent from config
+	// Apply user-agent from config, or use default with version
 	if cfg.UserAgent != "" {
 		version.UserAgent = cfg.UserAgent
+	} else {
+		version.UserAgent = version.DefaultUserAgent()
 	}
 
 	slog.InfoContext(ctx, "User-Agent identity", "userAgent", version.UserAgent)

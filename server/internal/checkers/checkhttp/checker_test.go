@@ -607,6 +607,11 @@ func TestHTTPChecker_Validate(t *testing.T) {
 func TestHTTPChecker_Execute(t *testing.T) {
 	t.Parallel()
 
+	// Ensure UserAgent is set (normally done at startup)
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
 	tests := []struct {
 		name           string
 		config         *HTTPConfig

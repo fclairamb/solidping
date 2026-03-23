@@ -17,9 +17,14 @@ var (
 	// GitTime is the commit timestamp in ISO 8601 UTC format, set via ldflags.
 	GitTime = "unknown"
 	// UserAgent is the identity string used in protocol checks (HTTP User-Agent, SMTP EHLO, etc.).
-	// Configurable via SP_USERAGENT environment variable.
-	UserAgent = "solidping.io"
+	// Configurable via SP_USERAGENT environment variable. Default: "solidping.io/{version}".
+	UserAgent string
 )
+
+// DefaultUserAgent returns the default user-agent string: "solidping.io/{version}".
+func DefaultUserAgent() string {
+	return "solidping.io/" + Version
+}
 
 // Info holds all version information.
 type Info struct {
