@@ -227,7 +227,7 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	// Add default User-Agent header
-	req.Header.Set("User-Agent", "SolidPing/"+version.Version)
+	req.Header.Set("User-Agent", version.UserAgent)
 
 	// Add custom headers (can override User-Agent and Authorization)
 	for key, value := range cfg.Headers {

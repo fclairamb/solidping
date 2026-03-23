@@ -624,8 +624,8 @@ func TestListOrgResults_SizeLimit(t *testing.T) {
 		t.Fatalf("failed to login: %v", err)
 	}
 
-	// Test with very large size - should be capped at 100
-	size := 1000
+	// Test with very large size - should be capped at 1000
+	size := 5000
 	params := &client.ListOrgResultsParams{
 		Size: &size,
 	}

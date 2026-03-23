@@ -607,6 +607,11 @@ func TestHTTPChecker_Validate(t *testing.T) {
 func TestHTTPChecker_Execute(t *testing.T) {
 	t.Parallel()
 
+	// Ensure UserAgent is set (normally done at startup)
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
 	tests := []struct {
 		name           string
 		config         *HTTPConfig
@@ -731,7 +736,7 @@ func TestHTTPChecker_Execute(t *testing.T) {
 				Method: "GET",
 			},
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
-				expectedUA := "SolidPing/" + version.Version
+				expectedUA := version.UserAgent
 				actualUA := r.Header.Get("User-Agent")
 				if actualUA != expectedUA {
 					t.Errorf("Expected User-Agent: %s, got %s", expectedUA, actualUA)

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
 
 const microsecondsPerMilli = 1000.0
@@ -83,7 +84,7 @@ func newExecParams(cfg *SMTPConfig) execParams {
 	}
 
 	if params.ehloDomain == "" {
-		params.ehloDomain = defaultEHLODomain
+		params.ehloDomain = version.UserAgent
 	}
 
 	return params

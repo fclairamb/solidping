@@ -82,7 +82,7 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req bunrouter.Request)
 	// cursor for pagination
 	opts.Cursor = query.Get("cursor")
 
-	// size (default 20, max 100)
+	// size (default 100, max 1000)
 	if sizeParam := query.Get("size"); sizeParam != "" {
 		size, err := strconv.Atoi(sizeParam)
 		if err != nil {
@@ -93,13 +93,13 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req bunrouter.Request)
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Size must be at least 1")
 		}
-		if size > 100 {
-			size = 100
+		if size > 1000 {
+			size = 1000
 		}
 		opts.Size = size
 	}
 	if opts.Size == 0 {
-		opts.Size = 20
+		opts.Size = 100
 	}
 
 	// with - comma-separated optional fields

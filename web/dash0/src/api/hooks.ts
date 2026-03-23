@@ -255,6 +255,7 @@ export function useCreateCheck(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
     },
   });
 }
@@ -270,6 +271,7 @@ export function useUpdateCheck(org: string, uid: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
     },
   });
@@ -285,6 +287,7 @@ export function useDeleteCheck(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
     },
   });
 }
