@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
+	"github.com/fclairamb/solidping/server/internal/version"
 	spCli "github.com/fclairamb/solidping/server/pkg/cli"
 )
 
@@ -87,6 +88,13 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
 		return cli.Exit(validationErr.Error(), 1)
 	}
+
+	// Apply user-agent from config
+	if cfg.UserAgent != "" {
+		version.UserAgent = cfg.UserAgent
+	}
+
+	slog.InfoContext(ctx, "User-Agent identity", "userAgent", version.UserAgent)
 
 	// Initialize OpenTelemetry
 	otelProvider := otelsetup.NewProvider(cfg.OTel)

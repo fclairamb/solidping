@@ -72,8 +72,9 @@ type Config struct {
 	Node      NodeConfig           `koanf:"node"`
 	Profiler  ProfilerConfig       `koanf:"profiler"`
 	OTel      OTelConfig           `koanf:"otel"`
-	RunMode   string               `koanf:"runmode"` // "test" for test mode, empty for normal mode
-	LogLevel  slog.Level           `koanf:"-"`       // Logging level (parsed from LOG_LEVEL env var)
+	RunMode   string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel  slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
 
 // NodeConfig contains node role configuration.
