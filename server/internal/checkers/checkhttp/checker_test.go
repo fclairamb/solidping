@@ -731,7 +731,7 @@ func TestHTTPChecker_Execute(t *testing.T) {
 				Method: "GET",
 			},
 			serverHandler: func(w http.ResponseWriter, r *http.Request) {
-				expectedUA := "SolidPing/" + version.Version
+				expectedUA := version.UserAgent
 				actualUA := r.Header.Get("User-Agent")
 				if actualUA != expectedUA {
 					t.Errorf("Expected User-Agent: %s, got %s", expectedUA, actualUA)

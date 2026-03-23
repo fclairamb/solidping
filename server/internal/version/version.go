@@ -16,6 +16,9 @@ var (
 	Commit = "unknown"
 	// GitTime is the commit timestamp in ISO 8601 UTC format, set via ldflags.
 	GitTime = "unknown"
+	// UserAgent is the identity string used in protocol checks (HTTP User-Agent, SMTP EHLO, etc.).
+	// Configurable via SP_USERAGENT environment variable.
+	UserAgent = "solidping.io"
 )
 
 // Info holds all version information.
