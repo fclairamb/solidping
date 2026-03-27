@@ -8,12 +8,17 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **Multi-protocol monitoring**: HTTP/HTTPS, TCP, ICMP, DNS, SSL certificates, and more
+- **20 check types**: HTTP, TCP, ICMP, DNS, SSL, databases, mail servers, and more
 - **Distributed workers**: Execute checks from multiple locations/regions
 - **Multi-tenant**: Organization-scoped data isolation
 - **Low footprint**: Single binary, PostgreSQL-only dependency
 - **Fast checks**: Sub-minute frequencies supported
-- **Flexible notifications**: Slack, Discord, Email, Webhooks
+- **Notifications**: Slack, Discord, Email, Webhooks
+- **Public status pages**: Embeddable dashboard for transparency
+- **Adaptive incident resolution**: Smart thresholds with cooldown and escalation
+- **JavaScript scripting**: Custom monitoring logic via JS checks
+- **OAuth**: Google, GitHub, GitLab, Microsoft SSO support
+- **CLI client**: Manage checks and results from the terminal
 
 ## Quick Start
 
@@ -21,6 +26,7 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 - Go 1.24+
 - PostgreSQL 15+
 - Docker (for development)
+- Bun (for frontend development)
 
 ### Development Setup
 
@@ -28,23 +34,75 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 # Start PostgreSQL
 docker-compose up -d
 
-# Run migrations
-./solidping migrate
+# Build and run
+make build && ./solidping serve
 
-# Start with hot reload
-make air
+# Or use hot reload for development
+make dev-test   # Backend + frontend with hot reload
 ```
 
 ### Default Credentials
-- Email: `demo@solidping.com`
-- Password: `demosolidping`
-- PAT Token: `pat_demo`
+- Email: `admin@solidping.com`
+- Password: `solidpass`
+- Organization: `default`
 
 ### API Example
 ```bash
-curl -s -H 'Authorization: Bearer pat_demo' \
-  'http://localhost:4000/api/v1/orgs/demo/checks'
+# Get a JWT token
+TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
+  -d '{"org":"default","email":"admin@solidping.com","password":"solidpass"}' \
+  'http://localhost:4000/api/v1/auth/login' | jq -r '.accessToken')
+
+# List checks
+curl -s -H "Authorization: Bearer $TOKEN" \
+  'http://localhost:4000/api/v1/orgs/default/checks'
 ```
+
+## Supported Check Types
+
+### Network
+| Protocol | Description |
+|----------|-------------|
+| HTTP/HTTPS | Status codes, body matching, JSON assertions, Basic Auth |
+| TCP | Port connectivity |
+| UDP | Port reachability |
+| ICMP | Ping |
+| DNS | Record resolution |
+| WebSocket | Connection check |
+
+### Security & Certificates
+| Protocol | Description |
+|----------|-------------|
+| SSL/TLS | Certificate validity and expiration |
+| Domain | Domain name expiration (WHOIS) |
+
+### Email
+| Protocol | Description |
+|----------|-------------|
+| SMTP | Server connectivity, STARTTLS, AUTH |
+| POP3 | Server availability |
+| IMAP | Server availability |
+
+### Databases
+| Protocol | Description |
+|----------|-------------|
+| PostgreSQL | Connection + query execution |
+| MySQL/MariaDB | Connection + query execution |
+| MongoDB | Ping command |
+| Redis | PING command |
+
+### Remote Access
+| Protocol | Description |
+|----------|-------------|
+| SSH | Server availability |
+| FTP | Server availability |
+| SFTP | Server availability |
+
+### Other
+| Type | Description |
+|------|-------------|
+| Heartbeat | Passive monitoring via incoming pings |
+| JavaScript | Custom monitoring scripts |
 
 ## Environment Variables
 
@@ -131,66 +189,63 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable an OAuth provider.
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed system design.
-
 ### Core Components
-- **API Server**: REST API for managing checks and viewing results
-- **Frontend**: Web interface (React)
+- **API Server**: REST API for managing checks, incidents, and results
+- **Dashboard** (`web/dash0`): Admin UI (React + TanStack Router + shadcn/ui)
+- **Status Page** (`web/status0`): Public-facing status dashboard
 - **Workers**: Distributed agents executing monitoring checks
-- **Database**: PostgreSQL for configuration and time-series data
-
-### Technology Stack
-- **Backend**: Go, bunrouter, Bun ORM, koanf
-- **Frontend**: React, TanStack Router, shadcn/ui
+- **Notifications**: Slack, Discord, Email, Webhook integrations
 - **Database**: PostgreSQL with partitioned results table
 
-## Protocol Support
+### Technology Stack
+- **Backend**: Go 1.24+, bunrouter, Bun ORM, koanf
+- **Frontend**: React 19, TypeScript, Vite, TanStack Router/Query, Tailwind CSS, shadcn/ui
+- **Database**: PostgreSQL (production), SQLite (development/single-node)
 
-### Network Protocols
-- [ ] HTTP/HTTPS (status code, body matching, JSON validation)
-- [ ] TCP (port check, request/response)
-- [ ] SSL certificate validation
-- [ ] ICMP Ping
-- [ ] DNS record checks
-- [ ] FTP/SFTP
-- [ ] SSH
-- [ ] SMTP
-- [ ] LDAP/SNMP
-- [ ] PostgreSQL/MySQL queries
-
-### Applications
-- [ ] Steam Game Server
-- [ ] Metabase
-- [ ] Home Assistant
-
-### Notifications
-- [ ] Slack
-- [ ] Discord
-- [ ] Email
-- [ ] Webhooks
+### Project Structure
+```
+solidping/
+├── server/
+│   ├── main.go                  # CLI entry point (serve, migrate, client)
+│   └── internal/
+│       ├── app/                 # Server setup, services, embedded assets
+│       ├── handlers/            # HTTP handlers + business logic
+│       ├── checkers/            # Protocol checker implementations
+│       ├── notifications/       # Notification channels
+│       ├── models/              # Database entities
+│       ├── migrations/          # Database migrations
+│       └── middleware/          # Auth, CORS, org context
+├── web/
+│   ├── dash0/                   # Admin dashboard (React)
+│   └── status0/                 # Public status page
+├── docker-compose.yml           # Development PostgreSQL
+├── Dockerfile                   # Production container
+└── Makefile                     # Build targets
+```
 
 ## Development
 
 ### Commands
 ```bash
-make build       # Build binary
-make air         # Hot-reload development
-make gotest      # Run tests
-make lint        # Lint code
-make generate    # Generate OpenAPI code
+make build            # Build complete application
+make dev-test         # Hot-reload backend + frontend
+make dev-backend      # Backend only with hot reload (air)
+make dev-dash0        # Dashboard dev server
+make test             # Run backend tests
+make lint             # Lint all code
+make fmt              # Format all code
+make docker-build     # Build Docker image
 ```
 
-### Project Structure
-```
-solidping/
-├── main.go              # CLI entry point
-├── back/
-│   └── internal/
-│       ├── app/         # Server setup, services
-│       ├── handlers/    # HTTP handlers + business logic
-│       ├── models/      # Database entities
-│       └── middleware/  # Auth, CORS, org context
-├── front/               # React frontend
+### CLI Client
+```bash
+# Build the CLI
+make build-cli
+
+# Usage
+./bin/sp auth login
+./bin/sp checks list
+./bin/sp results list
 ```
 
 ## Goals
@@ -198,12 +253,10 @@ solidping/
 ### Primary
 - Many protocols and test types
 - Low memory footprint
-- Fast execution (every-second pings)
-- Easy self-hosting (PostgreSQL only)
-- 30-second setup
+- Fast execution (sub-minute checks)
+- Easy self-hosting (single binary + PostgreSQL)
 - Cross-platform (Linux, macOS, Windows)
-- SLA calculation and reporting
-- Public status pages for transparency
+- Public status pages
 
 ### Non-Goals
 - End-to-end browser testing (use Playwright directly)
@@ -215,4 +268,4 @@ solidping/
 
 ## License
 
-AGPL - Open source for self-hosting, commercial hosting rights reserved.
+AGPL-3.0 - See [LICENSE.md](LICENSE.md).
