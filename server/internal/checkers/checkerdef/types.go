@@ -82,6 +82,12 @@ const (
 	CheckTypeSFTP CheckType = "sftp"
 	// CheckTypeJS runs custom JavaScript monitoring scripts.
 	CheckTypeJS CheckType = "js"
+	// CheckTypeMySQL performs MySQL/MariaDB database health checks.
+	CheckTypeMySQL CheckType = "mysql"
+	// CheckTypeRedis performs Redis health checks.
+	CheckTypeRedis CheckType = "redis"
+	// CheckTypeMongoDB performs MongoDB database health checks.
+	CheckTypeMongoDB CheckType = "mongodb"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -123,5 +129,8 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeFTP,
 		CheckTypeSFTP,
 		CheckTypeJS,
+		CheckTypeMySQL,
+		CheckTypeRedis,
+		CheckTypeMongoDB,
 	}
 }

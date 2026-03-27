@@ -11,8 +11,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -43,7 +46,7 @@ func init() {
 // GetChecker retrieves a checker by type.
 // Returns the checker and true if found, nil and false otherwise.
 //
-//nolint:ireturn,cyclop // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen // Registry pattern requires interface return and growing switch
 func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -80,6 +83,12 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksftp.SFTPChecker{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSChecker{}, true
+	case checkerdef.CheckTypeMySQL:
+		return &checkmysql.MySQLChecker{}, true
+	case checkerdef.CheckTypeRedis:
+		return &checkredis.RedisChecker{}, true
+	case checkerdef.CheckTypeMongoDB:
+		return &checkmongodb.MongoDBChecker{}, true
 	default:
 		return nil, false
 	}
@@ -90,7 +99,7 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 //
 // TODO: Remove it
 //
-//nolint:ireturn,cyclop // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen // Registry pattern requires interface return and growing switch
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -127,6 +136,12 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksftp.SFTPConfig{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSConfig{}, true
+	case checkerdef.CheckTypeMySQL:
+		return &checkmysql.MySQLConfig{}, true
+	case checkerdef.CheckTypeRedis:
+		return &checkredis.RedisConfig{}, true
+	case checkerdef.CheckTypeMongoDB:
+		return &checkmongodb.MongoDBConfig{}, true
 	default:
 		return nil, false
 	}

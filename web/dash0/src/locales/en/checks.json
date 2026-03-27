@@ -123,7 +123,13 @@
     "heartbeat": "Heartbeat",
     "heartbeatDescription": "Receive heartbeat pings",
     "smtp": "SMTP",
-    "smtpDescription": "Check SMTP server connectivity"
+    "smtpDescription": "Check SMTP server connectivity",
+    "mysql": "MySQL",
+    "mysqlDescription": "Check MySQL/MariaDB database health",
+    "redis": "Redis",
+    "redisDescription": "Check Redis server health",
+    "mongodb": "MongoDB",
+    "mongodbDescription": "Check MongoDB database health"
   },
   "intervals": {
     "10s": "10 seconds",

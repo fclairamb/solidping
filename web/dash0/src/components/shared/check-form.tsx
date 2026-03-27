@@ -27,11 +27,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/api/client";
 import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js";
 
 function defaultPeriod(type: CheckType): string {
   if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" ? "01:00:00" : "00:01:00";
+  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" ? "01:00:00" : "00:01:00";
 }
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
@@ -49,6 +49,9 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "imap", label: "IMAP", description: "Check IMAP server availability" },
   { value: "websocket", label: "WebSocket", description: "Check WebSocket connectivity" },
   { value: "postgresql", label: "PostgreSQL", description: "Check PostgreSQL database health" },
+  { value: "mysql", label: "MySQL", description: "Check MySQL/MariaDB database health" },
+  { value: "redis", label: "Redis", description: "Check Redis server health" },
+  { value: "mongodb", label: "MongoDB", description: "Check MongoDB database health" },
   { value: "ftp", label: "FTP", description: "Check FTP server availability" },
   { value: "sftp", label: "SFTP", description: "Check SFTP server availability" },
   { value: "js", label: "JavaScript", description: "Run custom JavaScript monitoring scripts" },
@@ -259,12 +262,26 @@ export function CheckForm({
         if (password) cfg.password = password;
         break;
       case "postgresql":
+      case "mysql":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (username) cfg.username = username;
         if (password) cfg.password = password;
         if (database) cfg.database = database;
         if (query) cfg.query = query;
+        break;
+      case "redis":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (password) cfg.password = password;
+        if (database) cfg.database = parseInt(database, 10);
+        break;
+      case "mongodb":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (username) cfg.username = username;
+        if (password) cfg.password = password;
+        if (database) cfg.database = database;
         break;
       case "js":
         if (script) cfg.script = script;
@@ -380,6 +397,7 @@ export function CheckForm({
         if (password) config.password = password;
         break;
       case "postgresql":
+      case "mysql":
         if (!host) {
           setError("Host is required");
           return;
@@ -394,6 +412,27 @@ export function CheckForm({
         if (password) config.password = password;
         if (database) config.database = database;
         if (query) config.query = query;
+        break;
+      case "redis":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (password) config.password = password;
+        if (database) config.database = parseInt(database, 10);
+        break;
+      case "mongodb":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (username) config.username = username;
+        if (password) config.password = password;
+        if (database) config.database = database;
         break;
       case "js":
         if (!script) {
@@ -887,6 +926,7 @@ export function CheckForm({
           </>
         );
       case "postgresql":
+      case "mysql":
         return (
           <>
             <div className="space-y-2">
@@ -904,7 +944,7 @@ export function CheckForm({
                 <Input
                   id="port"
                   type="number"
-                  placeholder="5432"
+                  placeholder={type === "mysql" ? "3306" : "5432"}
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className="w-24"
@@ -917,7 +957,7 @@ export function CheckForm({
               <Input
                 id="username"
                 type="text"
-                placeholder="postgres"
+                placeholder={type === "mysql" ? "root" : "postgres"}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 data-testid="check-username-input"
@@ -938,7 +978,7 @@ export function CheckForm({
               <Input
                 id="database"
                 type="text"
-                placeholder="postgres"
+                placeholder={type === "mysql" ? "mysql" : "postgres"}
                 value={database}
                 onChange={(e) => setDatabase(e.target.value)}
                 data-testid="check-database-input"
@@ -953,6 +993,116 @@ export function CheckForm({
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 data-testid="check-query-input"
+              />
+            </div>
+          </>
+        );
+      case "redis":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="redis.example.com"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="flex-1"
+                  data-testid="check-host-input"
+                />
+                <Input
+                  id="port"
+                  type="number"
+                  placeholder="6379"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className="w-24"
+                  data-testid="check-port-input"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password (optional)</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                data-testid="check-password-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="database">Database (optional, 0-15)</Label>
+              <Input
+                id="database"
+                type="number"
+                placeholder="0"
+                min={0}
+                max={15}
+                value={database}
+                onChange={(e) => setDatabase(e.target.value)}
+                data-testid="check-database-input"
+              />
+            </div>
+          </>
+        );
+      case "mongodb":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="mongo.example.com"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="flex-1"
+                  data-testid="check-host-input"
+                />
+                <Input
+                  id="port"
+                  type="number"
+                  placeholder="27017"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className="w-24"
+                  data-testid="check-port-input"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username (optional)</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                data-testid="check-username-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password (optional)</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                data-testid="check-password-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="database">Database (optional)</Label>
+              <Input
+                id="database"
+                type="text"
+                placeholder="admin"
+                value={database}
+                onChange={(e) => setDatabase(e.target.value)}
+                data-testid="check-database-input"
               />
             </div>
           </>
