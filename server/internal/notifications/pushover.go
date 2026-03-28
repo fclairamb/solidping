@@ -208,27 +208,27 @@ func (s *PushoverSender) buildContent(
 }
 
 func (s *PushoverSender) buildDownBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&b, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&b, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
-	fmt.Fprintf(&b, "<b>Started:</b> %s", payload.Incident.StartedAt.Format(time.RFC3339))
+	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
+	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
+	fmt.Fprintf(&builder, "<b>Started:</b> %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
-	return b.String()
+	return builder.String()
 }
 
 func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
-		fmt.Fprintf(&b, "<b>Duration:</b> %s", formatDuration(duration))
+		fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(duration))
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 func (s *PushoverSender) buildEscalatedBody(payload *Payload, checkName string) string {

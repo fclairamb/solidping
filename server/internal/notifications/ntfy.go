@@ -171,16 +171,16 @@ func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
 }
 
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "Check: %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
-		fmt.Fprintf(&b, "Duration: %s", formatDuration(duration))
+		fmt.Fprintf(&builder, "Duration: %s", formatDuration(duration))
 	}
 
-	return b.String()
+	return builder.String()
 }
 
 func (s *NtfySender) buildEscalatedBody(payload *Payload, checkName string) string {
