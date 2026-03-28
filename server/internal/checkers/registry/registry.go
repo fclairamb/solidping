@@ -197,6 +197,30 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	}
 }
 
+// GetAllSampleConfigs collects sample configurations from all checker types that implement CheckerSamplesProvider.
+func GetAllSampleConfigs(opts *checkerdef.ListSampleOptions) map[checkerdef.CheckType][]checkerdef.CheckSpec {
+	result := make(map[checkerdef.CheckType][]checkerdef.CheckSpec)
+
+	for _, checkType := range checkerdef.ListCheckTypes(opts) {
+		checker, ok := GetChecker(checkType)
+		if !ok {
+			continue
+		}
+
+		provider, ok := checker.(checkerdef.CheckerSamplesProvider)
+		if !ok {
+			continue
+		}
+
+		samples := provider.GetSampleConfigs(opts)
+		if len(samples) > 0 {
+			result[checkType] = samples
+		}
+	}
+
+	return result
+}
+
 // InferCheckType returns the check type for a given URL.
 // Returns empty CheckType if type cannot be inferred.
 func InferCheckType(urlStr string) checkerdef.CheckType {

@@ -355,9 +355,10 @@ func (s *Server) setupRoutes() {
 
 	// Check types routes
 	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
-	checkTypesService := checktypes.NewService(activationResolver)
+	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
-	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes) // Public, no auth
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)       // Public, no auth
+	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs)  // Public, no auth
 	orgCheckTypes := api.NewGroup("/orgs/:org/check-types").Use(authMiddleware.RequireAuth)
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 

@@ -1436,3 +1436,28 @@ export function useCheckTypes(org: string) {
     enabled: !!org,
   });
 }
+
+export interface SampleConfig {
+  name: string;
+  slug: string;
+  periodSeconds: number;
+  config: Record<string, unknown>;
+}
+
+export interface CheckTypeSamples {
+  checkType: string;
+  samples: SampleConfig[];
+}
+
+export function useSampleConfigs() {
+  return useQuery({
+    queryKey: ["check-types", "samples"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: CheckTypeSamples[] }>(
+        `/api/v1/check-types/samples`
+      );
+      return response.data || [];
+    },
+    staleTime: 10 * 60 * 1000, // 10 min cache — samples are static
+  });
+}

@@ -40,3 +40,12 @@ func (h *Handler) ListOrgCheckTypes(writer http.ResponseWriter, req bunrouter.Re
 
 	return h.WriteJSON(writer, http.StatusOK, response)
 }
+
+// ListSampleConfigs handles GET /api/v1/check-types/samples (public, no auth).
+func (h *Handler) ListSampleConfigs(writer http.ResponseWriter, req bunrouter.Request) error {
+	filterType := req.URL.Query().Get("type")
+
+	response := h.svc.ListSampleConfigs(filterType)
+
+	return h.WriteJSON(writer, http.StatusOK, response)
+}

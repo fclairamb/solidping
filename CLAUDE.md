@@ -89,6 +89,7 @@ wait 5s for it to build and then test your changes.
 - GET /api/v1/orgs/$org/tokens - List user's tokens for an org
 - POST /api/v1/orgs/$org/tokens - Create a Personal Access Token for an org
 - GET /api/v1/check-types - List all check types with metadata and server-level activation status
+- GET /api/v1/check-types/samples - List sample configs for all check types (optional ?type= filter)
 - GET /api/v1/orgs/$org/check-types - List check types resolved for the org (server + org settings)
 
 ### Errors

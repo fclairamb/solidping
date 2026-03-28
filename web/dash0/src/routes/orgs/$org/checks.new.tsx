@@ -1,8 +1,10 @@
+import { useState, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { useCreateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import type { Check, SampleConfig } from "@/api/hooks";
 import { CheckForm } from "@/components/shared/check-form";
-import type { Check } from "@/api/hooks";
+import { SampleConfigPicker } from "@/components/shared/sample-config-picker";
 
 function secondsToHMS(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -39,7 +41,7 @@ function CheckNewPage() {
 
   const hasSearchParams = Object.values(search).some((v) => v !== undefined);
 
-  const initialData: Partial<Check> | undefined = hasSearchParams
+  const initialFromSearch: Partial<Check> | undefined = hasSearchParams
     ? {
         type: search.checkType as Check["type"] | undefined,
         name: search.checkName,
@@ -58,33 +60,81 @@ function CheckNewPage() {
       }
     : undefined;
 
+  // Template picker state: shown when no search params pre-fill the form
+  const [showPicker, setShowPicker] = useState(!hasSearchParams);
+  const [selectedTemplate, setSelectedTemplate] = useState<{ checkType: string; sample: SampleConfig } | null>(null);
+  const [formKey, setFormKey] = useState(0);
+
+  const handleTemplateSelect = useCallback((checkType: string, sample: SampleConfig) => {
+    setSelectedTemplate({ checkType, sample });
+    setShowPicker(false);
+    setFormKey((k) => k + 1);
+  }, []);
+
+  const handleSkip = useCallback(() => {
+    setSelectedTemplate(null);
+    setShowPicker(false);
+  }, []);
+
+  const initialData: Partial<Check> | undefined = selectedTemplate
+    ? {
+        type: selectedTemplate.checkType as Check["type"],
+        name: selectedTemplate.sample.name,
+        slug: selectedTemplate.sample.slug,
+        period: secondsToHMS(selectedTemplate.sample.periodSeconds),
+        config: selectedTemplate.sample.config,
+      }
+    : initialFromSearch;
+
   return (
-    <CheckForm
-      org={org}
-      mode="create"
-      initialData={initialData as Check | undefined}
-      checkGroups={checkGroups}
-      availableRegions={regionsData?.regions}
-      defaultRegions={regionsData?.defaultRegions}
-      isPending={createCheck.isPending}
-      onCancel={() => navigate({ to: "/orgs/$org/checks", params: { org } })}
-      onSubmit={async (data) => {
-        const check = await createCheck.mutateAsync({
-          type: data.type,
-          name: data.name,
-          slug: data.slug,
-          checkGroupUid: data.checkGroupUid,
-          period: data.period,
-          config: data.config ?? {},
-          regions: data.regions,
-        });
-        toast.success("Check created successfully");
-        navigate({
-          to: "/orgs/$org/checks/$checkUid",
-          params: { org, checkUid: check.uid },
-          search: { graphPeriod: undefined, graphFull: undefined },
-        });
-      }}
-    />
+    <div className="space-y-6">
+      {showPicker && (
+        <SampleConfigPicker onSelect={handleTemplateSelect} onSkip={handleSkip} />
+      )}
+
+      {!showPicker && selectedTemplate && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Using template: <strong>{selectedTemplate.sample.name}</strong></span>
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            className="text-primary hover:underline"
+          >
+            Change
+          </button>
+        </div>
+      )}
+
+      {!showPicker && (
+        <CheckForm
+          key={formKey}
+          org={org}
+          mode="create"
+          initialData={initialData as Check | undefined}
+          checkGroups={checkGroups}
+          availableRegions={regionsData?.regions}
+          defaultRegions={regionsData?.defaultRegions}
+          isPending={createCheck.isPending}
+          onCancel={() => navigate({ to: "/orgs/$org/checks", params: { org } })}
+          onSubmit={async (data) => {
+            const check = await createCheck.mutateAsync({
+              type: data.type,
+              name: data.name,
+              slug: data.slug,
+              checkGroupUid: data.checkGroupUid,
+              period: data.period,
+              config: data.config ?? {},
+              regions: data.regions,
+            });
+            toast.success("Check created successfully");
+            navigate({
+              to: "/orgs/$org/checks/$checkUid",
+              params: { org, checkUid: check.uid },
+              search: { graphPeriod: undefined, graphFull: undefined },
+            });
+          }}
+        />
+      )}
+    </div>
   );
 }
