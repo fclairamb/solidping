@@ -131,7 +131,9 @@
     "mongodb": "MongoDB",
     "mongodbDescription": "Vérifier la santé de la base de données MongoDB",
     "mssql": "MSSQL",
-    "mssqlDescription": "Vérifier la santé de Microsoft SQL Server"
+    "mssqlDescription": "Vérifier la santé de Microsoft SQL Server",
+    "oracle": "Oracle",
+    "oracleDescription": "Vérifier la santé de la base de données Oracle"
   },
   "intervals": {
     "10s": "10 secondes",
