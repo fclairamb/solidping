@@ -1179,74 +1179,67 @@ export function CheckForm({
               </Alert>
             )}
 
-            {/* Check Type - searchable combobox */}
+            {/* Check Type - searchable combobox + template button */}
             <div className="space-y-2">
               <Label htmlFor="type">Type</Label>
               {isEdit ? (
                 <Input id="type" value={selectedTypeLabel} disabled data-testid="check-type-select" />
               ) : (
-                <Popover open={typeSearchOpen} onOpenChange={setTypeSearchOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" role="combobox" aria-expanded={typeSearchOpen}
-                      className="w-full justify-between font-normal" data-testid="check-type-select">
-                      <span>{selectedTypeLabel}</span>
-                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="p-0 max-h-72">
-                    <div className="flex items-center border-b px-3 py-2">
-                      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                      <input
-                        ref={searchInputRef}
-                        placeholder="Search check types..."
-                        value={typeSearch}
-                        onChange={(e) => setTypeSearch(e.target.value)}
-                        className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-                      />
-                    </div>
-                    <div className="max-h-56 overflow-y-auto p-1">
-                      {filteredCheckTypes.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-muted-foreground">No check types found</div>
-                      ) : (
-                        filteredCheckTypes.map((ct) => (
-                          <button
-                            key={ct.value}
-                            type="button"
-                            className={cn(
-                              "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
-                              type === ct.value && "bg-accent"
-                            )}
-                            onClick={() => {
-                              const newType = ct.value;
-                              setType(newType);
-                              setPeriod(getDefaultPeriodHMS(newType));
-                              setTypeSearchOpen(false);
-                              setTypeSearch("");
-                            }}
-                          >
-                            <Check className={cn("mt-0.5 h-4 w-4 shrink-0", type === ct.value ? "opacity-100" : "opacity-0")} />
-                            <div>
-                              <div className="font-medium">{ct.label}</div>
-                              <div className="text-xs text-muted-foreground">{ct.description}</div>
-                            </div>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-              )}
-            </div>
-
-            {/* Sample config loader - button that fetches and shows dropdown */}
-            {mode === "create" && (
-              <div className="space-y-2">
-                {!showSamples ? (
+                <div className="flex gap-2">
+                  <Popover open={typeSearchOpen} onOpenChange={setTypeSearchOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" role="combobox" aria-expanded={typeSearchOpen}
+                        className="flex-1 justify-between font-normal" data-testid="check-type-select">
+                        <span>{selectedTypeLabel}</span>
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="p-0 max-h-72">
+                      <div className="flex items-center border-b px-3 py-2">
+                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                        <input
+                          ref={searchInputRef}
+                          placeholder="Search check types..."
+                          value={typeSearch}
+                          onChange={(e) => setTypeSearch(e.target.value)}
+                          className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                        />
+                      </div>
+                      <div className="max-h-56 overflow-y-auto p-1">
+                        {filteredCheckTypes.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-muted-foreground">No check types found</div>
+                        ) : (
+                          filteredCheckTypes.map((ct) => (
+                            <button
+                              key={ct.value}
+                              type="button"
+                              className={cn(
+                                "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                                type === ct.value && "bg-accent"
+                              )}
+                              onClick={() => {
+                                const newType = ct.value;
+                                setType(newType);
+                                setPeriod(getDefaultPeriodHMS(newType));
+                                setTypeSearchOpen(false);
+                                setTypeSearch("");
+                              }}
+                            >
+                              <Check className={cn("mt-0.5 h-4 w-4 shrink-0", type === ct.value ? "opacity-100" : "opacity-0")} />
+                              <div>
+                                <div className="font-medium">{ct.label}</div>
+                                <div className="text-xs text-muted-foreground">{ct.description}</div>
+                              </div>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <Button
                     type="button"
                     variant="secondary"
                     disabled={isFetchingSamples}
-                    className="w-full"
                     onClick={async () => {
                       const result = await fetchSamples();
                       if (result.data && result.data.length > 0) {
@@ -1256,36 +1249,34 @@ export function CheckForm({
                     data-testid="check-load-template-button"
                   >
                     {isFetchingSamples ? (
-                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading templates...</>
+                      <Loader2 className="h-4 w-4 animate-spin" />
                     ) : (
-                      "Load from template"
+                      "Template"
                     )}
                   </Button>
-                ) : fetchedSamples && fetchedSamples.length > 0 ? (
-                  <div className="space-y-1">
-                    <Label className="text-sm">Choose a template</Label>
-                    <div className="grid gap-1">
-                      {fetchedSamples.map((sample) => (
-                        <button
-                          key={sample.slug}
-                          type="button"
-                          className="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-                          data-testid={`check-sample-${sample.slug}`}
-                          onClick={() => {
-                            applySample(sample);
-                            setShowSamples(false);
-                          }}
-                        >
-                          {sample.name}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground">No templates available for this check type</p>
-                )}
-              </div>
-            )}
+                </div>
+              )}
+
+              {/* Sample list shown after clicking Template button */}
+              {showSamples && fetchedSamples && fetchedSamples.length > 0 && (
+                <div className="grid gap-1">
+                  {fetchedSamples.map((sample) => (
+                    <button
+                      key={sample.slug}
+                      type="button"
+                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                      data-testid={`check-sample-${sample.slug}`}
+                      onClick={() => {
+                        applySample(sample);
+                        setShowSamples(false);
+                      }}
+                    >
+                      {sample.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </CardContent>
 
           {/* Protocol-specific config */}
