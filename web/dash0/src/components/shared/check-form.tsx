@@ -1262,25 +1262,25 @@ export function CheckForm({
                     )}
                   </Button>
                 ) : fetchedSamples && fetchedSamples.length > 0 ? (
-                  <Select
-                    value=""
-                    onValueChange={(slugVal) => {
-                      const sample = fetchedSamples.find((s) => s.slug === slugVal);
-                      if (sample) applySample(sample);
-                      setShowSamples(false);
-                    }}
-                  >
-                    <SelectTrigger data-testid="check-sample-select">
-                      <SelectValue placeholder="Choose a template..." />
-                    </SelectTrigger>
-                    <SelectContent>
+                  <div className="space-y-1">
+                    <Label className="text-sm">Choose a template</Label>
+                    <div className="grid gap-1">
                       {fetchedSamples.map((sample) => (
-                        <SelectItem key={sample.slug} value={sample.slug}>
+                        <button
+                          key={sample.slug}
+                          type="button"
+                          className="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                          data-testid={`check-sample-${sample.slug}`}
+                          onClick={() => {
+                            applySample(sample);
+                            setShowSamples(false);
+                          }}
+                        >
                           {sample.name}
-                        </SelectItem>
+                        </button>
                       ))}
-                    </SelectContent>
-                  </Select>
+                    </div>
+                  </div>
                 ) : (
                   <p className="text-xs text-muted-foreground">No templates available for this check type</p>
                 )}
