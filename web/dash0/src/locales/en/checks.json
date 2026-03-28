@@ -123,7 +123,9 @@
     "heartbeat": "Heartbeat",
     "heartbeatDescription": "Receive heartbeat pings",
     "smtp": "SMTP",
-    "smtpDescription": "Check SMTP server connectivity"
+    "smtpDescription": "Check SMTP server connectivity",
+    "snmp": "SNMP",
+    "snmpDescription": "Monitor devices via SNMP"
   },
   "intervals": {
     "10s": "10 seconds",

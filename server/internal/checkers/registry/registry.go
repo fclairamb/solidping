@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checktcp"
@@ -80,6 +81,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksftp.SFTPChecker{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSChecker{}, true
+	case checkerdef.CheckTypeSNMP:
+		return &checksnmp.SNMPChecker{}, true
 	default:
 		return nil, false
 	}
@@ -127,6 +130,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksftp.SFTPConfig{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSConfig{}, true
+	case checkerdef.CheckTypeSNMP:
+		return &checksnmp.SNMPConfig{}, true
 	default:
 		return nil, false
 	}
