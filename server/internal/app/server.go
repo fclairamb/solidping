@@ -17,6 +17,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
@@ -27,6 +29,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/getsentry/sentry-go"
+
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -56,6 +60,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/profiler"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -199,6 +204,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EmailFormatter = emailFormatter
 
+	// Initialize Sentry error tracking
+	if err := initSentry(cfg.Sentry); err != nil {
+		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
+	}
+
 	// Create auth service
 	authService := auth.NewService(dbService, cfg.Auth, cfg, emailSender, emailFormatter)
 
@@ -219,7 +229,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 //nolint:funlen // Route registration function naturally grows with new routes
 func (s *Server) setupRoutes() {
 	router := bunrouter.New()
-	mainGroup := router.Use(s.corsMiddleware).Use(s.loggingMiddleware)
+	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
@@ -529,6 +539,20 @@ func (s *Server) setupRoutes() {
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
 
+	// Prometheus metrics endpoint
+	if s.config.Prometheus.Enabled {
+		prommetrics.Register(prometheus.DefaultRegisterer)
+
+		metricsPath := s.config.Prometheus.Path
+		if metricsPath == "" {
+			metricsPath = "/metrics"
+		}
+
+		mainGroup.GET(metricsPath, bunrouter.HTTPHandler(promhttp.Handler()))
+
+		slog.Info("Prometheus metrics endpoint enabled", "path", metricsPath)
+	}
+
 	// Test API routes (no authentication for development/testing)
 	testHandler := testapi.NewHandler(s.jobSvc, s.dbService, s.services.EventNotifier)
 	api.POST("/test/jobs", testHandler.CreateEmailJob)
@@ -558,6 +582,42 @@ func (s *Server) setupRoutes() {
 	mainGroup.GET("/*path", s.serveAppRoot)
 
 	s.router = router
+}
+
+// initSentry initializes the Sentry SDK for error tracking.
+// If no DSN is configured, Sentry is silently disabled.
+func initSentry(cfg config.SentryConfig) error {
+	if cfg.DSN == "" {
+		slog.Info("Sentry disabled (no DSN configured)")
+		return nil
+	}
+
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              cfg.DSN,
+		Environment:      cfg.Environment,
+		Release:          "solidping-server@" + version.Version,
+		TracesSampleRate: cfg.TracesSampleRate,
+		Debug:            cfg.Debug,
+		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+			if event.Request == nil {
+				return event
+			}
+			// Scrub sensitive headers
+			for key := range event.Request.Headers {
+				if key == "Authorization" || key == "Cookie" {
+					event.Request.Headers[key] = "[FILTERED]"
+				}
+			}
+			return event
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("sentry init: %w", err)
+	}
+
+	slog.Info("Sentry initialized", "environment", cfg.Environment)
+
+	return nil
 }
 
 func (s *Server) corsMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
@@ -1137,6 +1197,12 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 // Close closes the server and its database connection.
 func (s *Server) Close(ctx context.Context) error {
 	var closeErr error
+
+	// Flush pending Sentry events
+	const sentryFlushTimeout = 2 * time.Second
+	if !sentry.Flush(sentryFlushTimeout) {
+		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
 
 	// Shutdown profiler
 	if s.profilerSrv != nil {

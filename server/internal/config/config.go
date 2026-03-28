@@ -57,6 +57,12 @@ type OTelConfig struct {
 	Metrics  bool   `koanf:"metrics"`
 }
 
+// PrometheusConfig contains Prometheus metrics endpoint configuration.
+type PrometheusConfig struct {
+	Enabled bool   `koanf:"enabled"` // Enable the /metrics endpoint
+	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
+}
+
 // CheckersConfig controls which check types are enabled at the server level.
 type CheckersConfig struct {
 	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
@@ -64,25 +70,35 @@ type CheckersConfig struct {
 	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
 }
 
+// SentryConfig contains Sentry error tracking configuration.
+type SentryConfig struct {
+	DSN              string  `koanf:"dsn"`                // Sentry DSN (empty = disabled)
+	Environment      string  `koanf:"environment"`        // development, staging, production
+	TracesSampleRate float64 `koanf:"traces_sample_rate"` // 0.0 to 1.0 (default 0.1)
+	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
+}
+
 // Config represents the application configuration structure.
 type Config struct {
-	Server    ServerConfig         `koanf:"server"`
-	Database  DatabaseConfig       `koanf:"db"`
-	Auth      AuthConfig           `koanf:"auth"`
-	Email     EmailConfig          `koanf:"email"`
-	Slack     SlackConfig          `koanf:"slack"`
-	Google    GoogleOAuthConfig    `koanf:"google"`
-	GitHub    GitHubOAuthConfig    `koanf:"github"`
-	Microsoft MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab    GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord   DiscordOAuthConfig   `koanf:"discord"`
-	Node      NodeConfig           `koanf:"node"`
-	Profiler  ProfilerConfig       `koanf:"profiler"`
-	OTel      OTelConfig           `koanf:"otel"`
-	Checkers  CheckersConfig       `koanf:"checkers"`
-	RunMode   string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel  slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	Server     ServerConfig         `koanf:"server"`
+	Database   DatabaseConfig       `koanf:"db"`
+	Auth       AuthConfig           `koanf:"auth"`
+	Email      EmailConfig          `koanf:"email"`
+	Slack      SlackConfig          `koanf:"slack"`
+	Google     GoogleOAuthConfig    `koanf:"google"`
+	GitHub     GitHubOAuthConfig    `koanf:"github"`
+	Microsoft  MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab     GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord    DiscordOAuthConfig   `koanf:"discord"`
+	Node       NodeConfig           `koanf:"node"`
+	Profiler   ProfilerConfig       `koanf:"profiler"`
+	OTel       OTelConfig           `koanf:"otel"`
+	Sentry     SentryConfig         `koanf:"sentry"`
+	Prometheus PrometheusConfig     `koanf:"prometheus"`
+	Checkers   CheckersConfig       `koanf:"checkers"`
+	RunMode    string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent  string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel   slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
 
 // NodeConfig contains node role configuration.
@@ -224,6 +240,10 @@ func Load() (*Config, error) {
 		Profiler: ProfilerConfig{
 			Enabled: false,
 			Listen:  "localhost:6060",
+		},
+		Prometheus: PrometheusConfig{
+			Enabled: true,
+			Path:    "/metrics",
 		},
 	}
 
