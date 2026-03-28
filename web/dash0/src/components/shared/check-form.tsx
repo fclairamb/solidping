@@ -163,6 +163,7 @@ interface CheckFormProps {
   onSubmit: (data: CheckFormData) => Promise<void>;
   isPending: boolean;
   onCancel: () => void;
+  onTypeChange?: (type: CheckType) => void;
 }
 
 export function CheckForm({
@@ -175,6 +176,7 @@ export function CheckForm({
   onSubmit,
   isPending,
   onCancel,
+  onTypeChange,
 }: CheckFormProps) {
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
   const { data: apiCheckTypes } = useCheckTypes(org);
@@ -1221,6 +1223,7 @@ export function CheckForm({
                                 const newType = ct.value;
                                 setType(newType);
                                 setPeriod(getDefaultPeriodHMS(newType));
+                                onTypeChange?.(newType);
                                 setTypeSearchOpen(false);
                                 setTypeSearch("");
                               }}
