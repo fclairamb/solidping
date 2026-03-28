@@ -24,6 +24,10 @@ var (
 	ErrPushoverAPITokenNotConfigured = errors.New("pushover api token not configured")
 	// ErrPushoverUserKeyNotConfigured is returned when the Pushover user key is missing.
 	ErrPushoverUserKeyNotConfigured = errors.New("pushover user key not configured")
+	// errPushoverRequestFailed is returned when a Pushover API request fails.
+	errPushoverRequestFailed = errors.New("pushover request failed")
+	// errPushoverError is returned when Pushover returns an application-level error.
+	errPushoverError = errors.New("pushover error")
 )
 
 // PushoverSender sends notifications via Pushover.
@@ -84,12 +88,12 @@ func (s *PushoverSender) doRequest(ctx context.Context, data url.Values) error {
 
 	// Pushover can return errors even with HTTP 200
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("pushover request failed: status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errPushoverRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	var result pushoverResponse
 	if err := json.Unmarshal(respBody, &result); err == nil && result.Status == 0 {
-		return fmt.Errorf("pushover error: %s", strings.Join(result.Errors, "; "))
+		return fmt.Errorf("%w: %s", errPushoverError, strings.Join(result.Errors, "; "))
 	}
 
 	return nil
@@ -139,12 +143,13 @@ func (s *PushoverSender) parseSettings(payload *Payload) (*pushoverSettings, err
 	return &settings, nil
 }
 
-// Default priority mapping.
-var pushoverDefaultPriorities = map[string]int{
-	"created":   1,
-	"escalated": 2,
-	"resolved":  -1,
-	"reopened":  1,
+func pushoverDefaultPriorities() map[string]int {
+	return map[string]int{
+		"created":   1,
+		"escalated": 2,
+		"resolved":  -1,
+		"reopened":  1,
+	}
 }
 
 func (s *PushoverSender) getPriority(settings *pushoverSettings, eventType string) int {
@@ -156,7 +161,8 @@ func (s *PushoverSender) getPriority(settings *pushoverSettings, eventType strin
 		}
 	}
 
-	if p, ok := pushoverDefaultPriorities[shortType]; ok {
+	defaults := pushoverDefaultPriorities()
+	if p, ok := defaults[shortType]; ok {
 		return p
 	}
 
@@ -173,10 +179,12 @@ func (s *PushoverSender) getSound(settings *pushoverSettings, eventType string) 
 
 func (s *PushoverSender) buildContent(
 	settings *pushoverSettings, payload *Payload,
-) (title, body string, priority int, sound string) {
+) (string, string, int, string) {
 	checkName := getCheckName(payload.Check)
-	priority = s.getPriority(settings, payload.EventType)
-	sound = s.getSound(settings, payload.EventType)
+	priority := s.getPriority(settings, payload.EventType)
+	sound := s.getSound(settings, payload.EventType)
+
+	var title, body string
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:

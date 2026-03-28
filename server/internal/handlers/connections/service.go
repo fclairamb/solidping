@@ -177,7 +177,10 @@ func (s *Service) CreateConnection(
 	connType := models.ConnectionType(req.Type)
 	switch connType {
 	case models.ConnectionTypeSlack, models.ConnectionTypeDiscord,
-		models.ConnectionTypeWebhook, models.ConnectionTypeEmail:
+		models.ConnectionTypeWebhook, models.ConnectionTypeEmail,
+		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
+		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
+		models.ConnectionTypePushover:
 		// Valid types
 	default:
 		return nil, ErrInvalidConnectionType

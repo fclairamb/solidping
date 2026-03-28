@@ -16,8 +16,12 @@ import (
 
 const opsgenieTimeout = 30 * time.Second
 
-// ErrOpsgenieAPIKeyNotConfigured is returned when the Opsgenie API key is missing.
-var ErrOpsgenieAPIKeyNotConfigured = errors.New("opsgenie api key not configured")
+var (
+	// ErrOpsgenieAPIKeyNotConfigured is returned when the Opsgenie API key is missing.
+	ErrOpsgenieAPIKeyNotConfigured = errors.New("opsgenie api key not configured")
+	// errOpsgenieRequestFailed is returned when an Opsgenie API request fails.
+	errOpsgenieRequestFailed = errors.New("opsgenie request failed")
+)
 
 // OpsgenieSender sends notifications via the Opsgenie Alert API.
 type OpsgenieSender struct{}
@@ -201,7 +205,7 @@ func (s *OpsgenieSender) doRequest(
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 
-		return fmt.Errorf("opsgenie request failed: status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errOpsgenieRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil

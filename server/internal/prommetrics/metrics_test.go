@@ -36,7 +36,7 @@ func TestMetrics(t *testing.T) {
 	}
 
 	r.True(names["solidping_check_executions_total"], "missing solidping_check_executions_total")
-	r.True(names["solidping_check_duration_milliseconds"], "missing solidping_check_duration_milliseconds")
+	r.True(names["solidping_check_duration_seconds"], "missing solidping_check_duration_seconds")
 
 	// Record scheduling delay
 	prommetrics.RecordSchedulingDelay("eu-west-1", 2.5)
@@ -62,7 +62,7 @@ func TestMetrics(t *testing.T) {
 
 	for _, f := range families {
 		if f.GetName() == "solidping_check_up" {
-			r.Equal(1.0, f.GetMetric()[0].GetGauge().GetValue())
+			r.InDelta(1.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
 		}
 	}
 
@@ -74,7 +74,7 @@ func TestMetrics(t *testing.T) {
 
 	for _, f := range families {
 		if f.GetName() == "solidping_check_up" {
-			r.Equal(0.0, f.GetMetric()[0].GetGauge().GetValue())
+			r.InDelta(0.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
 		}
 	}
 
@@ -85,8 +85,8 @@ func TestMetrics(t *testing.T) {
 	r.NoError(err)
 
 	for _, f := range families {
-		if f.GetName() == "solidping_checks_configured_total" {
-			r.Equal(5.0, f.GetMetric()[0].GetGauge().GetValue())
+		if f.GetName() == "solidping_checks_configured" {
+			r.InDelta(5.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
 		}
 	}
 
@@ -98,7 +98,7 @@ func TestMetrics(t *testing.T) {
 
 	for _, f := range families {
 		if f.GetName() == "solidping_incidents_total" {
-			r.Equal(1.0, f.GetMetric()[0].GetCounter().GetValue())
+			r.InDelta(1.0, f.GetMetric()[0].GetCounter().GetValue(), 0.001)
 		}
 	}
 }

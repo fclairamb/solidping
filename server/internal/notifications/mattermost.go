@@ -24,8 +24,12 @@ const (
 	mattermostColorYellow = "#FFFF00"
 )
 
-// ErrMattermostWebhookURLNotConfigured is returned when the Mattermost webhook URL is missing.
-var ErrMattermostWebhookURLNotConfigured = errors.New("mattermost webhook URL not configured")
+var (
+	// ErrMattermostWebhookURLNotConfigured is returned when the Mattermost webhook URL is missing.
+	ErrMattermostWebhookURLNotConfigured = errors.New("mattermost webhook URL not configured")
+	// errMattermostWebhookFailed is returned when the Mattermost webhook request fails.
+	errMattermostWebhookFailed = errors.New("mattermost webhook failed")
+)
 
 // MattermostSender sends notifications via Mattermost incoming webhooks.
 type MattermostSender struct{}
@@ -63,7 +67,7 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 
-		return fmt.Errorf("mattermost webhook failed: status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errMattermostWebhookFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil

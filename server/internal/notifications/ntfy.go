@@ -18,8 +18,12 @@ const ntfyTimeout = 30 * time.Second
 
 const ntfyDefaultServerURL = "https://ntfy.sh"
 
-// ErrNtfyTopicNotConfigured is returned when the ntfy topic is missing.
-var ErrNtfyTopicNotConfigured = errors.New("ntfy topic not configured")
+var (
+	// ErrNtfyTopicNotConfigured is returned when the ntfy topic is missing.
+	ErrNtfyTopicNotConfigured = errors.New("ntfy topic not configured")
+	// errNtfyRequestFailed is returned when the ntfy request fails.
+	errNtfyRequestFailed = errors.New("ntfy request failed")
+)
 
 // NtfySender sends notifications via ntfy.
 type NtfySender struct{}
@@ -59,7 +63,7 @@ func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Pa
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 
-		return fmt.Errorf("ntfy request failed: status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errNtfyRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil
@@ -94,12 +98,13 @@ func (s *NtfySender) parseSettings(payload *Payload) (*ntfySettings, error) {
 	return &settings, nil
 }
 
-// Default priority mapping.
-var ntfyDefaultPriorities = map[string]string{
-	"created":   "urgent",
-	"escalated": "high",
-	"resolved":  "default",
-	"reopened":  "high",
+func ntfyDefaultPriorities() map[string]string {
+	return map[string]string{
+		"created":   "urgent",
+		"escalated": "high",
+		"resolved":  "default",
+		"reopened":  "high",
+	}
 }
 
 func (s *NtfySender) getPriority(settings *ntfySettings, eventType string) string {
@@ -112,7 +117,8 @@ func (s *NtfySender) getPriority(settings *ntfySettings, eventType string) strin
 		}
 	}
 
-	if p, ok := ntfyDefaultPriorities[shortType]; ok {
+	defaults := ntfyDefaultPriorities()
+	if p, ok := defaults[shortType]; ok {
 		return p
 	}
 
@@ -121,9 +127,11 @@ func (s *NtfySender) getPriority(settings *ntfySettings, eventType string) strin
 
 func (s *NtfySender) buildContent(
 	settings *ntfySettings, payload *Payload,
-) (title, body, priority, tags string) {
+) (string, string, string, string) {
 	checkName := getCheckName(payload.Check)
-	priority = s.getPriority(settings, payload.EventType)
+	priority := s.getPriority(settings, payload.EventType)
+
+	var title, body, tags string
 
 	switch payload.EventType {
 	case eventTypeIncidentCreated:

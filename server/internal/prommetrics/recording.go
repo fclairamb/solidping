@@ -1,9 +1,10 @@
 package prommetrics
 
 // RecordExecution records a check execution's counter increment and duration observation.
+// durationMs is provided in milliseconds and converted to seconds for the histogram.
 func RecordExecution(checkType, status, region, org string, durationMs float64) {
 	CheckExecutions.WithLabelValues(checkType, status, region, org).Inc()
-	CheckDuration.WithLabelValues(checkType, status, region, org).Observe(durationMs)
+	CheckDuration.WithLabelValues(checkType, status, region, org).Observe(durationMs / 1000)
 }
 
 // RecordSchedulingDelay records the delay between scheduled and actual execution time.

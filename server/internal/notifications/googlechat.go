@@ -16,8 +16,12 @@ import (
 
 const googleChatTimeout = 30 * time.Second
 
-// ErrGoogleChatWebhookURLNotConfigured is returned when the Google Chat webhook URL is missing.
-var ErrGoogleChatWebhookURLNotConfigured = errors.New("google chat webhook URL not configured")
+var (
+	// ErrGoogleChatWebhookURLNotConfigured is returned when the Google Chat webhook URL is missing.
+	ErrGoogleChatWebhookURLNotConfigured = errors.New("google chat webhook URL not configured")
+	// errGoogleChatWebhookFailed is returned when the Google Chat webhook request fails.
+	errGoogleChatWebhookFailed = errors.New("google chat webhook failed")
+)
 
 // GoogleChatSender sends notifications via Google Chat webhooks.
 type GoogleChatSender struct{}
@@ -56,7 +60,7 @@ func (s *GoogleChatSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
 
-		return fmt.Errorf("google chat webhook failed: status %d: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("%w: status %d: %s", errGoogleChatWebhookFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil
@@ -186,8 +190,7 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 	default:
 		widgets = append(widgets, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{TopLabel: "Cause", Text: getFailureReason(payload.Incident)},
-		})
-		widgets = append(widgets, googleChatWidget{
+		}, googleChatWidget{
 			DecoratedText: &googleChatDecoratedText{
 				TopLabel: "Failure Count",
 				Text:     strconv.Itoa(payload.Incident.FailureCount),
