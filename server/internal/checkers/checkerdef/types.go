@@ -110,6 +110,105 @@ const (
 	CheckTypeBrowser CheckType = "browser"
 )
 
+// CheckTypeMeta holds metadata and labels for a check type.
+type CheckTypeMeta struct {
+	Type        CheckType `json:"type"`
+	Labels      []string  `json:"labels"`
+	Description string    `json:"description"`
+}
+
+// checkTypesRegistry is the authoritative registry of all check types with metadata.
+//
+//nolint:gochecknoglobals // Registry is intentionally global; it's read-only after init.
+var checkTypesRegistry = []CheckTypeMeta{
+	{CheckTypeHTTP, []string{"safe", "standalone", "category:network"}, "Monitor HTTP/HTTPS endpoints"},
+	{CheckTypeTCP, []string{"safe", "standalone", "category:network"}, "Check TCP port connectivity"},
+	{CheckTypeICMP, []string{"unsafe", "requires:raw-socket", "category:network"}, "Ping hosts via ICMP"},
+	{CheckTypeDNS, []string{"safe", "standalone", "category:network"}, "Monitor DNS resolution"},
+	{CheckTypeSSL, []string{"safe", "standalone", "category:security"}, "Check SSL certificate validity"},
+	{CheckTypeDomain, []string{"safe", "standalone", "category:security"}, "Monitor domain expiration"},
+	{CheckTypeHeartbeat, []string{"safe", "standalone", "category:other"}, "Receive heartbeat pings"},
+	{CheckTypeSMTP, []string{"safe", "requires:mail-protocol", "category:mail"}, "Check SMTP server connectivity"},
+	{CheckTypeUDP, []string{"safe", "standalone", "category:network"}, "Check UDP port reachability"},
+	{CheckTypeSSH, []string{"safe", "standalone", "category:remote-access"}, "Check SSH server availability"},
+	{CheckTypePOP3, []string{"safe", "requires:mail-protocol", "category:mail"}, "Check POP3 server availability"},
+	{CheckTypeIMAP, []string{"safe", "requires:mail-protocol", "category:mail"}, "Check IMAP server availability"},
+	{CheckTypeWebSocket, []string{"safe", "standalone", "category:network"}, "Check WebSocket connectivity"},
+	{
+		CheckTypePostgreSQL,
+		[]string{"safe", "requires:database-driver", "category:database"},
+		"Check PostgreSQL database health",
+	},
+	{
+		CheckTypeMySQL,
+		[]string{"safe", "requires:database-driver", "category:database"},
+		"Check MySQL/MariaDB database health",
+	},
+	{CheckTypeRedis, []string{"safe", "requires:database-driver", "category:database"}, "Check Redis server health"},
+	{CheckTypeMongoDB, []string{"safe", "requires:database-driver", "category:database"}, "Check MongoDB database health"},
+	{CheckTypeFTP, []string{"safe", "requires:file-protocol", "category:remote-access"}, "Check FTP server availability"},
+	{
+		CheckTypeSFTP,
+		[]string{"safe", "requires:file-protocol", "category:remote-access"},
+		"Check SFTP server availability",
+	},
+	{CheckTypeJS, []string{"unsafe", "requires:scripting-runtime", "category:other"}, "Run custom JavaScript scripts"},
+	{
+		CheckTypeMSSQL,
+		[]string{"safe", "requires:database-driver", "category:database"},
+		"Check Microsoft SQL Server health",
+	},
+	{CheckTypeOracle, []string{"safe", "requires:database-driver", "category:database"}, "Check Oracle Database health"},
+	{CheckTypeGRPC, []string{"safe", "standalone", "category:network"}, "Check gRPC service health"},
+	{CheckTypeKafka, []string{"safe", "requires:messaging-client", "category:messaging"}, "Check Kafka cluster health"},
+	{CheckTypeMQTT, []string{"safe", "requires:messaging-client", "category:messaging"}, "Check MQTT broker connectivity"},
+	{CheckTypeGameServer, []string{"safe", "standalone", "category:other"}, "Monitor game server via A2S protocol"},
+	{
+		CheckTypeRabbitMQ,
+		[]string{"safe", "requires:messaging-client", "category:messaging"},
+		"Check RabbitMQ server health",
+	},
+	{CheckTypeSNMP, []string{"safe", "standalone", "category:infrastructure"}, "Monitor devices via SNMP"},
+	{
+		CheckTypeDocker,
+		[]string{"unsafe", "requires:docker-socket", "category:infrastructure"},
+		"Monitor Docker container health",
+	},
+	{CheckTypeBrowser, []string{"unsafe", "requires:chrome", "category:other"}, "Monitor pages with headless Chrome"},
+}
+
+// GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
+func GetCheckTypeMeta(ct CheckType) *CheckTypeMeta {
+	for i := range checkTypesRegistry {
+		if checkTypesRegistry[i].Type == ct {
+			return &checkTypesRegistry[i]
+		}
+	}
+
+	return nil
+}
+
+// ListCheckTypeMetas returns all registered check type metadata.
+func ListCheckTypeMetas() []CheckTypeMeta {
+	result := make([]CheckTypeMeta, len(checkTypesRegistry))
+	copy(result, checkTypesRegistry)
+
+	return result
+}
+
+// MatchesLabels returns true if the check type has any of the given labels.
+func (m *CheckTypeMeta) MatchesLabels(labels []string) bool {
+	for _, want := range labels {
+		for _, have := range m.Labels {
+			if want == have {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
 // ListSampleOptionType represents the type of sample configuration to retrieve.
 type ListSampleOptionType uint8
 

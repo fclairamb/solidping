@@ -26,6 +26,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/api/client";
 import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
+import { useCheckTypes } from "@/api/hooks";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
 
@@ -149,6 +150,17 @@ export function CheckForm({
   isPending,
   onCancel,
 }: CheckFormProps) {
+  // Fetch enabled check types from API; fall back to hardcoded list if unavailable
+  const { data: apiCheckTypes } = useCheckTypes(org);
+  const availableCheckTypes = useMemo(() => {
+    if (!apiCheckTypes || apiCheckTypes.length === 0) return checkTypes;
+    const enabledSet = new Set(
+      apiCheckTypes.filter((t) => t.enabled).map((t) => t.type)
+    );
+    // Build list from API data, matching against local entries for labels
+    return checkTypes.filter((ct) => enabledSet.has(ct.value));
+  }, [apiCheckTypes]);
+
   const initialType = (initialData?.type as CheckType) || "http";
   const showRegions = (availableRegions?.length ?? 0) > 1;
 
@@ -1779,7 +1791,7 @@ export function CheckForm({
                     </SelectValue>
                   </SelectTrigger>
                   <SelectContent>
-                    {checkTypes.map((t) => (
+                    {availableCheckTypes.map((t) => (
                       <SelectItem key={t.value} value={t.value}>
                         <div className="font-medium">{t.label}</div>
                         <div className="text-xs text-muted-foreground">

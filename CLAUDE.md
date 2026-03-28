@@ -88,6 +88,8 @@ wait 5s for it to build and then test your changes.
 - DELETE /api/v1/auth/tokens/$tokenUid - Revoke a token
 - GET /api/v1/orgs/$org/tokens - List user's tokens for an org
 - POST /api/v1/orgs/$org/tokens - Create a Personal Access Token for an org
+- GET /api/v1/check-types - List all check types with metadata and server-level activation status
+- GET /api/v1/orgs/$org/check-types - List check types resolved for the org (server + org settings)
 
 ### Errors
 All errors should return:

@@ -57,6 +57,13 @@ type OTelConfig struct {
 	Metrics  bool   `koanf:"metrics"`
 }
 
+// CheckersConfig controls which check types are enabled at the server level.
+type CheckersConfig struct {
+	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
+	Disabled      []string `koanf:"disabled"`       // Blocklist (applied after labels)
+	EnabledLabels []string `koanf:"enabled_labels"` // Enable types matching any of these labels
+}
+
 // Config represents the application configuration structure.
 type Config struct {
 	Server    ServerConfig         `koanf:"server"`
@@ -72,6 +79,7 @@ type Config struct {
 	Node      NodeConfig           `koanf:"node"`
 	Profiler  ProfilerConfig       `koanf:"profiler"`
 	OTel      OTelConfig           `koanf:"otel"`
+	Checkers  CheckersConfig       `koanf:"checkers"`
 	RunMode   string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel  slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)

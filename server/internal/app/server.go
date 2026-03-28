@@ -20,6 +20,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -32,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
@@ -341,6 +343,14 @@ func (s *Server) setupRoutes() {
 	// Job routes
 	jobHandler := jobs.NewHandler(s.jobSvc)
 	jobHandler.RegisterRoutes(api)
+
+	// Check types routes
+	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	checkTypesService := checktypes.NewService(activationResolver)
+	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes) // Public, no auth
+	orgCheckTypes := api.NewGroup("/orgs/:org/check-types").Use(authMiddleware.RequireAuth)
+	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(s.dbService, s.services.EventNotifier)

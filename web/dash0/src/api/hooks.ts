@@ -1414,3 +1414,25 @@ export function useRegions(org: string) {
     enabled: !!org,
   });
 }
+
+export interface CheckTypeInfo {
+  type: string;
+  description: string;
+  labels: string[];
+  enabled: boolean;
+  disabledReason?: string;
+}
+
+export function useCheckTypes(org: string) {
+  return useQuery({
+    queryKey: ["check-types", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: CheckTypeInfo[] }>(
+        `/api/v1/orgs/${org}/check-types`
+      );
+      return response.data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 min cache — types rarely change
+    enabled: !!org,
+  });
+}
