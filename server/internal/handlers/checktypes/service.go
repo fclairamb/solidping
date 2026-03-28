@@ -11,11 +11,15 @@ import (
 
 // CheckTypeResponse is the JSON representation of a check type with its status.
 type CheckTypeResponse struct {
-	Type           string   `json:"type"`
-	Description    string   `json:"description"`
-	Labels         []string `json:"labels"`
-	Enabled        bool     `json:"enabled"`
-	DisabledReason string   `json:"disabledReason,omitempty"`
+	Type               string                 `json:"type"`
+	Description        string                 `json:"description"`
+	Labels             []string               `json:"labels"`
+	Enabled            bool                   `json:"enabled"`
+	DisabledReason     string                 `json:"disabledReason,omitempty"`
+	MinPeriodSeconds   int                    `json:"minPeriodSeconds,omitempty"`
+	MaxPeriodSeconds   int                    `json:"maxPeriodSeconds,omitempty"`
+	DefaultPeriodSeconds int                  `json:"defaultPeriodSeconds,omitempty"`
+	Samples            []SampleConfigResponse `json:"samples,omitempty"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -53,22 +57,16 @@ func NewService(resolver *checkerdef.ActivationResolver, baseURL string) *Servic
 	return &Service{resolver: resolver, baseURL: baseURL}
 }
 
-// ListSampleConfigs returns sample configurations, optionally filtered by check type.
-func (s *Service) ListSampleConfigs(filterType string) ListSamplesResponse {
+func (s *Service) getSamplesMap() map[checkerdef.CheckType][]SampleConfigResponse {
 	opts := &checkerdef.ListSampleOptions{
 		Type:    checkerdef.Default,
 		BaseURL: s.baseURL,
 	}
 
 	allSamples := registry.GetAllSampleConfigs(opts)
-
-	data := make([]CheckTypeSamplesResponse, 0, len(allSamples))
+	result := make(map[checkerdef.CheckType][]SampleConfigResponse, len(allSamples))
 
 	for checkType, specs := range allSamples {
-		if filterType != "" && string(checkType) != filterType {
-			continue
-		}
-
 		samples := make([]SampleConfigResponse, 0, len(specs))
 		for idx := range specs {
 			samples = append(samples, SampleConfigResponse{
@@ -77,6 +75,23 @@ func (s *Service) ListSampleConfigs(filterType string) ListSamplesResponse {
 				PeriodSeconds: int(specs[idx].Period / time.Second),
 				Config:        specs[idx].Config,
 			})
+		}
+
+		result[checkType] = samples
+	}
+
+	return result
+}
+
+// ListSampleConfigs returns sample configurations, optionally filtered by check type.
+func (s *Service) ListSampleConfigs(filterType string) ListSamplesResponse {
+	samplesMap := s.getSamplesMap()
+
+	data := make([]CheckTypeSamplesResponse, 0, len(samplesMap))
+
+	for checkType, samples := range samplesMap {
+		if filterType != "" && string(checkType) != filterType {
+			continue
 		}
 
 		data = append(data, CheckTypeSamplesResponse{
@@ -96,27 +111,38 @@ func (s *Service) ListSampleConfigs(filterType string) ListSamplesResponse {
 func (s *Service) ListServerCheckTypes() ListCheckTypesResponse {
 	statuses := s.resolver.ListAllWithStatus(nil)
 
-	return toResponse(statuses)
+	return s.toResponse(statuses)
 }
 
 // ListOrgCheckTypes returns all check types with org-level activation status.
 func (s *Service) ListOrgCheckTypes(orgDisabled []string) ListCheckTypesResponse {
 	statuses := s.resolver.ListAllWithStatus(orgDisabled)
 
-	return toResponse(statuses)
+	return s.toResponse(statuses)
 }
 
-func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
+func durationToSeconds(duration time.Duration) int {
+	return int(duration / time.Second)
+}
+
+func (s *Service) toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
+	samplesMap := s.getSamplesMap()
 	data := make([]CheckTypeResponse, 0, len(statuses))
 
 	for idx := range statuses {
-		data = append(data, CheckTypeResponse{
-			Type:           string(statuses[idx].Type),
-			Description:    statuses[idx].Description,
-			Labels:         statuses[idx].Labels,
-			Enabled:        statuses[idx].Enabled,
-			DisabledReason: statuses[idx].DisabledReason,
-		})
+		resp := CheckTypeResponse{
+			Type:                 string(statuses[idx].Type),
+			Description:          statuses[idx].Description,
+			Labels:               statuses[idx].Labels,
+			Enabled:              statuses[idx].Enabled,
+			DisabledReason:       statuses[idx].DisabledReason,
+			MinPeriodSeconds:     durationToSeconds(statuses[idx].MinPeriod),
+			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
+			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
+			Samples:              samplesMap[statuses[idx].Type],
+		}
+
+		data = append(data, resp)
 	}
 
 	return ListCheckTypesResponse{Data: data}

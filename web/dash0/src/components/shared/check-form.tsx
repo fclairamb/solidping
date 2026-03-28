@@ -1,5 +1,5 @@
-import { useState, useMemo } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { useState, useMemo, useRef, useEffect } from "react";
+import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
@@ -24,16 +24,21 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ApiError } from "@/api/client";
-import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
+import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import { useCheckTypes } from "@/api/hooks";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
 
-function defaultPeriod(type: CheckType): string {
-  if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" || type === "oracle" || type === "grpc" || type === "kafka" || type === "mqtt" || type === "gameserver" || type === "rabbitmq" || type === "snmp" || type === "docker" || type === "browser" ? "01:00:00" : "00:01:00";
-}
+// Fallback defaults when API data isn't available
+const defaultPeriodSeconds: Record<string, number> = {
+  domain: 86400,
+  ssl: 21600,
+  dns: 300,
+};
+const globalDefaultPeriodSeconds = 60;
+const globalMinPeriodSeconds = 10;
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
@@ -68,16 +73,6 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
 ];
 
-const intervalOptions = [
-  { value: "00:00:10", label: "10 seconds" },
-  { value: "00:00:30", label: "30 seconds" },
-  { value: "00:01:00", label: "1 minute" },
-  { value: "00:05:00", label: "5 minutes" },
-  { value: "00:10:00", label: "10 minutes" },
-  { value: "00:30:00", label: "30 minutes" },
-  { value: "01:00:00", label: "1 hour" },
-];
-
 type PeriodUnit = "minutes" | "hours" | "days" | "weeks";
 
 const periodUnits: { value: PeriodUnit; label: string }[] = [
@@ -105,6 +100,18 @@ function formatPeriod(value: number, unit: PeriodUnit): string {
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+function secondsToHMS(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+function hmsToSeconds(hms: string): number {
+  const [h, m, s] = hms.split(":").map(Number);
+  return h * 3600 + m * 60 + s;
+}
+
 function getConfigField(
   config: Record<string, unknown> | undefined,
   field: string
@@ -113,6 +120,25 @@ function getConfigField(
   const value = config[field];
   if (value === undefined || value === null) return "";
   return String(value);
+}
+
+function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
+  const allOptions = [
+    { seconds: 10, value: "00:00:10", label: "10 seconds" },
+    { seconds: 30, value: "00:00:30", label: "30 seconds" },
+    { seconds: 60, value: "00:01:00", label: "1 minute" },
+    { seconds: 300, value: "00:05:00", label: "5 minutes" },
+    { seconds: 600, value: "00:10:00", label: "10 minutes" },
+    { seconds: 1800, value: "00:30:00", label: "30 minutes" },
+    { seconds: 3600, value: "01:00:00", label: "1 hour" },
+    { seconds: 21600, value: "06:00:00", label: "6 hours" },
+    { seconds: 43200, value: "12:00:00", label: "12 hours" },
+    { seconds: 86400, value: "24:00:00", label: "24 hours" },
+  ];
+
+  return allOptions
+    .filter((opt) => opt.seconds >= minSeconds && (maxSeconds === 0 || opt.seconds <= maxSeconds))
+    .map(({ value, label }) => ({ value, label }));
 }
 
 export interface CheckFormData {
@@ -130,7 +156,7 @@ export interface CheckFormData {
 interface CheckFormProps {
   org: string;
   mode: "create" | "edit";
-  initialData?: Check;
+  initialData?: CheckModel;
   checkGroups?: CheckGroup[];
   availableRegions?: RegionDefinition[];
   defaultRegions?: string[];
@@ -161,128 +187,161 @@ export function CheckForm({
     return checkTypes.filter((ct) => enabledSet.has(ct.value));
   }, [apiCheckTypes]);
 
+  // Build a lookup map for API check type info (for period constraints & samples)
+  const checkTypeInfoMap = useMemo(() => {
+    const map = new Map<string, (typeof apiCheckTypes extends (infer T)[] | undefined ? T : never)>();
+    if (apiCheckTypes) {
+      for (const ct of apiCheckTypes) {
+        map.set(ct.type, ct);
+      }
+    }
+    return map;
+  }, [apiCheckTypes]);
+
   const initialType = (initialData?.type as CheckType) || "http";
   const showRegions = (availableRegions?.length ?? 0) > 1;
+
+  // Get period constraints for a given type
+  function getPeriodConstraints(t: string) {
+    const info = checkTypeInfoMap.get(t);
+    const minSec = info?.minPeriodSeconds || globalMinPeriodSeconds;
+    const maxSec = info?.maxPeriodSeconds || 0;
+    const defSec = info?.defaultPeriodSeconds || defaultPeriodSeconds[t] || globalDefaultPeriodSeconds;
+    return { minSec, maxSec, defSec };
+  }
+
+  function getDefaultPeriodHMS(t: string): string {
+    const { defSec } = getPeriodConstraints(t);
+    return secondsToHMS(defSec);
+  }
 
   const [type, setType] = useState<CheckType>(initialType);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
-  const [period, setPeriod] = useState(initialData?.period || defaultPeriod(initialType));
+  const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
   const [periodUnit, setPeriodUnit] = useState<PeriodUnit>(initialPeriod.unit);
-  const [url, setUrl] = useState(
-    getConfigField(initialData?.config, "url")
-  );
-  const [host, setHost] = useState(
-    getConfigField(initialData?.config, "host")
-  );
-  const [port, setPort] = useState(
-    getConfigField(initialData?.config, "port")
-  );
-  const [domain, setDomain] = useState(
-    getConfigField(initialData?.config, "domain")
-  );
-  const [method, setMethod] = useState(
-    getConfigField(initialData?.config, "method") || "GET"
-  );
-  const [expectedStatus, setExpectedStatus] = useState(
-    getConfigField(initialData?.config, "expectedStatus") || "200"
-  );
-  const [startTLS, setStartTLS] = useState(
-    getConfigField(initialData?.config, "starttls") === "true"
-  );
-  const [tlsVerify, setTlsVerify] = useState(
-    getConfigField(initialData?.config, "tls_verify") === "true"
-  );
-  const [ehloDomain, setEhloDomain] = useState(
-    getConfigField(initialData?.config, "ehlo_domain")
-  );
-  const [expectGreeting, setExpectGreeting] = useState(
-    getConfigField(initialData?.config, "expect_greeting")
-  );
-  const [checkAuth, setCheckAuth] = useState(
-    getConfigField(initialData?.config, "check_auth") === "true"
-  );
-  const [username, setUsername] = useState(
-    getConfigField(initialData?.config, "username")
-  );
-  const [password, setPassword] = useState(
-    getConfigField(initialData?.config, "password")
-  );
-  const [database, setDatabase] = useState(
-    getConfigField(initialData?.config, "database")
-  );
-  const [query, setQuery] = useState(
-    getConfigField(initialData?.config, "query")
-  );
-  const [vhost, setVhost] = useState(
-    getConfigField(initialData?.config, "vhost")
-  );
-  const [queue, setQueue] = useState(
-    getConfigField(initialData?.config, "queue")
-  );
-  const [script, setScript] = useState(
-    getConfigField(initialData?.config, "script")
-  );
-  const [serviceName, setServiceName] = useState(
-    getConfigField(initialData?.config, "serviceName")
-  );
-  const [tls, setTls] = useState(
-    getConfigField(initialData?.config, "tls") === "true"
-  );
-  const [minPlayers, setMinPlayers] = useState(
-    getConfigField(initialData?.config, "minPlayers")
-  );
-  const [maxPlayersField, setMaxPlayersField] = useState(
-    getConfigField(initialData?.config, "maxPlayers")
-  );
+  const [url, setUrl] = useState(getConfigField(initialData?.config, "url"));
+  const [host, setHost] = useState(getConfigField(initialData?.config, "host"));
+  const [port, setPort] = useState(getConfigField(initialData?.config, "port"));
+  const [domain, setDomain] = useState(getConfigField(initialData?.config, "domain"));
+  const [method, setMethod] = useState(getConfigField(initialData?.config, "method") || "GET");
+  const [expectedStatus, setExpectedStatus] = useState(getConfigField(initialData?.config, "expectedStatus") || "200");
+  const [startTLS, setStartTLS] = useState(getConfigField(initialData?.config, "starttls") === "true");
+  const [tlsVerify, setTlsVerify] = useState(getConfigField(initialData?.config, "tls_verify") === "true");
+  const [ehloDomain, setEhloDomain] = useState(getConfigField(initialData?.config, "ehlo_domain"));
+  const [expectGreeting, setExpectGreeting] = useState(getConfigField(initialData?.config, "expect_greeting"));
+  const [checkAuth, setCheckAuth] = useState(getConfigField(initialData?.config, "check_auth") === "true");
+  const [username, setUsername] = useState(getConfigField(initialData?.config, "username"));
+  const [password, setPassword] = useState(getConfigField(initialData?.config, "password"));
+  const [database, setDatabase] = useState(getConfigField(initialData?.config, "database"));
+  const [query, setQuery] = useState(getConfigField(initialData?.config, "query"));
+  const [vhost, setVhost] = useState(getConfigField(initialData?.config, "vhost"));
+  const [queue, setQueue] = useState(getConfigField(initialData?.config, "queue"));
+  const [script, setScript] = useState(getConfigField(initialData?.config, "script"));
+  const [serviceName, setServiceName] = useState(getConfigField(initialData?.config, "serviceName"));
+  const [tls, setTls] = useState(getConfigField(initialData?.config, "tls") === "true");
+  const [minPlayers, setMinPlayers] = useState(getConfigField(initialData?.config, "minPlayers"));
+  const [maxPlayersField, setMaxPlayersField] = useState(getConfigField(initialData?.config, "maxPlayers"));
   const [brokers, setBrokers] = useState(
     Array.isArray(initialData?.config?.brokers)
       ? (initialData.config.brokers as string[]).join(", ")
       : getConfigField(initialData?.config, "brokers")
   );
-  const [topic, setTopic] = useState(
-    getConfigField(initialData?.config, "topic")
-  );
-  const [produceTest, setProduceTest] = useState(
-    getConfigField(initialData?.config, "produceTest") === "true"
-  );
-  const [containerName, setContainerName] = useState(
-    getConfigField(initialData?.config, "containerName")
-  );
-  const [containerId, setContainerId] = useState(
-    getConfigField(initialData?.config, "containerId")
-  );
-  const [oid, setOid] = useState(
-    getConfigField(initialData?.config, "oid")
-  );
-  const [community, setCommunity] = useState(
-    getConfigField(initialData?.config, "community")
-  );
-  const [waitSelector, setWaitSelector] = useState(
-    getConfigField(initialData?.config, "waitSelector")
-  );
-  const [keyword, setKeyword] = useState(
-    getConfigField(initialData?.config, "keyword")
-  );
-  const [expectedValue, setExpectedValue] = useState(
-    getConfigField(initialData?.config, "expectedValue")
-  );
-  const [snmpOperator, setSnmpOperator] = useState(
-    getConfigField(initialData?.config, "operator") || "equals"
-  );
-  const [selectedRegions, setSelectedRegions] = useState<string[]>(
-    initialData?.regions ?? defaultRegions ?? []
-  );
-  const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(
-    initialData?.reopenCooldownMultiplier?.toString() ?? ""
-  );
-  const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(
-    initialData?.maxAdaptiveIncrease?.toString() ?? ""
-  );
+  const [topic, setTopic] = useState(getConfigField(initialData?.config, "topic"));
+  const [produceTest, setProduceTest] = useState(getConfigField(initialData?.config, "produceTest") === "true");
+  const [containerName, setContainerName] = useState(getConfigField(initialData?.config, "containerName"));
+  const [containerId, setContainerId] = useState(getConfigField(initialData?.config, "containerId"));
+  const [oid, setOid] = useState(getConfigField(initialData?.config, "oid"));
+  const [community, setCommunity] = useState(getConfigField(initialData?.config, "community"));
+  const [waitSelector, setWaitSelector] = useState(getConfigField(initialData?.config, "waitSelector"));
+  const [keyword, setKeyword] = useState(getConfigField(initialData?.config, "keyword"));
+  const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
+  const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
+  const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
+  const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
+  const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
   const [error, setError] = useState<string | null>(null);
+
+  // Check type combobox state
+  const [typeSearchOpen, setTypeSearchOpen] = useState(false);
+  const [typeSearch, setTypeSearch] = useState("");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Focus search input when popover opens
+  useEffect(() => {
+    if (typeSearchOpen) {
+      setTimeout(() => searchInputRef.current?.focus(), 0);
+    }
+  }, [typeSearchOpen]);
+
+  const filteredCheckTypes = useMemo(() => {
+    if (!typeSearch) return availableCheckTypes;
+    const q = typeSearch.toLowerCase();
+    return availableCheckTypes.filter(
+      (ct) => ct.label.toLowerCase().includes(q) || ct.description.toLowerCase().includes(q) || ct.value.includes(q)
+    );
+  }, [availableCheckTypes, typeSearch]);
+
+  // Samples for the currently selected type
+  const currentSamples = useMemo(() => {
+    const info = checkTypeInfoMap.get(type);
+    return info?.samples || [];
+  }, [checkTypeInfoMap, type]);
+
+  // Interval options filtered by type constraints
+  const intervalOptions = useMemo(() => {
+    const { minSec, maxSec } = getPeriodConstraints(type);
+    return buildIntervalOptions(minSec, maxSec);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [type, checkTypeInfoMap]);
+
+  // Apply sample config to form
+  function applySample(sample: SampleConfig) {
+    setName(sample.name);
+    setSlug(sample.slug);
+    setPeriod(secondsToHMS(sample.periodSeconds));
+    const cfg = sample.config;
+    setUrl(getConfigField(cfg, "url"));
+    setHost(getConfigField(cfg, "host"));
+    setPort(getConfigField(cfg, "port"));
+    setDomain(getConfigField(cfg, "domain"));
+    setMethod(getConfigField(cfg, "method") || "GET");
+    setExpectedStatus(getConfigField(cfg, "expectedStatus") || "200");
+    setStartTLS(getConfigField(cfg, "starttls") === "true");
+    setTlsVerify(getConfigField(cfg, "tls_verify") === "true");
+    setEhloDomain(getConfigField(cfg, "ehlo_domain"));
+    setExpectGreeting(getConfigField(cfg, "expect_greeting"));
+    setCheckAuth(getConfigField(cfg, "check_auth") === "true");
+    setUsername(getConfigField(cfg, "username"));
+    setPassword(getConfigField(cfg, "password"));
+    setDatabase(getConfigField(cfg, "database"));
+    setQuery(getConfigField(cfg, "query"));
+    setVhost(getConfigField(cfg, "vhost"));
+    setQueue(getConfigField(cfg, "queue"));
+    setScript(getConfigField(cfg, "script"));
+    setServiceName(getConfigField(cfg, "serviceName"));
+    setTls(getConfigField(cfg, "tls") === "true");
+    setMinPlayers(getConfigField(cfg, "minPlayers"));
+    setMaxPlayersField(getConfigField(cfg, "maxPlayers"));
+    setBrokers(
+      Array.isArray(cfg.brokers)
+        ? (cfg.brokers as string[]).join(", ")
+        : getConfigField(cfg, "brokers")
+    );
+    setTopic(getConfigField(cfg, "topic"));
+    setProduceTest(getConfigField(cfg, "produceTest") === "true");
+    setContainerName(getConfigField(cfg, "containerName"));
+    setContainerId(getConfigField(cfg, "containerId"));
+    setOid(getConfigField(cfg, "oid"));
+    setCommunity(getConfigField(cfg, "community"));
+    setWaitSelector(getConfigField(cfg, "waitSelector"));
+    setKeyword(getConfigField(cfg, "keyword"));
+    setExpectedValue(getConfigField(cfg, "expectedValue"));
+    setSnmpOperator(getConfigField(cfg, "operator") || "equals");
+  }
 
   const currentConfig = useMemo(() => {
     const cfg: Record<string, unknown> = {};
@@ -445,19 +504,12 @@ export function CheckForm({
       case "http":
       case "ssl":
       case "websocket":
-        if (!url) {
-          setError("URL is required");
-          return;
-        }
+        if (!url) { setError("URL is required"); return; }
         config.url = url;
         if (type === "http") {
-          if (method && method !== "GET") {
-            config.method = method;
-          }
+          if (method && method !== "GET") config.method = method;
           const statusCode = parseInt(expectedStatus, 10);
-          if (!isNaN(statusCode) && statusCode !== 200) {
-            config.expectedStatus = statusCode;
-          }
+          if (!isNaN(statusCode) && statusCode !== 200) config.expectedStatus = statusCode;
           if (username) config.username = username;
           if (password) config.password = password;
         }
@@ -465,10 +517,7 @@ export function CheckForm({
       case "tcp":
       case "udp":
       case "ftp":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (type === "ftp") {
@@ -479,49 +528,24 @@ export function CheckForm({
       case "ssh":
       case "pop3":
       case "imap":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+      case "sftp":
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (username) config.username = username;
         if (password) config.password = password;
         break;
-      case "sftp":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
-        if (!username) {
-          setError("Username is required");
-          return;
-        }
-        config.host = host;
-        if (port) config.port = parseInt(port, 10);
-        config.username = username;
-        if (password) config.password = password;
-        break;
       case "icmp":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         break;
       case "dns":
       case "domain":
-        if (!domain) {
-          setError("Domain is required");
-          return;
-        }
+        if (!domain) { setError("Domain is required"); return; }
         config.domain = domain;
         break;
       case "smtp":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (startTLS) config.starttls = true;
@@ -536,36 +560,23 @@ export function CheckForm({
       case "mysql":
       case "mssql":
       case "oracle":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
-        if (!username) {
-          setError("Username is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
-        config.username = username;
+        if (username) config.username = username;
         if (password) config.password = password;
         if (database) config.database = database;
         if (query) config.query = query;
         break;
       case "redis":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (password) config.password = password;
         if (database) config.database = parseInt(database, 10);
         break;
       case "mongodb":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (username) config.username = username;
@@ -573,46 +584,29 @@ export function CheckForm({
         if (database) config.database = database;
         break;
       case "rabbitmq":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
-        if (!username) {
-          setError("Username is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
-        config.username = username;
+        if (username) config.username = username;
         if (password) config.password = password;
         if (vhost) config.vhost = vhost;
         if (queue) config.queue = queue;
         if (tlsVerify) config.tls = true;
         break;
       case "js":
-        if (!script) {
-          setError("Script is required");
-          return;
-        }
+        if (!script) { setError("Script is required"); return; }
         config.script = script;
         break;
       case "grpc":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (serviceName) config.serviceName = serviceName;
         if (tls) config.tls = true;
         break;
-      case "kafka": {
-        if (!brokers) {
-          setError("Brokers are required");
-          return;
-        }
-        const brokerList = brokers.split(",").map((b) => b.trim()).filter(Boolean);
-        config.brokers = brokerList;
+      case "kafka":
+        if (!brokers) { setError("Brokers are required"); return; }
+        config.brokers = brokers.split(",").map((b) => b.trim()).filter(Boolean);
         if (topic) config.topic = topic;
         if (username) config.saslUsername = username;
         if (password) config.saslPassword = password;
@@ -620,12 +614,8 @@ export function CheckForm({
         if (tls) config.tls = true;
         if (produceTest) config.produceTest = true;
         break;
-      }
       case "mqtt":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (username) config.username = username;
@@ -634,45 +624,29 @@ export function CheckForm({
         if (tls) config.tls = true;
         break;
       case "gameserver":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
         break;
       case "snmp":
-        if (!host) {
-          setError("Host is required");
-          return;
-        }
-        if (!oid) {
-          setError("OID is required");
-          return;
-        }
+        if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
-        config.oid = oid;
+        if (oid) config.oid = oid;
         if (community) config.community = community;
         if (expectedValue) config.expectedValue = expectedValue;
         if (snmpOperator && snmpOperator !== "equals") config.operator = snmpOperator;
         break;
       case "docker":
-        if (!containerName && !containerId) {
-          setError("Container name or ID is required");
-          return;
-        }
+        if (!containerName && !containerId) { setError("Container name or ID is required"); return; }
         if (containerName) config.containerName = containerName;
         if (containerId) config.containerId = containerId;
         if (host) config.host = host;
         break;
       case "browser":
-        if (!url) {
-          setError("URL is required");
-          return;
-        }
+        if (!url) { setError("URL is required"); return; }
         config.url = url;
         if (waitSelector) config.waitSelector = waitSelector;
         if (keyword) config.keyword = keyword;
@@ -680,6 +654,18 @@ export function CheckForm({
       case "heartbeat":
         // No config fields needed - token is auto-generated by the backend
         break;
+    }
+
+    // Validate period against constraints
+    const periodSec = hmsToSeconds(type === "heartbeat" ? formatPeriod(periodValue, periodUnit) : period);
+    const { minSec, maxSec } = getPeriodConstraints(type);
+    if (periodSec < minSec) {
+      setError(`Minimum check interval for ${type} is ${secondsToHMS(minSec)}`);
+      return;
+    }
+    if (maxSec > 0 && periodSec > maxSec) {
+      setError(`Maximum check interval for ${type} is ${secondsToHMS(maxSec)}`);
+      return;
     }
 
     try {
@@ -738,55 +724,25 @@ export function CheckForm({
                 <p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>
               )}
             </div>
-            <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="expectedStatus">Expected Status</Label>
-                <Input
-                  id="expectedStatus"
-                  type="number"
-                  placeholder="200"
-                  value={expectedStatus}
-                  onChange={(e) => setExpectedStatus(e.target.value)}
-                  data-testid="check-expected-status-input"
-                />
-              </div>
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="period">Check Interval</Label>
-                <Select value={period} onValueChange={setPeriod}>
-                  <SelectTrigger data-testid="check-period-select">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {intervalOptions.map((opt) => (
-                      <SelectItem key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="space-y-2">
+              <Label htmlFor="expectedStatus">Expected Status</Label>
+              <Input
+                id="expectedStatus"
+                type="number"
+                placeholder="200"
+                value={expectedStatus}
+                onChange={(e) => setExpectedStatus(e.target.value)}
+                data-testid="check-expected-status-input"
+              />
             </div>
             <div className="flex gap-4">
               <div className="space-y-2 flex-1">
                 <Label htmlFor="username">Username (optional, Basic Auth)</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="user"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  data-testid="check-username-input"
-                />
+                <Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
               </div>
               <div className="space-y-2 flex-1">
                 <Label htmlFor="password">Password (optional)</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-testid="check-password-input"
-                />
+                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
               </div>
             </div>
           </>
@@ -795,36 +751,18 @@ export function CheckForm({
         return (
           <div className="space-y-2">
             <Label htmlFor="url">URL</Label>
-            <Input
-              id="url"
-              type="url"
-              placeholder="https://example.com"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")}
-              data-testid="check-url-input"
-            />
-            {getFieldError(fieldErrors, "url") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>
-            )}
+            <Input id="url" type="url" placeholder="https://example.com" value={url} onChange={(e) => setUrl(e.target.value)}
+              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
+            {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
           </div>
         );
       case "websocket":
         return (
           <div className="space-y-2">
             <Label htmlFor="url">URL</Label>
-            <Input
-              id="url"
-              type="url"
-              placeholder="wss://example.com/ws"
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")}
-              data-testid="check-url-input"
-            />
-            {getFieldError(fieldErrors, "url") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>
-            )}
+            <Input id="url" type="url" placeholder="wss://example.com/ws" value={url} onChange={(e) => setUrl(e.target.value)}
+              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
+            {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
           </div>
         );
       case "tcp":
@@ -833,31 +771,13 @@ export function CheckForm({
           <div className="space-y-2">
             <Label>Host</Label>
             <div className="flex gap-2">
-              <Input
-                id="host"
-                type="text"
-                placeholder={type === "udp" ? "8.8.8.8" : "example.com"}
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
-                data-testid="check-host-input"
-              />
-              <Input
-                id="port"
-                type="number"
-                placeholder={type === "udp" ? "53" : "443"}
-                value={port}
-                onChange={(e) => setPort(e.target.value)}
-                className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
-                data-testid="check-port-input"
-              />
+              <Input id="host" type="text" placeholder={type === "udp" ? "8.8.8.8" : "example.com"} value={host} onChange={(e) => setHost(e.target.value)}
+                className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+              <Input id="port" type="number" placeholder={type === "udp" ? "53" : "443"} value={port} onChange={(e) => setPort(e.target.value)}
+                className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
             </div>
-            {getFieldError(fieldErrors, "host") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
-            )}
-            {getFieldError(fieldErrors, "port") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
-            )}
+            {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+            {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
           </div>
         );
       case "ssh":
@@ -868,62 +788,21 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder={
-                    type === "ssh"
-                      ? "server.example.com"
-                      : "mail.example.com"
-                  }
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder={
-                    type === "ssh"
-                      ? "22"
-                      : type === "pop3"
-                        ? "110"
-                        : "143"
-                  }
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder={type === "ssh" ? "server.example.com" : "mail.example.com"} value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder={type === "ssh" ? "22" : type === "pop3" ? "110" : "143"} value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
               </div>
-              {getFieldError(fieldErrors, "host") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
-              )}
-              {getFieldError(fieldErrors, "port") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
-              )}
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="username">Username (optional)</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="user"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
+              <Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
             </div>
           </>
         );
@@ -933,46 +812,17 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="ftp.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="21"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="ftp.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="21" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="username">Username (optional, default: anonymous)</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="anonymous"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
+              <Input id="username" type="text" placeholder="anonymous" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
             </div>
           </>
         );
@@ -982,46 +832,17 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="sftp.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="22"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="sftp.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="22" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="user"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
+              <Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
             </div>
           </>
         );
@@ -1029,18 +850,9 @@ export function CheckForm({
         return (
           <div className="space-y-2">
             <Label htmlFor="host">Host</Label>
-            <Input
-              id="host"
-              type="text"
-              placeholder="example.com"
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "host") && "border-destructive")}
-              data-testid="check-host-input"
-            />
-            {getFieldError(fieldErrors, "host") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
-            )}
+            <Input id="host" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
+              className={cn(getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+            {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
           </div>
         );
       case "dns":
@@ -1048,18 +860,9 @@ export function CheckForm({
         return (
           <div className="space-y-2">
             <Label htmlFor="domain">Domain</Label>
-            <Input
-              id="domain"
-              type="text"
-              placeholder="example.com"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "domain") && "border-destructive")}
-              data-testid="check-domain-input"
-            />
-            {getFieldError(fieldErrors, "domain") && (
-              <p className="text-xs text-destructive">{getFieldError(fieldErrors, "domain")}</p>
-            )}
+            <Input id="domain" type="text" placeholder="example.com" value={domain} onChange={(e) => setDomain(e.target.value)}
+              className={cn(getFieldError(fieldErrors, "domain") && "border-destructive")} data-testid="check-domain-input" />
+            {getFieldError(fieldErrors, "domain") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "domain")}</p>)}
           </div>
         );
       case "smtp":
@@ -1068,95 +871,31 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="mail.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="25"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="mail.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="25" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={startTLS}
-                  onCheckedChange={(v) => setStartTLS(v === true)}
-                  data-testid="check-starttls-checkbox"
-                />
-                <span className="text-sm">Use STARTTLS</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={tlsVerify}
-                  onCheckedChange={(v) => setTlsVerify(v === true)}
-                  data-testid="check-tls-verify-checkbox"
-                />
-                <span className="text-sm">Verify TLS certificate</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={checkAuth}
-                  onCheckedChange={(v) => setCheckAuth(v === true)}
-                  data-testid="check-auth-checkbox"
-                />
-                <span className="text-sm">Check AUTH support</span>
-              </label>
+              <label className="flex items-center gap-2"><Checkbox checked={startTLS} onCheckedChange={(v) => setStartTLS(v === true)} data-testid="check-starttls-checkbox" /><span className="text-sm">Use STARTTLS</span></label>
+              <label className="flex items-center gap-2"><Checkbox checked={tlsVerify} onCheckedChange={(v) => setTlsVerify(v === true)} data-testid="check-tls-verify-checkbox" /><span className="text-sm">Verify TLS certificate</span></label>
+              <label className="flex items-center gap-2"><Checkbox checked={checkAuth} onCheckedChange={(v) => setCheckAuth(v === true)} data-testid="check-auth-checkbox" /><span className="text-sm">Check AUTH support</span></label>
             </div>
             <div className="space-y-2">
               <Label htmlFor="ehloDomain">EHLO Domain (optional)</Label>
-              <Input
-                id="ehloDomain"
-                type="text"
-                placeholder="example.com"
-                value={ehloDomain}
-                onChange={(e) => setEhloDomain(e.target.value)}
-                data-testid="check-ehlo-domain-input"
-              />
+              <Input id="ehloDomain" type="text" placeholder="example.com" value={ehloDomain} onChange={(e) => setEhloDomain(e.target.value)} data-testid="check-ehlo-domain-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="expectGreeting">Expected Greeting (optional)</Label>
-              <Input
-                id="expectGreeting"
-                type="text"
-                placeholder="220"
-                value={expectGreeting}
-                onChange={(e) => setExpectGreeting(e.target.value)}
-                data-testid="check-expect-greeting-input"
-              />
+              <Input id="expectGreeting" type="text" placeholder="220" value={expectGreeting} onChange={(e) => setExpectGreeting(e.target.value)} data-testid="check-expect-greeting-input" />
             </div>
             <div className="flex gap-4">
               <div className="space-y-2 flex-1">
                 <Label htmlFor="username">Username (optional, AUTH PLAIN)</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="user@example.com"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  data-testid="check-username-input"
-                />
+                <Input id="username" type="text" placeholder="user@example.com" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
               </div>
               <div className="space-y-2 flex-1">
                 <Label htmlFor="password">Password (optional)</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-testid="check-password-input"
-                />
+                <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
               </div>
             </div>
           </>
@@ -1170,69 +909,14 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="db.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder={type === "mysql" ? "3306" : "5432"}
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="db.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder={type === "mysql" ? "3306" : "5432"} value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder={type === "mysql" ? "root" : "postgres"}
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="database">Database (optional)</Label>
-              <Input
-                id="database"
-                type="text"
-                placeholder={type === "mysql" ? "mysql" : "postgres"}
-                value={database}
-                onChange={(e) => setDatabase(e.target.value)}
-                data-testid="check-database-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="query">Query (optional)</Label>
-              <Input
-                id="query"
-                type="text"
-                placeholder="SELECT 1"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                data-testid="check-query-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="username">Username</Label><Input id="username" type="text" placeholder={type === "mysql" ? "root" : "postgres"} value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" /></div>
+            <div className="space-y-2"><Label htmlFor="password">Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
+            <div className="space-y-2"><Label htmlFor="database">Database (optional)</Label><Input id="database" type="text" placeholder={type === "mysql" ? "mysql" : "postgres"} value={database} onChange={(e) => setDatabase(e.target.value)} data-testid="check-database-input" /></div>
+            <div className="space-y-2"><Label htmlFor="query">Query (optional)</Label><Input id="query" type="text" placeholder="SELECT 1" value={query} onChange={(e) => setQuery(e.target.value)} data-testid="check-query-input" /></div>
           </>
         );
       case "redis":
@@ -1241,49 +925,12 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="redis.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="6379"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="redis.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="6379" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="database">Database (optional, 0-15)</Label>
-              <Input
-                id="database"
-                type="number"
-                placeholder="0"
-                min={0}
-                max={15}
-                value={database}
-                onChange={(e) => setDatabase(e.target.value)}
-                data-testid="check-database-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="password">Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
+            <div className="space-y-2"><Label htmlFor="database">Database (optional, 0-15)</Label><Input id="database" type="number" placeholder="0" min={0} max={15} value={database} onChange={(e) => setDatabase(e.target.value)} data-testid="check-database-input" /></div>
           </>
         );
       case "mongodb":
@@ -1292,58 +939,13 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="mongo.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="27017"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="mongo.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="27017" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username (optional)</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="admin"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="database">Database (optional)</Label>
-              <Input
-                id="database"
-                type="text"
-                placeholder="admin"
-                value={database}
-                onChange={(e) => setDatabase(e.target.value)}
-                data-testid="check-database-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="username">Username (optional)</Label><Input id="username" type="text" placeholder="admin" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" /></div>
+            <div className="space-y-2"><Label htmlFor="password">Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
+            <div className="space-y-2"><Label htmlFor="database">Database (optional)</Label><Input id="database" type="text" placeholder="admin" value={database} onChange={(e) => setDatabase(e.target.value)} data-testid="check-database-input" /></div>
           </>
         );
       case "rabbitmq":
@@ -1352,78 +954,16 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="rabbitmq.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className="flex-1"
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="5672"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className="w-24"
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="rabbitmq.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="5672" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" data-testid="check-port-input" />
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="guest"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                data-testid="check-username-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password (optional)</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                data-testid="check-password-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="vhost">Virtual Host (optional)</Label>
-              <Input
-                id="vhost"
-                type="text"
-                placeholder="/"
-                value={vhost}
-                onChange={(e) => setVhost(e.target.value)}
-                data-testid="check-vhost-input"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="queue">Queue (optional)</Label>
-              <Input
-                id="queue"
-                type="text"
-                placeholder="my-queue"
-                value={queue}
-                onChange={(e) => setQueue(e.target.value)}
-                data-testid="check-queue-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="username">Username</Label><Input id="username" type="text" placeholder="guest" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" /></div>
+            <div className="space-y-2"><Label htmlFor="password">Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
+            <div className="space-y-2"><Label htmlFor="vhost">Virtual Host (optional)</Label><Input id="vhost" type="text" placeholder="/" value={vhost} onChange={(e) => setVhost(e.target.value)} data-testid="check-vhost-input" /></div>
+            <div className="space-y-2"><Label htmlFor="queue">Queue (optional)</Label><Input id="queue" type="text" placeholder="my-queue" value={queue} onChange={(e) => setQueue(e.target.value)} data-testid="check-queue-input" /></div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={tlsVerify}
-                  onCheckedChange={(v) => setTlsVerify(v === true)}
-                  data-testid="check-tls-checkbox"
-                />
-                <span className="text-sm">Use TLS</span>
-              </label>
+              <label className="flex items-center gap-2"><Checkbox checked={tlsVerify} onCheckedChange={(v) => setTlsVerify(v === true)} data-testid="check-tls-checkbox" /><span className="text-sm">Use TLS</span></label>
             </div>
           </>
         );
@@ -1431,29 +971,11 @@ export function CheckForm({
         return (
           <div className="space-y-2">
             <Label htmlFor="script">Script</Label>
-            <CodeMirror
-              value={script}
-              onChange={(value) => setScript(value)}
-              extensions={[javascript()]}
-              theme={document.documentElement.classList.contains("dark") ? "dark" : "light"}
-              height="200px"
-              className={cn(
-                "rounded-md border text-sm",
-                getFieldError(fieldErrors, "script") &&
-                  "border-destructive",
-              )}
-              data-testid="check-script"
-            />
-            {getFieldError(fieldErrors, "script") && (
-              <p className="text-xs text-destructive">
-                {getFieldError(fieldErrors, "script")}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground">
-              JavaScript script that returns an object with status
-              (&quot;up&quot;, &quot;down&quot;, or &quot;error&quot;),
-              optional metrics, and optional output.
-            </p>
+            <CodeMirror value={script} onChange={(value) => setScript(value)} extensions={[javascript()]}
+              theme={document.documentElement.classList.contains("dark") ? "dark" : "light"} height="200px"
+              className={cn("rounded-md border text-sm", getFieldError(fieldErrors, "script") && "border-destructive")} data-testid="check-script" />
+            {getFieldError(fieldErrors, "script") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "script")}</p>)}
+            <p className="text-xs text-muted-foreground">JavaScript script that returns an object with status (&quot;up&quot;, &quot;down&quot;, or &quot;error&quot;), optional metrics, and optional output.</p>
           </div>
         );
       case "grpc":
@@ -1462,24 +984,16 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input id="host" type="text" placeholder="grpc.example.com"
-                  value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
-                <Input id="port" type="number" placeholder="50051"
-                  value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
+                <Input id="host" type="text" placeholder="grpc.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
+                <Input id="port" type="number" placeholder="50051" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
               </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="serviceName">Service Name (optional)</Label>
-              <Input id="serviceName" type="text" placeholder="myservice"
-                value={serviceName} onChange={(e) => setServiceName(e.target.value)} />
-              <p className="text-xs text-muted-foreground">
-                Leave empty to check overall server health
-              </p>
+              <Input id="serviceName" type="text" placeholder="myservice" value={serviceName} onChange={(e) => setServiceName(e.target.value)} />
+              <p className="text-xs text-muted-foreground">Leave empty to check overall server health</p>
             </div>
-            <label className="flex items-center gap-2">
-              <Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} />
-              <span className="text-sm">Use TLS</span>
-            </label>
+            <label className="flex items-center gap-2"><Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} /><span className="text-sm">Use TLS</span></label>
           </>
         );
       case "kafka":
@@ -1487,61 +1001,17 @@ export function CheckForm({
           <>
             <div className="space-y-2">
               <Label htmlFor="brokers">Brokers</Label>
-              <Input
-                id="brokers"
-                type="text"
-                placeholder="broker1:9092, broker2:9092"
-                value={brokers}
-                onChange={(e) => setBrokers(e.target.value)}
-                data-testid="check-brokers-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                Comma-separated list of broker addresses (host:port)
-              </p>
+              <Input id="brokers" type="text" placeholder="broker1:9092, broker2:9092" value={brokers} onChange={(e) => setBrokers(e.target.value)} data-testid="check-brokers-input" />
+              <p className="text-xs text-muted-foreground">Comma-separated list of broker addresses (host:port)</p>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="topic">Topic (optional)</Label>
-              <Input
-                id="topic"
-                type="text"
-                placeholder="my-topic"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                data-testid="check-topic-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="topic">Topic (optional)</Label><Input id="topic" type="text" placeholder="my-topic" value={topic} onChange={(e) => setTopic(e.target.value)} data-testid="check-topic-input" /></div>
             <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="username">SASL Username (optional)</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="user"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  data-testid="check-username-input"
-                />
-              </div>
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="password">SASL Password (optional)</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-testid="check-password-input"
-                />
-              </div>
+              <div className="space-y-2 flex-1"><Label htmlFor="username">SASL Username (optional)</Label><Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" /></div>
+              <div className="space-y-2 flex-1"><Label htmlFor="password">SASL Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
             </div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2">
-                <Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} />
-                <span className="text-sm">Use TLS</span>
-              </label>
-              <label className="flex items-center gap-2">
-                <Checkbox checked={produceTest} onCheckedChange={(v) => setProduceTest(v === true)} />
-                <span className="text-sm">Test message production (requires topic)</span>
-              </label>
+              <label className="flex items-center gap-2"><Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} /><span className="text-sm">Use TLS</span></label>
+              <label className="flex items-center gap-2"><Checkbox checked={produceTest} onCheckedChange={(v) => setProduceTest(v === true)} /><span className="text-sm">Test message production (requires topic)</span></label>
             </div>
           </>
         );
@@ -1551,79 +1021,26 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="broker.example.com"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="1883"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="broker.example.com" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="1883" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
               </div>
-              {getFieldError(fieldErrors, "host") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
-              )}
-              {getFieldError(fieldErrors, "port") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
-              )}
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
             </div>
             <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="username">Username (optional)</Label>
-                <Input
-                  id="username"
-                  type="text"
-                  placeholder="user"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
-                  data-testid="check-username-input"
-                />
-              </div>
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="password">Password (optional)</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  data-testid="check-password-input"
-                />
-              </div>
+              <div className="space-y-2 flex-1"><Label htmlFor="username">Username (optional)</Label><Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" /></div>
+              <div className="space-y-2 flex-1"><Label htmlFor="password">Password (optional)</Label><Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" /></div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="topic">Topic (optional)</Label>
-              <Input
-                id="topic"
-                type="text"
-                placeholder="solidping/healthcheck"
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                className={cn(getFieldError(fieldErrors, "topic") && "border-destructive")}
-                data-testid="check-topic-input"
-              />
-              {getFieldError(fieldErrors, "topic") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "topic")}</p>
-              )}
+              <Input id="topic" type="text" placeholder="solidping/healthcheck" value={topic} onChange={(e) => setTopic(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "topic") && "border-destructive")} data-testid="check-topic-input" />
+              {getFieldError(fieldErrors, "topic") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "topic")}</p>)}
             </div>
             <div className="space-y-3">
-              <label className="flex items-center gap-2">
-                <Checkbox
-                  checked={tls}
-                  onCheckedChange={(v) => setTls(v === true)}
-                  data-testid="check-tls-checkbox"
-                />
-                <span className="text-sm">Use TLS (port defaults to 8883)</span>
-              </label>
+              <label className="flex items-center gap-2"><Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} data-testid="check-tls-checkbox" /><span className="text-sm">Use TLS (port defaults to 8883)</span></label>
             </div>
           </>
         );
@@ -1633,25 +1050,13 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input id="host" type="text" placeholder="game.example.com"
-                  value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
-                <Input id="port" type="number" placeholder="27015"
-                  value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
+                <Input id="host" type="text" placeholder="game.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
+                <Input id="port" type="number" placeholder="27015" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
               </div>
             </div>
             <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="minPlayers">Min Players (optional)</Label>
-                <Input id="minPlayers" type="number" min={0} placeholder="0"
-                  value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} />
-                <p className="text-xs text-muted-foreground">Alert if fewer players</p>
-              </div>
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="maxPlayers">Max Players (optional)</Label>
-                <Input id="maxPlayers" type="number" min={0} placeholder="0"
-                  value={maxPlayersField} onChange={(e) => setMaxPlayersField(e.target.value)} />
-                <p className="text-xs text-muted-foreground">Alert if more players</p>
-              </div>
+              <div className="space-y-2 flex-1"><Label htmlFor="minPlayers">Min Players (optional)</Label><Input id="minPlayers" type="number" min={0} placeholder="0" value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if fewer players</p></div>
+              <div className="space-y-2 flex-1"><Label htmlFor="maxPlayers">Max Players (optional)</Label><Input id="maxPlayers" type="number" min={0} placeholder="0" value={maxPlayersField} onChange={(e) => setMaxPlayersField(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if more players</p></div>
             </div>
           </>
         );
@@ -1661,82 +1066,29 @@ export function CheckForm({
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input
-                  id="host"
-                  type="text"
-                  placeholder="192.168.1.1"
-                  value={host}
-                  onChange={(e) => setHost(e.target.value)}
-                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
-                  data-testid="check-host-input"
-                />
-                <Input
-                  id="port"
-                  type="number"
-                  placeholder="161"
-                  value={port}
-                  onChange={(e) => setPort(e.target.value)}
-                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
-                  data-testid="check-port-input"
-                />
+                <Input id="host" type="text" placeholder="192.168.1.1" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="161" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
               </div>
-              {getFieldError(fieldErrors, "host") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
-              )}
-              {getFieldError(fieldErrors, "port") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
-              )}
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="oid">OID</Label>
-              <Input
-                id="oid"
-                type="text"
-                placeholder=".1.3.6.1.2.1.1.1.0"
-                value={oid}
-                onChange={(e) => setOid(e.target.value)}
-                className={cn(getFieldError(fieldErrors, "oid") && "border-destructive")}
-                data-testid="check-oid-input"
-              />
-              {getFieldError(fieldErrors, "oid") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "oid")}</p>
-              )}
+              <Input id="oid" type="text" placeholder=".1.3.6.1.2.1.1.1.0" value={oid} onChange={(e) => setOid(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "oid") && "border-destructive")} data-testid="check-oid-input" />
+              {getFieldError(fieldErrors, "oid") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "oid")}</p>)}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="community">Community (optional, default: public)</Label>
-              <Input
-                id="community"
-                type="text"
-                placeholder="public"
-                value={community}
-                onChange={(e) => setCommunity(e.target.value)}
-                data-testid="check-community-input"
-              />
-            </div>
+            <div className="space-y-2"><Label htmlFor="community">Community (optional, default: public)</Label><Input id="community" type="text" placeholder="public" value={community} onChange={(e) => setCommunity(e.target.value)} data-testid="check-community-input" /></div>
             <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="expectedValue">Expected Value (optional)</Label>
-                <Input
-                  id="expectedValue"
-                  type="text"
-                  placeholder=""
-                  value={expectedValue}
-                  onChange={(e) => setExpectedValue(e.target.value)}
-                  data-testid="check-expected-value-input"
-                />
-              </div>
+              <div className="space-y-2 flex-1"><Label htmlFor="expectedValue">Expected Value (optional)</Label><Input id="expectedValue" type="text" placeholder="" value={expectedValue} onChange={(e) => setExpectedValue(e.target.value)} data-testid="check-expected-value-input" /></div>
               <div className="space-y-2 w-40">
                 <Label htmlFor="snmpOperator">Operator</Label>
                 <Select value={snmpOperator} onValueChange={setSnmpOperator}>
-                  <SelectTrigger data-testid="check-operator-select">
-                    <SelectValue />
-                  </SelectTrigger>
+                  <SelectTrigger data-testid="check-operator-select"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="equals">Equals</SelectItem>
-                    <SelectItem value="not_equals">Not Equals</SelectItem>
-                    <SelectItem value="contains">Contains</SelectItem>
-                    <SelectItem value="greater_than">Greater Than</SelectItem>
-                    <SelectItem value="less_than">Less Than</SelectItem>
+                    <SelectItem value="equals">Equals</SelectItem><SelectItem value="not_equals">Not Equals</SelectItem><SelectItem value="contains">Contains</SelectItem><SelectItem value="greater_than">Greater Than</SelectItem><SelectItem value="less_than">Less Than</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -1748,43 +1100,18 @@ export function CheckForm({
           <>
             <div className="space-y-2">
               <Label htmlFor="containerName">Container Name</Label>
-              <Input
-                id="containerName"
-                type="text"
-                placeholder="postgres"
-                value={containerName}
-                onChange={(e) => setContainerName(e.target.value)}
-                className={cn(getFieldError(fieldErrors, "containerName") && "border-destructive")}
-                data-testid="check-container-name-input"
-              />
-              {getFieldError(fieldErrors, "containerName") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "containerName")}</p>
-              )}
+              <Input id="containerName" type="text" placeholder="postgres" value={containerName} onChange={(e) => setContainerName(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "containerName") && "border-destructive")} data-testid="check-container-name-input" />
+              {getFieldError(fieldErrors, "containerName") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "containerName")}</p>)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="containerId">Container ID (optional, alternative to name)</Label>
-              <Input
-                id="containerId"
-                type="text"
-                placeholder="abc123def456"
-                value={containerId}
-                onChange={(e) => setContainerId(e.target.value)}
-                data-testid="check-container-id-input"
-              />
+              <Input id="containerId" type="text" placeholder="abc123def456" value={containerId} onChange={(e) => setContainerId(e.target.value)} data-testid="check-container-id-input" />
             </div>
             <div className="space-y-2">
               <Label htmlFor="host">Docker Host (optional)</Label>
-              <Input
-                id="host"
-                type="text"
-                placeholder="unix:///var/run/docker.sock"
-                value={host}
-                onChange={(e) => setHost(e.target.value)}
-                data-testid="check-host-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                Default: unix:///var/run/docker.sock. Use tcp://host:port for remote Docker daemons.
-              </p>
+              <Input id="host" type="text" placeholder="unix:///var/run/docker.sock" value={host} onChange={(e) => setHost(e.target.value)} data-testid="check-host-input" />
+              <p className="text-xs text-muted-foreground">Default: unix:///var/run/docker.sock. Use tcp://host:port for remote Docker daemons.</p>
             </div>
           </>
         );
@@ -1793,65 +1120,36 @@ export function CheckForm({
           <>
             <div className="space-y-2">
               <Label htmlFor="url">URL</Label>
-              <Input
-                id="url"
-                type="url"
-                placeholder="https://example.com"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                className={cn(getFieldError(fieldErrors, "url") && "border-destructive")}
-                data-testid="check-url-input"
-              />
-              {getFieldError(fieldErrors, "url") && (
-                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>
-              )}
+              <Input id="url" type="url" placeholder="https://example.com" value={url} onChange={(e) => setUrl(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
+              {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
             </div>
             <div className="space-y-2">
               <Label htmlFor="waitSelector">Wait Selector (optional)</Label>
-              <Input
-                id="waitSelector"
-                type="text"
-                placeholder="#main-content"
-                value={waitSelector}
-                onChange={(e) => setWaitSelector(e.target.value)}
-                data-testid="check-wait-selector-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                CSS selector to wait for before checking. Leave empty to wait for body.
-              </p>
+              <Input id="waitSelector" type="text" placeholder="#main-content" value={waitSelector} onChange={(e) => setWaitSelector(e.target.value)} data-testid="check-wait-selector-input" />
+              <p className="text-xs text-muted-foreground">CSS selector to wait for before checking. Leave empty to wait for body.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="keyword">Keyword (optional)</Label>
-              <Input
-                id="keyword"
-                type="text"
-                placeholder="Welcome"
-                value={keyword}
-                onChange={(e) => setKeyword(e.target.value)}
-                data-testid="check-keyword-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                Text to search for in the rendered page content.
-              </p>
+              <Input id="keyword" type="text" placeholder="Welcome" value={keyword} onChange={(e) => setKeyword(e.target.value)} data-testid="check-keyword-input" />
+              <p className="text-xs text-muted-foreground">Text to search for in the rendered page content.</p>
             </div>
           </>
         );
       case "heartbeat":
         return (
-          <p className="text-sm text-muted-foreground">
-            No additional configuration needed. A heartbeat URL will be generated after creation.
-          </p>
+          <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>
         );
     }
   };
 
   const isEdit = mode === "edit";
   const title = isEdit ? "Edit Check" : "New Check";
-  const subtitle = isEdit
-    ? "Update the monitoring check parameters"
-    : "Create a new monitoring check";
+  const subtitle = isEdit ? "Update the monitoring check parameters" : "Create a new monitoring check";
   const submitLabel = isEdit ? "Save Changes" : "Create Check";
   const pendingLabel = isEdit ? "Saving..." : "Creating...";
+
+  const selectedTypeLabel = checkTypes.find((t) => t.value === type)?.label || type;
 
   return (
     <div className="space-y-6 max-w-2xl">
@@ -1868,10 +1166,8 @@ export function CheckForm({
       <Card>
         <form onSubmit={handleSubmit}>
           <CardHeader>
-            <CardTitle>Check Configuration</CardTitle>
-            <CardDescription>
-              Configure the monitoring check parameters
-            </CardDescription>
+            <CardTitle>Check Type</CardTitle>
+            <CardDescription>Select the type of monitoring check</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {error && (
@@ -1880,147 +1176,155 @@ export function CheckForm({
               </Alert>
             )}
 
+            {/* Check Type - searchable combobox */}
             <div className="space-y-2">
-              <Label htmlFor="type">Check Type</Label>
+              <Label htmlFor="type">Type</Label>
               {isEdit ? (
-                <Input
-                  id="type"
-                  value={
-                    checkTypes.find((t) => t.value === type)?.label || type
-                  }
-                  disabled
-                  data-testid="check-type-select"
-                />
+                <Input id="type" value={selectedTypeLabel} disabled data-testid="check-type-select" />
               ) : (
+                <Popover open={typeSearchOpen} onOpenChange={setTypeSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" role="combobox" aria-expanded={typeSearchOpen}
+                      className="w-full justify-between font-normal" data-testid="check-type-select">
+                      <span>{selectedTypeLabel}</span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="p-0 max-h-72">
+                    <div className="flex items-center border-b px-3 py-2">
+                      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                      <input
+                        ref={searchInputRef}
+                        placeholder="Search check types..."
+                        value={typeSearch}
+                        onChange={(e) => setTypeSearch(e.target.value)}
+                        className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+                      />
+                    </div>
+                    <div className="max-h-56 overflow-y-auto p-1">
+                      {filteredCheckTypes.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">No check types found</div>
+                      ) : (
+                        filteredCheckTypes.map((ct) => (
+                          <button
+                            key={ct.value}
+                            type="button"
+                            className={cn(
+                              "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                              type === ct.value && "bg-accent"
+                            )}
+                            onClick={() => {
+                              const newType = ct.value;
+                              setType(newType);
+                              setPeriod(getDefaultPeriodHMS(newType));
+                              setTypeSearchOpen(false);
+                              setTypeSearch("");
+                            }}
+                          >
+                            <Check className={cn("mt-0.5 h-4 w-4 shrink-0", type === ct.value ? "opacity-100" : "opacity-0")} />
+                            <div>
+                              <div className="font-medium">{ct.label}</div>
+                              <div className="text-xs text-muted-foreground">{ct.description}</div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
+
+            {/* Sample config selector - only in create mode when samples exist */}
+            {!isEdit && currentSamples.length > 0 && (
+              <div className="space-y-2">
+                <Label>Load from template</Label>
                 <Select
-                  value={type}
-                  onValueChange={(v) => {
-                    const t = v as CheckType;
-                    setType(t);
-                    setPeriod(defaultPeriod(t));
+                  value=""
+                  onValueChange={(slugVal) => {
+                    const sample = currentSamples.find((s) => s.slug === slugVal);
+                    if (sample) applySample(sample);
                   }}
                 >
-                  <SelectTrigger data-testid="check-type-select">
-                    <SelectValue>
-                      {checkTypes.find((t) => t.value === type)?.label || type}
-                    </SelectValue>
+                  <SelectTrigger data-testid="check-sample-select">
+                    <SelectValue placeholder="Choose a sample configuration..." />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableCheckTypes.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        <div className="font-medium">{t.label}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {t.description}
-                        </div>
+                    {currentSamples.map((sample) => (
+                      <SelectItem key={sample.slug} value={sample.slug}>
+                        {sample.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+          </CardContent>
+
+          {/* Protocol-specific config */}
+          <CardHeader className="pt-2 pb-2">
+            <CardTitle className="text-base">Configuration</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {renderConfigFields()}
+          </CardContent>
+
+          {/* Common parameters */}
+          <CardHeader className="pt-2 pb-2">
+            <CardTitle className="text-base">General</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="period">
+                {type === "heartbeat" ? "Expected Interval" : "Check Interval"}
+              </Label>
+              {type === "heartbeat" ? (
+                <div className="flex gap-2">
+                  <Input id="period" type="number" min={1} value={periodValue}
+                    onChange={(e) => setPeriodValue(parseInt(e.target.value, 10) || 1)}
+                    className="w-24" data-testid="check-period-input" />
+                  <Select value={periodUnit} onValueChange={(v) => setPeriodUnit(v as PeriodUnit)}>
+                    <SelectTrigger data-testid="check-period-unit-select" className="flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {periodUnits.map((u) => (<SelectItem key={u.value} value={u.value}>{u.label}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : (
+                <Select value={period} onValueChange={setPeriod}>
+                  <SelectTrigger data-testid="check-period-select"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {intervalOptions.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              {type === "heartbeat" && (
+                <p className="text-xs text-muted-foreground">Check will be marked as down if no heartbeat is received within this interval</p>
               )}
             </div>
 
-            {renderConfigFields()}
-
-            {type !== "http" && (
-              <div className="space-y-2">
-                <Label htmlFor="period">
-                  {type === "heartbeat" ? "Expected Interval" : "Check Interval"}
-                </Label>
-                {type === "heartbeat" ? (
-                  <div className="flex gap-2">
-                    <Input
-                      id="period"
-                      type="number"
-                      min={1}
-                      value={periodValue}
-                      onChange={(e) => setPeriodValue(parseInt(e.target.value, 10) || 1)}
-                      className="w-24"
-                      data-testid="check-period-input"
-                    />
-                    <Select value={periodUnit} onValueChange={(v) => setPeriodUnit(v as PeriodUnit)}>
-                      <SelectTrigger data-testid="check-period-unit-select" className="flex-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {periodUnits.map((u) => (
-                          <SelectItem key={u.value} value={u.value}>
-                            {u.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <Select value={period} onValueChange={setPeriod}>
-                    <SelectTrigger data-testid="check-period-select">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {intervalOptions.map((opt) => (
-                        <SelectItem key={opt.value} value={opt.value}>
-                          {opt.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-                {type === "heartbeat" && (
-                  <p className="text-xs text-muted-foreground">
-                    Check will be marked as down if no heartbeat is received within this interval
-                  </p>
-                )}
-              </div>
-            )}
-
             <div className="space-y-2">
               <Label htmlFor="name">Name {mode === "create" && "(optional)"}</Label>
-              <Input
-                id="name"
-                type="text"
-                placeholder="My Check"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                data-testid="check-name-input"
-              />
-              {mode === "create" && (
-                <p className="text-xs text-muted-foreground">
-                  If not provided, a name will be auto-generated
-                </p>
-              )}
+              <Input id="name" type="text" placeholder="My Check" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
+              {mode === "create" && (<p className="text-xs text-muted-foreground">If not provided, a name will be auto-generated</p>)}
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="slug">Slug {mode === "create" && "(optional)"}</Label>
-              <Input
-                id="slug"
-                type="text"
-                placeholder="my-check"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                data-testid="check-slug-input"
-              />
-              <p className="text-xs text-muted-foreground">
-                URL-friendly identifier for the check
-              </p>
+              <Input id="slug" type="text" placeholder="my-check" value={slug} onChange={(e) => setSlug(e.target.value)} data-testid="check-slug-input" />
+              <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
             </div>
 
             {checkGroups && checkGroups.length > 0 && (
               <div className="space-y-2">
                 <Label htmlFor="group">Group (optional)</Label>
-                <Select
-                  value={checkGroupUid || "none"}
-                  onValueChange={(v) => setCheckGroupUid(v === "none" ? "" : v)}
-                >
-                  <SelectTrigger data-testid="check-group-select">
-                    <SelectValue placeholder="No group" />
-                  </SelectTrigger>
+                <Select value={checkGroupUid || "none"} onValueChange={(v) => setCheckGroupUid(v === "none" ? "" : v)}>
+                  <SelectTrigger data-testid="check-group-select"><SelectValue placeholder="No group" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">No group</SelectItem>
-                    {checkGroups.map((g) => (
-                      <SelectItem key={g.uid} value={g.uid}>
-                        {g.name}
-                      </SelectItem>
-                    ))}
+                    {checkGroups.map((g) => (<SelectItem key={g.uid} value={g.uid}>{g.name}</SelectItem>))}
                   </SelectContent>
                 </Select>
               </div>
@@ -2030,36 +1334,14 @@ export function CheckForm({
               <Label className="text-base font-medium">Adaptive Resolution</Label>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">
-                    Reopen cooldown multiplier
-                  </Label>
-                  <Input
-                    id="reopenCooldownMultiplier"
-                    type="number"
-                    min={0}
-                    placeholder="5 (default)"
-                    value={reopenCooldownMultiplier}
-                    onChange={(e) => setReopenCooldownMultiplier(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    How many check periods to wait before closing a resolved incident. 0 = never reopen.
-                  </p>
+                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">Reopen cooldown multiplier</Label>
+                  <Input id="reopenCooldownMultiplier" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">How many check periods to wait before closing a resolved incident. 0 = never reopen.</p>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="maxAdaptiveIncrease" className="text-sm">
-                    Max adaptive increase
-                  </Label>
-                  <Input
-                    id="maxAdaptiveIncrease"
-                    type="number"
-                    min={0}
-                    placeholder="5 (default)"
-                    value={maxAdaptiveIncrease}
-                    onChange={(e) => setMaxAdaptiveIncrease(e.target.value)}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Extra consecutive successes required per relapse. 0 = fixed threshold.
-                  </p>
+                  <Label htmlFor="maxAdaptiveIncrease" className="text-sm">Max adaptive increase</Label>
+                  <Input id="maxAdaptiveIncrease" type="number" min={0} placeholder="5 (default)" value={maxAdaptiveIncrease} onChange={(e) => setMaxAdaptiveIncrease(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">Extra consecutive successes required per relapse. 0 = fixed threshold.</p>
                 </div>
               </div>
             </div>
@@ -2069,43 +1351,20 @@ export function CheckForm({
                 <Label>Regions</Label>
                 <div className="grid grid-cols-2 gap-2">
                   {availableRegions?.map((region) => (
-                    <label
-                      key={region.slug}
-                      className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50"
-                    >
-                      <Checkbox
-                        checked={selectedRegions.includes(region.slug)}
-                        onCheckedChange={() => toggleRegion(region.slug)}
-                      />
-                      <span className="text-sm">
-                        {region.emoji} {region.name}
-                      </span>
+                    <label key={region.slug} className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50">
+                      <Checkbox checked={selectedRegions.includes(region.slug)} onCheckedChange={() => toggleRegion(region.slug)} />
+                      <span className="text-sm">{region.emoji} {region.name}</span>
                     </label>
                   ))}
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Select the regions where this check should run
-                </p>
+                <p className="text-xs text-muted-foreground">Select the regions where this check should run</p>
               </div>
             )}
           </CardContent>
           <CardFooter className="flex justify-end gap-2">
-            <Button type="button" variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isPending}
-              data-testid="check-submit-button"
-            >
-              {isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {pendingLabel}
-                </>
-              ) : (
-                submitLabel
-              )}
+            <Button type="button" variant="outline" onClick={onCancel}>Cancel</Button>
+            <Button type="submit" disabled={isPending} data-testid="check-submit-button">
+              {isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" />{pendingLabel}</>) : submitLabel}
             </Button>
           </CardFooter>
         </form>
