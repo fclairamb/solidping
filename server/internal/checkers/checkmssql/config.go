@@ -1,7 +1,6 @@
 package checkmssql
 
 import (
-	"fmt"
 	"net"
 	"net/url"
 	"strconv"
@@ -17,6 +16,7 @@ const (
 	maxTimeout      = 60 * time.Second
 	defaultQuery    = "SELECT 1"
 	defaultDatabase = "master"
+	defaultEncrypt  = "false"
 )
 
 // MSSQLConfig holds the configuration for Microsoft SQL Server checks.
@@ -112,7 +112,7 @@ func (c *MSSQLConfig) GetConfig() map[string]any {
 		cfg["database"] = c.Database
 	}
 
-	if c.Encrypt != "" && c.Encrypt != "false" {
+	if c.Encrypt != "" && c.Encrypt != defaultEncrypt {
 		cfg["encrypt"] = c.Encrypt
 	}
 
@@ -143,7 +143,7 @@ func (c *MSSQLConfig) Validate() error {
 
 	if c.Encrypt != "" {
 		switch c.Encrypt {
-		case "true", "false", "disable":
+		case "true", defaultEncrypt, "disable":
 			// valid
 		default:
 			return checkerdef.NewConfigError("encrypt", "must be one of: true, false, disable")
@@ -177,26 +177,26 @@ func (c *MSSQLConfig) buildConnURL() string {
 
 	encrypt := c.Encrypt
 	if encrypt == "" {
-		encrypt = "false"
+		encrypt = defaultEncrypt
 	}
 
-	query := url.Values{}
-	query.Set("database", database)
-	query.Set("encrypt", encrypt)
+	params := url.Values{}
+	params.Set("database", database)
+	params.Set("encrypt", encrypt)
 
 	timeout := c.Timeout
 	if timeout == 0 {
 		timeout = defaultTimeout
 	}
 
-	query.Set("dial timeout", fmt.Sprintf("%d", int(timeout.Seconds())))
+	params.Set("dial timeout", strconv.Itoa(int(timeout.Seconds())))
 
-	u := &url.URL{
+	connURL := &url.URL{
 		Scheme:   "sqlserver",
 		User:     url.UserPassword(c.Username, c.Password),
 		Host:     net.JoinHostPort(c.Host, strconv.Itoa(port)),
-		RawQuery: query.Encode(),
+		RawQuery: params.Encode(),
 	}
 
-	return u.String()
+	return connURL.String()
 }
