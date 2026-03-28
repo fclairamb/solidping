@@ -59,20 +59,20 @@ func (c *GameServerChecker) Execute(
 		"port": cfg.resolvePort(),
 	}
 
-	info, err := queryServer(cfg)
-	if err != nil {
+	info, queryErr := queryServer(cfg)
+	if queryErr != nil {
+		status := checkerdef.StatusDown
+		errMsg := "A2S query failed: " + queryErr.Error()
+
 		if ctx.Err() != nil {
-			return &checkerdef.Result{
-				Status:   checkerdef.StatusTimeout,
-				Duration: time.Since(start),
-				Output:   map[string]any{"error": "query timeout"},
-			}, nil
+			status = checkerdef.StatusTimeout
+			errMsg = "query timeout"
 		}
 
 		return &checkerdef.Result{
-			Status:   checkerdef.StatusDown,
+			Status:   status,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "A2S query failed: " + err.Error()},
+			Output:   map[string]any{"error": errMsg},
 		}, nil
 	}
 
@@ -91,7 +91,7 @@ func queryServer(cfg *GameServerConfig) (*a2s.ServerInfo, error) {
 		return nil, err
 	}
 
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	return client.QueryInfo()
 }
@@ -113,8 +113,8 @@ func buildResult(
 	output["players"] = int(info.Players)
 	output["maxPlayers"] = int(info.MaxPlayers)
 	output["bots"] = int(info.Bots)
-	output["passwordProtected"] = info.Visibility == 1
-	output["vac"] = info.VAC == 1
+	output["passwordProtected"] = info.Visibility
+	output["vac"] = info.VAC
 
 	// Check player count thresholds
 	if cfg.MinPlayers > 0 && int(info.Players) < cfg.MinPlayers {
