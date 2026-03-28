@@ -105,7 +105,9 @@
     "urlRequired": "URL is required",
     "hostRequired": "Host is required",
     "portRequired": "Port is required",
-    "domainRequired": "Domain is required"
+    "domainRequired": "Domain is required",
+    "topic": "Topic",
+    "tls": "TLS"
   },
   "types": {
     "http": "HTTP",
@@ -123,7 +125,9 @@
     "heartbeat": "Heartbeat",
     "heartbeatDescription": "Receive heartbeat pings",
     "smtp": "SMTP",
-    "smtpDescription": "Check SMTP server connectivity"
+    "smtpDescription": "Check SMTP server connectivity",
+    "mqtt": "MQTT",
+    "mqttDescription": "Check MQTT broker connectivity"
   },
   "intervals": {
     "10s": "10 seconds",

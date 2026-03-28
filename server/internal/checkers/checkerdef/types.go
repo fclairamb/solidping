@@ -82,6 +82,8 @@ const (
 	CheckTypeSFTP CheckType = "sftp"
 	// CheckTypeJS runs custom JavaScript monitoring scripts.
 	CheckTypeJS CheckType = "js"
+	// CheckTypeMQTT performs MQTT broker health checks.
+	CheckTypeMQTT CheckType = "mqtt"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -123,5 +125,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeFTP,
 		CheckTypeSFTP,
 		CheckTypeJS,
+		CheckTypeMQTT,
 	}
 }

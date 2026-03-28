@@ -27,11 +27,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/api/client";
 import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js" | "mqtt";
 
 function defaultPeriod(type: CheckType): string {
   if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" ? "01:00:00" : "00:01:00";
+  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" || type === "mqtt" ? "01:00:00" : "00:01:00";
 }
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
@@ -52,6 +52,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "ftp", label: "FTP", description: "Check FTP server availability" },
   { value: "sftp", label: "SFTP", description: "Check SFTP server availability" },
   { value: "js", label: "JavaScript", description: "Run custom JavaScript monitoring scripts" },
+  { value: "mqtt", label: "MQTT", description: "Check MQTT broker connectivity" },
 ];
 
 const intervalOptions = [
@@ -192,6 +193,12 @@ export function CheckForm({
   const [query, setQuery] = useState(
     getConfigField(initialData?.config, "query")
   );
+  const [topic, setTopic] = useState(
+    getConfigField(initialData?.config, "topic")
+  );
+  const [tls, setTls] = useState(
+    getConfigField(initialData?.config, "tls") === "true"
+  );
   const [script, setScript] = useState(
     getConfigField(initialData?.config, "script")
   );
@@ -266,13 +273,21 @@ export function CheckForm({
         if (database) cfg.database = database;
         if (query) cfg.query = query;
         break;
+      case "mqtt":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (username) cfg.username = username;
+        if (password) cfg.password = password;
+        if (topic) cfg.topic = topic;
+        if (tls) cfg.tls = true;
+        break;
       case "js":
         if (script) cfg.script = script;
         break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password,
-    startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script]);
+    startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, topic, tls, script]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -394,6 +409,18 @@ export function CheckForm({
         if (password) config.password = password;
         if (database) config.database = database;
         if (query) config.query = query;
+        break;
+      case "mqtt":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (username) config.username = username;
+        if (password) config.password = password;
+        if (topic) config.topic = topic;
+        if (tls) config.tls = true;
         break;
       case "js":
         if (!script) {
@@ -954,6 +981,88 @@ export function CheckForm({
                 onChange={(e) => setQuery(e.target.value)}
                 data-testid="check-query-input"
               />
+            </div>
+          </>
+        );
+      case "mqtt":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="broker.example.com"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
+                  data-testid="check-host-input"
+                />
+                <Input
+                  id="port"
+                  type="number"
+                  placeholder="1883"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
+                  data-testid="check-port-input"
+                />
+              </div>
+              {getFieldError(fieldErrors, "host") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
+              )}
+              {getFieldError(fieldErrors, "port") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
+              )}
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="username">Username (optional)</Label>
+                <Input
+                  id="username"
+                  type="text"
+                  placeholder="user"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  data-testid="check-username-input"
+                />
+              </div>
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="password">Password (optional)</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  data-testid="check-password-input"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="topic">Topic (optional)</Label>
+              <Input
+                id="topic"
+                type="text"
+                placeholder="solidping/healthcheck"
+                value={topic}
+                onChange={(e) => setTopic(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "topic") && "border-destructive")}
+                data-testid="check-topic-input"
+              />
+              {getFieldError(fieldErrors, "topic") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "topic")}</p>
+              )}
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={tls}
+                  onCheckedChange={(v) => setTls(v === true)}
+                  data-testid="check-tls-checkbox"
+                />
+                <span className="text-sm">Use TLS (port defaults to 8883)</span>
+              </label>
             </div>
           </>
         );

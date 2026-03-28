@@ -105,7 +105,9 @@
     "urlRequired": "L'URL est requise",
     "hostRequired": "L'hôte est requis",
     "portRequired": "Le port est requis",
-    "domainRequired": "Le domaine est requis"
+    "domainRequired": "Le domaine est requis",
+    "topic": "Sujet",
+    "tls": "TLS"
   },
   "types": {
     "http": "HTTP",
@@ -123,7 +125,9 @@
     "heartbeat": "Heartbeat",
     "heartbeatDescription": "Recevoir des pings heartbeat",
     "smtp": "SMTP",
-    "smtpDescription": "Vérifier la connectivité SMTP"
+    "smtpDescription": "Vérifier la connectivité SMTP",
+    "mqtt": "MQTT",
+    "mqttDescription": "Vérifier la connectivité du broker MQTT"
   },
   "intervals": {
     "10s": "10 secondes",

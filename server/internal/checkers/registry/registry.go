@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
@@ -80,6 +81,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksftp.SFTPChecker{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSChecker{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTChecker{}, true
 	default:
 		return nil, false
 	}
@@ -127,6 +130,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksftp.SFTPConfig{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSConfig{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTConfig{}, true
 	default:
 		return nil, false
 	}
