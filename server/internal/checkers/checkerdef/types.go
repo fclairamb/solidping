@@ -94,6 +94,8 @@ const (
 	CheckTypeOracle CheckType = "oracle"
 	// CheckTypeGRPC performs gRPC health checks.
 	CheckTypeGRPC CheckType = "grpc"
+	// CheckTypeKafka performs Kafka cluster health checks.
+	CheckTypeKafka CheckType = "kafka"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -141,5 +143,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeMSSQL,
 		CheckTypeOracle,
 		CheckTypeGRPC,
+		CheckTypeKafka,
 	}
 }

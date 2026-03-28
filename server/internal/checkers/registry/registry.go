@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
@@ -98,6 +99,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkoracle.OracleChecker{}, true
 	case checkerdef.CheckTypeGRPC:
 		return &checkgrpc.GRPCChecker{}, true
+	case checkerdef.CheckTypeKafka:
+		return &checkkafka.KafkaChecker{}, true
 	default:
 		return nil, false
 	}
@@ -157,6 +160,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkoracle.OracleConfig{}, true
 	case checkerdef.CheckTypeGRPC:
 		return &checkgrpc.GRPCConfig{}, true
+	case checkerdef.CheckTypeKafka:
+		return &checkkafka.KafkaConfig{}, true
 	default:
 		return nil, false
 	}
