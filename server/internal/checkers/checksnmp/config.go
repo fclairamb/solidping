@@ -35,7 +35,7 @@ type SNMPConfig struct {
 
 // FromMap populates the configuration from a map.
 //
-//nolint:cyclop,gocognit // Configuration parsing requires checking multiple field types
+//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *SNMPConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap["host"].(string); ok {
 		c.Host = host
@@ -148,45 +148,16 @@ func (c *SNMPConfig) GetConfig() map[string]any {
 		"oid":  c.OID,
 	}
 
-	if c.Port != 0 && c.Port != defaultPort {
-		cfg["port"] = c.Port
-	}
-
-	if c.Version != "" && c.Version != defaultVersion {
-		cfg["version"] = c.Version
-	}
-
-	if c.Community != "" && c.Community != defaultCommunity {
-		cfg["community"] = c.Community
-	}
-
-	if c.ExpectedValue != "" {
-		cfg["expectedValue"] = c.ExpectedValue
-	}
-
-	if c.Operator != "" && c.Operator != defaultOperator {
-		cfg["operator"] = c.Operator
-	}
-
-	if c.Username != "" {
-		cfg["username"] = c.Username
-	}
-
-	if c.AuthProtocol != "" {
-		cfg["authProtocol"] = c.AuthProtocol
-	}
-
-	if c.AuthPassword != "" {
-		cfg["authPassword"] = c.AuthPassword
-	}
-
-	if c.PrivProtocol != "" {
-		cfg["privProtocol"] = c.PrivProtocol
-	}
-
-	if c.PrivPassword != "" {
-		cfg["privPassword"] = c.PrivPassword
-	}
+	setIfNonDefault(cfg, "port", c.Port, defaultPort)
+	setIfNonDefaultStr(cfg, "version", c.Version, defaultVersion)
+	setIfNonDefaultStr(cfg, "community", c.Community, defaultCommunity)
+	setIfNonEmpty(cfg, "expectedValue", c.ExpectedValue)
+	setIfNonDefaultStr(cfg, "operator", c.Operator, defaultOperator)
+	setIfNonEmpty(cfg, "username", c.Username)
+	setIfNonEmpty(cfg, "authProtocol", c.AuthProtocol)
+	setIfNonEmpty(cfg, "authPassword", c.AuthPassword)
+	setIfNonEmpty(cfg, "privProtocol", c.PrivProtocol)
+	setIfNonEmpty(cfg, "privPassword", c.PrivPassword)
 
 	if c.Timeout != 0 {
 		cfg["timeout"] = c.Timeout.String()
@@ -195,9 +166,25 @@ func (c *SNMPConfig) GetConfig() map[string]any {
 	return cfg
 }
 
+func setIfNonDefault(cfg map[string]any, key string, val, defaultVal int) {
+	if val != 0 && val != defaultVal {
+		cfg[key] = val
+	}
+}
+
+func setIfNonDefaultStr(cfg map[string]any, key, val, defaultVal string) {
+	if val != "" && val != defaultVal {
+		cfg[key] = val
+	}
+}
+
+func setIfNonEmpty(cfg map[string]any, key, val string) {
+	if val != "" {
+		cfg[key] = val
+	}
+}
+
 // Validate checks if the configuration is valid.
-//
-//nolint:cyclop // Validation requires checking multiple interdependent fields
 func (c *SNMPConfig) Validate() error {
 	if c.Host == "" {
 		return checkerdef.NewConfigError("host", "is required")

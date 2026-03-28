@@ -75,7 +75,7 @@ func (c *SNMPChecker) Execute(
 
 	defer func() { _ = client.Conn.Close() }()
 
-	return c.performGet(ctx, client, cfg, params, start)
+	return c.performGet(ctx, client, cfg, params, start), nil
 }
 
 // snmpParams holds resolved execution parameters with defaults applied.
@@ -208,10 +208,10 @@ func (c *SNMPChecker) performGet(
 	cfg *SNMPConfig,
 	params snmpParams,
 	start time.Time,
-) (*checkerdef.Result, error) {
+) *checkerdef.Result {
 	result, err := client.Get([]string{cfg.OID})
 	if err != nil {
-		return handleGetError(ctx, err, cfg, start), nil
+		return handleGetError(ctx, err, cfg, start)
 	}
 
 	if len(result.Variables) == 0 {
@@ -223,10 +223,10 @@ func (c *SNMPChecker) performGet(
 				"oid":   cfg.OID,
 				"error": "no variables returned",
 			},
-		}, nil
+		}
 	}
 
-	return buildSuccessResult(result.Variables[0], cfg, params, start), nil
+	return buildSuccessResult(result.Variables[0], cfg, params, start)
 }
 
 func buildSuccessResult(
@@ -268,36 +268,34 @@ func buildSuccessResult(
 }
 
 func formatPDUValue(pdu gosnmp.SnmpPDU) string {
-	switch pdu.Type {
-	case gosnmp.OctetString:
-		return string(pdu.Value.([]byte))
-	default:
-		return fmt.Sprintf("%v", pdu.Value)
+	if pdu.Type == gosnmp.OctetString {
+		if bytes, ok := pdu.Value.([]byte); ok {
+			return string(bytes)
+		}
 	}
+
+	return fmt.Sprintf("%v", pdu.Value)
 }
 
 func pduTypeName(pduType gosnmp.Asn1BER) string {
-	switch pduType {
-	case gosnmp.OctetString:
-		return "OctetString"
-	case gosnmp.Integer:
-		return "Integer"
-	case gosnmp.Counter32:
-		return "Counter32"
-	case gosnmp.Counter64:
-		return "Counter64"
-	case gosnmp.Gauge32:
-		return "Gauge32"
-	case gosnmp.TimeTicks:
-		return "TimeTicks"
-	case gosnmp.ObjectIdentifier:
-		return "OID"
-	default:
-		return "Unknown"
+	names := map[gosnmp.Asn1BER]string{
+		gosnmp.OctetString:      "OctetString",
+		gosnmp.Integer:          "Integer",
+		gosnmp.Counter32:        "Counter32",
+		gosnmp.Counter64:        "Counter64",
+		gosnmp.Gauge32:          "Gauge32",
+		gosnmp.TimeTicks:        "TimeTicks",
+		gosnmp.ObjectIdentifier: "OID",
+		gosnmp.IPAddress:        "IPAddress",
 	}
+
+	if name, ok := names[pduType]; ok {
+		return name
+	}
+
+	return "Unknown"
 }
 
-//nolint:cyclop // comparison logic requires handling multiple operators
 func compareValue(actual, expected, operator string) bool {
 	switch operator {
 	case "contains":
