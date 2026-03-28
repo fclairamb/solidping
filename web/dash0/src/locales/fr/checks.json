@@ -129,7 +129,9 @@
     "redis": "Redis",
     "redisDescription": "Vérifier la santé du serveur Redis",
     "mongodb": "MongoDB",
-    "mongodbDescription": "Vérifier la santé de la base de données MongoDB"
+    "mongodbDescription": "Vérifier la santé de la base de données MongoDB",
+    "mssql": "MSSQL",
+    "mssqlDescription": "Vérifier la santé de Microsoft SQL Server"
   },
   "intervals": {
     "10s": "10 secondes",

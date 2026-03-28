@@ -27,11 +27,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/api/client";
 import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql";
 
 function defaultPeriod(type: CheckType): string {
   if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" ? "01:00:00" : "00:01:00";
+  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" ? "01:00:00" : "00:01:00";
 }
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
@@ -55,6 +55,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "ftp", label: "FTP", description: "Check FTP server availability" },
   { value: "sftp", label: "SFTP", description: "Check SFTP server availability" },
   { value: "js", label: "JavaScript", description: "Run custom JavaScript monitoring scripts" },
+  { value: "mssql", label: "MSSQL", description: "Check Microsoft SQL Server health" },
 ];
 
 const intervalOptions = [
@@ -263,6 +264,7 @@ export function CheckForm({
         break;
       case "postgresql":
       case "mysql":
+      case "mssql":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (username) cfg.username = username;
@@ -398,6 +400,7 @@ export function CheckForm({
         break;
       case "postgresql":
       case "mysql":
+      case "mssql":
         if (!host) {
           setError("Host is required");
           return;
@@ -927,6 +930,7 @@ export function CheckForm({
         );
       case "postgresql":
       case "mysql":
+      case "mssql":
         return (
           <>
             <div className="space-y-2">

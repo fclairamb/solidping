@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
@@ -89,6 +90,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkredis.RedisChecker{}, true
 	case checkerdef.CheckTypeMongoDB:
 		return &checkmongodb.MongoDBChecker{}, true
+	case checkerdef.CheckTypeMSSQL:
+		return &checkmssql.MSSQLChecker{}, true
 	default:
 		return nil, false
 	}
@@ -142,6 +145,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkredis.RedisConfig{}, true
 	case checkerdef.CheckTypeMongoDB:
 		return &checkmongodb.MongoDBConfig{}, true
+	case checkerdef.CheckTypeMSSQL:
+		return &checkmssql.MSSQLConfig{}, true
 	default:
 		return nil, false
 	}

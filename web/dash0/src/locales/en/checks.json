@@ -129,7 +129,9 @@
     "redis": "Redis",
     "redisDescription": "Check Redis server health",
     "mongodb": "MongoDB",
-    "mongodbDescription": "Check MongoDB database health"
+    "mongodbDescription": "Check MongoDB database health",
+    "mssql": "MSSQL",
+    "mssqlDescription": "Check Microsoft SQL Server health"
   },
   "intervals": {
     "10s": "10 seconds",
