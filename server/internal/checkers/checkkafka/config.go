@@ -14,20 +14,18 @@ const (
 
 // KafkaConfig holds the configuration for Kafka cluster health checks.
 type KafkaConfig struct {
-	Brokers        []string      `json:"brokers"`
-	Topic          string        `json:"topic,omitempty"`
-	SASLMechanism  string        `json:"saslMechanism,omitempty"`
-	SASLUsername   string        `json:"saslUsername,omitempty"`
-	SASLPassword   string        `json:"saslPassword,omitempty"`
-	TLS            bool          `json:"tls,omitempty"`
-	TLSSkipVerify  bool          `json:"tlsSkipVerify,omitempty"`
-	Timeout        time.Duration `json:"timeout,omitempty"`
-	ProduceTest    bool          `json:"produceTest,omitempty"`
+	Brokers       []string      `json:"brokers"`
+	Topic         string        `json:"topic,omitempty"`
+	SASLMechanism string        `json:"saslMechanism,omitempty"`
+	SASLUsername  string        `json:"saslUsername,omitempty"`
+	SASLPassword  string        `json:"saslPassword,omitempty"`
+	TLS           bool          `json:"tls,omitempty"`
+	TLSSkipVerify bool          `json:"tlsSkipVerify,omitempty"`
+	Timeout       time.Duration `json:"timeout,omitempty"`
+	ProduceTest   bool          `json:"produceTest,omitempty"`
 }
 
 // FromMap populates the configuration from a map.
-//
-//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *KafkaConfig) FromMap(configMap map[string]any) error {
 	if err := c.parseBrokers(configMap); err != nil {
 		return err
@@ -45,11 +43,11 @@ func (c *KafkaConfig) FromMap(configMap map[string]any) error {
 }
 
 func (c *KafkaConfig) parseBrokers(configMap map[string]any) error {
-	switch v := configMap["brokers"].(type) {
+	switch brokerVal := configMap["brokers"].(type) {
 	case []any:
-		brokers := make([]string, 0, len(v))
+		brokers := make([]string, 0, len(brokerVal))
 
-		for _, b := range v {
+		for _, b := range brokerVal {
 			if s, ok := b.(string); ok {
 				brokers = append(brokers, s)
 			}
@@ -57,8 +55,8 @@ func (c *KafkaConfig) parseBrokers(configMap map[string]any) error {
 
 		c.Brokers = brokers
 	case string:
-		if v != "" {
-			c.Brokers = strings.Split(v, ",")
+		if brokerVal != "" {
+			c.Brokers = strings.Split(brokerVal, ",")
 		}
 	case nil:
 		// no brokers specified
@@ -207,9 +205,9 @@ func (c *KafkaConfig) Validate() error {
 func (c *KafkaConfig) validateSASL() error {
 	if c.SASLMechanism != "" {
 		validMechanisms := map[string]bool{
-			"PLAIN":          true,
-			"SCRAM-SHA-256":  true,
-			"SCRAM-SHA-512":  true,
+			"PLAIN":         true,
+			"SCRAM-SHA-256": true,
+			"SCRAM-SHA-512": true,
 		}
 
 		if !validMechanisms[c.SASLMechanism] {

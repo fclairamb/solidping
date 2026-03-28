@@ -128,7 +128,7 @@ func (c *KafkaChecker) buildSaramaConfig(cfg *KafkaConfig, timeout time.Duration
 		saramaCfg.Net.TLS.Enable = true
 		saramaCfg.Net.TLS.Config = &tls.Config{
 			MinVersion:         tls.VersionTLS12,
-			InsecureSkipVerify: cfg.TLSSkipVerify, //nolint:gosec // User-configurable option
+			InsecureSkipVerify: cfg.TLSSkipVerify,
 		}
 	}
 
@@ -152,12 +152,12 @@ func configureSASL(saramaCfg *sarama.Config, cfg *KafkaConfig) {
 	case "SCRAM-SHA-256":
 		saramaCfg.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA256
 		saramaCfg.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
-			return &scramClient{HashGeneratorFcn: sha256HashGenerator}
+			return &scramClient{hashGen: newSHA256Generator()}
 		}
 	case "SCRAM-SHA-512":
 		saramaCfg.Net.SASL.Mechanism = sarama.SASLTypeSCRAMSHA512
 		saramaCfg.Net.SASL.SCRAMClientGeneratorFunc = func() sarama.SCRAMClient {
-			return &scramClient{HashGeneratorFcn: sha512HashGenerator}
+			return &scramClient{hashGen: newSHA512Generator()}
 		}
 	}
 }
