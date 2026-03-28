@@ -6,6 +6,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkgameserver"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkgrpc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
@@ -101,6 +102,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkgrpc.GRPCChecker{}, true
 	case checkerdef.CheckTypeKafka:
 		return &checkkafka.KafkaChecker{}, true
+	case checkerdef.CheckTypeGameServer:
+		return &checkgameserver.GameServerChecker{}, true
 	default:
 		return nil, false
 	}
@@ -162,6 +165,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkgrpc.GRPCConfig{}, true
 	case checkerdef.CheckTypeKafka:
 		return &checkkafka.KafkaConfig{}, true
+	case checkerdef.CheckTypeGameServer:
+		return &checkgameserver.GameServerConfig{}, true
 	default:
 		return nil, false
 	}

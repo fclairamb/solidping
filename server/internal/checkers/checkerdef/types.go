@@ -96,6 +96,8 @@ const (
 	CheckTypeGRPC CheckType = "grpc"
 	// CheckTypeKafka performs Kafka cluster health checks.
 	CheckTypeKafka CheckType = "kafka"
+	// CheckTypeGameServer performs game server A2S query health checks.
+	CheckTypeGameServer CheckType = "gameserver"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -144,5 +146,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeOracle,
 		CheckTypeGRPC,
 		CheckTypeKafka,
+		CheckTypeGameServer,
 	}
 }

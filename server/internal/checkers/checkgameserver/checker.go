@@ -1,0 +1,154 @@
+package checkgameserver
+
+import (
+	"context"
+	"time"
+
+	"github.com/rumblefrog/go-a2s"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+)
+
+const microsecondsPerMilli = 1000.0
+
+// GameServerChecker implements the Checker interface for game server A2S checks.
+type GameServerChecker struct{}
+
+// Type returns the check type identifier.
+func (c *GameServerChecker) Type() checkerdef.CheckType {
+	return checkerdef.CheckTypeGameServer
+}
+
+// Validate checks if the configuration is valid.
+func (c *GameServerChecker) Validate(spec *checkerdef.CheckSpec) error {
+	cfg := &GameServerConfig{}
+	if err := cfg.FromMap(spec.Config); err != nil {
+		return err
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+
+	if spec.Name == "" {
+		spec.Name = cfg.resolveTarget()
+	}
+
+	if spec.Slug == "" {
+		spec.Slug = cfg.resolveSlug()
+	}
+
+	return nil
+}
+
+// Execute performs the game server A2S query and returns the result.
+func (c *GameServerChecker) Execute(
+	ctx context.Context,
+	config checkerdef.Config,
+) (*checkerdef.Result, error) {
+	cfg, ok := config.(*GameServerConfig)
+	if !ok {
+		return nil, ErrInvalidConfigType
+	}
+
+	start := time.Now()
+
+	metrics := map[string]any{}
+	output := map[string]any{
+		"host": cfg.Host,
+		"port": cfg.resolvePort(),
+	}
+
+	info, err := queryServer(cfg)
+	if err != nil {
+		if ctx.Err() != nil {
+			return &checkerdef.Result{
+				Status:   checkerdef.StatusTimeout,
+				Duration: time.Since(start),
+				Output:   map[string]any{"error": "query timeout"},
+			}, nil
+		}
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Output:   map[string]any{"error": "A2S query failed: " + err.Error()},
+		}, nil
+	}
+
+	metrics["query_time_ms"] = durationMs(time.Since(start))
+
+	return buildResult(cfg, info, start, metrics, output), nil
+}
+
+func queryServer(cfg *GameServerConfig) (*a2s.ServerInfo, error) {
+	client, err := a2s.NewClient(
+		cfg.resolveTarget(),
+		a2s.SetMaxPacketSize(14000),
+		a2s.TimeoutOption(cfg.resolveTimeout()),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.Close()
+
+	return client.QueryInfo()
+}
+
+func buildResult(
+	cfg *GameServerConfig,
+	info *a2s.ServerInfo,
+	start time.Time,
+	metrics map[string]any,
+	output map[string]any,
+) *checkerdef.Result {
+	metrics["players"] = int(info.Players)
+	metrics["maxPlayers"] = int(info.MaxPlayers)
+	metrics["bots"] = int(info.Bots)
+
+	output["serverName"] = info.Name
+	output["map"] = info.Map
+	output["game"] = info.Game
+	output["players"] = int(info.Players)
+	output["maxPlayers"] = int(info.MaxPlayers)
+	output["bots"] = int(info.Bots)
+	output["passwordProtected"] = info.Visibility == 1
+	output["vac"] = info.VAC == 1
+
+	// Check player count thresholds
+	if cfg.MinPlayers > 0 && int(info.Players) < cfg.MinPlayers {
+		output["error"] = "player count below minimum"
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   output,
+		}
+	}
+
+	if cfg.MaxPlayers > 0 && int(info.Players) > cfg.MaxPlayers {
+		output["error"] = "player count above maximum"
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   output,
+		}
+	}
+
+	metrics["total_time_ms"] = durationMs(time.Since(start))
+
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusUp,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   output,
+	}
+}
+
+func durationMs(duration time.Duration) float64 {
+	return float64(duration.Microseconds()) / microsecondsPerMilli
+}

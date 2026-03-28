@@ -137,7 +137,9 @@
     "grpc": "gRPC",
     "grpcDescription": "Vérifier la santé du service gRPC",
     "kafka": "Kafka",
-    "kafkaDescription": "Vérifier la santé du cluster Kafka"
+    "kafkaDescription": "Vérifier la santé du cluster Kafka",
+    "gameserver": "Serveur de jeu",
+    "gameserverDescription": "Surveiller un serveur de jeu via le protocole A2S"
   },
   "intervals": {
     "10s": "10 secondes",
