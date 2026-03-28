@@ -57,9 +57,9 @@ func (c *MQTTChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*MQTTConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*MQTTConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout
@@ -90,7 +90,7 @@ func (c *MQTTChecker) Execute(
 
 	client, ok := connectResult.Output["_client"].(mqtt.Client)
 	if !ok {
-		return nil, ErrInvalidConfigType
+		return nil, fmt.Errorf("unexpected client type in connect result")
 	}
 
 	defer client.Disconnect(0)

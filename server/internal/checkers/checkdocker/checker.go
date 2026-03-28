@@ -69,9 +69,9 @@ func (c *DockerChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*DockerConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*DockerConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.resolveTimeout()

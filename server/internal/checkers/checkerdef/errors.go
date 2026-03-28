@@ -5,6 +5,19 @@ import (
 	"fmt"
 )
 
+// AssertConfig performs a type assertion on a Config value, returning a typed
+// config or an error with descriptive type information.
+func AssertConfig[T Config](config Config) (T, error) {
+	cfg, ok := config.(T)
+	if !ok {
+		var zero T
+
+		return zero, fmt.Errorf("invalid config type: expected %T, got %T", zero, config)
+	}
+
+	return cfg, nil
+}
+
 // ConfigError represents an error specific to a configuration parameter.
 // It provides structured information about which parameter failed validation
 // and why, making it easier for API clients to display field-specific errors.

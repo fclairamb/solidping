@@ -93,9 +93,9 @@ func newExecParams(cfg *IMAPConfig) execParams {
 func (c *IMAPChecker) Execute(
 	ctx context.Context, config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*IMAPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*IMAPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

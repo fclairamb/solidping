@@ -54,9 +54,9 @@ func (c *KafkaChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*KafkaConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*KafkaConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

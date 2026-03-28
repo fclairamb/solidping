@@ -56,9 +56,9 @@ func (c *FTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:funlen // FTP protocol flow requires comprehensive logic
 func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*FTPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*FTPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout
@@ -92,8 +92,6 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	connectStart := time.Now()
 
 	var conn *ftp.ServerConn
-
-	var err error
 
 	dialOpts := []ftp.DialOption{
 		ftp.DialWithContext(ctx),

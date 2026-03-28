@@ -89,9 +89,9 @@ func (c *MSSQLChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*MSSQLConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*MSSQLConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

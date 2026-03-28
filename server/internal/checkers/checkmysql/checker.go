@@ -88,9 +88,9 @@ func (c *MySQLChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*MySQLConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*MySQLConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

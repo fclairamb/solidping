@@ -65,9 +65,9 @@ func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the UDP check and returns the result.
 func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*UDPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*UDPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

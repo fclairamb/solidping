@@ -1,14 +1,8 @@
 package checkdomain
 
-import (
-	"errors"
-)
+import "errors"
 
-var (
-	// ErrInvalidConfigType is returned when the config is not of the correct type.
-	ErrInvalidConfigType = errors.New("invalid config type")
-	errDomainRequired    = errors.New("domain is required")
-)
+var errDomainRequired = errors.New("domain is required")
 
 // DomainConfig defines the configuration for domain expiration checks.
 type DomainConfig struct {

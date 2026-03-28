@@ -56,9 +56,9 @@ func errorResult(domain string, duration time.Duration, errMsg string) *checkerd
 
 // Execute performs the domain expiration check and returns the result.
 func (c *DomainChecker) Execute(_ context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*DomainConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*DomainConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	start := time.Now()

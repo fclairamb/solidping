@@ -91,9 +91,9 @@ func (c *OracleChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*OracleConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*OracleConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

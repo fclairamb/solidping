@@ -62,9 +62,9 @@ func (c *TCPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the TCP connection check and returns the result.
 func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*TCPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*TCPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults

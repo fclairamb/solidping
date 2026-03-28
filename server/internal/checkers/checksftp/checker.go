@@ -53,9 +53,9 @@ func (c *SFTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:funlen // SFTP protocol flow requires comprehensive logic
 func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SFTPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SFTPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

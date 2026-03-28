@@ -69,9 +69,9 @@ func (c *WebSocketChecker) Validate(spec *checkerdef.CheckSpec) error {
 func (c *WebSocketChecker) Execute(
 	ctx context.Context, config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*WebSocketConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*WebSocketConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

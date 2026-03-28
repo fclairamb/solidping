@@ -56,9 +56,9 @@ func (c *GRPCChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*GRPCConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*GRPCConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.resolveTimeout()

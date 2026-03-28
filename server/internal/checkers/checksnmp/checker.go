@@ -54,9 +54,9 @@ func (c *SNMPChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SNMPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SNMPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := resolveDefaults(cfg)

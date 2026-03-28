@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
-	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -16,11 +15,7 @@ import (
 
 const microsecondsPerMilli = 1000.0
 
-var (
-	// ErrInvalidConfigType is returned when the config is not of the correct type.
-	ErrInvalidConfigType = errors.New("invalid config type")
-	errNoIPAddresses     = errors.New("no IP addresses found for host")
-)
+var errNoIPAddresses = fmt.Errorf("no IP addresses found for host")
 
 // SSLChecker implements the Checker interface for SSL certificate checks.
 type SSLChecker struct{}
@@ -173,9 +168,9 @@ func newExecParams(cfg *SSLConfig) execParams {
 
 // Execute performs the SSL certificate check and returns the result.
 func (c *SSLChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SSLConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SSLConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

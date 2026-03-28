@@ -47,9 +47,9 @@ func (c *BrowserChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*BrowserConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*BrowserConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.resolveTimeout()

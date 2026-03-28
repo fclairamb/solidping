@@ -61,9 +61,9 @@ func (c *SSHChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the SSH check.
 func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SSHConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SSHConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

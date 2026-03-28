@@ -88,9 +88,9 @@ func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:funlen,cyclop // DNS checking requires comprehensive logic for different record types
 func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*DNSConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*DNSConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults
@@ -113,8 +113,6 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	var resolvedIPs []string
 
 	var resolvedValues []string
-
-	var err error
 
 	switch recordType {
 	case "A":
