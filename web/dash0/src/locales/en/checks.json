@@ -123,7 +123,9 @@
     "heartbeat": "Heartbeat",
     "heartbeatDescription": "Receive heartbeat pings",
     "smtp": "SMTP",
-    "smtpDescription": "Check SMTP server connectivity"
+    "smtpDescription": "Check SMTP server connectivity",
+    "rabbitmq": "RabbitMQ",
+    "rabbitmqDescription": "Check RabbitMQ server health"
   },
   "intervals": {
     "10s": "10 seconds",
