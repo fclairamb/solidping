@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/uptrace/bunrouter"
@@ -29,8 +30,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/getsentry/sentry-go"
-
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
@@ -111,7 +110,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server instance.
 //
-//nolint:funlen // Server setup requires multiple service initializations
+//nolint:funlen,cyclop // Server setup requires multiple service initializations
 func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	var (
 		dbService db.Service

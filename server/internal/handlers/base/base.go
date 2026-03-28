@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"runtime"
 
+	"github.com/getsentry/sentry-go"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 )
 
@@ -159,4 +161,15 @@ func (h *HandlerBase) WriteInternalError(w http.ResponseWriter, err error) error
 		err,
 		0,
 	)
+}
+
+// WriteInternalErrorR writes a 500 internal server error response and reports
+// the error to Sentry if a hub is available on the request context.
+// Prefer this over WriteInternalError when you have access to the request.
+func (h *HandlerBase) WriteInternalErrorR(w http.ResponseWriter, r *http.Request, err error) error {
+	if hub := sentry.GetHubFromContext(r.Context()); hub != nil {
+		hub.CaptureException(err)
+	}
+
+	return h.WriteInternalError(w, err)
 }
