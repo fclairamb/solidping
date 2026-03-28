@@ -141,7 +141,9 @@
     "kafka": "Kafka",
     "kafkaDescription": "Check Kafka cluster health",
     "mqtt": "MQTT",
-    "mqttDescription": "Check MQTT broker connectivity"
+    "mqttDescription": "Check MQTT broker connectivity",
+    "gameserver": "Game Server",
+    "gameserverDescription": "Monitor game server via A2S protocol"
   },
   "intervals": {
     "10s": "10 seconds",

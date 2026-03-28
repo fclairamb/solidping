@@ -141,7 +141,9 @@
     "kafka": "Kafka",
     "kafkaDescription": "Vérifier la santé du cluster Kafka",
     "mqtt": "MQTT",
-    "mqttDescription": "Vérifier la connectivité du broker MQTT"
+    "mqttDescription": "Vérifier la connectivité du broker MQTT",
+    "gameserver": "Serveur de jeu",
+    "gameserverDescription": "Surveiller un serveur de jeu via le protocole A2S"
   },
   "intervals": {
     "10s": "10 secondes",

@@ -8,7 +8,6 @@ import {
   Calendar,
   Globe,
   BadgeCheck,
-  Languages,
   LogOut,
   Moon,
   Sun,
@@ -82,10 +81,6 @@ const testNavItems = [
   },
 ];
 
-const SUPPORTED_LANGUAGES = [
-  { code: "en", label: "English" },
-  { code: "fr", label: "Français" },
-];
 
 function getInitialTheme(): "light" | "dark" {
   const stored = localStorage.getItem("theme");
@@ -127,7 +122,6 @@ export function AppSidebar() {
   const { t } = useTranslation();
   const { t: tNav } = useTranslation("nav");
   const { user, logout, organizations, switchOrg } = useAuth();
-  const { i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const params = useParams({ strict: false });
@@ -147,9 +141,6 @@ export function AppSidebar() {
     navigate({ to: "/orgs/$org", params: { org: orgSlug } });
   };
 
-  const handleLanguageChange = (langCode: string) => {
-    i18n.changeLanguage(langCode);
-  };
 
   return (
     <Sidebar data-testid="app-sidebar">
@@ -306,21 +297,6 @@ export function AppSidebar() {
                       ))}
                   </>
                 )}
-                <DropdownMenuSeparator />
-                <DropdownMenuLabel className="text-xs text-muted-foreground">
-                  {t("language")}
-                </DropdownMenuLabel>
-                {SUPPORTED_LANGUAGES.map((lang) => (
-                  <DropdownMenuItem
-                    key={lang.code}
-                    onClick={() => handleLanguageChange(lang.code)}
-                    data-testid={`lang-${lang.code}`}
-                  >
-                    <Languages className="mr-2 h-4 w-4" />
-                    {lang.label}
-                    {i18n.language?.startsWith(lang.code) && " \u2713"}
-                  </DropdownMenuItem>
-                ))}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleLogout} data-testid="logout-button">
                   <LogOut className="mr-2 h-4 w-4" />
