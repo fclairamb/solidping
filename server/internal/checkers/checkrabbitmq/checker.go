@@ -129,15 +129,15 @@ func (c *RabbitMQChecker) dialAndCheck(
 
 	metrics["connection_time_ms"] = durationMs(time.Since(start))
 
-	ch, err := conn.Channel()
+	channel, err := conn.Channel()
 	if err != nil {
 		return handleAMQPError(ctx, err, start, "channel open failed", output)
 	}
 
-	defer func() { _ = ch.Close() }()
+	defer func() { _ = channel.Close() }()
 
 	if cfg.Queue != "" {
-		if result := c.checkQueue(ctx, ch, cfg.Queue, start, metrics, output); result != nil {
+		if result := c.checkQueue(ctx, channel, cfg.Queue, start, metrics, output); result != nil {
 			return result
 		}
 	}
@@ -154,20 +154,20 @@ func (c *RabbitMQChecker) dialAndCheck(
 
 func (c *RabbitMQChecker) checkQueue(
 	ctx context.Context,
-	ch *amqp.Channel,
+	channel *amqp.Channel,
 	queue string,
 	start time.Time,
 	metrics map[string]any,
 	output map[string]any,
 ) *checkerdef.Result {
-	q, err := ch.QueueInspect(queue)
+	queueInfo, err := channel.QueueDeclarePassive(queue, false, false, false, false, nil)
 	if err != nil {
 		return handleAMQPError(ctx, err, start, "queue inspect failed", output)
 	}
 
 	output["queue"] = queue
-	metrics["queue_messages"] = q.Messages
-	metrics["queue_consumers"] = q.Consumers
+	metrics["queue_messages"] = queueInfo.Messages
+	metrics["queue_consumers"] = queueInfo.Consumers
 
 	return nil
 }

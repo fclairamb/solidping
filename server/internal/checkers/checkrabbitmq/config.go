@@ -38,8 +38,6 @@ type RabbitMQConfig struct {
 }
 
 // FromMap populates the configuration from a map.
-//
-//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *RabbitMQConfig) FromMap(configMap map[string]any) error {
 	if err := c.parseStringFields(configMap); err != nil {
 		return err
@@ -225,12 +223,12 @@ func (c *RabbitMQConfig) buildAMQPURI() string {
 		vhost = defaultVhost
 	}
 
-	u := &url.URL{
+	amqpURL := &url.URL{
 		Scheme: scheme,
 		User:   url.UserPassword(c.Username, c.Password),
 		Host:   fmt.Sprintf("%s:%d", c.Host, port),
 		Path:   vhost,
 	}
 
-	return u.String()
+	return amqpURL.String()
 }
