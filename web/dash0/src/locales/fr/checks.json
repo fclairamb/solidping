@@ -147,7 +147,9 @@
     "rabbitmq": "RabbitMQ",
     "rabbitmqDescription": "Vérifier la santé du serveur RabbitMQ"
     "snmp": "SNMP",
-    "snmpDescription": "Surveiller les appareils via SNMP"
+    "snmpDescription": "Surveiller les appareils via SNMP",
+    "docker": "Docker",
+    "dockerDescription": "Surveiller la santé des conteneurs Docker"
   },
   "intervals": {
     "10s": "10 secondes",

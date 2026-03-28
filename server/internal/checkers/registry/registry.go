@@ -3,6 +3,7 @@ package registry
 
 import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
@@ -113,6 +114,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkrabbitmq.RabbitMQChecker{}, true
 	case checkerdef.CheckTypeSNMP:
 		return &checksnmp.SNMPChecker{}, true
+	case checkerdef.CheckTypeDocker:
+		return &checkdocker.DockerChecker{}, true
 	default:
 		return nil, false
 	}
@@ -182,6 +185,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkrabbitmq.RabbitMQConfig{}, true
 	case checkerdef.CheckTypeSNMP:
 		return &checksnmp.SNMPConfig{}, true
+	case checkerdef.CheckTypeDocker:
+		return &checkdocker.DockerConfig{}, true
 	default:
 		return nil, false
 	}

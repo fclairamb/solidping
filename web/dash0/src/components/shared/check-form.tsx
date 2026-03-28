@@ -27,26 +27,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ApiError } from "@/api/client";
 import type { Check, CheckGroup, RegionDefinition } from "@/api/hooks";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker";
 
 function defaultPeriod(type: CheckType): string {
   if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" || type === "oracle" || type === "grpc" || type === "kafka" || type === "mqtt" ? "01:00:00" : "00:01:00";
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "gameserver";
-
-function defaultPeriod(type: CheckType): string {
-  if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" || type === "oracle" || type === "grpc" || type === "kafka" || type === "gameserver" ? "01:00:00" : "00:01:00";
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js" | "rabbitmq";
-
-function defaultPeriod(type: CheckType): string {
-  if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" || type === "rabbitmq" ? "01:00:00" : "00:01:00";
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js" | "snmp";
-
-function defaultPeriod(type: CheckType): string {
-  if (type === "domain") return "24:00:00";
-  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" || type === "snmp" ? "01:00:00" : "00:01:00";
+  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" || type === "oracle" || type === "grpc" || type === "kafka" || type === "mqtt" || type === "gameserver" || type === "rabbitmq" || type === "snmp" || type === "docker" ? "01:00:00" : "00:01:00";
 }
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
@@ -78,6 +63,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "gameserver", label: "Game Server", description: "Monitor game server via A2S protocol" },
   { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
+  { value: "docker", label: "Docker", description: "Monitor Docker container health" },
 ];
 
 const intervalOptions = [
@@ -249,6 +235,12 @@ export function CheckForm({
   );
   const [produceTest, setProduceTest] = useState(
     getConfigField(initialData?.config, "produceTest") === "true"
+  const [containerName, setContainerName] = useState(
+    getConfigField(initialData?.config, "containerName")
+  );
+  const [containerId, setContainerId] = useState(
+    getConfigField(initialData?.config, "containerId")
+  );
   const [oid, setOid] = useState(
     getConfigField(initialData?.config, "oid")
   );
@@ -390,13 +382,17 @@ export function CheckForm({
         if (expectedValue) cfg.expectedValue = expectedValue;
         if (snmpOperator && snmpOperator !== "equals") cfg.operator = snmpOperator;
         break;
+      case "docker":
+        if (containerName) cfg.containerName = containerName;
+        if (containerId) cfg.containerId = containerId;
+        if (host) cfg.host = host;
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
-    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField]);
-    startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script, vhost, queue]);
-    oid, community, expectedValue, snmpOperator]);
+    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField,
+    vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -604,6 +600,15 @@ export function CheckForm({
         if (community) config.community = community;
         if (expectedValue) config.expectedValue = expectedValue;
         if (snmpOperator && snmpOperator !== "equals") config.operator = snmpOperator;
+        break;
+      case "docker":
+        if (!containerName && !containerId) {
+          setError("Container name or ID is required");
+          return;
+        }
+        if (containerName) config.containerName = containerName;
+        if (containerId) config.containerId = containerId;
+        if (host) config.host = host;
         break;
       case "heartbeat":
         // No config fields needed - token is auto-generated by the backend
@@ -1586,6 +1591,51 @@ export function CheckForm({
                   </SelectContent>
                 </Select>
               </div>
+            </div>
+          </>
+        );
+      case "docker":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="containerName">Container Name</Label>
+              <Input
+                id="containerName"
+                type="text"
+                placeholder="postgres"
+                value={containerName}
+                onChange={(e) => setContainerName(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "containerName") && "border-destructive")}
+                data-testid="check-container-name-input"
+              />
+              {getFieldError(fieldErrors, "containerName") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "containerName")}</p>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="containerId">Container ID (optional, alternative to name)</Label>
+              <Input
+                id="containerId"
+                type="text"
+                placeholder="abc123def456"
+                value={containerId}
+                onChange={(e) => setContainerId(e.target.value)}
+                data-testid="check-container-id-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="host">Docker Host (optional)</Label>
+              <Input
+                id="host"
+                type="text"
+                placeholder="unix:///var/run/docker.sock"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                data-testid="check-host-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                Default: unix:///var/run/docker.sock. Use tcp://host:port for remote Docker daemons.
+              </p>
             </div>
           </>
         );
