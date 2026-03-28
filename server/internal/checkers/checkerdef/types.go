@@ -106,6 +106,8 @@ const (
 	CheckTypeSNMP CheckType = "snmp"
 	// CheckTypeDocker performs Docker container health checks.
 	CheckTypeDocker CheckType = "docker"
+	// CheckTypeBrowser performs headless Chrome browser health checks.
+	CheckTypeBrowser CheckType = "browser"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -159,5 +161,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeRabbitMQ,
 		CheckTypeSNMP,
 		CheckTypeDocker,
+		CheckTypeBrowser,
 	}
 }

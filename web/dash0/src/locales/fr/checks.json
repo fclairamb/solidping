@@ -149,7 +149,9 @@
     "snmp": "SNMP",
     "snmpDescription": "Surveiller les appareils via SNMP",
     "docker": "Docker",
-    "dockerDescription": "Surveiller la santé des conteneurs Docker"
+    "dockerDescription": "Surveiller la santé des conteneurs Docker",
+    "browser": "Navigateur",
+    "browserDescription": "Surveiller les pages avec Chrome headless"
   },
   "intervals": {
     "10s": "10 secondes",

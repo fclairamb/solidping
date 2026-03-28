@@ -2,6 +2,7 @@
 package registry
 
 import (
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
@@ -116,6 +117,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksnmp.SNMPChecker{}, true
 	case checkerdef.CheckTypeDocker:
 		return &checkdocker.DockerChecker{}, true
+	case checkerdef.CheckTypeBrowser:
+		return &checkbrowser.BrowserChecker{}, true
 	default:
 		return nil, false
 	}
@@ -187,6 +190,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksnmp.SNMPConfig{}, true
 	case checkerdef.CheckTypeDocker:
 		return &checkdocker.DockerConfig{}, true
+	case checkerdef.CheckTypeBrowser:
+		return &checkbrowser.BrowserConfig{}, true
 	default:
 		return nil, false
 	}
