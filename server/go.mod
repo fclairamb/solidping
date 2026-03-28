@@ -11,6 +11,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.0
+	github.com/gosnmp/gosnmp v1.43.2
 	github.com/jedib0t/go-pretty/v6 v6.7.8
 	github.com/jlaffaye/ftp v0.2.0
 	github.com/knadh/koanf/parsers/json v1.0.0

@@ -146,6 +146,8 @@
     "gameserverDescription": "Surveiller un serveur de jeu via le protocole A2S"
     "rabbitmq": "RabbitMQ",
     "rabbitmqDescription": "Vérifier la santé du serveur RabbitMQ"
+    "snmp": "SNMP",
+    "snmpDescription": "Surveiller les appareils via SNMP"
   },
   "intervals": {
     "10s": "10 secondes",

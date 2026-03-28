@@ -102,6 +102,8 @@ const (
 	CheckTypeGameServer CheckType = "gameserver"
 	// CheckTypeRabbitMQ performs RabbitMQ health checks.
 	CheckTypeRabbitMQ CheckType = "rabbitmq"
+	// CheckTypeSNMP performs SNMP health checks.
+	CheckTypeSNMP CheckType = "snmp"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -153,5 +155,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeMQTT,
 		CheckTypeGameServer,
 		CheckTypeRabbitMQ,
+		CheckTypeSNMP,
 	}
 }
