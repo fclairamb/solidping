@@ -105,7 +105,9 @@
     "urlRequired": "L'URL est requise",
     "hostRequired": "L'hôte est requis",
     "portRequired": "Le port est requis",
-    "domainRequired": "Le domaine est requis"
+    "domainRequired": "Le domaine est requis",
+    "topic": "Sujet",
+    "tls": "TLS"
   },
   "types": {
     "http": "HTTP",
@@ -137,7 +139,9 @@
     "grpc": "gRPC",
     "grpcDescription": "Vérifier la santé du service gRPC",
     "kafka": "Kafka",
-    "kafkaDescription": "Vérifier la santé du cluster Kafka"
+    "kafkaDescription": "Vérifier la santé du cluster Kafka",
+    "mqtt": "MQTT",
+    "mqttDescription": "Vérifier la connectivité du broker MQTT"
   },
   "intervals": {
     "10s": "10 secondes",

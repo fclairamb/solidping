@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
@@ -101,6 +102,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkgrpc.GRPCChecker{}, true
 	case checkerdef.CheckTypeKafka:
 		return &checkkafka.KafkaChecker{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTChecker{}, true
 	default:
 		return nil, false
 	}
@@ -162,6 +165,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkgrpc.GRPCConfig{}, true
 	case checkerdef.CheckTypeKafka:
 		return &checkkafka.KafkaConfig{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTConfig{}, true
 	default:
 		return nil, false
 	}
