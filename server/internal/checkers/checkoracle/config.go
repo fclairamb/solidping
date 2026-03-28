@@ -24,7 +24,7 @@ type OracleConfig struct {
 	Port        int           `json:"port,omitempty"`
 	Username    string        `json:"username"`
 	Password    string        `json:"password,omitempty"`
-	ServiceName string        `json:"service_name,omitempty"`
+	ServiceName string        `json:"serviceName,omitempty"`
 	SID         string        `json:"sid,omitempty"`
 	Timeout     time.Duration `json:"timeout,omitempty"`
 	Query       string        `json:"query,omitempty"`
@@ -60,10 +60,10 @@ func (c *OracleConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
-	if serviceName, ok := configMap["service_name"].(string); ok {
+	if serviceName, ok := configMap["serviceName"].(string); ok {
 		c.ServiceName = serviceName
-	} else if configMap["service_name"] != nil {
-		return checkerdef.NewConfigError("service_name", "must be a string")
+	} else if configMap["serviceName"] != nil {
+		return checkerdef.NewConfigError("serviceName", "must be a string")
 	}
 
 	if sid, ok := configMap["sid"].(string); ok {
@@ -108,7 +108,7 @@ func (c *OracleConfig) GetConfig() map[string]any {
 	}
 
 	if c.ServiceName != "" && c.ServiceName != defaultServiceName {
-		cfg["service_name"] = c.ServiceName
+		cfg["serviceName"] = c.ServiceName
 	}
 
 	if c.SID != "" {
@@ -141,7 +141,7 @@ func (c *OracleConfig) Validate() error {
 	}
 
 	if c.ServiceName != "" && c.SID != "" {
-		return checkerdef.NewConfigError("service_name", "cannot specify both service_name and sid")
+		return checkerdef.NewConfigError("serviceName", "cannot specify both service_name and sid")
 	}
 
 	if c.Timeout != 0 && (c.Timeout <= 0 || c.Timeout > maxTimeout) {
