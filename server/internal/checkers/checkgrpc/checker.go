@@ -3,7 +3,6 @@ package checkgrpc
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"strings"
 	"time"
 
@@ -53,8 +52,6 @@ func (c *GRPCChecker) Validate(spec *checkerdef.CheckSpec) error {
 }
 
 // Execute performs the gRPC health check and returns the result.
-//
-//nolint:cyclop // Health check logic requires multiple branches
 func (c *GRPCChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
@@ -76,72 +73,89 @@ func (c *GRPCChecker) Execute(
 	output := map[string]any{
 		"host": cfg.Host,
 		"port": cfg.resolvePort(),
+		"tls":  cfg.TLS,
 	}
 
 	if cfg.ServiceName != "" {
-		output["service_name"] = cfg.ServiceName
+		output["serviceName"] = cfg.ServiceName
 	}
 
-	output["tls"] = cfg.TLS
+	conn, result := c.connect(cfg, target, start)
+	if result != nil {
+		return result, nil
+	}
 
-	// Build dial options
+	defer func() { _ = conn.Close() }()
+
+	metrics["connection_time_ms"] = durationMs(time.Since(start))
+
+	return c.checkHealth(ctx, conn, cfg, start, metrics, output), nil
+}
+
+func (c *GRPCChecker) connect(
+	cfg *GRPCConfig,
+	target string,
+	start time.Time,
+) (*grpc.ClientConn, *checkerdef.Result) {
 	var dialOpts []grpc.DialOption
 
 	if cfg.TLS {
 		tlsCfg := &tls.Config{
-			InsecureSkipVerify: cfg.TLSSkipVerify, //nolint:gosec // User-configurable TLS verification
+			MinVersion:         tls.VersionTLS12,
+			InsecureSkipVerify: cfg.TLSSkipVerify,
 		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsCfg)))
 	} else {
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
-	// Connect
 	conn, err := grpc.NewClient(target, dialOpts...)
 	if err != nil {
-		return &checkerdef.Result{
+		return nil, &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
 			Output:   map[string]any{"error": "failed to create client: " + err.Error()},
-		}, nil
+		}
 	}
 
-	defer func() { _ = conn.Close() }()
+	return conn, nil
+}
 
-	connectTime := time.Since(start)
-	metrics["connection_time_ms"] = durationMs(connectTime)
-
-	// Health check
+func (c *GRPCChecker) checkHealth(
+	ctx context.Context,
+	conn *grpc.ClientConn,
+	cfg *GRPCConfig,
+	start time.Time,
+	metrics map[string]any,
+	output map[string]any,
+) *checkerdef.Result {
 	healthClient := healthpb.NewHealthClient(conn)
 	rpcStart := time.Now()
 
 	resp, err := healthClient.Check(ctx, &healthpb.HealthCheckRequest{
 		Service: cfg.ServiceName,
 	})
-
 	if err != nil {
-		return handleRPCError(ctx, err, start, metrics, output), nil
+		return handleRPCError(ctx, err, start, metrics, output)
 	}
 
 	metrics["rpc_time_ms"] = durationMs(time.Since(rpcStart))
 	metrics["total_time_ms"] = durationMs(time.Since(start))
 
 	servingStatus := resp.GetStatus().String()
-	output["serving_status"] = servingStatus
+	output["servingStatus"] = servingStatus
 
-	// Check serving status
 	if resp.GetStatus() != healthpb.HealthCheckResponse_SERVING {
-		output["error"] = fmt.Sprintf("service status: %s", servingStatus)
+		output["error"] = "service status: " + servingStatus
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output:   output,
-		}, nil
+		}
 	}
 
-	// Keyword check
 	if cfg.Keyword != "" {
 		found := strings.Contains(servingStatus, cfg.Keyword)
 		if cfg.InvertKeyword {
@@ -156,7 +170,7 @@ func (c *GRPCChecker) Execute(
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output:   output,
-			}, nil
+			}
 		}
 	}
 
@@ -165,7 +179,7 @@ func (c *GRPCChecker) Execute(
 		Duration: time.Since(start),
 		Metrics:  metrics,
 		Output:   output,
-	}, nil
+	}
 }
 
 func handleRPCError(
