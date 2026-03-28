@@ -133,7 +133,9 @@
     "mssql": "MSSQL",
     "mssqlDescription": "Check Microsoft SQL Server health",
     "oracle": "Oracle",
-    "oracleDescription": "Check Oracle Database health"
+    "oracleDescription": "Check Oracle Database health",
+    "grpc": "gRPC",
+    "grpcDescription": "Check gRPC service health"
   },
   "intervals": {
     "10s": "10 seconds",

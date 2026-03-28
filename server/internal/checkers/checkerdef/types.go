@@ -92,6 +92,8 @@ const (
 	CheckTypeMSSQL CheckType = "mssql"
 	// CheckTypeOracle performs Oracle Database health checks.
 	CheckTypeOracle CheckType = "oracle"
+	// CheckTypeGRPC performs gRPC health checks.
+	CheckTypeGRPC CheckType = "grpc"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -138,5 +140,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeMongoDB,
 		CheckTypeMSSQL,
 		CheckTypeOracle,
+		CheckTypeGRPC,
 	}
 }
