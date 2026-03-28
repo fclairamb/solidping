@@ -144,6 +144,8 @@
     "mqttDescription": "Check MQTT broker connectivity",
     "gameserver": "Game Server",
     "gameserverDescription": "Monitor game server via A2S protocol"
+    "rabbitmq": "RabbitMQ",
+    "rabbitmqDescription": "Check RabbitMQ server health"
   },
   "intervals": {
     "10s": "10 seconds",

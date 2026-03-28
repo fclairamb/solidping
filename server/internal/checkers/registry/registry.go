@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -107,6 +108,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkmqtt.MQTTChecker{}, true
 	case checkerdef.CheckTypeGameServer:
 		return &checkgameserver.GameServerChecker{}, true
+	case checkerdef.CheckTypeRabbitMQ:
+		return &checkrabbitmq.RabbitMQChecker{}, true
 	default:
 		return nil, false
 	}
@@ -172,6 +175,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkmqtt.MQTTConfig{}, true
 	case checkerdef.CheckTypeGameServer:
 		return &checkgameserver.GameServerConfig{}, true
+	case checkerdef.CheckTypeRabbitMQ:
+		return &checkrabbitmq.RabbitMQConfig{}, true
 	default:
 		return nil, false
 	}

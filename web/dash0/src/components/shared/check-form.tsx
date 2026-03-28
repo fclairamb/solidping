@@ -37,6 +37,11 @@ type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain
 function defaultPeriod(type: CheckType): string {
   if (type === "domain") return "24:00:00";
   return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "mysql" || type === "redis" || type === "mongodb" || type === "ftp" || type === "sftp" || type === "js" || type === "mssql" || type === "oracle" || type === "grpc" || type === "kafka" || type === "gameserver" ? "01:00:00" : "00:01:00";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js" | "rabbitmq";
+
+function defaultPeriod(type: CheckType): string {
+  if (type === "domain") return "24:00:00";
+  return type === "dns" || type === "ssl" || type === "smtp" || type === "pop3" || type === "imap" || type === "websocket" || type === "postgresql" || type === "ftp" || type === "sftp" || type === "js" || type === "rabbitmq" ? "01:00:00" : "00:01:00";
 }
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
@@ -66,6 +71,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "kafka", label: "Kafka", description: "Check Kafka cluster health" },
   { value: "mqtt", label: "MQTT", description: "Check MQTT broker connectivity" },
   { value: "gameserver", label: "Game Server", description: "Monitor game server via A2S protocol" },
+  { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
 ];
 
 const intervalOptions = [
@@ -206,6 +212,12 @@ export function CheckForm({
   const [query, setQuery] = useState(
     getConfigField(initialData?.config, "query")
   );
+  const [vhost, setVhost] = useState(
+    getConfigField(initialData?.config, "vhost")
+  );
+  const [queue, setQueue] = useState(
+    getConfigField(initialData?.config, "queue")
+  );
   const [script, setScript] = useState(
     getConfigField(initialData?.config, "script")
   );
@@ -313,11 +325,15 @@ export function CheckForm({
         if (database) cfg.database = parseInt(database, 10);
         break;
       case "mongodb":
+      case "rabbitmq":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (username) cfg.username = username;
         if (password) cfg.password = password;
         if (database) cfg.database = database;
+        if (vhost) cfg.vhost = vhost;
+        if (queue) cfg.queue = queue;
+        if (tlsVerify) cfg.tls = true;
         break;
       case "js":
         if (script) cfg.script = script;
@@ -355,6 +371,7 @@ export function CheckForm({
   }, [type, url, host, port, domain, method, expectedStatus, username, password,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField]);
+    startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script, vhost, queue]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -481,6 +498,7 @@ export function CheckForm({
         if (query) config.query = query;
         break;
       case "redis":
+      case "rabbitmq":
         if (!host) {
           setError("Host is required");
           return;
@@ -493,6 +511,8 @@ export function CheckForm({
       case "mongodb":
         if (!host) {
           setError("Host is required");
+        if (!username) {
+          setError("Username is required");
           return;
         }
         config.host = host;
@@ -500,6 +520,11 @@ export function CheckForm({
         if (username) config.username = username;
         if (password) config.password = password;
         if (database) config.database = database;
+        config.username = username;
+        if (password) config.password = password;
+        if (vhost) config.vhost = vhost;
+        if (queue) config.queue = queue;
+        if (tlsVerify) config.tls = true;
         break;
       case "js":
         if (!script) {
@@ -1107,6 +1132,7 @@ export function CheckForm({
           </>
         );
       case "redis":
+      case "rabbitmq":
         return (
           <>
             <div className="space-y-2">
@@ -1116,6 +1142,7 @@ export function CheckForm({
                   id="host"
                   type="text"
                   placeholder="redis.example.com"
+                  placeholder="rabbitmq.example.com"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   className="flex-1"
@@ -1125,6 +1152,7 @@ export function CheckForm({
                   id="port"
                   type="number"
                   placeholder="6379"
+                  placeholder="5672"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className="w-24"
@@ -1188,6 +1216,11 @@ export function CheckForm({
               <Input
                 id="username"
                 type="text"
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="guest"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 data-testid="check-username-input"
@@ -1213,6 +1246,37 @@ export function CheckForm({
                 onChange={(e) => setDatabase(e.target.value)}
                 data-testid="check-database-input"
               />
+            </div>
+              <Label htmlFor="vhost">Virtual Host (optional)</Label>
+              <Input
+                id="vhost"
+                type="text"
+                placeholder="/"
+                value={vhost}
+                onChange={(e) => setVhost(e.target.value)}
+                data-testid="check-vhost-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="queue">Queue (optional)</Label>
+              <Input
+                id="queue"
+                type="text"
+                placeholder="my-queue"
+                value={queue}
+                onChange={(e) => setQueue(e.target.value)}
+                data-testid="check-queue-input"
+              />
+            </div>
+            <div className="space-y-3">
+              <label className="flex items-center gap-2">
+                <Checkbox
+                  checked={tlsVerify}
+                  onCheckedChange={(v) => setTlsVerify(v === true)}
+                  data-testid="check-tls-checkbox"
+                />
+                <span className="text-sm">Use TLS</span>
+              </label>
             </div>
           </>
         );

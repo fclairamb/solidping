@@ -100,6 +100,8 @@ const (
 	CheckTypeMQTT CheckType = "mqtt"
 	// CheckTypeGameServer performs game server A2S query health checks.
 	CheckTypeGameServer CheckType = "gameserver"
+	// CheckTypeRabbitMQ performs RabbitMQ health checks.
+	CheckTypeRabbitMQ CheckType = "rabbitmq"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -150,5 +152,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeKafka,
 		CheckTypeMQTT,
 		CheckTypeGameServer,
+		CheckTypeRabbitMQ,
 	}
 }
