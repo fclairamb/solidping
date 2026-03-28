@@ -1239,14 +1239,14 @@ export function CheckForm({
             </div>
 
             {/* Sample config loader - button that fetches and shows dropdown */}
-            {!isEdit && (
+            {mode === "create" && (
               <div className="space-y-2">
                 {!showSamples ? (
                   <Button
                     type="button"
-                    variant="outline"
-                    size="sm"
+                    variant="secondary"
                     disabled={isFetchingSamples}
+                    className="w-full"
                     onClick={async () => {
                       const result = await fetchSamples();
                       if (result.data && result.data.length > 0) {
@@ -1256,7 +1256,7 @@ export function CheckForm({
                     data-testid="check-load-template-button"
                   >
                     {isFetchingSamples ? (
-                      <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading...</>
+                      <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading templates...</>
                     ) : (
                       "Load from template"
                     )}
