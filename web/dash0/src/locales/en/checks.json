@@ -135,7 +135,9 @@
     "oracle": "Oracle",
     "oracleDescription": "Check Oracle Database health",
     "grpc": "gRPC",
-    "grpcDescription": "Check gRPC service health"
+    "grpcDescription": "Check gRPC service health",
+    "kafka": "Kafka",
+    "kafkaDescription": "Check Kafka cluster health"
   },
   "intervals": {
     "10s": "10 seconds",
