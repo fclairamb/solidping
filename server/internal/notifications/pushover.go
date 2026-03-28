@@ -232,12 +232,12 @@ func (s *PushoverSender) buildResolvedBody(payload *Payload, checkName string) s
 }
 
 func (s *PushoverSender) buildEscalatedBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&b, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&b, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
-	fmt.Fprintf(&b, "<b>Duration:</b> %s", formatDuration(time.Since(payload.Incident.StartedAt)))
+	fmt.Fprintf(&builder, "<b>Check:</b> %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "<b>Cause:</b> %s\n", getFailureReason(payload.Incident))
+	fmt.Fprintf(&builder, "<b>Failures:</b> %d\n", payload.Incident.FailureCount)
+	fmt.Fprintf(&builder, "<b>Duration:</b> %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
-	return b.String()
+	return builder.String()
 }

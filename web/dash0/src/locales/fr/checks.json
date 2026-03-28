@@ -143,9 +143,9 @@
     "mqtt": "MQTT",
     "mqttDescription": "Vérifier la connectivité du broker MQTT",
     "gameserver": "Serveur de jeu",
-    "gameserverDescription": "Surveiller un serveur de jeu via le protocole A2S"
+    "gameserverDescription": "Surveiller un serveur de jeu via le protocole A2S",
     "rabbitmq": "RabbitMQ",
-    "rabbitmqDescription": "Vérifier la santé du serveur RabbitMQ"
+    "rabbitmqDescription": "Vérifier la santé du serveur RabbitMQ",
     "snmp": "SNMP",
     "snmpDescription": "Surveiller les appareils via SNMP",
     "docker": "Docker",

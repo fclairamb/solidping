@@ -248,6 +248,7 @@ export function CheckForm({
   );
   const [produceTest, setProduceTest] = useState(
     getConfigField(initialData?.config, "produceTest") === "true"
+  );
   const [containerName, setContainerName] = useState(
     getConfigField(initialData?.config, "containerName")
   );
@@ -353,12 +354,17 @@ export function CheckForm({
         if (database) cfg.database = parseInt(database, 10);
         break;
       case "mongodb":
-      case "rabbitmq":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (username) cfg.username = username;
         if (password) cfg.password = password;
         if (database) cfg.database = database;
+        break;
+      case "rabbitmq":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (username) cfg.username = username;
+        if (password) cfg.password = password;
         if (vhost) cfg.vhost = vhost;
         if (queue) cfg.queue = queue;
         if (tlsVerify) cfg.tls = true;
@@ -388,11 +394,13 @@ export function CheckForm({
         if (password) cfg.password = password;
         if (topic) cfg.topic = topic;
         if (tls) cfg.tls = true;
+        break;
       case "gameserver":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (minPlayers) cfg.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) cfg.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
       case "snmp":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
@@ -544,7 +552,6 @@ export function CheckForm({
         if (query) config.query = query;
         break;
       case "redis":
-      case "rabbitmq":
         if (!host) {
           setError("Host is required");
           return;
@@ -557,8 +564,6 @@ export function CheckForm({
       case "mongodb":
         if (!host) {
           setError("Host is required");
-        if (!username) {
-          setError("Username is required");
           return;
         }
         config.host = host;
@@ -566,6 +571,18 @@ export function CheckForm({
         if (username) config.username = username;
         if (password) config.password = password;
         if (database) config.database = database;
+        break;
+      case "rabbitmq":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        if (!username) {
+          setError("Username is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
         config.username = username;
         if (password) config.password = password;
         if (vhost) config.vhost = vhost;
@@ -580,7 +597,6 @@ export function CheckForm({
         config.script = script;
         break;
       case "grpc":
-      case "snmp":
         if (!host) {
           setError("Host is required");
           return;
@@ -606,11 +622,8 @@ export function CheckForm({
         break;
       }
       case "mqtt":
-      case "gameserver":
         if (!host) {
           setError("Host is required");
-        if (!oid) {
-          setError("OID is required");
           return;
         }
         config.host = host;
@@ -619,8 +632,28 @@ export function CheckForm({
         if (password) config.password = password;
         if (topic) config.topic = topic;
         if (tls) config.tls = true;
+        break;
+      case "gameserver":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
         if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
+      case "snmp":
+        if (!host) {
+          setError("Host is required");
+          return;
+        }
+        if (!oid) {
+          setError("OID is required");
+          return;
+        }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
         config.oid = oid;
         if (community) config.community = community;
         if (expectedValue) config.expectedValue = expectedValue;
@@ -1203,7 +1236,6 @@ export function CheckForm({
           </>
         );
       case "redis":
-      case "rabbitmq":
         return (
           <>
             <div className="space-y-2">
@@ -1213,7 +1245,6 @@ export function CheckForm({
                   id="host"
                   type="text"
                   placeholder="redis.example.com"
-                  placeholder="rabbitmq.example.com"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   className="flex-1"
@@ -1223,7 +1254,6 @@ export function CheckForm({
                   id="port"
                   type="number"
                   placeholder="6379"
-                  placeholder="5672"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className="w-24"
@@ -1287,11 +1317,7 @@ export function CheckForm({
               <Input
                 id="username"
                 type="text"
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                placeholder="guest"
+                placeholder="admin"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 data-testid="check-username-input"
@@ -1318,6 +1344,56 @@ export function CheckForm({
                 data-testid="check-database-input"
               />
             </div>
+          </>
+        );
+      case "rabbitmq":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="rabbitmq.example.com"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className="flex-1"
+                  data-testid="check-host-input"
+                />
+                <Input
+                  id="port"
+                  type="number"
+                  placeholder="5672"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className="w-24"
+                  data-testid="check-port-input"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                placeholder="guest"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                data-testid="check-username-input"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password (optional)</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                data-testid="check-password-input"
+              />
+            </div>
+            <div className="space-y-2">
               <Label htmlFor="vhost">Virtual Host (optional)</Label>
               <Input
                 id="vhost"
@@ -1470,8 +1546,6 @@ export function CheckForm({
           </>
         );
       case "mqtt":
-      case "gameserver":
-      case "snmp":
         return (
           <>
             <div className="space-y-2">
@@ -1481,7 +1555,6 @@ export function CheckForm({
                   id="host"
                   type="text"
                   placeholder="broker.example.com"
-                  placeholder="192.168.1.1"
                   value={host}
                   onChange={(e) => setHost(e.target.value)}
                   className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
@@ -1491,7 +1564,6 @@ export function CheckForm({
                   id="port"
                   type="number"
                   placeholder="1883"
-                  placeholder="161"
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
                   className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
@@ -1553,6 +1625,14 @@ export function CheckForm({
                 <span className="text-sm">Use TLS (port defaults to 8883)</span>
               </label>
             </div>
+          </>
+        );
+      case "gameserver":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
                 <Input id="host" type="text" placeholder="game.example.com"
                   value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
                 <Input id="port" type="number" placeholder="27015"
@@ -1571,6 +1651,41 @@ export function CheckForm({
                 <Input id="maxPlayers" type="number" min={0} placeholder="0"
                   value={maxPlayersField} onChange={(e) => setMaxPlayersField(e.target.value)} />
                 <p className="text-xs text-muted-foreground">Alert if more players</p>
+              </div>
+            </div>
+          </>
+        );
+      case "snmp":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="host"
+                  type="text"
+                  placeholder="192.168.1.1"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")}
+                  data-testid="check-host-input"
+                />
+                <Input
+                  id="port"
+                  type="number"
+                  placeholder="161"
+                  value={port}
+                  onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")}
+                  data-testid="check-port-input"
+                />
+              </div>
+              {getFieldError(fieldErrors, "host") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>
+              )}
+              {getFieldError(fieldErrors, "port") && (
+                <p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label htmlFor="oid">OID</Label>

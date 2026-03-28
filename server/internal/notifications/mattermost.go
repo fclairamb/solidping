@@ -177,7 +177,7 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 
 	fields := []mattermostField{
 		{Short: true, Title: "Check", Value: checkName},
-		{Short: true, Title: "Type", Value: string(payload.Check.Type)},
+		{Short: true, Title: "Type", Value: payload.Check.Type},
 		{Short: false, Title: "Cause", Value: getFailureReason(payload.Incident)},
 		{Short: true, Title: "Failure Count", Value: strconv.Itoa(payload.Incident.FailureCount)},
 	}

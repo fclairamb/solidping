@@ -16,7 +16,7 @@ import (
 // and recovers panics to report them to Sentry before re-panicking.
 func SentryMiddleware() bunrouter.MiddlewareFunc {
 	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
-		return func(w http.ResponseWriter, req bunrouter.Request) error {
+		return func(writer http.ResponseWriter, req bunrouter.Request) error {
 			hub := sentry.GetHubFromContext(req.Context())
 			if hub == nil {
 				hub = sentry.CurrentHub().Clone()
@@ -43,7 +43,7 @@ func SentryMiddleware() bunrouter.MiddlewareFunc {
 				}
 			}()
 
-			return next(w, req)
+			return next(writer, req)
 		}
 	}
 }

@@ -773,11 +773,10 @@ func (s *Server) serveAppRedirect(
 	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
 	// Modify the request to use the new path
-	originalDirector := proxy.Director
-	proxy.Director = func(r *http.Request) {
-		originalDirector(r)
-		r.URL.Path = newPath
-		r.URL.RawPath = newPath
+	proxy.Rewrite = func(r *httputil.ProxyRequest) {
+		r.SetURL(targetURL)
+		r.Out.URL.Path = newPath
+		r.Out.URL.RawPath = newPath
 	}
 
 	// When the dev server is unreachable, fall back to embedded static files

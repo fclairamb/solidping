@@ -121,7 +121,7 @@ func (s *OpsgenieSender) createAlert(
 		"details": map[string]string{
 			"checkUid":     payload.Check.UID,
 			"checkName":    checkName,
-			"checkType":    string(payload.Check.Type),
+			"checkType":    payload.Check.Type,
 			"incidentUid":  payload.Incident.UID,
 			"failureCount": strconv.Itoa(payload.Incident.FailureCount),
 		},

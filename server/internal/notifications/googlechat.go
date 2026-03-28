@@ -95,13 +95,13 @@ func (s *GoogleChatSender) parseSettings(payload *Payload) (*googleChatSettings,
 }
 
 func (s *GoogleChatSender) buildURL(settings *googleChatSettings, incidentUID string) string {
-	u := settings.WebhookURL
+	webhookURL := settings.WebhookURL
 	if settings.ThreadKeyEnabled {
-		u += "&threadKey=" + incidentUID +
+		webhookURL += "&threadKey=" + incidentUID +
 			"&messageReplyOption=REPLY_MESSAGE_FALLBACK_TO_NEW_THREAD"
 	}
 
-	return u
+	return webhookURL
 }
 
 type googleChatMessage struct {
@@ -176,7 +176,7 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 
 func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []googleChatWidget {
 	widgets := []googleChatWidget{
-		{DecoratedText: &googleChatDecoratedText{TopLabel: "Check", Text: checkName + " (" + string(payload.Check.Type) + ")"}},
+		{DecoratedText: &googleChatDecoratedText{TopLabel: "Check", Text: checkName + " (" + payload.Check.Type + ")"}},
 	}
 
 	switch payload.EventType {

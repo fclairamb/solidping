@@ -143,9 +143,9 @@
     "mqtt": "MQTT",
     "mqttDescription": "Check MQTT broker connectivity",
     "gameserver": "Game Server",
-    "gameserverDescription": "Monitor game server via A2S protocol"
+    "gameserverDescription": "Monitor game server via A2S protocol",
     "rabbitmq": "RabbitMQ",
-    "rabbitmqDescription": "Check RabbitMQ server health"
+    "rabbitmqDescription": "Check RabbitMQ server health",
     "snmp": "SNMP",
     "snmpDescription": "Monitor devices via SNMP",
     "docker": "Docker",

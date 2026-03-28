@@ -160,14 +160,14 @@ func (s *NtfySender) buildContent(
 }
 
 func (s *NtfySender) buildDownBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&b, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&b, "Failure count: %s\n", strconv.Itoa(payload.Incident.FailureCount))
-	fmt.Fprintf(&b, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
+	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+	fmt.Fprintf(&builder, "Failure count: %s\n", strconv.Itoa(payload.Incident.FailureCount))
+	fmt.Fprintf(&builder, "Started: %s", payload.Incident.StartedAt.Format(time.RFC3339))
 
-	return b.String()
+	return builder.String()
 }
 
 func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) string {
@@ -184,12 +184,12 @@ func (s *NtfySender) buildResolvedBody(payload *Payload, checkName string) strin
 }
 
 func (s *NtfySender) buildEscalatedBody(payload *Payload, checkName string) string {
-	var b strings.Builder
+	var builder strings.Builder
 
-	fmt.Fprintf(&b, "Check: %s (%s)\n", checkName, payload.Check.Type)
-	fmt.Fprintf(&b, "Cause: %s\n", getFailureReason(payload.Incident))
-	fmt.Fprintf(&b, "Failures: %d\n", payload.Incident.FailureCount)
-	fmt.Fprintf(&b, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
+	fmt.Fprintf(&builder, "Check: %s (%s)\n", checkName, payload.Check.Type)
+	fmt.Fprintf(&builder, "Cause: %s\n", getFailureReason(payload.Incident))
+	fmt.Fprintf(&builder, "Failures: %d\n", payload.Incident.FailureCount)
+	fmt.Fprintf(&builder, "Duration: %s", formatDuration(time.Since(payload.Incident.StartedAt)))
 
-	return b.String()
+	return builder.String()
 }
