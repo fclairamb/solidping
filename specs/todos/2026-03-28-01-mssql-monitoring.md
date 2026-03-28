@@ -219,3 +219,13 @@ Same layout as PostgreSQL/MySQL with different defaults:
 - [ ] E2E tests pass
 
 **Status**: Draft | **Created**: 2026-03-28
+
+## Implementation Plan
+
+1. Add `CheckTypeMSSQL` constant to `checkerdef/types.go` and `ListCheckTypes()`
+2. Create `checkmssql/` package: `errors.go`, `config.go`, `checker.go`, `samples.go`
+3. Register in `registry/registry.go` (both `GetChecker` and `ParseConfig`)
+4. Add `go-mssqldb` dependency
+5. Update frontend: `check-form.tsx` (type union, checkTypes array, config builder, form fields, submit handler)
+6. Update locale files: `en/checks.json`, `fr/checks.json`
+7. Run QA: `make fmt`, `make build-backend`, `make lint-back`, `make test`
