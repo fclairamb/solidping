@@ -88,6 +88,8 @@ const (
 	CheckTypeRedis CheckType = "redis"
 	// CheckTypeMongoDB performs MongoDB database health checks.
 	CheckTypeMongoDB CheckType = "mongodb"
+	// CheckTypeMSSQL performs Microsoft SQL Server health checks.
+	CheckTypeMSSQL CheckType = "mssql"
 )
 
 // ListSampleOptionType represents the type of sample configuration to retrieve.
@@ -132,5 +134,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeMySQL,
 		CheckTypeRedis,
 		CheckTypeMongoDB,
+		CheckTypeMSSQL,
 	}
 }
