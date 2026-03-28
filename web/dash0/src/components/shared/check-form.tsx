@@ -27,7 +27,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
-import { useCheckTypes } from "@/api/hooks";
+import { useCheckTypes, useSampleConfigs } from "@/api/hooks";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
 
@@ -285,11 +285,14 @@ export function CheckForm({
     );
   }, [availableCheckTypes, typeSearch]);
 
-  // Samples for the currently selected type
-  const currentSamples = useMemo(() => {
-    const info = checkTypeInfoMap.get(type);
-    return info?.samples || [];
-  }, [checkTypeInfoMap, type]);
+  // Lazy-loaded samples for the currently selected type
+  const { data: fetchedSamples, refetch: fetchSamples, isFetching: isFetchingSamples } = useSampleConfigs(type);
+  const [showSamples, setShowSamples] = useState(false);
+
+  // Reset sample dropdown when type changes
+  useEffect(() => {
+    setShowSamples(false);
+  }, [type]);
 
   // Interval options filtered by type constraints
   const intervalOptions = useMemo(() => {
@@ -1235,28 +1238,52 @@ export function CheckForm({
               )}
             </div>
 
-            {/* Sample config selector - only in create mode when samples exist */}
-            {!isEdit && currentSamples.length > 0 && (
+            {/* Sample config loader - button that fetches and shows dropdown */}
+            {!isEdit && (
               <div className="space-y-2">
-                <Label>Load from template</Label>
-                <Select
-                  value=""
-                  onValueChange={(slugVal) => {
-                    const sample = currentSamples.find((s) => s.slug === slugVal);
-                    if (sample) applySample(sample);
-                  }}
-                >
-                  <SelectTrigger data-testid="check-sample-select">
-                    <SelectValue placeholder="Choose a sample configuration..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {currentSamples.map((sample) => (
-                      <SelectItem key={sample.slug} value={sample.slug}>
-                        {sample.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {!showSamples ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={isFetchingSamples}
+                    onClick={async () => {
+                      const result = await fetchSamples();
+                      if (result.data && result.data.length > 0) {
+                        setShowSamples(true);
+                      }
+                    }}
+                    data-testid="check-load-template-button"
+                  >
+                    {isFetchingSamples ? (
+                      <><Loader2 className="mr-2 h-3 w-3 animate-spin" />Loading...</>
+                    ) : (
+                      "Load from template"
+                    )}
+                  </Button>
+                ) : fetchedSamples && fetchedSamples.length > 0 ? (
+                  <Select
+                    value=""
+                    onValueChange={(slugVal) => {
+                      const sample = fetchedSamples.find((s) => s.slug === slugVal);
+                      if (sample) applySample(sample);
+                      setShowSamples(false);
+                    }}
+                  >
+                    <SelectTrigger data-testid="check-sample-select">
+                      <SelectValue placeholder="Choose a template..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {fetchedSamples.map((sample) => (
+                        <SelectItem key={sample.slug} value={sample.slug}>
+                          {sample.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <p className="text-xs text-muted-foreground">No templates available for this check type</p>
+                )}
               </div>
             )}
           </CardContent>

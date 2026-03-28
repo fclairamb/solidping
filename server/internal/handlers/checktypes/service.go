@@ -16,10 +16,9 @@ type CheckTypeResponse struct {
 	Labels             []string               `json:"labels"`
 	Enabled            bool                   `json:"enabled"`
 	DisabledReason     string                 `json:"disabledReason,omitempty"`
-	MinPeriodSeconds   int                    `json:"minPeriodSeconds,omitempty"`
-	MaxPeriodSeconds   int                    `json:"maxPeriodSeconds,omitempty"`
-	DefaultPeriodSeconds int                  `json:"defaultPeriodSeconds,omitempty"`
-	Samples            []SampleConfigResponse `json:"samples,omitempty"`
+	MinPeriodSeconds     int `json:"minPeriodSeconds,omitempty"`
+	MaxPeriodSeconds     int `json:"maxPeriodSeconds,omitempty"`
+	DefaultPeriodSeconds int `json:"defaultPeriodSeconds,omitempty"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.
@@ -111,26 +110,25 @@ func (s *Service) ListSampleConfigs(filterType string) ListSamplesResponse {
 func (s *Service) ListServerCheckTypes() ListCheckTypesResponse {
 	statuses := s.resolver.ListAllWithStatus(nil)
 
-	return s.toResponse(statuses)
+	return toResponse(statuses)
 }
 
 // ListOrgCheckTypes returns all check types with org-level activation status.
 func (s *Service) ListOrgCheckTypes(orgDisabled []string) ListCheckTypesResponse {
 	statuses := s.resolver.ListAllWithStatus(orgDisabled)
 
-	return s.toResponse(statuses)
+	return toResponse(statuses)
 }
 
 func durationToSeconds(duration time.Duration) int {
 	return int(duration / time.Second)
 }
 
-func (s *Service) toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
-	samplesMap := s.getSamplesMap()
+func toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTypesResponse {
 	data := make([]CheckTypeResponse, 0, len(statuses))
 
 	for idx := range statuses {
-		resp := CheckTypeResponse{
+		data = append(data, CheckTypeResponse{
 			Type:                 string(statuses[idx].Type),
 			Description:          statuses[idx].Description,
 			Labels:               statuses[idx].Labels,
@@ -139,10 +137,7 @@ func (s *Service) toResponse(statuses []checkerdef.CheckTypeStatus) ListCheckTyp
 			MinPeriodSeconds:     durationToSeconds(statuses[idx].MinPeriod),
 			MaxPeriodSeconds:     durationToSeconds(statuses[idx].MaxPeriod),
 			DefaultPeriodSeconds: durationToSeconds(statuses[idx].DefaultPeriod),
-			Samples:              samplesMap[statuses[idx].Type],
-		}
-
-		data = append(data, resp)
+		})
 	}
 
 	return ListCheckTypesResponse{Data: data}

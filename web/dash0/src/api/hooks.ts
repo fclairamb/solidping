@@ -1431,7 +1431,6 @@ export interface CheckTypeInfo {
   minPeriodSeconds?: number;
   maxPeriodSeconds?: number;
   defaultPeriodSeconds?: number;
-  samples?: SampleConfig[];
 }
 
 export function useCheckTypes(org: string) {
@@ -1445,6 +1444,20 @@ export function useCheckTypes(org: string) {
     },
     staleTime: 5 * 60 * 1000, // 5 min cache — types rarely change
     enabled: !!org,
+  });
+}
+
+export function useSampleConfigs(checkType: string) {
+  return useQuery({
+    queryKey: ["check-types", "samples", checkType],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: Array<{ checkType: string; samples: SampleConfig[] }> }>(
+        `/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`
+      );
+      return response.data?.[0]?.samples || [];
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: false, // manually triggered via refetch
   });
 }
 
