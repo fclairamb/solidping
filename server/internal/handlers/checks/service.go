@@ -479,9 +479,8 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	var period time.Duration
 	if req.Period != nil && *req.Period != "" {
 		var duration timeutils.Duration
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := duration.Scan(*req.Period); err != nil {
-			return CheckResponse{}, err
+		if scanErr := duration.Scan(*req.Period); scanErr != nil {
+			return CheckResponse{}, scanErr
 		}
 		period = time.Duration(duration)
 	}
@@ -491,9 +490,8 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// Validate slug format if provided by user
 	if userProvidedSlug {
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := validateSlug(req.Slug); err != nil {
-			return CheckResponse{}, err
+		if slugErr := validateSlug(req.Slug); slugErr != nil {
+			return CheckResponse{}, slugErr
 		}
 	}
 

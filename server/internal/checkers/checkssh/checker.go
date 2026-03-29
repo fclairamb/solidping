@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -17,6 +18,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
+
+var errFingerprintMismatch = errors.New("fingerprint mismatch")
 
 const (
 	defaultPort    = 22
@@ -278,8 +281,8 @@ func (c *SSHChecker) executeWithAuth(
 			output["fingerprint"] = fingerprint
 
 			if fingerprint != cfg.ExpectedFingerprint {
-				return fmt.Errorf("fingerprint mismatch: got %s, expected %s", //nolint:err113
-					fingerprint, cfg.ExpectedFingerprint)
+				return fmt.Errorf("%w: got %s, expected %s",
+					errFingerprintMismatch, fingerprint, cfg.ExpectedFingerprint)
 			}
 
 			return nil
@@ -429,11 +432,5 @@ func mergeOutput(base, extra map[string]any) map[string]any {
 }
 
 func isExitError(err error, target **ssh.ExitError) bool {
-	if exitErr, ok := err.(*ssh.ExitError); ok { //nolint:errorlint // ssh.ExitError not wrapped
-		*target = exitErr
-
-		return true
-	}
-
-	return false
+	return errors.As(err, target)
 }
