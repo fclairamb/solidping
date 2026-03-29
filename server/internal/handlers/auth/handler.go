@@ -886,6 +886,8 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // Verify2FA validates a TOTP code during login using a temporary token.
+//
+//nolint:dupl // Similar structure to Recovery2FA but different request/service call
 func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) error {
 	tempToken := extractBearerToken(req)
 	if tempToken == "" {
@@ -927,6 +929,8 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 }
 
 // Recovery2FA uses a recovery code during login to complete authentication.
+//
+//nolint:dupl // Similar structure to Verify2FA but different request/service call
 func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request) error {
 	tempToken := extractBearerToken(req)
 	if tempToken == "" {

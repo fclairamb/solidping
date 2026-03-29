@@ -56,7 +56,7 @@ func init() {
 // GetChecker retrieves a checker by type.
 // Returns the checker and true if found, nil and false otherwise.
 //
-//nolint:ireturn,cyclop,funlen // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
 func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -129,7 +129,7 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 //
 // TODO: Remove it
 //
-//nolint:ireturn,cyclop,funlen // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
