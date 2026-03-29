@@ -102,10 +102,9 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	// Prefer IPv4
 	var targetIP net.IP
 
-	//nolint:gocritic // rangeValCopy acceptable for IPAddr
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			targetIP = addr.IP
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			targetIP = addrs[i].IP
 
 			break
 		}

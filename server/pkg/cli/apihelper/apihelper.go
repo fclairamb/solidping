@@ -466,7 +466,7 @@ func (h *Helper) readTokenFile() (*TokenData, error) {
 func (h *Helper) saveTokenFile(tokenData *TokenData) error {
 	// Ensure directory exists
 	dir := filepath.Dir(h.tokenPath)
-	if err := os.MkdirAll(dir, 0755); err != nil { //nolint:gofumpt // Standard directory permissions
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 
@@ -477,7 +477,7 @@ func (h *Helper) saveTokenFile(tokenData *TokenData) error {
 	}
 
 	// Write token with restricted permissions
-	return os.WriteFile(h.tokenPath, data, 0600) //nolint:gofumpt // Standard file permissions
+	return os.WriteFile(h.tokenPath, data, 0o600)
 }
 
 // deleteTokenFile removes the token file.

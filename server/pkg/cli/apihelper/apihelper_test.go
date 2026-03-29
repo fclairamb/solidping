@@ -167,7 +167,7 @@ func TestTokenFileIO(t *testing.T) { //nolint:tparallel // Subtests share state 
 
 	t.Run("read invalid JSON format", func(t *testing.T) { //nolint:paralleltest // Shares state with other subtests
 		// Create an invalid JSON file
-		err := os.WriteFile(tokenPath, []byte("not valid json"), 0600) //nolint:gofumpt // Standard file permissions
+		err := os.WriteFile(tokenPath, []byte("not valid json"), 0o600)
 		require.NoError(t, err)
 
 		// Read should fail
@@ -200,7 +200,7 @@ func TestTokenFileIO(t *testing.T) { //nolint:tparallel // Subtests share state 
 		// Check file permissions
 		info, err := os.Stat(tokenPath)
 		require.NoError(t, err)
-		assert.Equal(t, os.FileMode(0600), info.Mode().Perm()) //nolint:gofumpt // File mode constant
+		assert.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	})
 }
 

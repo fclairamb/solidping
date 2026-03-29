@@ -107,10 +107,9 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	var isIPv6 bool
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			targetIP = addr.IP
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			targetIP = addrs[i].IP
 
 			break
 		}

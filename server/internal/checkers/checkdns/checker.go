@@ -252,10 +252,9 @@ func (c *DNSChecker) lookupA(ctx context.Context, resolver *net.Resolver, hostna
 
 	var ips []string
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough, copying is acceptable
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			ips = append(ips, addr.IP.String())
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			ips = append(ips, addrs[i].IP.String())
 		}
 	}
 
@@ -271,10 +270,9 @@ func (c *DNSChecker) lookupAAAA(ctx context.Context, resolver *net.Resolver, hos
 
 	var ips []string
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough, copying is acceptable
-	for _, addr := range addrs {
-		if addr.IP.To4() == nil {
-			ips = append(ips, addr.IP.String())
+	for i := range addrs {
+		if addrs[i].IP.To4() == nil {
+			ips = append(ips, addrs[i].IP.String())
 		}
 	}
 
