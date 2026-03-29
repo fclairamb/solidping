@@ -73,8 +73,8 @@ func formatAPIError(err *client.Error, statusCode int) string {
 	// Add field-level validation errors if present
 	if err.Fields != nil && len(*err.Fields) > 0 {
 		msg += "\n  Validation errors:"
-		for _, field := range *err.Fields { //nolint:gocritic // Small struct, copy acceptable
-			msg = fmt.Sprintf("%s\n    - %s: %s", msg, field.Name, field.Message)
+		for i := range *err.Fields {
+			msg = fmt.Sprintf("%s\n    - %s: %s", msg, (*err.Fields)[i].Name, (*err.Fields)[i].Message)
 		}
 	}
 
@@ -157,7 +157,9 @@ func checksListAction(ctx context.Context, cmd *cli.Command) error {
 		tbl.AppendHeader(table.Row{"SLUG", "NAME", "TYPE", "PERIOD", "ENABLED", "STATUS"})
 	}
 
-	for _, check := range *resp.JSON200.Data { //nolint:gocritic // Response struct iteration
+	data := *resp.JSON200.Data
+	for i := range data {
+		check := &data[i]
 		enabled := boolYes
 		if check.Enabled != nil && !*check.Enabled {
 			enabled = boolNo
