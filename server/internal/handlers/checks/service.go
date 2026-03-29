@@ -909,6 +909,17 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return ErrCheckHasActiveIncidents
 	}
 
+	// Delete all check jobs for this check
+	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+	if err != nil {
+		return fmt.Errorf("failed to list check jobs: %w", err)
+	}
+	for _, job := range existingJobs {
+		if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
+			return fmt.Errorf("failed to delete check job: %w", err)
+		}
+	}
+
 	// Delete check
 	return s.db.DeleteCheck(ctx, check.UID)
 }
