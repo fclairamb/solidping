@@ -1,3 +1,4 @@
+// Package checkkafka provides Kafka cluster health checks.
 package checkkafka
 
 import (

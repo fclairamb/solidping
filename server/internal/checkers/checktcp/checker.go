@@ -1,3 +1,4 @@
+// Package checktcp provides TCP port connectivity checks.
 package checktcp
 
 import (

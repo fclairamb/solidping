@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -15,7 +16,7 @@ import (
 
 const microsecondsPerMilli = 1000.0
 
-var errNoIPAddresses = fmt.Errorf("no IP addresses found for host")
+var errNoIPAddresses = errors.New("no IP addresses found for host")
 
 // SSLChecker implements the Checker interface for SSL certificate checks.
 type SSLChecker struct{}

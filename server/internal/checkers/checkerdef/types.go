@@ -112,17 +112,17 @@ const (
 
 // CheckTypeMeta holds metadata and labels for a check type.
 type CheckTypeMeta struct {
-	Type             CheckType     `json:"type"`
-	Labels           []string      `json:"labels"`
-	Description      string        `json:"description"`
-	MinPeriod        time.Duration `json:"-"` // Minimum allowed check period (0 = use global default)
-	MaxPeriod        time.Duration `json:"-"` // Maximum allowed check period (0 = no limit)
-	DefaultPeriod    time.Duration `json:"-"` // Default check period (0 = use global default)
+	Type          CheckType     `json:"type"`
+	Labels        []string      `json:"labels"`
+	Description   string        `json:"description"`
+	MinPeriod     time.Duration `json:"-"` // Minimum allowed check period (0 = use global default)
+	MaxPeriod     time.Duration `json:"-"` // Maximum allowed check period (0 = no limit)
+	DefaultPeriod time.Duration `json:"-"` // Default check period (0 = use global default)
 }
 
 // checkTypesRegistry is the authoritative registry of all check types with metadata.
 //
-//nolint:gochecknoglobals // Registry is intentionally global; it's read-only after init.
+//nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeHTTP, Labels: []string{"safe", "standalone", "category:network"}, Description: "Monitor HTTP/HTTPS endpoints"},
 	{Type: CheckTypeTCP, Labels: []string{"safe", "standalone", "category:network"}, Description: "Check TCP port connectivity"},

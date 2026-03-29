@@ -1,3 +1,4 @@
+// Package checkmongodb provides MongoDB database health checks.
 package checkmongodb
 
 import (

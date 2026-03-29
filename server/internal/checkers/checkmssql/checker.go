@@ -1,3 +1,4 @@
+// Package checkmssql provides Microsoft SQL Server health checks.
 package checkmssql
 
 import (

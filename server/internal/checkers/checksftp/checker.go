@@ -1,3 +1,4 @@
+// Package checksftp provides SFTP server availability checks.
 package checksftp
 
 import (
@@ -83,12 +84,12 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	if cfg.Password != "" {
 		authMethods = append(authMethods, ssh.Password(cfg.Password))
 	} else if cfg.PrivateKey != "" {
-		signer, err := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
-		if err != nil {
+		signer, parseErr := ssh.ParsePrivateKey([]byte(cfg.PrivateKey))
+		if parseErr != nil {
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusError,
 				Duration: time.Since(start),
-				Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("invalid private key: %v", err)}),
+				Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("invalid private key: %v", parseErr)}),
 			}, nil
 		}
 

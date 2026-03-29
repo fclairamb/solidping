@@ -1237,6 +1237,8 @@ export function CheckForm({
                             <button
                               key={ct.value}
                               type="button"
+                              role="option"
+                              aria-selected={type === ct.value}
                               className={cn(
                                 "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
                                 type === ct.value && "bg-accent"

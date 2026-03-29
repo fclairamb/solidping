@@ -1,3 +1,4 @@
+// Package checkbrowser provides headless Chrome browser monitoring checks.
 package checkbrowser
 
 import (

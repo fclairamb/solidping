@@ -1,3 +1,4 @@
+// Package checkoracle provides Oracle Database health checks.
 package checkoracle
 
 import (

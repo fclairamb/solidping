@@ -1,3 +1,4 @@
+// Package checkftp provides FTP server availability checks.
 package checkftp
 
 import (

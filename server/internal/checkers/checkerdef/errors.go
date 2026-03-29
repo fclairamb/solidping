@@ -5,6 +5,9 @@ import (
 	"fmt"
 )
 
+// ErrInvalidConfigType is returned when a config value doesn't match the expected type.
+var ErrInvalidConfigType = errors.New("invalid config type")
+
 // AssertConfig performs a type assertion on a Config value, returning a typed
 // config or an error with descriptive type information.
 func AssertConfig[T Config](config Config) (T, error) {
@@ -12,7 +15,7 @@ func AssertConfig[T Config](config Config) (T, error) {
 	if !ok {
 		var zero T
 
-		return zero, fmt.Errorf("invalid config type: expected %T, got %T", zero, config)
+		return zero, fmt.Errorf("%w: expected %T, got %T", ErrInvalidConfigType, zero, config)
 	}
 
 	return cfg, nil

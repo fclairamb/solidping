@@ -1,3 +1,4 @@
+// Package checkssh provides SSH server availability checks.
 package checkssh
 
 import (

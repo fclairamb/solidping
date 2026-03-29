@@ -1,3 +1,4 @@
+// Package checkpostgres provides PostgreSQL database health checks.
 package checkpostgres
 
 import (

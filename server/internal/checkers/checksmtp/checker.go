@@ -1,3 +1,4 @@
+// Package checksmtp provides SMTP server connectivity checks.
 package checksmtp
 
 import (

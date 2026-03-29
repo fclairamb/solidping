@@ -1,3 +1,4 @@
+// Package checkicmp provides ICMP ping monitoring checks.
 package checkicmp
 
 import (

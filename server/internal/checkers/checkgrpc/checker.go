@@ -1,3 +1,4 @@
+// Package checkgrpc provides gRPC service health checks.
 package checkgrpc
 
 import (

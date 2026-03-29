@@ -1,3 +1,4 @@
+// Package checkdns provides DNS resolution monitoring checks.
 package checkdns
 
 import (

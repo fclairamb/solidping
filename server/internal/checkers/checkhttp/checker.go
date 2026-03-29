@@ -1,3 +1,4 @@
+// Package checkhttp provides HTTP/HTTPS endpoint monitoring checks.
 package checkhttp
 
 import (

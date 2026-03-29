@@ -1,3 +1,4 @@
+// Package checkjs provides custom JavaScript script execution checks.
 package checkjs
 
 import (

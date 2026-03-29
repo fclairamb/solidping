@@ -1,3 +1,4 @@
+// Package checksnmp provides SNMP device monitoring checks.
 package checksnmp
 
 import (

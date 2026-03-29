@@ -11,14 +11,14 @@ import (
 
 // CheckTypeResponse is the JSON representation of a check type with its status.
 type CheckTypeResponse struct {
-	Type               string                 `json:"type"`
-	Description        string                 `json:"description"`
-	Labels             []string               `json:"labels"`
-	Enabled            bool                   `json:"enabled"`
-	DisabledReason     string                 `json:"disabledReason,omitempty"`
-	MinPeriodSeconds     int `json:"minPeriodSeconds,omitempty"`
-	MaxPeriodSeconds     int `json:"maxPeriodSeconds,omitempty"`
-	DefaultPeriodSeconds int `json:"defaultPeriodSeconds,omitempty"`
+	Type                 string   `json:"type"`
+	Description          string   `json:"description"`
+	Labels               []string `json:"labels"`
+	Enabled              bool     `json:"enabled"`
+	DisabledReason       string   `json:"disabledReason,omitempty"`
+	MinPeriodSeconds     int      `json:"minPeriodSeconds,omitempty"`
+	MaxPeriodSeconds     int      `json:"maxPeriodSeconds,omitempty"`
+	DefaultPeriodSeconds int      `json:"defaultPeriodSeconds,omitempty"`
 }
 
 // ListCheckTypesResponse wraps the list of check types.

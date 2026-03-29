@@ -1,3 +1,4 @@
+// Package checkmysql provides MySQL/MariaDB database health checks.
 package checkmysql
 
 import (

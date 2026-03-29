@@ -1,3 +1,4 @@
+// Package checkrabbitmq provides RabbitMQ server health checks.
 package checkrabbitmq
 
 import (

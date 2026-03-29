@@ -1,3 +1,4 @@
+// Package checkpop3 provides POP3 server availability checks.
 package checkpop3
 
 import (

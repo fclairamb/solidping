@@ -1,3 +1,4 @@
+// Package checkgameserver provides game server monitoring via A2S protocol.
 package checkgameserver
 
 import (

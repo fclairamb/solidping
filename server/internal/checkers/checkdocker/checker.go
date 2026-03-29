@@ -1,3 +1,4 @@
+// Package checkdocker provides Docker container health checks.
 package checkdocker
 
 import (

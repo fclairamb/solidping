@@ -1,3 +1,4 @@
+// Package checkimap provides IMAP server availability checks.
 package checkimap
 
 import (

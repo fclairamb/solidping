@@ -1,3 +1,4 @@
+// Package checkredis provides Redis server health checks.
 package checkredis
 
 import (

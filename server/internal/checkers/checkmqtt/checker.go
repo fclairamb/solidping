@@ -1,7 +1,9 @@
+// Package checkmqtt provides MQTT broker connectivity checks.
 package checkmqtt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,6 +14,8 @@ import (
 )
 
 const microsecondsPerMilli = 1000.0
+
+var errUnexpectedClientType = errors.New("unexpected client type in connect result")
 
 // MQTTChecker implements the Checker interface for MQTT broker health checks.
 type MQTTChecker struct{}
@@ -90,7 +94,7 @@ func (c *MQTTChecker) Execute(
 
 	client, ok := connectResult.Output["_client"].(mqtt.Client)
 	if !ok {
-		return nil, fmt.Errorf("unexpected client type in connect result")
+		return nil, errUnexpectedClientType
 	}
 
 	defer client.Disconnect(0)

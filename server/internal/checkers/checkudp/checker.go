@@ -1,3 +1,4 @@
+// Package checkudp provides UDP port reachability checks.
 package checkudp
 
 import (
