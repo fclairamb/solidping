@@ -62,14 +62,14 @@ func setupTestRunner(t *testing.T) (*CheckWorker, *sqlite.Service, context.Conte
 	return runner, svc, ctx
 }
 
-//nolint:paralleltest // Test is unit test without shared state
+//nolint:paralleltest // Subtests share runner and time reference
 func TestCalculateNextScheduledAt(t *testing.T) {
 	runner, dbSvc, _ := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
 	now := time.Now()
 
-	t.Run("OnSchedule", func(t *testing.T) { //nolint:paralleltest // Test is unit test without shared state
+	t.Run("OnSchedule", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
 		// Job scheduled 10 seconds ago with 1 minute period
 		// Next should be scheduled_at + period (50 seconds from now)
 		scheduledAt := now.Add(-10 * time.Second)
@@ -85,7 +85,7 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 		assert.True(t, nextScheduled.After(now), "next scheduled should be in the future")
 	})
 
-	t.Run("BehindSchedule", func(t *testing.T) { //nolint:paralleltest // Test is unit test without shared state
+	t.Run("BehindSchedule", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
 		// Job scheduled 2 minutes ago with 1 minute period
 		// Next should be now + period
 		scheduledAt := now.Add(-2 * time.Minute)
@@ -100,7 +100,7 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 		assert.WithinDuration(t, expected, nextScheduled, 2*time.Second)
 	})
 
-	t.Run("NoScheduledAt", func(t *testing.T) { //nolint:paralleltest // Test is unit test without shared state
+	t.Run("NoScheduledAt", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
 		checkJob := &models.CheckJob{
 			ScheduledAt: nil,
 			Period:      timeutils.Duration(5 * time.Minute), // 5 minutes
@@ -141,8 +141,9 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 	})
 }
 
-//nolint:paralleltest // Test is unit test without shared state
 func TestFormatISO8601Duration(t *testing.T) {
+	t.Parallel()
+
 	testCases := []struct {
 		name     string
 		duration time.Duration
@@ -161,8 +162,10 @@ func TestFormatISO8601Duration(t *testing.T) {
 		{"2 hours 15 minutes", 2*time.Hour + 15*time.Minute, "PT2H15M"},
 	}
 
-	for _, tc := range testCases { //nolint:paralleltest // Test is unit test without shared state
+	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			result := timeutils.FormatISO8601Duration(tc.duration)
 			require.Equal(t, tc.expected, result)
 
