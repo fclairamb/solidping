@@ -1,3 +1,4 @@
+// Package checkpop3 provides POP3 server availability checks.
 package checkpop3
 
 import (
@@ -94,9 +95,9 @@ func newExecParams(cfg *POP3Config) execParams {
 func (c *POP3Checker) Execute(
 	ctx context.Context, config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, ok := config.(*POP3Config)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*POP3Config](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

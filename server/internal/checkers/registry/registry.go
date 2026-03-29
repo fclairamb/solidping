@@ -2,19 +2,32 @@
 package registry
 
 import (
+	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkgameserver"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkgrpc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkicmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checktcp"
@@ -43,7 +56,7 @@ func init() {
 // GetChecker retrieves a checker by type.
 // Returns the checker and true if found, nil and false otherwise.
 //
-//nolint:ireturn,cyclop // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
 func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -80,6 +93,32 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksftp.SFTPChecker{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSChecker{}, true
+	case checkerdef.CheckTypeMySQL:
+		return &checkmysql.MySQLChecker{}, true
+	case checkerdef.CheckTypeRedis:
+		return &checkredis.RedisChecker{}, true
+	case checkerdef.CheckTypeMongoDB:
+		return &checkmongodb.MongoDBChecker{}, true
+	case checkerdef.CheckTypeMSSQL:
+		return &checkmssql.MSSQLChecker{}, true
+	case checkerdef.CheckTypeOracle:
+		return &checkoracle.OracleChecker{}, true
+	case checkerdef.CheckTypeGRPC:
+		return &checkgrpc.GRPCChecker{}, true
+	case checkerdef.CheckTypeKafka:
+		return &checkkafka.KafkaChecker{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTChecker{}, true
+	case checkerdef.CheckTypeGameServer:
+		return &checkgameserver.GameServerChecker{}, true
+	case checkerdef.CheckTypeRabbitMQ:
+		return &checkrabbitmq.RabbitMQChecker{}, true
+	case checkerdef.CheckTypeSNMP:
+		return &checksnmp.SNMPChecker{}, true
+	case checkerdef.CheckTypeDocker:
+		return &checkdocker.DockerChecker{}, true
+	case checkerdef.CheckTypeBrowser:
+		return &checkbrowser.BrowserChecker{}, true
 	default:
 		return nil, false
 	}
@@ -90,7 +129,7 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 //
 // TODO: Remove it
 //
-//nolint:ireturn,cyclop // Registry pattern requires interface return and growing switch
+//nolint:ireturn,cyclop,funlen,dupl // Registry pattern requires interface return and growing switch
 func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 	switch checkType {
 	case checkerdef.CheckTypeHTTP:
@@ -127,9 +166,59 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksftp.SFTPConfig{}, true
 	case checkerdef.CheckTypeJS:
 		return &checkjs.JSConfig{}, true
+	case checkerdef.CheckTypeMySQL:
+		return &checkmysql.MySQLConfig{}, true
+	case checkerdef.CheckTypeRedis:
+		return &checkredis.RedisConfig{}, true
+	case checkerdef.CheckTypeMongoDB:
+		return &checkmongodb.MongoDBConfig{}, true
+	case checkerdef.CheckTypeMSSQL:
+		return &checkmssql.MSSQLConfig{}, true
+	case checkerdef.CheckTypeOracle:
+		return &checkoracle.OracleConfig{}, true
+	case checkerdef.CheckTypeGRPC:
+		return &checkgrpc.GRPCConfig{}, true
+	case checkerdef.CheckTypeKafka:
+		return &checkkafka.KafkaConfig{}, true
+	case checkerdef.CheckTypeMQTT:
+		return &checkmqtt.MQTTConfig{}, true
+	case checkerdef.CheckTypeGameServer:
+		return &checkgameserver.GameServerConfig{}, true
+	case checkerdef.CheckTypeRabbitMQ:
+		return &checkrabbitmq.RabbitMQConfig{}, true
+	case checkerdef.CheckTypeSNMP:
+		return &checksnmp.SNMPConfig{}, true
+	case checkerdef.CheckTypeDocker:
+		return &checkdocker.DockerConfig{}, true
+	case checkerdef.CheckTypeBrowser:
+		return &checkbrowser.BrowserConfig{}, true
 	default:
 		return nil, false
 	}
+}
+
+// GetAllSampleConfigs collects sample configurations from all checker types that implement CheckerSamplesProvider.
+func GetAllSampleConfigs(opts *checkerdef.ListSampleOptions) map[checkerdef.CheckType][]checkerdef.CheckSpec {
+	result := make(map[checkerdef.CheckType][]checkerdef.CheckSpec)
+
+	for _, checkType := range checkerdef.ListCheckTypes(opts) {
+		checker, ok := GetChecker(checkType)
+		if !ok {
+			continue
+		}
+
+		provider, ok := checker.(checkerdef.CheckerSamplesProvider)
+		if !ok {
+			continue
+		}
+
+		samples := provider.GetSampleConfigs(opts)
+		if len(samples) > 0 {
+			result[checkType] = samples
+		}
+	}
+
+	return result
 }
 
 // InferCheckType returns the check type for a given URL.

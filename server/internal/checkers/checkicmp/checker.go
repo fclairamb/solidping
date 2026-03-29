@@ -1,3 +1,4 @@
+// Package checkicmp provides ICMP ping monitoring checks.
 package checkicmp
 
 import (
@@ -84,9 +85,9 @@ func (c *ICMPChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:cyclop,funlen // Complexity necessary for comprehensive ICMP checking
 func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*ICMPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*ICMPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults

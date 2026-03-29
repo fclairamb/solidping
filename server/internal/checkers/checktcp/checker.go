@@ -1,3 +1,4 @@
+// Package checktcp provides TCP port connectivity checks.
 package checktcp
 
 import (
@@ -62,9 +63,9 @@ func (c *TCPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the TCP connection check and returns the result.
 func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*TCPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*TCPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults
@@ -111,10 +112,9 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	var isIPv6 bool
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough, copying is acceptable
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			targetIP = addr.IP
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			targetIP = addrs[i].IP
 			isIPv6 = false
 
 			break

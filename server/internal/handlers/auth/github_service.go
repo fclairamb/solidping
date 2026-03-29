@@ -324,6 +324,8 @@ func (s *GitHubOAuthService) fetchPrimaryEmail(ctx context.Context, accessToken 
 }
 
 // findOrCreateUser finds or creates a user by GitHub identity.
+//
+//nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
 func (s *GitHubOAuthService) findOrCreateUser(ctx context.Context, userInfo *GitHubUserInfo) (*models.User, error) {
 	providerID := strconv.Itoa(userInfo.ID)
 

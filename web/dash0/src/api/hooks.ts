@@ -38,7 +38,7 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
   config?: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -74,7 +74,7 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "ftp" | "sftp" | "js";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
   config: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -1414,3 +1414,50 @@ export function useRegions(org: string) {
     enabled: !!org,
   });
 }
+
+export interface SampleConfig {
+  name: string;
+  slug: string;
+  periodSeconds: number;
+  config: Record<string, unknown>;
+}
+
+export interface CheckTypeInfo {
+  type: string;
+  description: string;
+  labels: string[];
+  enabled: boolean;
+  disabledReason?: string;
+  minPeriodSeconds?: number;
+  maxPeriodSeconds?: number;
+  defaultPeriodSeconds?: number;
+}
+
+export function useCheckTypes(org: string) {
+  return useQuery({
+    queryKey: ["check-types", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: CheckTypeInfo[] }>(
+        `/api/v1/orgs/${org}/check-types`
+      );
+      return response.data || [];
+    },
+    staleTime: 5 * 60 * 1000, // 5 min cache — types rarely change
+    enabled: !!org,
+  });
+}
+
+export function useSampleConfigs(checkType: string) {
+  return useQuery({
+    queryKey: ["check-types", "samples", checkType],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: Array<{ checkType: string; samples: SampleConfig[] }> }>(
+        `/api/v1/check-types/samples?type=${encodeURIComponent(checkType)}`
+      );
+      return response.data?.[0]?.samples || [];
+    },
+    staleTime: 10 * 60 * 1000,
+    enabled: false, // manually triggered via refetch
+  });
+}
+

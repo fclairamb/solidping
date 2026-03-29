@@ -12,10 +12,15 @@ type ConnectionType string
 
 // Connection types.
 const (
-	ConnectionTypeSlack   ConnectionType = "slack"
-	ConnectionTypeDiscord ConnectionType = "discord"
-	ConnectionTypeWebhook ConnectionType = "webhook"
-	ConnectionTypeEmail   ConnectionType = "email"
+	ConnectionTypeSlack      ConnectionType = "slack"
+	ConnectionTypeDiscord    ConnectionType = "discord"
+	ConnectionTypeWebhook    ConnectionType = "webhook"
+	ConnectionTypeEmail      ConnectionType = "email"
+	ConnectionTypeGoogleChat ConnectionType = "googlechat"
+	ConnectionTypeMattermost ConnectionType = "mattermost"
+	ConnectionTypeNtfy       ConnectionType = "ntfy"
+	ConnectionTypeOpsgenie   ConnectionType = "opsgenie"
+	ConnectionTypePushover   ConnectionType = "pushover"
 )
 
 // IntegrationConnection represents a connection to an external integration.

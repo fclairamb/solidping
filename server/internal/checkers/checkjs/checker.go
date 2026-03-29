@@ -1,3 +1,4 @@
+// Package checkjs provides custom JavaScript script execution checks.
 package checkjs
 
 import (
@@ -61,9 +62,9 @@ func (c *JSChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the JavaScript check and returns the result.
 func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*JSConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*JSConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout

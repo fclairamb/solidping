@@ -117,12 +117,12 @@ run-test: build ## Build and run the application in test mode
 	@echo "Running application in test mode..."
 	@SP_RUNMODE=test ./$(APP_NAME) serve
 
-dev-test: ## Run backend, dash0 and status0 in development test mode
+dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@mkdir -p $(LOG_DIR)
 	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
 	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_RUNMODE=test air 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" air 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 clean: ## Remove built binaries and dash artifacts
 	@echo "Cleaning build artifacts..."

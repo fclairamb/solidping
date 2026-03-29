@@ -91,5 +91,15 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				ExpectedStatus: sampleExpectedStatus,
 			}).GetConfig(),
 		},
+		{
+			Name:   "Cloudflare DNS",
+			Slug:   "http-cloudflare-dns",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:            "https://one.one.one.one",
+				Method:         "GET",
+				ExpectedStatus: sampleExpectedStatus,
+			}).GetConfig(),
+		},
 	}
 }

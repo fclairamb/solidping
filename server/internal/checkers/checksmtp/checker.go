@@ -1,3 +1,4 @@
+// Package checksmtp provides SMTP server connectivity checks.
 package checksmtp
 
 import (
@@ -94,9 +95,9 @@ func newExecParams(cfg *SMTPConfig) execParams {
 //
 //nolint:funlen,cyclop,gocognit // SMTP protocol flow requires comprehensive logic
 func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SMTPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SMTPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	params := newExecParams(cfg)

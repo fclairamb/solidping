@@ -289,6 +289,8 @@ func (s *GitLabOAuthService) fetchUserProfile(ctx context.Context, accessToken s
 }
 
 // findOrCreateUser finds or creates a user by GitLab identity.
+//
+//nolint:dupl // OAuth provider findOrCreateUser methods share similar structure by design
 func (s *GitLabOAuthService) findOrCreateUser(ctx context.Context, userInfo *GitLabUserInfo) (*models.User, error) {
 	providerID := strconv.Itoa(userInfo.ID)
 

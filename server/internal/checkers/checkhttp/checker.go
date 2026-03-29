@@ -1,3 +1,4 @@
+// Package checkhttp provides HTTP/HTTPS endpoint monitoring checks.
 package checkhttp
 
 import (
@@ -181,9 +182,9 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:funlen,gocognit,cyclop // HTTP checking with pattern matching requires comprehensive validation
 func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*HTTPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*HTTPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults
@@ -208,8 +209,6 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	}
 
 	var req *http.Request
-
-	var err error
 
 	if bodyReader != nil {
 		req, err = http.NewRequestWithContext(ctx, method, cfg.URL, bodyReader)

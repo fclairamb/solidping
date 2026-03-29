@@ -222,8 +222,8 @@ func (r *StartupJobRun) loadSamplesForChecker(
 
 	count := 0
 
-	for _, sample := range samples { //nolint:gocritic // Value copy acceptable for sample data
-		if err := r.createSampleCheck(ctx, jctx, orgUID, checkType, checker, sample); err != nil {
+	for i := range samples {
+		if err := r.createSampleCheck(ctx, jctx, orgUID, checkType, checker, samples[i]); err != nil {
 			return count, err
 		}
 

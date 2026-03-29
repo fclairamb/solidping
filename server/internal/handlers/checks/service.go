@@ -479,9 +479,8 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	var period time.Duration
 	if req.Period != nil && *req.Period != "" {
 		var duration timeutils.Duration
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := duration.Scan(*req.Period); err != nil {
-			return CheckResponse{}, err
+		if scanErr := duration.Scan(*req.Period); scanErr != nil {
+			return CheckResponse{}, scanErr
 		}
 		period = time.Duration(duration)
 	}
@@ -491,9 +490,8 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 
 	// Validate slug format if provided by user
 	if userProvidedSlug {
-		//nolint:govet // Intentional shadowing for scoped error
-		if err := validateSlug(req.Slug); err != nil {
-			return CheckResponse{}, err
+		if slugErr := validateSlug(req.Slug); slugErr != nil {
+			return CheckResponse{}, slugErr
 		}
 	}
 
@@ -907,6 +905,17 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	}
 	if count > 0 {
 		return ErrCheckHasActiveIncidents
+	}
+
+	// Delete all check jobs for this check
+	existingJobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+	if err != nil {
+		return fmt.Errorf("failed to list check jobs: %w", err)
+	}
+	for _, job := range existingJobs {
+		if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
+			return fmt.Errorf("failed to delete check job: %w", err)
+		}
 	}
 
 	// Delete check

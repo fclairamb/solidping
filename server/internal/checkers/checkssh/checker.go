@@ -1,3 +1,4 @@
+// Package checkssh provides SSH server availability checks.
 package checkssh
 
 import (
@@ -5,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"net"
 	"regexp"
@@ -16,6 +18,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
+
+var errFingerprintMismatch = errors.New("fingerprint mismatch")
 
 const (
 	defaultPort    = 22
@@ -61,9 +65,9 @@ func (c *SSHChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the SSH check.
 func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*SSHConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*SSHConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout
@@ -101,10 +105,9 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	// Prefer IPv4
 	var targetIP net.IP
 
-	//nolint:gocritic // rangeValCopy acceptable for IPAddr
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			targetIP = addr.IP
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			targetIP = addrs[i].IP
 
 			break
 		}
@@ -278,8 +281,8 @@ func (c *SSHChecker) executeWithAuth(
 			output["fingerprint"] = fingerprint
 
 			if fingerprint != cfg.ExpectedFingerprint {
-				return fmt.Errorf("fingerprint mismatch: got %s, expected %s", //nolint:err113
-					fingerprint, cfg.ExpectedFingerprint)
+				return fmt.Errorf("%w: got %s, expected %s",
+					errFingerprintMismatch, fingerprint, cfg.ExpectedFingerprint)
 			}
 
 			return nil
@@ -429,11 +432,5 @@ func mergeOutput(base, extra map[string]any) map[string]any {
 }
 
 func isExitError(err error, target **ssh.ExitError) bool {
-	if exitErr, ok := err.(*ssh.ExitError); ok { //nolint:errorlint // ssh.ExitError not wrapped
-		*target = exitErr
-
-		return true
-	}
-
-	return false
+	return errors.As(err, target)
 }

@@ -17,9 +17,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/getsentry/sentry-go"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -32,6 +36,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
@@ -54,6 +59,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/profiler"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -104,7 +110,7 @@ type Server struct {
 
 // NewServer creates a new HTTP server instance.
 //
-//nolint:funlen // Server setup requires multiple service initializations
+//nolint:funlen,cyclop // Server setup requires multiple service initializations
 func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	var (
 		dbService db.Service
@@ -197,6 +203,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EmailFormatter = emailFormatter
 
+	// Initialize Sentry error tracking
+	if err := initSentry(cfg.Sentry); err != nil {
+		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
+	}
+
 	// Create auth service
 	authService := auth.NewService(dbService, cfg.Auth, cfg, emailSender, emailFormatter)
 
@@ -217,7 +228,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 //nolint:funlen // Route registration function naturally grows with new routes
 func (s *Server) setupRoutes() {
 	router := bunrouter.New()
-	mainGroup := router.Use(s.corsMiddleware).Use(s.loggingMiddleware)
+	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
@@ -341,6 +352,15 @@ func (s *Server) setupRoutes() {
 	// Job routes
 	jobHandler := jobs.NewHandler(s.jobSvc)
 	jobHandler.RegisterRoutes(api)
+
+	// Check types routes
+	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
+	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
+	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
+	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
+	orgCheckTypes := api.NewGroup("/orgs/:org/check-types").Use(authMiddleware.RequireAuth)
+	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
 	checksService := checks.NewService(s.dbService, s.services.EventNotifier)
@@ -519,6 +539,20 @@ func (s *Server) setupRoutes() {
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
 
+	// Prometheus metrics endpoint
+	if s.config.Prometheus.Enabled {
+		prommetrics.Register(prometheus.DefaultRegisterer)
+
+		metricsPath := s.config.Prometheus.Path
+		if metricsPath == "" {
+			metricsPath = "/metrics"
+		}
+
+		mainGroup.GET(metricsPath, bunrouter.HTTPHandler(promhttp.Handler()))
+
+		slog.Info("Prometheus metrics endpoint enabled", "path", metricsPath)
+	}
+
 	// Test API routes (no authentication for development/testing)
 	testHandler := testapi.NewHandler(s.jobSvc, s.dbService, s.services.EventNotifier)
 	api.POST("/test/jobs", testHandler.CreateEmailJob)
@@ -548,6 +582,42 @@ func (s *Server) setupRoutes() {
 	mainGroup.GET("/*path", s.serveAppRoot)
 
 	s.router = router
+}
+
+// initSentry initializes the Sentry SDK for error tracking.
+// If no DSN is configured, Sentry is silently disabled.
+func initSentry(cfg config.SentryConfig) error {
+	if cfg.DSN == "" {
+		slog.Info("Sentry disabled (no DSN configured)")
+		return nil
+	}
+
+	err := sentry.Init(sentry.ClientOptions{
+		Dsn:              cfg.DSN,
+		Environment:      cfg.Environment,
+		Release:          "solidping-server@" + version.Version,
+		TracesSampleRate: cfg.TracesSampleRate,
+		Debug:            cfg.Debug,
+		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+			if event.Request == nil {
+				return event
+			}
+			// Scrub sensitive headers
+			for key := range event.Request.Headers {
+				if key == "Authorization" || key == "Cookie" {
+					event.Request.Headers[key] = "[FILTERED]"
+				}
+			}
+			return event
+		},
+	})
+	if err != nil {
+		return fmt.Errorf("sentry init: %w", err)
+	}
+
+	slog.Info("Sentry initialized", "environment", cfg.Environment)
+
+	return nil
 }
 
 func (s *Server) corsMiddleware(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
@@ -701,14 +771,18 @@ func (s *Server) serveAppRedirect(
 		Scheme: "http",
 		Host:   rule.TargetHost,
 	}
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
-	// Modify the request to use the new path
-	originalDirector := proxy.Director
-	proxy.Director = func(r *http.Request) {
-		originalDirector(r)
-		r.URL.Path = newPath
-		r.URL.RawPath = newPath
+	//nolint:exhaustruct // Only Rewrite and ModifyResponse are needed
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(targetURL)
+			r.Out.URL.Path = newPath
+			r.Out.URL.RawPath = newPath
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Set("X-Proxied-By", "solidping-dev")
+			return nil
+		},
 	}
 
 	// When the dev server is unreachable, fall back to embedded static files
@@ -1127,6 +1201,12 @@ func (s *Server) startCheckWorker(ctx context.Context) {
 // Close closes the server and its database connection.
 func (s *Server) Close(ctx context.Context) error {
 	var closeErr error
+
+	// Flush pending Sentry events
+	const sentryFlushTimeout = 2 * time.Second
+	if !sentry.Flush(sentryFlushTimeout) {
+		slog.WarnContext(ctx, "Sentry flush timed out, some events may be lost")
+	}
 
 	// Shutdown profiler
 	if s.profilerSrv != nil {

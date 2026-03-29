@@ -1516,10 +1516,10 @@ func (s *Service) GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []
 
 	// Convert to map with LastStatusChange struct
 	resultMap := make(map[string]*models.LastStatusChange)
-	for _, result := range results { //nolint:gocritic // Struct copying acceptable for small result set
-		resultMap[result.CheckUID] = &models.LastStatusChange{
-			Time:   result.PeriodStart,
-			Status: models.StatusToString(result.Status),
+	for i := range results {
+		resultMap[results[i].CheckUID] = &models.LastStatusChange{
+			Time:   results[i].PeriodStart,
+			Status: models.StatusToString(results[i].Status),
 		}
 	}
 

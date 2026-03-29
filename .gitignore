@@ -21,3 +21,7 @@ server/internal/app/res/
 .DS_Store
 *.db
 logs/
+
+# Claude Code
+.claude/scheduled_tasks.lock
+.claude/worktrees/agent-*

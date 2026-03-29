@@ -15,6 +15,16 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &WebhookSender{}, true
 	case models.ConnectionTypeEmail:
 		return &EmailSender{}, true
+	case models.ConnectionTypeGoogleChat:
+		return &GoogleChatSender{}, true
+	case models.ConnectionTypeMattermost:
+		return &MattermostSender{}, true
+	case models.ConnectionTypeNtfy:
+		return &NtfySender{}, true
+	case models.ConnectionTypeOpsgenie:
+		return &OpsgenieSender{}, true
+	case models.ConnectionTypePushover:
+		return &PushoverSender{}, true
 	default:
 		return nil, false
 	}

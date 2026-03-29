@@ -68,6 +68,17 @@ function CheckNewPage() {
       defaultRegions={regionsData?.defaultRegions}
       isPending={createCheck.isPending}
       onCancel={() => navigate({ to: "/orgs/$org/checks", params: { org } })}
+      onTypeChange={(newType) => {
+        navigate({
+          to: "/orgs/$org/checks/new",
+          params: { org },
+          search: {
+            ...search,
+            checkType: newType,
+          },
+          replace: true,
+        });
+      }}
       onSubmit={async (data) => {
         const check = await createCheck.mutateAsync({
           type: data.type,

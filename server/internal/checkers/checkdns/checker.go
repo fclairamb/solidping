@@ -1,3 +1,4 @@
+// Package checkdns provides DNS resolution monitoring checks.
 package checkdns
 
 import (
@@ -88,9 +89,9 @@ func (c *DNSChecker) Validate(spec *checkerdef.CheckSpec) error {
 //
 //nolint:funlen,cyclop // DNS checking requires comprehensive logic for different record types
 func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*DNSConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*DNSConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	// Apply defaults
@@ -113,8 +114,6 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	var resolvedIPs []string
 
 	var resolvedValues []string
-
-	var err error
 
 	switch recordType {
 	case "A":
@@ -253,10 +252,9 @@ func (c *DNSChecker) lookupA(ctx context.Context, resolver *net.Resolver, hostna
 
 	var ips []string
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough, copying is acceptable
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			ips = append(ips, addr.IP.String())
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			ips = append(ips, addrs[i].IP.String())
 		}
 	}
 
@@ -272,10 +270,9 @@ func (c *DNSChecker) lookupAAAA(ctx context.Context, resolver *net.Resolver, hos
 
 	var ips []string
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough, copying is acceptable
-	for _, addr := range addrs {
-		if addr.IP.To4() == nil {
-			ips = append(ips, addr.IP.String())
+	for i := range addrs {
+		if addrs[i].IP.To4() == nil {
+			ips = append(ips, addrs[i].IP.String())
 		}
 	}
 

@@ -1,3 +1,4 @@
+// Package checkudp provides UDP port reachability checks.
 package checkudp
 
 import (
@@ -65,9 +66,9 @@ func (c *UDPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the UDP check and returns the result.
 func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
-	cfg, ok := config.(*UDPConfig)
-	if !ok {
-		return nil, ErrInvalidConfigType
+	cfg, err := checkerdef.AssertConfig[*UDPConfig](config)
+	if err != nil {
+		return nil, err
 	}
 
 	timeout := cfg.Timeout
@@ -106,10 +107,9 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	var isIPv6 bool
 
-	//nolint:gocritic // rangeValCopy: IPAddr is small enough
-	for _, addr := range addrs {
-		if addr.IP.To4() != nil {
-			targetIP = addr.IP
+	for i := range addrs {
+		if addrs[i].IP.To4() != nil {
+			targetIP = addrs[i].IP
 
 			break
 		}
