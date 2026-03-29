@@ -771,13 +771,18 @@ func (s *Server) serveAppRedirect(
 		Scheme: "http",
 		Host:   rule.TargetHost,
 	}
-	proxy := httputil.NewSingleHostReverseProxy(targetURL)
 
-	// Modify the request to use the new path
-	proxy.Rewrite = func(r *httputil.ProxyRequest) {
-		r.SetURL(targetURL)
-		r.Out.URL.Path = newPath
-		r.Out.URL.RawPath = newPath
+	//nolint:exhaustruct // Only Rewrite and ModifyResponse are needed
+	proxy := &httputil.ReverseProxy{
+		Rewrite: func(r *httputil.ProxyRequest) {
+			r.SetURL(targetURL)
+			r.Out.URL.Path = newPath
+			r.Out.URL.RawPath = newPath
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			resp.Header.Set("X-Proxied-By", "solidping-dev")
+			return nil
+		},
 	}
 
 	// When the dev server is unreachable, fall back to embedded static files

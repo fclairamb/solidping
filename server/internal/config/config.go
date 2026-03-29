@@ -371,6 +371,8 @@ func parseRedirects(value string) []RedirectRule {
 		return nil
 	}
 
+	slog.Info("Redirects rules set", "rules", value)
+
 	parts := strings.Split(value, ",")
 	rules := make([]RedirectRule, 0, len(parts))
 

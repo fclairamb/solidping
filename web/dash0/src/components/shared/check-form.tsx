@@ -217,9 +217,25 @@ export function CheckForm({
     return secondsToHMS(defSec);
   }
 
+  const slugRegex = /^[a-z][a-z0-9-]{2,19}$/;
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function validateSlug(value: string): string | null {
+    if (!value) return null; // empty is OK (auto-generated)
+    if (uuidRegex.test(value)) return "Slug must not be a UUID";
+    if (!slugRegex.test(value)) {
+      if (value.length < 3) return "Slug must be at least 3 characters";
+      if (value.length > 20) return "Slug must be at most 20 characters";
+      if (!/^[a-z]/.test(value)) return "Slug must start with a lowercase letter";
+      return "Slug must contain only lowercase letters, digits, and hyphens";
+    }
+    return null;
+  }
+
   const [type, setType] = useState<CheckType>(initialType);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
+  const slugError = validateSlug(slug);
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
   const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
@@ -661,6 +677,12 @@ export function CheckForm({
         break;
     }
 
+    // Validate slug format
+    if (slugError) {
+      setError(slugError);
+      return;
+    }
+
     // Validate period against constraints
     const periodSec = hmsToSeconds(type === "heartbeat" ? formatPeriod(periodValue, periodUnit) : period);
     const { minSec, maxSec } = getPeriodConstraints(type);
@@ -676,8 +698,8 @@ export function CheckForm({
     try {
       await onSubmit({
         type: mode === "create" ? type : undefined,
-        name: name || undefined,
-        slug: slug || undefined,
+        name: mode === "edit" ? name : (name || undefined),
+        slug: mode === "edit" ? slug : (slug || undefined),
         checkGroupUid: checkGroupUid || (mode === "edit" ? "" : undefined),
         period: type === "heartbeat" ? formatPeriod(periodValue, periodUnit) : period,
         // Don't send config for heartbeat edits — the token is managed by the backend
@@ -1334,8 +1356,12 @@ export function CheckForm({
 
             <div className="space-y-2">
               <Label htmlFor="slug">Slug {mode === "create" && "(optional)"}</Label>
-              <Input id="slug" type="text" placeholder="my-check" value={slug} onChange={(e) => setSlug(e.target.value)} data-testid="check-slug-input" />
-              <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
+              <Input id="slug" type="text" placeholder="my-check" value={slug} onChange={(e) => setSlug(e.target.value)} data-testid="check-slug-input" className={slugError ? "border-destructive" : ""} />
+              {slugError ? (
+                <p className="text-xs text-destructive">{slugError}</p>
+              ) : (
+                <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
+              )}
             </div>
 
             {checkGroups && checkGroups.length > 0 && (
