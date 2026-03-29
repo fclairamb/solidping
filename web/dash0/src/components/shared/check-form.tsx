@@ -38,7 +38,7 @@ const defaultPeriodSeconds: Record<string, number> = {
   dns: 300,
 };
 const globalDefaultPeriodSeconds = 60;
-const globalMinPeriodSeconds = 10;
+const globalMinPeriodSeconds = 5;
 
 const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
@@ -124,6 +124,7 @@ function getConfigField(
 
 function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
   const allOptions = [
+    { seconds: 5, value: "00:00:05", label: "5 seconds" },
     { seconds: 10, value: "00:00:10", label: "10 seconds" },
     { seconds: 30, value: "00:00:30", label: "30 seconds" },
     { seconds: 60, value: "00:01:00", label: "1 minute" },
