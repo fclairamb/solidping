@@ -1,5 +1,5 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
-	build-cli install-cli clean clean-all run run-test dev-test dev-dash dev-dash0 dev-status0 dev-backend \
+	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
 	test test-dash lint lint-back lint-dash fmt deps migrate help
 .DEFAULT_GOAL := build
 
@@ -116,6 +116,13 @@ run: build ## Build and run the application
 run-test: build ## Build and run the application in test mode
 	@echo "Running application in test mode..."
 	@SP_RUNMODE=test ./$(APP_NAME) serve
+
+dev: kill ## Run backend, dash0 and status0 in development mode
+	@echo "Running application in development mode..."
+	@mkdir -p $(LOG_DIR)
+	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
+	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
+	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" air 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
