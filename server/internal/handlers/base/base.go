@@ -32,7 +32,7 @@ const (
 	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"
 	ErrorCodeInvalidOrg                ErrorCode = "INVALID_ORG"
 	ErrorCodeTokenNotFound             ErrorCode = "TOKEN_NOT_FOUND"
-	ErrorCodeOAuthFailed ErrorCode = "OAUTH_FAILED"
+	ErrorCodeOAuthFailed               ErrorCode = "OAUTH_FAILED"
 	ErrorCodeInvalidState              ErrorCode = "INVALID_STATE"
 	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"
 	ErrorCodeTokenExchangeFailed       ErrorCode = "TOKEN_EXCHANGE_FAILED"

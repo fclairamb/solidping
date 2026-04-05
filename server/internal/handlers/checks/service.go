@@ -904,13 +904,13 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 
 	// Resolve any active incidents before deleting
 	if activeIncidentCount > 0 {
-		incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+		incidents, listErr := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
 			OrganizationUID: org.UID,
 			CheckUIDs:       []string{check.UID},
 			States:          []models.IncidentState{models.IncidentStateActive},
 		})
-		if err != nil {
-			return fmt.Errorf("failed to list active incidents: %w", err)
+		if listErr != nil {
+			return fmt.Errorf("failed to list active incidents: %w", listErr)
 		}
 
 		now := time.Now()
