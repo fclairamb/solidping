@@ -307,9 +307,9 @@ func TestLastForStatus(t *testing.T) {
 	}
 
 	t.Run("FirstResultHasLastForStatus", func(t *testing.T) {
-		// Insert first result with status=1 (up)
+		// Insert first result with status up
 		resultUID1, _ := uuid.NewV7()
-		status1 := 1
+		status1 := int(models.ResultStatusUp)
 		duration1 := float32(100.0)
 		lastForStatus := true
 		result1 := models.Result{
@@ -360,9 +360,9 @@ func TestLastForStatus(t *testing.T) {
 	t.Run("SecondResultWithSameStatusClearsPrevious", func(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // Ensure different created_at
 
-		// Insert second result with same status=1 (up)
+		// Insert second result with same status up
 		resultUID2, _ := uuid.NewV7()
-		status2 := 1
+		status2 := int(models.ResultStatusUp)
 		duration2 := float32(150.0)
 		lastForStatus := true
 		result2 := models.Result{
@@ -405,7 +405,7 @@ func TestLastForStatus(t *testing.T) {
 
 		// Verify only the second result has last_for_status = true
 		lastResults := getLastForStatusResults()
-		require.Len(t, lastResults, 1, "only one result should have last_for_status=true for status=1")
+		require.Len(t, lastResults, 1, "only one result should have last_for_status=true for status up")
 		assert.Equal(t, result2.UID, lastResults[0].UID)
 
 		// Verify first result no longer has last_for_status = true
@@ -421,9 +421,9 @@ func TestLastForStatus(t *testing.T) {
 	t.Run("DifferentStatusCanHaveOwnLastForStatus", func(t *testing.T) {
 		time.Sleep(10 * time.Millisecond) // Ensure different created_at
 
-		// Insert result with status=2 (down)
+		// Insert result with status down
 		resultUID3, _ := uuid.NewV7()
-		status3 := 2
+		status3 := int(models.ResultStatusDown)
 		duration3 := float32(0.0)
 		lastForStatus := true
 		result3 := models.Result{
@@ -442,7 +442,7 @@ func TestLastForStatus(t *testing.T) {
 		}
 
 		err := dbSvc.DB().RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-			// Clear previous last_for_status for status=2
+			// Clear previous last_for_status for status down
 			_, err := tx.NewUpdate().
 				Model((*models.Result)(nil)).
 				Set("last_for_status = NULL").
@@ -464,20 +464,20 @@ func TestLastForStatus(t *testing.T) {
 		results := getResults()
 		require.Len(t, results, 3)
 
-		// Verify we have 2 last_for_status results (one for status=1, one for status=2)
+		// Verify we have 2 last_for_status results (one for status up, one for status down)
 		lastResults := getLastForStatusResults()
 		require.Len(t, lastResults, 2, "should have 2 results with last_for_status=true (one per status)")
 
-		// Verify status=1 still has its last result
-		var status1Results []*models.Result
+		// Verify status up still has its last result
+		var statusUpResults []*models.Result
 		err = dbSvc.DB().NewSelect().
-			Model(&status1Results).
+			Model(&statusUpResults).
 			Where("check_uid = ?", check.UID).
-			Where("status = ?", 1).
+			Where("status = ?", int(models.ResultStatusUp)).
 			Where("last_for_status = ?", true).
 			Scan(ctx)
 		require.NoError(t, err)
-		require.Len(t, status1Results, 1)
+		require.Len(t, statusUpResults, 1)
 
 		// Verify status=2 has its last result
 		var status2Results []*models.Result

@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 func TestEncodeCursor(t *testing.T) {
@@ -139,27 +141,30 @@ func TestMapStatusStringsToInts(t *testing.T) {
 		{
 			name:         "up status",
 			statusStrs:   []string{"up"},
-			expectedInts: []int{1},
+			expectedInts: []int{int(models.ResultStatusUp)},
 		},
 		{
 			name:         "down status maps to multiple",
 			statusStrs:   []string{"down"},
-			expectedInts: []int{2, 3, 4},
+			expectedInts: []int{int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
 		},
 		{
-			name:         "unknown status",
+			name:         "unknown status not mapped",
 			statusStrs:   []string{"unknown"},
-			expectedInts: []int{0},
+			expectedInts: []int{},
 		},
 		{
 			name:         "multiple statuses",
-			statusStrs:   []string{"up", "unknown"},
-			expectedInts: []int{1, 0},
+			statusStrs:   []string{"up", "created"},
+			expectedInts: []int{int(models.ResultStatusUp), int(models.ResultStatusCreated)},
 		},
 		{
-			name:         "case insensitive",
-			statusStrs:   []string{"UP", "Down", "UnKnOwN"},
-			expectedInts: []int{1, 2, 3, 4, 0},
+			name:       "case insensitive",
+			statusStrs: []string{"UP", "Down"},
+			expectedInts: []int{
+				int(models.ResultStatusUp), int(models.ResultStatusDown),
+				int(models.ResultStatusTimeout), int(models.ResultStatusError),
+			},
 		},
 		{
 			name:         "invalid status",
@@ -167,9 +172,12 @@ func TestMapStatusStringsToInts(t *testing.T) {
 			expectedInts: []int{},
 		},
 		{
-			name:         "mixed valid and invalid",
-			statusStrs:   []string{"up", "invalid", "down"},
-			expectedInts: []int{1, 2, 3, 4},
+			name:       "mixed valid and invalid",
+			statusStrs: []string{"up", "invalid", "down"},
+			expectedInts: []int{
+				int(models.ResultStatusUp), int(models.ResultStatusDown),
+				int(models.ResultStatusTimeout), int(models.ResultStatusError),
+			},
 		},
 		{
 			name:         "empty slice",
@@ -179,12 +187,16 @@ func TestMapStatusStringsToInts(t *testing.T) {
 		{
 			name:         "running status",
 			statusStrs:   []string{"running"},
-			expectedInts: []int{5},
+			expectedInts: []int{int(models.ResultStatusRunning)},
 		},
 		{
-			name:         "all status types",
-			statusStrs:   []string{"up", "down", "unknown", "running"},
-			expectedInts: []int{1, 2, 3, 4, 0, 5},
+			name:       "all status types",
+			statusStrs: []string{"up", "down", "running", "created"},
+			expectedInts: []int{
+				int(models.ResultStatusUp), int(models.ResultStatusDown),
+				int(models.ResultStatusTimeout), int(models.ResultStatusError),
+				int(models.ResultStatusRunning), int(models.ResultStatusCreated),
+			},
 		},
 	}
 
@@ -231,11 +243,12 @@ func TestStatusIntToString(t *testing.T) {
 	}{
 		{"nil status", nil, "unknown"},
 		{"status 0", intPtr(0), "unknown"},
-		{"status 1 (up)", intPtr(1), "up"},
-		{"status 2 (down)", intPtr(2), "down"},
-		{"status 3 (timeout)", intPtr(3), "down"},
-		{"status 4 (error)", intPtr(4), "down"},
-		{"status 5 (running)", intPtr(5), "running"},
+		{"status 1 (created)", intPtr(int(models.ResultStatusCreated)), "created"},
+		{"status 2 (running)", intPtr(int(models.ResultStatusRunning)), "running"},
+		{"status 3 (up)", intPtr(int(models.ResultStatusUp)), "up"},
+		{"status 4 (down)", intPtr(int(models.ResultStatusDown)), "down"},
+		{"status 5 (timeout)", intPtr(int(models.ResultStatusTimeout)), "down"},
+		{"status 6 (error)", intPtr(int(models.ResultStatusError)), "down"},
 		{"invalid status -1", intPtr(-1), "unknown"},
 		{"invalid status 99", intPtr(99), "unknown"},
 	}
