@@ -98,13 +98,15 @@ function StatusDot({ status }: { status?: string | null }) {
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
-  const label = status || "unknown";
+  const label = status || "created";
   const className =
     label === "up"
       ? "bg-green-500/10 text-green-500"
       : label === "down" || label === "error"
         ? "bg-red-500/10 text-red-500"
-        : "";
+        : label === "created"
+          ? "bg-blue-500/10 text-blue-500"
+          : "";
 
   return (
     <Badge variant="secondary" className={className}>

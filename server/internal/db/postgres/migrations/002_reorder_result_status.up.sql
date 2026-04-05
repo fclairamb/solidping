@@ -21,13 +21,14 @@ UPDATE results SET status = status - 100 WHERE status >= 100 AND status <= 106;
 
 -- Also update checks.status
 -- Old: 0=unknown, 1=up, 2=down, 3=degraded
--- New: 0=unknown, 3=up, 4=down, 7=degraded
+-- New: 1=created, 3=up, 4=down, 7=degraded
 UPDATE checks SET status = CASE status
+  WHEN 0 THEN 101  -- unknown → created (0 → 1)
   WHEN 1 THEN 103  -- up (1 → 3)
   WHEN 2 THEN 104  -- down (2 → 4)
   WHEN 3 THEN 107  -- degraded (3 → 7)
   ELSE status
 END
-WHERE status IN (1, 2, 3);
+WHERE status IN (0, 1, 2, 3);
 
-UPDATE checks SET status = status - 100 WHERE status >= 103 AND status <= 107;
+UPDATE checks SET status = status - 100 WHERE status >= 101 AND status <= 107;

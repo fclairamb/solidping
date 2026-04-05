@@ -516,7 +516,7 @@ function CheckDetailPage() {
                         : ""
                   }
                 >
-                  {check.lastResult?.status || "unknown"}
+                  {check.lastResult?.status || "created"}
                 </Badge>
                 {check.enabled === false && (
                   <Badge variant="outline">Disabled</Badge>
