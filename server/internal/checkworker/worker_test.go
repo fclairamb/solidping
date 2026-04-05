@@ -279,7 +279,7 @@ func TestLastForStatus(t *testing.T) {
 		Scan(ctx)
 	require.NoError(t, err)
 
-	// Helper to get all results for this check (excluding initial status=0 result)
+	// Helper to get all results for this check (excluding initial "created" result)
 	getResults := func() []*models.Result {
 		var results []*models.Result
 		err := dbSvc.DB().NewSelect().
@@ -292,7 +292,7 @@ func TestLastForStatus(t *testing.T) {
 		return results
 	}
 
-	// Helper to get results with last_for_status = true (excluding initial status=0 result)
+	// Helper to get results with last_for_status = true (excluding initial "created" result)
 	getLastForStatusResults := func() []*models.Result {
 		var results []*models.Result
 		err := dbSvc.DB().NewSelect().
@@ -479,12 +479,12 @@ func TestLastForStatus(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, statusUpResults, 1)
 
-		// Verify status=2 has its last result
+		// Verify status down has its last result
 		var status2Results []*models.Result
 		err = dbSvc.DB().NewSelect().
 			Model(&status2Results).
 			Where("check_uid = ?", check.UID).
-			Where("status = ?", 2).
+			Where("status = ?", int(models.ResultStatusDown)).
 			Where("last_for_status = ?", true).
 			Scan(ctx)
 		require.NoError(t, err)

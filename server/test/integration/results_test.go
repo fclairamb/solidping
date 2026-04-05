@@ -83,9 +83,9 @@ func setupResultsTestData(ctx context.Context, t *testing.T, ts *TestServer) {
 	usEastRegion := testRegionUSEast1
 	euWestRegion := "eu-west-1"
 	workerUID := testWorkerUID
-	status1 := 1 // up
-	status2 := 2 // down
-	status3 := 3 // timeout
+	status1 := int(models.ResultStatusUp)
+	status2 := int(models.ResultStatusDown)
+	status3 := int(models.ResultStatusTimeout)
 	duration1 := float32(100.5)
 	duration2 := float32(50.0)
 	duration3 := float32(95.0)
