@@ -6,7 +6,7 @@ Take screenshots of websites when HTTP checks fail, similar to BetterStack.
 
 ## Technology Choice: Rod
 
-After evaluating Go-based screenshot tools (see [docs/go_screenshot_tools_comparison.md](../../docs/go_screenshot_tools_comparison.md)), **Rod** (`github.com/go-rod/rod`) is the chosen library for the screenshot service:
+After evaluating Go-based screenshot tools (see [docs/research/screenshot-tools.md](../../docs/research/screenshot-tools.md)), **Rod** (`github.com/go-rod/rod`) is the chosen library for the screenshot service:
 
 - Best concurrency model (multiplexed events, no fixed-buffer bottleneck)
 - Lower memory per tab (decode-on-demand, no DOM caching)

@@ -76,7 +76,7 @@ Each card shows:
 - A "Create" button that calls `useCreateCheck()` with pre-filled data
 - After creation, a toast notification with a link to the new check
 
-**Pre-filled check templates** (derived from `docs/test_http_checks.md`):
+**Pre-filled check templates** (derived from `docs/testing/http-test-checks.md`):
 
 | Template | Name | Period | URL suffix | Description |
 |----------|------|--------|------------|-------------|

@@ -28,22 +28,30 @@ If the server is currently running on port 4000, you can just apply code changes
 wait 5s for it to build and then test your changes.
 
 1. Start infrastructure: `docker-compose up -d`
-2. Backend: `make dev-backend` for development server
-3. Dashboard: `make dev-dash0` for development server
+2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
+3. Or in test mode: `make dev-test` (same but with `SP_RUNMODE=test`)
 4. Database changes: Add migrations, run `make migrate`
 
 ## Common Makefile Targets
 - **Build**:
-  - `make build` - Build complete application (dash + dash0 + backend)
+  - `make build` - Build complete application (dash + dash0 + status0 + backend)
   - `make build-dash` - Build dash only (using bun)
   - `make build-dash0` - Build dash0 status page only (using bun)
+  - `make build-status0` - Build status0 public status page only (using bun)
   - `make build-backend` - Build backend only (Go binary)
+  - `make build-cli` - Build standalone CLI (`sp`) binary
+  - `make install-cli` - Install standalone CLI to GOPATH
   - `make docker-build` - Build Docker image
 - **Development**:
-  - `make dev-backend` - Start backend development server
-  - `make dev-dash` - Start dash development server
-  - `make dev-dash0` - Start dash0 development server
-  - `make dev-test` - Run backend and dash0 in development test mode
+  - `make dev` - Run backend, dash0 and status0 in development mode
+  - `make dev-test` - Run backend, dash0 and status0 in development test mode
+  - `make dev-backend` - Start backend development server only
+  - `make dev-dash` - Start dash development server only
+  - `make dev-dash0` - Start dash0 development server only
+  - `make dev-status0` - Start status0 development server only
+- **Run**:
+  - `make run` - Build and run the application
+  - `make run-test` - Build and run the application in test mode
 - **Testing**:
   - `make test` - Run backend tests
   - `make test-dash` - Run dash tests
@@ -56,7 +64,7 @@ wait 5s for it to build and then test your changes.
   - `make deps` - Install all dependencies
   - `make migrate` - Run database migrations
   - `make clean` - Remove built binaries and artifacts
-  - `make run` - Build and run the application
+  - `make clean-all` - Remove all generated files including node_modules
 
 ## Default credentials
 - User: `admin@solidping.com`
@@ -132,7 +140,7 @@ make build-cli
 ```
 
 ## Frontend Error Handling
-See `docs/frontend_error_conventions.md` for full details.
+See `docs/conventions/frontend-errors.md` for full details.
 
 **Key rules:**
 - **401**: Redirect to login with `?returnTo={currentPath}` to preserve navigation
