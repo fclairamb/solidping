@@ -32,7 +32,6 @@ const (
 	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"
 	ErrorCodeInvalidOrg                ErrorCode = "INVALID_ORG"
 	ErrorCodeTokenNotFound             ErrorCode = "TOKEN_NOT_FOUND"
-	ErrorCodeCheckHasActiveIncidents   ErrorCode = "CHECK_HAS_ACTIVE_INCIDENTS"
 	ErrorCodeOAuthFailed               ErrorCode = "OAUTH_FAILED"
 	ErrorCodeInvalidState              ErrorCode = "INVALID_STATE"
 	ErrorCodeEmailNotVerified          ErrorCode = "EMAIL_NOT_VERIFIED"

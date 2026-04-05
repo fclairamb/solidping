@@ -12,14 +12,14 @@ import (
 type CheckStatus int
 
 const (
-	// CheckStatusUnknown indicates the check status is not yet known.
-	CheckStatusUnknown CheckStatus = 0
+	// CheckStatusCreated indicates the check was just created and hasn't been executed yet.
+	CheckStatusCreated CheckStatus = 1
 	// CheckStatusUp indicates the check is healthy.
-	CheckStatusUp CheckStatus = 1
+	CheckStatusUp CheckStatus = 3
 	// CheckStatusDown indicates the check is failing.
-	CheckStatusDown CheckStatus = 2
+	CheckStatusDown CheckStatus = 4
 	// CheckStatusDegraded indicates the check is experiencing issues (reserved for future use).
-	CheckStatusDegraded CheckStatus = 3
+	CheckStatusDegraded CheckStatus = 7
 )
 
 // Check represents a monitoring configuration.
@@ -76,7 +76,7 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		IncidentThreshold:   3,
 		EscalationThreshold: 10,
 		RecoveryThreshold:   3,
-		Status:              CheckStatusUnknown,
+		Status:              CheckStatusCreated,
 		StatusStreak:        0,
 		CreatedAt:           now,
 		UpdatedAt:           now,

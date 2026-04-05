@@ -745,14 +745,26 @@ func (r *CheckWorker) createInternalCheck(ctx context.Context) error {
 	existing, err := r.dbService.GetCheckByUidOrSlug(ctx, r.defaultOrgUID, slug)
 	if err == nil && existing != nil {
 		r.internalCheckUID = existing.UID
+
+		// Fix legacy checks that had type "internal:checkworker" and internal=false
+		if !existing.Internal || existing.Type != "checkworker" {
+			internalTrue := true
+			newType := "checkworker"
+			_ = r.dbService.UpdateCheck(ctx, existing.UID, &models.CheckUpdate{
+				Internal: &internalTrue,
+				Type:     &newType,
+			})
+		}
+
 		return nil
 	}
 
 	// Create new internal check
-	check := models.NewCheck(r.defaultOrgUID, slug, "internal:checkworker")
+	check := models.NewCheck(r.defaultOrgUID, slug, "checkworker")
 	name := "Check Worker: " + r.worker.Name
 	check.Name = &name
 	check.Enabled = false // Don't schedule it as a regular check
+	check.Internal = true
 
 	if err := r.dbService.CreateCheck(ctx, check); err != nil {
 		return err

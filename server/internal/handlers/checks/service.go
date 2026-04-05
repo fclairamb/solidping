@@ -55,8 +55,6 @@ var (
 	ErrSlugGenerationFailed = errors.New("could not generate unique slug after 99 attempts")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format (e.g., looks like a UUID).
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
-	// ErrCheckHasActiveIncidents is returned when trying to delete a check with active incidents.
-	ErrCheckHasActiveIncidents = errors.New("check has active incidents")
 	// ErrInvalidCursor is returned when the cursor parameter is malformed.
 	ErrInvalidCursor = errors.New("invalid cursor")
 	// ErrUnsupportedExportVersion is returned when the export document has an unsupported version.
@@ -898,13 +896,34 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return ErrCheckNotFound
 	}
 
-	// Check for active incidents
-	count, err := s.db.CountActiveIncidentsByCheckUID(ctx, check.UID)
+	// Count active incidents for the event payload
+	activeIncidentCount, err := s.db.CountActiveIncidentsByCheckUID(ctx, check.UID)
 	if err != nil {
 		return fmt.Errorf("failed to check active incidents: %w", err)
 	}
-	if count > 0 {
-		return ErrCheckHasActiveIncidents
+
+	// Resolve any active incidents before deleting
+	if activeIncidentCount > 0 {
+		incidents, listErr := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+			OrganizationUID: org.UID,
+			CheckUIDs:       []string{check.UID},
+			States:          []models.IncidentState{models.IncidentStateActive},
+		})
+		if listErr != nil {
+			return fmt.Errorf("failed to list active incidents: %w", listErr)
+		}
+
+		now := time.Now()
+		resolvedState := models.IncidentStateResolved
+
+		for _, incident := range incidents {
+			if updateErr := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
+				State:      &resolvedState,
+				ResolvedAt: &now,
+			}); updateErr != nil {
+				return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, updateErr)
+			}
+		}
 	}
 
 	// Delete all check jobs for this check
@@ -913,13 +932,32 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to list check jobs: %w", err)
 	}
 	for _, job := range existingJobs {
-		if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
-			return fmt.Errorf("failed to delete check job: %w", err)
+		if delErr := s.db.DeleteCheckJob(ctx, job.UID); delErr != nil {
+			return fmt.Errorf("failed to delete check job: %w", delErr)
 		}
 	}
 
 	// Delete check
-	return s.db.DeleteCheck(ctx, check.UID)
+	if err := s.db.DeleteCheck(ctx, check.UID); err != nil {
+		return fmt.Errorf("failed to delete check: %w", err)
+	}
+
+	// Emit check.deleted event
+	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
+	event.CheckUID = &check.UID
+	event.Payload = models.JSONMap{
+		"check_uid":              check.UID,
+		"check_slug":             check.Slug,
+		"check_name":             check.Name,
+		"check_type":             check.Type,
+		"active_incidents_count": activeIncidentCount,
+	}
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "failed to emit check.deleted event", "error", err)
+	}
+
+	return nil
 }
 
 // ensureUniqueSlug ensures the slug is unique within the organization.
@@ -1158,6 +1196,8 @@ func (s *Service) convertResultToLastResultResponse(result *models.Result) *Last
 			statusStr = "timeout"
 		case int(models.ResultStatusError):
 			statusStr = "error"
+		case int(models.ResultStatusCreated):
+			statusStr = "created"
 		}
 	}
 

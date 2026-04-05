@@ -907,7 +907,7 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 		}
 
 		// Create initial result to mark check creation
-		initialStatus := int(models.ResultStatusInitial)
+		initialStatus := int(models.ResultStatusCreated)
 		lastForStatus := true
 		initialResult := models.Result{
 			UID:             uuid.Must(uuid.NewV7()).String(),
@@ -1131,6 +1131,10 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 
 	if update.Enabled != nil {
 		query = query.Set("enabled = ?", *update.Enabled)
+	}
+
+	if update.Internal != nil {
+		query = query.Set("internal = ?", *update.Internal)
 	}
 
 	if update.Period != nil {

@@ -10,25 +10,27 @@ import (
 type ResultStatus int
 
 const (
-	// ResultStatusInitial indicates the check was just created.
-	ResultStatusInitial ResultStatus = 0
-	// ResultStatusUp indicates the check passed successfully.
-	ResultStatusUp ResultStatus = 1
-	// ResultStatusDown indicates the check failed.
-	ResultStatusDown ResultStatus = 2
-	// ResultStatusTimeout indicates the check timed out.
-	ResultStatusTimeout ResultStatus = 3
-	// ResultStatusError indicates the check encountered an error.
-	ResultStatusError ResultStatus = 4
+	// ResultStatusCreated indicates the check was just created and hasn't been executed yet.
+	ResultStatusCreated ResultStatus = 1
 	// ResultStatusRunning indicates the check process has started but not yet completed.
-	ResultStatusRunning ResultStatus = 5
+	ResultStatusRunning ResultStatus = 2
+	// ResultStatusUp indicates the check passed successfully.
+	ResultStatusUp ResultStatus = 3
+	// ResultStatusDown indicates the check failed.
+	ResultStatusDown ResultStatus = 4
+	// ResultStatusTimeout indicates the check timed out.
+	ResultStatusTimeout ResultStatus = 5
+	// ResultStatusError indicates the check encountered an error.
+	ResultStatusError ResultStatus = 6
 )
 
 // StatusToString converts a ResultStatus integer to its string representation.
 func StatusToString(status int) string {
 	switch status {
-	case int(ResultStatusInitial):
-		return "INITIAL"
+	case int(ResultStatusCreated):
+		return "CREATED"
+	case int(ResultStatusRunning):
+		return "RUNNING"
 	case int(ResultStatusUp):
 		return "UP"
 	case int(ResultStatusDown):
@@ -37,8 +39,6 @@ func StatusToString(status int) string {
 		return "TIMEOUT"
 	case int(ResultStatusError):
 		return "ERROR"
-	case int(ResultStatusRunning):
-		return "RUNNING"
 	default:
 		return "UNKNOWN"
 	}

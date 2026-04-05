@@ -103,7 +103,7 @@ export interface OrgResult {
   checkUid?: string;
   checkName?: string;
   checkSlug?: string;
-  status?: "up" | "down" | "unknown";
+  status?: "up" | "down" | "unknown" | "created";
   durationMs?: number;
   durationMinMs?: number;
   durationMaxMs?: number;

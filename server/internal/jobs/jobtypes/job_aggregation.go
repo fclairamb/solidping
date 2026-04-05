@@ -651,7 +651,7 @@ func processRawResult(
 ) {
 	// Skip non-data statuses (initial, running) — they are lifecycle markers, not measurements
 	if result.Status != nil &&
-		(*result.Status == int(models.ResultStatusRunning) || *result.Status == int(models.ResultStatusInitial)) {
+		(*result.Status == int(models.ResultStatusRunning) || *result.Status == int(models.ResultStatusCreated)) {
 		return
 	}
 

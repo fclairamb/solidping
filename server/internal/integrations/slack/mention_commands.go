@@ -415,9 +415,9 @@ func statusIntToString(status *int) string {
 	}
 
 	switch *status {
-	case 1:
+	case int(models.ResultStatusUp):
 		return statusUp
-	case 2, 3, 4:
+	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
 		return statusDown
 	default:
 		return "unknown"

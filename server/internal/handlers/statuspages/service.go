@@ -1068,11 +1068,11 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 		return nil, err
 	}
 
-	statusStr := "unknown"
+	statusStr := "created"
 
 	switch check.Status {
-	case models.CheckStatusUnknown:
-		statusStr = "unknown"
+	case models.CheckStatusCreated:
+		statusStr = "created"
 	case models.CheckStatusUp:
 		statusStr = "up"
 	case models.CheckStatusDown:

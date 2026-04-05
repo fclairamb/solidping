@@ -139,7 +139,7 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - `context` (jsonb) - Execution context (e.g., {"region": "eu-1"})
 - `period` - Time period grouping (YYYY, YYYY-MM, YYYY-MM-DD)
 - `started_at` - Execution timestamp
-- `status` - Result status: 1=up, 2=down, 3=timeout, 4=error
+- `status` - Result status: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
 - `duration_ms_*` - Response time metrics (avg/min/max)
 - `availability` - Uptime percentage
 - `output` (jsonb) - Detailed results and error messages

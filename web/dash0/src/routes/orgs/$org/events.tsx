@@ -53,6 +53,9 @@ function getEventIcon(eventType?: string) {
   if (eventType.startsWith("check.")) {
     return <Cpu className="h-4 w-4 text-blue-400" />;
   }
+  if (eventType === "incident.resolved") {
+    return <Calendar className="h-4 w-4 text-green-500" />;
+  }
   if (eventType.startsWith("incident.")) {
     return <Calendar className="h-4 w-4 text-yellow-500" />;
   }

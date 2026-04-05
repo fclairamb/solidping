@@ -104,7 +104,9 @@ function StatusBadge({ status }: { status?: string | null }) {
       ? "bg-green-500/10 text-green-500"
       : label === "down" || label === "error"
         ? "bg-red-500/10 text-red-500"
-        : "";
+        : label === "created"
+          ? "bg-blue-500/10 text-blue-500"
+          : "";
 
   return (
     <Badge variant="secondary" className={className}>
