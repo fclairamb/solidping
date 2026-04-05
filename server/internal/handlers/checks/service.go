@@ -917,11 +917,11 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		resolvedState := models.IncidentStateResolved
 
 		for _, incident := range incidents {
-			if err := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
+			if updateErr := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{
 				State:      &resolvedState,
 				ResolvedAt: &now,
-			}); err != nil {
-				return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, err)
+			}); updateErr != nil {
+				return fmt.Errorf("failed to resolve incident %s: %w", incident.UID, updateErr)
 			}
 		}
 	}
@@ -932,8 +932,8 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 		return fmt.Errorf("failed to list check jobs: %w", err)
 	}
 	for _, job := range existingJobs {
-		if err := s.db.DeleteCheckJob(ctx, job.UID); err != nil {
-			return fmt.Errorf("failed to delete check job: %w", err)
+		if delErr := s.db.DeleteCheckJob(ctx, job.UID); delErr != nil {
+			return fmt.Errorf("failed to delete check job: %w", delErr)
 		}
 	}
 
