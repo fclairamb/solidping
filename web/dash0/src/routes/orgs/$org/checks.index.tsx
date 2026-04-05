@@ -98,7 +98,7 @@ function StatusDot({ status }: { status?: string | null }) {
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
-  const label = status || "created";
+  const label = status || "unknown";
   const className =
     label === "up"
       ? "bg-green-500/10 text-green-500"
