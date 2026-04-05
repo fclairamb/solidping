@@ -907,7 +907,7 @@ func (s *Service) CreateCheck(ctx context.Context, check *models.Check) error {
 		}
 
 		// Create initial result to mark check creation
-		initialStatus := int(models.ResultStatusInitial)
+		initialStatus := int(models.ResultStatusCreated)
 		lastForStatus := true
 		initialResult := models.Result{
 			UID:             uuid.Must(uuid.NewV7()).String(),

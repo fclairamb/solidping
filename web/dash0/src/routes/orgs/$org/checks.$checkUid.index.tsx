@@ -677,7 +677,9 @@ function CheckDetailPage() {
                             ? "bg-green-500/10 text-green-500"
                             : result.status === "down"
                               ? "bg-red-500/10 text-red-500"
-                              : ""
+                              : result.status === "created"
+                                ? "bg-blue-500/10 text-blue-500"
+                                : ""
                         }
                       >
                         {result.status}

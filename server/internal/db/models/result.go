@@ -22,6 +22,8 @@ const (
 	ResultStatusError ResultStatus = 4
 	// ResultStatusRunning indicates the check process has started but not yet completed.
 	ResultStatusRunning ResultStatus = 5
+	// ResultStatusCreated indicates the check was just created and hasn't been executed yet.
+	ResultStatusCreated ResultStatus = 6
 )
 
 // StatusToString converts a ResultStatus integer to its string representation.
@@ -39,6 +41,8 @@ func StatusToString(status int) string {
 		return "ERROR"
 	case int(ResultStatusRunning):
 		return "RUNNING"
+	case int(ResultStatusCreated):
+		return "CREATED"
 	default:
 		return "UNKNOWN"
 	}

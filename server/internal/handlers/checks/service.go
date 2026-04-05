@@ -1158,6 +1158,8 @@ func (s *Service) convertResultToLastResultResponse(result *models.Result) *Last
 			statusStr = "timeout"
 		case int(models.ResultStatusError):
 			statusStr = "error"
+		case int(models.ResultStatusCreated):
+			statusStr = "created"
 		}
 	}
 

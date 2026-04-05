@@ -328,6 +328,8 @@ func (s *Service) statusIntToString(status *int) string {
 		return "down"
 	case 5:
 		return "running"
+	case 6:
+		return "created"
 	default:
 		return "unknown"
 	}
