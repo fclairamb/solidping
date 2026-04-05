@@ -6,6 +6,7 @@ import {
   Download,
   Image,
   FileImage,
+  RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useChecks, type Check } from "@/api/hooks";
@@ -109,6 +110,7 @@ function BadgePreview({
   customLabel: string;
 }) {
   const imgRef = useRef<HTMLImageElement>(null);
+  const [cacheBust, setCacheBust] = useState(() => Date.now());
 
   const identifier = check.slug || check.uid;
   const params = new URLSearchParams();
@@ -183,14 +185,23 @@ function BadgePreview({
   );
 
   // Cache-bust preview with timestamp
-  const previewUrl = `${badgePath}${query ? "&" : "?"}t=${Date.now()}`;
+  const previewUrl = `${badgePath}${query ? "&" : "?"}t=${cacheBust}`;
 
   return (
     <div className="space-y-6">
       {/* Live Preview */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">Preview</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCacheBust(Date.now())}
+            data-testid="badge-refresh-preview"
+          >
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            Refresh
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-8">

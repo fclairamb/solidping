@@ -166,7 +166,8 @@ func calculateAvailability(results []*models.Result) float64 {
 
 	for _, result := range results {
 		if result.Status != nil {
-			if models.ResultStatus(*result.Status) == models.ResultStatusCreated {
+			status := models.ResultStatus(*result.Status)
+			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
 				continue
 			}
 			total++
@@ -209,8 +210,11 @@ func (s *Service) calculateUptimeDuration(results []*models.Result) time.Duratio
 	// Iterate from newest to oldest, find first non-up status
 	seenCount := 0
 	for _, result := range results {
-		if result.Status != nil && models.ResultStatus(*result.Status) == models.ResultStatusCreated {
-			continue
+		if result.Status != nil {
+			status := models.ResultStatus(*result.Status)
+			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
+				continue
+			}
 		}
 		if result.Status != nil && *result.Status != int(models.ResultStatusUp) {
 			if seenCount == 0 {

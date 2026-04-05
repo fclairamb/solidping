@@ -341,15 +341,16 @@ export function ResponseTimeChart({
     const realPoints = chartData.filter((p) => p.durationMs != null);
     if (realPoints.length < 2) {
       const color =
-        realPoints.length === 1 && realPoints[0].status !== "up" && realPoints[0].status !== "created"
+        realPoints.length === 1 && realPoints[0].status !== "up" && realPoints[0].status !== "created" && realPoints[0].status !== "running"
           ? COLOR_DOWN
           : COLOR_UP;
       return [{ offset: 0, color }, { offset: 1, color }];
     }
     const n = realPoints.length;
     const stops: { offset: number; color: string }[] = [];
+    const isNeutralStatus = (status: string) => status === "up" || status === "created" || status === "running";
     const colorFor = (status: string) =>
-      status === "up" || status === "created" ? COLOR_UP : COLOR_DOWN;
+      isNeutralStatus(status) ? COLOR_UP : COLOR_DOWN;
 
     stops.push({ offset: 0, color: colorFor(realPoints[0].status) });
 
