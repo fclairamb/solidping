@@ -84,21 +84,48 @@ wait 5s for it to build and then test your changes.
 - Use camelCase consistently for both JSON properties and query parameters (e.g., `checkUid` in JSON and `?checkUid=abc` in URLs)
 - When using query parameters that can contain multiple values, use them in their singular form, for example `checkUid` and not `checkUids`. If there are multiple values, separate them with `,`.
 
-### API Endpoints
-- GET /api/mgmt/version - Get the current version
-- GET /api/mgmt/health - Health check endpoint
-- POST /api/v1/auth/login - User/password authentication (org optional in body)
-- POST /api/v1/auth/logout - Logout current session
-- POST /api/v1/auth/refresh - Refresh access token
-- GET /api/v1/auth/me - Get current user info
-- POST /api/v1/auth/switch-org - Switch organization context
-- GET /api/v1/auth/tokens - List all user's tokens across orgs
-- DELETE /api/v1/auth/tokens/$tokenUid - Revoke a token
-- GET /api/v1/orgs/$org/tokens - List user's tokens for an org
-- POST /api/v1/orgs/$org/tokens - Create a Personal Access Token for an org
-- GET /api/v1/check-types - List all check types with metadata and server-level activation status
-- GET /api/v1/check-types/samples - List sample configs for all check types (optional ?type= filter)
-- GET /api/v1/orgs/$org/check-types - List check types resolved for the org (server + org settings)
+### API Endpoints (key routes, see `docs/api-specification.md` for full list)
+- GET /api/mgmt/version - Version info
+- GET /api/mgmt/health - Health check
+- POST /api/v1/auth/login - Login (org optional in body)
+- POST /api/v1/auth/logout - Logout
+- POST /api/v1/auth/refresh - Refresh token
+- GET /api/v1/auth/me - Current user info
+- PATCH /api/v1/auth/me - Update current user
+- POST /api/v1/auth/switch-org - Switch organization
+- POST /api/v1/auth/register - Register new user
+- POST /api/v1/auth/2fa/setup|confirm|verify|recovery - 2FA management
+- GET /api/v1/auth/tokens - List all user tokens
+- DELETE /api/v1/auth/tokens/$tokenUid - Revoke token
+- GET /api/v1/auth/providers - List OAuth providers
+- POST /api/v1/orgs - Create organization
+- GET/PATCH /api/v1/orgs/$org/settings - Org settings
+- GET/POST /api/v1/orgs/$org/tokens - Org tokens
+- GET/POST/DELETE /api/v1/orgs/$org/invitations - Invitations
+- CRUD /api/v1/orgs/$org/members - Members
+- CRUD /api/v1/orgs/$org/checks - Checks
+- POST /api/v1/orgs/$org/checks/validate - Validate check config
+- GET/POST /api/v1/orgs/$org/checks/export|import - Import/export
+- PUT /api/v1/orgs/$org/checks/$slug - Upsert by slug
+- CRUD /api/v1/orgs/$org/check-groups - Check groups
+- CRUD /api/v1/orgs/$org/connections - Integration connections
+- GET/PUT/POST/DELETE /api/v1/orgs/$org/checks/$check/connections - Check connections
+- GET /api/v1/orgs/$org/results - Results
+- GET /api/v1/orgs/$org/incidents[/$uid[/events]] - Incidents
+- GET /api/v1/orgs/$org/events - Events
+- CRUD /api/v1/orgs/$org/status-pages (with nested sections/resources)
+- CRUD /api/v1/orgs/$org/maintenance-windows (with nested checks)
+- CRUD /api/v1/orgs/$org/jobs - Background jobs
+- GET /api/v1/check-types - List check types (public)
+- GET /api/v1/check-types/samples - Sample configs (public)
+- GET /api/v1/orgs/$org/check-types - Org check types
+- GET /api/v1/regions - Global regions (public)
+- GET/POST /api/v1/heartbeat/$org/$identifier - Heartbeat ingestion (public)
+- GET /api/v1/orgs/$org/checks/$check/badges/$format - Status badges (public)
+- GET /api/v1/status-pages/$org[/$slug] - Public status pages
+- POST /api/v1/workers/register|heartbeat|claim-jobs|submit-result - Worker API
+- POST /api/v1/mcp - MCP endpoint
+- GET/PUT/DELETE /api/v1/system/parameters - System params (super admin)
 
 ### Errors
 All errors should return:
@@ -113,9 +140,16 @@ All errors should return:
 - `UNAUTHORIZED` - Authentication required
 - `FORBIDDEN` - Permission denied
 - `CONFLICT` - Resource conflict (duplicate, etc.)
-- `ORGANIZATION_NOT_FOUND` - Organization does not exist
-- `USER_NOT_FOUND` - User does not exist
-- `CHECK_NOT_FOUND` - Check does not exist
+- `INVALID_CREDENTIALS` - Wrong email/password
+- `INVALID_TOKEN` / `NO_TOKEN` - Token issues
+- `REGISTRATION_DISABLED` / `EMAIL_NOT_ALLOWED` / `REGISTRATION_EXPIRED` - Registration errors
+- `INVITATION_NOT_FOUND` / `INVITATION_EXPIRED` - Invitation errors
+- `PASSWORD_RESET_EXPIRED` - Password reset timeout
+- `2FA_REQUIRED` / `INVALID_2FA_CODE` / `INVALID_RECOVERY_CODE` - 2FA errors
+- `CHECK_HAS_ACTIVE_INCIDENTS` - Cannot delete check with active incidents
+- `ORGANIZATION_NOT_FOUND` / `USER_NOT_FOUND` / `CHECK_NOT_FOUND` / `CONNECTION_NOT_FOUND` - Resource not found
+- `STATUS_PAGE_NOT_FOUND` / `STATUS_PAGE_SECTION_NOT_FOUND` / `CHECK_GROUP_NOT_FOUND` - Resource not found
+- `MAINTENANCE_WINDOW_NOT_FOUND` / `TOKEN_NOT_FOUND` - Resource not found
 
 ### API Testing
 ```bash
