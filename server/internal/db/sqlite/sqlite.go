@@ -1133,6 +1133,10 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("enabled = ?", *update.Enabled)
 	}
 
+	if update.Internal != nil {
+		query = query.Set("internal = ?", *update.Internal)
+	}
+
 	if update.Period != nil {
 		query = query.Set("period = ?", *update.Period)
 	}

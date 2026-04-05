@@ -314,14 +314,26 @@ func (w *JobWorker) createInternalCheck(ctx context.Context) error {
 	existing, err := w.dbService.GetCheckByUidOrSlug(ctx, w.defaultOrgUID, slug)
 	if err == nil && existing != nil {
 		w.internalCheckUID = existing.UID
+
+		// Fix legacy checks that had type "internal:jobworker" and internal=false
+		if !existing.Internal || existing.Type != "jobworker" {
+			internalTrue := true
+			newType := "jobworker"
+			_ = w.dbService.UpdateCheck(ctx, existing.UID, &models.CheckUpdate{
+				Internal: &internalTrue,
+				Type:     &newType,
+			})
+		}
+
 		return nil
 	}
 
 	// Create new internal check
-	check := models.NewCheck(w.defaultOrgUID, slug, "internal:jobworker")
+	check := models.NewCheck(w.defaultOrgUID, slug, "jobworker")
 	name := "Job Worker: " + w.workerSlug
 	check.Name = &name
 	check.Enabled = false // Don't schedule it as a regular check
+	check.Internal = true
 
 	if err := w.dbService.CreateCheck(ctx, check); err != nil {
 		return err
