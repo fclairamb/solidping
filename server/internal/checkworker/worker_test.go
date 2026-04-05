@@ -285,7 +285,7 @@ func TestLastForStatus(t *testing.T) {
 		err := dbSvc.DB().NewSelect().
 			Model(&results).
 			Where("check_uid = ?", check.UID).
-			Where("status != ?", int(models.ResultStatusInitial)).
+			Where("status != ?", int(models.ResultStatusCreated)).
 			Order("created_at ASC").
 			Scan(ctx)
 		require.NoError(t, err)
@@ -299,7 +299,7 @@ func TestLastForStatus(t *testing.T) {
 			Model(&results).
 			Where("check_uid = ?", check.UID).
 			Where("last_for_status = ?", true).
-			Where("status != ?", int(models.ResultStatusInitial)).
+			Where("status != ?", int(models.ResultStatusCreated)).
 			Order("created_at ASC").
 			Scan(ctx)
 		require.NoError(t, err)

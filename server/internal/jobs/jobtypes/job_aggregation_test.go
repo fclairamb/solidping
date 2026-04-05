@@ -365,7 +365,7 @@ func TestAggregateResults_ExcludesNonDataStatuses(t *testing.T) {
 	statusUp := int(models.ResultStatusUp)
 	statusDown := int(models.ResultStatusDown)
 	statusRunning := int(models.ResultStatusRunning)
-	statusInitial := int(models.ResultStatusInitial)
+	statusInitial := int(models.ResultStatusCreated)
 	duration := float32(100.0)
 	workerUID := testWorkerUID
 

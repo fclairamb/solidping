@@ -5,21 +5,20 @@ import "time"
 // Status represents the outcome of a check execution.
 type Status int
 
-// Check status constants.
+// Check status constants — values match models.ResultStatus.
 const (
-	StatusInitial Status = 0 // Check status unknown
-	StatusUp      Status = 1 // Check succeeded
-	StatusDown    Status = 2 // Check failed (target unreachable or unhealthy)
-	StatusTimeout Status = 3 // Check timed out
-	StatusError   Status = 4 // Internal error during check execution
-	StatusRunning Status = 5 // Check process started but not yet completed
+	StatusRunning Status = 2 // Check process started but not yet completed
+	StatusUp      Status = 3 // Check succeeded
+	StatusDown    Status = 4 // Check failed (target unreachable or unhealthy)
+	StatusTimeout Status = 5 // Check timed out
+	StatusError   Status = 6 // Internal error during check execution
 )
 
 // String returns the string representation of the status.
 func (s Status) String() string {
 	switch s {
-	case StatusInitial:
-		return "initial"
+	case StatusRunning:
+		return "running"
 	case StatusUp:
 		return "up"
 	case StatusDown:
@@ -28,8 +27,6 @@ func (s Status) String() string {
 		return "timeout"
 	case StatusError:
 		return "error"
-	case StatusRunning:
-		return "running"
 	default:
 		return "unknown"
 	}

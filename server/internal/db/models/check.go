@@ -15,11 +15,11 @@ const (
 	// CheckStatusUnknown indicates the check status is not yet known.
 	CheckStatusUnknown CheckStatus = 0
 	// CheckStatusUp indicates the check is healthy.
-	CheckStatusUp CheckStatus = 1
+	CheckStatusUp CheckStatus = 3
 	// CheckStatusDown indicates the check is failing.
-	CheckStatusDown CheckStatus = 2
+	CheckStatusDown CheckStatus = 4
 	// CheckStatusDegraded indicates the check is experiencing issues (reserved for future use).
-	CheckStatusDegraded CheckStatus = 3
+	CheckStatusDegraded CheckStatus = 7
 )
 
 // Check represents a monitoring configuration.

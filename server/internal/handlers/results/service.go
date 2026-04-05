@@ -184,10 +184,10 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 
 func (s *Service) mapStatusStringsToInts(statuses []string) []int {
 	statusMap := map[string][]int{
-		"up":      {1},
-		"down":    {2, 3, 4}, // down, timeout, error
-		"unknown": {0},
-		"running": {5},
+		"created": {int(models.ResultStatusCreated)},
+		"running": {int(models.ResultStatusRunning)},
+		"up":      {int(models.ResultStatusUp)},
+		"down":    {int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
 	}
 
 	var result []int
@@ -322,14 +322,14 @@ func (s *Service) statusIntToString(status *int) string {
 	}
 
 	switch *status {
-	case 1:
-		return "up"
-	case 2, 3, 4:
-		return "down"
-	case 5:
-		return "running"
-	case 6:
+	case int(models.ResultStatusCreated):
 		return "created"
+	case int(models.ResultStatusRunning):
+		return "running"
+	case int(models.ResultStatusUp):
+		return "up"
+	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
+		return "down"
 	default:
 		return "unknown"
 	}
