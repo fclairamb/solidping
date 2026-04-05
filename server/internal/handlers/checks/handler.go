@@ -494,10 +494,6 @@ func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
-	case errors.Is(err, ErrCheckHasActiveIncidents):
-		return h.WriteErrorErr(
-			writer, http.StatusConflict, base.ErrorCodeCheckHasActiveIncidents,
-			"Cannot delete check with active incidents", err)
 	default:
 		return h.WriteInternalError(writer, err)
 	}
