@@ -45,6 +45,7 @@ Market analysis of uptime monitoring services.
 - [competitors/gatus.md](competitors/gatus.md) — Gatus analysis (config-as-code, self-hosted)
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
 - [competitors/pingdom.md](competitors/pingdom.md) — Pingdom analysis (RUM, page speed)
+- [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)
 - [competitors/uptimerobot.md](competitors/uptimerobot.md) — UptimeRobot analysis (free tier, protocol support)

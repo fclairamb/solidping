@@ -14,6 +14,8 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 | **Self-hosted** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (BSD) |
 | **API Version** | v2 (v3 for incidents) | v2 (v3 available) | 3.1 (2.1 legacy) | v1 | v1 | v3 |
 
+> **Also analyzed**: [Site24x7](site24x7.md) (Zoho/ManageEngine) — all-in-one mid-market alternative with 100+ monitor types, 130+ probe locations, 50-monitor free tier, and built-in APM/RUM. Not included in tables below to keep them focused on uptime-first competitors.
+
 ## Pricing Comparison
 
 ### Free Tier
