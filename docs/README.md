@@ -16,6 +16,7 @@ Project-wide standards and naming rules.
 - [conventions/regions.md](conventions/regions.md) — Region naming (`$continent-$region-$city`) and wildcard matching
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
+- [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 
 ## Testing
