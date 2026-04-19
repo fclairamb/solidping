@@ -364,7 +364,7 @@ solidping/
 - Time-series monitoring data
 - Partitioned by organization
 - Period-based aggregation (YYYY, YYYY-MM, YYYY-MM-DD)
-- Status tracking: up (1), down (2), timeout (3), error (4)
+- Status tracking: created (1), running (2), up (3), down (4), timeout (5), error (6) — lifecycle order
 - Response time metrics: avg/min/max duration
 - Availability percentage
 - JSONB output for detailed results/errors

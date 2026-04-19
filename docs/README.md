@@ -16,6 +16,7 @@ Project-wide standards and naming rules.
 - [conventions/regions.md](conventions/regions.md) — Region naming (`$continent-$region-$city`) and wildcard matching
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
+- [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 
 ## Testing
@@ -44,6 +45,7 @@ Market analysis of uptime monitoring services.
 - [competitors/gatus.md](competitors/gatus.md) — Gatus analysis (config-as-code, self-hosted)
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
 - [competitors/pingdom.md](competitors/pingdom.md) — Pingdom analysis (RUM, page speed)
+- [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)
 - [competitors/uptimerobot.md](competitors/uptimerobot.md) — UptimeRobot analysis (free tier, protocol support)

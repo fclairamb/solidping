@@ -46,6 +46,11 @@ These services have full analysis documents in this directory:
    - Focus: Cron job and heartbeat monitoring (passive only)
    - Pricing: Free-$80/month, fully open source (BSD), self-hostable
 
+9. **Site24x7** (ManageEngine / Zoho) - [site24x7.md](site24x7.md)
+   - URL: https://www.site24x7.com
+   - Focus: All-in-one mid-market monitoring (uptime + infra + APM + RUM + logs)
+   - Pricing: Free-$45+/month (50 free monitors), 100+ monitor types, 130+ probe locations
+
 ## Major Competitors (Tier 1)
 
 ### Enterprise & Full-Featured
@@ -103,15 +108,15 @@ These services have full analysis documents in this directory:
    - API: Yes
    - Check Intervals: 1 minute
 
-10. **Site24x7**
+10. **Site24x7** — see dedicated analysis: [site24x7.md](site24x7.md)
     - URL: https://www.site24x7.com
-    - Owner: Zoho Corporation
-    - Focus: Comprehensive IT monitoring
-    - Pricing: $9-$225/month
-    - Free Tier: 30-day trial, 5 free monitors
-    - Notable: Server + website monitoring
-    - API: Yes
-    - Check Intervals: Down to 1 minute
+    - Owner: Zoho Corporation (ManageEngine division)
+    - Focus: All-in-one IT monitoring (website + infra + APM + RUM + logs)
+    - Pricing: Free-$45+/month (8 specialized "packs" + add-ons)
+    - Free Tier: **50 monitors free forever** (not just trial)
+    - Notable: 100+ monitor types, 130+ global probe locations, AIOps anomaly detection
+    - API: Yes (REST, OAuth 2.0)
+    - Check Intervals: 1 minute to daily (sub-minute on enterprise)
 
 11. **Uptime.com** (formerly Uptrends)
     - URL: https://uptime.com

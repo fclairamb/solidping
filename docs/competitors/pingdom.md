@@ -2,13 +2,13 @@
 
 ## Overview
 
-Pingdom (now owned by SolarWinds) is an established website monitoring service that provides uptime, transaction, page speed, and real user monitoring (RUM). Originally founded in 2007, Pingdom has become a well-known name in the monitoring space, though it has faced increasing competition from newer, more affordable alternatives.
+Pingdom (a SolarWinds product) is an established website monitoring service that provides uptime, transaction, page speed, and real user monitoring (RUM). Originally founded in 2007, Pingdom has become a well-known name in the monitoring space, though it has faced increasing competition from newer, more affordable alternatives.
 
 **Base API URL**: `https://api.pingdom.com/api/3.1/`
 
 **API Specification**: RESTful HTTP-based API with Bearer token authentication
 
-**Current Owner**: SolarWinds (acquired in 2014)
+**Current Owner**: SolarWinds (acquired Pingdom in 2014). SolarWinds itself was taken private by Turn/River Capital in early 2025 (previously majority-owned by Silver Lake and Thoma Bravo since 2016).
 
 ## Key Features
 

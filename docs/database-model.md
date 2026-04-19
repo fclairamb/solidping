@@ -223,7 +223,7 @@ Monitoring configurations that define what to monitor.
 | recovery_threshold | integer | Successes before recovery |
 | reopen_cooldown_multiplier | integer | Multiplier for adaptive cooldown before reopening (NULL = system default) |
 | max_adaptive_increase | integer | Maximum multiplier for adaptive resolution increase (NULL = system default) |
-| status | smallint | Current: 0=unknown, 1=up, 2=down, 3=timeout, 4=error |
+| status | smallint | Current: 1=created, 3=up, 4=down, 7=degraded |
 | status_streak | integer | Current status streak count |
 | status_changed_at | timestamptz | Last status change |
 
@@ -325,7 +325,7 @@ Time-series check execution results (raw and aggregated).
 | period_end | timestamptz | Period end |
 | region | text | Execution region |
 | worker_uid | uuid | FK to workers (raw only) |
-| status | smallint | 0=initial, 1=up, 2=down, 3=timeout, 4=error, 5=running |
+| status | smallint | Lifecycle order: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error |
 | duration | real | Execution duration in milliseconds |
 | metrics | jsonb | Numerical metrics |
 | output | jsonb | Diagnostic output |
@@ -425,7 +425,7 @@ Generic table for all integration connections (Slack, webhook, email, etc.).
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
-| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, opsgenie, pushover, betterstack |
+| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, opsgenie, pushover |
 | name | varchar | Human-readable name |
 | enabled | boolean | Whether active |
 | is_default | boolean | Auto-attach to new checks |
