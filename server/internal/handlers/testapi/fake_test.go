@@ -338,7 +338,9 @@ func TestFakeAPI_SlowResponse(t *testing.T) {
 	r.Equal("text/plain", w.Header().Get("Content-Type"))
 
 	body := w.Body.String()
-	lines := strings.Split(strings.TrimSpace(body), "\n")
+	// The handler emits "<bytes>\n" per iteration; bytes can include spaces, so
+	// don't TrimSpace before splitting (it would strip a trailing space byte).
+	lines := strings.Split(strings.TrimSuffix(body, "\n"), "\n")
 	r.Len(lines, 3) // 3 iterations
 
 	// Each line should have 10 random bytes
