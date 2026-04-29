@@ -8,17 +8,22 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **20 check types**: HTTP, TCP, ICMP, DNS, SSL, databases, mail servers, and more
-- **Distributed workers**: Execute checks from multiple locations/regions
-- **Multi-tenant**: Organization-scoped data isolation
-- **Low footprint**: Single binary, PostgreSQL-only dependency
+- **30 check types**: HTTP, TCP, UDP, ICMP, DNS, SSL/Domain, SSH, FTP/SFTP, SMTP/POP3/IMAP, WebSocket, gRPC, 6 databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, SNMP, game server, headless browser, custom JS, heartbeat
+- **Distributed workers**: Multi-region check execution with lease-based scheduling
+- **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP)
+- **Low footprint**: Single binary; SQLite, embedded Postgres, or external Postgres
 - **Fast checks**: Sub-minute frequencies supported
-- **Notifications**: Slack, Discord, Email, Webhooks
-- **Public status pages**: Embeddable dashboard for transparency
+- **Notifications (9 native)**: Slack (OAuth + threads), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
+- **Status pages**: Sections, resources, public availability metrics
+- **Maintenance windows**: Recurring suppression of alerts
 - **Adaptive incident resolution**: Smart thresholds with cooldown and escalation
-- **JavaScript scripting**: Custom monitoring logic via JS checks
-- **OAuth**: Google, GitHub, GitLab, Microsoft SSO support
+- **JavaScript scripting**: Sandboxed custom monitoring logic
+- **Browser monitoring**: Headless Chrome via Rod
+- **MCP server**: AI/LLM tool access via Model Context Protocol
+- **OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord SSO
+- **Observability**: Prometheus `/metrics`, Sentry integration, OpenTelemetry
 - **CLI client**: Manage checks and results from the terminal
+- **i18n**: Multi-language dashboard
 
 ## Quick Start
 
@@ -98,11 +103,27 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | FTP | Server availability |
 | SFTP | Server availability |
 
-### Other
+### Message Queues
+| Protocol | Description |
+|----------|-------------|
+| Kafka | Broker connectivity |
+| RabbitMQ | Broker connectivity |
+| MQTT | Broker connectivity |
+
+### Infrastructure
+| Type | Description |
+|------|-------------|
+| Docker | Container health |
+| SNMP | Device monitoring |
+| gRPC | Service health |
+| Game server | Source/Minecraft/etc query protocols |
+
+### Specialized
 | Type | Description |
 |------|-------------|
 | Heartbeat | Passive monitoring via incoming pings |
-| JavaScript | Custom monitoring scripts |
+| JavaScript | Sandboxed custom monitoring logic |
+| Browser | Headless Chrome (Rod) — JS, CSS, full render |
 
 ## Environment Variables
 
@@ -194,8 +215,8 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable an OAuth provider.
 - **Dashboard** (`web/dash0`): Admin UI (React + TanStack Router + shadcn/ui)
 - **Status Page** (`web/status0`): Public-facing status dashboard
 - **Workers**: Distributed agents executing monitoring checks
-- **Notifications**: Slack, Discord, Email, Webhook integrations
-- **Database**: PostgreSQL with partitioned results table
+- **Notifications**: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
+- **Database**: PostgreSQL (partitioned results) or SQLite
 
 ### Technology Stack
 - **Backend**: Go 1.24+, bunrouter, Bun ORM, koanf
@@ -259,8 +280,8 @@ make build-cli
 - Public status pages
 
 ### Non-Goals
-- End-to-end browser testing (use Playwright directly)
-- Complex test scenarios (use dedicated testing tools)
+- Multi-step transactional / scripted user-flow testing (use Playwright directly for that)
+- Application Performance Monitoring / RUM (use Datadog, New Relic, or Site24x7)
 
 ## Inspiration
 
