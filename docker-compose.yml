@@ -32,7 +32,7 @@ services:
     stop_grace_period: 1s
 
   server:
-    image: golang:1.26.1-trixie
+    image: golang:1.26.2-trixie
     container_name: solidping-server
     working_dir: /app
     command: sh -c "go install github.com/air-verse/air@v1.63.4 && air -c .air.toml"
