@@ -12,6 +12,8 @@ jobs:
   release-please:
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v6
+
       # Pre-create the labels release-please relies on to track its own PRs.
       # If GitHub's Labels API hiccups while release-please is running, the
       # action can't find its PR later and either scans hundreds of commits
