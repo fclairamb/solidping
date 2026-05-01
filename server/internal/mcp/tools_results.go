@@ -20,12 +20,12 @@ func listResultsDef() ToolDefinition {
 			"periodType":       stringProp("Comma-separated: raw, hour, day, month"),
 			"periodStartAfter": stringProp("RFC3339 timestamp (inclusive lower bound)"),
 			"periodEndBefore":  stringProp("RFC3339 timestamp (exclusive upper bound)"),
-			"with": stringProp(
+			propWith: stringProp(
 				"Extra fields: durationMs, durationMinMs, durationMaxMs, " +
 					"region, metrics, output, availabilityPct, checkSlug, checkName",
 			),
-			"size":   intProp("Max results (1-100, default 20)"),
-			"cursor": stringProp("Pagination cursor"),
+			"size":     intProp("Max results (1-100, default 20)"),
+			propCursor: stringProp("Pagination cursor"),
 		}, nil),
 	}
 }

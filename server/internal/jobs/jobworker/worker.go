@@ -364,7 +364,7 @@ func (w *JobWorker) reportStats(reported stats.ReportedStats) {
 		UID:             resultUID.String(),
 		OrganizationUID: w.defaultOrgUID,
 		CheckUID:        w.internalCheckUID,
-		PeriodType:      "raw",
+		PeriodType:      models.PeriodTypeRaw,
 		PeriodStart:     time.Now(),
 		Status:          &status,
 		Metrics: models.JSONMap{

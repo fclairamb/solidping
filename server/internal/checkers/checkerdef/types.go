@@ -14,21 +14,31 @@ const (
 	StatusError   Status = 6 // Internal error during check execution
 )
 
+// Status string labels.
+const (
+	statusStrRunning = "running"
+	statusStrUp      = "up"
+	statusStrDown    = "down"
+	statusStrTimeout = "timeout"
+	statusStrError   = "error"
+	statusStrUnknown = "unknown"
+)
+
 // String returns the string representation of the status.
 func (s Status) String() string {
 	switch s {
 	case StatusRunning:
-		return "running"
+		return statusStrRunning
 	case StatusUp:
-		return "up"
+		return statusStrUp
 	case StatusDown:
-		return "down"
+		return statusStrDown
 	case StatusTimeout:
-		return "timeout"
+		return statusStrTimeout
 	case StatusError:
-		return "error"
+		return statusStrError
 	default:
-		return "unknown"
+		return statusStrUnknown
 	}
 }
 

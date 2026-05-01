@@ -23,6 +23,14 @@ var (
 	ErrInvalidTargetPeriod = errors.New("invalid target period")
 )
 
+// Aggregation period type identifiers (aliases of the canonical models constants).
+const (
+	periodRaw   = models.PeriodTypeRaw
+	periodHour  = models.PeriodTypeHour
+	periodDay   = models.PeriodTypeDay
+	periodMonth = models.PeriodTypeMonth
+)
+
 // AggregationJobDefinition is the factory for aggregation jobs.
 type AggregationJobDefinition struct{}
 
@@ -65,9 +73,9 @@ func (r *AggregationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) er
 		sourcePeriod string
 		targetPeriod string
 	}{
-		{"raw", "hour"},  // Priority 1: raw → hour
-		{"hour", "day"},  // Priority 2: hour → day
-		{"day", "month"}, // Priority 3: day → month
+		{periodRaw, periodHour},  // Priority 1: raw → hour
+		{periodHour, periodDay},  // Priority 2: hour → day
+		{periodDay, periodMonth}, // Priority 3: day → month
 	}
 
 	// Try each aggregation stage until one succeeds
@@ -231,13 +239,13 @@ func calculateAggregationBoundary(sourcePeriod string) (time.Time, error) {
 	now := time.Now().UTC()
 
 	switch sourcePeriod {
-	case "raw":
+	case periodRaw:
 		// Raw data older than current hour is ready to aggregate into hourly
 		return now.Truncate(time.Hour), nil
-	case "hour":
+	case periodHour:
 		// Hourly data older than current day is ready to aggregate into daily
 		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), nil
-	case "day":
+	case periodDay:
 		// Daily data older than current month is ready to aggregate into monthly
 		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC), nil
 	default:
@@ -248,15 +256,15 @@ func calculateAggregationBoundary(sourcePeriod string) (time.Time, error) {
 // calculatePeriodBoundaries returns the start and end of the period containing the given timestamp.
 func calculatePeriodBoundaries(timestamp time.Time, targetPeriod string) (time.Time, time.Time, error) {
 	switch targetPeriod {
-	case "hour":
+	case periodHour:
 		start := timestamp.Truncate(time.Hour)
 		end := start.Add(time.Hour).Add(-time.Millisecond)
 		return start, end, nil
-	case "day":
+	case periodDay:
 		start := time.Date(timestamp.Year(), timestamp.Month(), timestamp.Day(), 0, 0, 0, 0, timestamp.Location())
 		end := start.AddDate(0, 0, 1).Add(-time.Millisecond)
 		return start, end, nil
-	case "month":
+	case periodMonth:
 		start := time.Date(timestamp.Year(), timestamp.Month(), 1, 0, 0, 0, 0, timestamp.Location())
 		end := start.AddDate(0, 1, 0).Add(-time.Millisecond)
 		return start, end, nil

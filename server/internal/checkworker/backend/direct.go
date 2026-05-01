@@ -87,7 +87,7 @@ func (b *DirectBackend) SubmitResult(
 		UID:             resultUID.String(),
 		OrganizationUID: job.OrganizationUID,
 		CheckUID:        job.CheckUID,
-		PeriodType:      "raw",
+		PeriodType:      models.PeriodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &workerUID,
 		Region:          job.Region,

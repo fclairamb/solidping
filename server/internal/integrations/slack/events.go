@@ -116,14 +116,14 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 			{
 				Type: "header",
 				Text: &Text{
-					Type: "plain_text",
+					Type: BlockTypePlainText,
 					Text: "Welcome to SolidPing",
 				},
 			},
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: "SolidPing monitors your endpoints and alerts you when things go wrong.",
 				},
 			},
@@ -131,9 +131,9 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 				Type: "divider",
 			},
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: "*Quick Actions*",
 				},
 			},
@@ -143,16 +143,16 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 					Element{
 						Type: "button",
 						Text: &Text{
-							Type: "plain_text",
+							Type: BlockTypePlainText,
 							Text: "Add a Check",
 						},
-						ActionID: "add_check",
+						ActionID: ActionAddCheck,
 						Style:    "primary",
 					},
 					Element{
 						Type: "button",
 						Text: &Text{
-							Type: "plain_text",
+							Type: BlockTypePlainText,
 							Text: "View Dashboard",
 						},
 						ActionID: "view_dashboard",
@@ -164,10 +164,10 @@ func (h *Handler) buildAppHomeView(_ context.Context, _ string) *AppHomeView {
 				Type: "divider",
 			},
 			{
-				Type: "context",
+				Type: BlockTypeContext,
 				Elements: []any{
 					ContextElement{
-						Type: "mrkdwn",
+						Type: BlockTypeMrkdwn,
 						Text: "Use `/check <url>` to quickly create a new check",
 					},
 				},
@@ -184,9 +184,9 @@ func (h *Handler) buildLinkUnfurl(_ context.Context, linkURL string) *Unfurl {
 	return &Unfurl{
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: fmt.Sprintf("*SolidPing Link*\n<%s|View in SolidPing>", linkURL),
 				},
 			},

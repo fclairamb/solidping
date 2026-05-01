@@ -90,7 +90,7 @@ func (c *DockerChecker) Execute(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "failed to create Docker client: " + err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: "failed to create Docker client: " + err.Error()},
 		}, nil
 	}
 
@@ -124,7 +124,7 @@ func handleInspectError(
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
 			Metrics:  metrics,
-			Output:   map[string]any{"error": "connection timeout"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 		}
 	}
 
@@ -132,7 +132,7 @@ func handleInspectError(
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
 		Metrics:  metrics,
-		Output:   map[string]any{"error": "container inspect failed: " + err.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: "container inspect failed: " + err.Error()},
 	}
 }
 

@@ -42,13 +42,13 @@ func (c *DNSConfig) FromMap(configMap map[string]any) error {
 		}
 	} else {
 		// Fall back to legacy host/hostname
-		if host, ok := configMap["host"].(string); ok {
+		if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 			c.Host = host
 		} else if hostname, ok := configMap["hostname"].(string); ok {
 			// Backward compatibility with old field name
 			c.Host = hostname
-		} else if configMap["host"] != nil {
-			return checkerdef.NewConfigError("host", "must be a string")
+		} else if configMap[checkerdef.OutputKeyHost] != nil {
+			return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "must be a string")
 		} else if configMap["hostname"] != nil {
 			return checkerdef.NewConfigError("hostname", "must be a string")
 		}
@@ -120,7 +120,7 @@ func (c *DNSConfig) FromMap(configMap map[string]any) error {
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *DNSConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host": c.Host,
+		checkerdef.OutputKeyHost: c.Host,
 	}
 
 	if c.URL != "" {

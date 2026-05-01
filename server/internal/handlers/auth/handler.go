@@ -20,6 +20,9 @@ const roleAdmin = "admin"
 const (
 	roleUser            = "user"
 	fieldOrg            = "org"
+	fieldBody           = "body"
+	fieldPassword       = "password"
+	fieldCode           = "code"
 	msgInvalidJSON      = "Invalid JSON format"
 	msgEmailRequired    = "Email is required"
 	msgPasswordRequired = "Password is required"
@@ -79,19 +82,19 @@ func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error
 	var loginReq LoginRequest
 	if err := json.NewDecoder(req.Body).Decode(&loginReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if loginReq.Email == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "email", Message: msgEmailRequired},
+			{Name: keyEmail, Message: msgEmailRequired},
 		})
 	}
 
 	if loginReq.Password == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "password", Message: msgPasswordRequired},
+			{Name: fieldPassword, Message: msgPasswordRequired},
 		})
 	}
 
@@ -152,7 +155,7 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) err
 	var refreshReq RefreshRequest
 	if err := json.NewDecoder(req.Body).Decode(&refreshReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -206,7 +209,7 @@ func (h *Handler) UpdateMe(writer http.ResponseWriter, req bunrouter.Request) er
 	var updateReq UpdateProfileRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -269,7 +272,7 @@ func (h *Handler) CreateToken(writer http.ResponseWriter, req bunrouter.Request)
 
 	if decodeErr := json.NewDecoder(req.Body).Decode(&createReq); decodeErr != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -321,7 +324,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) e
 	var switchReq SwitchOrgRequest
 	if err := json.NewDecoder(req.Body).Decode(&switchReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -455,19 +458,19 @@ func (h *Handler) Register(writer http.ResponseWriter, req bunrouter.Request) er
 	var regReq RegisterRequest
 	if err := json.NewDecoder(req.Body).Decode(&regReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if regReq.Email == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "email", Message: msgEmailRequired},
+			{Name: keyEmail, Message: msgEmailRequired},
 		})
 	}
 
 	if regReq.Password == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "password", Message: msgPasswordRequired},
+			{Name: fieldPassword, Message: msgPasswordRequired},
 		})
 	}
 
@@ -484,13 +487,13 @@ func (h *Handler) ConfirmRegistration(writer http.ResponseWriter, req bunrouter.
 	var confirmReq ConfirmRegistrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if confirmReq.Token == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "token", Message: msgTokenRequired},
+			{Name: keyToken, Message: msgTokenRequired},
 		})
 	}
 
@@ -516,13 +519,13 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter
 	var resetReq RequestPasswordResetRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if resetReq.Email == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "email", Message: msgEmailRequired},
+			{Name: keyEmail, Message: msgEmailRequired},
 		})
 	}
 
@@ -539,19 +542,19 @@ func (h *Handler) ResetPassword(writer http.ResponseWriter, req bunrouter.Reques
 	var resetReq ResetPasswordRequest
 	if err := json.NewDecoder(req.Body).Decode(&resetReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if resetReq.Token == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "token", Message: msgTokenRequired},
+			{Name: keyToken, Message: msgTokenRequired},
 		})
 	}
 
 	if resetReq.Password == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "password", Message: msgPasswordRequired},
+			{Name: fieldPassword, Message: msgPasswordRequired},
 		})
 	}
 
@@ -586,7 +589,7 @@ func (h *Handler) CreateOrg(writer http.ResponseWriter, req bunrouter.Request) e
 	var createReq CreateOrgRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -636,13 +639,13 @@ func (h *Handler) CreateInvitation(writer http.ResponseWriter, req bunrouter.Req
 	var inviteReq InviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&inviteReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if inviteReq.Email == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "email", Message: msgEmailRequired},
+			{Name: keyEmail, Message: msgEmailRequired},
 		})
 	}
 
@@ -716,7 +719,7 @@ func (h *Handler) GetInviteInfo(writer http.ResponseWriter, req bunrouter.Reques
 	token := req.Param("token")
 	if token == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "token", Message: msgTokenRequired},
+			{Name: keyToken, Message: msgTokenRequired},
 		})
 	}
 
@@ -733,13 +736,13 @@ func (h *Handler) AcceptInvite(writer http.ResponseWriter, req bunrouter.Request
 	var acceptReq AcceptInviteRequest
 	if err := json.NewDecoder(req.Body).Decode(&acceptReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if acceptReq.Token == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "token", Message: msgTokenRequired},
+			{Name: keyToken, Message: msgTokenRequired},
 		})
 	}
 
@@ -797,7 +800,7 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req bunrouter.Re
 	var updateReq UpdateOrgSettingsRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -877,13 +880,13 @@ func (h *Handler) Confirm2FA(writer http.ResponseWriter, req bunrouter.Request) 
 	var confirmReq Verify2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&confirmReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if confirmReq.Code == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "code", Message: msgCodeRequired},
+			{Name: fieldCode, Message: msgCodeRequired},
 		})
 	}
 
@@ -905,13 +908,13 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 	var verifyReq Verify2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&verifyReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if verifyReq.Code == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "code", Message: msgCodeRequired},
+			{Name: fieldCode, Message: msgCodeRequired},
 		})
 	}
 
@@ -946,7 +949,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request)
 	var recoveryReq Recovery2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&recoveryReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -987,13 +990,13 @@ func (h *Handler) Disable2FA(writer http.ResponseWriter, req bunrouter.Request) 
 	var disableReq Disable2FARequest
 	if err := json.NewDecoder(req.Body).Decode(&disableReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
 	if disableReq.Code == "" {
 		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-			{Name: "code", Message: msgCodeRequired},
+			{Name: fieldCode, Message: msgCodeRequired},
 		})
 	}
 

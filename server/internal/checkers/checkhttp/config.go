@@ -73,10 +73,10 @@ type HTTPConfig struct {
 //nolint:gocognit,cyclop,funlen // Config parsing requires handling many optional fields
 func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 	// Extract URL (required)
-	if url, ok := configMap["url"].(string); ok {
+	if url, ok := configMap[checkerdef.OutputKeyURL].(string); ok {
 		c.URL = url
-	} else if configMap["url"] != nil {
-		return checkerdef.NewConfigError("url", "must be a string")
+	} else if configMap[checkerdef.OutputKeyURL] != nil {
+		return checkerdef.NewConfigError(checkerdef.OutputKeyURL, "must be a string")
 	}
 
 	// Extract Method (optional)
@@ -257,7 +257,7 @@ func parseAssertionNode(raw any) (*AssertionNode, error) {
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *HTTPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"url": c.URL,
+		checkerdef.OutputKeyURL: c.URL,
 	}
 
 	if c.Method != "" {

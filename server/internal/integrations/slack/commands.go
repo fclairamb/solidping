@@ -25,7 +25,7 @@ func (h *Handler) handleCommand(ctx context.Context, cmd *Command) (*MessageResp
 		return h.handleCheckCommand(ctx, cmd)
 	default:
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Unknown command: " + cmd.Command,
 		}, nil
 	}
@@ -38,9 +38,9 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 	text := strings.TrimSpace(cmd.Text)
 
 	// Show help if no URL provided
-	if text == "" || text == "help" {
+	if text == "" || text == cmdHelp {
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "*Usage:* `/check <url>`\n\nExample: `/check https://example.com`",
 		}, nil
 	}
@@ -58,7 +58,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 	if parseErr != nil || parsedURL.Host == "" {
 		//nolint:nilerr // Intentionally returning user-friendly message without error
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Invalid URL. Please provide a valid HTTP or HTTPS URL.\n\nExample: `/check https://example.com`",
 		}, nil
 	}
@@ -72,7 +72,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		)
 
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "This Slack workspace is not connected to SolidPing. Please reconnect the app.",
 		}, nil
 	}
@@ -85,7 +85,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		)
 
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Configuration error. Please reconnect the Slack app.",
 		}, nil
 	}
@@ -99,7 +99,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		)
 
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Failed to create check: " + err.Error(),
 		}, nil
 	}
@@ -111,17 +111,17 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		Text: fmt.Sprintf("Check created: %s for %s", checkResult.Slug, parsedURL.Host), // Fallback text
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: fmt.Sprintf(":white_check_mark: *Check created:* `%s` for <%s|%s>", checkResult.Slug, text, parsedURL.Host),
 				},
 			},
 			{
-				Type: "context",
+				Type: BlockTypeContext,
 				Elements: []any{
 					ContextElement{
-						Type: "mrkdwn",
+						Type: BlockTypeMrkdwn,
 						Text: fmt.Sprintf("Created by <@%s>", cmd.UserID),
 					},
 				},
@@ -140,7 +140,7 @@ func (h *Handler) handleCheckCommand(ctx context.Context, cmd *Command) (*Messag
 		)
 
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Failed to post message. Please try again.",
 		}, nil
 	}

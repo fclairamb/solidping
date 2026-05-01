@@ -7,7 +7,8 @@ import (
 )
 
 const (
-	sampleTimeout = 5 * time.Second // Default timeout for sample DNS checks
+	sampleTimeout    = 5 * time.Second // Default timeout for sample DNS checks
+	sampleHostGoogle = "google.com"
 )
 
 // GetSampleConfigs returns sample DNS check configurations.
@@ -18,8 +19,8 @@ func (c *DNSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Slug:   "dns-google",
 			Period: time.Minute * 5,
 			Config: (&DNSConfig{
-				Host:       "google.com",
-				RecordType: "A",
+				Host:       sampleHostGoogle,
+				RecordType: recordTypeA,
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
 		},
@@ -29,7 +30,7 @@ func (c *DNSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Period: time.Minute * 5,
 			Config: (&DNSConfig{
 				Host:       "cloudflare.com",
-				RecordType: "A",
+				RecordType: recordTypeA,
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
 		},
@@ -39,7 +40,7 @@ func (c *DNSChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Period: time.Minute * 5,
 			Config: (&DNSConfig{
 				Host:       "github.com",
-				RecordType: "A",
+				RecordType: recordTypeA,
 				Timeout:    sampleTimeout,
 			}).GetConfig(),
 		},

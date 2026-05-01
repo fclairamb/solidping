@@ -18,6 +18,7 @@ const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 char
 
 const (
 	fieldSlug      = "slug"
+	fieldBody      = "body"
 	respKeyData    = "data"
 	msgInvalidJSON = "Invalid JSON format"
 )
@@ -59,7 +60,7 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 	var createReq CreateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -103,7 +104,7 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 	var updateReq UpdateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -152,7 +153,7 @@ func (h *Handler) CreateSection(writer http.ResponseWriter, req bunrouter.Reques
 	var createReq CreateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -187,7 +188,7 @@ func (h *Handler) UpdateSection(writer http.ResponseWriter, req bunrouter.Reques
 	var updateReq UpdateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -239,7 +240,7 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req bunrouter.Reque
 	var createReq CreateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -261,7 +262,7 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req bunrouter.Reque
 	var updateReq UpdateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 

@@ -47,7 +47,7 @@ func (s *GoogleChatSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "SolidPing")
+	req.Header.Set("User-Agent", productName)
 
 	client := &http.Client{Timeout: googleChatTimeout}
 
@@ -176,7 +176,7 @@ func (s *GoogleChatSender) buildMessage(payload *Payload) *googleChatMessage {
 
 func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []googleChatWidget {
 	widgets := []googleChatWidget{
-		{DecoratedText: &googleChatDecoratedText{TopLabel: "Check", Text: checkName + " (" + payload.Check.Type + ")"}},
+		{DecoratedText: &googleChatDecoratedText{TopLabel: mmFieldCheck, Text: checkName + " (" + payload.Check.Type + ")"}},
 	}
 
 	switch payload.EventType {
@@ -184,7 +184,7 @@ func (s *GoogleChatSender) buildWidgets(payload *Payload, checkName string) []go
 		if payload.Incident.ResolvedAt != nil {
 			duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 			widgets = append(widgets, googleChatWidget{
-				DecoratedText: &googleChatDecoratedText{TopLabel: "Duration", Text: formatDuration(duration)},
+				DecoratedText: &googleChatDecoratedText{TopLabel: mmFieldDuration, Text: formatDuration(duration)},
 			})
 		}
 	default:

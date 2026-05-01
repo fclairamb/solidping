@@ -41,7 +41,7 @@ func (h *Handler) handleInteraction(ctx context.Context, interaction *Interactio
 // handleShortcut handles global shortcuts.
 func (h *Handler) handleShortcut(ctx context.Context, interaction *Interaction) (*MessageResponse, error) {
 	switch interaction.CallbackID {
-	case "add_check":
+	case ActionAddCheck:
 		return h.openAddCheckModal(ctx, interaction)
 	default:
 		slog.DebugContext(ctx, "Unhandled shortcut", "callback_id", interaction.CallbackID)
@@ -55,7 +55,7 @@ func (h *Handler) handleBlockActions(ctx context.Context, interaction *Interacti
 	for i := range interaction.Actions {
 		action := &interaction.Actions[i]
 		switch action.ActionID {
-		case "add_check":
+		case ActionAddCheck:
 			return h.openAddCheckModal(ctx, interaction)
 		case "view_dashboard":
 			// Button with URL, no action needed

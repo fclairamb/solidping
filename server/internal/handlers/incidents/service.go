@@ -23,6 +23,12 @@ var (
 	ErrIncidentNotFound     = errors.New("incident not found")
 )
 
+// JSON event metadata keys.
+const (
+	keyCheckUID  = "check_uid"
+	keyCheckSlug = "check_slug"
+)
+
 // Service provides incident management functionality.
 type Service struct {
 	db      db.Service
@@ -191,8 +197,8 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
+		keyCheckUID:  check.UID,
+		keyCheckSlug: check.Slug,
 		"started_at": result.PeriodStart,
 		"result_uid": result.UID,
 	}); err != nil {
@@ -223,8 +229,8 @@ func (s *Service) resolveIncident(
 
 	// Emit incident resolved event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
-		"check_uid":        check.UID,
-		"check_slug":       check.Slug,
+		keyCheckUID:        check.UID,
+		keyCheckSlug:       check.Slug,
 		"resolved_at":      resolvedAt,
 		"duration_seconds": durationSeconds,
 		"total_failures":   incident.FailureCount,
@@ -361,8 +367,8 @@ func (s *Service) reopenIncident(
 	incident.RelapseCount = newRelapseCount
 
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
-		"check_uid":                    check.UID,
-		"check_slug":                   check.Slug,
+		keyCheckUID:                    check.UID,
+		keyCheckSlug:                   check.Slug,
 		"relapse_count":                newRelapseCount,
 		"result_uid":                   result.UID,
 		"effective_recovery_threshold": effThreshold,

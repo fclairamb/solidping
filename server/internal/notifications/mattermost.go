@@ -61,7 +61,7 @@ func (s *MattermostSender) Send(ctx context.Context, _ *jobdef.JobContext, paylo
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", "SolidPing")
+	req.Header.Set("User-Agent", productName)
 
 	client := &http.Client{Timeout: mattermostTimeout}
 
@@ -103,7 +103,7 @@ func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings,
 	}
 
 	if settings.Username == "" {
-		settings.Username = "SolidPing"
+		settings.Username = productName
 	}
 
 	return &settings, nil
@@ -145,7 +145,7 @@ func (s *MattermostSender) buildMessage(settings *mattermostSettings, payload *P
 				Color:    color,
 				Title:    title,
 				Fields:   fields,
-				Footer:   "SolidPing",
+				Footer:   productName,
 				Ts:       payload.Incident.StartedAt.Unix(),
 			},
 		},

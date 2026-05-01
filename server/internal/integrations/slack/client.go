@@ -29,6 +29,14 @@ const (
 	DefaultTimeout = 30 * time.Second
 )
 
+// Slack API request payload field keys.
+const (
+	apiKeyChannel = "channel"
+	apiKeyText    = "text"
+	apiKeyUser    = "user"
+	apiKeyView    = "view"
+)
+
 // Client is a Slack API client.
 type Client struct {
 	httpClient *http.Client
@@ -102,8 +110,8 @@ type PostMessageResult struct {
 // PostMessage sends a message to a Slack channel and returns the message timestamp.
 func (c *Client) PostMessage(ctx context.Context, opts PostMessageOptions) (*PostMessageResult, error) {
 	payload := map[string]any{
-		"channel": opts.Channel,
-		"text":    opts.Message.Text,
+		apiKeyChannel: opts.Channel,
+		apiKeyText:    opts.Message.Text,
 	}
 	if len(opts.Message.Blocks) > 0 {
 		payload["blocks"] = opts.Message.Blocks
@@ -133,9 +141,9 @@ type UpdateMessageOptions struct {
 // UpdateMessage updates an existing message in a Slack channel.
 func (c *Client) UpdateMessage(ctx context.Context, opts UpdateMessageOptions) error {
 	payload := map[string]any{
-		"channel": opts.Channel,
-		"ts":      opts.TS,
-		"text":    opts.Message.Text,
+		apiKeyChannel: opts.Channel,
+		"ts":          opts.TS,
+		apiKeyText:    opts.Message.Text,
 	}
 	if len(opts.Message.Blocks) > 0 {
 		payload["blocks"] = opts.Message.Blocks
@@ -150,9 +158,9 @@ func (c *Client) UpdateMessage(ctx context.Context, opts UpdateMessageOptions) e
 // PostEphemeral sends an ephemeral message to a user in a channel.
 func (c *Client) PostEphemeral(ctx context.Context, channel, user string, msg *MessageResponse) error {
 	payload := map[string]any{
-		"channel": channel,
-		"user":    user,
-		"text":    msg.Text,
+		apiKeyChannel: channel,
+		apiKeyUser:    user,
+		apiKeyText:    msg.Text,
 	}
 	if len(msg.Blocks) > 0 {
 		payload["blocks"] = msg.Blocks
@@ -167,17 +175,17 @@ func (c *Client) PostEphemeral(ctx context.Context, channel, user string, msg *M
 // UnfurlLinks unfurls links in a message.
 func (c *Client) UnfurlLinks(ctx context.Context, channel, ts string, unfurls map[string]Unfurl) error {
 	return c.callAPI(ctx, "chat.unfurl", map[string]any{
-		"channel": channel,
-		"ts":      ts,
-		"unfurls": unfurls,
+		apiKeyChannel: channel,
+		"ts":          ts,
+		"unfurls":     unfurls,
 	}, nil)
 }
 
 // PublishView publishes a view to the App Home tab.
 func (c *Client) PublishView(ctx context.Context, userID string, view *AppHomeView) error {
 	return c.callAPI(ctx, "views.publish", map[string]any{
-		"user_id": userID,
-		"view":    view,
+		"user_id":  userID,
+		apiKeyView: view,
 	}, nil)
 }
 
@@ -185,15 +193,15 @@ func (c *Client) PublishView(ctx context.Context, userID string, view *AppHomeVi
 func (c *Client) OpenModal(ctx context.Context, triggerID string, view *ModalView) error {
 	return c.callAPI(ctx, "views.open", map[string]any{
 		"trigger_id": triggerID,
-		"view":       view,
+		apiKeyView:   view,
 	}, nil)
 }
 
 // UpdateModal updates an existing modal view.
 func (c *Client) UpdateModal(ctx context.Context, viewID, hash string, view *ModalView) error {
 	payload := map[string]any{
-		"view_id": viewID,
-		"view":    view,
+		"view_id":  viewID,
+		apiKeyView: view,
 	}
 	if hash != "" {
 		payload["hash"] = hash
@@ -205,9 +213,9 @@ func (c *Client) UpdateModal(ctx context.Context, viewID, hash string, view *Mod
 // AddReaction adds a reaction to a message.
 func (c *Client) AddReaction(ctx context.Context, channel, timestamp, emoji string) error {
 	return c.callAPI(ctx, "reactions.add", map[string]any{
-		"channel":   channel,
-		"timestamp": timestamp,
-		"name":      emoji,
+		apiKeyChannel: channel,
+		"timestamp":   timestamp,
+		"name":        emoji,
 	}, nil)
 }
 
@@ -219,7 +227,7 @@ func (c *Client) GetUserInfo(ctx context.Context, userID string) (*User, error) 
 	}
 
 	if err := c.callAPI(ctx, "users.info", map[string]any{
-		"user": userID,
+		apiKeyUser: userID,
 	}, &result); err != nil {
 		return nil, err
 	}
@@ -236,7 +244,7 @@ func (c *Client) GetUserDetails(ctx context.Context, userID string) (*UserDetail
 	}
 
 	if err := c.callAPI(ctx, "users.info", map[string]any{
-		"user": userID,
+		apiKeyUser: userID,
 	}, &result); err != nil {
 		return nil, err
 	}

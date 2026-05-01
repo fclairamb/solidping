@@ -65,7 +65,7 @@ func authLoginAction(ctx context.Context, cmd *cli.Command) error {
 			}
 		}
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"success":    true,
+			keySuccess:   true,
 			"user":       userMap,
 			"token_path": tokenPath,
 		})
@@ -101,8 +101,8 @@ func authLogoutAction(ctx context.Context, cmd *cli.Command) error {
 	// Output success
 	if !cliCtx.IsText() {
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"success": true,
-			"message": "Logged out successfully",
+			keySuccess: true,
+			keyMessage: "Logged out successfully",
 		})
 	}
 
@@ -232,8 +232,8 @@ func authSwitchOrgAction(ctx context.Context, cmd *cli.Command) error {
 	// Output
 	if !cliCtx.IsText() {
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"success": true,
-			"message": "Switched to organization: " + org,
+			keySuccess: true,
+			keyMessage: "Switched to organization: " + org,
 		})
 	}
 

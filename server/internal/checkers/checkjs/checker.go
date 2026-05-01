@@ -16,6 +16,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// JS result map keys.
+const (
+	jsKeyStatus   = "status"
+	jsKeyOutput   = "output"
+	jsKeyDuration = "duration"
+)
+
+// JS console log levels and status values.
+const (
+	logLevelLog   = "log"
+	logLevelWarn  = "warn"
+	logLevelError = "error"
+	logLevelInfo  = "info"
+)
+
 // CheckerResolver is a function type that resolves a check type to a checker and config.
 // It is set by the registry package during init to break the import cycle.
 type CheckerResolver func(checkType checkerdef.CheckType) (checkerdef.Checker, checkerdef.Config, bool)
@@ -99,7 +114,7 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput("error", "script error: "+err.Error()),
+			Output:   runtime.buildOutput(logLevelError, "script error: "+err.Error()),
 		}, nil
 	}
 
@@ -107,7 +122,7 @@ func (c *JSChecker) Execute(ctx context.Context, config checkerdef.Config) (*che
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   runtime.buildOutput("error", "script must return a result object"),
+			Output:   runtime.buildOutput(logLevelError, "script must return a result object"),
 		}, nil
 	}
 
@@ -156,7 +171,7 @@ func (r *jsRuntime) registerEnv() {
 func (r *jsRuntime) registerConsole() {
 	console := r.vm.NewObject()
 
-	for _, level := range []string{"log", "warn", "error", "info"} {
+	for _, level := range []string{logLevelLog, logLevelWarn, logLevelError, logLevelInfo} {
 		lvl := level
 		_ = console.Set(lvl, func(call goja.FunctionCall) goja.Value {
 			r.writeConsole(lvl, call.Arguments)
@@ -248,9 +263,9 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// Block recursive JS and heartbeat checks
 	if typeStr == "js" || typeStr == "heartbeat" {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{
-				"error": "check type \"" + typeStr + "\" is not allowed in JS scripts",
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{
+				checkerdef.OutputKeyError: "check type \"" + typeStr + "\" is not allowed in JS scripts",
 			},
 		}
 	}
@@ -258,17 +273,17 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	// Enforce sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{
-				"error": fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
 			},
 		}
 	}
 
 	if ResolveChecker == nil {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{"error": "checker resolver not initialized"},
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "checker resolver not initialized"},
 		}
 	}
 
@@ -277,31 +292,31 @@ func (r *jsRuntime) check(typeStr string, configMap map[string]any) map[string]a
 	checker, cfg, ok := ResolveChecker(checkType)
 	if !ok {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{"error": "unknown check type: " + typeStr},
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "unknown check type: " + typeStr},
 		}
 	}
 
 	if err := cfg.FromMap(configMap); err != nil {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{"error": "invalid config: " + err.Error()},
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "invalid config: " + err.Error()},
 		}
 	}
 
 	result, err := checker.Execute(r.execCtx, cfg)
 	if err != nil {
 		return map[string]any{
-			"status": "error",
-			"output": map[string]any{"error": "execution error: " + err.Error()},
+			jsKeyStatus: logLevelError,
+			jsKeyOutput: map[string]any{checkerdef.OutputKeyError: "execution error: " + err.Error()},
 		}
 	}
 
 	return map[string]any{
-		"status":   result.Status.String(),
-		"duration": result.Duration.Milliseconds(),
-		"metrics":  result.Metrics,
-		"output":   result.Output,
+		jsKeyStatus:   result.Status.String(),
+		jsKeyDuration: result.Duration.Milliseconds(),
+		"metrics":     result.Metrics,
+		jsKeyOutput:   result.Output,
 	}
 }
 
@@ -333,7 +348,7 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 	// Count against sub-check limit
 	if r.subCheckCount.Add(1) > int32(maxSubChecks) {
 		return map[string]any{
-			"error": fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
+			checkerdef.OutputKeyError: fmt.Sprintf("sub-check limit of %d exceeded", maxSubChecks),
 		}
 	}
 
@@ -346,7 +361,7 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 
 	req, err := http.NewRequestWithContext(r.execCtx, method, requestURL, bodyReader)
 	if err != nil {
-		return map[string]any{"error": "failed to create request: " + err.Error()}
+		return map[string]any{checkerdef.OutputKeyError: "failed to create request: " + err.Error()}
 	}
 
 	// Set headers from opts
@@ -366,7 +381,7 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return map[string]any{"error": "request failed: " + err.Error()}
+		return map[string]any{checkerdef.OutputKeyError: "request failed: " + err.Error()}
 	}
 
 	defer func() { _ = resp.Body.Close() }()
@@ -377,9 +392,9 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxHTTPBody)))
 	if err != nil {
 		return map[string]any{
-			"statusCode": resp.StatusCode,
-			"error":      "failed to read body: " + err.Error(),
-			"duration":   duration.Milliseconds(),
+			"statusCode":              resp.StatusCode,
+			checkerdef.OutputKeyError: "failed to read body: " + err.Error(),
+			jsKeyDuration:             duration.Milliseconds(),
 		}
 	}
 
@@ -394,10 +409,10 @@ func (r *jsRuntime) httpRequest(method, requestURL string, opts map[string]any) 
 	}
 
 	return map[string]any{
-		"statusCode": resp.StatusCode,
-		"body":       string(body),
-		"headers":    respHeaders,
-		"duration":   duration.Milliseconds(),
+		"statusCode":  resp.StatusCode,
+		"body":        string(body),
+		"headers":     respHeaders,
+		jsKeyDuration: duration.Milliseconds(),
 	}
 }
 
@@ -408,7 +423,7 @@ func (r *jsRuntime) parseResult(val goja.Value, duration time.Duration) *checker
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: duration,
-			Output:   r.buildOutput("error", "script must return an object"),
+			Output:   r.buildOutput(logLevelError, "script must return an object"),
 		}
 	}
 

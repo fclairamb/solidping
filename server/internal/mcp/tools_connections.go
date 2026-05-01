@@ -11,7 +11,7 @@ func listConnectionsDef() ToolDefinition {
 		Name:        "list_connections",
 		Description: "List notification connections (Slack, webhook, email).",
 		InputSchema: objectSchema(map[string]any{
-			"type": stringProp("Filter by type: slack, webhook, email"),
+			schemaKeyType: stringProp("Filter by type: slack, webhook, email"),
 		}, nil),
 	}
 }
@@ -35,12 +35,12 @@ func createConnectionDef() ToolDefinition {
 		Name:        "create_connection",
 		Description: "Create a new notification connection.",
 		InputSchema: objectSchema(map[string]any{
-			"type":      stringProp("Connection type: slack, webhook, email"),
-			"name":      stringProp("Display name"),
-			"enabled":   boolProp("Default true"),
-			"isDefault": boolProp("Auto-attach to new checks"),
-			"settings":  objectProp("Type-specific settings (e.g., {\"webhookUrl\": \"...\"} for webhook)"),
-		}, []string{"type", "name"}),
+			schemaKeyType:    stringProp("Connection type: slack, webhook, email"),
+			schemaKeyName:    stringProp("Display name"),
+			schemaKeyEnabled: boolProp("Default true"),
+			"isDefault":      boolProp("Auto-attach to new checks"),
+			"settings":       objectProp("Type-specific settings (e.g., {\"webhookUrl\": \"...\"} for webhook)"),
+		}, []string{schemaKeyType, schemaKeyName}),
 	}
 }
 

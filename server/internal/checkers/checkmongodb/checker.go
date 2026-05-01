@@ -81,7 +81,7 @@ func (c *MongoDBChecker) Execute(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "failed to create client: " + err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: "failed to create client: " + err.Error()},
 		}, nil
 	}
 
@@ -119,7 +119,7 @@ func (c *MongoDBChecker) ping(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "ping command returned non-ok status"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "ping command returned non-ok status"},
 		}, nil
 	}
 
@@ -143,14 +143,14 @@ func handlePingError(ctx context.Context, err error, start time.Time) *checkerde
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "connection timeout"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 		}
 	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": "ping failed: " + err.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: "ping failed: " + err.Error()},
 	}
 }
 

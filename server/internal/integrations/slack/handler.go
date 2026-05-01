@@ -147,7 +147,7 @@ func (h *Handler) HandleCommand(writer http.ResponseWriter, req bunrouter.Reques
 
 		// Return error message to user
 		return h.WriteJSON(writer, http.StatusOK, &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Sorry, an error occurred while processing your command.",
 		})
 	}

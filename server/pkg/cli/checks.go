@@ -361,7 +361,7 @@ func checksAddAction(ctx context.Context, cmd *cli.Command) error {
 			results.Checks = append(results.Checks, bulkCheckResult{
 				Slug:   checkSlug,
 				Name:   checkName,
-				Status: "failed",
+				Status: keyFailed,
 				Error:  err.Error(),
 			})
 			continue
@@ -385,7 +385,7 @@ func checksAddAction(ctx context.Context, cmd *cli.Command) error {
 			results.Checks = append(results.Checks, bulkCheckResult{
 				Slug:   checkSlug,
 				Name:   checkName,
-				Status: "failed",
+				Status: keyFailed,
 				Error:  errorMsg,
 			})
 			continue
@@ -438,7 +438,7 @@ func checksAddAction(ctx context.Context, cmd *cli.Command) error {
 		output.PrintError(os.Stdout, fmt.Sprintf("%d checks failed to create", results.Failed))
 		// List failed checks
 		for i := range results.Checks {
-			if results.Checks[i].Status == "failed" {
+			if results.Checks[i].Status == keyFailed {
 				output.PrintMessage(os.Stdout, fmt.Sprintf("  - %s: %s", results.Checks[i].Slug, results.Checks[i].Error))
 			}
 		}
@@ -492,8 +492,8 @@ func checksRemoveAction(ctx context.Context, cmd *cli.Command) error {
 	// Output success
 	if !cliCtx.IsText() {
 		return cliCtx.Outputter.Print(map[string]interface{}{
-			"message": "Check removed successfully",
-			"id":      identifier,
+			keyMessage: "Check removed successfully",
+			"id":       identifier,
 		})
 	}
 

@@ -20,6 +20,7 @@ import (
 const (
 	fieldType      = "type"
 	fieldSlug      = "slug"
+	fieldBody      = "body"
 	msgInvalidJSON = "Invalid JSON format"
 )
 
@@ -45,7 +46,7 @@ func (h *Handler) ValidateCheck(
 	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
 		return h.WriteValidationError(
 			writer, "Invalid JSON", []base.ValidationErrorField{
-				{Name: "body", Message: msgInvalidJSON},
+				{Name: fieldBody, Message: msgInvalidJSON},
 			})
 	}
 
@@ -143,7 +144,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var createReq CreateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -227,7 +228,7 @@ func (h *Handler) UpdateCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var updateReq UpdateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -247,7 +248,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var upsertReq UpsertCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&upsertReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -358,7 +359,7 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request
 	var doc ExportDocument
 	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 

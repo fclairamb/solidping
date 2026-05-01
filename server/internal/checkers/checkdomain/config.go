@@ -1,6 +1,10 @@
 package checkdomain
 
-import "errors"
+import (
+	"errors"
+
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+)
 
 var errDomainRequired = errors.New("domain is required")
 
@@ -16,7 +20,7 @@ type DomainConfig struct {
 
 // FromMap populates the configuration from a map.
 func (c *DomainConfig) FromMap(configMap map[string]any) error {
-	if domain, ok := configMap["domain"].(string); ok {
+	if domain, ok := configMap[checkerdef.OutputKeyDomain].(string); ok {
 		c.Domain = domain
 	}
 
@@ -32,8 +36,8 @@ func (c *DomainConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *DomainConfig) GetConfig() map[string]any {
 	return map[string]any{
-		"domain":         c.Domain,
-		"threshold_days": c.ThresholdDays,
+		checkerdef.OutputKeyDomain: c.Domain,
+		"threshold_days":           c.ThresholdDays,
 	}
 }
 

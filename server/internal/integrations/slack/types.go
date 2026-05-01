@@ -14,6 +14,9 @@ const (
 
 	// ResponseTypeEphemeral is the Slack ephemeral response type.
 	ResponseTypeEphemeral = "ephemeral"
+
+	// ActionAddCheck is the action ID for the "Add Check" button.
+	ActionAddCheck = "add_check"
 )
 
 // OAuthResponse represents the response from Slack's OAuth token exchange.

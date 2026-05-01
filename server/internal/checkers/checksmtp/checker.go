@@ -112,7 +112,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
 		}, nil
 	}
 
@@ -121,8 +121,8 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": targetIP.String(),
-		"port": params.port,
+		checkerdef.OutputKeyHost: targetIP.String(),
+		checkerdef.OutputKeyPort: params.port,
 	}
 
 	// Establish connection
@@ -160,9 +160,9 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":  targetIP.String(),
-				"port":  params.port,
-				"error": fmt.Sprintf("greeting rejected: %d %s", code, greeting),
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: fmt.Sprintf("greeting rejected: %d %s", code, greeting),
 			},
 		}, nil
 	}
@@ -177,10 +177,10 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":     targetIP.String(),
-				"port":     params.port,
-				"error":    fmt.Sprintf("greeting does not contain expected substring %q", cfg.ExpectGreeting),
-				"greeting": greeting,
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: fmt.Sprintf("greeting does not contain expected substring %q", cfg.ExpectGreeting),
+				"greeting":                greeting,
 			},
 		}, nil
 	}
@@ -199,9 +199,9 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":  targetIP.String(),
-				"port":  params.port,
-				"error": fmt.Sprintf("EHLO rejected: %v", err),
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: fmt.Sprintf("EHLO rejected: %v", err),
 			},
 		}, nil
 	}
@@ -225,9 +225,9 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					"host":  targetIP.String(),
-					"port":  params.port,
-					"error": err.Error(),
+					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyPort:  params.port,
+					checkerdef.OutputKeyError: err.Error(),
 				},
 			}, nil
 		}
@@ -264,9 +264,9 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					"host":  targetIP.String(),
-					"port":  params.port,
-					"error": fmt.Sprintf("AUTH failed: %v", authErr),
+					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyPort:  params.port,
+					checkerdef.OutputKeyError: fmt.Sprintf("AUTH failed: %v", authErr),
 				},
 			}, nil
 		}
@@ -282,9 +282,9 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":  targetIP.String(),
-				"port":  params.port,
-				"error": "AUTH not advertised by server",
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: "AUTH not advertised by server",
 			},
 		}, nil
 	}
@@ -486,7 +486,7 @@ func handleDialError(ctx context.Context, err error, start time.Time) *checkerde
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": fmt.Sprintf("connection failed: %v", err)},
+		Output:   map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err)},
 	}
 }
 
@@ -494,7 +494,7 @@ func timeoutResult(start time.Time) *checkerdef.Result {
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusTimeout,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": "connection timeout"},
+		Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 	}
 }
 

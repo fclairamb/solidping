@@ -1593,7 +1593,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	if len(members) == 0 {
 		// No org to login to - return minimal response
 		return &LoginResponse{
-			TokenType: "Bearer",
+			TokenType: tokenTypeBearer,
 			User: &UserInfo{
 				UID:   user.UID,
 				Email: user.Email,
@@ -2687,7 +2687,7 @@ func (s *Service) completeLoginAfter2FA(
 		return &LoginResponse{
 			AccessToken: accessToken,
 			ExpiresIn:   int(s.cfg.AccessTokenExpiry.Seconds()),
-			TokenType:   "Bearer",
+			TokenType:   tokenTypeBearer,
 			User:        userInfo,
 		}, nil
 	}
