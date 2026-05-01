@@ -26,6 +26,14 @@ const (
 	NodeRoleChecks = "checks"
 )
 
+// Database type constants.
+const (
+	DatabaseTypePostgres         = "postgres"
+	DatabaseTypePostgresEmbedded = "postgres-embedded"
+	DatabaseTypeSQLite           = "sqlite"
+	DatabaseTypeSQLiteMemory     = "sqlite-memory"
+)
+
 var (
 	// ErrInvalidDatabaseType is returned when the database type is invalid.
 	ErrInvalidDatabaseType = errors.New(
@@ -220,7 +228,7 @@ func Load() (*Config, error) {
 			},
 		},
 		Database: DatabaseConfig{
-			Type: "sqlite",
+			Type: DatabaseTypeSQLite,
 			Dir:  ".",
 		},
 		Auth: AuthConfig{
@@ -317,7 +325,7 @@ func Load() (*Config, error) {
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
-		cfg.Database.Type = "sqlite-memory"
+		cfg.Database.Type = DatabaseTypeSQLiteMemory
 	}
 
 	// Manually read SP_DB_RESET for database reset on startup
@@ -334,19 +342,24 @@ func Load() (*Config, error) {
 // Validate checks that the configuration is valid and returns an error if not.
 func (c *Config) Validate() error {
 	// Validate database type
-	validTypes := []string{"postgres", "postgres-embedded", "sqlite", "sqlite-memory"}
+	validTypes := []string{
+		DatabaseTypePostgres,
+		DatabaseTypePostgresEmbedded,
+		DatabaseTypeSQLite,
+		DatabaseTypeSQLiteMemory,
+	}
 
 	if !slices.Contains(validTypes, c.Database.Type) {
 		return fmt.Errorf("%w, got '%s'", ErrInvalidDatabaseType, c.Database.Type)
 	}
 
 	// Validate postgres requires URL
-	if c.Database.Type == "postgres" && c.Database.URL == "" {
+	if c.Database.Type == DatabaseTypePostgres && c.Database.URL == "" {
 		return ErrDatabaseURLRequired
 	}
 
 	// Validate sqlite requires directory (unless memory mode or test mode)
-	if c.Database.Type == "sqlite" && c.Database.Dir == "" {
+	if c.Database.Type == DatabaseTypeSQLite && c.Database.Dir == "" {
 		return ErrDatabaseDirRequired
 	}
 

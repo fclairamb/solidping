@@ -98,7 +98,7 @@ func (s *MicrosoftOAuthService) GenerateOAuthState(ctx context.Context, redirect
 		return "", fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	stateValue := &models.JSONMap{"state": string(stateJSON)}
+	stateValue := &models.JSONMap{keyState: string(stateJSON)}
 	ttl := microsoftOAuthStateTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, microsoftOAuthStatePrefix+nonce, stateValue, &ttl); err != nil {
@@ -118,7 +118,7 @@ func (s *MicrosoftOAuthService) ValidateOAuthState(ctx context.Context, statePar
 	// Delete state (one-time use)
 	_ = s.db.DeleteStateEntry(ctx, nil, microsoftOAuthStatePrefix+stateParam)
 
-	stateJSON, ok := (*entry.Value)["state"].(string)
+	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {
 		return nil, ErrInvalidOAuthState
 	}

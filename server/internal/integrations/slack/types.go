@@ -3,6 +3,19 @@
 //nolint:tagliatelle // Slack API uses snake_case JSON field names
 package slack
 
+// Slack Block Kit element types.
+const (
+	BlockTypeMrkdwn    = "mrkdwn"
+	BlockTypePlainText = "plain_text"
+	BlockTypeHeader    = "header"
+	BlockTypeSection   = "section"
+	BlockTypeContext   = "context"
+	BlockTypeButton    = "button"
+
+	// ResponseTypeEphemeral is the Slack ephemeral response type.
+	ResponseTypeEphemeral = "ephemeral"
+)
+
 // OAuthResponse represents the response from Slack's OAuth token exchange.
 type OAuthResponse struct {
 	OK          bool   `json:"ok"`

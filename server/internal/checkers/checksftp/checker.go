@@ -72,8 +72,8 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 	start := time.Now()
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": cfg.Host,
-		"port": port,
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: port,
 	}
 
 	target := net.JoinHostPort(cfg.Host, strconv.Itoa(port))
@@ -89,7 +89,9 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusError,
 				Duration: time.Since(start),
-				Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("invalid private key: %v", parseErr)}),
+				Output: mergeOutput(output, map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf("invalid private key: %v", parseErr),
+				}),
 			}, nil
 		}
 
@@ -114,14 +116,16 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: time.Since(start),
-				Output:   mergeOutput(output, map[string]any{"error": "connection timeout"}),
+				Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "connection timeout"}),
 			}, nil
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("connection failed: %v", err)}),
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err),
+			}),
 		}, nil
 	}
 
@@ -133,14 +137,16 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: time.Since(start),
-				Output:   mergeOutput(output, map[string]any{"error": "SSH handshake timeout"}),
+				Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "SSH handshake timeout"}),
 			}, nil
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("SSH connection failed: %v", err)}),
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("SSH connection failed: %v", err),
+			}),
 		}, nil
 	}
 
@@ -157,7 +163,9 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
 			Metrics:  metrics,
-			Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("SFTP session failed: %v", err)}),
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("SFTP session failed: %v", err),
+			}),
 		}, nil
 	}
 
@@ -172,7 +180,7 @@ func (c *SFTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: mergeOutput(output, map[string]any{
-					"error": fmt.Sprintf("path verification failed: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("path verification failed: %v", err),
 				}),
 			}, nil
 		}

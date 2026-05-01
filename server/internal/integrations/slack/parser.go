@@ -39,7 +39,7 @@ func ParseMentionText(text string) *ParsedCommand {
 
 	if text == "" {
 		return &ParsedCommand{
-			Command: "help",
+			Command: cmdHelp,
 			Flags:   make(map[string]string),
 		}
 	}
@@ -48,7 +48,7 @@ func ParseMentionText(text string) *ParsedCommand {
 	tokens := tokenize(text)
 	if len(tokens) == 0 {
 		return &ParsedCommand{
-			Command: "help",
+			Command: cmdHelp,
 			Flags:   make(map[string]string),
 		}
 	}
@@ -63,9 +63,9 @@ func ParseMentionText(text string) *ParsedCommand {
 
 	// Commands that have subcommands
 	hasSubcommand := map[string]bool{
-		"checks":    true,
-		"config":    true,
-		"incidents": true,
+		cmdChecks:    true,
+		cmdConfig:    true,
+		cmdIncidents: true,
 	}
 
 	// Extract subcommand if applicable

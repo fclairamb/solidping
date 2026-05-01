@@ -107,7 +107,7 @@ func (s *GitLabOAuthService) GenerateOAuthState(
 		return "", fmt.Errorf("failed to marshal state: %w", err)
 	}
 
-	stateValue := &models.JSONMap{"state": string(stateJSON)}
+	stateValue := &models.JSONMap{keyState: string(stateJSON)}
 	ttl := gitLabOAuthStateTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, gitLabOAuthStatePrefix+nonce, stateValue, &ttl); err != nil {
@@ -127,7 +127,7 @@ func (s *GitLabOAuthService) ValidateOAuthState(ctx context.Context, stateParam 
 	// Delete state (one-time use)
 	_ = s.db.DeleteStateEntry(ctx, nil, gitLabOAuthStatePrefix+stateParam)
 
-	stateJSON, ok := (*entry.Value)["state"].(string)
+	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {
 		return nil, ErrInvalidOAuthState
 	}

@@ -171,7 +171,7 @@ func (s *Service) ValidateCheck(
 		return ValidateCheckResponse{
 			Valid: false,
 			Fields: []base.ValidationErrorField{
-				{Name: "type", Message: "unsupported check type"},
+				{Name: fieldType, Message: "unsupported check type"},
 			},
 		}, nil
 	}

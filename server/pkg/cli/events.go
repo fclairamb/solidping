@@ -34,7 +34,7 @@ func eventsListAction(ctx context.Context, cmd *cli.Command) error {
 		params.EventType = &eventType
 	}
 
-	if checkUID := cmd.String("check"); checkUID != "" {
+	if checkUID := cmd.String(flagCheck); checkUID != "" {
 		params.CheckUid = &checkUID
 	}
 
@@ -46,7 +46,7 @@ func eventsListAction(ctx context.Context, cmd *cli.Command) error {
 		params.Cursor = &cursor
 	}
 
-	if size := cmd.Int("size"); size > 0 {
+	if size := cmd.Int(flagSize); size > 0 {
 		params.Size = &size
 	}
 
@@ -73,7 +73,7 @@ func eventsListAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"TIMESTAMP", "TYPE", "ACTOR", "INCIDENT", "CHECK"})
+	tbl.AppendHeader(table.Row{colTimestamp, colType, colActor, "INCIDENT", colCheck})
 
 	for i := range *resp.JSON200.Data {
 		event := &(*resp.JSON200.Data)[i]

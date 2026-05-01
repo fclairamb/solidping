@@ -31,10 +31,10 @@ type IMAPConfig struct {
 //
 //nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *IMAPConfig) FromMap(configMap map[string]any) error {
-	if host, ok := configMap["host"].(string); ok {
+	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
-	} else if configMap["host"] != nil {
-		return checkerdef.NewConfigError("host", "must be a string")
+	} else if configMap[checkerdef.OutputKeyHost] != nil {
+		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "must be a string")
 	}
 
 	if port, ok := configMap["port"].(int); ok {
@@ -104,7 +104,7 @@ func (c *IMAPConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *IMAPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host": c.Host,
+		checkerdef.OutputKeyHost: c.Host,
 	}
 
 	if c.Port != 0 && c.Port != defaultPort {
@@ -149,7 +149,7 @@ func (c *IMAPConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *IMAPConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
 	}
 
 	if c.Port < 0 || c.Port > 65535 {

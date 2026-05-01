@@ -17,18 +17,29 @@ const (
 	statusUp   = "up"
 )
 
+// Slack mention command names.
+const (
+	cmdChecks    = "checks"
+	cmdIncidents = "incidents"
+	cmdConfig    = "config"
+	cmdHelp      = "help"
+
+	subAdd  = "add"
+	subList = "list"
+)
+
 // handleMentionCommand routes a parsed command to the appropriate handler.
 func (h *Handler) handleMentionCommand(ctx context.Context, event *Event, cmd *ParsedCommand) error {
 	switch cmd.Command {
-	case "checks":
+	case cmdChecks:
 		return h.handleChecksCommand(ctx, event, cmd)
 	case "results":
 		return h.handleResultsCommand(ctx, event, cmd)
-	case "incidents":
+	case cmdIncidents:
 		return h.handleIncidentsCommand(ctx, event, cmd)
-	case "config":
+	case cmdConfig:
 		return h.handleConfigCommand(ctx, event, cmd)
-	case "help", "":
+	case cmdHelp, "":
 		return h.handleHelpCommand(ctx, event)
 	default:
 		errMsg := fmt.Sprintf("Unknown command: `%s`. Type `@solidping help` for available commands.", cmd.Command)
@@ -39,9 +50,9 @@ func (h *Handler) handleMentionCommand(ctx context.Context, event *Event, cmd *P
 // handleChecksCommand handles the checks subcommands.
 func (h *Handler) handleChecksCommand(ctx context.Context, event *Event, cmd *ParsedCommand) error {
 	switch cmd.Subcommand {
-	case "add":
+	case subAdd:
 		return h.handleChecksAdd(ctx, event, cmd)
-	case "list", "ls", "":
+	case subList, "ls", "":
 		return h.handleChecksList(ctx, event)
 	case "rm", "remove", "delete":
 		return h.handleChecksRemove(ctx, event, cmd)

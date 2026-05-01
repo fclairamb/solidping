@@ -90,7 +90,7 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": fmt.Sprintf("DNS resolution failed: %v", err)},
+			Output:   map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("DNS resolution failed: %v", err)},
 		}, nil
 	}
 
@@ -98,7 +98,7 @@ func (c *SSHChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "no IP addresses found"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "no IP addresses found"},
 		}, nil
 	}
 
@@ -146,12 +146,15 @@ func (c *SSHChecker) executeBannerOnly(
 	conn, err := dialer.DialContext(ctxTimeout, "tcp", target)
 	if err != nil {
 		if ctxTimeout.Err() != nil {
-			return checkerdef.Result{Status: checkerdef.StatusTimeout, Output: map[string]any{"error": "connection timeout"}}
+			return checkerdef.Result{
+				Status: checkerdef.StatusTimeout,
+				Output: map[string]any{checkerdef.OutputKeyError: "connection timeout"},
+			}
 		}
 
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{"error": fmt.Sprintf("connection failed: %v", err)},
+			Output: map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err)},
 		}
 	}
 
@@ -170,7 +173,7 @@ func (c *SSHChecker) executeBannerOnly(
 		return checkerdef.Result{
 			Status:  checkerdef.StatusDown,
 			Metrics: metrics,
-			Output:  mergeOutput(output, map[string]any{"error": "no banner received"}),
+			Output:  mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "no banner received"}),
 		}
 	}
 
@@ -181,7 +184,7 @@ func (c *SSHChecker) executeBannerOnly(
 		return checkerdef.Result{
 			Status:  checkerdef.StatusDown,
 			Metrics: metrics,
-			Output:  mergeOutput(output, map[string]any{"error": "invalid SSH banner"}),
+			Output:  mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "invalid SSH banner"}),
 		}
 	}
 
@@ -224,7 +227,7 @@ func (c *SSHChecker) verifyFingerprint(
 			Status:  checkerdef.StatusDown,
 			Metrics: metrics,
 			Output: mergeOutput(output, map[string]any{
-				"error": fmt.Sprintf("SSH handshake failed: %v", err),
+				checkerdef.OutputKeyError: fmt.Sprintf("SSH handshake failed: %v", err),
 			}),
 		}
 	}
@@ -237,7 +240,7 @@ func (c *SSHChecker) verifyFingerprint(
 			Status:  checkerdef.StatusDown,
 			Metrics: metrics,
 			Output: mergeOutput(output, map[string]any{
-				"error": fmt.Sprintf("fingerprint mismatch: got %s, expected %s",
+				checkerdef.OutputKeyError: fmt.Sprintf("fingerprint mismatch: got %s, expected %s",
 					capturedFingerprint, cfg.ExpectedFingerprint),
 			}),
 		}
@@ -264,7 +267,7 @@ func (c *SSHChecker) executeWithAuth(
 		if err != nil {
 			return checkerdef.Result{
 				Status: checkerdef.StatusError,
-				Output: mergeOutput(output, map[string]any{"error": fmt.Sprintf("invalid private key: %v", err)}),
+				Output: mergeOutput(output, map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("invalid private key: %v", err)}),
 			}
 		}
 
@@ -309,13 +312,15 @@ func (c *SSHChecker) executeWithAuth(
 		if ctx.Err() != nil {
 			return checkerdef.Result{
 				Status: checkerdef.StatusTimeout, Metrics: metrics,
-				Output: mergeOutput(output, map[string]any{"error": "SSH connection timeout"}),
+				Output: mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "SSH connection timeout"}),
 			}
 		}
 
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown, Metrics: metrics,
-			Output: mergeOutput(output, map[string]any{"error": fmt.Sprintf("SSH connection failed: %v", err)}),
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("SSH connection failed: %v", err),
+			}),
 		}
 	}
 
@@ -334,7 +339,9 @@ func (c *SSHChecker) executeWithAuth(
 	if err != nil {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown, Metrics: metrics,
-			Output: mergeOutput(output, map[string]any{"error": fmt.Sprintf("failed to create session: %v", err)}),
+			Output: mergeOutput(output, map[string]any{
+				checkerdef.OutputKeyError: fmt.Sprintf("failed to create session: %v", err),
+			}),
 		}
 	}
 
@@ -364,7 +371,9 @@ func (c *SSHChecker) executeWithAuth(
 		} else {
 			return checkerdef.Result{
 				Status: checkerdef.StatusDown, Metrics: metrics,
-				Output: mergeOutput(output, map[string]any{"error": fmt.Sprintf("command execution failed: %v", err)}),
+				Output: mergeOutput(output, map[string]any{
+					checkerdef.OutputKeyError: fmt.Sprintf("command execution failed: %v", err),
+				}),
 			}
 		}
 	}
@@ -375,7 +384,7 @@ func (c *SSHChecker) executeWithAuth(
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown, Metrics: metrics,
 			Output: mergeOutput(output, map[string]any{
-				"error": fmt.Sprintf("exit code %d, expected %d", exitCode, cfg.ExpectedExitCode),
+				checkerdef.OutputKeyError: fmt.Sprintf("exit code %d, expected %d", exitCode, cfg.ExpectedExitCode),
 			}),
 		}
 	}
@@ -385,7 +394,7 @@ func (c *SSHChecker) executeWithAuth(
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown, Metrics: metrics,
 			Output: mergeOutput(output, map[string]any{
-				"error": fmt.Sprintf("expected output %q not found", cfg.ExpectedOutput),
+				checkerdef.OutputKeyError: fmt.Sprintf("expected output %q not found", cfg.ExpectedOutput),
 			}),
 		}
 	}
@@ -400,7 +409,9 @@ func (c *SSHChecker) executeWithAuth(
 			if compileErr != nil {
 				return checkerdef.Result{
 					Status: checkerdef.StatusError, Metrics: metrics,
-					Output: mergeOutput(output, map[string]any{"error": fmt.Sprintf("invalid regex: %v", compileErr)}),
+					Output: mergeOutput(output, map[string]any{
+						checkerdef.OutputKeyError: fmt.Sprintf("invalid regex: %v", compileErr),
+					}),
 				}
 			}
 		}
@@ -409,7 +420,7 @@ func (c *SSHChecker) executeWithAuth(
 			return checkerdef.Result{
 				Status: checkerdef.StatusDown, Metrics: metrics,
 				Output: mergeOutput(output, map[string]any{
-					"error": fmt.Sprintf("output does not match pattern %q", cfg.ExpectedOutputPattern),
+					checkerdef.OutputKeyError: fmt.Sprintf("output does not match pattern %q", cfg.ExpectedOutputPattern),
 				}),
 			}
 		}

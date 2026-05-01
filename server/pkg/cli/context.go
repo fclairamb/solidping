@@ -53,7 +53,7 @@ func NewCLIContext(cmd *cli.Command) (*Context, error) {
 	}
 
 	// Override URL if provided via flag
-	if url := cmd.String("url"); url != "" {
+	if url := cmd.String(flagURL); url != "" {
 		cfg.URL = url
 	}
 

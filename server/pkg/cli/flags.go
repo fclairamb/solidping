@@ -16,7 +16,7 @@ func GetGlobalFlags() []cli.Flag {
 			Sources: cli.EnvVars("SOLIDPING_CONFIG"),
 		},
 		&cli.StringFlag{
-			Name:    "url",
+			Name:    flagURL,
 			Usage:   "Override server URL from config",
 			Value:   defaults.ServerURL,
 			Sources: cli.EnvVars("SOLIDPING_URL"),

@@ -100,15 +100,15 @@ func (h *Handler) openAddCheckModal(ctx context.Context, interaction *Interactio
 	modal := &ModalView{
 		Type: "modal",
 		Title: Text{
-			Type: "plain_text",
+			Type: BlockTypePlainText,
 			Text: "Add a Check",
 		},
 		Submit: &Text{
-			Type: "plain_text",
+			Type: BlockTypePlainText,
 			Text: "Create Check",
 		},
 		Close: &Text{
-			Type: "plain_text",
+			Type: BlockTypePlainText,
 			Text: "Cancel",
 		},
 		CallbackID: "add_check_modal",
@@ -117,7 +117,7 @@ func (h *Handler) openAddCheckModal(ctx context.Context, interaction *Interactio
 				Type:    "input",
 				BlockID: "url_block",
 				Text: &Text{
-					Type: "plain_text",
+					Type: BlockTypePlainText,
 					Text: "URL to monitor",
 				},
 				Elements: []any{
@@ -131,7 +131,7 @@ func (h *Handler) openAddCheckModal(ctx context.Context, interaction *Interactio
 				Type:    "input",
 				BlockID: "name_block",
 				Text: &Text{
-					Type: "plain_text",
+					Type: BlockTypePlainText,
 					Text: "Check name (optional)",
 				},
 				Elements: []any{
@@ -216,7 +216,7 @@ func (h *Handler) handleAcknowledgeIncident(
 	if incidentUID == "" {
 		slog.WarnContext(ctx, "Missing incident UID in acknowledge action")
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Invalid incident reference.",
 		}, nil
 	}
@@ -226,7 +226,7 @@ func (h *Handler) handleAcknowledgeIncident(
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to get connection", "error", err, "team_id", interaction.Team.ID)
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Could not find organization.",
 		}, nil
 	}
@@ -242,7 +242,7 @@ func (h *Handler) handleAcknowledgeIncident(
 			"incident_uid", incidentUID,
 		)
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Could not acknowledge incident.",
 		}, nil
 	}
@@ -340,7 +340,7 @@ func (h *Handler) handleUnavailableIncident(
 
 	// Return ephemeral message - don't modify the original
 	return &MessageResponse{
-		ResponseType: "ephemeral",
+		ResponseType: ResponseTypeEphemeral,
 		Text:         "Noted. This incident remains unacknowledged. Another team member should acknowledge it.",
 	}, nil
 }
@@ -353,7 +353,7 @@ func (h *Handler) handleEscalateIncident(
 	if incidentUID == "" {
 		slog.WarnContext(ctx, "Missing incident UID in escalate action")
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Invalid incident reference.",
 		}, nil
 	}
@@ -363,7 +363,7 @@ func (h *Handler) handleEscalateIncident(
 	if err != nil {
 		slog.ErrorContext(ctx, "Failed to get connection", "error", err, "team_id", interaction.Team.ID)
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Could not find organization.",
 		}, nil
 	}
@@ -376,7 +376,7 @@ func (h *Handler) handleEscalateIncident(
 			"incident_uid", incidentUID,
 		)
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "Error: Could not find incident.",
 		}, nil
 	}
@@ -384,7 +384,7 @@ func (h *Handler) handleEscalateIncident(
 	// Check if already escalated
 	if incident.EscalatedAt != nil {
 		return &MessageResponse{
-			ResponseType: "ephemeral",
+			ResponseType: ResponseTypeEphemeral,
 			Text:         "This incident has already been escalated.",
 		}, nil
 	}
@@ -403,7 +403,7 @@ func (h *Handler) handleEscalateIncident(
 	)
 
 	return &MessageResponse{
-		ResponseType: "ephemeral",
+		ResponseType: ResponseTypeEphemeral,
 		Text:         fmt.Sprintf("Escalation requested by @%s. Team leads have been notified.", interaction.User.Username),
 	}, nil
 }
@@ -420,15 +420,15 @@ func buildAcknowledgedMessage(
 
 	// Build section fields
 	fields := []Text{
-		{Type: "mrkdwn", Text: "*Monitor:*\n" + checkName},
-		{Type: "mrkdwn", Text: "*Cause:*\n" + getFailureReason(incident)},
+		{Type: BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(incident)},
 	}
 
 	// Add URL field for HTTP checks
 	if url := getCheckURL(check); url != "" {
 		method := getCheckMethod(check)
 		fields = append(fields, Text{
-			Type: "mrkdwn",
+			Type: BlockTypeMrkdwn,
 			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, url),
 		})
 	}
@@ -438,21 +438,21 @@ func buildAcknowledgedMessage(
 		{
 			Type: "header",
 			Text: &Text{
-				Type:  "plain_text",
+				Type:  BlockTypePlainText,
 				Text:  "Incident for " + checkName,
 				Emoji: true,
 			},
 		},
 		// Section with fields
 		{
-			Type:   "section",
+			Type:   BlockTypeSection,
 			Fields: fields,
 		},
 		// Acknowledgment notice
 		{
-			Type: "section",
+			Type: BlockTypeSection,
 			Text: &Text{
-				Type: "mrkdwn",
+				Type: BlockTypeMrkdwn,
 				Text: fmt.Sprintf(
 					":white_check_mark: Acknowledged by *@%s* at %s",
 					slackUsername, acknowledgedAt.Format("3:04 PM"),
@@ -461,20 +461,20 @@ func buildAcknowledgedMessage(
 		},
 		// Context: status tags - show acknowledged
 		{
-			Type: "context",
+			Type: BlockTypeContext,
 			Elements: []any{
 				ContextElement{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: ":warning: Incident  :large_blue_circle: Monitor  :white_check_mark: Acknowledged",
 				},
 			},
 		},
 		// Context: timestamp
 		{
-			Type: "context",
+			Type: BlockTypeContext,
 			Elements: []any{
 				ContextElement{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: "Incident started " + formatTimestamp(incident.StartedAt),
 				},
 			},

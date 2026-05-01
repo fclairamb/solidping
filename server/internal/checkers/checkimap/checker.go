@@ -111,7 +111,7 @@ func (c *IMAPChecker) Execute(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
 		}, nil
 	}
 
@@ -119,8 +119,8 @@ func (c *IMAPChecker) Execute(
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": targetIP.String(),
-		"port": params.port,
+		checkerdef.OutputKeyHost: targetIP.String(),
+		checkerdef.OutputKeyPort: params.port,
 	}
 
 	// Establish connection
@@ -158,9 +158,9 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":  targetIP.String(),
-				"port":  params.port,
-				"error": fmt.Sprintf("failed to read greeting: %v", err),
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: fmt.Sprintf("failed to read greeting: %v", err),
 			},
 		}, nil
 	}
@@ -174,10 +174,10 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":     targetIP.String(),
-				"port":     params.port,
-				"error":    "greeting does not start with * OK",
-				"greeting": greeting,
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: "greeting does not start with * OK",
+				"greeting":                greeting,
 			},
 		}, nil
 	}
@@ -189,9 +189,9 @@ func (c *IMAPChecker) Execute(
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host": targetIP.String(),
-				"port": params.port,
-				"error": fmt.Sprintf(
+				checkerdef.OutputKeyHost: targetIP.String(),
+				checkerdef.OutputKeyPort: params.port,
+				checkerdef.OutputKeyError: fmt.Sprintf(
 					"greeting does not contain expected substring %q",
 					cfg.ExpectGreeting,
 				),
@@ -215,9 +215,9 @@ func (c *IMAPChecker) Execute(
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					"host":  targetIP.String(),
-					"port":  params.port,
-					"error": err.Error(),
+					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyPort:  params.port,
+					checkerdef.OutputKeyError: err.Error(),
 				},
 			}, nil
 		}
@@ -244,9 +244,9 @@ func (c *IMAPChecker) Execute(
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: map[string]any{
-					"host":  targetIP.String(),
-					"port":  params.port,
-					"error": err.Error(),
+					checkerdef.OutputKeyHost:  targetIP.String(),
+					checkerdef.OutputKeyPort:  params.port,
+					checkerdef.OutputKeyError: err.Error(),
 				},
 			}, nil
 		}
@@ -385,7 +385,7 @@ func handleDialError(ctx context.Context, err error, start time.Time) *checkerde
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": fmt.Sprintf("connection failed: %v", err)},
+		Output:   map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err)},
 	}
 }
 
@@ -393,7 +393,7 @@ func timeoutResult(start time.Time) *checkerdef.Result {
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusTimeout,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": "connection timeout"},
+		Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 	}
 }
 

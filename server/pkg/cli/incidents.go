@@ -36,7 +36,7 @@ func incidentsListAction(ctx context.Context, cmd *cli.Command) error {
 	// Build query parameters
 	params := &client.ListIncidentsParams{}
 
-	if checkUID := cmd.String("check"); checkUID != "" {
+	if checkUID := cmd.String(flagCheck); checkUID != "" {
 		params.CheckUid = &checkUID
 	}
 
@@ -48,13 +48,13 @@ func incidentsListAction(ctx context.Context, cmd *cli.Command) error {
 		params.Cursor = &cursor
 	}
 
-	if size := cmd.Int("size"); size > 0 {
+	if size := cmd.Int(flagSize); size > 0 {
 		params.Size = &size
 	}
 
 	// Always include check details to display slug
-	withCheck := "check"
-	params.With = &withCheck
+	withCheckArg := flagCheck
+	params.With = &withCheckArg
 
 	// Call API
 	resp, err := apiClient.ListIncidentsWithResponse(ctx, cliCtx.GetOrg(), params)
@@ -79,7 +79,7 @@ func incidentsListAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"UID", "STATE", "CHECK", "STARTED", "DURATION", "TITLE"})
+	tbl.AppendHeader(table.Row{colUID, "STATE", colCheck, "STARTED", "DURATION", "TITLE"})
 
 	for i := range *resp.JSON200.Data {
 		incident := &(*resp.JSON200.Data)[i]
@@ -225,7 +225,7 @@ func incidentsEventsAction(ctx context.Context, cmd *cli.Command) error {
 	if cursor := cmd.String("cursor"); cursor != "" {
 		params.Cursor = &cursor
 	}
-	if size := cmd.Int("size"); size > 0 {
+	if size := cmd.Int(flagSize); size > 0 {
 		params.Size = &size
 	}
 
@@ -249,7 +249,7 @@ func incidentsEventsAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"TIMESTAMP", "TYPE", "ACTOR"})
+	tbl.AppendHeader(table.Row{colTimestamp, colType, colActor})
 
 	for i := range *resp.JSON200.Data {
 		event := &(*resp.JSON200.Data)[i]

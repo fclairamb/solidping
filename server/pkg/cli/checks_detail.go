@@ -299,7 +299,7 @@ func checksEventsAction(ctx context.Context, cmd *cli.Command) error {
 	if cursor := cmd.String("cursor"); cursor != "" {
 		params.Cursor = &cursor
 	}
-	if size := cmd.Int("size"); size > 0 {
+	if size := cmd.Int(flagSize); size > 0 {
 		params.Size = &size
 	}
 
@@ -322,7 +322,7 @@ func checksEventsAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"TIMESTAMP", "TYPE", "ACTOR"})
+	tbl.AppendHeader(table.Row{colTimestamp, colType, colActor})
 
 	for i := range *resp.JSON200.Data {
 		event := &(*resp.JSON200.Data)[i]

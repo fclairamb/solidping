@@ -12,7 +12,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-const exampleHost = "example.com"
+const (
+	exampleHost     = "example.com"
+	localhost       = "127.0.0.1"
+	httpRequestData = "GET / HTTP/1.1\r\n\r\n"
+	httpOKResponse  = "200 OK"
+)
 
 func TestTCPChecker_Type(t *testing.T) {
 	t.Parallel()
@@ -36,14 +41,14 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "valid config with all fields",
 			configMap: map[string]any{
-				"host":            exampleHost,
-				"port":            443,
-				"timeout":         "10s",
-				"send_data":       "GET / HTTP/1.1\r\n\r\n",
-				"expect_data":     "200 OK",
-				"tls":             true,
-				"tls_verify":      true,
-				"tls_server_name": exampleHost,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 443,
+				"timeout":                "10s",
+				"send_data":              httpRequestData,
+				"expect_data":            httpOKResponse,
+				"tls":                    true,
+				"tls_verify":             true,
+				"tls_server_name":        exampleHost,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *TCPConfig) {
@@ -57,10 +62,10 @@ func TestTCPConfig_FromMap(t *testing.T) {
 				if cfg.Timeout != 10*time.Second {
 					t.Errorf("expected timeout 10s, got %v", cfg.Timeout)
 				}
-				if cfg.SendData != "GET / HTTP/1.1\r\n\r\n" {
+				if cfg.SendData != httpRequestData {
 					t.Errorf("expected send_data 'GET / HTTP/1.1\\r\\n\\r\\n', got '%s'", cfg.SendData)
 				}
-				if cfg.ExpectData != "200 OK" {
+				if cfg.ExpectData != httpOKResponse {
 					t.Errorf("expected expect_data '200 OK', got '%s'", cfg.ExpectData)
 				}
 				if !cfg.TLS {
@@ -77,8 +82,8 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "minimal valid config",
 			configMap: map[string]any{
-				"host": "localhost",
-				"port": 80,
+				"host":                   "localhost",
+				checkerdef.OutputKeyPort: 80,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *TCPConfig) {
@@ -94,8 +99,8 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "port as float64 (JSON unmarshal)",
 			configMap: map[string]any{
-				"host": "exampleHost",
-				"port": 443.0,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 443.0,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *TCPConfig) {
@@ -108,8 +113,8 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid host type",
 			configMap: map[string]any{
-				"host": 123,
-				"port": 80,
+				"host":                   123,
+				checkerdef.OutputKeyPort: 80,
 			},
 			wantErr: true,
 			errMsg:  "host: must be a string",
@@ -117,8 +122,8 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid port type",
 			configMap: map[string]any{
-				"host": "exampleHost",
-				"port": "80",
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: "80",
 			},
 			wantErr: true,
 			errMsg:  "port: must be a number",
@@ -126,9 +131,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid timeout type",
 			configMap: map[string]any{
-				"host":    "exampleHost",
-				"port":    80,
-				"timeout": 123,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 80,
+				"timeout":                123,
 			},
 			wantErr: true,
 			errMsg:  "timeout: must be a string",
@@ -136,9 +141,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid send_data type",
 			configMap: map[string]any{
-				"host":      "exampleHost",
-				"port":      80,
-				"send_data": 123,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 80,
+				"send_data":              123,
 			},
 			wantErr: true,
 			errMsg:  "send_data: must be a string",
@@ -146,9 +151,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid expect_data type",
 			configMap: map[string]any{
-				"host":        "exampleHost",
-				"port":        80,
-				"expect_data": 123,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 80,
+				"expect_data":            123,
 			},
 			wantErr: true,
 			errMsg:  "expect_data: must be a string",
@@ -156,9 +161,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid tls type",
 			configMap: map[string]any{
-				"host": "exampleHost",
-				"port": 443,
-				"tls":  "true",
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 443,
+				"tls":                    "true",
 			},
 			wantErr: true,
 			errMsg:  "tls: must be a boolean",
@@ -166,9 +171,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid tls_verify type",
 			configMap: map[string]any{
-				"host":       "exampleHost",
-				"port":       443,
-				"tls_verify": "true",
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 443,
+				"tls_verify":             "true",
 			},
 			wantErr: true,
 			errMsg:  "tls_verify: must be a boolean",
@@ -176,9 +181,9 @@ func TestTCPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid tls_server_name type",
 			configMap: map[string]any{
-				"host":            "exampleHost",
-				"port":            443,
-				"tls_server_name": 123,
+				"host":                   exampleHost,
+				checkerdef.OutputKeyPort: 443,
+				"tls_server_name":        123,
 			},
 			wantErr: true,
 			errMsg:  "tls_server_name: must be a string",
@@ -218,8 +223,8 @@ func TestTCPConfig_GetConfig(t *testing.T) {
 		Host:          exampleHost,
 		Port:          443,
 		Timeout:       5 * time.Second,
-		SendData:      "GET / HTTP/1.1\r\n\r\n",
-		ExpectData:    "200 OK",
+		SendData:      httpRequestData,
+		ExpectData:    httpOKResponse,
 		TLS:           true,
 		TLSVerify:     true,
 		TLSServerName: exampleHost,
@@ -231,19 +236,19 @@ func TestTCPConfig_GetConfig(t *testing.T) {
 		t.Errorf("expected host '%s', got '%v'", exampleHost, result["host"])
 	}
 
-	if result["port"] != 443 {
-		t.Errorf("expected port 443, got %v", result["port"])
+	if result[checkerdef.OutputKeyPort] != 443 {
+		t.Errorf("expected port 443, got %v", result[checkerdef.OutputKeyPort])
 	}
 
 	if result["timeout"] != "5s" {
 		t.Errorf("expected timeout '5s', got '%v'", result["timeout"])
 	}
 
-	if result["send_data"] != "GET / HTTP/1.1\r\n\r\n" {
+	if result["send_data"] != httpRequestData {
 		t.Errorf("expected send_data 'GET / HTTP/1.1\\r\\n\\r\\n', got '%v'", result["send_data"])
 	}
 
-	if result["expect_data"] != "200 OK" {
+	if result["expect_data"] != httpOKResponse {
 		t.Errorf("expected expect_data '200 OK', got '%v'", result["expect_data"])
 	}
 
@@ -272,7 +277,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &TCPConfig{
-				Host:    "exampleHost",
+				Host:    exampleHost,
 				Port:    443,
 				Timeout: 5 * time.Second,
 			},
@@ -281,7 +286,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "minimal valid config",
 			config: &TCPConfig{
-				Host: "exampleHost",
+				Host: exampleHost,
 				Port: 80,
 			},
 			wantErr: false,
@@ -294,14 +299,14 @@ func TestTCPChecker_Validate(t *testing.T) {
 		},
 		{
 			name:    "empty port",
-			config:  &TCPConfig{Host: "exampleHost"},
+			config:  &TCPConfig{Host: exampleHost},
 			wantErr: true,
 			errMsg:  "port: is required",
 		},
 		{
 			name: "port too low",
 			config: &TCPConfig{
-				Host: "exampleHost",
+				Host: exampleHost,
 				Port: 0,
 			},
 			wantErr: true,
@@ -310,7 +315,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "port negative",
 			config: &TCPConfig{
-				Host: "exampleHost",
+				Host: exampleHost,
 				Port: -1,
 			},
 			wantErr: true,
@@ -319,7 +324,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "port too high",
 			config: &TCPConfig{
-				Host: "exampleHost",
+				Host: exampleHost,
 				Port: 65536,
 			},
 			wantErr: true,
@@ -328,7 +333,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "timeout negative",
 			config: &TCPConfig{
-				Host:    "exampleHost",
+				Host:    exampleHost,
 				Port:    80,
 				Timeout: -1 * time.Second,
 			},
@@ -338,7 +343,7 @@ func TestTCPChecker_Validate(t *testing.T) {
 		{
 			name: "timeout too long",
 			config: &TCPConfig{
-				Host:    "exampleHost",
+				Host:    exampleHost,
 				Port:    80,
 				Timeout: 61 * time.Second,
 			},
@@ -401,7 +406,7 @@ func TestTCPChecker_Execute(t *testing.T) {
 		{
 			name: "successful connection to test server",
 			config: &TCPConfig{
-				Host:    "127.0.0.1",
+				Host:    localhost,
 				Port:    port,
 				Timeout: 2 * time.Second,
 			},
@@ -412,7 +417,7 @@ func TestTCPChecker_Execute(t *testing.T) {
 				if _, ok := output["host"]; !ok {
 					t.Error("expected host in output")
 				}
-				if portVal, ok := output["port"]; !ok || portVal != port {
+				if portVal, ok := output[checkerdef.OutputKeyPort]; !ok || portVal != port {
 					t.Errorf("expected port %d in output, got %v", port, portVal)
 				}
 			},
@@ -420,7 +425,7 @@ func TestTCPChecker_Execute(t *testing.T) {
 		{
 			name: "connection with send and expect data",
 			config: &TCPConfig{
-				Host:       "127.0.0.1",
+				Host:       localhost,
 				Port:       port,
 				Timeout:    2 * time.Second,
 				SendData:   "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n",
@@ -438,7 +443,7 @@ func TestTCPChecker_Execute(t *testing.T) {
 		{
 			name: "connection refused",
 			config: &TCPConfig{
-				Host:    "127.0.0.1",
+				Host:    localhost,
 				Port:    1, // Port 1 should be closed
 				Timeout: 1 * time.Second,
 			},

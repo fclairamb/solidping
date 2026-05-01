@@ -11,6 +11,9 @@ import (
 	"time"
 )
 
+// HumanReadableSubMinute is the human-readable label for durations shorter than one minute.
+const HumanReadableSubMinute = "< 1m"
+
 // Errors returned by ISO 8601 duration parsing and formatting.
 var (
 	// ErrInvalidISO8601Format is returned when the ISO 8601 duration format is invalid.
@@ -215,7 +218,7 @@ func FormatHumanReadable(dur time.Duration) string {
 	if minutes > 0 {
 		return fmt.Sprintf("%dm", minutes)
 	}
-	return "< 1m"
+	return HumanReadableSubMinute
 }
 
 // FormatPeriod formats a period string (e.g., "00:01:00" or "1m") to a human-readable short form.

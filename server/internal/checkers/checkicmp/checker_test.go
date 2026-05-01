@@ -9,6 +9,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+const (
+	testHostExample = "example.com"
+	testHostGoogle  = "8.8.8.8"
+)
+
 func TestICMPChecker_Type(t *testing.T) {
 	t.Parallel()
 
@@ -31,17 +36,17 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "valid config with all fields",
 			configMap: map[string]any{
-				"host":        "example.com",
-				"timeout":     "10s",
-				"count":       5,
-				"interval":    "2s",
-				"packet_size": 64,
-				"ttl":         128,
+				checkerdef.OutputKeyHost:    testHostExample,
+				checkerdef.OutputKeyTimeout: "10s",
+				checkerdef.OutputKeyCount:   5,
+				"interval":                  "2s",
+				"packet_size":               64,
+				"ttl":                       128,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *ICMPConfig) {
 				t.Helper()
-				if cfg.Host != "example.com" {
+				if cfg.Host != testHostExample {
 					t.Errorf("expected host 'example.com', got '%s'", cfg.Host)
 				}
 				if cfg.Timeout != 10*time.Second {
@@ -64,12 +69,12 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "minimal valid config",
 			configMap: map[string]any{
-				"host": "8.8.8.8",
+				checkerdef.OutputKeyHost: testHostGoogle,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *ICMPConfig) {
 				t.Helper()
-				if cfg.Host != "8.8.8.8" {
+				if cfg.Host != testHostGoogle {
 					t.Errorf("expected host '8.8.8.8', got '%s'", cfg.Host)
 				}
 			},
@@ -77,8 +82,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "count as float64 (JSON unmarshal)",
 			configMap: map[string]any{
-				"host":  "example.com",
-				"count": 3.0,
+				checkerdef.OutputKeyHost:  testHostExample,
+				checkerdef.OutputKeyCount: 3.0,
 			},
 			wantErr: false,
 			validate: func(t *testing.T, cfg *ICMPConfig) {
@@ -91,7 +96,7 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid host type",
 			configMap: map[string]any{
-				"host": 123,
+				checkerdef.OutputKeyHost: 123,
 			},
 			wantErr: true,
 			errMsg:  "host: must be a string",
@@ -99,8 +104,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid timeout type",
 			configMap: map[string]any{
-				"host":    "example.com",
-				"timeout": 123,
+				checkerdef.OutputKeyHost:    testHostExample,
+				checkerdef.OutputKeyTimeout: 123,
 			},
 			wantErr: true,
 			errMsg:  "timeout: must be a string",
@@ -108,8 +113,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid timeout format",
 			configMap: map[string]any{
-				"host":    "example.com",
-				"timeout": "invalid",
+				checkerdef.OutputKeyHost:    testHostExample,
+				checkerdef.OutputKeyTimeout: "invalid",
 			},
 			wantErr: true,
 			errMsg:  "timeout: must be a valid duration string",
@@ -117,8 +122,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid count type",
 			configMap: map[string]any{
-				"host":  "example.com",
-				"count": "5",
+				checkerdef.OutputKeyHost:  testHostExample,
+				checkerdef.OutputKeyCount: "5",
 			},
 			wantErr: true,
 			errMsg:  "count: must be a number",
@@ -126,8 +131,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid interval type",
 			configMap: map[string]any{
-				"host":     "example.com",
-				"interval": 123,
+				checkerdef.OutputKeyHost: testHostExample,
+				"interval":               123,
 			},
 			wantErr: true,
 			errMsg:  "interval: must be a string",
@@ -135,8 +140,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid packet_size type",
 			configMap: map[string]any{
-				"host":        "example.com",
-				"packet_size": "64",
+				checkerdef.OutputKeyHost: testHostExample,
+				"packet_size":            "64",
 			},
 			wantErr: true,
 			errMsg:  "packet_size: must be a number",
@@ -144,8 +149,8 @@ func TestICMPConfig_FromMap(t *testing.T) {
 		{
 			name: "invalid ttl type",
 			configMap: map[string]any{
-				"host": "example.com",
-				"ttl":  "64",
+				checkerdef.OutputKeyHost: testHostExample,
+				"ttl":                    "64",
 			},
 			wantErr: true,
 			errMsg:  "ttl: must be a number",
@@ -182,7 +187,7 @@ func TestICMPConfig_GetConfig(t *testing.T) {
 	t.Parallel()
 
 	cfg := &ICMPConfig{
-		Host:       "example.com",
+		Host:       testHostExample,
 		Timeout:    5 * time.Second,
 		Count:      3,
 		Interval:   1 * time.Second,
@@ -192,16 +197,16 @@ func TestICMPConfig_GetConfig(t *testing.T) {
 
 	result := cfg.GetConfig()
 
-	if result["host"] != "example.com" {
-		t.Errorf("expected host 'example.com', got '%v'", result["host"])
+	if result[checkerdef.OutputKeyHost] != testHostExample {
+		t.Errorf("expected host 'example.com', got '%v'", result[checkerdef.OutputKeyHost])
 	}
 
-	if result["timeout"] != "5s" {
-		t.Errorf("expected timeout '5s', got '%v'", result["timeout"])
+	if result[checkerdef.OutputKeyTimeout] != "5s" {
+		t.Errorf("expected timeout '5s', got '%v'", result[checkerdef.OutputKeyTimeout])
 	}
 
-	if result["count"] != 3 {
-		t.Errorf("expected count 3, got %v", result["count"])
+	if result[checkerdef.OutputKeyCount] != 3 {
+		t.Errorf("expected count 3, got %v", result[checkerdef.OutputKeyCount])
 	}
 
 	if result["interval"] != "1s" {
@@ -229,7 +234,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "valid config",
 			config: &ICMPConfig{
-				Host:       "example.com",
+				Host:       testHostExample,
 				Timeout:    5 * time.Second,
 				Count:      3,
 				Interval:   1 * time.Second,
@@ -241,7 +246,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "minimal valid config (defaults applied)",
 			config: &ICMPConfig{
-				Host: "example.com",
+				Host: testHostExample,
 			},
 			wantErr: false,
 		},
@@ -254,7 +259,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "count negative",
 			config: &ICMPConfig{
-				Host:  "example.com",
+				Host:  testHostExample,
 				Count: -1,
 			},
 			wantErr: true,
@@ -263,7 +268,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "count too high",
 			config: &ICMPConfig{
-				Host:  "example.com",
+				Host:  testHostExample,
 				Count: 11,
 			},
 			wantErr: true,
@@ -272,7 +277,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "interval too short",
 			config: &ICMPConfig{
-				Host:     "example.com",
+				Host:     testHostExample,
 				Interval: 50 * time.Millisecond,
 			},
 			wantErr: true,
@@ -281,7 +286,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "interval too long",
 			config: &ICMPConfig{
-				Host:     "example.com",
+				Host:     testHostExample,
 				Interval: 61 * time.Second,
 			},
 			wantErr: true,
@@ -290,7 +295,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "packet_size too small",
 			config: &ICMPConfig{
-				Host:       "example.com",
+				Host:       testHostExample,
 				PacketSize: -1,
 			},
 			wantErr: true,
@@ -299,7 +304,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "packet_size too large",
 			config: &ICMPConfig{
-				Host:       "example.com",
+				Host:       testHostExample,
 				PacketSize: 65508,
 			},
 			wantErr: true,
@@ -308,7 +313,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "ttl negative",
 			config: &ICMPConfig{
-				Host: "example.com",
+				Host: testHostExample,
 				TTL:  -1,
 			},
 			wantErr: true,
@@ -317,7 +322,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "ttl too high",
 			config: &ICMPConfig{
-				Host: "example.com",
+				Host: testHostExample,
 				TTL:  256,
 			},
 			wantErr: true,
@@ -326,7 +331,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "timeout negative",
 			config: &ICMPConfig{
-				Host:    "example.com",
+				Host:    testHostExample,
 				Timeout: -1 * time.Second,
 			},
 			wantErr: true,
@@ -335,7 +340,7 @@ func TestICMPChecker_Validate(t *testing.T) {
 		{
 			name: "timeout too long",
 			config: &ICMPConfig{
-				Host:    "example.com",
+				Host:    testHostExample,
 				Timeout: 61 * time.Second,
 			},
 			wantErr: true,
@@ -440,7 +445,7 @@ func TestICMPChecker_Execute(t *testing.T) {
 			}
 
 			// Verify basic output fields exist for all checks
-			if _, ok := result.Output["host"]; !ok {
+			if _, ok := result.Output[checkerdef.OutputKeyHost]; !ok {
 				t.Error("expected host in output")
 			}
 

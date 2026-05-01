@@ -46,13 +46,13 @@ func resultsListAction(ctx context.Context, cmd *cli.Command) error {
 		// Build query parameters
 		params := &client.ListOrgResultsParams{}
 
-		if check := cmd.String("check"); check != "" {
+		if check := cmd.String(flagCheck); check != "" {
 			params.CheckUid = &check
 		}
 		if checkType := cmd.String("check-type"); checkType != "" {
 			params.CheckType = &checkType
 		}
-		if status := cmd.String("status"); status != "" {
+		if status := cmd.String(flagStatus); status != "" {
 			params.Status = &status
 		}
 		if region := cmd.String("region"); region != "" {
@@ -64,7 +64,7 @@ func resultsListAction(ctx context.Context, cmd *cli.Command) error {
 		if currentCursor != "" {
 			params.Cursor = &currentCursor
 		}
-		if size := cmd.Int("size"); size > 0 {
+		if size := cmd.Int(flagSize); size > 0 {
 			params.Size = &size
 		}
 		if with := cmd.String("with"); with != "" {
@@ -135,7 +135,7 @@ func resultsListAction(ctx context.Context, cmd *cli.Command) error {
 	showCheckSlug := strings.Contains(withParam, "checkSlug")
 
 	// Build table header dynamically
-	headers := []table.Row{{"TIMESTAMP", "STATUS"}}
+	headers := []table.Row{{colTimestamp, colStatus}}
 	if showCheckSlug {
 		headers[0] = append(headers[0], "CHECK")
 	} else {

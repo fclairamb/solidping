@@ -230,7 +230,7 @@ func (h *Handler) cleanupLoop(ctx context.Context) {
 				}
 				if now.Sub(sess.lastUsed) > sessionTTL {
 					h.sessions.Delete(key)
-					slog.Debug("MCP session expired", "sessionId", sess.id)
+					slog.DebugContext(ctx, "MCP session expired", "sessionId", sess.id)
 				}
 				return true
 			})

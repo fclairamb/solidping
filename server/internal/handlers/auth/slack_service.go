@@ -131,7 +131,7 @@ func (s *SlackOAuthService) GenerateOAuthState(ctx context.Context, redirectURI 
 	}
 
 	// Store in state_entries table with TTL
-	stateValue := &models.JSONMap{"state": string(stateJSON)}
+	stateValue := &models.JSONMap{keyState: string(stateJSON)}
 	ttl := oauthStateTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, oauthStatePrefix+nonce, stateValue, &ttl); err != nil {
@@ -154,7 +154,7 @@ func (s *SlackOAuthService) ValidateOAuthState(ctx context.Context, stateParam s
 	_ = s.db.DeleteStateEntry(ctx, nil, oauthStatePrefix+stateParam)
 
 	// Parse state
-	stateJSON, ok := (*entry.Value)["state"].(string)
+	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {
 		return nil, ErrInvalidOAuthState
 	}

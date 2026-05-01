@@ -210,11 +210,23 @@ linters:
           - mnd
           - funlen
           - gocognit
+          - goconst
           - gocritic
           - nestif
           - varnamelen
           - cyclop
         path: _test\.go
+      - linters:
+          - dupl
+          - mnd
+          - funlen
+          - gocognit
+          - goconst
+          - gocritic
+          - nestif
+          - varnamelen
+          - cyclop
+        path: ^test/
       - path: _generated\.go$
         linters:
           - all

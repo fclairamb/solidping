@@ -14,7 +14,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
-const opsgenieTimeout = 30 * time.Second
+const (
+	opsgenieTimeout = 30 * time.Second
+	opsgenieSource  = "SolidPing"
+)
 
 var (
 	// ErrOpsgenieAPIKeyNotConfigured is returned when the Opsgenie API key is missing.
@@ -117,7 +120,7 @@ func (s *OpsgenieSender) createAlert(
 		"description": description,
 		"priority":    settings.Priority,
 		"tags":        settings.Tags,
-		"source":      "SolidPing",
+		"source":      opsgenieSource,
 		"details": map[string]string{
 			"checkUid":     payload.Check.UID,
 			"checkName":    checkName,
@@ -146,7 +149,7 @@ func (s *OpsgenieSender) closeAlert(
 	url := s.baseURL(settings.Region) + "/" + payload.Incident.UID + "/close?identifierType=alias"
 	closePayload := map[string]any{
 		"note":   note,
-		"source": "SolidPing",
+		"source": opsgenieSource,
 	}
 
 	err := s.doRequest(ctx, http.MethodPost, url, settings.APIKey, closePayload)
@@ -170,8 +173,8 @@ func (s *OpsgenieSender) addNote(
 	url := s.baseURL(settings.Region) + "/" + payload.Incident.UID + "/notes?identifierType=alias"
 	notePayload := map[string]any{
 		"body":   noteBody,
-		"user":   "SolidPing",
-		"source": "SolidPing",
+		"user":   opsgenieSource,
+		"source": opsgenieSource,
 	}
 
 	return s.doRequest(ctx, http.MethodPost, url, settings.APIKey, notePayload)
@@ -192,7 +195,7 @@ func (s *OpsgenieSender) doRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "GenieKey "+apiKey)
-	req.Header.Set("User-Agent", "SolidPing")
+	req.Header.Set("User-Agent", opsgenieSource)
 
 	client := &http.Client{Timeout: opsgenieTimeout}
 

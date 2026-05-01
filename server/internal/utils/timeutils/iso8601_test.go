@@ -5,6 +5,35 @@ import (
 	"time"
 )
 
+// Test case labels reused across multiple test tables.
+const (
+	caseNameZeroDuration  = "zero duration"
+	caseName1Second       = "1 second"
+	caseName30Seconds     = "30 seconds"
+	caseName1Minute       = "1 minute"
+	caseName1Hour         = "1 hour"
+	caseName1H30M         = "1 hour 30 minutes"
+	caseName1H30M45S      = "1 hour 30 minutes 45 seconds"
+	caseName25Hours       = "25 hours"
+	caseNameInvalidFormat = "invalid"
+)
+
+// ISO 8601 duration string constants reused across multiple test tables.
+const (
+	iso1S        = "PT1S"
+	iso30S       = "PT30S"
+	iso1M        = "PT1M"
+	iso1H        = "PT1H"
+	iso1H30M     = "PT1H30M"
+	intvZero     = "00:00:00"
+	intv30S      = "00:00:30"
+	intv1M       = "00:01:00"
+	intv1H       = "01:00:00"
+	intv1H30M    = "01:30:00"
+	intv1H30M45S = "01:30:45"
+	intv25H      = "25:00:00"
+)
+
 func TestParseISO8601Duration(t *testing.T) {
 	t.Parallel()
 
@@ -15,20 +44,20 @@ func TestParseISO8601Duration(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "1 second",
-			input:    "PT1S",
+			name:     caseName1Second,
+			input:    iso1S,
 			expected: time.Second,
 			wantErr:  false,
 		},
 		{
-			name:     "30 seconds",
-			input:    "PT30S",
+			name:     caseName30Seconds,
+			input:    iso30S,
 			expected: 30 * time.Second,
 			wantErr:  false,
 		},
 		{
-			name:     "1 minute",
-			input:    "PT1M",
+			name:     caseName1Minute,
+			input:    iso1M,
 			expected: time.Minute,
 			wantErr:  false,
 		},
@@ -39,19 +68,19 @@ func TestParseISO8601Duration(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour",
-			input:    "PT1H",
+			name:     caseName1Hour,
+			input:    iso1H,
 			expected: time.Hour,
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour 30 minutes",
-			input:    "PT1H30M",
+			name:     caseName1H30M,
+			input:    iso1H30M,
 			expected: time.Hour + 30*time.Minute,
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour 30 minutes 45 seconds",
+			name:     caseName1H30M45S,
 			input:    "PT1H30M45S",
 			expected: time.Hour + 30*time.Minute + 45*time.Second,
 			wantErr:  false,
@@ -112,24 +141,24 @@ func TestFormatISO8601Duration(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "zero duration",
+			name:     caseNameZeroDuration,
 			input:    0,
 			expected: "PT0S",
 		},
 		{
-			name:     "1 second",
+			name:     caseName1Second,
 			input:    time.Second,
-			expected: "PT1S",
+			expected: iso1S,
 		},
 		{
-			name:     "30 seconds",
+			name:     caseName30Seconds,
 			input:    30 * time.Second,
-			expected: "PT30S",
+			expected: iso30S,
 		},
 		{
-			name:     "1 minute",
+			name:     caseName1Minute,
 			input:    time.Minute,
-			expected: "PT1M",
+			expected: iso1M,
 		},
 		{
 			name:     "90 seconds (1m30s)",
@@ -137,22 +166,22 @@ func TestFormatISO8601Duration(t *testing.T) {
 			expected: "PT1M30S",
 		},
 		{
-			name:     "1 hour",
+			name:     caseName1Hour,
 			input:    time.Hour,
-			expected: "PT1H",
+			expected: iso1H,
 		},
 		{
-			name:     "1 hour 30 minutes",
+			name:     caseName1H30M,
 			input:    time.Hour + 30*time.Minute,
-			expected: "PT1H30M",
+			expected: iso1H30M,
 		},
 		{
-			name:     "1 hour 30 minutes 45 seconds",
+			name:     caseName1H30M45S,
 			input:    time.Hour + 30*time.Minute + 45*time.Second,
 			expected: "PT1H30M45S",
 		},
 		{
-			name:     "25 hours",
+			name:     caseName25Hours,
 			input:    25 * time.Hour,
 			expected: "PT25H",
 		},
@@ -178,24 +207,24 @@ func TestFormatDurationAsInterval(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "zero duration",
+			name:     caseNameZeroDuration,
 			input:    0,
-			expected: "00:00:00",
+			expected: intvZero,
 		},
 		{
-			name:     "1 second",
+			name:     caseName1Second,
 			input:    time.Second,
 			expected: "00:00:01",
 		},
 		{
-			name:     "30 seconds",
+			name:     caseName30Seconds,
 			input:    30 * time.Second,
-			expected: "00:00:30",
+			expected: intv30S,
 		},
 		{
-			name:     "1 minute",
+			name:     caseName1Minute,
 			input:    time.Minute,
-			expected: "00:01:00",
+			expected: intv1M,
 		},
 		{
 			name:     "90 seconds (1m30s)",
@@ -203,24 +232,24 @@ func TestFormatDurationAsInterval(t *testing.T) {
 			expected: "00:01:30",
 		},
 		{
-			name:     "1 hour",
+			name:     caseName1Hour,
 			input:    time.Hour,
-			expected: "01:00:00",
+			expected: intv1H,
 		},
 		{
-			name:     "1 hour 30 minutes",
+			name:     caseName1H30M,
 			input:    time.Hour + 30*time.Minute,
-			expected: "01:30:00",
+			expected: intv1H30M,
 		},
 		{
-			name:     "1 hour 30 minutes 45 seconds",
+			name:     caseName1H30M45S,
 			input:    time.Hour + 30*time.Minute + 45*time.Second,
-			expected: "01:30:45",
+			expected: intv1H30M45S,
 		},
 		{
-			name:     "25 hours",
+			name:     caseName25Hours,
 			input:    25 * time.Hour,
-			expected: "25:00:00",
+			expected: intv25H,
 		},
 		{
 			name:     "99 hours 59 minutes 59 seconds",
@@ -250,26 +279,26 @@ func TestParsePostgresInterval(t *testing.T) {
 		wantErr  bool
 	}{
 		{
-			name:     "zero duration",
-			input:    "00:00:00",
+			name:     caseNameZeroDuration,
+			input:    intvZero,
 			expected: 0,
 			wantErr:  false,
 		},
 		{
-			name:     "1 second",
+			name:     caseName1Second,
 			input:    "00:00:01",
 			expected: time.Second,
 			wantErr:  false,
 		},
 		{
-			name:     "30 seconds",
-			input:    "00:00:30",
+			name:     caseName30Seconds,
+			input:    intv30S,
 			expected: 30 * time.Second,
 			wantErr:  false,
 		},
 		{
-			name:     "1 minute",
-			input:    "00:01:00",
+			name:     caseName1Minute,
+			input:    intv1M,
 			expected: time.Minute,
 			wantErr:  false,
 		},
@@ -280,26 +309,26 @@ func TestParsePostgresInterval(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour",
-			input:    "01:00:00",
+			name:     caseName1Hour,
+			input:    intv1H,
 			expected: time.Hour,
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour 30 minutes",
-			input:    "01:30:00",
+			name:     caseName1H30M,
+			input:    intv1H30M,
 			expected: time.Hour + 30*time.Minute,
 			wantErr:  false,
 		},
 		{
-			name:     "1 hour 30 minutes 45 seconds",
-			input:    "01:30:45",
+			name:     caseName1H30M45S,
+			input:    intv1H30M45S,
 			expected: time.Hour + 30*time.Minute + 45*time.Second,
 			wantErr:  false,
 		},
 		{
-			name:     "25 hours",
-			input:    "25:00:00",
+			name:     caseName25Hours,
+			input:    intv25H,
 			expected: 25 * time.Hour,
 			wantErr:  false,
 		},
@@ -365,29 +394,29 @@ func TestDuration_Value(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "zero duration",
+			name:     caseNameZeroDuration,
 			duration: Duration(0),
-			expected: "00:00:00",
+			expected: intvZero,
 		},
 		{
-			name:     "1 minute",
+			name:     caseName1Minute,
 			duration: Duration(time.Minute),
-			expected: "00:01:00",
+			expected: intv1M,
 		},
 		{
-			name:     "1 hour",
+			name:     caseName1Hour,
 			duration: Duration(time.Hour),
-			expected: "01:00:00",
+			expected: intv1H,
 		},
 		{
-			name:     "1 hour 30 minutes 45 seconds",
+			name:     caseName1H30M45S,
 			duration: Duration(time.Hour + 30*time.Minute + 45*time.Second),
-			expected: "01:30:45",
+			expected: intv1H30M45S,
 		},
 		{
-			name:     "25 hours",
+			name:     caseName25Hours,
 			duration: Duration(25 * time.Hour),
-			expected: "25:00:00",
+			expected: intv25H,
 		},
 	}
 
@@ -428,55 +457,55 @@ func TestDuration_Scan(t *testing.T) {
 		},
 		{
 			name:     "ISO8601 format - 1 second",
-			input:    "PT1S",
+			input:    iso1S,
 			expected: Duration(time.Second),
 			wantErr:  false,
 		},
 		{
 			name:     "ISO8601 format - 1 minute",
-			input:    "PT1M",
+			input:    iso1M,
 			expected: Duration(time.Minute),
 			wantErr:  false,
 		},
 		{
 			name:     "ISO8601 format - 1 hour 30 minutes",
-			input:    "PT1H30M",
+			input:    iso1H30M,
 			expected: Duration(time.Hour + 30*time.Minute),
 			wantErr:  false,
 		},
 		{
 			name:     "PostgreSQL interval format - 1 minute",
-			input:    "00:01:00",
+			input:    intv1M,
 			expected: Duration(time.Minute),
 			wantErr:  false,
 		},
 		{
 			name:     "PostgreSQL interval format - 1 hour",
-			input:    "01:00:00",
+			input:    intv1H,
 			expected: Duration(time.Hour),
 			wantErr:  false,
 		},
 		{
 			name:     "PostgreSQL interval format - 1 hour 30 minutes 45 seconds",
-			input:    "01:30:45",
+			input:    intv1H30M45S,
 			expected: Duration(time.Hour + 30*time.Minute + 45*time.Second),
 			wantErr:  false,
 		},
 		{
 			name:     "byte slice input - ISO8601",
-			input:    []byte("PT1M"),
+			input:    []byte(iso1M),
 			expected: Duration(time.Minute),
 			wantErr:  false,
 		},
 		{
 			name:     "byte slice input - PostgreSQL interval",
-			input:    []byte("00:01:00"),
+			input:    []byte(intv1M),
 			expected: Duration(time.Minute),
 			wantErr:  false,
 		},
 		{
 			name:     "invalid format",
-			input:    "invalid",
+			input:    caseNameInvalidFormat,
 			expected: Duration(0),
 			wantErr:  true,
 		},
@@ -519,15 +548,15 @@ func TestDuration_RoundTrip(t *testing.T) {
 		duration Duration
 	}{
 		{
-			name:     "1 minute",
+			name:     caseName1Minute,
 			duration: Duration(time.Minute),
 		},
 		{
-			name:     "1 hour",
+			name:     caseName1Hour,
 			duration: Duration(time.Hour),
 		},
 		{
-			name:     "1 hour 30 minutes",
+			name:     caseName1H30M,
 			duration: Duration(time.Hour + 30*time.Minute),
 		},
 		{
@@ -575,32 +604,32 @@ func TestDuration_BackwardCompatibility(t *testing.T) {
 	}{
 		{
 			name:        "old format - 1 minute",
-			storedValue: "PT1M",
+			storedValue: iso1M,
 			expectedDur: Duration(time.Minute),
 		},
 		{
 			name:        "old format - 30 seconds",
-			storedValue: "PT30S",
+			storedValue: iso30S,
 			expectedDur: Duration(30 * time.Second),
 		},
 		{
 			name:        "old format - 1 hour 30 minutes",
-			storedValue: "PT1H30M",
+			storedValue: iso1H30M,
 			expectedDur: Duration(time.Hour + 30*time.Minute),
 		},
 		{
 			name:        "new format - 1 minute",
-			storedValue: "00:01:00",
+			storedValue: intv1M,
 			expectedDur: Duration(time.Minute),
 		},
 		{
 			name:        "new format - 30 seconds",
-			storedValue: "00:00:30",
+			storedValue: intv30S,
 			expectedDur: Duration(30 * time.Second),
 		},
 		{
 			name:        "new format - 1 hour 30 minutes",
-			storedValue: "01:30:00",
+			storedValue: intv1H30M,
 			expectedDur: Duration(time.Hour + 30*time.Minute),
 		},
 	}
@@ -632,7 +661,7 @@ func TestFormatHumanReadable(t *testing.T) {
 		{
 			name:     "less than 1 minute",
 			input:    30 * time.Second,
-			expected: "< 1m",
+			expected: HumanReadableSubMinute,
 		},
 		{
 			name:     "exactly 1 minute",
@@ -645,7 +674,7 @@ func TestFormatHumanReadable(t *testing.T) {
 			expected: "5m",
 		},
 		{
-			name:     "1 hour",
+			name:     caseName1Hour,
 			input:    time.Hour,
 			expected: "1h",
 		},
@@ -718,11 +747,11 @@ func TestFormatPeriod(t *testing.T) {
 		{
 			name:     "Go duration - 30s",
 			input:    "30s",
-			expected: "< 1m",
+			expected: HumanReadableSubMinute,
 		},
 		{
 			name:     "PostgreSQL interval - 00:01:00",
-			input:    "00:01:00",
+			input:    intv1M,
 			expected: "1m",
 		},
 		{
@@ -732,7 +761,7 @@ func TestFormatPeriod(t *testing.T) {
 		},
 		{
 			name:     "PostgreSQL interval - 01:00:00",
-			input:    "01:00:00",
+			input:    intv1H,
 			expected: "1h",
 		},
 		{
@@ -742,7 +771,7 @@ func TestFormatPeriod(t *testing.T) {
 		},
 		{
 			name:     "ISO 8601 - PT1M",
-			input:    "PT1M",
+			input:    iso1M,
 			expected: "1m",
 		},
 		{
@@ -752,13 +781,13 @@ func TestFormatPeriod(t *testing.T) {
 		},
 		{
 			name:     "ISO 8601 - PT1H",
-			input:    "PT1H",
+			input:    iso1H,
 			expected: "1h",
 		},
 		{
 			name:     "Invalid format returns as-is",
-			input:    "invalid",
-			expected: "invalid",
+			input:    caseNameInvalidFormat,
+			expected: caseNameInvalidFormat,
 		},
 	}
 
