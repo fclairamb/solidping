@@ -39,20 +39,20 @@ func (c *TCPConfig) FromMap(configMap map[string]any) error {
 		c.TLS = parsed.TLS
 	} else {
 		// Fall back to legacy host+port
-		if host, ok := configMap["host"].(string); ok {
+		if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 			c.Host = host
-		} else if configMap["host"] != nil {
-			return checkerdef.NewConfigError("host", "must be a string")
+		} else if configMap[checkerdef.OutputKeyHost] != nil {
+			return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "must be a string")
 		}
 
 		// Extract Port (required for legacy mode)
-		if port, ok := configMap["port"].(int); ok {
+		if port, ok := configMap[checkerdef.OutputKeyPort].(int); ok {
 			c.Port = port
-		} else if portFloat, ok := configMap["port"].(float64); ok {
+		} else if portFloat, ok := configMap[checkerdef.OutputKeyPort].(float64); ok {
 			// Handle JSON numbers which unmarshal as float64
 			c.Port = int(portFloat)
-		} else if configMap["port"] != nil {
-			return checkerdef.NewConfigError("port", "must be a number")
+		} else if configMap[checkerdef.OutputKeyPort] != nil {
+			return checkerdef.NewConfigError(checkerdef.OutputKeyPort, "must be a number")
 		}
 	}
 
@@ -109,8 +109,8 @@ func (c *TCPConfig) FromMap(configMap map[string]any) error {
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *TCPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host": c.Host,
-		"port": c.Port,
+		checkerdef.OutputKeyHost: c.Host,
+		checkerdef.OutputKeyPort: c.Port,
 	}
 
 	if c.URL != "" {

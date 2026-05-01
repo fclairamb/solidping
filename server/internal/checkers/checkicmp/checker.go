@@ -29,6 +29,8 @@ const (
 	// ICMP protocol numbers.
 	protocolICMP   = 1
 	protocolICMPv6 = 58
+
+	methodICMP = "icmp"
 )
 
 // ICMPChecker implements the Checker interface for ICMP ping checks.
@@ -115,9 +117,9 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Status:   checkerdef.StatusDown,
 			Duration: 0,
 			Output: map[string]any{
-				"host":   cfg.Host,
-				"method": "icmp",
-				"error":  "DNS resolution failed: " + err.Error(),
+				checkerdef.OutputKeyHost:   cfg.Host,
+				checkerdef.OutputKeyMethod: methodICMP,
+				checkerdef.OutputKeyError:  "DNS resolution failed: " + err.Error(),
 			},
 			Metrics: map[string]any{
 				"packets_sent":     0,
@@ -199,10 +201,10 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			"packet_loss_pct":  packetLossPct,
 		},
 		Output: map[string]any{
-			"host":       cfg.Host,
-			"method":     "icmp",
-			"ip":         ip.String(),
-			"ip_version": ipVersion,
+			checkerdef.OutputKeyHost:   cfg.Host,
+			checkerdef.OutputKeyMethod: methodICMP,
+			"ip":                       ip.String(),
+			"ip_version":               ipVersion,
 		},
 	}
 
@@ -216,14 +218,14 @@ func (c *ICMPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		// Include the last error if all pings failed
 		for i := len(results) - 1; i >= 0; i-- {
 			if results[i].Error != nil {
-				result.Output["error"] = results[i].Error.Error()
+				result.Output[checkerdef.OutputKeyError] = results[i].Error.Error()
 
 				break
 			}
 		}
 
-		if result.Output["error"] == nil {
-			result.Output["error"] = "no successful ping responses"
+		if result.Output[checkerdef.OutputKeyError] == nil {
+			result.Output[checkerdef.OutputKeyError] = "no successful ping responses"
 		}
 	}
 

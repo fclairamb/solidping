@@ -25,6 +25,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
+// Internal property/key constants used in JSONMap fields and OAuth flows.
+const (
+	keyState       = "state"
+	keyToken       = "token"
+	keyEmail       = "email"
+	keyName        = "name"
+	keyMethod      = "method"
+	keyCreatedWith = "created_with"
+
+	tokenTypeBearer = "Bearer"
+	jwtIssuer       = "solidping"
+	durationLabel24 = "24h"
+	appNameDash0    = "dash0"
+)
+
 // Service errors.
 var (
 	ErrInvalidCredentials      = errors.New("invalid credentials")
@@ -332,7 +347,7 @@ func (s *Service) Login(
 		return &LoginResponse{
 			AccessToken:   accessToken,
 			ExpiresIn:     int(s.cfg.AccessTokenExpiry.Seconds()),
-			TokenType:     "Bearer",
+			TokenType:     tokenTypeBearer,
 			User:          userInfo,
 			Organizations: orgSummaries,
 			LoginAction:   loginAction,
@@ -357,7 +372,7 @@ func (s *Service) Login(
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
-		"created_with": authContext.ToMap(),
+		keyCreatedWith: authContext.ToMap(),
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
@@ -368,7 +383,7 @@ func (s *Service) Login(
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User:         userInfo,
 		Organization: &OrganizationInfo{
 			UID:  resolvedOrg.UID,
@@ -719,7 +734,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User: &UserInfo{
 			UID:       user.UID,
 			Email:     user.Email,
@@ -849,7 +864,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: expiresAt,
 			IssuedAt:  jwt.NewNumericDate(token.CreatedAt),
-			Issuer:    "solidping",
+			Issuer:    jwtIssuer,
 		},
 	}
 
@@ -1036,7 +1051,7 @@ func (s *Service) GetUserTokens(ctx context.Context, orgSlug, userUID, tokenType
 		name := ""
 
 		if tok.Properties != nil {
-			if n, ok := tok.Properties["name"].(string); ok {
+			if n, ok := tok.Properties[keyName].(string); ok {
 				name = n
 			}
 		}
@@ -1095,7 +1110,7 @@ func (s *Service) CreatePAT(
 	}
 
 	token := models.NewUserToken(userUID, &org.UID, tokenValue, models.TokenTypePAT)
-	token.Properties = models.JSONMap{"name": req.Name}
+	token.Properties = models.JSONMap{keyName: req.Name}
 
 	token.ExpiresAt = req.ExpiresAt
 
@@ -1200,7 +1215,7 @@ func (s *Service) SwitchOrg(
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
-		"created_with": authContext.ToMap(),
+		keyCreatedWith: authContext.ToMap(),
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
@@ -1211,7 +1226,7 @@ func (s *Service) SwitchOrg(
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User: &UserInfo{
 			UID:       user.UID,
 			Email:     user.Email,
@@ -1266,7 +1281,7 @@ func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType strin
 
 		name := ""
 		if tok.Properties != nil {
-			if n, ok := tok.Properties["name"].(string); ok {
+			if n, ok := tok.Properties[keyName].(string); ok {
 				name = n
 			}
 		}
@@ -1300,7 +1315,7 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role string) (string, er
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
-			Issuer:    "solidping",
+			Issuer:    jwtIssuer,
 			ID:        uuid.New().String(),
 		},
 	}
@@ -1369,8 +1384,8 @@ func (s *Service) GenerateTokensForOAuth(
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
-		"created_with": map[string]any{
-			"method": "oauth",
+		keyCreatedWith: map[string]any{
+			keyMethod: "oauth",
 		},
 	}
 
@@ -1461,9 +1476,9 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 
 	// Store in state entries
 	stateValue := &models.JSONMap{
-		"token":        token,
-		"email":        req.Email,
-		"name":         req.Name,
+		keyToken:       token,
+		keyEmail:       req.Email,
+		keyName:        req.Name,
 		"passwordHash": hash,
 	}
 	ttl := registrationTTL
@@ -1535,7 +1550,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	// Extract registration data
 	val := *matchedEntry.Value
 	regEmail, _ := val["email"].(string)
-	regName, _ := val["name"].(string)
+	regName, _ := val[keyName].(string)
 	regHash, _ := val["passwordHash"].(string)
 
 	if regEmail == "" || regHash == "" {
@@ -1610,7 +1625,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{"created_with": map[string]any{"method": "registration"}}
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
@@ -1620,7 +1635,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User: &UserInfo{
 			UID:   user.UID,
 			Email: user.Email,
@@ -1726,8 +1741,8 @@ func (s *Service) RequestPasswordReset(
 
 	// Store in state entries (upsert — replaces any existing reset for this email)
 	stateValue := &models.JSONMap{
-		"token": token,
-		"email": req.Email,
+		keyToken: token,
+		keyEmail: req.Email,
 	}
 	ttl := passwordResetTTL
 
@@ -1896,12 +1911,12 @@ type InviteRequest struct {
 // getAllowedInviteExpirations returns the accepted expiresIn values mapped to durations.
 func getAllowedInviteExpirations() map[string]time.Duration {
 	return map[string]time.Duration{
-		"1h":  time.Hour,
-		"6h":  6 * time.Hour,
-		"12h": 12 * time.Hour,
-		"24h": 24 * time.Hour,
-		"48h": 48 * time.Hour,
-		"1w":  7 * 24 * time.Hour,
+		"1h":            time.Hour,
+		"6h":            6 * time.Hour,
+		"12h":           12 * time.Hour,
+		durationLabel24: 24 * time.Hour,
+		"48h":           48 * time.Hour,
+		"1w":            7 * 24 * time.Hour,
 	}
 }
 
@@ -1961,7 +1976,7 @@ func (s *Service) CreateInvitation(
 	}
 
 	// Validate app
-	if req.App != "dash0" && req.App != "dash" {
+	if req.App != appNameDash0 && req.App != "dash" {
 		return nil, ErrInvalidApp
 	}
 
@@ -1988,8 +2003,8 @@ func (s *Service) CreateInvitation(
 
 	// Store in state entries (org-scoped)
 	stateValue := &models.JSONMap{
-		"token":      token,
-		"email":      req.Email,
+		keyToken:     token,
+		keyEmail:     req.Email,
 		"role":       req.Role,
 		"inviterUID": inviterUID,
 	}
@@ -2227,7 +2242,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
-	refreshToken.Properties = models.JSONMap{"created_with": map[string]any{"method": "invitation"}}
+	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
@@ -2237,7 +2252,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User: &UserInfo{
 			UID:   user.UID,
 			Email: user.Email,
@@ -2407,7 +2422,7 @@ func (s *Service) generate2FATempToken(userUID, orgSlug, role string) (string, e
 			ExpiresAt: jwt.NewNumericDate(now.Add(twoFATempTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
-			Issuer:    "solidping",
+			Issuer:    jwtIssuer,
 			ID:        uuid.New().String(),
 		},
 	}
@@ -2702,7 +2717,7 @@ func (s *Service) completeLoginAfter2FA(
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
-		"created_with": authContext.ToMap(),
+		keyCreatedWith: authContext.ToMap(),
 	}
 
 	if createErr := s.db.CreateUserToken(ctx, refreshToken); createErr != nil {
@@ -2713,7 +2728,7 @@ func (s *Service) completeLoginAfter2FA(
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
 		ExpiresIn:    int(s.cfg.AccessTokenExpiry.Seconds()),
-		TokenType:    "Bearer",
+		TokenType:    tokenTypeBearer,
 		User:         userInfo,
 		Organization: &OrganizationInfo{
 			UID:  org.UID,

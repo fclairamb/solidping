@@ -87,7 +87,7 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"error": fmt.Sprintf("failed to resolve hostname: %v", err),
+				checkerdef.OutputKeyError: fmt.Sprintf("failed to resolve hostname: %v", err),
 			},
 		}, nil
 	}
@@ -97,7 +97,7 @@ func (c *UDPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"error": "no IP addresses found for host",
+				checkerdef.OutputKeyError: "no IP addresses found for host",
 			},
 		}, nil
 	}
@@ -160,13 +160,13 @@ func (c *UDPChecker) connect(
 		if ctxWithTimeout.Err() != nil {
 			return checkerdef.Result{
 				Status: checkerdef.StatusTimeout,
-				Output: map[string]any{"error": "connection timeout"},
+				Output: map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 			}
 		}
 
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{"error": fmt.Sprintf("dial failed: %v", err)},
+			Output: map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("dial failed: %v", err)},
 		}
 	}
 
@@ -181,7 +181,7 @@ func (c *UDPChecker) connect(
 			return checkerdef.Result{
 				Status:  checkerdef.StatusError,
 				Metrics: metrics,
-				Output:  map[string]any{"error": fmt.Sprintf("failed to set write deadline: %v", err)},
+				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to set write deadline: %v", err)},
 			}
 		}
 
@@ -190,7 +190,7 @@ func (c *UDPChecker) connect(
 			return checkerdef.Result{
 				Status:  checkerdef.StatusDown,
 				Metrics: metrics,
-				Output:  map[string]any{"error": fmt.Sprintf("failed to send data: %v", writeErr)},
+				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to send data: %v", writeErr)},
 			}
 		}
 
@@ -203,7 +203,7 @@ func (c *UDPChecker) connect(
 			return checkerdef.Result{
 				Status:  checkerdef.StatusError,
 				Metrics: metrics,
-				Output:  map[string]any{"error": fmt.Sprintf("failed to set read deadline: %v", err)},
+				Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to set read deadline: %v", err)},
 			}
 		}
 
@@ -215,7 +215,7 @@ func (c *UDPChecker) connect(
 				return checkerdef.Result{
 					Status:  checkerdef.StatusDown,
 					Metrics: metrics,
-					Output:  map[string]any{"error": fmt.Sprintf("failed to read response: %v", readErr)},
+					Output:  map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("failed to read response: %v", readErr)},
 				}
 			}
 		} else {
@@ -234,8 +234,8 @@ func (c *UDPChecker) connect(
 					Status:  checkerdef.StatusDown,
 					Metrics: metrics,
 					Output: map[string]any{
-						"error":         fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
-						"received_data": receivedData,
+						checkerdef.OutputKeyError: fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
+						"received_data":           receivedData,
 					},
 				}
 			}

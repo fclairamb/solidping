@@ -23,8 +23,8 @@ func (o *JSONLOutputter) Print(data interface{}) error {
 // PrintError outputs an error as a single JSON line.
 func (o *JSONLOutputter) PrintError(err error) error {
 	return o.Print(map[string]interface{}{
-		"error": map[string]string{
-			"message": err.Error(),
+		keyError: map[string]string{
+			keyMessage: err.Error(),
 		},
 	})
 }
@@ -32,7 +32,7 @@ func (o *JSONLOutputter) PrintError(err error) error {
 // Success prints a success message as a single JSON line.
 func (o *JSONLOutputter) Success(message string) error {
 	return o.Print(map[string]interface{}{
-		"success": true,
-		"message": message,
+		keySuccess: true,
+		keyMessage: message,
 	})
 }

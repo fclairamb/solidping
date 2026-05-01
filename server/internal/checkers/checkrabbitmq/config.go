@@ -55,10 +55,10 @@ func (c *RabbitMQConfig) FromMap(configMap map[string]any) error {
 }
 
 func (c *RabbitMQConfig) parseStringFields(configMap map[string]any) error {
-	if host, ok := configMap["host"].(string); ok {
+	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
-	} else if configMap["host"] != nil {
-		return checkerdef.NewConfigError("host", "must be a string")
+	} else if configMap[checkerdef.OutputKeyHost] != nil {
+		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "must be a string")
 	}
 
 	if username, ok := configMap["username"].(string); ok {
@@ -138,8 +138,8 @@ func (c *RabbitMQConfig) parseBoolAndDurationFields(configMap map[string]any) er
 // GetConfig returns the configuration as a map.
 func (c *RabbitMQConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host":     c.Host,
-		"username": c.Username,
+		checkerdef.OutputKeyHost: c.Host,
+		"username":               c.Username,
 	}
 
 	if c.Port != 0 && c.Port != defaultPort {
@@ -180,7 +180,7 @@ func (c *RabbitMQConfig) GetConfig() map[string]any {
 // Validate checks if the configuration is valid.
 func (c *RabbitMQConfig) Validate() error {
 	if c.Host == "" {
-		return checkerdef.NewConfigError("host", "is required")
+		return checkerdef.NewConfigError(checkerdef.OutputKeyHost, "is required")
 	}
 
 	if c.Username == "" {

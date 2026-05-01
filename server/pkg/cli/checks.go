@@ -152,9 +152,9 @@ func checksListAction(ctx context.Context, cmd *cli.Command) error {
 
 	// Add columns based on whether last result is included
 	if cmd.Bool("with-last-result") {
-		tbl.AppendHeader(table.Row{"SLUG", "NAME", "TYPE", "PERIOD", "ENABLED", "LAST_STATUS", "LAST_CHECKED"})
+		tbl.AppendHeader(table.Row{"SLUG", colName, colType, "PERIOD", "ENABLED", "LAST_STATUS", "LAST_CHECKED"})
 	} else {
-		tbl.AppendHeader(table.Row{"SLUG", "NAME", "TYPE", "PERIOD", "ENABLED", "STATUS"})
+		tbl.AppendHeader(table.Row{"SLUG", colName, colType, "PERIOD", "ENABLED", colStatus})
 	}
 
 	data := *resp.JSON200.Data

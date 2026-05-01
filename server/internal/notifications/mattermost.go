@@ -24,6 +24,13 @@ const (
 	mattermostColorYellow = "#FFFF00"
 )
 
+// Mattermost field title labels.
+const (
+	mmFieldCheck    = "Check"
+	mmFieldCause    = "Cause"
+	mmFieldDuration = "Duration"
+)
+
 var (
 	// ErrMattermostWebhookURLNotConfigured is returned when the Mattermost webhook URL is missing.
 	ErrMattermostWebhookURLNotConfigured = errors.New("mattermost webhook URL not configured")
@@ -176,9 +183,9 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 	}
 
 	fields := []mattermostField{
-		{Short: true, Title: "Check", Value: checkName},
+		{Short: true, Title: mmFieldCheck, Value: checkName},
 		{Short: true, Title: "Type", Value: payload.Check.Type},
-		{Short: false, Title: "Cause", Value: getFailureReason(payload.Incident)},
+		{Short: false, Title: mmFieldCause, Value: getFailureReason(payload.Incident)},
 		{Short: true, Title: "Failure Count", Value: strconv.Itoa(payload.Incident.FailureCount)},
 	}
 
@@ -195,14 +202,14 @@ func (s *MattermostSender) buildFields(payload *Payload, checkName string) []mat
 
 func (s *MattermostSender) buildResolvedFields(payload *Payload, checkName string) []mattermostField {
 	fields := []mattermostField{
-		{Short: true, Title: "Check", Value: checkName},
+		{Short: true, Title: mmFieldCheck, Value: checkName},
 	}
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 		fields = append(fields, mattermostField{
 			Short: true,
-			Title: "Duration",
+			Title: mmFieldDuration,
 			Value: formatDuration(duration),
 		})
 	}

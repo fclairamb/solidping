@@ -19,6 +19,14 @@ var (
 	ErrInvalidCursor = errors.New("invalid cursor")
 )
 
+// Result status string labels.
+const (
+	statusStrCreated = "created"
+	statusStrRunning = "running"
+	statusStrDown    = "down"
+	statusStrUnknown = "unknown"
+)
+
 // Service provides business logic for results.
 type Service struct {
 	db db.Service
@@ -184,10 +192,10 @@ func (s *Service) resolveCheckIdentifiers(ctx context.Context, orgUID string, id
 
 func (s *Service) mapStatusStringsToInts(statuses []string) []int {
 	statusMap := map[string][]int{
-		"created": {int(models.ResultStatusCreated)},
-		"running": {int(models.ResultStatusRunning)},
-		"up":      {int(models.ResultStatusUp)},
-		"down":    {int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
+		statusStrCreated: {int(models.ResultStatusCreated)},
+		statusStrRunning: {int(models.ResultStatusRunning)},
+		"up":             {int(models.ResultStatusUp)},
+		statusStrDown:    {int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError)},
 	}
 
 	var result []int
@@ -318,19 +326,19 @@ func (s *Service) applyAggregationFields(resp *ResultResponse, result *models.Re
 
 func (s *Service) statusIntToString(status *int) string {
 	if status == nil {
-		return "unknown"
+		return statusStrUnknown
 	}
 
 	switch *status {
 	case int(models.ResultStatusCreated):
-		return "created"
+		return statusStrCreated
 	case int(models.ResultStatusRunning):
-		return "running"
+		return statusStrRunning
 	case int(models.ResultStatusUp):
 		return "up"
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
-		return "down"
+		return statusStrDown
 	default:
-		return "unknown"
+		return statusStrUnknown
 	}
 }

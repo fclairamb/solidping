@@ -105,8 +105,8 @@ func (c *PostgreSQLChecker) Execute(
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": cfg.Host,
-		"port": params.port,
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: params.port,
 	}
 
 	conn, err := sql.Open("postgres", params.connStr)
@@ -114,7 +114,7 @@ func (c *PostgreSQLChecker) Execute(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "failed to open connection: " + err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: "failed to open connection: " + err.Error()},
 		}, nil
 	}
 
@@ -182,14 +182,14 @@ func handlePingError(ctx context.Context, err error, start time.Time) *checkerde
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": "connection timeout"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 		}
 	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   map[string]any{"error": "ping failed: " + err.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: "ping failed: " + err.Error()},
 	}
 }
 
@@ -204,7 +204,7 @@ func handleQueryError(
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
 			Metrics:  metrics,
-			Output:   map[string]any{"error": "query timeout"},
+			Output:   map[string]any{checkerdef.OutputKeyError: "query timeout"},
 		}
 	}
 
@@ -212,7 +212,7 @@ func handleQueryError(
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
 		Metrics:  metrics,
-		Output:   map[string]any{"error": err.Error()},
+		Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
 	}
 }
 

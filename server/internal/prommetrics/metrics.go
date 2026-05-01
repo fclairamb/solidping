@@ -3,6 +3,17 @@ package prommetrics
 
 import "github.com/prometheus/client_golang/prometheus"
 
+// Prometheus metric label names used across multiple metrics.
+const (
+	labelCheckType    = "check_type"
+	labelCheckSlug    = "check_slug"
+	labelStatus       = "status"
+	labelRegion       = "region"
+	labelOrganization = "organization"
+	labelEnabled      = "enabled"
+	labelWorkerUID    = "worker_uid"
+)
+
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
 var (
 	// CheckExecutions counts total check executions.
@@ -11,7 +22,7 @@ var (
 			Name: "solidping_check_executions_total",
 			Help: "Total number of check executions",
 		},
-		[]string{"check_type", "status", "region", "organization"},
+		[]string{labelCheckType, "status", "region", "organization"},
 	)
 
 	// CheckDuration observes check execution duration in seconds.
@@ -21,7 +32,7 @@ var (
 			Help:    "Check execution duration in seconds",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 		},
-		[]string{"check_type", "status", "region", "organization"},
+		[]string{labelCheckType, "status", "region", "organization"},
 	)
 
 	// SchedulingDelay observes delay between scheduled and actual execution time.
@@ -40,7 +51,7 @@ var (
 			Name: "solidping_check_up",
 			Help: "1 if check is currently UP, 0 otherwise",
 		},
-		[]string{"check_slug", "check_type", "region", "organization"},
+		[]string{"check_slug", labelCheckType, "region", "organization"},
 	)
 
 	// CheckStatusStreak tracks consecutive results with current status.
@@ -49,7 +60,7 @@ var (
 			Name: "solidping_check_status_streak",
 			Help: "Consecutive results with current status",
 		},
-		[]string{"check_slug", "check_type", "organization"},
+		[]string{"check_slug", labelCheckType, "organization"},
 	)
 
 	// ChecksConfigured tracks the number of configured checks.
@@ -58,7 +69,7 @@ var (
 			Name: "solidping_checks_configured",
 			Help: "Number of configured checks",
 		},
-		[]string{"check_type", "organization", "enabled"},
+		[]string{labelCheckType, "organization", "enabled"},
 	)
 
 	// WorkersActive tracks the number of active workers.
@@ -103,7 +114,7 @@ var (
 			Name: "solidping_incidents_total",
 			Help: "Total incidents created",
 		},
-		[]string{"organization", "check_type"},
+		[]string{"organization", labelCheckType},
 	)
 
 	allCollectors = []prometheus.Collector{

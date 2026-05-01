@@ -10,6 +10,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
 
+const responseKeyData = "data"
+
 // Handler provides HTTP endpoints for job operations.
 type Handler struct {
 	jobSvc jobsvc.Service
@@ -42,7 +44,7 @@ func (h *Handler) CreateJob(writer http.ResponseWriter, req bunrouter.Request) e
 	}
 
 	return h.writeJSON(writer, http.StatusCreated, map[string]interface{}{
-		"data": job,
+		responseKeyData: job,
 	})
 }
 
@@ -57,7 +59,7 @@ func (h *Handler) GetJob(writer http.ResponseWriter, req bunrouter.Request) erro
 	}
 
 	return h.writeJSON(writer, http.StatusOK, map[string]interface{}{
-		"data": job,
+		responseKeyData: job,
 	})
 }
 
@@ -77,7 +79,7 @@ func (h *Handler) ListJobs(writer http.ResponseWriter, req bunrouter.Request) er
 	}
 
 	return h.writeJSON(writer, http.StatusOK, map[string]interface{}{
-		"data": jobs,
+		responseKeyData: jobs,
 	})
 }
 

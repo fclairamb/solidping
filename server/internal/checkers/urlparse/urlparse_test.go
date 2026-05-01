@@ -8,6 +8,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+const (
+	hostExample      = "example.com"
+	hostGoogleDNS    = "8.8.8.8"
+	urlPingGoogleDNS = "ping://8.8.8.8"
+	urlDNSGoogleEx   = "dns://8.8.8.8/example.com"
+	urlDNSSystemRes  = "dns:///example.com"
+)
+
 func TestParse(t *testing.T) {
 	t.Parallel()
 
@@ -25,36 +33,36 @@ func TestParse(t *testing.T) {
 		// HTTP
 		{
 			"http basic", "http://example.com",
-			checkerdef.CheckTypeHTTP, "example.com", 0, false, "", "", false,
+			checkerdef.CheckTypeHTTP, hostExample, 0, false, "", "", false,
 		},
 		{
 			"https basic", "https://example.com",
-			checkerdef.CheckTypeHTTP, "example.com", 0, true, "", "", false,
+			checkerdef.CheckTypeHTTP, hostExample, 0, true, "", "", false,
 		},
 		{
 			"https with port", "https://example.com:8443",
-			checkerdef.CheckTypeHTTP, "example.com", 8443, true, "", "", false,
+			checkerdef.CheckTypeHTTP, hostExample, 8443, true, "", "", false,
 		},
 		{
 			"https with path", "https://example.com/api/v1",
-			checkerdef.CheckTypeHTTP, "example.com", 0, true, "", "", false,
+			checkerdef.CheckTypeHTTP, hostExample, 0, true, "", "", false,
 		},
 
 		// TCP
 		{
 			"tcp basic", "tcp://example.com:3306",
-			checkerdef.CheckTypeTCP, "example.com", 3306, false, "", "", false,
+			checkerdef.CheckTypeTCP, hostExample, 3306, false, "", "", false,
 		},
 		{
 			"tcps basic", "tcps://example.com:443",
-			checkerdef.CheckTypeTCP, "example.com", 443, true, "", "", false,
+			checkerdef.CheckTypeTCP, hostExample, 443, true, "", "", false,
 		},
 		{"tcp no port", "tcp://example.com", "", "", 0, false, "", "", true},
 
 		// ICMP (ping)
 		{
-			"ping basic", "ping://8.8.8.8",
-			checkerdef.CheckTypeICMP, "8.8.8.8", 0, false, "", "", false,
+			"ping basic", urlPingGoogleDNS,
+			checkerdef.CheckTypeICMP, hostGoogleDNS, 0, false, "", "", false,
 		},
 		{
 			"icmp basic", "icmp://google.com",
@@ -64,23 +72,23 @@ func TestParse(t *testing.T) {
 		// DNS - new format: dns://resolver/domain?type=X
 		{
 			"dns with resolver", "dns://8.8.8.8/example.com",
-			checkerdef.CheckTypeDNS, "8.8.8.8", 0, false, "A", "example.com", false,
+			checkerdef.CheckTypeDNS, hostGoogleDNS, 0, false, "A", hostExample, false,
 		},
 		{
 			"dns with type", "dns://8.8.8.8/example.com?type=MX",
-			checkerdef.CheckTypeDNS, "8.8.8.8", 0, false, "MX", "example.com", false,
+			checkerdef.CheckTypeDNS, hostGoogleDNS, 0, false, "MX", hostExample, false,
 		},
 		{
 			"dns with port", "dns://8.8.8.8:53/example.com?type=AAAA",
-			checkerdef.CheckTypeDNS, "8.8.8.8", 53, false, "AAAA", "example.com", false,
+			checkerdef.CheckTypeDNS, hostGoogleDNS, 53, false, "AAAA", hostExample, false,
 		},
 		{
 			"dns system resolver", "dns:///example.com",
-			checkerdef.CheckTypeDNS, "", 0, false, "A", "example.com", false,
+			checkerdef.CheckTypeDNS, "", 0, false, "A", hostExample, false,
 		},
 		{
 			"dns system resolver MX", "dns:///example.com?type=MX",
-			checkerdef.CheckTypeDNS, "", 0, false, "MX", "example.com", false,
+			checkerdef.CheckTypeDNS, "", 0, false, "MX", hostExample, false,
 		},
 		{
 			"dns cloudflare", "dns://1.1.1.1/google.com?type=TXT",
@@ -88,7 +96,7 @@ func TestParse(t *testing.T) {
 		},
 		{
 			"dns hostname resolver", "dns://dns.google/example.com",
-			checkerdef.CheckTypeDNS, "dns.google", 0, false, "A", "example.com", false,
+			checkerdef.CheckTypeDNS, "dns.google", 0, false, "A", hostExample, false,
 		},
 
 		// Errors
@@ -136,7 +144,7 @@ func TestSuggestNameSlug(t *testing.T) {
 		{"https://google.com", "google.com (http)", "google-com"},
 		{"tcp://db.example.com:3306", "db.example.com (tcp)", "db-example-com-3306"},
 		{"tcps://db.example.com:443", "db.example.com (tcp)", "db-example-com"},
-		{"ping://8.8.8.8", "8.8.8.8 (icmp)", "8-8-8-8"},
+		{urlPingGoogleDNS, "8.8.8.8 (icmp)", "8-8-8-8"},
 		{"icmp://1.1.1.1", "1.1.1.1 (icmp)", "1-1-1-1"},
 		// DNS uses domain (not resolver) for name/slug
 		{"dns://8.8.8.8/google.com", "google.com (dns)", "google-com"},
@@ -166,8 +174,8 @@ func TestResolver(t *testing.T) {
 		url          string
 		wantResolver string
 	}{
-		{"dns://8.8.8.8/example.com", "8.8.8.8"},
-		{"dns://8.8.8.8:53/example.com", "8.8.8.8"},
+		{"dns://8.8.8.8/example.com", hostGoogleDNS},
+		{"dns://8.8.8.8:53/example.com", hostGoogleDNS},
 		{"dns://8.8.8.8:5353/example.com", "8.8.8.8:5353"},
 		{"dns:///example.com", ""},
 		{"dns://dns.google/example.com", "dns.google"},
@@ -196,7 +204,7 @@ func TestInferCheckType(t *testing.T) {
 		{"http://example.com", checkerdef.CheckTypeHTTP},
 		{"tcp://example.com:3306", checkerdef.CheckTypeTCP},
 		{"tcps://example.com:443", checkerdef.CheckTypeTCP},
-		{"ping://8.8.8.8", checkerdef.CheckTypeICMP},
+		{urlPingGoogleDNS, checkerdef.CheckTypeICMP},
 		{"icmp://google.com", checkerdef.CheckTypeICMP},
 		{"dns://8.8.8.8/example.com", checkerdef.CheckTypeDNS},
 		{"dns:///example.com", checkerdef.CheckTypeDNS},

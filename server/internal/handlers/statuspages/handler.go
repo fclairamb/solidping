@@ -16,6 +16,12 @@ import (
 const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 characters, " +
 	"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed."
 
+const (
+	fieldSlug      = "slug"
+	respKeyData    = "data"
+	msgInvalidJSON = "Invalid JSON format"
+)
+
 // Handler provides HTTP handlers for status page management endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -42,7 +48,7 @@ func (h *Handler) ListStatusPages(writer http.ResponseWriter, req bunrouter.Requ
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]interface{}{
-		"data": pages,
+		respKeyData: pages,
 	})
 }
 
@@ -53,7 +59,7 @@ func (h *Handler) CreateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 	var createReq CreateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -97,7 +103,7 @@ func (h *Handler) UpdateStatusPage(writer http.ResponseWriter, req bunrouter.Req
 	var updateReq UpdateStatusPageRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -146,7 +152,7 @@ func (h *Handler) CreateSection(writer http.ResponseWriter, req bunrouter.Reques
 	var createReq CreateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -181,7 +187,7 @@ func (h *Handler) UpdateSection(writer http.ResponseWriter, req bunrouter.Reques
 	var updateReq UpdateSectionRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -233,7 +239,7 @@ func (h *Handler) CreateResource(writer http.ResponseWriter, req bunrouter.Reque
 	var createReq CreateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -255,7 +261,7 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req bunrouter.Reque
 	var updateReq UpdateResourceRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -343,11 +349,11 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A status page with this slug already exists in this organization"},
+			{Name: fieldSlug, Message: "A status page with this slug already exists in this organization"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
-			{Name: "slug", Message: slugValidationMsg},
+			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, err)
@@ -364,11 +370,11 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A status page with this slug already exists in this organization"},
+			{Name: fieldSlug, Message: "A status page with this slug already exists in this organization"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
-			{Name: "slug", Message: slugValidationMsg},
+			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, err)
@@ -401,11 +407,11 @@ func (h *Handler) handleCreateSectionError(writer http.ResponseWriter, err error
 			writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A section with this slug already exists in this status page"},
+			{Name: fieldSlug, Message: "A section with this slug already exists in this status page"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
-			{Name: "slug", Message: slugValidationMsg},
+			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, err)
@@ -425,11 +431,11 @@ func (h *Handler) handleUpdateSectionError(writer http.ResponseWriter, err error
 			writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A section with this slug already exists in this status page"},
+			{Name: fieldSlug, Message: "A section with this slug already exists in this status page"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
-			{Name: "slug", Message: slugValidationMsg},
+			{Name: fieldSlug, Message: slugValidationMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, err)

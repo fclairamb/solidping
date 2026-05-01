@@ -95,9 +95,9 @@ func (c *RabbitMQChecker) executeAMQP(
 	start := time.Now()
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": cfg.Host,
-		"port": port,
-		"mode": ModeAMQP,
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: port,
+		"mode":                   ModeAMQP,
 	}
 
 	result := c.dialAndCheck(ctx, cfg, start, metrics, output)
@@ -193,9 +193,9 @@ func (c *RabbitMQChecker) executeManagement(
 
 	start := time.Now()
 	output := map[string]any{
-		"host": cfg.Host,
-		"port": mgmtPort,
-		"mode": ModeManagement,
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: mgmtPort,
+		"mode":                   ModeManagement,
 	}
 
 	return c.doManagementRequest(ctx, cfg, mgmtPort, start, output)
@@ -220,7 +220,7 @@ func (c *RabbitMQChecker) doManagementRequest(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": "failed to create request: " + err.Error()}),
+			Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "failed to create request: " + err.Error()}),
 		}, nil
 	}
 
@@ -242,7 +242,9 @@ func (c *RabbitMQChecker) doManagementRequest(
 
 	if resp.StatusCode != http.StatusOK {
 		output["status_code"] = resp.StatusCode
-		output["error"] = fmt.Sprintf("management API returned status %d: %s", resp.StatusCode, string(body))
+		output[checkerdef.OutputKeyError] = fmt.Sprintf(
+			"management API returned status %d: %s", resp.StatusCode, string(body),
+		)
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
@@ -273,14 +275,14 @@ func handleAMQPError(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": "connection timeout"}),
+			Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "connection timeout"}),
 		}
 	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("%s: %v", prefix, err)}),
+		Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("%s: %v", prefix, err)}),
 	}
 }
 
@@ -294,14 +296,14 @@ func handleManagementError(
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": "request timeout"}),
+			Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "request timeout"}),
 		}
 	}
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("request failed: %v", err)}),
+		Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("request failed: %v", err)}),
 	}
 }
 

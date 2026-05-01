@@ -18,6 +18,13 @@ var (
 	ErrNoDefaultChannelConfigured = errors.New("no default channel configured for slack connection")
 )
 
+// Storage keys for Slack thread state.
+const (
+	slackKeyChannelID = "channel_id"
+	slackKeyMessageID = "message_id"
+	slackKeyThreadTS  = "thread_ts"
+)
+
 // SlackSender sends notifications via Slack.
 type SlackSender struct{}
 
@@ -72,7 +79,7 @@ func (s *SlackSender) parseSettings(payload *Payload) (*models.SlackSettings, st
 func (s *SlackSender) determineChannel(settings *models.SlackSettings, payload *Payload) string {
 	channel := settings.ChannelID
 	if payload.CheckConnectionSettings != nil {
-		if override, ok := (*payload.CheckConnectionSettings)["channel_id"].(string); ok && override != "" {
+		if override, ok := (*payload.CheckConnectionSettings)[slackKeyChannelID].(string); ok && override != "" {
 			channel = override
 		}
 	}
@@ -89,7 +96,7 @@ func (s *SlackSender) postNewMessage(
 	opts := slack.PostMessageOptions{Channel: channel, Message: msg}
 
 	if threadEntry != nil && threadEntry.Value != nil {
-		if ts, ok := (*threadEntry.Value)["thread_ts"].(string); ok && ts != "" {
+		if ts, ok := (*threadEntry.Value)[slackKeyThreadTS].(string); ok && ts != "" {
 			opts.ThreadTS = ts
 		}
 	}
@@ -111,9 +118,9 @@ func (s *SlackSender) storeThreadInfo(
 	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, stateKey string, result *slack.PostMessageResult,
 ) error {
 	value := &models.JSONMap{
-		"channel_id": result.Channel,
-		"message_id": result.TS,
-		"thread_ts":  result.TS,
+		slackKeyChannelID: result.Channel,
+		slackKeyMessageID: result.TS,
+		slackKeyThreadTS:  result.TS,
 	}
 
 	if err := jctx.DBService.SetStateEntry(ctx, &payload.Incident.OrganizationUID, stateKey, value, nil); err != nil {
@@ -242,14 +249,14 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 // buildIncidentFields builds the common section fields for incident messages.
 func (s *SlackSender) buildIncidentFields(payload *Payload, checkName string) []slack.Text {
 	fields := []slack.Text{
-		{Type: "mrkdwn", Text: "*Monitor:*\n" + checkName},
-		{Type: "mrkdwn", Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
-			Type: "mrkdwn",
+			Type: slack.BlockTypeMrkdwn,
 			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, url),
 		})
 	}
@@ -263,21 +270,29 @@ func (s *SlackSender) buildIncidentCreatedBlocks(
 ) []slack.Block {
 	return []slack.Block{
 		{
-			Type: "header",
-			Text: &slack.Text{Type: "plain_text", Text: "New incident for " + checkName, Emoji: true},
+			Type: slack.BlockTypeHeader,
+			Text: &slack.Text{Type: slack.BlockTypePlainText, Text: "New incident for " + checkName, Emoji: true},
 		},
-		{Type: "section", Fields: fields},
-		{Type: "section", Text: &slack.Text{Type: "mrkdwn", Text: "Please acknowledge the incident."}},
+		{Type: slack.BlockTypeSection, Fields: fields},
+		{
+			Type: slack.BlockTypeSection,
+			Text: &slack.Text{Type: slack.BlockTypeMrkdwn, Text: "Please acknowledge the incident."},
+		},
 		s.buildIncidentActionButtons(payload.Incident.UID),
 		{
-			Type:     "context",
-			Elements: []any{slack.ContextElement{Type: "mrkdwn", Text: ":warning: Incident  :large_blue_circle: Monitor"}},
-		},
-		{
-			Type: "context",
+			Type: slack.BlockTypeContext,
 			Elements: []any{
 				slack.ContextElement{
-					Type: "mrkdwn",
+					Type: slack.BlockTypeMrkdwn,
+					Text: ":warning: Incident  :large_blue_circle: Monitor",
+				},
+			},
+		},
+		{
+			Type: slack.BlockTypeContext,
+			Elements: []any{
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
 					Text: "Incident started " + formatTimestamp(payload.Incident.StartedAt),
 				},
 			},
@@ -292,16 +307,16 @@ func (s *SlackSender) buildIncidentActionButtons(incidentUID string) slack.Block
 		BlockID: "incident_actions",
 		Elements: []any{
 			slack.Element{
-				Type: "button", ActionID: "acknowledge_incident", Value: incidentUID, Style: "primary",
-				Text: &slack.Text{Type: "plain_text", Text: "Acknowledge", Emoji: true},
+				Type: slack.BlockTypeButton, ActionID: "acknowledge_incident", Value: incidentUID, Style: "primary",
+				Text: &slack.Text{Type: slack.BlockTypePlainText, Text: "Acknowledge", Emoji: true},
 			},
 			slack.Element{
-				Type: "button", ActionID: "unavailable_incident", Value: incidentUID,
-				Text: &slack.Text{Type: "plain_text", Text: "I'm unavailable", Emoji: true},
+				Type: slack.BlockTypeButton, ActionID: "unavailable_incident", Value: incidentUID,
+				Text: &slack.Text{Type: slack.BlockTypePlainText, Text: "I'm unavailable", Emoji: true},
 			},
 			slack.Element{
-				Type: "button", ActionID: "escalate_incident", Value: incidentUID, Style: "danger",
-				Text: &slack.Text{Type: "plain_text", Text: "Escalate", Emoji: true},
+				Type: slack.BlockTypeButton, ActionID: "escalate_incident", Value: incidentUID, Style: "danger",
+				Text: &slack.Text{Type: slack.BlockTypePlainText, Text: "Escalate", Emoji: true},
 			},
 		},
 	}
@@ -319,9 +334,9 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 
 	blocks := []slack.Block{
 		{
-			Type: "section",
+			Type: slack.BlockTypeSection,
 			Text: &slack.Text{
-				Type: "mrkdwn",
+				Type: slack.BlockTypeMrkdwn,
 				Text: text,
 			},
 		},
@@ -349,16 +364,16 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 
 	// Build section fields
 	fields := []slack.Text{
-		{Type: "mrkdwn", Text: "*Monitor:*\n" + checkName},
-		{Type: "mrkdwn", Text: fmt.Sprintf("*Failures:*\n%d", payload.Incident.FailureCount)},
-		{Type: "mrkdwn", Text: "*Duration:*\n" + duration},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: fmt.Sprintf("*Failures:*\n%d", payload.Incident.FailureCount)},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + duration},
 	}
 
 	// Add URL field for HTTP checks
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
-			Type: "mrkdwn",
+			Type: slack.BlockTypeMrkdwn,
 			Text: fmt.Sprintf("*Check:*\n%s `%s`", method, url),
 		})
 	}
@@ -366,9 +381,9 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 	blocks := []slack.Block{
 		// Header
 		{
-			Type: "header",
+			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
-				Type:  "plain_text",
+				Type:  slack.BlockTypePlainText,
 				Text:  ":rotating_light: Incident escalated: " + checkName,
 				Emoji: true,
 			},
@@ -380,9 +395,9 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		},
 		// Explanation
 		{
-			Type: "section",
+			Type: slack.BlockTypeSection,
 			Text: &slack.Text{
-				Type: "mrkdwn",
+				Type: slack.BlockTypeMrkdwn,
 				Text: "This incident has exceeded the escalation threshold.",
 			},
 		},
@@ -397,7 +412,7 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 					Value:    payload.Incident.UID,
 					Style:    "primary",
 					Text: &slack.Text{
-						Type:  "plain_text",
+						Type:  slack.BlockTypePlainText,
 						Text:  "Acknowledge",
 						Emoji: true,
 					},
@@ -406,9 +421,9 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		},
 		// Context: status tags
 		{
-			Type: "context",
+			Type: slack.BlockTypeContext,
 			Elements: []any{
-				slack.ContextElement{Type: "mrkdwn", Text: ":rotating_light: Escalated  :warning: Incident"},
+				slack.ContextElement{Type: slack.BlockTypeMrkdwn, Text: ":rotating_light: Escalated  :warning: Incident"},
 			},
 		},
 	}
@@ -434,9 +449,9 @@ func (s *SlackSender) buildSimpleMessage(payload *Payload) *slack.MessageRespons
 		Text: text,
 		Blocks: []slack.Block{
 			{
-				Type: "section",
+				Type: slack.BlockTypeSection,
 				Text: &slack.Text{
-					Type: "mrkdwn",
+					Type: slack.BlockTypeMrkdwn,
 					Text: text,
 				},
 			},
@@ -448,9 +463,9 @@ func (s *SlackSender) buildSimpleMessage(payload *Payload) *slack.MessageRespons
 func (s *SlackSender) handleIncidentResolution(
 	ctx context.Context, client *slack.Client, threadEntry *models.StateEntry, payload *Payload,
 ) error {
-	messageID, hasMessageID := (*threadEntry.Value)["message_id"].(string)
-	channelID, hasChannelID := (*threadEntry.Value)["channel_id"].(string)
-	threadTS, hasThreadTS := (*threadEntry.Value)["thread_ts"].(string)
+	messageID, hasMessageID := (*threadEntry.Value)[slackKeyMessageID].(string)
+	channelID, hasChannelID := (*threadEntry.Value)[slackKeyChannelID].(string)
+	threadTS, hasThreadTS := (*threadEntry.Value)[slackKeyThreadTS].(string)
 
 	if !hasMessageID || messageID == "" || !hasChannelID || channelID == "" {
 		return nil
@@ -500,16 +515,16 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 
 	// Build section fields
 	fields := []slack.Text{
-		{Type: "mrkdwn", Text: "*Monitor:*\n" + checkName},
-		{Type: "mrkdwn", Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
-		{Type: "mrkdwn", Text: "*Length:*\n" + duration},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Length:*\n" + duration},
 	}
 
 	// Add URL field for HTTP checks
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, slack.Text{
-			Type: "mrkdwn",
+			Type: slack.BlockTypeMrkdwn,
 			Text: "*Checked URL:*\n" + method + " `" + url + "`",
 		})
 	}
@@ -517,9 +532,9 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 	blocks := []slack.Block{
 		// Header with resolved indicator
 		{
-			Type: "header",
+			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
-				Type:  "plain_text",
+				Type:  slack.BlockTypePlainText,
 				Text:  fmt.Sprintf(":white_check_mark: Automatically resolved %s incident", checkName),
 				Emoji: true,
 			},
@@ -532,17 +547,17 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 		// No action buttons - incident is resolved
 		// Context: status tags
 		{
-			Type: "context",
+			Type: slack.BlockTypeContext,
 			Elements: []any{
-				slack.ContextElement{Type: "mrkdwn", Text: ":white_check_mark: Resolved  :large_blue_circle: Monitor"},
+				slack.ContextElement{Type: slack.BlockTypeMrkdwn, Text: ":white_check_mark: Resolved  :large_blue_circle: Monitor"},
 			},
 		},
 		// Context: timestamp
 		{
-			Type: "context",
+			Type: slack.BlockTypeContext,
 			Elements: []any{
 				slack.ContextElement{
-					Type: "mrkdwn",
+					Type: slack.BlockTypeMrkdwn,
 					Text: "Incident started " + formatTimestamp(payload.Incident.StartedAt),
 				},
 			},
@@ -565,9 +580,9 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 func (s *SlackSender) handleIncidentReopen(
 	ctx context.Context, client *slack.Client, threadEntry *models.StateEntry, payload *Payload,
 ) error {
-	messageID, hasMessageID := (*threadEntry.Value)["message_id"].(string)
-	channelID, hasChannelID := (*threadEntry.Value)["channel_id"].(string)
-	threadTS, hasThreadTS := (*threadEntry.Value)["thread_ts"].(string)
+	messageID, hasMessageID := (*threadEntry.Value)[slackKeyMessageID].(string)
+	channelID, hasChannelID := (*threadEntry.Value)[slackKeyChannelID].(string)
+	threadTS, hasThreadTS := (*threadEntry.Value)[slackKeyThreadTS].(string)
 
 	if !hasMessageID || messageID == "" || !hasChannelID || channelID == "" {
 		return nil
@@ -612,9 +627,9 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 
 	blocks := []slack.Block{
 		{
-			Type: "section",
+			Type: slack.BlockTypeSection,
 			Text: &slack.Text{
-				Type: "mrkdwn",
+				Type: slack.BlockTypeMrkdwn,
 				Text: text,
 			},
 		},
@@ -641,25 +656,33 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 	fields := s.buildIncidentFields(payload, checkName)
 	blocks := []slack.Block{
 		{
-			Type: "header",
+			Type: slack.BlockTypeHeader,
 			Text: &slack.Text{
-				Type:  "plain_text",
+				Type:  slack.BlockTypePlainText,
 				Text:  fmt.Sprintf("Incident reopened for %s (relapse #%d)", checkName, payload.Incident.RelapseCount),
 				Emoji: true,
 			},
 		},
-		{Type: "section", Fields: fields},
-		{Type: "section", Text: &slack.Text{Type: "mrkdwn", Text: "Please acknowledge the incident."}},
+		{Type: slack.BlockTypeSection, Fields: fields},
+		{
+			Type: slack.BlockTypeSection,
+			Text: &slack.Text{Type: slack.BlockTypeMrkdwn, Text: "Please acknowledge the incident."},
+		},
 		s.buildIncidentActionButtons(payload.Incident.UID),
 		{
-			Type:     "context",
-			Elements: []any{slack.ContextElement{Type: "mrkdwn", Text: ":warning: Reopened  :large_blue_circle: Monitor"}},
-		},
-		{
-			Type: "context",
+			Type: slack.BlockTypeContext,
 			Elements: []any{
 				slack.ContextElement{
-					Type: "mrkdwn",
+					Type: slack.BlockTypeMrkdwn,
+					Text: ":warning: Reopened  :large_blue_circle: Monitor",
+				},
+			},
+		},
+		{
+			Type: slack.BlockTypeContext,
+			Elements: []any{
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
 					Text: "Incident started " + formatTimestamp(payload.Incident.StartedAt),
 				},
 			},

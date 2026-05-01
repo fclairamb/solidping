@@ -11,6 +11,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
+const fieldSlug = "slug"
+
 // Handler provides HTTP handlers for check group management endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -140,7 +142,7 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A check group with this slug already exists in this organization"},
+			{Name: fieldSlug, Message: "A check group with this slug already exists in this organization"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
@@ -165,7 +167,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 			writer, http.StatusNotFound, base.ErrorCodeCheckGroupNotFound, "Check group not found", err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
-			{Name: "slug", Message: "A check group with this slug already exists in this organization"},
+			{Name: fieldSlug, Message: "A check group with this slug already exists in this organization"},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{

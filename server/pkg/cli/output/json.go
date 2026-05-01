@@ -6,6 +6,13 @@ import (
 	"io"
 )
 
+// JSON output keys used in CLI responses.
+const (
+	keyError   = "error"
+	keyMessage = "message"
+	keySuccess = "success"
+)
+
 // JSONOutputter outputs data in JSON format.
 type JSONOutputter struct {
 	writer io.Writer
@@ -26,8 +33,8 @@ func (o *JSONOutputter) Print(data interface{}) error {
 // PrintError outputs an error as JSON.
 func (o *JSONOutputter) PrintError(err error) error {
 	return o.Print(map[string]interface{}{
-		"error": map[string]string{
-			"message": err.Error(),
+		keyError: map[string]string{
+			keyMessage: err.Error(),
 		},
 	})
 }
@@ -35,8 +42,8 @@ func (o *JSONOutputter) PrintError(err error) error {
 // Success prints a success message as JSON.
 func (o *JSONOutputter) Success(message string) error {
 	return o.Print(map[string]interface{}{
-		"success": true,
-		"message": message,
+		keySuccess: true,
+		keyMessage: message,
 	})
 }
 
@@ -50,8 +57,8 @@ func PrintJSON(writer io.Writer, data interface{}) error {
 // FormatError formats an error for JSON output.
 func FormatError(err error) map[string]interface{} {
 	return map[string]interface{}{
-		"error": map[string]string{
-			"message": err.Error(),
+		keyError: map[string]string{
+			keyMessage: err.Error(),
 		},
 	}
 }
@@ -59,8 +66,8 @@ func FormatError(err error) map[string]interface{} {
 // FormatSuccess formats a success message for JSON output.
 func FormatSuccess(message string, data interface{}) map[string]interface{} {
 	result := map[string]interface{}{
-		"success": true,
-		"message": message,
+		keySuccess: true,
+		keyMessage: message,
 	}
 	if data != nil {
 		result["data"] = data

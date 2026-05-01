@@ -54,7 +54,7 @@ func tokensListAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"UID", "NAME", "CREATED", "LAST USED", "EXPIRES"})
+	tbl.AppendHeader(table.Row{colUID, colName, colCreated, "LAST USED", "EXPIRES"})
 
 	for i := range *resp.JSON200.Data {
 		token := &(*resp.JSON200.Data)[i]

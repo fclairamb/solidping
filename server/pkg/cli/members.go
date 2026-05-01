@@ -44,7 +44,7 @@ func membersListAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"UID", "EMAIL", "NAME", "ROLE"})
+	tbl.AppendHeader(table.Row{colUID, "EMAIL", colName, "ROLE"})
 
 	for i := range *resp.JSON200.Data {
 		member := &(*resp.JSON200.Data)[i]

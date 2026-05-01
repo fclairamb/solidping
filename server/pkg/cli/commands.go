@@ -70,12 +70,12 @@ func GetCommands() []*cli.Command {
 		},
 		{
 			Name:    "checks",
-			Aliases: []string{"check"},
+			Aliases: []string{flagCheck},
 			Usage:   "Manage health checks",
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List all checks",
 					Flags: []cli.Flag{
 						&cli.BoolFlag{
@@ -87,16 +87,16 @@ func GetCommands() []*cli.Command {
 							Usage: "Show only internal checks",
 						},
 						&cli.BoolFlag{
-							Name:  "all",
+							Name:  flagAll,
 							Usage: "Show all checks (internal + non-internal)",
 						},
 					},
 					Action: checksListAction,
 				},
 				{
-					Name:      "get",
+					Name:      flagGet,
 					Usage:     "Get check details",
-					ArgsUsage: "<uid|slug>",
+					ArgsUsage: argUIDSlug,
 					Action:    checksGetAction,
 				},
 				{
@@ -105,12 +105,12 @@ func GetCommands() []*cli.Command {
 					ArgsUsage: "<url>",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "type",
+							Name:  flagType,
 							Value: "http",
 							Usage: "Check type (http, tcp, ping, dns, ssl)",
 						},
 						&cli.StringFlag{
-							Name:  "interval",
+							Name:  flagInterval,
 							Usage: "Check interval (e.g., 5s, 1m)",
 						},
 						&cli.StringFlag{
@@ -118,8 +118,8 @@ func GetCommands() []*cli.Command {
 							Usage: "Request timeout (e.g., 2s, 5s)",
 						},
 						&cli.StringFlag{
-							Name:  "name",
-							Usage: "Human-readable name",
+							Name:  flagName,
+							Usage: usageHumanReadableName,
 						},
 						&cli.StringFlag{
 							Name:  "slug",
@@ -137,11 +137,11 @@ func GetCommands() []*cli.Command {
 				{
 					Name:      "update",
 					Usage:     "Update a check",
-					ArgsUsage: "<uid|slug>",
+					ArgsUsage: argUIDSlug,
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "name",
-							Usage: "Human-readable name",
+							Name:  flagName,
+							Usage: usageHumanReadableName,
 						},
 						&cli.StringFlag{
 							Name:  "slug",
@@ -156,7 +156,7 @@ func GetCommands() []*cli.Command {
 							Usage: "Disable the check",
 						},
 						&cli.StringFlag{
-							Name:  "interval",
+							Name:  flagInterval,
 							Usage: "Check interval (e.g., 5s, 1m, or HH:MM:SS)",
 						},
 					},
@@ -168,15 +168,15 @@ func GetCommands() []*cli.Command {
 					ArgsUsage: "<slug> <url>",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "type",
+							Name:  flagType,
 							Usage: "Check type (http, tcp, ping, dns, ssl)",
 						},
 						&cli.StringFlag{
-							Name:  "name",
-							Usage: "Human-readable name",
+							Name:  flagName,
+							Usage: usageHumanReadableName,
 						},
 						&cli.StringFlag{
-							Name:  "interval",
+							Name:  flagInterval,
 							Usage: "Check interval (e.g., 5s, 1m, or HH:MM:SS)",
 						},
 						&cli.StringFlag{
@@ -187,16 +187,16 @@ func GetCommands() []*cli.Command {
 					Action: checksUpsertAction,
 				},
 				{
-					Name:      "events",
+					Name:      flagEvents,
 					Usage:     "List events for a check",
-					ArgsUsage: "<uid|slug>",
+					ArgsUsage: argUIDSlug,
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "cursor",
-							Usage: "Pagination cursor for next page",
+							Name:  flagCursor,
+							Usage: usagePaginationCursor,
 						},
 						&cli.IntFlag{
-							Name:  "size",
+							Name:  flagSize,
 							Usage: "Results per page",
 							Value: 20,
 						},
@@ -207,7 +207,7 @@ func GetCommands() []*cli.Command {
 					Name:      "remove",
 					Aliases:   []string{"rm", "delete"},
 					Usage:     "Remove a check",
-					ArgsUsage: "<uid|slug>",
+					ArgsUsage: argUIDSlug,
 					Action:    checksRemoveAction,
 				},
 			},
@@ -219,11 +219,11 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List check results with filtering",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "check",
+							Name:  flagCheck,
 							Usage: "Filter by check UID or slug (comma-separated for multiple)",
 						},
 						&cli.StringFlag{
@@ -231,7 +231,7 @@ func GetCommands() []*cli.Command {
 							Usage: "Filter by check type: http, dns, ping, ssl (comma-separated)",
 						},
 						&cli.StringFlag{
-							Name:  "status",
+							Name:  flagStatus,
 							Usage: "Filter by status: up, down, unknown (comma-separated)",
 						},
 						&cli.StringFlag{
@@ -243,12 +243,12 @@ func GetCommands() []*cli.Command {
 							Usage: "Filter by period type: raw, hour, day, month (comma-separated)",
 						},
 						&cli.StringFlag{
-							Name:  "cursor",
-							Usage: "Pagination cursor for next page",
+							Name:  flagCursor,
+							Usage: usagePaginationCursor,
 						},
 						&cli.IntFlag{
-							Name:  "size",
-							Usage: "Results per page (max 100)",
+							Name:  flagSize,
+							Usage: usageResultsPerPage,
 							Value: 20,
 						},
 						&cli.StringFlag{
@@ -271,11 +271,11 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List incidents",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "check",
+							Name:  flagCheck,
 							Usage: "Filter by check UID (comma-separated for multiple)",
 						},
 						&cli.StringFlag{
@@ -283,34 +283,34 @@ func GetCommands() []*cli.Command {
 							Usage: "Filter by state: active, resolved (comma-separated)",
 						},
 						&cli.StringFlag{
-							Name:  "cursor",
-							Usage: "Pagination cursor for next page",
+							Name:  flagCursor,
+							Usage: usagePaginationCursor,
 						},
 						&cli.IntFlag{
-							Name:  "size",
-							Usage: "Results per page (max 100)",
+							Name:  flagSize,
+							Usage: usageResultsPerPage,
 							Value: 20,
 						},
 					},
 					Action: incidentsListAction,
 				},
 				{
-					Name:      "get",
+					Name:      flagGet,
 					Usage:     "Get incident details",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    incidentsGetAction,
 				},
 				{
-					Name:      "events",
+					Name:      flagEvents,
 					Usage:     "List events for an incident",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "cursor",
-							Usage: "Pagination cursor for next page",
+							Name:  flagCursor,
+							Usage: usagePaginationCursor,
 						},
 						&cli.IntFlag{
-							Name:  "size",
+							Name:  flagSize,
 							Usage: "Results per page",
 							Value: 20,
 						},
@@ -320,21 +320,21 @@ func GetCommands() []*cli.Command {
 			},
 		},
 		{
-			Name:    "events",
+			Name:    flagEvents,
 			Aliases: []string{"event"},
 			Usage:   "View audit events",
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List events",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "type",
+							Name:  flagType,
 							Usage: "Filter by event type (comma-separated)",
 						},
 						&cli.StringFlag{
-							Name:  "check",
+							Name:  flagCheck,
 							Usage: "Filter by check UID",
 						},
 						&cli.StringFlag{
@@ -342,12 +342,12 @@ func GetCommands() []*cli.Command {
 							Usage: "Filter by incident UID",
 						},
 						&cli.StringFlag{
-							Name:  "cursor",
-							Usage: "Pagination cursor for next page",
+							Name:  flagCursor,
+							Usage: usagePaginationCursor,
 						},
 						&cli.IntFlag{
-							Name:  "size",
-							Usage: "Results per page (max 100)",
+							Name:  flagSize,
+							Usage: usageResultsPerPage,
 							Value: 20,
 						},
 					},
@@ -362,11 +362,11 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List personal access tokens",
 					Flags: []cli.Flag{
 						&cli.BoolFlag{
-							Name:  "all",
+							Name:  flagAll,
 							Usage: "List tokens across all organizations",
 						},
 					},
@@ -377,7 +377,7 @@ func GetCommands() []*cli.Command {
 					Usage: "Create a personal access token",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:     "name",
+							Name:     flagName,
 							Usage:    "Token name",
 							Required: true,
 						},
@@ -391,7 +391,7 @@ func GetCommands() []*cli.Command {
 				{
 					Name:      "revoke",
 					Usage:     "Revoke a personal access token",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    tokensRevokeAction,
 				},
 			},
@@ -403,7 +403,7 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:   "list",
+					Name:   flagList,
 					Usage:  "List organization members",
 					Action: membersListAction,
 				},
@@ -421,15 +421,15 @@ func GetCommands() []*cli.Command {
 					Action: membersAddAction,
 				},
 				{
-					Name:      "get",
+					Name:      flagGet,
 					Usage:     "Get member details",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    membersGetAction,
 				},
 				{
 					Name:      "update",
 					Usage:     "Update a member",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Flags: []cli.Flag{
 						&cli.StringFlag{
 							Name:  "role",
@@ -442,7 +442,7 @@ func GetCommands() []*cli.Command {
 					Name:      "remove",
 					Aliases:   []string{"rm"},
 					Usage:     "Remove a member from the organization",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    membersRemoveAction,
 				},
 			},
@@ -454,24 +454,24 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:  "list",
+					Name:  flagList,
 					Usage: "List jobs",
 					Flags: []cli.Flag{
 						&cli.StringFlag{
-							Name:  "type",
+							Name:  flagType,
 							Usage: "Filter by job type",
 						},
 						&cli.StringFlag{
-							Name:  "status",
+							Name:  flagStatus,
 							Usage: "Filter by status",
 						},
 					},
 					Action: jobsListAction,
 				},
 				{
-					Name:      "get",
+					Name:      flagGet,
 					Usage:     "Get job details",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    jobsGetAction,
 				},
 				{
@@ -493,7 +493,7 @@ func GetCommands() []*cli.Command {
 				{
 					Name:      "cancel",
 					Usage:     "Cancel a job",
-					ArgsUsage: "<uid>",
+					ArgsUsage: argUID,
 					Action:    jobsCancelAction,
 				},
 			},
@@ -505,12 +505,12 @@ func GetCommands() []*cli.Command {
 			Flags:   GetGlobalFlags(),
 			Commands: []*cli.Command{
 				{
-					Name:   "list",
+					Name:   flagList,
 					Usage:  "List system parameters",
 					Action: systemListAction,
 				},
 				{
-					Name:      "get",
+					Name:      flagGet,
 					Usage:     "Get a system parameter",
 					ArgsUsage: "<key>",
 					Action:    systemGetAction,

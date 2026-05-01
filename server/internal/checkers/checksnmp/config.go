@@ -144,8 +144,8 @@ func (c *SNMPConfig) parseAuthFields(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *SNMPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"host": c.Host,
-		"oid":  c.OID,
+		checkerdef.OutputKeyHost: c.Host,
+		checkerdef.OutputKeyOID:  c.OID,
 	}
 
 	setIfNonDefault(cfg, "port", c.Port, defaultPort)

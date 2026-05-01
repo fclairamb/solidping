@@ -787,15 +787,16 @@ func (s *Server) serveAppRedirect(
 
 	// When the dev server is unreachable, fall back to embedded static files
 	if fallback != nil {
-		proxy.ErrorHandler = func(writer http.ResponseWriter, _ *http.Request, err error) {
-			slog.Warn("Dev server proxy failed, falling back to embedded files",
+		proxy.ErrorHandler = func(writer http.ResponseWriter, errReq *http.Request, err error) {
+			ctx := errReq.Context()
+			slog.WarnContext(ctx, "Dev server proxy failed, falling back to embedded files",
 				"error", err,
 				"targetHost", rule.TargetHost,
 				"path", req.URL.Path,
 			)
 
 			if fbErr := fallback(writer, req); fbErr != nil {
-				slog.Error("Fallback static serving failed", "error", fbErr)
+				slog.ErrorContext(ctx, "Fallback static serving failed", "error", fbErr)
 				http.Error(writer, "Internal server error", http.StatusInternalServerError)
 			}
 		}
@@ -1087,7 +1088,7 @@ func (s *Server) Start(ctx context.Context) error {
 		serverErr := make(chan error, 1)
 		go func() {
 			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error("HTTP server error", "error", err)
+				slog.ErrorContext(ctx, "HTTP server error", "error", err)
 				serverErr <- err
 			}
 		}()

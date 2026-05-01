@@ -29,7 +29,7 @@ func jobsListAction(ctx context.Context, cmd *cli.Command) error {
 	if t := cmd.String("type"); t != "" {
 		params.Type = &t
 	}
-	if s := cmd.String("status"); s != "" {
+	if s := cmd.String(flagStatus); s != "" {
 		params.Status = &s
 	}
 
@@ -52,7 +52,7 @@ func jobsListAction(ctx context.Context, cmd *cli.Command) error {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"UID", "TYPE", "STATUS", "CREATED"})
+	tbl.AppendHeader(table.Row{colUID, colType, colStatus, colCreated})
 
 	for i := range *resp.JSON200.Data {
 		job := &(*resp.JSON200.Data)[i]

@@ -220,9 +220,9 @@ func (c *SNMPChecker) performGet(
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"host":  cfg.Host,
-				"oid":   cfg.OID,
-				"error": "no variables returned",
+				checkerdef.OutputKeyHost:  cfg.Host,
+				checkerdef.OutputKeyOID:   cfg.OID,
+				checkerdef.OutputKeyError: "no variables returned",
 			},
 		}
 	}
@@ -240,10 +240,10 @@ func buildSuccessResult(
 	value := formatPDUValue(variable)
 
 	output := map[string]any{
-		"host":      cfg.Host,
-		"oid":       cfg.OID,
-		"value":     value,
-		"valueType": pduTypeName(variable.Type),
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyOID:  cfg.OID,
+		"value":                  value,
+		"valueType":              pduTypeName(variable.Type),
 	}
 
 	status := checkerdef.StatusUp
@@ -334,9 +334,9 @@ func handleConnectError(
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"host":  cfg.Host,
-				"oid":   cfg.OID,
-				"error": "connection timeout",
+				checkerdef.OutputKeyHost:  cfg.Host,
+				checkerdef.OutputKeyOID:   cfg.OID,
+				checkerdef.OutputKeyError: "connection timeout",
 			},
 		}
 	}
@@ -345,9 +345,9 @@ func handleConnectError(
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
 		Output: map[string]any{
-			"host":  cfg.Host,
-			"oid":   cfg.OID,
-			"error": "connection failed: " + err.Error(),
+			checkerdef.OutputKeyHost:  cfg.Host,
+			checkerdef.OutputKeyOID:   cfg.OID,
+			checkerdef.OutputKeyError: "connection failed: " + err.Error(),
 		},
 	}
 }
@@ -363,9 +363,9 @@ func handleGetError(
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"host":  cfg.Host,
-				"oid":   cfg.OID,
-				"error": "query timeout",
+				checkerdef.OutputKeyHost:  cfg.Host,
+				checkerdef.OutputKeyOID:   cfg.OID,
+				checkerdef.OutputKeyError: "query timeout",
 			},
 		}
 	}
@@ -374,9 +374,9 @@ func handleGetError(
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
 		Output: map[string]any{
-			"host":  cfg.Host,
-			"oid":   cfg.OID,
-			"error": "SNMP GET failed: " + err.Error(),
+			checkerdef.OutputKeyHost:  cfg.Host,
+			checkerdef.OutputKeyOID:   cfg.OID,
+			checkerdef.OutputKeyError: "SNMP GET failed: " + err.Error(),
 		},
 	}
 }

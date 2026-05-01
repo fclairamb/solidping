@@ -107,6 +107,48 @@ const (
 	CheckTypeBrowser CheckType = "browser"
 )
 
+// Common output and config map keys used across checker implementations.
+const (
+	OutputKeyError      = "error"
+	OutputKeyHost       = "host"
+	OutputKeyPort       = "port"
+	OutputKeyMethod     = "method"
+	OutputKeyTimeout    = "timeout"
+	OutputKeyCount      = "count"
+	OutputKeyOID        = "oid"
+	OutputKeyURL        = "url"
+	OutputKeyStatusCode = "status_code"
+	OutputKeyDurationMs = "duration_ms"
+	OutputKeyDomain     = "domain"
+	OutputKeyRecordType = "record_type"
+)
+
+// Check type labels.
+const (
+	labelSafe   = "safe"
+	labelUnsafe = "unsafe"
+
+	labelStandalone = "standalone"
+
+	labelReqRawSocket       = "requires:raw-socket"
+	labelReqMailProtocol    = "requires:mail-protocol"
+	labelReqDatabaseDriver  = "requires:database-driver"
+	labelReqFileProtocol    = "requires:file-protocol"
+	labelReqMessagingClient = "requires:messaging-client"
+	labelReqScripting       = "requires:scripting-runtime"
+	labelReqDockerSocket    = "requires:docker-socket"
+	labelReqChrome          = "requires:chrome"
+
+	labelCatNetwork        = "category:network"
+	labelCatSecurity       = "category:security"
+	labelCatMail           = "category:mail"
+	labelCatRemoteAccess   = "category:remote-access"
+	labelCatDatabase       = "category:database"
+	labelCatMessaging      = "category:messaging"
+	labelCatInfrastructure = "category:infrastructure"
+	labelCatOther          = "category:other"
+)
+
 // CheckTypeMeta holds metadata and labels for a check type.
 type CheckTypeMeta struct {
 	Type          CheckType     `json:"type"`
@@ -121,36 +163,36 @@ type CheckTypeMeta struct {
 //
 //nolint:gochecknoglobals,lll // Registry is intentionally global; it's read-only after init.
 var checkTypesRegistry = []CheckTypeMeta{
-	{Type: CheckTypeHTTP, Labels: []string{"safe", "standalone", "category:network"}, Description: "Monitor HTTP/HTTPS endpoints"},
-	{Type: CheckTypeTCP, Labels: []string{"safe", "standalone", "category:network"}, Description: "Check TCP port connectivity"},
-	{Type: CheckTypeICMP, Labels: []string{"unsafe", "requires:raw-socket", "category:network"}, Description: "Ping hosts via ICMP"},
-	{Type: CheckTypeDNS, Labels: []string{"safe", "standalone", "category:network"}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
-	{Type: CheckTypeSSL, Labels: []string{"safe", "standalone", "category:security"}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
-	{Type: CheckTypeDomain, Labels: []string{"safe", "standalone", "category:security"}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
-	{Type: CheckTypeHeartbeat, Labels: []string{"safe", "standalone", "category:other"}, Description: "Receive heartbeat pings"},
-	{Type: CheckTypeSMTP, Labels: []string{"safe", "requires:mail-protocol", "category:mail"}, Description: "Check SMTP server connectivity"},
-	{Type: CheckTypeUDP, Labels: []string{"safe", "standalone", "category:network"}, Description: "Check UDP port reachability"},
-	{Type: CheckTypeSSH, Labels: []string{"safe", "standalone", "category:remote-access"}, Description: "Check SSH server availability"},
-	{Type: CheckTypePOP3, Labels: []string{"safe", "requires:mail-protocol", "category:mail"}, Description: "Check POP3 server availability"},
-	{Type: CheckTypeIMAP, Labels: []string{"safe", "requires:mail-protocol", "category:mail"}, Description: "Check IMAP server availability"},
-	{Type: CheckTypeWebSocket, Labels: []string{"safe", "standalone", "category:network"}, Description: "Check WebSocket connectivity"},
-	{Type: CheckTypePostgreSQL, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check PostgreSQL database health"},
-	{Type: CheckTypeMySQL, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check MySQL/MariaDB database health"},
-	{Type: CheckTypeRedis, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check Redis server health"},
-	{Type: CheckTypeMongoDB, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check MongoDB database health"},
-	{Type: CheckTypeFTP, Labels: []string{"safe", "requires:file-protocol", "category:remote-access"}, Description: "Check FTP server availability"},
-	{Type: CheckTypeSFTP, Labels: []string{"safe", "requires:file-protocol", "category:remote-access"}, Description: "Check SFTP server availability"},
-	{Type: CheckTypeJS, Labels: []string{"unsafe", "requires:scripting-runtime", "category:other"}, Description: "Run custom JavaScript scripts"},
-	{Type: CheckTypeMSSQL, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check Microsoft SQL Server health"},
-	{Type: CheckTypeOracle, Labels: []string{"safe", "requires:database-driver", "category:database"}, Description: "Check Oracle Database health"},
-	{Type: CheckTypeGRPC, Labels: []string{"safe", "standalone", "category:network"}, Description: "Check gRPC service health"},
-	{Type: CheckTypeKafka, Labels: []string{"safe", "requires:messaging-client", "category:messaging"}, Description: "Check Kafka cluster health"},
-	{Type: CheckTypeMQTT, Labels: []string{"safe", "requires:messaging-client", "category:messaging"}, Description: "Check MQTT broker connectivity"},
-	{Type: CheckTypeGameServer, Labels: []string{"safe", "standalone", "category:other"}, Description: "Monitor game server via A2S protocol"},
-	{Type: CheckTypeRabbitMQ, Labels: []string{"safe", "requires:messaging-client", "category:messaging"}, Description: "Check RabbitMQ server health"},
-	{Type: CheckTypeSNMP, Labels: []string{"safe", "standalone", "category:infrastructure"}, Description: "Monitor devices via SNMP"},
-	{Type: CheckTypeDocker, Labels: []string{"unsafe", "requires:docker-socket", "category:infrastructure"}, Description: "Monitor Docker container health"},
-	{Type: CheckTypeBrowser, Labels: []string{"unsafe", "requires:chrome", "category:other"}, Description: "Monitor pages with headless Chrome"},
+	{Type: CheckTypeHTTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor HTTP/HTTPS endpoints"},
+	{Type: CheckTypeTCP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check TCP port connectivity"},
+	{Type: CheckTypeICMP, Labels: []string{labelUnsafe, labelReqRawSocket, labelCatNetwork}, Description: "Ping hosts via ICMP"},
+	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
+	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
+	{Type: CheckTypeDomain, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
+	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Receive heartbeat pings"},
+	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity"},
+	{Type: CheckTypeUDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check UDP port reachability"},
+	{Type: CheckTypeSSH, Labels: []string{labelSafe, labelStandalone, labelCatRemoteAccess}, Description: "Check SSH server availability"},
+	{Type: CheckTypePOP3, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check POP3 server availability"},
+	{Type: CheckTypeIMAP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check IMAP server availability"},
+	{Type: CheckTypeWebSocket, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check WebSocket connectivity"},
+	{Type: CheckTypePostgreSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check PostgreSQL database health"},
+	{Type: CheckTypeMySQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MySQL/MariaDB database health"},
+	{Type: CheckTypeRedis, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Redis server health"},
+	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health"},
+	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability"},
+	{Type: CheckTypeSFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check SFTP server availability"},
+	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts"},
+	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health"},
+	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health"},
+	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health"},
+	{Type: CheckTypeKafka, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check Kafka cluster health"},
+	{Type: CheckTypeMQTT, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check MQTT broker connectivity"},
+	{Type: CheckTypeGameServer, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor game server via A2S protocol"},
+	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health"},
+	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
+	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
+	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome"},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.

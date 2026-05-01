@@ -17,6 +17,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
+const (
+	fieldType      = "type"
+	fieldSlug      = "slug"
+	msgInvalidJSON = "Invalid JSON format"
+)
+
 // Handler provides HTTP handlers for check management endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -39,7 +45,7 @@ func (h *Handler) ValidateCheck(
 	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
 		return h.WriteValidationError(
 			writer, "Invalid JSON", []base.ValidationErrorField{
-				{Name: "body", Message: "Invalid JSON format"},
+				{Name: "body", Message: msgInvalidJSON},
 			})
 	}
 
@@ -137,7 +143,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var createReq CreateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -153,7 +159,7 @@ func (h *Handler) CreateCheck(writer http.ResponseWriter, req bunrouter.Request)
 		inferredType := registry.InferCheckTypeFromConfig(createReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-				{Name: "type", Message: "Type is required when url is not provided or has unrecognized scheme"},
+				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},
 			})
 		}
 
@@ -221,7 +227,7 @@ func (h *Handler) UpdateCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var updateReq UpdateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -241,7 +247,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req bunrouter.Request)
 	var upsertReq UpsertCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&upsertReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -257,7 +263,7 @@ func (h *Handler) UpsertCheck(writer http.ResponseWriter, req bunrouter.Request)
 		inferredType := registry.InferCheckTypeFromConfig(upsertReq.Config)
 		if inferredType == "" {
 			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
-				{Name: "type", Message: "Type is required when url is not provided or has unrecognized scheme"},
+				{Name: fieldType, Message: "Type is required when url is not provided or has unrecognized scheme"},
 			})
 		}
 
@@ -352,7 +358,7 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request
 	var doc ExportDocument
 	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: msgInvalidJSON},
 		})
 	}
 
@@ -407,14 +413,14 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
-				Name:    "slug",
+				Name:    fieldSlug,
 				Message: "A check with this slug already exists in this organization",
 			},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
-				Name: "slug",
+				Name: fieldSlug,
 				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
@@ -450,14 +456,14 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
-				Name:    "slug",
+				Name:    fieldSlug,
 				Message: "A check with this slug already exists in this organization",
 			},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{
-				Name: "slug",
+				Name: fieldSlug,
 				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
 					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
 			},
@@ -476,7 +482,7 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteValidationError(writer, "Invalid check type", []base.ValidationErrorField{
 			{
-				Name:    "type",
+				Name:    fieldType,
 				Message: "Unsupported check type",
 			},
 		})

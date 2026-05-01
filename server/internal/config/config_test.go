@@ -5,6 +5,13 @@ import (
 	"testing"
 )
 
+const (
+	testPathDashboard = "/dashboard"
+	testPathStatus    = "/status"
+	testHost5173      = "localhost:5173"
+	testHost5174      = "localhost:5174"
+)
+
 func TestParseRedirectRule(t *testing.T) {
 	t.Parallel()
 
@@ -18,9 +25,9 @@ func TestParseRedirectRule(t *testing.T) {
 			name:  "simple redirect with same path",
 			input: "/dashboard:localhost:5173",
 			expected: RedirectRule{
-				PathPrefix: "/dashboard",
-				TargetHost: "localhost:5173",
-				TargetPath: "/dashboard",
+				PathPrefix: testPathDashboard,
+				TargetHost: testHost5173,
+				TargetPath: testPathDashboard,
 			},
 			ok: true,
 		},
@@ -28,8 +35,8 @@ func TestParseRedirectRule(t *testing.T) {
 			name:  "redirect with different target path",
 			input: "/dashboard:localhost:5173/app",
 			expected: RedirectRule{
-				PathPrefix: "/dashboard",
-				TargetHost: "localhost:5173",
+				PathPrefix: testPathDashboard,
+				TargetHost: testHost5173,
 				TargetPath: "/app",
 			},
 			ok: true,
@@ -39,7 +46,7 @@ func TestParseRedirectRule(t *testing.T) {
 			input: "/:localhost:5173",
 			expected: RedirectRule{
 				PathPrefix: "/",
-				TargetHost: "localhost:5173",
+				TargetHost: testHost5173,
 				TargetPath: "/",
 			},
 			ok: true,
@@ -144,40 +151,40 @@ func TestParseRedirects(t *testing.T) {
 			name:  "single rule",
 			input: "/dashboard:localhost:5173",
 			expected: []RedirectRule{
-				{PathPrefix: "/dashboard", TargetHost: "localhost:5173", TargetPath: "/dashboard"},
+				{PathPrefix: testPathDashboard, TargetHost: testHost5173, TargetPath: testPathDashboard},
 			},
 		},
 		{
 			name:  "multiple rules",
 			input: "/dashboard:localhost:5173/dashboard,/status:localhost:5174/status",
 			expected: []RedirectRule{
-				{PathPrefix: "/dashboard", TargetHost: "localhost:5173", TargetPath: "/dashboard"},
-				{PathPrefix: "/status", TargetHost: "localhost:5174", TargetPath: "/status"},
+				{PathPrefix: testPathDashboard, TargetHost: testHost5173, TargetPath: testPathDashboard},
+				{PathPrefix: testPathStatus, TargetHost: testHost5174, TargetPath: testPathStatus},
 			},
 		},
 		{
 			name:  "rules sorted by path length",
 			input: "/:localhost:5173,/dashboard/settings:localhost:5173,/dashboard:localhost:5173",
 			expected: []RedirectRule{
-				{PathPrefix: "/dashboard/settings", TargetHost: "localhost:5173", TargetPath: "/dashboard/settings"},
-				{PathPrefix: "/dashboard", TargetHost: "localhost:5173", TargetPath: "/dashboard"},
-				{PathPrefix: "/", TargetHost: "localhost:5173", TargetPath: "/"},
+				{PathPrefix: "/dashboard/settings", TargetHost: testHost5173, TargetPath: "/dashboard/settings"},
+				{PathPrefix: testPathDashboard, TargetHost: testHost5173, TargetPath: testPathDashboard},
+				{PathPrefix: "/", TargetHost: testHost5173, TargetPath: "/"},
 			},
 		},
 		{
 			name:  "whitespace handling",
 			input: " /dashboard:localhost:5173 , /status:localhost:5174 ",
 			expected: []RedirectRule{
-				{PathPrefix: "/dashboard", TargetHost: "localhost:5173", TargetPath: "/dashboard"},
-				{PathPrefix: "/status", TargetHost: "localhost:5174", TargetPath: "/status"},
+				{PathPrefix: testPathDashboard, TargetHost: testHost5173, TargetPath: testPathDashboard},
+				{PathPrefix: testPathStatus, TargetHost: testHost5174, TargetPath: testPathStatus},
 			},
 		},
 		{
 			name:  "invalid rules skipped",
 			input: "/valid:localhost:5173,invalid,/also-valid:localhost:5174",
 			expected: []RedirectRule{
-				{PathPrefix: "/also-valid", TargetHost: "localhost:5174", TargetPath: "/also-valid"},
-				{PathPrefix: "/valid", TargetHost: "localhost:5173", TargetPath: "/valid"},
+				{PathPrefix: "/also-valid", TargetHost: testHost5174, TargetPath: "/also-valid"},
+				{PathPrefix: "/valid", TargetHost: testHost5173, TargetPath: "/valid"},
 			},
 		},
 	}
