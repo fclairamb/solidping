@@ -16,6 +16,8 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 
 > **Also analyzed**: [Site24x7](site24x7.md) (Zoho/ManageEngine) — all-in-one mid-market alternative with 100+ monitor types, 130+ probe locations, 50-monitor free tier, and built-in APM/RUM. Not included in tables below to keep them focused on uptime-first competitors.
 
+> **Where SolidPing stands today (April 2026)**: 30 check types (broadest of any tool surveyed), 9 native notification channels, multi-region distributed workers, status pages with availability, maintenance windows, adaptive incident resolution, 2FA, MCP/AI integration, browser monitoring (Rod), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
+
 ## Pricing Comparison
 
 ### Free Tier
@@ -67,31 +69,37 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 |--------------|-------------|-------------|---------|------------|---------|-----------------|-------------|-------|-----------|
 | **HTTP/HTTPS** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ | ✅ |
 | **Keyword monitoring** | ✅ | ✅ | ✅ | ✅ | ✅ (assertions) | ❌ | ✅ | ✅ (conditions) | ✅ (string + regex) |
-| **JSON body validation** | ❌ | ❌ | ❌ | ❌ | ✅ (assertions) | ❌ | ✅ (JSONPath) | ✅ (JSONPath) | ❌ |
+| **JSON body validation** | ❌ | ❌ | ❌ | ❌ | ✅ (assertions) | ❌ | ✅ (JSONPath) | ✅ (JSONPath) | ✅ (JSONPath) |
 | **Ping (ICMP)** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **TCP port** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
-| **UDP port** | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ |
+| **UDP port** | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
 | **DNS** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **SMTP** | ✅ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ✅ (STARTTLS) | ✅ |
-| **SSH** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ |
-| **POP3/IMAP** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ (STARTTLS) | ❌ |
-| **WebSocket** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ |
+| **SSH** | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ |
+| **POP3/IMAP** | ✅ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ | ✅ (STARTTLS) | ✅ |
+| **WebSocket** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **Heartbeat/Cron** | ✅ | ✅ (Pro) | ❌ | ✅ (all plans) | ✅ | ✅ (core) | ✅ | ❌ | ✅ |
 | **SSL certificate** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ |
 | **Domain expiration** | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ (v2.1) | ❌ | ✅ (WHOIS) |
-| **Playwright/Browser** | ✅ | ❌ | ✅ (Transaction) | ❌ | ✅ (core) | ❌ | ❌ | ❌ | ❌ |
+| **FTP / SFTP** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **gRPC** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ |
+| **Playwright/Browser** | ✅ | ❌ | ✅ (Transaction) | ❌ | ✅ (core) | ❌ | ❌ | ❌ | ✅ (Rod) |
 | **Page speed** | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Server monitoring** | ❌ | ❌ | ❌ | ✅ (Linux) | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Docker container** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **Database** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ |
-| **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ |
+| **Docker container** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| **Database (Postgres/MySQL/MSSQL/Oracle/Mongo/Redis)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (partial) | ❌ | ✅ (6 engines) |
+| **Message queues (Kafka/RabbitMQ/MQTT)** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **SNMP** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ |
+| **Game server** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ✅ |
+| **Custom JS check** | ❌ | ❌ | ❌ | ❌ | ✅ (Playwright) | ❌ | ❌ | ❌ | ✅ (sandboxed JS) |
+| **External script** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ⚠️ (via JS check) |
 | **Cron exit codes** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
 
-**Most Comprehensive**: Uptime Kuma (12 types) and Pingdom (12 types including RUM)
+**Most Comprehensive**: SolidPing (30 check types — broadest protocol coverage of any tool surveyed)
 
-**Best Free**: UptimeRobot (8 types, 50 free monitors)
+**Best Free**: UptimeRobot (8 types, 50 free monitors) for SaaS; SolidPing for self-hosted (unlimited)
 
-**Most Flexible Conditions**: Gatus (JSONPath, conditions, external scripts)
+**Most Flexible Conditions**: Gatus (JSONPath, conditions, external scripts), Checkly (full Playwright assertions), SolidPing (sandboxed JS)
 
 **Enterprise Features**: Pingdom (Transaction monitoring, RUM)
 
@@ -183,24 +191,26 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 | **Email** | ✅ Unlimited | ✅ Unlimited | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (SMTP) | ✅ |
 | **SMS** | ✅ Unlimited | ✅ Limited | ✅ Quota | ✅ 75 free/mo | ✅ (via int.) | ✅ (Twilio) | ✅ (Twilio) | ✅ (Twilio) | ❌ |
 | **Voice Calls** | ✅ Unlimited | ❌ | ✅ Limited | ✅ | ✅ (via int.) | ✅ (Twilio) | ❌ | ❌ | ❌ |
-| **Slack** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (OAuth) |
-| **Discord** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
+| **Slack** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (OAuth + threads) |
+| **Discord** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (OAuth + webhook) |
 | **Microsoft Teams** | ✅ Native | ✅ Native | ✅ Webhook | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **Telegram** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **PagerDuty** | ✅ Native | ✅ Native | ✅ Native | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
-| **OpsGenie** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ❌ |
+| **Telegram** | ✅ Native | ✅ Native | ❌ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (spec ready) |
+| **PagerDuty** | ✅ Native | ✅ Native | ✅ Native | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ (spec ready) |
+| **OpsGenie** | ✅ | ❌ | ✅ | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| **Google Chat** | ❌ | ✅ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ✅ |
+| **Mattermost** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Webhooks** | ✅ Custom | ✅ Custom | ✅ Custom | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Push Notifications** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ (Pushover) | ✅ (Pushover) | ✅ (Pushover) | ❌ |
+| **Push (Pushover)** | ✅ | ✅ | ✅ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
+| **Ntfy** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ✅ |
 | **Signal** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ❌ | ❌ |
 | **Matrix** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
-| **Ntfy** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ | ✅ | ✅ | ❌ |
-| **Total Channels** | ~15 | ~12 | ~8 | ~14 | ~17 | ~25 | ~90 (Apprise) | ~20 | **3** |
+| **Total Channels** | ~15 | ~12 | ~8 | ~14 | ~17 | ~25 | ~90 (Apprise) | ~20 | **9 native** |
 
 **Most Channels**: Uptime Kuma (~90 via Apprise library)
 
-**Best Native Integrations**: BetterStack & Checkly (~15-17 first-class)
+**Best Native Integrations**: BetterStack & Checkly (~15-17 first-class), SolidPing (9 native, including chat-platform OAuth flows)
 
-**SolidPing Gap**: Only 3 channels (Email, Slack, Webhooks) — biggest competitive gap
+**SolidPing Remaining Gaps**: Microsoft Teams, Telegram, PagerDuty, SMS/Voice (closing — Telegram and PagerDuty specs are queued)
 
 ### Advanced Features
 
@@ -387,59 +397,76 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 Based on competitive analysis, prioritize these features:
 
 **Tier 1 - Critical for Parity** (done):
-1. ✅ HTTP/HTTPS monitoring
+1. ✅ HTTP/HTTPS monitoring (with JSON body validation, regex, custom UA)
 2. ✅ Heartbeat/cron monitoring
 3. ✅ Keyword monitoring (string + regex matching)
-4. ✅ TCP port monitoring
+4. ✅ TCP / UDP port monitoring
 5. ✅ Ping/ICMP monitoring
 6. ✅ SSL certificate expiration alerts
-7. ✅ SMTP monitoring
-8. ✅ Multiple notification channels (Slack, Email, Webhooks)
-9. ✅ Public status pages
-10. ✅ Multi-location checking (distributed workers)
-11. ✅ DNS monitoring (A, AAAA, CNAME, MX, NS, TXT)
-12. ✅ Monitor grouping (check groups)
-13. ✅ Advanced HTTP options (custom headers, body, methods)
-14. ✅ Response time tracking (min/max/avg/P95 metrics)
-15. ✅ Domain expiration monitoring (WHOIS-based)
-16. ✅ Incident management with escalation and acknowledgment
-17. ✅ Audit logging / events system
+7. ✅ SMTP / POP3 / IMAP monitoring
+8. ✅ SSH, FTP, SFTP monitoring
+9. ✅ WebSocket, gRPC monitoring
+10. ✅ DNS monitoring (A, AAAA, CNAME, MX, NS, TXT)
+11. ✅ Domain expiration monitoring (WHOIS-based)
+12. ✅ Database monitoring (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis)
+13. ✅ Message-queue monitoring (Kafka, RabbitMQ, MQTT)
+14. ✅ Docker container, SNMP, game server, custom JS check, browser (Rod) monitoring
+15. ✅ Multiple notification channels — 9 native: Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
+16. ✅ Public status pages with sections, resources, and availability metrics
+17. ✅ Multi-location checking (distributed workers + multi-region)
+18. ✅ Monitor grouping (check groups)
+19. ✅ Advanced HTTP options (custom headers, body, methods, custom user-agent)
+20. ✅ Response time tracking (min/max/avg metrics, period-based aggregation)
+21. ✅ Incident management with adaptive resolution, escalation, acknowledgment
+22. ✅ Audit logging / events system
+23. ✅ Maintenance windows (with recurrence)
+24. ✅ JSON body validation / JSONPath queries
+25. ✅ 2FA / MFA (TOTP)
+26. ✅ Prometheus `/metrics` endpoint
+27. ✅ Sentry integration
+28. ✅ MCP (Model Context Protocol) for AI/LLM access
+29. ✅ Check import/export (JSON)
+30. ✅ Real-time check validation, sample configs, type registry
+31. ✅ Internationalization (i18n)
+32. ✅ Personal Access Tokens, OAuth (Google, GitHub, GitLab, Microsoft, Slack, Discord)
+33. ✅ Status badges (SVG)
 
 **Tier 2 - High-Impact Gaps** (not yet implemented, multiple competitors offer these):
-1. ❌ More notification channels — Discord, Teams, Telegram, PagerDuty (all major competitors have 12-90+ channels vs our 3)
-2. ❌ Maintenance windows — suppress alerts during planned downtime (BetterStack, UptimeRobot, Pingdom, StatusCake)
-3. ❌ UDP port monitoring (UptimeRobot, Pingdom)
-4. ❌ SSH monitoring (StatusCake, Gatus)
-5. ❌ POP3/IMAP monitoring (Pingdom, BetterStack, Gatus)
-6. ❌ WebSocket monitoring (Uptime Kuma, Gatus)
-7. ❌ JSON body validation / JSONPath queries (Uptime Kuma, Gatus, Checkly)
-8. ❌ 2FA/MFA (Uptime Kuma, most SaaS services)
+1. ❌ Group-based incident correlation — when N checks fail at once, fire one incident, not N (BetterStack does this; spec drafted in `specs/ideas/2026-03-21-group-incidents.md`)
+2. ❌ Status-page subscriber notifications — let end users subscribe to incident updates by email/RSS (UptimeRobot, Pingdom, Checkly, BetterStack)
+3. ❌ Telegram, Microsoft Teams, PagerDuty notification channels (Telegram + PagerDuty have specs ready)
+4. ❌ Screenshot capture on HTTP failure (BetterStack, Checkly) — research done, Rod chosen, spec drafted
+5. ❌ Configuration as Code — declarative YAML / Terraform provider (Gatus, Checkly, BetterStack)
+6. ❌ Importers from BetterStack / UptimeRobot / Uptime Kuma (lowers switching friction)
 
 **Tier 3 - Competitive Differentiators** (nice to have):
-1. ❌ Browser/Transaction monitoring (Pingdom, Checkly, BetterStack)
-2. ❌ Page speed monitoring (Pingdom, StatusCake)
-3. ❌ Real User Monitoring / RUM (Pingdom)
-4. ❌ Screenshot capture on failure (Checkly, BetterStack)
-5. ❌ Traceroute/MTR diagnostics (BetterStack)
-6. ❌ Prometheus /metrics endpoint (Gatus, Uptime Kuma)
-7. ❌ Heartbeat enhancements — /start endpoint, exit codes, log attachment (Healthchecks.io)
-8. ❌ Configuration as Code — YAML/TypeScript (Gatus, Checkly)
-9. ❌ Terraform/Pulumi provider (BetterStack, StatusCake, Checkly, UptimeRobot)
-10. ❌ On-call scheduling (BetterStack)
-11. ❌ Mobile applications (UptimeRobot, Pingdom)
-12. ❌ Status page subscriber notifications (UptimeRobot, Pingdom, Checkly)
-13. ❌ GitHub/GitLab issue integration (Gatus)
+1. ❌ Page speed / Core Web Vitals monitoring (Pingdom, StatusCake)
+2. ❌ Real User Monitoring / RUM (Pingdom, Site24x7)
+3. ❌ Traceroute/MTR diagnostics on failure (BetterStack)
+4. ❌ On-call scheduling and rotations (BetterStack, Site24x7, Pingdom-via-OnCall)
+5. ❌ Mobile applications (UptimeRobot, Pingdom) or installable PWA
+6. ❌ GitHub/GitLab issue integration (Gatus)
+7. ❌ SMS / Voice escalations (every major SaaS via Twilio)
+8. ❌ Heartbeat enhancements — `/start` endpoint, exit codes, log attachment (Healthchecks.io)
+9. ❌ Automatic application discovery (suggest healthcheck endpoints from URL — proposed; no competitor has this)
+10. ❌ AIOps / anomaly detection on response-time series (Site24x7, Datadog)
 
 ### SolidPing Unique Strengths (no single competitor matches all)
 
 | Strength | Closest Competitor |
 |----------|-------------------|
-| Self-hosted + Multi-tenancy + RBAC | None (unique combination) |
-| PostgreSQL-native with full REST API | Gatus has PG but read-only API; HC.io has PG but no active monitoring |
-| Distributed workers architecture | SaaS services only (not self-hosted OSS) |
-| Incident management with escalation in self-hosted | BetterStack (SaaS only) |
-| Full audit logging / events system | BetterStack (SaaS only) |
-| OAuth multi-provider auth (Google, GitHub, GitLab, Microsoft) | None in self-hosted category |
+| Self-hosted + Multi-tenancy + RBAC + 2FA | None (unique combination) |
+| 30 check types in a single binary | Site24x7 (SaaS only); Uptime Kuma has ~12 |
+| Dual PostgreSQL / SQLite + embedded Postgres | None (most OSS tools are single-DB) |
+| Distributed workers + multi-region scheduling | SaaS only (BetterStack, Pingdom); not in self-hosted OSS |
+| Incident management with adaptive resolution + escalation in self-hosted | BetterStack (SaaS only) |
+| Maintenance windows with recurrence in self-hosted | BetterStack, UptimeRobot (SaaS only) |
+| Browser checks (Rod) self-hosted | Checkly, BetterStack (SaaS only) |
+| MCP server for AI/LLM tool integration | None |
+| Sandboxed JavaScript checks (no external runtime) | Gatus (external script only) |
+| Full audit logging / events system + Prometheus `/metrics` | BetterStack (SaaS), Gatus (metrics only) |
+| OAuth multi-provider auth (Google, GitHub, GitLab, Microsoft, Slack, Discord) | None in self-hosted category |
+| Slack OAuth + threaded incident messages | BetterStack (SaaS only) |
 
 ### Pricing Strategy Recommendation
 
@@ -495,8 +522,10 @@ Based on competitive analysis, prioritize these features:
 **Strategy**:
 1. Self-hosted = free + unlimited (beats all on price)
 2. Match UptimeRobot's API quality (excellent docs, clear limits)
-3. Add BetterStack's diagnostic features (traceroute, screenshots)
+3. Add BetterStack's diagnostic features (screenshots — spec ready; traceroute remaining)
 4. Skip Pingdom's mistakes (no false positives, no complex pricing)
 5. Offer optional SaaS with pricing that undercuts UptimeRobot
 
-**Result**: Best of all worlds - self-hosted freedom with optional affordable SaaS.
+**Today (Apr 2026)**: SolidPing already covers parity in (1), (2), and most of the protocol/feature breadth. Remaining items are: group-based incident correlation (kills alert storms), status-page subscriber notifications, Telegram/Teams/PagerDuty channels, screenshots, and a Terraform provider.
+
+**Result**: Best of all worlds — self-hosted freedom with optional affordable SaaS.

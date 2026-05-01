@@ -37,7 +37,7 @@ Project-wide standards and naming rules.
 
 Market analysis of uptime monitoring services.
 
-- [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 6 competitors
+- [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 8 competitors, with current SolidPing positioning (Apr 2026)
 - [competitors/criteria.md](competitors/criteria.md) — Evaluation framework: pricing, features, protocols, deployment, support
 - [competitors/full-list.md](competitors/full-list.md) — Comprehensive directory of all monitoring services
 - [competitors/betterstack.md](competitors/betterstack.md) — BetterStack Uptime analysis

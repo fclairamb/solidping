@@ -462,7 +462,8 @@ Each category weighted by importance:
 | $10-50/mo | StatusCake (€17-70) | Checkly ($24-64) |
 | $50-100/mo | BetterStack (modular) | Site24x7 |
 | $100+/mo | Datadog, New Relic | Pingdom, Dynatrace |
-| Self-hosted | Uptime Kuma, SolidPing | Gatus, Healthchecks.io |
+| Self-hosted (broadest protocol set) | SolidPing (30 types) | Uptime Kuma, Gatus |
+| Self-hosted (lightweight) | Uptime Kuma, Gatus | Healthchecks.io |
 
 ### By Use Case
 
@@ -474,8 +475,8 @@ Each category weighted by importance:
 | Cron monitoring | Healthchecks.io, Cronitor | Specialized, open source |
 | API monitoring | Checkly, Assertible | Monitoring as code |
 | Browser testing | Checkly | Playwright-native |
-| Self-hosted | Uptime Kuma, SolidPing | Privacy, control |
-| Multi-protocol | StatusCake | HTTP, TCP, DNS, SMTP, SSH, SSL |
+| Self-hosted | SolidPing, Uptime Kuma | Privacy, control |
+| Multi-protocol | SolidPing (30 types), StatusCake | HTTP/TCP/DNS/SSH/SSL/DBs/MQs/etc |
 | Status pages | Statuspage, Instatus | Dedicated solution |
 | Performance | Datadog, SpeedCurve | RUM, page speed |
 
@@ -505,4 +506,4 @@ This criteria list should be updated when:
 - User needs evolve
 - Technology advances
 
-**Last Updated**: 2026-03-21
+**Last Updated**: 2026-04-29
