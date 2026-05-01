@@ -20,6 +20,7 @@ jobs:
   backend-lint:
     name: Backend Lint & Test
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     defaults:
       run:
         working-directory: server
@@ -55,6 +56,7 @@ jobs:
   dash:
     name: Dash Build
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     defaults:
       run:
         working-directory: web/dash
@@ -86,6 +88,7 @@ jobs:
   dash0:
     name: Dash0 Build
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     defaults:
       run:
         working-directory: web/dash0
@@ -114,6 +117,7 @@ jobs:
   status0:
     name: Status0 Build
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     defaults:
       run:
         working-directory: web/status0
@@ -143,6 +147,7 @@ jobs:
     name: Build Binary
     runs-on: ubuntu-24.04
     needs: [dash, dash0, status0]
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     steps:
       - uses: actions/checkout@v6
 
@@ -198,6 +203,7 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-24.04
     needs: [build]
+    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
     defaults:
       run:
         working-directory: web/dash0
@@ -264,8 +270,15 @@ jobs:
     name: CI
     runs-on: ubuntu-24.04
     needs: [backend-lint, dash, dash0, status0, build, e2e-tests]
+    if: always()
     steps:
-      - run: echo "All checks passed"
+      - name: Verify no failures
+        run: |
+          if [[ "${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}" == "true" ]]; then
+            echo "One or more required jobs failed or were cancelled"
+            exit 1
+          fi
+          echo "All checks passed (or skipped for release-please branch)"
 
   docker:
     name: Build and Push Docker Image
