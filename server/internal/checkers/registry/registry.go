@@ -2,6 +2,7 @@
 package registry
 
 import (
+	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
@@ -9,7 +10,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkemail"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
-	"github.com/fclairamb/solidping/server/internal/checkers/checkgameserver"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkgrpc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkhttp"
@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkminecraft"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
@@ -112,8 +113,10 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkkafka.KafkaChecker{}, true
 	case checkerdef.CheckTypeMQTT:
 		return &checkmqtt.MQTTChecker{}, true
-	case checkerdef.CheckTypeGameServer:
-		return &checkgameserver.GameServerChecker{}, true
+	case checkerdef.CheckTypeA2S:
+		return &checka2s.A2SChecker{}, true
+	case checkerdef.CheckTypeMinecraft:
+		return &checkminecraft.MinecraftChecker{}, true
 	case checkerdef.CheckTypeRabbitMQ:
 		return &checkrabbitmq.RabbitMQChecker{}, true
 	case checkerdef.CheckTypeSNMP:
@@ -187,8 +190,10 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkkafka.KafkaConfig{}, true
 	case checkerdef.CheckTypeMQTT:
 		return &checkmqtt.MQTTConfig{}, true
-	case checkerdef.CheckTypeGameServer:
-		return &checkgameserver.GameServerConfig{}, true
+	case checkerdef.CheckTypeA2S:
+		return &checka2s.A2SConfig{}, true
+	case checkerdef.CheckTypeMinecraft:
+		return &checkminecraft.MinecraftConfig{}, true
 	case checkerdef.CheckTypeRabbitMQ:
 		return &checkrabbitmq.RabbitMQConfig{}, true
 	case checkerdef.CheckTypeSNMP:

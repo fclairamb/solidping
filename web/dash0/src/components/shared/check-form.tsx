@@ -30,7 +30,7 @@ import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } 
 import { useCheckTypes, useSampleConfigs } from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -68,7 +68,8 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "grpc", label: "gRPC", description: "Check gRPC service health" },
   { value: "kafka", label: "Kafka", description: "Check Kafka cluster health" },
   { value: "mqtt", label: "MQTT", description: "Check MQTT broker connectivity" },
-  { value: "gameserver", label: "Game Server", description: "Monitor game server via A2S protocol" },
+  { value: "a2s", label: "A2S Game Server", description: "Monitor Source engine game servers via A2S" },
+  { value: "minecraft", label: "Minecraft", description: "Monitor Minecraft servers (Java + Bedrock)" },
   { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
@@ -273,6 +274,7 @@ export function CheckForm({
   const [tls, setTls] = useState(getConfigField(initialData?.config, "tls") === "true");
   const [minPlayers, setMinPlayers] = useState(getConfigField(initialData?.config, "minPlayers"));
   const [maxPlayersField, setMaxPlayersField] = useState(getConfigField(initialData?.config, "maxPlayers"));
+  const [edition, setEdition] = useState(getConfigField(initialData?.config, "edition") || "java");
   const [brokers, setBrokers] = useState(
     Array.isArray(initialData?.config?.brokers)
       ? (initialData.config.brokers as string[]).join(", ")
@@ -485,9 +487,16 @@ export function CheckForm({
         if (topic) cfg.topic = topic;
         if (tls) cfg.tls = true;
         break;
-      case "gameserver":
+      case "a2s":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
+        if (minPlayers) cfg.minPlayers = parseInt(minPlayers, 10);
+        if (maxPlayersField) cfg.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
+      case "minecraft":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (edition && edition !== "java") cfg.edition = edition;
         if (minPlayers) cfg.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) cfg.maxPlayers = parseInt(maxPlayersField, 10);
         break;
@@ -513,7 +522,7 @@ export function CheckForm({
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
-    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField,
+    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
     waitSelector, keyword]);
 
@@ -654,10 +663,18 @@ export function CheckForm({
         if (topic) config.topic = topic;
         if (tls) config.tls = true;
         break;
-      case "gameserver":
+      case "a2s":
         if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
+        if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
+        if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
+      case "minecraft":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (edition && edition !== "java") config.edition = edition;
         if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
         break;
@@ -1082,7 +1099,7 @@ export function CheckForm({
             </div>
           </>
         );
-      case "gameserver":
+      case "a2s":
         return (
           <>
             <div className="space-y-2">
@@ -1091,6 +1108,32 @@ export function CheckForm({
                 <Input id="host" type="text" placeholder="game.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
                 <Input id="port" type="number" placeholder="27015" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
               </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1"><Label htmlFor="minPlayers">Min Players (optional)</Label><Input id="minPlayers" type="number" min={0} placeholder="0" value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if fewer players</p></div>
+              <div className="space-y-2 flex-1"><Label htmlFor="maxPlayers">Max Players (optional)</Label><Input id="maxPlayers" type="number" min={0} placeholder="0" value={maxPlayersField} onChange={(e) => setMaxPlayersField(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if more players</p></div>
+            </div>
+          </>
+        );
+      case "minecraft":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="play.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
+                <Input id="port" type="number" placeholder={edition === "bedrock" ? "19132" : "25565"} value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edition">Edition</Label>
+              <Select value={edition} onValueChange={setEdition}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="java">Java</SelectItem>
+                  <SelectItem value="bedrock">Bedrock</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-4">
               <div className="space-y-2 flex-1"><Label htmlFor="minPlayers">Min Players (optional)</Label><Input id="minPlayers" type="number" min={0} placeholder="0" value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if fewer players</p></div>
