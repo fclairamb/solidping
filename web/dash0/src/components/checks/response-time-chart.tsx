@@ -10,6 +10,7 @@ import {
   ReferenceArea,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
+import { useNavigate } from "@tanstack/react-router";
 import { useAllResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ interface ChartPoint {
   ts: number;
   durationMs: number | null;
   status: string;
+  uid?: string;
 }
 
 interface GapRegion {
@@ -193,6 +195,7 @@ export function ResponseTimeChart({
   initialFullRange,
   onSettingsChange,
 }: ResponseTimeChartProps) {
+  const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
 
@@ -245,6 +248,7 @@ export function ResponseTimeChart({
             ts: new Date(r.periodStart!).getTime(),
             durationMs: r.durationMs ?? 0,
             status: r.status ?? "up",
+            uid: r.uid,
           };
         });
 
@@ -480,6 +484,11 @@ export function ResponseTimeChart({
                           {data.status}
                         </p>
                       )}
+                      {data.uid && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Click point for details
+                        </p>
+                      )}
                     </div>
                   );
                 }}
@@ -511,6 +520,48 @@ export function ResponseTimeChart({
                 strokeWidth={2}
                 connectNulls={false}
                 animationDuration={300}
+                dot={(props) => {
+                  const dotProps = props as {
+                    cx?: number;
+                    cy?: number;
+                    payload?: ChartPoint;
+                    key?: React.Key | null;
+                  };
+                  const { cx, cy, payload, key } = dotProps;
+                  const reactKey =
+                    key == null ? undefined : (key as React.Key);
+                  if (cx == null || cy == null || !payload?.uid) {
+                    return <g key={reactKey} />;
+                  }
+                  const fill =
+                    payload.status === "down" ||
+                    payload.status === "unknown"
+                      ? COLOR_DOWN
+                      : COLOR_UP;
+                  return (
+                    <circle
+                      key={reactKey}
+                      cx={cx}
+                      cy={cy}
+                      r={3.5}
+                      fill={fill}
+                      style={{ cursor: "pointer" }}
+                      onClick={() =>
+                        navigate({
+                          to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                          params: {
+                            org,
+                            checkUid,
+                            resultUid: payload.uid!,
+                          },
+                        })
+                      }
+                    >
+                      <title>Click for details</title>
+                    </circle>
+                  );
+                }}
+                activeDot={{ r: 5, style: { cursor: "pointer" } }}
               />
             </AreaChart>
           </ResponsiveContainer>
