@@ -1,6 +1,8 @@
 {
   "title": "Prüfungen",
   "subtitle": "Verwalten Sie Ihre Überwachungsprüfungen",
+  "loadSample": "Beispiel laden…",
+  "noSamples": "Keine Beispiele für diesen Typ",
   "newCheck": "Neue Prüfung",
   "newGroup": "Neue Gruppe",
   "searchChecks": "Prüfungen durchsuchen...",

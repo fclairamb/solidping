@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
@@ -188,6 +189,7 @@ export function CheckForm({
   onCancel,
   onTypeChange,
 }: CheckFormProps) {
+  const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
   const { data: apiCheckTypes } = useCheckTypes(org);
   const { data: emailDomain } = useEmailAddressDomain();
@@ -317,11 +319,12 @@ export function CheckForm({
 
   // Lazy-loaded samples for the currently selected type
   const { data: fetchedSamples, refetch: fetchSamples, isFetching: isFetchingSamples } = useSampleConfigs(type);
-  const [showSamples, setShowSamples] = useState(false);
+  const [samplePickerOpen, setSamplePickerOpen] = useState(false);
 
-  // Reset sample dropdown when type changes
+  // Close sample picker when type changes; the query key includes type, so the
+  // next open will refetch automatically.
   useEffect(() => {
-    setShowSamples(false);
+    setSamplePickerOpen(false);
   }, [type]);
 
   // Interval options filtered by type constraints
@@ -1332,44 +1335,54 @@ export function CheckForm({
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isFetchingSamples}
-                    onClick={async () => {
-                      const result = await fetchSamples();
-                      if (result.data && result.data.length > 0) {
-                        setShowSamples(true);
+                  <Popover
+                    open={samplePickerOpen}
+                    onOpenChange={(open) => {
+                      setSamplePickerOpen(open);
+                      if (open) {
+                        void fetchSamples();
                       }
                     }}
-                    data-testid="check-load-template-button"
                   >
-                    {isFetchingSamples ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Template"
-                    )}
-                  </Button>
-                </div>
-              )}
-
-              {/* Sample list shown after clicking Template button */}
-              {showSamples && fetchedSamples && fetchedSamples.length > 0 && (
-                <div className="grid gap-1">
-                  {fetchedSamples.map((sample) => (
-                    <button
-                      key={sample.slug}
-                      type="button"
-                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-                      data-testid={`check-sample-${sample.slug}`}
-                      onClick={() => {
-                        applySample(sample);
-                        setShowSamples(false);
-                      }}
-                    >
-                      {sample.name}
-                    </button>
-                  ))}
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        data-testid="check-load-template-button"
+                        disabled={!type}
+                      >
+                        {t("loadSample", "Load sample…")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-1" align="end">
+                      {isFetchingSamples ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        </div>
+                      ) : !fetchedSamples || fetchedSamples.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          {t("noSamples", "No samples for this type")}
+                        </div>
+                      ) : (
+                        <div className="grid max-h-[280px] gap-0.5 overflow-y-auto">
+                          {fetchedSamples.map((sample) => (
+                            <button
+                              key={sample.slug}
+                              type="button"
+                              className="rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                              data-testid={`check-sample-${sample.slug}`}
+                              onClick={() => {
+                                applySample(sample);
+                                setSamplePickerOpen(false);
+                              }}
+                            >
+                              {sample.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
             </div>

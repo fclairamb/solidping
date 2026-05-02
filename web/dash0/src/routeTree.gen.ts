@@ -58,6 +58,7 @@ import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './rout
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
+import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
 const NoOrgRoute = NoOrgRouteImport.update({
   id: '/no-org',
@@ -315,6 +316,12 @@ const OrgsOrgChecksCheckUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgChecksCheckUidRoute,
   } as any)
+const OrgsOrgChecksCheckUidResultsResultUidRoute =
+  OrgsOrgChecksCheckUidResultsResultUidRouteImport.update({
+    id: '/results/$resultUid',
+    path: '/results/$resultUid',
+    getParentRoute: () => OrgsOrgChecksCheckUidRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -366,6 +373,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -407,6 +415,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -459,6 +468,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -512,6 +522,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -553,6 +564,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/status-pages/$statusPageUid'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   id:
     | '__root__'
     | '/'
@@ -604,6 +616,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -962,6 +975,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksCheckUidEditRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
     }
+    '/orgs/$org/checks/$checkUid/results/$resultUid': {
+      id: '/orgs/$org/checks/$checkUid/results/$resultUid'
+      path: '/results/$resultUid'
+      fullPath: '/orgs/$org/checks/$checkUid/results/$resultUid'
+      preLoaderRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRouteImport
+      parentRoute: typeof OrgsOrgChecksCheckUidRoute
+    }
   }
 }
 
@@ -984,11 +1004,14 @@ const OrgsOrgAccountRouteWithChildren = OrgsOrgAccountRoute._addFileChildren(
 interface OrgsOrgChecksCheckUidRouteChildren {
   OrgsOrgChecksCheckUidEditRoute: typeof OrgsOrgChecksCheckUidEditRoute
   OrgsOrgChecksCheckUidIndexRoute: typeof OrgsOrgChecksCheckUidIndexRoute
+  OrgsOrgChecksCheckUidResultsResultUidRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 
 const OrgsOrgChecksCheckUidRouteChildren: OrgsOrgChecksCheckUidRouteChildren = {
   OrgsOrgChecksCheckUidEditRoute: OrgsOrgChecksCheckUidEditRoute,
   OrgsOrgChecksCheckUidIndexRoute: OrgsOrgChecksCheckUidIndexRoute,
+  OrgsOrgChecksCheckUidResultsResultUidRoute:
+    OrgsOrgChecksCheckUidResultsResultUidRoute,
 }
 
 const OrgsOrgChecksCheckUidRouteWithChildren =

@@ -1,6 +1,8 @@
 {
   "title": "Comprobaciones",
   "subtitle": "Gestione sus comprobaciones de monitorización",
+  "loadSample": "Cargar muestra…",
+  "noSamples": "No hay muestras para este tipo",
   "newCheck": "Nueva comprobación",
   "newGroup": "Nuevo grupo",
   "searchChecks": "Buscar comprobaciones...",

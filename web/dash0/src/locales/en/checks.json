@@ -1,6 +1,8 @@
 {
   "title": "Checks",
   "subtitle": "Manage your monitoring checks",
+  "loadSample": "Load sample…",
+  "noSamples": "No samples for this type",
   "newCheck": "New Check",
   "newGroup": "New Group",
   "searchChecks": "Search checks...",
