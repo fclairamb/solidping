@@ -1,29 +1,128 @@
 {
   "title": "Servereinstellungen",
   "subtitle": "Serverweite Konfigurationsparameter verwalten",
+  "saved": "Einstellungen gespeichert.",
+  "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten",
+  "tabs": {
+    "web": "Web",
+    "mail": "E-Mail",
+    "emailInbox": "E-Mail-Posteingang",
+    "authentication": "Authentifizierung",
+    "performance": "Leistung"
+  },
   "web": {
-    "title": "Web-Einstellungen",
+    "title": "Web",
+    "description": "Konfigurieren Sie die Basis-URL und die Authentifizierungsdaten des Webservers.",
     "baseUrl": "Basis-URL",
+    "baseUrlPlaceholder": "https://solidping.beispiel.com",
+    "baseUrlHelp": "Öffentliche URL, unter der SolidPing erreichbar ist.",
+    "jwtSecret": "JWT-Secret",
+    "jwtSecretPlaceholder": "Neues JWT-Secret eingeben",
+    "jwtSecretHelp": "Wird zum Signieren von Authentifizierungstokens verwendet. Eine Änderung macht alle bestehenden Sitzungen ungültig.",
     "appName": "Anwendungsname"
   },
   "mail": {
-    "title": "E-Mail-Einstellungen",
+    "title": "E-Mail",
+    "description": "SMTP-Einstellungen für Benachrichtigungen und Einladungen konfigurieren.",
+    "enable": "E-Mail-Versand aktivieren",
     "host": "SMTP-Host",
+    "hostPlaceholder": "smtp.beispiel.com",
     "port": "SMTP-Port",
-    "from": "Absenderadresse",
     "username": "Benutzername",
+    "usernamePlaceholder": "benutzer@beispiel.com",
     "password": "Passwort",
-    "protocol": "Protokoll",
-    "enabled": "E-Mail aktiviert"
+    "passwordPlaceholder": "SMTP-Passwort",
+    "authType": "Auth-Typ",
+    "authOptions": {
+      "plain": "Plain",
+      "login": "Login",
+      "cramMd5": "CRAM-MD5"
+    },
+    "encryption": "Verschlüsselung",
+    "encryptionOptions": {
+      "none": "Keine",
+      "starttls": "STARTTLS",
+      "ssl": "SSL/TLS"
+    },
+    "from": "Absenderadresse",
+    "fromPlaceholder": "noreply@beispiel.com",
+    "fromName": "Absendername",
+    "fromNamePlaceholder": "SolidPing",
+    "test": {
+      "title": "Test-E-Mail",
+      "description": "Senden Sie eine Test-E-Mail, um Ihre SMTP-Konfiguration zu überprüfen.",
+      "recipient": "E-Mail des Empfängers",
+      "recipientPlaceholder": "empfaenger@beispiel.com",
+      "send": "Test-E-Mail senden",
+      "sending": "Senden..."
+    }
   },
   "auth": {
     "title": "Authentifizierungseinstellungen",
     "registrationEnabled": "Registrierung aktiviert",
-    "registrationEnabledDescription": "Neuen Benutzern die Registrierung erlauben."
+    "registrationEnabledDescription": "Neuen Benutzern die Registrierung erlauben.",
+    "providerDescription": "OAuth-Anmeldedaten für {{provider}} konfigurieren.",
+    "fields": {
+      "clientId": "Client ID",
+      "clientSecret": "Client Secret",
+      "appId": "App ID",
+      "signingSecret": "Signing Secret"
+    }
   },
   "performance": {
-    "title": "Leistungseinstellungen",
-    "subtitle": "Leistungsbezogene Parameter konfigurieren."
+    "title": "Leistung",
+    "subtitle": "Leistungsbezogene Parameter konfigurieren.",
+    "description": "Konfigurieren Sie die Anzahl gleichzeitiger Worker für Prüfungen und Aufträge. Änderungen werden erst nach einem Server-Neustart wirksam.",
+    "checkRunners": "Prüfungs-Worker",
+    "checkRunnersHelp": "Anzahl gleichzeitiger Goroutinen zum Ausführen der Prüfungen.",
+    "jobRunners": "Auftrags-Worker",
+    "jobRunnersHelp": "Anzahl gleichzeitiger Goroutinen zur Verarbeitung von Hintergrundaufträgen."
   },
-  "saved": "Einstellungen gespeichert."
+  "emailInbox": {
+    "title": "E-Mail-Posteingang",
+    "description": "Konfigurieren Sie den gemeinsamen JMAP-Posteingang, der von passiven E-Mail-Prüfungen verwendet wird. Fastmail, Stalwart und andere JMAP-fähige Anbieter werden unterstützt.",
+    "enable": "E-Mail-Posteingang aktivieren",
+    "sessionUrl": "JMAP-Sitzungs-URL",
+    "sessionUrlPlaceholder": "https://jmap.beispiel.com/.well-known/jmap",
+    "addressDomain": "Adress-Domain",
+    "addressDomainPlaceholder": "ingest.solidping.beispiel",
+    "username": "Benutzername",
+    "usernamePlaceholder": "ingest@beispiel.com",
+    "password": "Passwort",
+    "passwordPlaceholder": "JMAP-Passwort oder App-Token",
+    "inboxMailbox": "Posteingang",
+    "processedMailbox": "Postfach „Verarbeitet“",
+    "pollInterval": "Abrufintervall (Sekunden)",
+    "processedRetention": "Aufbewahrung „Verarbeitet“ (Tage)",
+    "failedRetention": "Aufbewahrung „Fehlgeschlagen“ (Tage)",
+    "rewriteBaseUrl": "Basis-URL umschreiben (erweitert)",
+    "rewriteBaseUrlPlaceholder": "https://proxy.beispiel.com (optional)",
+    "rewriteBaseUrlHelp": "Ersetzt die vom JMAP-Server veröffentlichte Basis-URL hinter einem Reverse-Proxy.",
+    "saveFailed": "Speichern der Einstellungen fehlgeschlagen",
+    "status": {
+      "title": "Status",
+      "description": "Live-Zustand des JMAP-Supervisors.",
+      "connection": "Verbindung:",
+      "connected": "Verbunden",
+      "disconnected": "Getrennt",
+      "disabled": "Deaktiviert",
+      "lastSync": "Letzte Synchronisation:",
+      "addressDomain": "Adress-Domain:",
+      "never": "nie",
+      "justNow": "gerade eben",
+      "secondsAgo": "vor {{count}} s",
+      "minutesAgo": "vor {{count}} Min",
+      "hoursAgo": "vor {{count}} Std",
+      "daysAgo": "vor {{count}} T"
+    },
+    "actions": {
+      "title": "Aktionen",
+      "test": "Verbindung testen",
+      "sync": "Jetzt synchronisieren",
+      "syncTriggered": "Synchronisation ausgelöst",
+      "testFailed": "Test fehlgeschlagen",
+      "syncFailed": "Synchronisation fehlgeschlagen",
+      "connectedMailboxes": "Verbunden. Postfächer: {{mailboxes}}"
+    }
+  }
 }

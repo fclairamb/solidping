@@ -1,12 +1,46 @@
 {
   "title": "Badges",
-  "subtitle": "Intégrez des badges de statut dans votre documentation",
-  "status": "Statut",
-  "availability": "Disponibilité",
-  "style": "Style",
+  "subtitle": "Générez des badges de statut intégrables pour vos vérifications",
+  "configuration": "Configuration",
+  "check": "Vérification",
+  "selectCheck": "Sélectionner une vérification",
+  "loadFailed": "Échec du chargement des vérifications",
+  "format": "Format",
   "period": "Période",
+  "style": "Style",
+  "customLabel": "Libellé personnalisé",
+  "customLabelPlaceholder": "Laisser vide pour utiliser le nom de la vérification",
   "preview": "Aperçu",
+  "refresh": "Actualiser",
+  "selectCheckPrompt": "Sélectionnez une vérification pour prévisualiser et générer les badges",
+  "download": "Télécharger",
+  "downloadDescription": "Téléchargez le badge dans différents formats",
+  "downloadFailed": "Échec du téléchargement du badge",
+  "embedCode": "Code d'intégration",
+  "embedCodeDescription": "Copiez l'URL ou le code d'intégration du badge pour votre README ou votre site",
+  "url": "URL",
   "markdown": "Markdown",
   "html": "HTML",
-  "copied": "Copié !"
+  "copied": "Copié",
+  "copiedToClipboard": "{{label}} copié dans le presse-papiers",
+  "formats": {
+    "status": "Statut",
+    "statusDescription": "Statut actuel up/down",
+    "availability": "Disponibilité",
+    "availabilityDescription": "Pourcentage de disponibilité",
+    "availabilityDuration": "Disponibilité + durée",
+    "availabilityDurationDescription": "% de disponibilité avec durée"
+  },
+  "periods": {
+    "1h": "1 heure",
+    "24h": "24 heures",
+    "7d": "7 jours",
+    "30d": "30 jours"
+  },
+  "styles": {
+    "flat": "Plat",
+    "flatSquare": "Plat carré"
+  },
+  "availability": "Disponibilité",
+  "status": "Statut"
 }

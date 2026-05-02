@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Organisation",
+    "subtitle": "Gérer les paramètres et les membres de l'organisation"
+  },
   "settings": {
     "title": "Paramètres de l'organisation",
     "autoJoin": "Inscription automatique",

@@ -15,5 +15,36 @@
   "web": "Web",
   "mail": "Mail",
   "authentication": "Authentification",
-  "performance": "Performance"
+  "performance": "Performance",
+  "test": {
+    "layoutTitle": "Outils de test",
+    "layoutSubtitle": "Créer et gérer des contrôles de test",
+    "notAvailable": "Les outils de test ne sont disponibles qu'en mode test (SP_RUNMODE=test)",
+    "tabs": {
+      "templates": "Modèles",
+      "bulk": "Contrôles en masse",
+      "generate": "Générer des données",
+      "reset": "Réinitialiser"
+    },
+    "reset": {
+      "title": "Supprimer tous les contrôles",
+      "description": "Supprimer tous les contrôles et leurs résultats associés de l'organisation <strong>{{org}}</strong>. Cette action est irréversible.",
+      "warning": "Cela supprimera définitivement tous les contrôles, leurs résultats, incidents et tâches de contrôle pour cette organisation.",
+      "button": "Supprimer tous les contrôles",
+      "confirmTitle": "Supprimer tous les contrôles ?",
+      "confirmDescription": "Cela supprimera définitivement tous les contrôles de l'organisation <strong>{{org}}</strong> avec toutes leurs données associées. Cette action est irréversible.",
+      "confirmAction": "Tout supprimer",
+      "deletedCount": "{{count}} contrôles supprimés",
+      "deletedWithFailures": "{{deleted}} supprimés, {{failed}} en échec",
+      "deleteFailed": "Échec de la suppression des contrôles"
+    }
+  },
+  "command": {
+    "searchPlaceholder": "Rechercher pages et contrôles...",
+    "noResults": "Aucun résultat.",
+    "groupPages": "Pages",
+    "groupAccount": "Compte",
+    "groupOrganization": "Organisation",
+    "groupChecks": "Contrôles"
+  }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,11 +24,13 @@ export const Route = createFileRoute("/orgs/$org/server/auth")({
   component: AuthSettingsPage,
 });
 
+type FieldKind = "clientId" | "clientSecret" | "appId" | "signingSecret";
+
 interface ProviderConfig {
   name: string;
   fields: {
     key: string;
-    label: string;
+    labelKey: FieldKind;
     secret: boolean;
   }[];
 }
@@ -36,71 +39,44 @@ const providers: ProviderConfig[] = [
   {
     name: "Google",
     fields: [
-      { key: "auth.google.client_id", label: "Client ID", secret: false },
-      {
-        key: "auth.google.client_secret",
-        label: "Client Secret",
-        secret: true,
-      },
+      { key: "auth.google.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.google.client_secret", labelKey: "clientSecret", secret: true },
     ],
   },
   {
     name: "GitHub",
     fields: [
-      { key: "auth.github.client_id", label: "Client ID", secret: false },
-      {
-        key: "auth.github.client_secret",
-        label: "Client Secret",
-        secret: true,
-      },
+      { key: "auth.github.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.github.client_secret", labelKey: "clientSecret", secret: true },
     ],
   },
   {
     name: "GitLab",
     fields: [
-      { key: "auth.gitlab.client_id", label: "Client ID", secret: false },
-      {
-        key: "auth.gitlab.client_secret",
-        label: "Client Secret",
-        secret: true,
-      },
+      { key: "auth.gitlab.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.gitlab.client_secret", labelKey: "clientSecret", secret: true },
     ],
   },
   {
     name: "Microsoft",
     fields: [
-      {
-        key: "auth.microsoft.client_id",
-        label: "Client ID",
-        secret: false,
-      },
-      {
-        key: "auth.microsoft.client_secret",
-        label: "Client Secret",
-        secret: true,
-      },
+      { key: "auth.microsoft.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.microsoft.client_secret", labelKey: "clientSecret", secret: true },
     ],
   },
   {
     name: "Slack",
     fields: [
-      { key: "auth.slack.app_id", label: "App ID", secret: false },
-      { key: "auth.slack.client_id", label: "Client ID", secret: false },
-      {
-        key: "auth.slack.client_secret",
-        label: "Client Secret",
-        secret: true,
-      },
-      {
-        key: "auth.slack.signing_secret",
-        label: "Signing Secret",
-        secret: true,
-      },
+      { key: "auth.slack.app_id", labelKey: "appId", secret: false },
+      { key: "auth.slack.client_id", labelKey: "clientId", secret: false },
+      { key: "auth.slack.client_secret", labelKey: "clientSecret", secret: true },
+      { key: "auth.slack.signing_secret", labelKey: "signingSecret", secret: true },
     ],
   },
 ];
 
 function AuthSettingsPage() {
+  const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
 
@@ -160,7 +136,7 @@ function AuthSettingsPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("server:unexpectedError"));
       }
     }
   };
@@ -211,7 +187,7 @@ function AuthSettingsPage() {
       {saved && (
         <Alert>
           <Check className="h-4 w-4" />
-          <AlertDescription>Settings saved.</AlertDescription>
+          <AlertDescription>{t("server:saved")}</AlertDescription>
         </Alert>
       )}
 
@@ -220,14 +196,16 @@ function AuthSettingsPage() {
           <CardHeader>
             <CardTitle className="text-lg">{provider.name}</CardTitle>
             <CardDescription>
-              Configure {provider.name} OAuth credentials.
+              {t("server:auth.providerDescription", { provider: provider.name })}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {provider.fields.map((field) => (
+              {provider.fields.map((field) => {
+                const label = t(`server:auth.fields.${field.labelKey}`);
+                return (
                 <div key={field.key} className="space-y-2">
-                  <Label htmlFor={field.key}>{field.label}</Label>
+                  <Label htmlFor={field.key}>{label}</Label>
                   {field.secret &&
                   isSecretStored(field.key) &&
                   !editingSecrets.has(field.key) ? (
@@ -244,7 +222,7 @@ function AuthSettingsPage() {
                         size="sm"
                         onClick={() => startEditing(field.key)}
                       >
-                        Edit
+                        {t("common:edit")}
                       </Button>
                     </div>
                   ) : (
@@ -257,7 +235,7 @@ function AuthSettingsPage() {
                               ? "password"
                               : "text"
                           }
-                          placeholder={field.label}
+                          placeholder={label}
                           value={values[field.key] ?? ""}
                           onChange={(e) =>
                             setValues((prev) => ({
@@ -290,13 +268,14 @@ function AuthSettingsPage() {
                           size="sm"
                           onClick={() => cancelEditing(field.key)}
                         >
-                          Cancel
+                          {t("common:cancel")}
                         </Button>
                       )}
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
               <Button
                 onClick={() => handleSave(provider.name)}
                 disabled={setParam.isPending}
@@ -304,10 +283,10 @@ function AuthSettingsPage() {
                 {setParam.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Saving...
+                    {t("common:saving")}
                   </>
                 ) : (
-                  "Save"
+                  t("common:save")
                 )}
               </Button>
             </div>

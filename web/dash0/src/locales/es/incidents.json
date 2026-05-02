@@ -15,18 +15,59 @@
   "noResolved": "Aún no hay incidentes resueltos",
   "noIncidents": "No se han registrado incidentes",
   "noIncidentsFound": "No se han encontrado incidentes",
+  "incidentNotFound": "Incidente no encontrado",
+  "backToIncidents": "Volver a incidentes",
   "filterByState": "Filtrar por estado",
   "relapse": "{{count}}× recaída",
   "active": "Activo",
   "resolved": "Resuelto",
+  "reopened": "Reabierto",
+  "reopenedTimes": "Reabierto ({{count}} {{unit}})",
+  "timeUnit": {
+    "time": "vez",
+    "times": "veces"
+  },
+  "escalated": "Escalado",
+  "fallbackTitle": "Incidente",
+  "actions": {
+    "acknowledge": "Reconocer",
+    "resolve": "Resolver",
+    "acknowledged": "Incidente reconocido",
+    "resolved": "Incidente resuelto",
+    "acknowledgeFailed": "Error al reconocer el incidente",
+    "resolveFailed": "Error al resolver el incidente"
+  },
   "detail": {
     "incidentDetail": "Detalle del incidente",
+    "incidentDetails": "Detalles del incidente",
+    "incidentDetailsDescription": "Información sobre este incidente",
     "startedAt": "Iniciado el",
     "resolvedAt": "Resuelto el",
     "acknowledgedAt": "Reconocido el",
     "escalatedAt": "Escalado el",
     "failureCount": "Número de fallos",
-    "relapseCount": "Número de recaídas"
+    "relapseCount": "Número de recaídas",
+    "descriptionLabel": "Descripción",
+    "checkLabel": "Comprobación",
+    "checkTypeLabel": "Tipo de comprobación",
+    "totalDuration": "Duración total",
+    "ongoing": "(en curso)"
+  },
+  "timeline": {
+    "title": "Cronología",
+    "description": "Eventos clave de este incidente",
+    "started": "Iniciado",
+    "acknowledged": "Reconocido",
+    "escalated": "Escalado",
+    "reopenedRelapse": "Reabierto (recaída n.º {{count}})",
+    "resolved": "Resuelto"
+  },
+  "eventLog": {
+    "title": "Registro de eventos",
+    "description": "Historial detallado de los eventos del incidente",
+    "time": "Hora",
+    "eventType": "Tipo de evento",
+    "actor": "Actor"
   },
   "time": {
     "daysAgo": "hace {{count}} d",

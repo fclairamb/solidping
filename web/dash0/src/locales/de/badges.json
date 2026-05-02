@@ -1,12 +1,46 @@
 {
   "title": "Abzeichen",
-  "subtitle": "Statusabzeichen in Ihre Dokumentation einbetten",
-  "status": "Status",
-  "availability": "Verfügbarkeit",
-  "style": "Stil",
+  "subtitle": "Erstellen Sie einbettbare Statusabzeichen für Ihre Prüfungen",
+  "configuration": "Konfiguration",
+  "check": "Prüfung",
+  "selectCheck": "Prüfung auswählen",
+  "loadFailed": "Prüfungen konnten nicht geladen werden",
+  "format": "Format",
   "period": "Zeitraum",
+  "style": "Stil",
+  "customLabel": "Benutzerdefinierte Beschriftung",
+  "customLabelPlaceholder": "Leer lassen, um den Prüfungsnamen zu verwenden",
   "preview": "Vorschau",
+  "refresh": "Aktualisieren",
+  "selectCheckPrompt": "Wählen Sie eine Prüfung, um eine Vorschau zu sehen und Abzeichen zu erstellen",
+  "download": "Herunterladen",
+  "downloadDescription": "Abzeichen in verschiedenen Formaten herunterladen",
+  "downloadFailed": "Herunterladen des Abzeichens fehlgeschlagen",
+  "embedCode": "Einbettungscode",
+  "embedCodeDescription": "Kopieren Sie die URL oder den Einbettungscode für Ihre README oder Website",
+  "url": "URL",
   "markdown": "Markdown",
   "html": "HTML",
-  "copied": "Kopiert!"
+  "copied": "Kopiert",
+  "copiedToClipboard": "{{label}} in Zwischenablage kopiert",
+  "formats": {
+    "status": "Status",
+    "statusDescription": "Aktueller up/down-Status",
+    "availability": "Verfügbarkeit",
+    "availabilityDescription": "Verfügbarkeit in Prozent",
+    "availabilityDuration": "Verfügbarkeit + Dauer",
+    "availabilityDurationDescription": "Verfügbarkeit in % mit Dauer"
+  },
+  "periods": {
+    "1h": "1 Stunde",
+    "24h": "24 Stunden",
+    "7d": "7 Tage",
+    "30d": "30 Tage"
+  },
+  "styles": {
+    "flat": "Flach",
+    "flatSquare": "Flach quadratisch"
+  },
+  "availability": "Verfügbarkeit",
+  "status": "Status"
 }

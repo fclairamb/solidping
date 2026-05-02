@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,6 +24,7 @@ function slugify(name: string): string {
 }
 
 function NoOrgPage() {
+  const { t } = useTranslation("auth");
   const navigate = useNavigate();
   const createOrg = useCreateOrg();
   const { logout } = useAuth();
@@ -53,7 +55,7 @@ function NoOrgPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("unexpectedError"));
       }
     }
   };
@@ -65,9 +67,9 @@ function NoOrgPage() {
           <div className="flex justify-center mb-4">
             <Activity className="h-12 w-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Welcome to SolidPing</CardTitle>
+          <CardTitle className="text-2xl">{t("noOrg.welcome")}</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Create your organization to get started
+            {t("noOrg.subtitle")}
           </p>
         </CardHeader>
         <CardContent>
@@ -80,11 +82,11 @@ function NoOrgPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="orgName">Organization name</Label>
+              <Label htmlFor="orgName">{t("noOrg.orgName")}</Label>
               <Input
                 id="orgName"
                 type="text"
-                placeholder="My Company"
+                placeholder={t("noOrg.orgNamePlaceholder")}
                 value={name}
                 onChange={(e) => handleNameChange(e.target.value)}
                 required
@@ -93,11 +95,11 @@ function NoOrgPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="orgSlug">URL slug</Label>
+              <Label htmlFor="orgSlug">{t("noOrg.slug")}</Label>
               <Input
                 id="orgSlug"
                 type="text"
-                placeholder="my-company"
+                placeholder={t("noOrg.slugPlaceholder")}
                 value={slug}
                 onChange={(e) => {
                   setSlug(e.target.value);
@@ -105,11 +107,11 @@ function NoOrgPage() {
                 }}
                 required
                 pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
-                title="3-20 characters, lowercase letters, numbers, and hyphens. Must start and end with a letter or number."
+                title={t("noOrg.slugTitle")}
                 disabled={createOrg.isPending}
               />
               <p className="text-xs text-muted-foreground">
-                This will be used in URLs: /orgs/{slug || "my-company"}
+                {t("noOrg.slugHelp", { slug: slug || "my-company" })}
               </p>
             </div>
 
@@ -121,10 +123,10 @@ function NoOrgPage() {
               {createOrg.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating...
+                  {t("noOrg.creating")}
                 </>
               ) : (
-                "Create organization"
+                t("noOrg.createOrg")
               )}
             </Button>
           </form>
@@ -142,7 +144,7 @@ function NoOrgPage() {
                 });
               }}
             >
-              Sign out and use a different account
+              {t("noOrg.signOut")}
             </Button>
           </div>
         </CardContent>

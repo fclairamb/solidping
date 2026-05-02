@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Organización",
+    "subtitle": "Gestione los ajustes y miembros de la organización"
+  },
   "settings": {
     "title": "Ajustes de la organización",
     "autoJoin": "Adhesión automática",

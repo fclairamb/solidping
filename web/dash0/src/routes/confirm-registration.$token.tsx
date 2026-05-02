@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
@@ -11,6 +12,7 @@ export const Route = createFileRoute("/confirm-registration/$token")({
 });
 
 function ConfirmRegistrationPage() {
+  const { t } = useTranslation("auth");
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const confirmRegistration = useConfirmRegistration();
@@ -35,7 +37,7 @@ function ConfirmRegistrationPage() {
         }, 1500);
       })
       .catch((err) => {
-        setError(err.message || "Failed to confirm registration");
+        setError(err.message || t("confirm.failedMessage"));
       });
   }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -48,23 +50,21 @@ function ConfirmRegistrationPage() {
               <div className="flex justify-center mb-4">
                 <AlertCircle className="h-12 w-12 text-destructive" />
               </div>
-              <CardTitle className="text-2xl">Confirmation failed</CardTitle>
+              <CardTitle className="text-2xl">{t("confirm.failed")}</CardTitle>
             </>
           ) : confirmed ? (
             <>
               <div className="flex justify-center mb-4">
                 <CheckCircle2 className="h-12 w-12 text-green-500" />
               </div>
-              <CardTitle className="text-2xl">Account confirmed</CardTitle>
+              <CardTitle className="text-2xl">{t("confirm.confirmed")}</CardTitle>
             </>
           ) : (
             <>
               <div className="flex justify-center mb-4">
                 <Loader2 className="h-12 w-12 animate-spin text-primary" />
               </div>
-              <CardTitle className="text-2xl">
-                Confirming your account...
-              </CardTitle>
+              <CardTitle className="text-2xl">{t("confirm.confirming")}</CardTitle>
             </>
           )}
         </CardHeader>
@@ -76,14 +76,10 @@ function ConfirmRegistrationPage() {
             </Alert>
           )}
           {confirmed && (
-            <p className="text-muted-foreground">
-              Redirecting you to your dashboard...
-            </p>
+            <p className="text-muted-foreground">{t("confirm.redirecting")}</p>
           )}
           {!error && !confirmed && (
-            <p className="text-muted-foreground">
-              Please wait while we verify your email...
-            </p>
+            <p className="text-muted-foreground">{t("confirm.verifying")}</p>
           )}
         </CardContent>
       </Card>

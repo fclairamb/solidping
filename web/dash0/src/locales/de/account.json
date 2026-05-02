@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Konto",
+    "subtitle": "Verwalten Sie Ihre persönlichen Einstellungen und Zugriffstokens"
+  },
   "profile": {
     "title": "Profil",
     "subtitle": "Aktualisieren Sie Ihren Anzeigenamen. So sehen andere Benutzer Sie.",

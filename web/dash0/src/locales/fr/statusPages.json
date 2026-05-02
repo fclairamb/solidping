@@ -2,17 +2,35 @@
   "title": "Pages de statut",
   "subtitle": "Gérez vos pages de statut publiques",
   "newStatusPage": "Nouvelle page de statut",
-  "noStatusPages": "Aucune page de statut pour le moment",
+  "noStatusPages": "Aucune page de statut configurée",
+  "noMatch": "Aucune page de statut ne correspond à votre recherche",
+  "searchPlaceholder": "Rechercher des pages de statut...",
+  "createFirst": "Créer votre première page de statut",
   "viewDetails": "Voir les détails",
   "edit": "Modifier",
+  "delete": "Supprimer",
   "enabled": "Activée",
   "disabled": "Désactivée",
+  "table": {
+    "name": "Nom",
+    "slug": "Identifiant",
+    "visibility": "Visibilité",
+    "status": "Statut"
+  },
+  "visibility": {
+    "public": "public",
+    "restricted": "restreint"
+  },
+  "deleteDialog": {
+    "title": "Supprimer la page de statut",
+    "description": "Voulez-vous vraiment supprimer cette page de statut ? Cette action est irréversible."
+  },
   "form": {
     "title": "Titre",
     "slug": "Identifiant",
     "description": "Description",
-    "checks": "Contrôles",
-    "selectChecks": "Sélectionner les contrôles à afficher",
+    "checks": "Vérifications",
+    "selectChecks": "Sélectionner les vérifications à afficher",
     "historyDays": "Jours d'historique",
     "showAvailability": "Afficher la disponibilité",
     "showResponseTime": "Afficher le temps de réponse",
@@ -23,11 +41,44 @@
   "detail": {
     "configuration": "Configuration",
     "preview": "Aperçu",
-    "publicUrl": "URL publique"
+    "publicUrl": "URL publique",
+    "view": "Voir",
+    "sections": "Sections",
+    "noSections": "Aucune section pour le moment"
+  },
+  "sections": {
+    "add": "Ajouter une section",
+    "addDescription": "Créez une nouvelle section pour regrouper des vérifications sur cette page de statut.",
+    "name": "Nom",
+    "slug": "Identifiant",
+    "namePlaceholder": "Services principaux",
+    "slugPlaceholder": "services-principaux",
+    "create": "Créer la section",
+    "created": "Section créée",
+    "createFailed": "Échec de la création de la section",
+    "delete": "Supprimer la section",
+    "deleteDescription": "Supprimer cette section et toutes ses ressources associées ? Les vérifications elles-mêmes ne seront pas affectées.",
+    "deleted": "Section supprimée",
+    "deleteFailed": "Échec de la suppression de la section",
+    "empty": "Aucune vérification dans cette section pour le moment"
+  },
+  "resources": {
+    "add": "Ajouter une vérification",
+    "addToSection": "Ajouter une vérification à la section",
+    "addDescription": "Sélectionnez une vérification à ajouter à cette section.",
+    "selectCheck": "Sélectionner une vérification...",
+    "added": "Vérification ajoutée à la section",
+    "addFailed": "Échec de l'ajout de la vérification",
+    "remove": "Retirer la vérification",
+    "removeDescription": "Retirer cette vérification de la section ? La vérification elle-même ne sera pas supprimée.",
+    "removed": "Vérification retirée de la section",
+    "removeFailed": "Échec du retrait de la vérification",
+    "removeButton": "Retirer"
   },
   "toast": {
-    "created": "Page de statut créée",
-    "updated": "Page de statut mise à jour",
-    "deleted": "Page de statut supprimée"
+    "created": "Page de statut créée avec succès",
+    "updated": "Page de statut mise à jour avec succès",
+    "deleted": "Page de statut supprimée avec succès",
+    "deleteFailed": "Échec de la suppression de la page de statut"
   }
 }

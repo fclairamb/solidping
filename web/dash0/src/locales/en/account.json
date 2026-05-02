@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Account",
+    "subtitle": "Manage your personal settings and access tokens"
+  },
   "profile": {
     "title": "Profile",
     "subtitle": "Update your display name. This is how other users will see you.",

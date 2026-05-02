@@ -15,18 +15,59 @@
   "noResolved": "Noch keine gelösten Vorfälle",
   "noIncidents": "Es wurden keine Vorfälle aufgezeichnet",
   "noIncidentsFound": "Keine Vorfälle gefunden",
+  "incidentNotFound": "Vorfall nicht gefunden",
+  "backToIncidents": "Zurück zu Vorfälle",
   "filterByState": "Nach Status filtern",
   "relapse": "{{count}}× Rückfall",
   "active": "Aktiv",
   "resolved": "Gelöst",
+  "reopened": "Wieder geöffnet",
+  "reopenedTimes": "Wieder geöffnet ({{count}} {{unit}})",
+  "timeUnit": {
+    "time": "mal",
+    "times": "mal"
+  },
+  "escalated": "Eskaliert",
+  "fallbackTitle": "Vorfall",
+  "actions": {
+    "acknowledge": "Bestätigen",
+    "resolve": "Auflösen",
+    "acknowledged": "Vorfall bestätigt",
+    "resolved": "Vorfall aufgelöst",
+    "acknowledgeFailed": "Bestätigen des Vorfalls fehlgeschlagen",
+    "resolveFailed": "Auflösen des Vorfalls fehlgeschlagen"
+  },
   "detail": {
-    "incidentDetail": "Vorfallsdetails",
+    "incidentDetail": "Vorfallsdetail",
+    "incidentDetails": "Vorfallsdetails",
+    "incidentDetailsDescription": "Informationen zu diesem Vorfall",
     "startedAt": "Begonnen am",
-    "resolvedAt": "Gelöst am",
+    "resolvedAt": "Aufgelöst am",
     "acknowledgedAt": "Bestätigt am",
     "escalatedAt": "Eskaliert am",
     "failureCount": "Anzahl Fehler",
-    "relapseCount": "Anzahl Rückfälle"
+    "relapseCount": "Anzahl Rückfälle",
+    "descriptionLabel": "Beschreibung",
+    "checkLabel": "Prüfung",
+    "checkTypeLabel": "Prüfungstyp",
+    "totalDuration": "Gesamtdauer",
+    "ongoing": "(läuft noch)"
+  },
+  "timeline": {
+    "title": "Zeitleiste",
+    "description": "Wichtige Ereignisse in diesem Vorfall",
+    "started": "Begonnen",
+    "acknowledged": "Bestätigt",
+    "escalated": "Eskaliert",
+    "reopenedRelapse": "Wieder geöffnet (Rückfall Nr. {{count}})",
+    "resolved": "Aufgelöst"
+  },
+  "eventLog": {
+    "title": "Ereignisprotokoll",
+    "description": "Detaillierter Verlauf der Vorfallsereignisse",
+    "time": "Zeit",
+    "eventType": "Ereignistyp",
+    "actor": "Akteur"
   },
   "time": {
     "daysAgo": "vor {{count}} T",

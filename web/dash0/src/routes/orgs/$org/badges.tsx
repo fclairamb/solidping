@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   Copy,
   Check as CheckIcon,
@@ -58,38 +59,39 @@ export const Route = createFileRoute("/orgs/$org/badges")({
   component: BadgesPage,
 });
 
-const badgeFormats = [
-  { value: "status" as const, label: "Status", description: "Current up/down status" },
-  { value: "availability" as const, label: "Availability", description: "Uptime percentage" },
-  { value: "availability-duration" as const, label: "Availability + Duration", description: "Uptime % with duration" },
+const badgeFormats: { value: BadgeFormat; labelKey: string; descriptionKey: string }[] = [
+  { value: "status", labelKey: "formats.status", descriptionKey: "formats.statusDescription" },
+  { value: "availability", labelKey: "formats.availability", descriptionKey: "formats.availabilityDescription" },
+  { value: "availability-duration", labelKey: "formats.availabilityDuration", descriptionKey: "formats.availabilityDurationDescription" },
 ];
 
-const badgePeriods = [
-  { value: "1h" as const, label: "1 hour" },
-  { value: "24h" as const, label: "24 hours" },
-  { value: "7d" as const, label: "7 days" },
-  { value: "30d" as const, label: "30 days" },
+const badgePeriods: { value: BadgePeriod; labelKey: string }[] = [
+  { value: "1h", labelKey: "periods.1h" },
+  { value: "24h", labelKey: "periods.24h" },
+  { value: "7d", labelKey: "periods.7d" },
+  { value: "30d", labelKey: "periods.30d" },
 ];
 
-const badgeStyles = [
-  { value: "flat" as const, label: "Flat" },
-  { value: "flat-square" as const, label: "Flat Square" },
+const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
+  { value: "flat", labelKey: "styles.flat" },
+  { value: "flat-square", labelKey: "styles.flatSquare" },
 ];
 
 function CopyButton({ text, label }: { text: string; label: string }) {
+  const { t } = useTranslation("badges");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(text);
     setCopied(true);
-    toast.success(`${label} copied to clipboard`);
+    toast.success(t("copiedToClipboard", { label }));
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
     <Button variant="outline" size="sm" onClick={handleCopy}>
       {copied ? <CheckIcon className="mr-1.5 h-3.5 w-3.5" /> : <Copy className="mr-1.5 h-3.5 w-3.5" />}
-      {copied ? "Copied" : label}
+      {copied ? t("copied") : label}
     </Button>
   );
 }
@@ -109,6 +111,7 @@ function BadgePreview({
   style: BadgeStyle;
   customLabel: string;
 }) {
+  const { t } = useTranslation("badges");
   const imgRef = useRef<HTMLImageElement>(null);
   const [cacheBust, setCacheBust] = useState(() => Date.now());
 
@@ -142,13 +145,12 @@ function BadgePreview({
           return;
         }
 
-        // Convert SVG to PNG/JPG via canvas
         const img = new window.Image();
         const svgBlob = new Blob([svgText], { type: "image/svg+xml" });
         const svgUrl = URL.createObjectURL(svgBlob);
 
         img.onload = () => {
-          const scale = 3; // High-res
+          const scale = 3;
           const canvas = document.createElement("canvas");
           canvas.width = img.naturalWidth * scale;
           canvas.height = img.naturalHeight * scale;
@@ -178,21 +180,19 @@ function BadgePreview({
         };
         img.src = svgUrl;
       } catch {
-        toast.error("Failed to download badge");
+        toast.error(t("downloadFailed"));
       }
     },
-    [badgePath, identifier, format]
+    [badgePath, identifier, format, t]
   );
 
-  // Cache-bust preview with timestamp
   const previewUrl = `${badgePath}${query ? "&" : "?"}t=${cacheBust}`;
 
   return (
     <div className="space-y-6">
-      {/* Live Preview */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">Preview</CardTitle>
+          <CardTitle className="text-base">{t("preview")}</CardTitle>
           <Button
             variant="outline"
             size="sm"
@@ -200,7 +200,7 @@ function BadgePreview({
             data-testid="badge-refresh-preview"
           >
             <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            Refresh
+            {t("refresh")}
           </Button>
         </CardHeader>
         <CardContent>
@@ -216,11 +216,10 @@ function BadgePreview({
         </CardContent>
       </Card>
 
-      {/* Download */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Download</CardTitle>
-          <CardDescription>Download the badge in different formats</CardDescription>
+          <CardTitle className="text-base">{t("download")}</CardTitle>
+          <CardDescription>{t("downloadDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="flex flex-wrap gap-2">
@@ -240,17 +239,16 @@ function BadgePreview({
         </CardContent>
       </Card>
 
-      {/* Embed Codes */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Embed Code</CardTitle>
-          <CardDescription>Copy the badge URL or embed code for your README or website</CardDescription>
+          <CardTitle className="text-base">{t("embedCode")}</CardTitle>
+          <CardDescription>{t("embedCodeDescription")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">URL</Label>
-              <CopyButton text={badgeUrl} label="URL" />
+              <Label className="text-xs text-muted-foreground">{t("url")}</Label>
+              <CopyButton text={badgeUrl} label={t("url")} />
             </div>
             <code data-testid="badge-embed-url" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
               {badgeUrl}
@@ -258,8 +256,8 @@ function BadgePreview({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">Markdown</Label>
-              <CopyButton text={markdownCode} label="Markdown" />
+              <Label className="text-xs text-muted-foreground">{t("markdown")}</Label>
+              <CopyButton text={markdownCode} label={t("markdown")} />
             </div>
             <code data-testid="badge-embed-markdown" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
               {markdownCode}
@@ -267,8 +265,8 @@ function BadgePreview({
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">HTML</Label>
-              <CopyButton text={htmlCode} label="HTML" />
+              <Label className="text-xs text-muted-foreground">{t("html")}</Label>
+              <CopyButton text={htmlCode} label={t("html")} />
             </div>
             <code data-testid="badge-embed-html" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
               {htmlCode}
@@ -281,6 +279,7 @@ function BadgePreview({
 }
 
 function BadgesPage() {
+  const { t } = useTranslation("badges");
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
@@ -291,7 +290,6 @@ function BadgesPage() {
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
 
-  // Resolve check: match by UID first, then by slug
   const selectedCheck = search.check
     ? checks.find((c) => c.uid === search.check) ??
       checks.find((c) => c.slug === search.check)
@@ -301,7 +299,6 @@ function BadgesPage() {
     navigate({
       search: (prev: BadgeSearch) => {
         const next = { ...prev, ...updates };
-        // Strip defaults to keep URL clean
         if (next.format === "status") delete next.format;
         if (next.period === "24h") delete next.period;
         if (next.style === "flat") delete next.style;
@@ -314,40 +311,35 @@ function BadgesPage() {
 
   const handleCheckChange = (uid: string) => {
     const check = checks.find((c) => c.uid === uid);
-    // Prefer slug for cleaner URL, fall back to UID
     updateSearch({ check: check?.slug || uid });
   };
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">Badges</h1>
-        <p className="text-muted-foreground">
-          Generate embeddable status badges for your checks
-        </p>
+        <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+        <p className="text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[400px_1fr]">
-        {/* Configuration Panel */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Configuration</CardTitle>
+            <CardTitle className="text-base">{t("configuration")}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Check selector */}
             <div className="space-y-2">
-              <Label>Check</Label>
+              <Label>{t("check")}</Label>
               {isLoading ? (
                 <Skeleton className="h-10 w-full" />
               ) : error ? (
-                <p className="text-sm text-destructive">Failed to load checks</p>
+                <p className="text-sm text-destructive">{t("loadFailed")}</p>
               ) : (
                 <Select
                   value={selectedCheck?.uid ?? ""}
                   onValueChange={handleCheckChange}
                 >
                   <SelectTrigger data-testid="badge-check-select">
-                    <SelectValue placeholder="Select a check" />
+                    <SelectValue placeholder={t("selectCheck")} />
                   </SelectTrigger>
                   <SelectContent>
                     {checks.map((check) => (
@@ -360,9 +352,8 @@ function BadgesPage() {
               )}
             </div>
 
-            {/* Badge format */}
             <div className="space-y-2">
-              <Label>Format</Label>
+              <Label>{t("format")}</Label>
               <Select
                 value={format}
                 onValueChange={(v) => updateSearch({ format: v as BadgeFormat })}
@@ -374,8 +365,8 @@ function BadgesPage() {
                   {badgeFormats.map((f) => (
                     <SelectItem key={f.value} value={f.value}>
                       <div>
-                        <span>{f.label}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{f.description}</span>
+                        <span>{t(f.labelKey)}</span>
+                        <span className="ml-2 text-xs text-muted-foreground">{t(f.descriptionKey)}</span>
                       </div>
                     </SelectItem>
                   ))}
@@ -383,10 +374,9 @@ function BadgesPage() {
               </Select>
             </div>
 
-            {/* Period (only for availability formats) */}
             {format !== "status" && (
               <div className="space-y-2">
-                <Label>Period</Label>
+                <Label>{t("period")}</Label>
                 <Select
                   value={period}
                   onValueChange={(v) => updateSearch({ period: v as BadgePeriod })}
@@ -397,7 +387,7 @@ function BadgesPage() {
                   <SelectContent>
                     {badgePeriods.map((p) => (
                       <SelectItem key={p.value} value={p.value}>
-                        {p.label}
+                        {t(p.labelKey)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -405,9 +395,8 @@ function BadgesPage() {
               </div>
             )}
 
-            {/* Style */}
             <div className="space-y-2">
-              <Label>Style</Label>
+              <Label>{t("style")}</Label>
               <Select
                 value={style}
                 onValueChange={(v) => updateSearch({ style: v as BadgeStyle })}
@@ -418,19 +407,18 @@ function BadgesPage() {
                 <SelectContent>
                   {badgeStyles.map((s) => (
                     <SelectItem key={s.value} value={s.value}>
-                      {s.label}
+                      {t(s.labelKey)}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Custom label */}
             <div className="space-y-2">
-              <Label>Custom Label</Label>
+              <Label>{t("customLabel")}</Label>
               <Input
                 data-testid="badge-custom-label"
-                placeholder="Leave empty for check name"
+                placeholder={t("customLabelPlaceholder")}
                 value={customLabel}
                 onChange={(e) => updateSearch({ label: e.target.value })}
               />
@@ -438,7 +426,6 @@ function BadgesPage() {
           </CardContent>
         </Card>
 
-        {/* Preview & Embed Panel */}
         <div>
           {selectedCheck ? (
             <BadgePreview
@@ -452,9 +439,7 @@ function BadgesPage() {
           ) : (
             <Card>
               <CardContent className="flex items-center justify-center py-16">
-                <p className="text-muted-foreground">
-                  Select a check to preview and generate badges
-                </p>
+                <p className="text-muted-foreground">{t("selectCheckPrompt")}</p>
               </CardContent>
             </Card>
           )}

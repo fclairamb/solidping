@@ -1,12 +1,46 @@
 {
   "title": "Badges",
-  "subtitle": "Embed status badges in your documentation",
-  "status": "Status",
-  "availability": "Availability",
-  "style": "Style",
+  "subtitle": "Generate embeddable status badges for your checks",
+  "configuration": "Configuration",
+  "check": "Check",
+  "selectCheck": "Select a check",
+  "loadFailed": "Failed to load checks",
+  "format": "Format",
   "period": "Period",
+  "style": "Style",
+  "customLabel": "Custom Label",
+  "customLabelPlaceholder": "Leave empty for check name",
   "preview": "Preview",
+  "refresh": "Refresh",
+  "selectCheckPrompt": "Select a check to preview and generate badges",
+  "download": "Download",
+  "downloadDescription": "Download the badge in different formats",
+  "downloadFailed": "Failed to download badge",
+  "embedCode": "Embed Code",
+  "embedCodeDescription": "Copy the badge URL or embed code for your README or website",
+  "url": "URL",
   "markdown": "Markdown",
   "html": "HTML",
-  "copied": "Copied!"
+  "copied": "Copied",
+  "copiedToClipboard": "{{label}} copied to clipboard",
+  "formats": {
+    "status": "Status",
+    "statusDescription": "Current up/down status",
+    "availability": "Availability",
+    "availabilityDescription": "Uptime percentage",
+    "availabilityDuration": "Availability + Duration",
+    "availabilityDurationDescription": "Uptime % with duration"
+  },
+  "periods": {
+    "1h": "1 hour",
+    "24h": "24 hours",
+    "7d": "7 days",
+    "30d": "30 days"
+  },
+  "styles": {
+    "flat": "Flat",
+    "flatSquare": "Flat Square"
+  },
+  "availability": "Availability",
+  "status": "Status"
 }

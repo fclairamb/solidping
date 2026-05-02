@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useStatusPage, useUpdateStatusPage } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +13,7 @@ export const Route = createFileRoute(
 });
 
 function StatusPageEditPage() {
+  const { t } = useTranslation("statusPages");
   const navigate = useNavigate();
   const { org, statusPageUid } = Route.useParams();
   const { data: page, isLoading, error, refetch } = useStatusPage(org, statusPageUid);
@@ -64,7 +66,7 @@ function StatusPageEditPage() {
           isDefault: data.isDefault,
           enabled: data.enabled,
         });
-        toast.success("Status page updated successfully");
+        toast.success(t("toast.updated"));
         navigate({
           to: "/orgs/$org/status-pages/$statusPageUid",
           params: { org, statusPageUid: page.uid },

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +20,7 @@ export const Route = createFileRoute("/invite/$token")({
 });
 
 function AcceptInvitePage() {
+  const { t } = useTranslation(["auth", "common"]);
   const { token } = Route.useParams();
   const navigate = useNavigate();
   const { data: inviteInfo, isLoading: infoLoading, error: infoError } = useInviteInfo(token);
@@ -45,7 +47,7 @@ function AcceptInvitePage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("auth:unexpectedError"));
       }
     }
   };
@@ -55,12 +57,12 @@ function AcceptInvitePage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("auth:passwordsDoNotMatch"));
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("auth:passwordTooShort"));
       return;
     }
 
@@ -80,7 +82,7 @@ function AcceptInvitePage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("auth:unexpectedError"));
       }
     }
   };
@@ -105,11 +107,11 @@ function AcceptInvitePage() {
             <div className="flex justify-center mb-4">
               <AlertCircle className="h-12 w-12 text-destructive" />
             </div>
-            <CardTitle className="text-2xl">Invalid invitation</CardTitle>
+            <CardTitle className="text-2xl">{t("auth:invite.invalid")}</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground">
-              This invitation link is invalid or has expired.
+              {t("auth:invite.invalidDescription")}
             </p>
           </CardContent>
         </Card>
@@ -125,10 +127,10 @@ function AcceptInvitePage() {
             <Activity className="h-12 w-12 text-primary" />
           </div>
           <CardTitle className="text-2xl">
-            Join {inviteInfo.orgName}
+            {t("auth:invite.joinTitle", { orgName: inviteInfo.orgName })}
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            You&apos;ve been invited to join as{" "}
+            {t("auth:invite.invitedAs")}{" "}
             <span className="font-medium">{inviteInfo.role}</span>
           </p>
           {inviteInfo.email && (
@@ -155,20 +157,20 @@ function AcceptInvitePage() {
               {acceptInvite.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Joining...
+                  {t("auth:invite.joining")}
                 </>
               ) : (
-                "Accept invitation"
+                t("auth:acceptInvitation")
               )}
             </Button>
           ) : (
             <form onSubmit={handleAcceptNewUser} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Name (optional)</Label>
+                <Label htmlFor="name">{t("auth:nameOptional")}</Label>
                 <Input
                   id="name"
                   type="text"
-                  placeholder="Your name"
+                  placeholder={t("auth:yourNamePlaceholder")}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   disabled={acceptInvite.isPending}
@@ -176,11 +178,11 @@ function AcceptInvitePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">{t("common:email")}</Label>
                 <Input
                   id="email"
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder={t("auth:emailPlaceholder")}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
@@ -189,7 +191,7 @@ function AcceptInvitePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("common:password")}</Label>
                 <Input
                   id="password"
                   type="password"
@@ -201,7 +203,7 @@ function AcceptInvitePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <Label htmlFor="confirmPassword">{t("auth:confirmPassword")}</Label>
                 <Input
                   id="confirmPassword"
                   type="password"
@@ -220,10 +222,10 @@ function AcceptInvitePage() {
                 {acceptInvite.isPending ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Joining...
+                    {t("auth:invite.joining")}
                   </>
                 ) : (
-                  "Create account & join"
+                  t("auth:invite.createAndJoin")
                 )}
               </Button>
             </form>

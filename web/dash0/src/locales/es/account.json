@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Cuenta",
+    "subtitle": "Gestione sus ajustes personales y tokens de acceso"
+  },
   "profile": {
     "title": "Perfil",
     "subtitle": "Actualice su nombre visible. Así le verán los demás usuarios.",

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
   Eye,
@@ -98,6 +99,7 @@ function AddSectionDialog({
   org: string;
   statusPageUid: string;
 }) {
+  const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
@@ -110,13 +112,13 @@ function AddSectionDialog({
         name,
         slug: slug || slugify(name),
       });
-      toast.success("Section created");
+      toast.success(t("statusPages:sections.created"));
       setName("");
       setSlug("");
       setSlugManuallyEdited(false);
       setOpen(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to create section");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:sections.createFailed"));
     }
   };
 
@@ -125,46 +127,44 @@ function AddSectionDialog({
       <DialogTrigger asChild>
         <Button variant="outline" size="sm">
           <Plus className="mr-2 h-4 w-4" />
-          Add Section
+          {t("statusPages:sections.add")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Section</DialogTitle>
-          <DialogDescription>
-            Create a new section to group checks on this status page.
-          </DialogDescription>
+          <DialogTitle>{t("statusPages:sections.add")}</DialogTitle>
+          <DialogDescription>{t("statusPages:sections.addDescription")}</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label>Name</Label>
+            <Label>{t("statusPages:sections.name")}</Label>
             <Input
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
                 if (!slugManuallyEdited) setSlug(slugify(e.target.value));
               }}
-              placeholder="Core Services"
+              placeholder={t("statusPages:sections.namePlaceholder")}
             />
           </div>
           <div className="space-y-2">
-            <Label>Slug</Label>
+            <Label>{t("statusPages:sections.slug")}</Label>
             <Input
               value={slug}
               onChange={(e) => {
                 setSlug(e.target.value);
                 setSlugManuallyEdited(true);
               }}
-              placeholder="core-services"
+              placeholder={t("statusPages:sections.slugPlaceholder")}
             />
           </div>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button onClick={handleSubmit} disabled={!name || createSection.isPending}>
-            Create Section
+            {t("statusPages:sections.create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -185,6 +185,7 @@ function AddResourceDialog({
   checks: Check[];
   existingCheckUids: Set<string>;
 }) {
+  const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
   const [selectedCheckUid, setSelectedCheckUid] = useState("");
   const createResource = useCreateResource(org, statusPageUid, sectionUid);
@@ -195,11 +196,11 @@ function AddResourceDialog({
     if (!selectedCheckUid) return;
     try {
       await createResource.mutateAsync({ checkUid: selectedCheckUid });
-      toast.success("Check added to section");
+      toast.success(t("statusPages:resources.added"));
       setSelectedCheckUid("");
       setOpen(false);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to add check");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:resources.addFailed"));
     }
   };
 
@@ -208,18 +209,18 @@ function AddResourceDialog({
       <DialogTrigger asChild>
         <Button variant="ghost" size="sm">
           <Plus className="mr-1 h-3 w-3" />
-          Add Check
+          {t("statusPages:resources.add")}
         </Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Check to Section</DialogTitle>
-          <DialogDescription>Select a check to add to this section.</DialogDescription>
+          <DialogTitle>{t("statusPages:resources.addToSection")}</DialogTitle>
+          <DialogDescription>{t("statusPages:resources.addDescription")}</DialogDescription>
         </DialogHeader>
         <div className="py-4">
           <Select value={selectedCheckUid} onValueChange={setSelectedCheckUid}>
             <SelectTrigger>
-              <SelectValue placeholder="Select a check..." />
+              <SelectValue placeholder={t("statusPages:resources.selectCheck")} />
             </SelectTrigger>
             <SelectContent>
               {availableChecks.map((check) => (
@@ -232,13 +233,13 @@ function AddResourceDialog({
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
-            Cancel
+            {t("common:cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!selectedCheckUid || createResource.isPending}
           >
-            Add Check
+            {t("statusPages:resources.add")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -257,15 +258,16 @@ function ResourceRow({
   statusPageUid: string;
   sectionUid: string;
 }) {
+  const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteResource = useDeleteResource(org, statusPageUid, sectionUid);
 
   const handleDelete = async () => {
     try {
       await deleteResource.mutateAsync(resource.uid);
-      toast.success("Check removed from section");
+      toast.success(t("statusPages:resources.removed"));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to remove check");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:resources.removeFailed"));
     }
   };
 
@@ -315,14 +317,16 @@ function ResourceRow({
         </Button>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Remove Check</AlertDialogTitle>
+            <AlertDialogTitle>{t("statusPages:resources.remove")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Remove this check from the section? The check itself will not be deleted.
+              {t("statusPages:resources.removeDescription")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>Remove</AlertDialogAction>
+            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>
+              {t("statusPages:resources.removeButton")}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -341,6 +345,7 @@ function SectionCard({
   statusPageUid: string;
   checks: Check[];
 }) {
+  const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteSection = useDeleteSection(org, statusPageUid);
 
@@ -351,9 +356,9 @@ function SectionCard({
   const handleDeleteSection = async () => {
     try {
       await deleteSection.mutateAsync(section.uid);
-      toast.success("Section deleted");
+      toast.success(t("statusPages:sections.deleted"));
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to delete section");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:sections.deleteFailed"));
     }
   };
 
@@ -384,19 +389,18 @@ function SectionCard({
               </Button>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Section</AlertDialogTitle>
+                  <AlertDialogTitle>{t("statusPages:sections.delete")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Delete this section and all its resource assignments? The checks
-                    themselves will not be affected.
+                    {t("statusPages:sections.deleteDescription")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleDeleteSection}
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   >
-                    Delete
+                    {t("common:delete")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -419,7 +423,7 @@ function SectionCard({
           </div>
         ) : (
           <p className="text-sm text-muted-foreground py-4 text-center">
-            No checks in this section yet
+            {t("statusPages:sections.empty")}
           </p>
         )}
       </CardContent>
@@ -428,6 +432,7 @@ function SectionCard({
 }
 
 function StatusPageDetailPage() {
+  const { t } = useTranslation(["statusPages", "common"]);
   const { org, statusPageUid } = Route.useParams();
 
   const {
@@ -454,9 +459,9 @@ function StatusPageDetailPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Status Page"
+        resource={t("statusPages:title")}
         backTo="/orgs/$org/status-pages"
-        backLabel="Back to Status Pages"
+        backLabel={t("statusPages:title")}
         onRetry={() => refetch()}
       />
     );
@@ -488,10 +493,12 @@ function StatusPageDetailPage() {
         </div>
         <div className="flex gap-2">
           <Badge variant={page.visibility === "public" ? "default" : "secondary"}>
-            {page.visibility}
+            {page.visibility === "public"
+              ? t("statusPages:visibility.public")
+              : t("statusPages:visibility.restricted")}
           </Badge>
           <Badge variant={page.enabled ? "default" : "outline"}>
-            {page.enabled ? "Enabled" : "Disabled"}
+            {page.enabled ? t("statusPages:enabled") : t("statusPages:disabled")}
           </Badge>
           <a
             href={`/status0/${org}/${page.slug}`}
@@ -500,7 +507,7 @@ function StatusPageDetailPage() {
           >
             <Button variant="outline" size="sm">
               <ExternalLink className="mr-2 h-4 w-4" />
-              View
+              {t("statusPages:detail.view")}
             </Button>
           </a>
           <Link
@@ -509,14 +516,14 @@ function StatusPageDetailPage() {
           >
             <Button variant="outline" size="sm">
               <Pencil className="mr-2 h-4 w-4" />
-              Edit
+              {t("statusPages:edit")}
             </Button>
           </Link>
         </div>
       </div>
 
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Sections</h2>
+        <h2 className="text-xl font-semibold">{t("statusPages:detail.sections")}</h2>
         <AddSectionDialog org={org} statusPageUid={statusPageUid} />
       </div>
 
@@ -535,7 +542,7 @@ function StatusPageDetailPage() {
       ) : (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">
-            <p className="mb-2">No sections yet</p>
+            <p className="mb-2">{t("statusPages:detail.noSections")}</p>
             <AddSectionDialog org={org} statusPageUid={statusPageUid} />
           </CardContent>
         </Card>

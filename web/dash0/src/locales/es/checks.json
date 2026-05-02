@@ -59,6 +59,8 @@
   "failedToLoadChecks": "No se pudieron cargar las comprobaciones",
   "noChecksAtAll": "Aún no hay comprobaciones",
   "toast": {
+    "created": "Comprobación creada correctamente",
+    "updated": "Comprobación actualizada correctamente",
     "deleted": "Comprobación eliminada correctamente",
     "groupDeleted": "Grupo eliminado. Las comprobaciones han quedado sin agrupar.",
     "groupCreated": "Grupo creado",

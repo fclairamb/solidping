@@ -15,18 +15,59 @@
   "noResolved": "Aucun incident résolu pour le moment",
   "noIncidents": "Aucun incident enregistré",
   "noIncidentsFound": "Aucun incident trouvé",
+  "incidentNotFound": "Incident introuvable",
+  "backToIncidents": "Retour aux incidents",
   "filterByState": "Filtrer par état",
   "relapse": "{{count}}x rechute",
   "active": "Actif",
   "resolved": "Résolu",
+  "reopened": "Rouvert",
+  "reopenedTimes": "Rouvert ({{count}} {{unit}})",
+  "timeUnit": {
+    "time": "fois",
+    "times": "fois"
+  },
+  "escalated": "Escaladé",
+  "fallbackTitle": "Incident",
+  "actions": {
+    "acknowledge": "Acquitter",
+    "resolve": "Résoudre",
+    "acknowledged": "Incident acquitté",
+    "resolved": "Incident résolu",
+    "acknowledgeFailed": "Échec de l'acquittement de l'incident",
+    "resolveFailed": "Échec de la résolution de l'incident"
+  },
   "detail": {
     "incidentDetail": "Détail de l'incident",
+    "incidentDetails": "Détails de l'incident",
+    "incidentDetailsDescription": "Informations sur cet incident",
     "startedAt": "Début",
     "resolvedAt": "Résolu le",
     "acknowledgedAt": "Acquitté le",
     "escalatedAt": "Escaladé le",
     "failureCount": "Nombre d'échecs",
-    "relapseCount": "Nombre de rechutes"
+    "relapseCount": "Nombre de rechutes",
+    "descriptionLabel": "Description",
+    "checkLabel": "Contrôle",
+    "checkTypeLabel": "Type de contrôle",
+    "totalDuration": "Durée totale",
+    "ongoing": "(en cours)"
+  },
+  "timeline": {
+    "title": "Chronologie",
+    "description": "Événements clés de cet incident",
+    "started": "Démarré",
+    "acknowledged": "Acquitté",
+    "escalated": "Escaladé",
+    "reopenedRelapse": "Rouvert (rechute n°{{count}})",
+    "resolved": "Résolu"
+  },
+  "eventLog": {
+    "title": "Journal des événements",
+    "description": "Historique détaillé des événements de l'incident",
+    "time": "Heure",
+    "eventType": "Type d'événement",
+    "actor": "Acteur"
   },
   "time": {
     "daysAgo": "il y a {{count}}j",

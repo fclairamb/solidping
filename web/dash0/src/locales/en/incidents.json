@@ -15,18 +15,59 @@
   "noResolved": "No resolved incidents yet",
   "noIncidents": "No incidents have been recorded",
   "noIncidentsFound": "No incidents found",
+  "incidentNotFound": "Incident not found",
+  "backToIncidents": "Back to Incidents",
   "filterByState": "Filter by state",
   "relapse": "{{count}}x relapse",
   "active": "Active",
   "resolved": "Resolved",
+  "reopened": "Reopened",
+  "reopenedTimes": "Reopened ({{count}} {{unit}})",
+  "timeUnit": {
+    "time": "time",
+    "times": "times"
+  },
+  "escalated": "Escalated",
+  "fallbackTitle": "Incident",
+  "actions": {
+    "acknowledge": "Acknowledge",
+    "resolve": "Resolve",
+    "acknowledged": "Incident acknowledged",
+    "resolved": "Incident resolved",
+    "acknowledgeFailed": "Failed to acknowledge incident",
+    "resolveFailed": "Failed to resolve incident"
+  },
   "detail": {
     "incidentDetail": "Incident Detail",
+    "incidentDetails": "Incident Details",
+    "incidentDetailsDescription": "Information about this incident",
     "startedAt": "Started at",
     "resolvedAt": "Resolved at",
     "acknowledgedAt": "Acknowledged at",
     "escalatedAt": "Escalated at",
     "failureCount": "Failure count",
-    "relapseCount": "Relapse count"
+    "relapseCount": "Relapse count",
+    "descriptionLabel": "Description",
+    "checkLabel": "Check",
+    "checkTypeLabel": "Check Type",
+    "totalDuration": "Total Duration",
+    "ongoing": "(ongoing)"
+  },
+  "timeline": {
+    "title": "Timeline",
+    "description": "Key events in this incident",
+    "started": "Started",
+    "acknowledged": "Acknowledged",
+    "escalated": "Escalated",
+    "reopenedRelapse": "Reopened (relapse #{{count}})",
+    "resolved": "Resolved"
+  },
+  "eventLog": {
+    "title": "Event Log",
+    "description": "Detailed history of incident events",
+    "time": "Time",
+    "eventType": "Event Type",
+    "actor": "Actor"
   },
   "time": {
     "daysAgo": "{{count}}d ago",

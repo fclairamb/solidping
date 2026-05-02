@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Organisation",
+    "subtitle": "Organisationseinstellungen und Mitglieder verwalten"
+  },
   "settings": {
     "title": "Organisationseinstellungen",
     "autoJoin": "Automatischer Beitritt",

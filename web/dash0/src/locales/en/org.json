@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Organization",
+    "subtitle": "Manage your organization settings and members"
+  },
   "settings": {
     "title": "Organization Settings",
     "autoJoin": "Auto-join",

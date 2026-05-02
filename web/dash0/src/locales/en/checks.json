@@ -59,6 +59,8 @@
   "failedToLoadChecks": "Failed to load checks",
   "noChecksAtAll": "No checks yet",
   "toast": {
+    "created": "Check created successfully",
+    "updated": "Check updated successfully",
     "deleted": "Check deleted successfully",
     "groupDeleted": "Group deleted. Checks have been ungrouped.",
     "groupCreated": "Group created",

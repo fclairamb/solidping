@@ -15,5 +15,36 @@
   "web": "Web",
   "mail": "Mail",
   "authentication": "Authentication",
-  "performance": "Performance"
+  "performance": "Performance",
+  "test": {
+    "layoutTitle": "Test Tools",
+    "layoutSubtitle": "Create and manage test checks",
+    "notAvailable": "Test tools are only available when running in test mode (SP_RUNMODE=test)",
+    "tabs": {
+      "templates": "Templates",
+      "bulk": "Bulk Checks",
+      "generate": "Generate Data",
+      "reset": "Reset"
+    },
+    "reset": {
+      "title": "Delete all checks",
+      "description": "Remove every check and its associated results from the organization <strong>{{org}}</strong>. This cannot be undone.",
+      "warning": "This will permanently delete all checks, their results, incidents, and check jobs for this organization.",
+      "button": "Delete all checks",
+      "confirmTitle": "Delete all checks?",
+      "confirmDescription": "This will permanently delete every check in the <strong>{{org}}</strong> organization along with all associated data. This action cannot be undone.",
+      "confirmAction": "Delete all",
+      "deletedCount": "Deleted {{count}} checks",
+      "deletedWithFailures": "Deleted {{deleted}}, failed {{failed}} checks",
+      "deleteFailed": "Failed to delete checks"
+    }
+  },
+  "command": {
+    "searchPlaceholder": "Search pages and checks...",
+    "noResults": "No results found.",
+    "groupPages": "Pages",
+    "groupAccount": "Account",
+    "groupOrganization": "Organization",
+    "groupChecks": "Checks"
+  }
 }

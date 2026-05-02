@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { AlertCircle, Check, Eye, EyeOff, Loader2, RefreshCw, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,19 +28,24 @@ export const Route = createFileRoute("/orgs/$org/server/email-inbox")({
   component: EmailInboxPage,
 });
 
-function relativeTime(iso?: string): string {
-  if (!iso) return "never";
-  const ts = Date.parse(iso);
-  if (Number.isNaN(ts)) return iso;
-  const diffSec = Math.floor((Date.now() - ts) / 1000);
-  if (diffSec < 5) return "just now";
-  if (diffSec < 60) return `${diffSec}s ago`;
-  if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
-  if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
-  return `${Math.floor(diffSec / 86400)}d ago`;
+function useRelativeTime() {
+  const { t } = useTranslation("server");
+  return (iso?: string): string => {
+    if (!iso) return t("emailInbox.status.never");
+    const ts = Date.parse(iso);
+    if (Number.isNaN(ts)) return iso;
+    const diffSec = Math.floor((Date.now() - ts) / 1000);
+    if (diffSec < 5) return t("emailInbox.status.justNow");
+    if (diffSec < 60) return t("emailInbox.status.secondsAgo", { count: diffSec });
+    if (diffSec < 3600) return t("emailInbox.status.minutesAgo", { count: Math.floor(diffSec / 60) });
+    if (diffSec < 86400) return t("emailInbox.status.hoursAgo", { count: Math.floor(diffSec / 3600) });
+    return t("emailInbox.status.daysAgo", { count: Math.floor(diffSec / 86400) });
+  };
 }
 
 function EmailInboxPage() {
+  const { t } = useTranslation(["server", "common"]);
+  const relativeTime = useRelativeTime();
   const { data: params, isLoading } = useSystemParameters();
   const save = useSaveEmailInboxConfig();
   const test = useTestEmailInbox();
@@ -102,7 +108,6 @@ function EmailInboxPage() {
       rewriteBaseUrl: rewriteBaseUrl || undefined,
     };
 
-    // Empty password keeps existing; non-empty replaces
     if (editingPassword && password) {
       cfg.password = password;
     }
@@ -114,7 +119,7 @@ function EmailInboxPage() {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Failed to save settings");
+      setError(err instanceof ApiError ? err.message : t("server:emailInbox.saveFailed"));
     }
   };
 
@@ -122,11 +127,16 @@ function EmailInboxPage() {
     setTestResult(null);
     try {
       const result = await test.mutateAsync(undefined);
-      setTestResult({ ok: result.ok, message: `Connected. Mailboxes: ${result.mailboxes.join(", ")}` });
+      setTestResult({
+        ok: result.ok,
+        message: t("server:emailInbox.actions.connectedMailboxes", {
+          mailboxes: result.mailboxes.join(", "),
+        }),
+      });
     } catch (err) {
       setTestResult({
         ok: false,
-        message: err instanceof ApiError ? err.message : "Test failed",
+        message: err instanceof ApiError ? err.message : t("server:emailInbox.actions.testFailed"),
       });
     }
   };
@@ -135,11 +145,11 @@ function EmailInboxPage() {
     setTestResult(null);
     try {
       await sync.mutateAsync();
-      setTestResult({ ok: true, message: "Sync triggered" });
+      setTestResult({ ok: true, message: t("server:emailInbox.actions.syncTriggered") });
     } catch (err) {
       setTestResult({
         ok: false,
-        message: err instanceof ApiError ? err.message : "Sync failed",
+        message: err instanceof ApiError ? err.message : t("server:emailInbox.actions.syncFailed"),
       });
     }
   };
@@ -156,10 +166,8 @@ function EmailInboxPage() {
     <div className="space-y-4">
       <Card>
         <CardHeader>
-          <CardTitle>Email Inbox</CardTitle>
-          <CardDescription>
-            Configure the shared JMAP inbox used by passive email checks. Fastmail, Stalwart, and other JMAP-capable providers are supported.
-          </CardDescription>
+          <CardTitle>{t("server:emailInbox.title")}</CardTitle>
+          <CardDescription>{t("server:emailInbox.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSave} className="space-y-4">
@@ -172,7 +180,7 @@ function EmailInboxPage() {
             {saved && (
               <Alert>
                 <Check className="h-4 w-4" />
-                <AlertDescription>Settings saved.</AlertDescription>
+                <AlertDescription>{t("server:saved")}</AlertDescription>
               </Alert>
             )}
 
@@ -184,27 +192,27 @@ function EmailInboxPage() {
                 onCheckedChange={setEnabled}
                 disabled={save.isPending}
               />
-              <Label htmlFor="emailInboxEnabled">Enable email inbox</Label>
+              <Label htmlFor="emailInboxEnabled">{t("server:emailInbox.enable")}</Label>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="sessionUrl">JMAP Session URL</Label>
+                <Label htmlFor="sessionUrl">{t("server:emailInbox.sessionUrl")}</Label>
                 <Input
                   id="sessionUrl"
                   type="url"
-                  placeholder="https://jmap.example.com/.well-known/jmap"
+                  placeholder={t("server:emailInbox.sessionUrlPlaceholder")}
                   value={sessionUrl}
                   onChange={(e) => setSessionUrl(e.target.value)}
                   disabled={save.isPending}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="addressDomain">Address Domain</Label>
+                <Label htmlFor="addressDomain">{t("server:emailInbox.addressDomain")}</Label>
                 <Input
                   id="addressDomain"
                   type="text"
-                  placeholder="ingest.solidping.example"
+                  placeholder={t("server:emailInbox.addressDomainPlaceholder")}
                   value={addressDomain}
                   onChange={(e) => setAddressDomain(e.target.value)}
                   disabled={save.isPending}
@@ -214,18 +222,18 @@ function EmailInboxPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="username">{t("server:emailInbox.username")}</Label>
                 <Input
                   id="username"
                   type="text"
-                  placeholder="ingest@example.com"
+                  placeholder={t("server:emailInbox.usernamePlaceholder")}
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   disabled={save.isPending}
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("server:emailInbox.password")}</Label>
                 {!editingPassword && isSecretSet ? (
                   <div className="flex items-center gap-2">
                     <Input id="password" type="password" value="******" disabled />
@@ -238,7 +246,7 @@ function EmailInboxPage() {
                         setPassword("");
                       }}
                     >
-                      Edit
+                      {t("common:edit")}
                     </Button>
                   </div>
                 ) : (
@@ -246,7 +254,7 @@ function EmailInboxPage() {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="JMAP password or app token"
+                      placeholder={t("server:emailInbox.passwordPlaceholder")}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={save.isPending}
@@ -267,7 +275,7 @@ function EmailInboxPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="mailboxName">Inbox Mailbox</Label>
+                <Label htmlFor="mailboxName">{t("server:emailInbox.inboxMailbox")}</Label>
                 <Input
                   id="mailboxName"
                   type="text"
@@ -277,7 +285,7 @@ function EmailInboxPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="processedMailboxName">Processed Mailbox</Label>
+                <Label htmlFor="processedMailboxName">{t("server:emailInbox.processedMailbox")}</Label>
                 <Input
                   id="processedMailboxName"
                   type="text"
@@ -290,7 +298,7 @@ function EmailInboxPage() {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="pollIntervalSeconds">Poll Interval (seconds)</Label>
+                <Label htmlFor="pollIntervalSeconds">{t("server:emailInbox.pollInterval")}</Label>
                 <Input
                   id="pollIntervalSeconds"
                   type="number"
@@ -301,7 +309,7 @@ function EmailInboxPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="processedRetentionDays">Processed Retention (days)</Label>
+                <Label htmlFor="processedRetentionDays">{t("server:emailInbox.processedRetention")}</Label>
                 <Input
                   id="processedRetentionDays"
                   type="number"
@@ -312,7 +320,7 @@ function EmailInboxPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="failedRetentionDays">Failed Retention (days)</Label>
+                <Label htmlFor="failedRetentionDays">{t("server:emailInbox.failedRetention")}</Label>
                 <Input
                   id="failedRetentionDays"
                   type="number"
@@ -325,17 +333,17 @@ function EmailInboxPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="rewriteBaseUrl">Rewrite Base URL (advanced)</Label>
+              <Label htmlFor="rewriteBaseUrl">{t("server:emailInbox.rewriteBaseUrl")}</Label>
               <Input
                 id="rewriteBaseUrl"
                 type="text"
-                placeholder="https://proxy.example.com (optional)"
+                placeholder={t("server:emailInbox.rewriteBaseUrlPlaceholder")}
                 value={rewriteBaseUrl}
                 onChange={(e) => setRewriteBaseUrl(e.target.value)}
                 disabled={save.isPending}
               />
               <p className="text-xs text-muted-foreground">
-                Used to substitute the JMAP server's published base URL when behind a reverse proxy.
+                {t("server:emailInbox.rewriteBaseUrlHelp")}
               </p>
             </div>
 
@@ -343,10 +351,10 @@ function EmailInboxPage() {
               {save.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Saving...
+                  {t("common:saving")}
                 </>
               ) : (
-                "Save"
+                t("common:save")
               )}
             </Button>
           </form>
@@ -355,31 +363,33 @@ function EmailInboxPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Status</CardTitle>
-          <CardDescription>Live state of the JMAP supervisor.</CardDescription>
+          <CardTitle>{t("server:emailInbox.status.title")}</CardTitle>
+          <CardDescription>{t("server:emailInbox.status.description")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Connection:</span>
+            <span className="text-muted-foreground">{t("server:emailInbox.status.connection")}</span>
             {status?.connected ? (
               <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-green-700 dark:text-green-400">
                 <Check className="h-3 w-3" />
-                Connected
+                {t("server:emailInbox.status.connected")}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
                 <AlertCircle className="h-3 w-3" />
-                {status?.enabled ? "Disconnected" : "Disabled"}
+                {status?.enabled
+                  ? t("server:emailInbox.status.disconnected")
+                  : t("server:emailInbox.status.disabled")}
               </span>
             )}
           </div>
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Last sync:</span>
+            <span className="text-muted-foreground">{t("server:emailInbox.status.lastSync")}</span>
             <span>{relativeTime(status?.lastSyncedAt)}</span>
           </div>
           {status?.addressDomain && (
             <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Address domain:</span>
+              <span className="text-muted-foreground">{t("server:emailInbox.status.addressDomain")}</span>
               <code className="font-mono">{status.addressDomain}</code>
             </div>
           )}
@@ -394,7 +404,7 @@ function EmailInboxPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Actions</CardTitle>
+          <CardTitle>{t("server:emailInbox.actions.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -421,7 +431,7 @@ function EmailInboxPage() {
                 ) : (
                   <Send className="mr-2 h-4 w-4" />
                 )}
-                Test Connection
+                {t("server:emailInbox.actions.test")}
               </Button>
               <Button
                 type="button"
@@ -435,7 +445,7 @@ function EmailInboxPage() {
                 ) : (
                   <RefreshCw className="mr-2 h-4 w-4" />
                 )}
-                Sync Now
+                {t("server:emailInbox.actions.sync")}
               </Button>
             </div>
           </div>

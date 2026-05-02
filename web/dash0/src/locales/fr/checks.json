@@ -59,6 +59,8 @@
   "failedToLoadChecks": "Échec du chargement des contrôles",
   "noChecksAtAll": "Aucun contrôle pour le moment",
   "toast": {
+    "created": "Contrôle créé avec succès",
+    "updated": "Contrôle mis à jour avec succès",
     "deleted": "Contrôle supprimé avec succès",
     "groupDeleted": "Groupe supprimé. Les contrôles ont été dégroupés.",
     "groupCreated": "Groupe créé",

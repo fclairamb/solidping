@@ -59,6 +59,8 @@
   "failedToLoadChecks": "Prüfungen konnten nicht geladen werden",
   "noChecksAtAll": "Noch keine Prüfungen",
   "toast": {
+    "created": "Prüfung erfolgreich erstellt",
+    "updated": "Prüfung erfolgreich aktualisiert",
     "deleted": "Prüfung erfolgreich gelöscht",
     "groupDeleted": "Gruppe gelöscht. Prüfungen wurden aus der Gruppe entfernt.",
     "groupCreated": "Gruppe erstellt",

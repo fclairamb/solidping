@@ -1,29 +1,128 @@
 {
   "title": "Ajustes del servidor",
   "subtitle": "Gestione los parámetros de configuración del servidor",
+  "saved": "Ajustes guardados.",
+  "unexpectedError": "Se ha producido un error inesperado",
+  "tabs": {
+    "web": "Web",
+    "mail": "Correo",
+    "emailInbox": "Bandeja de entrada",
+    "authentication": "Autenticación",
+    "performance": "Rendimiento"
+  },
   "web": {
-    "title": "Ajustes web",
+    "title": "Web",
+    "description": "Configure la URL base y las credenciales de autenticación del servidor web.",
     "baseUrl": "URL base",
+    "baseUrlPlaceholder": "https://solidping.ejemplo.com",
+    "baseUrlHelp": "URL pública desde la que se accede a SolidPing.",
+    "jwtSecret": "Secreto JWT",
+    "jwtSecretPlaceholder": "Introduzca el nuevo secreto JWT",
+    "jwtSecretHelp": "Se utiliza para firmar tokens de autenticación. Cambiarlo invalidará todas las sesiones existentes.",
     "appName": "Nombre de la aplicación"
   },
   "mail": {
-    "title": "Ajustes de correo",
+    "title": "Correo",
+    "description": "Configure los ajustes SMTP para notificaciones e invitaciones.",
+    "enable": "Activar el envío de correos",
     "host": "Host SMTP",
+    "hostPlaceholder": "smtp.ejemplo.com",
     "port": "Puerto SMTP",
-    "from": "Dirección remitente",
     "username": "Usuario",
+    "usernamePlaceholder": "usuario@ejemplo.com",
     "password": "Contraseña",
-    "protocol": "Protocolo",
-    "enabled": "Correo activado"
+    "passwordPlaceholder": "Contraseña SMTP",
+    "authType": "Tipo de autenticación",
+    "authOptions": {
+      "plain": "Plain",
+      "login": "Login",
+      "cramMd5": "CRAM-MD5"
+    },
+    "encryption": "Cifrado",
+    "encryptionOptions": {
+      "none": "Ninguno",
+      "starttls": "STARTTLS",
+      "ssl": "SSL/TLS"
+    },
+    "from": "Dirección remitente",
+    "fromPlaceholder": "noreply@ejemplo.com",
+    "fromName": "Nombre remitente",
+    "fromNamePlaceholder": "SolidPing",
+    "test": {
+      "title": "Correo de prueba",
+      "description": "Envíe un correo de prueba para verificar su configuración SMTP.",
+      "recipient": "Correo del destinatario",
+      "recipientPlaceholder": "destinatario@ejemplo.com",
+      "send": "Enviar correo de prueba",
+      "sending": "Enviando..."
+    }
   },
   "auth": {
     "title": "Ajustes de autenticación",
     "registrationEnabled": "Registro activado",
-    "registrationEnabledDescription": "Permitir el registro de nuevos usuarios."
+    "registrationEnabledDescription": "Permitir el registro de nuevos usuarios.",
+    "providerDescription": "Configure las credenciales OAuth de {{provider}}.",
+    "fields": {
+      "clientId": "Client ID",
+      "clientSecret": "Client Secret",
+      "appId": "App ID",
+      "signingSecret": "Signing Secret"
+    }
   },
   "performance": {
-    "title": "Ajustes de rendimiento",
-    "subtitle": "Configure los parámetros relacionados con el rendimiento."
+    "title": "Rendimiento",
+    "subtitle": "Configure los parámetros relacionados con el rendimiento.",
+    "description": "Configure el número de workers concurrentes para comprobaciones y tareas. Los cambios surten efecto tras reiniciar el servidor.",
+    "checkRunners": "Workers de comprobación",
+    "checkRunnersHelp": "Número de goroutinas concurrentes para ejecutar las comprobaciones.",
+    "jobRunners": "Workers de tareas",
+    "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano."
   },
-  "saved": "Ajustes guardados."
+  "emailInbox": {
+    "title": "Bandeja de entrada",
+    "description": "Configure la bandeja JMAP compartida usada por las comprobaciones pasivas por correo. Se admiten Fastmail, Stalwart y otros proveedores compatibles con JMAP.",
+    "enable": "Activar la bandeja de entrada",
+    "sessionUrl": "URL de sesión JMAP",
+    "sessionUrlPlaceholder": "https://jmap.ejemplo.com/.well-known/jmap",
+    "addressDomain": "Dominio de dirección",
+    "addressDomainPlaceholder": "ingest.solidping.ejemplo",
+    "username": "Usuario",
+    "usernamePlaceholder": "ingest@ejemplo.com",
+    "password": "Contraseña",
+    "passwordPlaceholder": "Contraseña JMAP o token de aplicación",
+    "inboxMailbox": "Bandeja de entrada",
+    "processedMailbox": "Bandeja «Procesados»",
+    "pollInterval": "Intervalo de sondeo (segundos)",
+    "processedRetention": "Retención «procesados» (días)",
+    "failedRetention": "Retención «fallidos» (días)",
+    "rewriteBaseUrl": "URL base de reescritura (avanzado)",
+    "rewriteBaseUrlPlaceholder": "https://proxy.ejemplo.com (opcional)",
+    "rewriteBaseUrlHelp": "Sustituye la URL base publicada por el servidor JMAP cuando hay un proxy inverso.",
+    "saveFailed": "Error al guardar los ajustes",
+    "status": {
+      "title": "Estado",
+      "description": "Estado en directo del supervisor JMAP.",
+      "connection": "Conexión:",
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "disabled": "Desactivado",
+      "lastSync": "Última sincronización:",
+      "addressDomain": "Dominio de dirección:",
+      "never": "nunca",
+      "justNow": "ahora mismo",
+      "secondsAgo": "hace {{count}} s",
+      "minutesAgo": "hace {{count}} min",
+      "hoursAgo": "hace {{count}} h",
+      "daysAgo": "hace {{count}} d"
+    },
+    "actions": {
+      "title": "Acciones",
+      "test": "Probar conexión",
+      "sync": "Sincronizar ahora",
+      "syncTriggered": "Sincronización iniciada",
+      "testFailed": "Prueba fallida",
+      "syncFailed": "Sincronización fallida",
+      "connectedMailboxes": "Conectado. Buzones: {{mailboxes}}"
+    }
+  }
 }

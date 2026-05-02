@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Compte",
+    "subtitle": "Gérer vos paramètres personnels et vos jetons d'accès"
+  },
   "profile": {
     "title": "Profil",
     "subtitle": "Mettez à jour votre nom d'affichage. C'est ainsi que les autres utilisateurs vous verront.",

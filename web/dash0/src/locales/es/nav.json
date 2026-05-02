@@ -15,5 +15,36 @@
   "web": "Web",
   "mail": "Correo",
   "authentication": "Autenticación",
-  "performance": "Rendimiento"
+  "performance": "Rendimiento",
+  "test": {
+    "layoutTitle": "Herramientas de prueba",
+    "layoutSubtitle": "Crear y gestionar comprobaciones de prueba",
+    "notAvailable": "Las herramientas de prueba solo están disponibles en modo de prueba (SP_RUNMODE=test)",
+    "tabs": {
+      "templates": "Plantillas",
+      "bulk": "Comprobaciones en lote",
+      "generate": "Generar datos",
+      "reset": "Restablecer"
+    },
+    "reset": {
+      "title": "Eliminar todas las comprobaciones",
+      "description": "Elimina todas las comprobaciones y sus resultados asociados de la organización <strong>{{org}}</strong>. No se puede deshacer.",
+      "warning": "Esto eliminará permanentemente todas las comprobaciones, sus resultados, incidentes y tareas de comprobación de esta organización.",
+      "button": "Eliminar todas las comprobaciones",
+      "confirmTitle": "¿Eliminar todas las comprobaciones?",
+      "confirmDescription": "Esto eliminará permanentemente todas las comprobaciones de la organización <strong>{{org}}</strong> junto con todos los datos asociados. Esta acción no se puede deshacer.",
+      "confirmAction": "Eliminar todas",
+      "deletedCount": "{{count}} comprobaciones eliminadas",
+      "deletedWithFailures": "{{deleted}} eliminadas, {{failed}} fallidas",
+      "deleteFailed": "Error al eliminar las comprobaciones"
+    }
+  },
+  "command": {
+    "searchPlaceholder": "Buscar páginas y comprobaciones...",
+    "noResults": "Sin resultados.",
+    "groupPages": "Páginas",
+    "groupAccount": "Cuenta",
+    "groupOrganization": "Organización",
+    "groupChecks": "Comprobaciones"
+  }
 }

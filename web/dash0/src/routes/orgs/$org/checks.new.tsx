@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCreateCheck, useCheckGroups, useRegions } from "@/api/hooks";
 import { CheckForm } from "@/components/shared/check-form";
@@ -30,6 +31,7 @@ export const Route = createFileRoute("/orgs/$org/checks/new")({
 });
 
 function CheckNewPage() {
+  const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const { org } = Route.useParams();
   const search = Route.useSearch();
@@ -89,7 +91,7 @@ function CheckNewPage() {
           config: data.config ?? {},
           regions: data.regions,
         });
-        toast.success("Check created successfully");
+        toast.success(t("toast.created"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: check.uid },

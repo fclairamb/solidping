@@ -1,29 +1,128 @@
 {
   "title": "Server Settings",
   "subtitle": "Manage server-wide configuration parameters",
+  "saved": "Settings saved.",
+  "unexpectedError": "An unexpected error occurred",
+  "tabs": {
+    "web": "Web",
+    "mail": "Mail",
+    "emailInbox": "Email Inbox",
+    "authentication": "Authentication",
+    "performance": "Performance"
+  },
   "web": {
-    "title": "Web Settings",
+    "title": "Web",
+    "description": "Configure the base URL and authentication credentials for the web server.",
     "baseUrl": "Base URL",
+    "baseUrlPlaceholder": "https://solidping.example.com",
+    "baseUrlHelp": "The public URL where SolidPing is accessible.",
+    "jwtSecret": "JWT Secret",
+    "jwtSecretPlaceholder": "Enter new JWT secret",
+    "jwtSecretHelp": "Used to sign authentication tokens. Changing this will invalidate all existing sessions.",
     "appName": "Application Name"
   },
   "mail": {
-    "title": "Mail Settings",
+    "title": "Mail",
+    "description": "Configure SMTP email settings for notifications and invitations.",
+    "enable": "Enable email sending",
     "host": "SMTP Host",
+    "hostPlaceholder": "smtp.example.com",
     "port": "SMTP Port",
-    "from": "From Address",
     "username": "Username",
+    "usernamePlaceholder": "user@example.com",
     "password": "Password",
-    "protocol": "Protocol",
-    "enabled": "Mail Enabled"
+    "passwordPlaceholder": "SMTP password",
+    "authType": "Auth Type",
+    "authOptions": {
+      "plain": "Plain",
+      "login": "Login",
+      "cramMd5": "CRAM-MD5"
+    },
+    "encryption": "Encryption",
+    "encryptionOptions": {
+      "none": "None",
+      "starttls": "STARTTLS",
+      "ssl": "SSL/TLS"
+    },
+    "from": "From Address",
+    "fromPlaceholder": "noreply@example.com",
+    "fromName": "From Name",
+    "fromNamePlaceholder": "SolidPing",
+    "test": {
+      "title": "Test Email",
+      "description": "Send a test email to verify your SMTP configuration is working.",
+      "recipient": "Recipient Email",
+      "recipientPlaceholder": "recipient@example.com",
+      "send": "Send Test Email",
+      "sending": "Sending..."
+    }
   },
   "auth": {
     "title": "Authentication Settings",
     "registrationEnabled": "Registration Enabled",
-    "registrationEnabledDescription": "Allow new users to register."
+    "registrationEnabledDescription": "Allow new users to register.",
+    "providerDescription": "Configure {{provider}} OAuth credentials.",
+    "fields": {
+      "clientId": "Client ID",
+      "clientSecret": "Client Secret",
+      "appId": "App ID",
+      "signingSecret": "Signing Secret"
+    }
   },
   "performance": {
-    "title": "Performance Settings",
-    "subtitle": "Configure performance-related parameters."
+    "title": "Performance",
+    "subtitle": "Configure performance-related parameters.",
+    "description": "Configure the number of concurrent workers for checks and jobs. Changes take effect after server restart.",
+    "checkRunners": "Check Runners",
+    "checkRunnersHelp": "Number of concurrent goroutines for running health checks.",
+    "jobRunners": "Job Runners",
+    "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs."
   },
-  "saved": "Settings saved."
+  "emailInbox": {
+    "title": "Email Inbox",
+    "description": "Configure the shared JMAP inbox used by passive email checks. Fastmail, Stalwart, and other JMAP-capable providers are supported.",
+    "enable": "Enable email inbox",
+    "sessionUrl": "JMAP Session URL",
+    "sessionUrlPlaceholder": "https://jmap.example.com/.well-known/jmap",
+    "addressDomain": "Address Domain",
+    "addressDomainPlaceholder": "ingest.solidping.example",
+    "username": "Username",
+    "usernamePlaceholder": "ingest@example.com",
+    "password": "Password",
+    "passwordPlaceholder": "JMAP password or app token",
+    "inboxMailbox": "Inbox Mailbox",
+    "processedMailbox": "Processed Mailbox",
+    "pollInterval": "Poll Interval (seconds)",
+    "processedRetention": "Processed Retention (days)",
+    "failedRetention": "Failed Retention (days)",
+    "rewriteBaseUrl": "Rewrite Base URL (advanced)",
+    "rewriteBaseUrlPlaceholder": "https://proxy.example.com (optional)",
+    "rewriteBaseUrlHelp": "Used to substitute the JMAP server's published base URL when behind a reverse proxy.",
+    "saveFailed": "Failed to save settings",
+    "status": {
+      "title": "Status",
+      "description": "Live state of the JMAP supervisor.",
+      "connection": "Connection:",
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "disabled": "Disabled",
+      "lastSync": "Last sync:",
+      "addressDomain": "Address domain:",
+      "never": "never",
+      "justNow": "just now",
+      "secondsAgo": "{{count}}s ago",
+      "minutesAgo": "{{count}}m ago",
+      "hoursAgo": "{{count}}h ago",
+      "daysAgo": "{{count}}d ago"
+    },
+    "actions": {
+      "title": "Actions",
+      "test": "Test Connection",
+      "sync": "Sync Now",
+      "syncTriggered": "Sync triggered",
+      "testFailed": "Test failed",
+      "syncFailed": "Sync failed",
+      "connectedMailboxes": "Connected. Mailboxes: {{mailboxes}}"
+    }
+  }
 }

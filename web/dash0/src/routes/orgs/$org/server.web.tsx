@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/orgs/$org/server/web")({
 });
 
 function WebSettingsPage() {
+  const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
 
@@ -62,7 +64,7 @@ function WebSettingsPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("server:unexpectedError"));
       }
     }
   };
@@ -78,11 +80,8 @@ function WebSettingsPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Web</CardTitle>
-        <CardDescription>
-          Configure the base URL and authentication credentials for the web
-          server.
-        </CardDescription>
+        <CardTitle>{t("server:web.title")}</CardTitle>
+        <CardDescription>{t("server:web.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4">
@@ -95,27 +94,27 @@ function WebSettingsPage() {
           {saved && (
             <Alert>
               <Check className="h-4 w-4" />
-              <AlertDescription>Settings saved.</AlertDescription>
+              <AlertDescription>{t("server:saved")}</AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-2">
-            <Label htmlFor="baseUrl">Base URL</Label>
+            <Label htmlFor="baseUrl">{t("server:web.baseUrl")}</Label>
             <Input
               id="baseUrl"
               type="url"
-              placeholder="https://solidping.example.com"
+              placeholder={t("server:web.baseUrlPlaceholder")}
               value={baseUrl}
               onChange={(e) => setBaseUrl(e.target.value)}
               disabled={setParam.isPending}
             />
             <p className="text-xs text-muted-foreground">
-              The public URL where SolidPing is accessible.
+              {t("server:web.baseUrlHelp")}
             </p>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="jwtSecret">JWT Secret</Label>
+            <Label htmlFor="jwtSecret">{t("server:web.jwtSecret")}</Label>
             {!editingJwt && isJwtSecret ? (
               <div className="flex items-center gap-2">
                 <Input
@@ -133,7 +132,7 @@ function WebSettingsPage() {
                     setJwtSecret("");
                   }}
                 >
-                  Edit
+                  {t("common:edit")}
                 </Button>
               </div>
             ) : (
@@ -142,7 +141,7 @@ function WebSettingsPage() {
                   <Input
                     id="jwtSecret"
                     type={showJwt ? "text" : "password"}
-                    placeholder="Enter new JWT secret"
+                    placeholder={t("server:web.jwtSecretPlaceholder")}
                     value={jwtSecret}
                     onChange={(e) => setJwtSecret(e.target.value)}
                     disabled={setParam.isPending}
@@ -173,14 +172,13 @@ function WebSettingsPage() {
                       setJwtSecret(original);
                     }}
                   >
-                    Cancel
+                    {t("common:cancel")}
                   </Button>
                 )}
               </div>
             )}
             <p className="text-xs text-muted-foreground">
-              Used to sign authentication tokens. Changing this will invalidate
-              all existing sessions.
+              {t("server:web.jwtSecretHelp")}
             </p>
           </div>
 
@@ -188,10 +186,10 @@ function WebSettingsPage() {
             {setParam.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t("common:saving")}
               </>
             ) : (
-              "Save"
+              t("common:save")
             )}
           </Button>
         </form>
