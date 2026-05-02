@@ -34,9 +34,11 @@ type Incident struct {
 	Title           *string       `bun:"title"`
 	Description     *string       `bun:"description"`
 	Details         JSONMap       `bun:"details,type:jsonb,nullzero"`
-	CreatedAt       time.Time     `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time     `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time    `bun:"deleted_at"`
+	// CheckGroupUID is set on group incidents — NULL keeps the existing per-check semantics.
+	CheckGroupUID *string    `bun:"check_group_uid"`
+	CreatedAt     time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt     time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt     *time.Time `bun:"deleted_at"`
 }
 
 // NewIncident creates a new incident with generated UID.
@@ -76,6 +78,26 @@ type IncidentUpdate struct {
 	ClearResolvedAt     bool
 	ClearAcknowledgedAt bool
 	ClearAcknowledgedBy bool
+}
+
+// IncidentMemberCheck tracks a single check's state inside a group incident.
+type IncidentMemberCheck struct {
+	IncidentUID      string     `bun:"incident_uid,pk"`
+	CheckUID         string     `bun:"check_uid,pk"`
+	JoinedAt         time.Time  `bun:"joined_at,notnull,default:current_timestamp"`
+	FirstFailureAt   time.Time  `bun:"first_failure_at,notnull"`
+	LastFailureAt    time.Time  `bun:"last_failure_at,notnull"`
+	LastRecoveryAt   *time.Time `bun:"last_recovery_at"`
+	FailureCount     int        `bun:"failure_count,notnull,default:1"`
+	CurrentlyFailing bool       `bun:"currently_failing,notnull,default:true"`
+}
+
+// IncidentMemberUpdate represents fields that can be updated on a member row.
+type IncidentMemberUpdate struct {
+	LastFailureAt    *time.Time
+	LastRecoveryAt   *time.Time
+	FailureCount     *int
+	CurrentlyFailing *bool
 }
 
 // ListIncidentsFilter provides filtering options for listing incidents.
