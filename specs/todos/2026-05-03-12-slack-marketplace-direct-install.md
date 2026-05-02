@@ -325,3 +325,15 @@ If any in-progress development install is mid-OAuth at deploy time, it fails wit
 
 - `solidping-website`: add `src/pages/saas/install-error.md` with the four reason codes from §6.
 - Slack App Directory listing: flip the install radio, set the Direct Install URL, finalize description and screenshots for production app (separate from the `(dev)` app).
+
+## Implementation Plan
+
+1. **Extract shared `oauthstate` package.** New `server/internal/oauthstate/{oauthstate.go,oauthstate_test.go}`. Provides `Generate(ctx, db, kind, payload, ttl)` and `Validate(ctx, db, kind, nonce)` backed by `state_entries` with the storage key `<kind>:<nonce>`. Validate is single-use (deletes on success) and rejects expired/missing/wrong-kind entries.
+2. **Migrate existing Slack sign-in to use `oauthstate`.** Update `server/internal/handlers/auth/slack_service.go` to call the shared package; preserve the `redirectUri` payload semantics and the wire-level state value.
+3. **Add `BuildInstallURL` and delete `GetOAuthURL`.** `server/internal/integrations/slack/service.go`: introduce `BuildInstallURL(ctx, source string) (string, error)` using `oauthstate` with `kind="slack-install"` and 10-min TTL; consolidate scope lists into package vars; remove the old method and the `nonce := "0"` placeholder.
+4. **Public install endpoint.** `server/internal/integrations/slack/handler.go`: add `Install` handler that calls `BuildInstallURL`, 302s to Slack on success, 302s to the friendly error page on failure. Register `GET /api/v1/integrations/slack/install` in `server/internal/app/server.go` under the public route group (no auth).
+5. **Harden `HandleOAuthCallback`.** Change signature to `(ctx, code, state)`. Validate the state up front via `oauthstate.Validate(..., "slack-install", state)`; reject empty/missing state. Add `UserUID` to `OAuthResult`. Update the handler's error branches: `ErrInvalidState`, `ErrEmailRequired`, `ErrOAuthFailed`, `unknown` all redirect to `/saas/install-error?reason=…`.
+6. **Exchange-code session handoff.** Slack callback success path mints a `kind="slack-exchange"` entry (60 s TTL) carrying `{accessToken, refreshToken, orgSlug, userUID}` and 302s to `<frontendBase>/dashboard/auth/slack/complete?code=…`. New `POST /api/v1/auth/slack/exchange` endpoint in `server/internal/handlers/auth/` validates the code (single-use) and returns the payload as JSON.
+7. **Tests.** `oauthstate` round-trip + reuse/expiry/wrong-kind. Slack service callback tests for missing/invalid/expired/reused/wrong-kind state, reinstall idempotency, second-installer membership role, email-missing. Slack exchange handler tests for happy path + reuse/expiry/wrong-kind.
+8. **Dashboard route.** `web/dash0/src/routes/auth/slack/complete.tsx`: read `code`, POST to the exchange endpoint, set the session via the existing post-login helper, replace history with `/orgs/{slug}`. Surface failure with a redirect to the friendly error page.
+9. **QA.** `make build-backend lint-back test` and `make build-dash0 lint-dash` clean. Document the manifest / App Directory radio flip as a deferred operator action (no code change).
