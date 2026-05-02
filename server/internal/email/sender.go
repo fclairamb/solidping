@@ -154,7 +154,19 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		mail.WithSMTPAuth(s.getAuthType()),
 		mail.WithUsername(s.config.Username),
 		mail.WithPassword(s.config.Password),
-		mail.WithTLSPortPolicy(mail.TLSOpportunistic),
+	}
+
+	// Implicit TLS (smtps, port 465 style) requires a TLS handshake on
+	// connect. STARTTLS upgrades a plaintext connection. We default to
+	// opportunistic STARTTLS for back-compat with existing configs that
+	// leave protocol unset.
+	switch s.config.Protocol {
+	case "tls", "ssl", "smtps":
+		opts = append(opts, mail.WithSSL())
+	case "none", "plain":
+		opts = append(opts, mail.WithTLSPortPolicy(mail.NoTLS))
+	default:
+		opts = append(opts, mail.WithTLSPortPolicy(mail.TLSOpportunistic))
 	}
 
 	if s.config.InsecureSkipVerify {
