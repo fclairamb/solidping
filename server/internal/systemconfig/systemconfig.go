@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -51,6 +52,16 @@ const (
 	KeySlackClientID         ParameterKey = "auth.slack.client_id"
 	KeySlackClientSecret     ParameterKey = "auth.slack.client_secret"
 	KeySlackSigningSecret    ParameterKey = "auth.slack.signing_secret"
+	KeyDiscordClientID       ParameterKey = "auth.discord.client_id"
+	KeyDiscordClientSecret   ParameterKey = "auth.discord.client_secret"
+	KeyDiscordBotToken       ParameterKey = "auth.discord.bot_token"
+	KeyDiscordRedirectURL    ParameterKey = "auth.discord.redirect_url"
+	KeyGoogleEnabled         ParameterKey = "auth.google.enabled"
+	KeyGitHubEnabled         ParameterKey = "auth.github.enabled"
+	KeyGitLabEnabled         ParameterKey = "auth.gitlab.enabled"
+	KeyMicrosoftEnabled      ParameterKey = "auth.microsoft.enabled"
+	KeySlackEnabled          ParameterKey = "auth.slack.enabled"
+	KeyDiscordEnabled        ParameterKey = "auth.discord.enabled"
 )
 
 // ParameterDefinition defines a system parameter with its env var mapping.
@@ -366,6 +377,121 @@ func getKnownParameters() []ParameterDefinition {
 				}
 			},
 		},
+		{
+			Key:    KeyDiscordClientID,
+			EnvVar: "SP_DISCORD_CLIENT_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.ClientID = v
+				}
+			},
+		},
+		{
+			Key:    KeyDiscordClientSecret,
+			EnvVar: "SP_DISCORD_CLIENT_SECRET",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.ClientSecret = v
+				}
+			},
+		},
+		{
+			Key:    KeyDiscordBotToken,
+			EnvVar: "SP_DISCORD_BOT_TOKEN",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.BotToken = v
+				}
+			},
+		},
+		{
+			Key:    KeyDiscordRedirectURL,
+			EnvVar: "SP_DISCORD_REDIRECT_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Discord.RedirectURL = v
+				}
+			},
+		},
+		{
+			Key:    KeyGoogleEnabled,
+			EnvVar: "SP_GOOGLE_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Google.Enabled = parseBool(value, cfg.Google.Enabled)
+			},
+		},
+		{
+			Key:    KeyGitHubEnabled,
+			EnvVar: "SP_GITHUB_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.GitHub.Enabled = parseBool(value, cfg.GitHub.Enabled)
+			},
+		},
+		{
+			Key:    KeyGitLabEnabled,
+			EnvVar: "SP_GITLAB_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.GitLab.Enabled = parseBool(value, cfg.GitLab.Enabled)
+			},
+		},
+		{
+			Key:    KeyMicrosoftEnabled,
+			EnvVar: "SP_MICROSOFT_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Microsoft.Enabled = parseBool(value, cfg.Microsoft.Enabled)
+			},
+		},
+		{
+			Key:    KeySlackEnabled,
+			EnvVar: "SP_SLACK_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Slack.Enabled = parseBool(value, cfg.Slack.Enabled)
+			},
+		},
+		{
+			Key:    KeyDiscordEnabled,
+			EnvVar: "SP_DISCORD_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Discord.Enabled = parseBool(value, cfg.Discord.Enabled)
+			},
+		},
+	}
+}
+
+const (
+	boolStringTrue = "true"
+	boolStringYes  = "yes"
+	boolStringOne  = "1"
+)
+
+// parseBool coerces a config value to bool. Accepts native bool, the strings
+// "true"/"false"/"1"/"0"/"yes"/"no" (case-insensitive), and falls back to
+// defaultValue on anything else (including empty string).
+func parseBool(value any, defaultValue bool) bool {
+	switch v := value.(type) {
+	case bool:
+		return v
+	case string:
+		switch strings.ToLower(strings.TrimSpace(v)) {
+		case boolStringTrue, boolStringOne, boolStringYes:
+			return true
+		case "false", "0", "no":
+			return false
+		default:
+			return defaultValue
+		}
+	default:
+		return defaultValue
 	}
 }
 

@@ -160,6 +160,7 @@ type AuthConfig struct {
 
 // SlackConfig contains Slack integration configuration.
 type SlackConfig struct {
+	Enabled          bool   `koanf:"enabled"`
 	AppID            string `koanf:"app_id"`
 	ClientID         string `koanf:"client_id"`
 	ClientSecret     string `koanf:"client_secret"`
@@ -241,6 +242,12 @@ func Load() (*Config, error) {
 			Protocol: "starttls",
 			Enabled:  false,
 		},
+		Google:    GoogleOAuthConfig{Enabled: true},
+		GitHub:    GitHubOAuthConfig{Enabled: true},
+		GitLab:    GitLabOAuthConfig{Enabled: true},
+		Microsoft: MicrosoftOAuthConfig{Enabled: true},
+		Slack:     SlackConfig{Enabled: true},
+		Discord:   DiscordOAuthConfig{Enabled: true},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",

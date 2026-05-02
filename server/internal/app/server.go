@@ -228,7 +228,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	return server, nil
 }
 
-//nolint:funlen // Route registration function naturally grows with new routes
+//nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) setupRoutes() {
 	router := bunrouter.New()
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
@@ -290,7 +290,7 @@ func (s *Server) setupRoutes() {
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
 
 	// Slack OAuth routes (org-independent, public)
-	if s.config.Slack.ClientID != "" {
+	if s.config.Slack.Enabled && s.config.Slack.ClientID != "" {
 		slackOAuthService := auth.NewSlackOAuthService(s.dbService, s.config, s.authService)
 		slackOAuthHandler := auth.NewSlackOAuthHandler(slackOAuthService, s.config)
 		slackAuth := api.NewGroup("/auth/slack")
@@ -299,7 +299,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Google OAuth routes (org-scoped, public)
-	if s.config.Google.ClientID != "" {
+	if s.config.Google.Enabled && s.config.Google.ClientID != "" {
 		googleOAuthService := auth.NewGoogleOAuthService(s.dbService, s.config, s.authService)
 		googleOAuthHandler := auth.NewGoogleOAuthHandler(googleOAuthService, s.config)
 		googleAuth := api.NewGroup("/auth/google")
@@ -308,7 +308,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// GitHub OAuth routes (org-scoped, public)
-	if s.config.GitHub.ClientID != "" {
+	if s.config.GitHub.Enabled && s.config.GitHub.ClientID != "" {
 		gitHubOAuthService := auth.NewGitHubOAuthService(s.dbService, s.config, s.authService)
 		gitHubOAuthHandler := auth.NewGitHubOAuthHandler(gitHubOAuthService, s.config)
 		gitHubAuth := api.NewGroup("/auth/github")
@@ -317,7 +317,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Microsoft OAuth routes (org-scoped, public)
-	if s.config.Microsoft.ClientID != "" {
+	if s.config.Microsoft.Enabled && s.config.Microsoft.ClientID != "" {
 		microsoftOAuthService := auth.NewMicrosoftOAuthService(s.dbService, s.config, s.authService)
 		microsoftOAuthHandler := auth.NewMicrosoftOAuthHandler(microsoftOAuthService, s.config)
 		microsoftAuth := api.NewGroup("/auth/microsoft")
@@ -326,7 +326,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// GitLab OAuth routes (org-scoped, public)
-	if s.config.GitLab.ClientID != "" {
+	if s.config.GitLab.Enabled && s.config.GitLab.ClientID != "" {
 		gitLabOAuthService := auth.NewGitLabOAuthService(s.dbService, s.config, s.authService)
 		gitLabOAuthHandler := auth.NewGitLabOAuthHandler(gitLabOAuthService, s.config)
 		gitLabAuth := api.NewGroup("/auth/gitlab")
@@ -335,7 +335,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Discord OAuth routes (org-independent, public)
-	if s.config.Discord.ClientID != "" {
+	if s.config.Discord.Enabled && s.config.Discord.ClientID != "" {
 		discordOAuthService := auth.NewDiscordOAuthService(s.dbService, s.config, s.authService)
 		discordOAuthHandler := auth.NewDiscordOAuthHandler(discordOAuthService, s.config)
 		discordAuth := api.NewGroup("/auth/discord")
