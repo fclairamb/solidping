@@ -501,6 +501,42 @@ func (m *mockDBService) GetCheckByEmailToken(_ context.Context, _ string) (*mode
 	panic("not implemented")
 }
 
+func (m *mockDBService) FindActiveIncidentByGroupUID(_ context.Context, _ string) (*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindRecentlyResolvedIncidentByGroupUID(
+	_ context.Context, _ string, _ time.Time,
+) (*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListIncidentMemberChecks(
+	_ context.Context, _ string,
+) ([]*models.IncidentMemberCheck, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetIncidentMemberCheck(
+	_ context.Context, _, _ string,
+) (*models.IncidentMemberCheck, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpsertIncidentMemberCheck(_ context.Context, _ *models.IncidentMemberCheck) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateIncidentMemberCheck(
+	_ context.Context, _, _ string, _ *models.IncidentMemberUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountFailingIncidentMembers(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetOrCreateLabel(_ context.Context, _, _, _ string) (*models.Label, error) {
 	panic("not implemented")
 }

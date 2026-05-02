@@ -1675,11 +1675,19 @@ func (s *Service) GetIncident(ctx context.Context, orgUID, uid string) (*models.
 func (s *Service) FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error) {
 	incident := new(models.Incident)
 
+	// Match per-check incidents on incidents.check_uid OR group incidents that
+	// currently include this check via incident_member_checks.
 	err := s.db.NewSelect().
 		Model(incident).
-		Where("check_uid = ?", checkUID).
 		Where("state = ?", models.IncidentStateActive).
 		Where("deleted_at IS NULL").
+		Where(
+			"(check_uid = ? OR uid IN ("+
+				"SELECT incident_uid FROM incident_member_checks "+
+				"WHERE check_uid = ? AND currently_failing = TRUE))",
+			checkUID, checkUID,
+		).
+		Limit(1).
 		Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -1696,6 +1704,7 @@ func (s *Service) FindRecentlyResolvedIncidentByCheckUID(
 	err := s.db.NewSelect().
 		Model(incident).
 		Where("check_uid = ?", checkUID).
+		Where("check_group_uid IS NULL").
 		Where("state = ?", models.IncidentStateResolved).
 		Where("resolved_at >= ?", since).
 		Where("deleted_at IS NULL").
@@ -1709,6 +1718,148 @@ func (s *Service) FindRecentlyResolvedIncidentByCheckUID(
 	return incident, nil
 }
 
+// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
+func (s *Service) FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("check_group_uid = ?", groupUID).
+		Where("state = ?", models.IncidentStateActive).
+		Where("deleted_at IS NULL").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
+// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
+// for a group resolved after `since`. Used to reopen within cooldown.
+func (s *Service) FindRecentlyResolvedIncidentByGroupUID(
+	ctx context.Context, groupUID string, since time.Time,
+) (*models.Incident, error) {
+	incident := new(models.Incident)
+
+	err := s.db.NewSelect().
+		Model(incident).
+		Where("check_group_uid = ?", groupUID).
+		Where("state = ?", models.IncidentStateResolved).
+		Where("resolved_at >= ?", since).
+		Where("deleted_at IS NULL").
+		Order("resolved_at DESC").
+		Limit(1).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return incident, nil
+}
+
+// ListIncidentMemberChecks returns all member rows for a group incident.
+func (s *Service) ListIncidentMemberChecks(
+	ctx context.Context, incidentUID string,
+) ([]*models.IncidentMemberCheck, error) {
+	var members []*models.IncidentMemberCheck
+
+	err := s.db.NewSelect().
+		Model(&members).
+		Where("incident_uid = ?", incidentUID).
+		Order("first_failure_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return members, nil
+}
+
+// GetIncidentMemberCheck returns a single member row, or sql.ErrNoRows.
+func (s *Service) GetIncidentMemberCheck(
+	ctx context.Context, incidentUID, checkUID string,
+) (*models.IncidentMemberCheck, error) {
+	member := new(models.IncidentMemberCheck)
+
+	err := s.db.NewSelect().
+		Model(member).
+		Where("incident_uid = ?", incidentUID).
+		Where("check_uid = ?", checkUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return member, nil
+}
+
+// UpsertIncidentMemberCheck inserts or updates a member row.
+func (s *Service) UpsertIncidentMemberCheck(ctx context.Context, member *models.IncidentMemberCheck) error {
+	_, err := s.db.NewInsert().
+		Model(member).
+		On("CONFLICT (incident_uid, check_uid) DO UPDATE").
+		Set("last_failure_at = EXCLUDED.last_failure_at").
+		Set("failure_count = EXCLUDED.failure_count").
+		Set("currently_failing = EXCLUDED.currently_failing").
+		Set("last_recovery_at = EXCLUDED.last_recovery_at").
+		Exec(ctx)
+
+	return err
+}
+
+// UpdateIncidentMemberCheck applies a partial update to a member row.
+func (s *Service) UpdateIncidentMemberCheck(
+	ctx context.Context, incidentUID, checkUID string, update *models.IncidentMemberUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.IncidentMemberCheck)(nil)).
+		Where("incident_uid = ?", incidentUID).
+		Where("check_uid = ?", checkUID)
+
+	hasUpdate := false
+
+	if update.LastFailureAt != nil {
+		query = query.Set("last_failure_at = ?", *update.LastFailureAt)
+		hasUpdate = true
+	}
+
+	if update.LastRecoveryAt != nil {
+		query = query.Set("last_recovery_at = ?", *update.LastRecoveryAt)
+		hasUpdate = true
+	}
+
+	if update.FailureCount != nil {
+		query = query.Set("failure_count = ?", *update.FailureCount)
+		hasUpdate = true
+	}
+
+	if update.CurrentlyFailing != nil {
+		query = query.Set("currently_failing = ?", *update.CurrentlyFailing)
+		hasUpdate = true
+	}
+
+	if !hasUpdate {
+		return nil
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// CountFailingIncidentMembers returns the number of members with currently_failing = true.
+func (s *Service) CountFailingIncidentMembers(ctx context.Context, incidentUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.IncidentMemberCheck)(nil)).
+		Where("incident_uid = ?", incidentUID).
+		Where("currently_failing = TRUE").
+		Count(ctx)
+
+	return count, err
+}
+
 func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error) {
 	var incidents []*models.Incident
 
@@ -1720,6 +1871,20 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 
 	if len(filter.CheckUIDs) > 0 {
 		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
+	}
+
+	if filter.CheckGroupUID != "" {
+		query = query.Where("check_group_uid = ?", filter.CheckGroupUID)
+	}
+
+	if filter.MemberCheckUID != "" {
+		// Match per-check incidents with this check_uid OR group incidents that
+		// include the check (currently or historically).
+		query = query.Where(
+			"(check_uid = ? OR uid IN ("+
+				"SELECT incident_uid FROM incident_member_checks WHERE check_uid = ?))",
+			filter.MemberCheckUID, filter.MemberCheckUID,
+		)
 	}
 
 	if len(filter.States) > 0 {

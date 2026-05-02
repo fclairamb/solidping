@@ -119,15 +119,35 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		check.StatusChangedAt = statusChangedAt
 	}
 
-	// Find active incident
+	return s.routeCheckResult(ctx, check, result, isFailure)
+}
+
+// routeCheckResult finds the active incident and dispatches to the per-check
+// or group state machine. Extracted from ProcessCheckResult to keep cyclomatic
+// complexity manageable.
+func (s *Service) routeCheckResult(
+	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
+) error {
 	incident, err := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to find active incident: %w", err)
 	}
 
-	// Handle based on result
+	// Route uses the active incident's CheckGroupUID first; falls back to the
+	// check's group when there's no active incident yet.
+	isGroup := (incident != nil && incident.CheckGroupUID != nil) ||
+		(incident == nil && check.CheckGroupUID != nil)
+
 	if isFailure {
+		if isGroup {
+			return s.handleGroupFailure(ctx, check, result, incident)
+		}
+
 		return s.handleFailure(ctx, check, result, incident)
+	}
+
+	if isGroup {
+		return s.handleGroupSuccess(ctx, check, result, incident)
 	}
 
 	return s.handleSuccess(ctx, check, result, incident)
@@ -388,6 +408,395 @@ func (s *Service) reopenIncident(
 	return nil
 }
 
+// formatGroupTitle returns "<group> — N/M checks down". Used for both create
+// and rebuild — callers pass the current failing/total counts.
+func formatGroupTitle(group *models.CheckGroup, failing, total int) string {
+	name := "Group"
+	if group != nil {
+		name = group.Name
+	}
+
+	return fmt.Sprintf("%s — %d/%d checks down", name, failing, total)
+}
+
+// countEnabledGroupMembers returns the number of enabled checks in the group.
+// Used to compute the M in the "N/M" title.
+func (s *Service) countEnabledGroupMembers(ctx context.Context, orgUID, groupUID string) int {
+	filter := &models.ListChecksFilter{
+		CheckGroupUID: &groupUID,
+	}
+
+	checks, _, err := s.db.ListChecks(ctx, orgUID, filter)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list group members for title",
+			"groupUID", groupUID, "error", err)
+
+		return 0
+	}
+
+	return len(checks)
+}
+
+// handleGroupFailure handles a failed result for a check that belongs to a group.
+func (s *Service) handleGroupFailure(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+) error {
+	if incident == nil && check.StatusStreak < check.IncidentThreshold {
+		return nil
+	}
+
+	if incident == nil {
+		return s.createOrReopenGroupIncident(ctx, check, result)
+	}
+
+	// Group incident is active — update or insert this check's member row.
+	return s.updateGroupMemberOnFailure(ctx, check, result, incident)
+}
+
+// updateGroupMemberOnFailure handles a check failure when the group incident exists.
+func (s *Service) updateGroupMemberOnFailure(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+) error {
+	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("failed to load incident member: %w", err)
+	}
+
+	now := time.Now()
+
+	if member == nil {
+		// New member joining an active incident.
+		newMember := &models.IncidentMemberCheck{
+			IncidentUID:      incident.UID,
+			CheckUID:         check.UID,
+			JoinedAt:         now,
+			FirstFailureAt:   result.PeriodStart,
+			LastFailureAt:    result.PeriodStart,
+			FailureCount:     1,
+			CurrentlyFailing: true,
+		}
+		if err := s.db.UpsertIncidentMemberCheck(ctx, newMember); err != nil {
+			return fmt.Errorf("failed to insert new member: %w", err)
+		}
+	} else {
+		// Bump the member's failure count, mark currently_failing, advance the
+		// last_failure_at timestamp. Same path for "still failing" and "relapse".
+		newCount := member.FailureCount + 1
+		failing := true
+		mUpdate := &models.IncidentMemberUpdate{
+			LastFailureAt:    &result.PeriodStart,
+			FailureCount:     &newCount,
+			CurrentlyFailing: &failing,
+		}
+		if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
+			return fmt.Errorf("failed to update member: %w", err)
+		}
+	}
+
+	// Bump the incident's aggregate failure count and re-evaluate escalation.
+	newFailureCount := incident.FailureCount + 1
+	update := &models.IncidentUpdate{FailureCount: &newFailureCount}
+
+	if incident.EscalatedAt == nil {
+		// Per-spec: escalation fires the first time any individual member crosses
+		// its own escalation threshold.
+		var memberFailureCount int
+		if member != nil {
+			memberFailureCount = member.FailureCount + 1
+		} else {
+			memberFailureCount = 1
+		}
+
+		if memberFailureCount >= check.EscalationThreshold {
+			update.EscalatedAt = &now
+		}
+	}
+
+	// Rebuild title with the latest failing/total counts.
+	failing, total := s.groupCounts(ctx, incident, check)
+	if failing > 0 && total > 0 {
+		group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
+		title := formatGroupTitle(group, failing, total)
+		update.Title = &title
+	}
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, update); err != nil {
+		return fmt.Errorf("failed to update group incident: %w", err)
+	}
+
+	if update.EscalatedAt != nil {
+		if err := s.emitEvent(
+			ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
+				keyCheckUID:            check.UID,
+				keyCheckSlug:           check.Slug,
+				keyFailureCount:        newFailureCount,
+				keyEscalationThreshold: check.EscalationThreshold,
+			}); err != nil {
+			return fmt.Errorf("failed to emit group escalation event: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// groupCounts returns (failing, total) for an active group incident. `total`
+// is the count of currently-enabled checks in the group at evaluation time.
+func (s *Service) groupCounts(
+	ctx context.Context, incident *models.Incident, check *models.Check,
+) (int, int) {
+	if incident == nil || incident.CheckGroupUID == nil {
+		return 0, 0
+	}
+
+	failing, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to count failing members",
+			"incidentUID", incident.UID, "error", err)
+	}
+
+	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
+
+	return failing, total
+}
+
+// createOrReopenGroupIncident tries to reopen a recently-resolved group
+// incident, otherwise creates a new one with this check as the trigger.
+func (s *Service) createOrReopenGroupIncident(
+	ctx context.Context, check *models.Check, result *models.Result,
+) error {
+	if check.CheckGroupUID == nil {
+		return nil
+	}
+
+	cooldown := calculateCooldown(check)
+	if cooldown > 0 {
+		since := time.Now().Add(-cooldown)
+
+		incident, err := s.db.FindRecentlyResolvedIncidentByGroupUID(ctx, *check.CheckGroupUID, since)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("failed to find recently resolved group incident: %w", err)
+		}
+
+		if incident != nil && incident.AcknowledgedBy == nil {
+			return s.reopenGroupIncident(ctx, check, result, incident)
+		}
+	}
+
+	return s.createGroupIncident(ctx, check, result)
+}
+
+// createGroupIncident inserts a new group incident with this check as trigger
+// and inserts the first member row.
+func (s *Service) createGroupIncident(
+	ctx context.Context, check *models.Check, result *models.Result,
+) error {
+	if check.CheckGroupUID == nil {
+		return nil
+	}
+
+	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
+	totalMembers := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *check.CheckGroupUID)
+	if totalMembers == 0 {
+		totalMembers = 1
+	}
+
+	title := formatGroupTitle(group, 1, totalMembers)
+	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
+	incident.CheckGroupUID = check.CheckGroupUID
+
+	if err := s.db.CreateIncident(ctx, incident); err != nil {
+		return fmt.Errorf("failed to create group incident: %w", err)
+	}
+
+	member := &models.IncidentMemberCheck{
+		IncidentUID:      incident.UID,
+		CheckUID:         check.UID,
+		JoinedAt:         time.Now(),
+		FirstFailureAt:   result.PeriodStart,
+		LastFailureAt:    result.PeriodStart,
+		FailureCount:     1,
+		CurrentlyFailing: true,
+	}
+	if err := s.db.UpsertIncidentMemberCheck(ctx, member); err != nil {
+		return fmt.Errorf("failed to insert trigger member: %w", err)
+	}
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
+			keyCheckUID:  check.UID,
+			keyCheckSlug: check.Slug,
+			keyStartedAt: result.PeriodStart,
+			keyResultUID: result.UID,
+		}); err != nil {
+		return fmt.Errorf("failed to emit group incident created event: %w", err)
+	}
+
+	return nil
+}
+
+// reopenGroupIncident reopens a previously-resolved group incident, marking
+// this check as a (possibly re-joining) member.
+func (s *Service) reopenGroupIncident(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+) error {
+	now := time.Now()
+	activeState := models.IncidentStateActive
+	newRelapseCount := incident.RelapseCount + 1
+	newFailureCount := incident.FailureCount + 1
+
+	update := models.IncidentUpdate{
+		State:               &activeState,
+		ClearResolvedAt:     true,
+		RelapseCount:        &newRelapseCount,
+		LastReopenedAt:      &now,
+		FailureCount:        &newFailureCount,
+		ClearAcknowledgedAt: true,
+		ClearAcknowledgedBy: true,
+	}
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return fmt.Errorf("failed to reopen group incident: %w", err)
+	}
+
+	// Reset / insert this check's member row to "currently failing".
+	failing := true
+	one := 1
+	mUpdate := &models.IncidentMemberUpdate{
+		LastFailureAt:    &result.PeriodStart,
+		FailureCount:     &one,
+		CurrentlyFailing: &failing,
+	}
+	if err := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); err != nil {
+		// If no row exists yet (new member on reopen), insert one.
+		member := &models.IncidentMemberCheck{
+			IncidentUID:      incident.UID,
+			CheckUID:         check.UID,
+			JoinedAt:         now,
+			FirstFailureAt:   result.PeriodStart,
+			LastFailureAt:    result.PeriodStart,
+			FailureCount:     1,
+			CurrentlyFailing: true,
+		}
+		if upErr := s.db.UpsertIncidentMemberCheck(ctx, member); upErr != nil {
+			return fmt.Errorf("failed to upsert reopen member: %w", upErr)
+		}
+	}
+
+	incident.RelapseCount = newRelapseCount
+
+	effThreshold := effectiveRecoveryThreshold(check, &models.Incident{
+		RelapseCount: newRelapseCount,
+	})
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
+			keyCheckUID:                   check.UID,
+			keyCheckSlug:                  check.Slug,
+			keyRelapseCount:               newRelapseCount,
+			keyResultUID:                  result.UID,
+			keyEffectiveRecoveryThreshold: effThreshold,
+		}); err != nil {
+		return fmt.Errorf("failed to emit group reopened event: %w", err)
+	}
+
+	return nil
+}
+
+// handleGroupSuccess handles a successful result for a check whose group has
+// an active incident.
+func (s *Service) handleGroupSuccess(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+) error {
+	if incident == nil {
+		return nil
+	}
+
+	member, err := s.db.GetIncidentMemberCheck(ctx, incident.UID, check.UID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to load member on success: %w", err)
+	}
+
+	if !member.CurrentlyFailing {
+		return nil
+	}
+
+	threshold := effectiveRecoveryThreshold(check, incident)
+	if check.StatusStreak < threshold {
+		return nil
+	}
+
+	// Mark this member recovered.
+	failing := false
+	recoveredAt := result.PeriodStart
+	mUpdate := &models.IncidentMemberUpdate{
+		LastRecoveryAt:   &recoveredAt,
+		CurrentlyFailing: &failing,
+	}
+	if updErr := s.db.UpdateIncidentMemberCheck(ctx, incident.UID, check.UID, mUpdate); updErr != nil {
+		return fmt.Errorf("failed to mark member recovered: %w", updErr)
+	}
+
+	failingCount, err := s.db.CountFailingIncidentMembers(ctx, incident.UID)
+	if err != nil {
+		return fmt.Errorf("failed to count failing members: %w", err)
+	}
+
+	if failingCount == 0 {
+		return s.resolveGroupIncident(ctx, check, result, incident)
+	}
+
+	// Some members still failing — rebuild title.
+	total := s.countEnabledGroupMembers(ctx, check.OrganizationUID, *incident.CheckGroupUID)
+	if total == 0 {
+		total = failingCount
+	}
+
+	group, _ := s.db.GetCheckGroup(ctx, check.OrganizationUID, *incident.CheckGroupUID)
+	title := formatGroupTitle(group, failingCount, total)
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, &models.IncidentUpdate{Title: &title}); err != nil {
+		return fmt.Errorf("failed to rebuild group title: %w", err)
+	}
+
+	return nil
+}
+
+// resolveGroupIncident resolves a group incident when its last failing member recovers.
+func (s *Service) resolveGroupIncident(
+	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
+) error {
+	resolvedState := models.IncidentStateResolved
+	resolvedAt := result.PeriodStart
+
+	update := models.IncidentUpdate{
+		State:      &resolvedState,
+		ResolvedAt: &resolvedAt,
+	}
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return fmt.Errorf("failed to resolve group incident: %w", err)
+	}
+
+	durationSeconds := int64(resolvedAt.Sub(incident.StartedAt).Seconds())
+
+	if err := s.emitEvent(
+		ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
+			keyCheckUID:        check.UID,
+			keyCheckSlug:       check.Slug,
+			keyResolvedAt:      resolvedAt,
+			keyDurationSeconds: durationSeconds,
+			keyTotalFailures:   incident.FailureCount,
+		}); err != nil {
+		return fmt.Errorf("failed to emit group resolved event: %w", err)
+	}
+
+	return nil
+}
+
 // generateIncidentTitle generates a title for an incident.
 func (s *Service) generateIncidentTitle(check *models.Check) string {
 	if check.Slug != nil && *check.Slug != "" {
@@ -415,9 +824,16 @@ func (s *Service) emitEvent(
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
+		if incident.CheckGroupUID != nil {
+			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
+
+			return nil
+		}
+
 		checkUID, _ := payload["check_uid"].(string)
 		if checkUID == "" {
 			slog.WarnContext(ctx, "Missing check_uid in event payload", "eventType", eventType)
+
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
@@ -427,6 +843,78 @@ func (s *Service) emitEvent(
 	}
 
 	return nil
+}
+
+// queueGroupNotifications fans out a single notification per (connection,
+// event-type), where the connection set is the union of every currently-
+// failing member's connections. Recovered members do not bring their
+// channels into mid-incident events, but they DO contribute to the
+// resolved event so every channel that fired on creation also hears about
+// the recovery.
+func (s *Service) queueGroupNotifications(
+	ctx context.Context, orgUID, incidentUID string, eventType models.EventType,
+) {
+	members, err := s.db.ListIncidentMemberChecks(ctx, incidentUID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list group members for notification dedup",
+			"incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	seen := make(map[string]bool)
+
+	for _, member := range members {
+		if !member.CurrentlyFailing && eventType != models.EventTypeIncidentResolved {
+			continue
+		}
+
+		conns, err := s.db.ListConnectionsForCheck(ctx, member.CheckUID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to load connections for group member",
+				"checkUid", member.CheckUID, "error", err)
+
+			continue
+		}
+
+		for _, conn := range conns {
+			if !conn.Enabled || seen[conn.UID] {
+				continue
+			}
+
+			seen[conn.UID] = true
+			s.enqueueNotificationJob(ctx, orgUID, conn.UID, incidentUID, eventType)
+		}
+	}
+}
+
+// enqueueNotificationJob marshals the config and creates a single job row.
+// Shared between per-check and group fan-out paths.
+func (s *Service) enqueueNotificationJob(
+	ctx context.Context, orgUID, connectionUID, incidentUID string, eventType models.EventType,
+) {
+	config, err := json.Marshal(jobtypes.NotificationJobConfig{
+		ConnectionUID: connectionUID,
+		IncidentUID:   incidentUID,
+		EventType:     string(eventType),
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to marshal notification config",
+			"connectionUid", connectionUID,
+			"incidentUid", incidentUID,
+			"error", err,
+		)
+
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil); err != nil {
+		slog.WarnContext(ctx, "Failed to create notification job",
+			"connectionUid", connectionUID,
+			"incidentUid", incidentUID,
+			"error", err,
+		)
+	}
 }
 
 // queueNotifications queues notification jobs for an incident event.
@@ -472,13 +960,15 @@ func (s *Service) queueNotifications(
 
 // ListIncidentsOptions contains options for listing incidents.
 type ListIncidentsOptions struct {
-	CheckUIDs []string
-	States    []string // "active", "resolved"
-	Since     *time.Time
-	Until     *time.Time
-	Cursor    string
-	Size      int
-	WithCheck bool // Include check details in response
+	CheckUIDs      []string
+	CheckGroupUID  string
+	MemberCheckUID string
+	States         []string // "active", "resolved"
+	Since          *time.Time
+	Until          *time.Time
+	Cursor         string
+	Size           int
+	WithCheck      bool // Include check details in response
 }
 
 // CheckResponse represents check details embedded in incident responses.
@@ -490,21 +980,37 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID            string         `json:"uid"`
-	CheckUID       string         `json:"checkUid"`
-	CheckSlug      *string        `json:"checkSlug,omitempty"`
-	CheckName      *string        `json:"checkName,omitempty"`
-	State          string         `json:"state"`
-	StartedAt      time.Time      `json:"startedAt"`
-	ResolvedAt     *time.Time     `json:"resolvedAt,omitempty"`
-	EscalatedAt    *time.Time     `json:"escalatedAt,omitempty"`
-	AcknowledgedAt *time.Time     `json:"acknowledgedAt,omitempty"`
-	FailureCount   int            `json:"failureCount"`
-	RelapseCount   int            `json:"relapseCount"`
-	LastReopenedAt *time.Time     `json:"lastReopenedAt,omitempty"`
-	Title          *string        `json:"title,omitempty"`
-	Description    *string        `json:"description,omitempty"`
-	Check          *CheckResponse `json:"check,omitempty"`
+	UID            string                   `json:"uid"`
+	CheckUID       string                   `json:"checkUid"`
+	CheckSlug      *string                  `json:"checkSlug,omitempty"`
+	CheckName      *string                  `json:"checkName,omitempty"`
+	State          string                   `json:"state"`
+	StartedAt      time.Time                `json:"startedAt"`
+	ResolvedAt     *time.Time               `json:"resolvedAt,omitempty"`
+	EscalatedAt    *time.Time               `json:"escalatedAt,omitempty"`
+	AcknowledgedAt *time.Time               `json:"acknowledgedAt,omitempty"`
+	FailureCount   int                      `json:"failureCount"`
+	RelapseCount   int                      `json:"relapseCount"`
+	LastReopenedAt *time.Time               `json:"lastReopenedAt,omitempty"`
+	Title          *string                  `json:"title,omitempty"`
+	Description    *string                  `json:"description,omitempty"`
+	Check          *CheckResponse           `json:"check,omitempty"`
+	CheckGroupUID  *string                  `json:"checkGroupUid,omitempty"`
+	CheckGroupSlug *string                  `json:"checkGroupSlug,omitempty"`
+	Members        []IncidentMemberResponse `json:"members,omitempty"`
+}
+
+// IncidentMemberResponse represents a single member of a group incident.
+type IncidentMemberResponse struct {
+	CheckUID         string     `json:"checkUid"`
+	CheckSlug        *string    `json:"checkSlug,omitempty"`
+	CheckName        *string    `json:"checkName,omitempty"`
+	JoinedAt         time.Time  `json:"joinedAt"`
+	FirstFailureAt   time.Time  `json:"firstFailureAt"`
+	LastFailureAt    time.Time  `json:"lastFailureAt"`
+	LastRecoveryAt   *time.Time `json:"lastRecoveryAt,omitempty"`
+	FailureCount     int        `json:"failureCount"`
+	CurrentlyFailing bool       `json:"currentlyFailing"`
 }
 
 // ListIncidentsResponse represents the response for listing incidents.
@@ -546,6 +1052,56 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		LastReopenedAt: inc.LastReopenedAt,
 		Title:          inc.Title,
 		Description:    inc.Description,
+		CheckGroupUID:  inc.CheckGroupUID,
+	}
+}
+
+// memberToResponse converts a model member row to an API response, optionally
+// embedding the resolved check name/slug.
+func memberToResponse(member *models.IncidentMemberCheck, check *models.Check) IncidentMemberResponse {
+	resp := IncidentMemberResponse{
+		CheckUID:         member.CheckUID,
+		JoinedAt:         member.JoinedAt,
+		FirstFailureAt:   member.FirstFailureAt,
+		LastFailureAt:    member.LastFailureAt,
+		LastRecoveryAt:   member.LastRecoveryAt,
+		FailureCount:     member.FailureCount,
+		CurrentlyFailing: member.CurrentlyFailing,
+	}
+
+	if check != nil {
+		resp.CheckSlug = check.Slug
+		resp.CheckName = check.Name
+	}
+
+	return resp
+}
+
+// loadIncidentMembers populates the Members slice on the response from the
+// incident_member_checks rows. Resolves each member's check for slug/name.
+func (s *Service) loadIncidentMembers(
+	ctx context.Context, orgUID string, inc *models.Incident, resp *IncidentResponse,
+) {
+	if inc.CheckGroupUID == nil {
+		return
+	}
+
+	members, err := s.db.ListIncidentMemberChecks(ctx, inc.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident members for response",
+			"incidentUID", inc.UID, "error", err)
+
+		return
+	}
+
+	resp.Members = make([]IncidentMemberResponse, 0, len(members))
+	for _, member := range members {
+		check, _ := s.db.GetCheck(ctx, orgUID, member.CheckUID)
+		resp.Members = append(resp.Members, memberToResponse(member, check))
+	}
+
+	if group, err := s.db.GetCheckGroup(ctx, orgUID, *inc.CheckGroupUID); err == nil && group != nil {
+		resp.CheckGroupSlug = &group.Slug
 	}
 }
 
@@ -606,6 +1162,8 @@ func (s *Service) ListIncidents(
 	filter := &models.ListIncidentsFilter{
 		OrganizationUID: org.UID,
 		CheckUIDs:       opts.CheckUIDs,
+		CheckGroupUID:   opts.CheckGroupUID,
+		MemberCheckUID:  opts.MemberCheckUID,
 		Since:           opts.Since,
 		Until:           opts.Until,
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
@@ -651,6 +1209,9 @@ func (s *Service) ListIncidents(
 			incResponse.CheckSlug = check.Slug
 			incResponse.CheckName = check.Name
 		}
+
+		// Populate group members for group incidents.
+		s.loadIncidentMembers(ctx, org.UID, inc, &incResponse)
 
 		response.Data = append(response.Data, incResponse)
 	}
@@ -698,6 +1259,9 @@ func (s *Service) GetIncident(
 			response.Check = checkToResponse(check)
 		}
 	}
+
+	// Populate group members for group incidents.
+	s.loadIncidentMembers(ctx, org.UID, incident, &response)
 
 	return &response, nil
 }
