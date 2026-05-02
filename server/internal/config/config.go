@@ -67,6 +67,19 @@ type OTelConfig struct {
 	Metrics  bool   `koanf:"metrics"`
 }
 
+// EncryptionConfig configures the credential-encryption KEK. The master
+// key MUST come from outside the database (env var or mounted file). When
+// neither is set the credentials service operates in disabled mode and
+// secrets are stored in plaintext (V1 fallback for self-hosted users).
+type EncryptionConfig struct {
+	// MasterKey is the base64-encoded 32-byte KEK. SP_ENCRYPTION_MASTER_KEY.
+	MasterKey string `koanf:"master_key"`
+	// MasterKeyFile is the path to a file containing the base64 KEK.
+	// SP_ENCRYPTION_MASTER_KEY_FILE. Wins over MasterKey when both set —
+	// matches the Kubernetes secret-mount pattern.
+	MasterKeyFile string `koanf:"master_key_file"`
+}
+
 // PrometheusConfig contains Prometheus metrics endpoint configuration.
 type PrometheusConfig struct {
 	Enabled bool   `koanf:"enabled"` // Enable the /metrics endpoint
@@ -93,6 +106,7 @@ type Config struct {
 	Server      ServerConfig         `koanf:"server"`
 	Database    DatabaseConfig       `koanf:"db"`
 	Auth        AuthConfig           `koanf:"auth"`
+	Encryption  EncryptionConfig     `koanf:"encryption"`
 	Email       EmailConfig          `koanf:"email"`
 	Slack       SlackConfig          `koanf:"slack"`
 	Google      GoogleOAuthConfig    `koanf:"google"`
