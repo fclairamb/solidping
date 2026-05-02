@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Plus,
   Search,
@@ -78,11 +78,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { LabelInput } from "@/components/shared/label-input";
 import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+
+interface ChecksIndexSearch {
+  labels?: string;
+}
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
+  validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
+    labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
+  }),
 });
 
 function StatusDot({ status }: { status?: string | null }) {
@@ -297,6 +306,7 @@ function CheckGroupSection({
   org,
   search,
   internalFilter,
+  labelsFilter,
   isFirst,
   isLast,
   onDelete,
@@ -311,6 +321,7 @@ function CheckGroupSection({
   org: string;
   search: string;
   internalFilter?: string;
+  labelsFilter?: string;
   isFirst: boolean;
   isLast: boolean;
   onDelete: () => void;
@@ -337,6 +348,7 @@ function CheckGroupSection({
     checkGroupUid: group.uid,
     q: search || undefined,
     internal: internalFilter,
+    labels: labelsFilter,
     limit: 20,
   });
 
@@ -464,6 +476,7 @@ function UngroupedChecksSection({
   org,
   search,
   internalFilter,
+  labelsFilter,
   onDeleteCheck,
   onChangeGroup,
   groups,
@@ -471,6 +484,7 @@ function UngroupedChecksSection({
   org: string;
   search: string;
   internalFilter?: string;
+  labelsFilter?: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
@@ -490,6 +504,7 @@ function UngroupedChecksSection({
     checkGroupUid: "none",
     q: search || undefined,
     internal: internalFilter,
+    labels: labelsFilter,
     limit: 20,
   });
 
@@ -566,6 +581,9 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
+  const { labels: labelsParam } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
@@ -754,8 +772,8 @@ function ChecksIndexPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("searchChecks")}
@@ -784,6 +802,38 @@ function ChecksIndexPage() {
             className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
           />
         </Button>
+        <div className="flex flex-1 min-w-[260px] flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Labels:</span>
+          <div className="flex-1 min-w-[200px]">
+            <LabelInput
+              org={org}
+              value={labelFilters}
+              onChange={(next) => {
+                const serialized = serializeLabelsParam(next);
+                void navigate({
+                  search: (prev) => ({ ...prev, labels: serialized || undefined }),
+                  replace: true,
+                });
+              }}
+              placeholder={{ key: "filter by key…", value: "value…" }}
+            />
+          </div>
+          {Object.keys(labelFilters).length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void navigate({
+                  search: (prev) => ({ ...prev, labels: undefined }),
+                  replace: true,
+                })
+              }
+              data-testid="clear-label-filters"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
       </div>
 
       {groupsError ? (
@@ -803,6 +853,7 @@ function ChecksIndexPage() {
               org={org}
               search={debouncedSearch}
               internalFilter={internalFilter}
+              labelsFilter={labelsParam}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
               onDelete={() => setDeleteGroupUid(group.uid)}
@@ -822,6 +873,7 @@ function ChecksIndexPage() {
             org={org}
             search={debouncedSearch}
             internalFilter={internalFilter}
+            labelsFilter={labelsParam}
             onDeleteCheck={setDeleteCheckUid}
             onChangeGroup={setChangeGroupCheck}
             groups={groups || []}
