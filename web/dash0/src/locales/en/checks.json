@@ -169,6 +169,31 @@
     "30m": "30 minutes",
     "1h": "1 hour"
   },
+  "resultDetail": {
+    "title": "Result",
+    "back": "Back to check",
+    "period": "Period",
+    "region": "Region",
+    "worker": "Worker",
+    "duration": "Duration",
+    "durationMin": "Min",
+    "durationMax": "Max",
+    "durationP95": "P95",
+    "totalChecks": "Total checks",
+    "successfulChecks": "Successful checks",
+    "availability": "Availability",
+    "metrics": "Metrics",
+    "output": "Output",
+    "viewAll": "View all results for this check",
+    "fallback": {
+      "title": "The exact result you requested is no longer stored.",
+      "rolledUpToHour": "It was rolled up into this hour aggregation ({{start}}–{{end}}) covering its timestamp ({{ts}}).",
+      "rolledUpToDay": "It was rolled up into this day aggregation ({{start}}–{{end}}) covering its timestamp ({{ts}}).",
+      "rolledUpToMonth": "It was rolled up into this month aggregation ({{start}}–{{end}}) covering its timestamp ({{ts}}).",
+      "originalUid": "The original UID {{uid}} was deleted as part of automatic aggregation."
+    },
+    "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp."
+  },
   "detail": {
     "checkDetails": "Check Details",
     "configuration": "Configuration",
