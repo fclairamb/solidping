@@ -4,11 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
 // Handler provides HTTP handlers for system parameter endpoints.
@@ -115,5 +117,111 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
 	default:
 		return h.WriteInternalError(writer, err)
+	}
+}
+
+// EmailInboxStatusResponse mirrors jmap.Status for the API surface.
+type EmailInboxStatusResponse struct {
+	Enabled       bool       `json:"enabled"`
+	Connected     bool       `json:"connected"`
+	LastSyncedAt  *time.Time `json:"lastSyncedAt,omitempty"`
+	LastError     string     `json:"lastError,omitempty"`
+	AddressDomain string     `json:"addressDomain,omitempty"`
+	AccountID     string     `json:"accountId,omitempty"`
+}
+
+// EmailInboxTestRequest is the optional request body for POST /email-inbox/test.
+type EmailInboxTestRequest struct {
+	SessionURL    string `json:"sessionUrl,omitempty"`
+	Username      string `json:"username,omitempty"`
+	Password      string `json:"password,omitempty"`
+	AddressDomain string `json:"addressDomain,omitempty"`
+}
+
+// EmailInboxStatus handles GET /api/v1/system/email-inbox/status.
+func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
+	status, err := h.svc.EmailInboxStatus()
+	if err != nil {
+		return h.handleEmailInboxError(writer, err)
+	}
+
+	resp := EmailInboxStatusResponse{
+		Enabled:       status.Enabled,
+		Connected:     status.Connected,
+		LastSyncedAt:  status.LastSyncedAt,
+		LastError:     status.LastError,
+		AddressDomain: status.AddressDomain,
+		AccountID:     status.AccountID,
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// EmailInboxTest handles POST /api/v1/system/email-inbox/test.
+func (h *Handler) EmailInboxTest(writer http.ResponseWriter, req bunrouter.Request) error {
+	var body EmailInboxTestRequest
+
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&body) // empty body is valid
+	}
+
+	var cfg *jmap.Config
+	if body.SessionURL != "" || body.Username != "" {
+		cfg = &jmap.Config{
+			Enabled:       true,
+			SessionURL:    body.SessionURL,
+			Username:      body.Username,
+			Password:      body.Password,
+			AddressDomain: body.AddressDomain,
+		}
+	}
+
+	mboxes, err := h.svc.EmailInboxTest(req.Context(), cfg)
+	if err != nil {
+		return h.handleEmailInboxError(writer, err)
+	}
+
+	mailboxNames := []string{}
+	if mboxes.Inbox != nil {
+		mailboxNames = append(mailboxNames, mboxes.Inbox.Name)
+	}
+
+	if mboxes.Processed != nil {
+		mailboxNames = append(mailboxNames, mboxes.Processed.Name)
+	}
+
+	if mboxes.Trash != nil {
+		mailboxNames = append(mailboxNames, mboxes.Trash.Name)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{
+		"ok":        true,
+		"mailboxes": mailboxNames,
+	})
+}
+
+// EmailInboxSync handles POST /api/v1/system/email-inbox/sync.
+func (h *Handler) EmailInboxSync(writer http.ResponseWriter, req bunrouter.Request) error {
+	if err := h.svc.EmailInboxSync(req.Context()); err != nil {
+		return h.handleEmailInboxError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (h *Handler) handleEmailInboxError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrEmailInboxNotConfigured):
+		return h.WriteError(writer, http.StatusBadRequest,
+			base.ErrorCodeEmailInboxNotConfigured, "Email inbox not configured")
+	case errors.Is(err, ErrEmailInboxDisabled):
+		return h.WriteError(writer, http.StatusBadRequest,
+			base.ErrorCodeEmailInboxDisabled, "Email inbox is disabled")
+	case errors.Is(err, ErrEmailInboxNotAvailable):
+		return h.WriteError(writer, http.StatusServiceUnavailable,
+			base.ErrorCodeEmailInboxNotAvailable, "Email inbox manager not initialized")
+	default:
+		return h.WriteError(writer, http.StatusBadRequest,
+			base.ErrorCodeEmailInboxTestFailed, err.Error())
 	}
 }

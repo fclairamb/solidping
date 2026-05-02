@@ -13,16 +13,30 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
 // Errors for system parameter operations.
 var (
-	ErrParameterNotFound = errors.New("parameter not found")
+	ErrParameterNotFound       = errors.New("parameter not found")
+	ErrEmailInboxNotConfigured = errors.New("email inbox not configured")
+	ErrEmailInboxDisabled      = errors.New("email inbox disabled")
+	ErrEmailInboxNotAvailable  = errors.New("email inbox manager not initialized")
 )
+
+// JMAPInboxManager is the subset of *jmap.Manager that the system service
+// depends on. Defined as an interface to keep the package decoupled from the
+// jmap package and to make testing trivial.
+type JMAPInboxManager interface {
+	GetStatus() jmap.Status
+	TriggerSync(ctx context.Context) error
+	TestConnection(ctx context.Context, cfg *jmap.Config) (*jmap.Mailboxes, error)
+}
 
 // Service provides business logic for system parameter operations.
 type Service struct {
-	db db.Service
+	db    db.Service
+	inbox JMAPInboxManager
 }
 
 // NewService creates a new system service.
@@ -30,6 +44,12 @@ func NewService(dbService db.Service) *Service {
 	return &Service{
 		db: dbService,
 	}
+}
+
+// SetEmailInboxManager wires a JMAP inbox manager into the service. Called
+// from app/server.go after the manager has been constructed.
+func (s *Service) SetEmailInboxManager(m JMAPInboxManager) {
+	s.inbox = m
 }
 
 // ParameterResponse represents a system parameter in API responses.
@@ -246,6 +266,75 @@ func (s *Service) buildEmailConfig(ctx context.Context) (*config.EmailConfig, er
 
 	if v, ok := paramMap["email.insecure_skip_verify"].(bool); ok {
 		cfg.InsecureSkipVerify = v
+	}
+
+	return cfg, nil
+}
+
+// EmailInboxStatus returns the JMAP inbox manager's current status, or an
+// error if the manager has not been wired into the service.
+func (s *Service) EmailInboxStatus() (jmap.Status, error) {
+	if s.inbox == nil {
+		return jmap.Status{}, ErrEmailInboxNotAvailable
+	}
+
+	return s.inbox.GetStatus(), nil
+}
+
+// EmailInboxTest validates a JMAP configuration end-to-end (session
+// discovery, mailbox resolution). When cfg is nil, the stored email_inbox
+// system parameter is used. Returns the resolved mailboxes on success.
+func (s *Service) EmailInboxTest(ctx context.Context, cfg *jmap.Config) (*jmap.Mailboxes, error) {
+	if s.inbox == nil {
+		return nil, ErrEmailInboxNotAvailable
+	}
+
+	if cfg == nil {
+		stored, err := s.loadEmailInboxConfig(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		cfg = stored
+	}
+
+	return s.inbox.TestConnection(ctx, cfg)
+}
+
+// EmailInboxSync fires an immediate sync. Returns ErrEmailInboxNotConfigured
+// if the system parameter is missing, or ErrEmailInboxDisabled if disabled.
+func (s *Service) EmailInboxSync(ctx context.Context) error {
+	if s.inbox == nil {
+		return ErrEmailInboxNotAvailable
+	}
+
+	cfg, err := s.loadEmailInboxConfig(ctx)
+	if err != nil {
+		return err
+	}
+
+	if !cfg.Enabled {
+		return ErrEmailInboxDisabled
+	}
+
+	return s.inbox.TriggerSync(ctx)
+}
+
+// loadEmailInboxConfig reads the stored configuration. Returns
+// ErrEmailInboxNotConfigured if the parameter does not exist.
+func (s *Service) loadEmailInboxConfig(ctx context.Context) (*jmap.Config, error) {
+	param, err := s.db.GetSystemParameter(ctx, jmap.SystemParameterKey)
+	if err != nil {
+		return nil, fmt.Errorf("load email_inbox: %w", err)
+	}
+
+	if param == nil {
+		return nil, ErrEmailInboxNotConfigured
+	}
+
+	cfg, err := jmap.JSONMapToConfig(param.Value)
+	if err != nil {
+		return nil, err
 	}
 
 	return cfg, nil

@@ -249,3 +249,70 @@ After enabling, the server log should show `JMAP session discovered`, `Starting 
 | `server/internal/handlers/base/errors.go` (or wherever codes live) | add 3 new codes |
 | `server/internal/app/services/registry.go` | add `JMAPInbox *jmap.Manager` |
 | `server/internal/app/server.go` | construct manager, start goroutine, register routes |
+
+---
+
+## Implementation Plan
+
+The work breaks into 6 sequential commits, each independently buildable and unit-tested. Each step ends with `make fmt && make build-backend` + (if applicable) `go test` for that package.
+
+### Step 1 — `internal/jmap/types.go` + `internal/jmap/client.go`
+
+- Define `Config`, `Session`, `Account`, `Capability`, `MethodCall`, `Request`, `Response`, `MethodResponse`, `Email`, `EmailAddress`, `EmailHeader`, `Attachment`, `Mailbox`, `EventSourceEvent`, `ChangesResponse`. JSON tags use the JMAP camelCase wire format (no `tagliatelle` exemption needed — JMAP is camelCase).
+- `Client` struct with `httpClient`, `username`, `password`, `apiURL`, `eventSourceURL`, `downloadURL`, `accountID`, optional `rewriteBase` (for proxied setups returning internal URLs).
+- `NewClient(cfg Config) *Client`.
+- `DiscoverSession(ctx) (*Session, error)` — GET `cfg.SessionURL` with basic auth, set `apiURL`/`eventSourceURL`/`accountID` from the response, apply `rewriteBaseURL` rewriting.
+- `Call(ctx, []MethodCall) (*Response, error)` — POST `apiURL` with the JMAP envelope.
+- Tests: round-trip a sample `Email/get` response through `Response`/`MethodResponse` JSON unmarshal; verify `DiscoverSession` against `httptest` server returning a real-shaped session document.
+
+### Step 2 — `internal/jmap/methods.go`
+
+Typed wrappers over `Client.Call`:
+
+- `MailboxQuery(ctx, accountID, filter)` → list of mailbox IDs.
+- `FindMailboxByName(ctx, accountID, name)` → `*Mailbox` or nil.
+- `FindMailboxByRole(ctx, accountID, role)` → `*Mailbox` or nil (used for `Trash` discovery).
+- `FindOrCreateMailbox(ctx, accountID, name)` → `*Mailbox`. Uses `Mailbox/set` to create when missing.
+- `EmailQuery(ctx, accountID, filter)` → `[]string` IDs.
+- `EmailGet(ctx, accountID, ids, properties)` → `[]Email`.
+- `EmailSetMailbox(ctx, accountID, ids, fromMailboxID, toMailboxID)` — moves emails by toggling `mailboxIds`.
+- `EmailDestroy(ctx, accountID, ids)`.
+- `EmailChanges(ctx, accountID, sinceState)` → `ChangesResponse`.
+
+Tests: each method against `httptest` fixtures.
+
+### Step 3 — `internal/jmap/eventsource.go`
+
+- SSE reader using `http.NewRequestWithContext` + `Accept: text/event-stream`, manual line-buffered parsing (no third-party SSE dep).
+- `ListenEventSourceWithReconnect(ctx, types []string, handler func(EventSourceEvent) error)`.
+- Exponential backoff: start 1s, double up to 5min, reset on successful connect.
+- Tests: `httptest` server that streams a few events, drops the connection, then resumes — assert handler called only on real `state` events (filter out `ping`).
+
+### Step 4 — `internal/jmap/manager.go`
+
+- `Outcome`, `Mailboxes`, `Status`, `Handler` interface, `Manager` struct.
+- `NewManager(dbService)`, `RegisterHandler`.
+- `Run(ctx)` supervisor loop per spec (load config from `system_parameters` via `db.Service.GetSystemParameter`, sleep+retry on errors, dispatch to `runEventSource` or `runPolling`).
+- `runEventSource(ctx, c *Client)` — listens, calls `syncEmails` on each real `Email` state change.
+- `runPolling(ctx, c *Client)` — ticker-driven `syncEmails`.
+- `syncEmails(ctx, c *Client, m *Mailboxes)` — query inbox, get emails, run handlers, move per outcome, update `lastSyncedAt`.
+- `cleanupOldEmails(ctx, c *Client, m *Mailboxes)` — hourly within the supervisor loop.
+- `GetStatus`, `TriggerSync`, `TestConnection`.
+- Multi-handler routing: first non-`OutcomeIgnored` wins.
+- Tests: end-to-end against an in-process fake JMAP server. Two-handler routing test. Cleanup test. Status test (force connection error). EventSource ping-vs-state filtering.
+
+### Step 5 — system handler endpoints + service wiring
+
+- New error codes in `internal/handlers/base/errors.go` (or wherever): `EMAIL_INBOX_NOT_CONFIGURED`, `EMAIL_INBOX_DISABLED`, `EMAIL_INBOX_TEST_FAILED`.
+- `internal/handlers/system/service.go` — methods `EmailInboxStatus`, `EmailInboxTest(cfg *jmap.Config)`, `EmailInboxSync` proxying to a `*jmap.Manager` injected via constructor.
+- `internal/handlers/system/handler.go` — three HTTP handlers + route registration in the existing system route group (super-admin authorization).
+- `services.Registry` gains `JMAPInbox *jmap.Manager`.
+
+### Step 6 — app wiring + boot
+
+- `internal/app/server.go` constructs `jmap.NewManager(dbService)`, stores on registry, starts `go inboxMgr.Run(serverCtx)`, wires the system handlers' new dependency.
+- Make `addressDomain` readable via `GET /api/v1/system/parameters` (it should already be — system parameters with `secret=false` for the visible fields, or expose a derived read-only endpoint). Verify by running the curl from §Verification.
+
+### Step 7 — QA + archive
+
+`make build-backend build-client lint-back test`. Fix anything broken. Move spec to `specs/done/2026/04/2026-04-29-01-email-inbox-jmap.md`. Merge to main.

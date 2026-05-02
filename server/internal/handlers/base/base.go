@@ -49,6 +49,10 @@ const (
 	ErrorCodeInvalid2FACode            ErrorCode = "INVALID_2FA_CODE"
 	ErrorCodeInvalidRecoveryCode       ErrorCode = "INVALID_RECOVERY_CODE"
 	ErrorCode2FARequired               ErrorCode = "2FA_REQUIRED"
+	ErrorCodeEmailInboxNotConfigured   ErrorCode = "EMAIL_INBOX_NOT_CONFIGURED"
+	ErrorCodeEmailInboxDisabled        ErrorCode = "EMAIL_INBOX_DISABLED"
+	ErrorCodeEmailInboxTestFailed      ErrorCode = "EMAIL_INBOX_TEST_FAILED"
+	ErrorCodeEmailInboxNotAvailable    ErrorCode = "EMAIL_INBOX_NOT_AVAILABLE"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.
