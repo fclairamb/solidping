@@ -115,7 +115,7 @@ function AuthSettingsPage() {
         }
         const enabledParam = params.find((p: SystemParameter) => p.key === provider.enabledKey);
         newEnabled[provider.enabledKey] =
-          enabledParam?.value === undefined ? true : Boolean(enabledParam.value);
+          enabledParam?.value === undefined ? false : Boolean(enabledParam.value);
       }
       setValues(newValues);
       setEnabled(newEnabled);
@@ -132,11 +132,11 @@ function AuthSettingsPage() {
 
   const persistedEnabled = (provider: ProviderConfig): boolean => {
     const param = params?.find((p: SystemParameter) => p.key === provider.enabledKey);
-    return param?.value === undefined ? true : Boolean(param.value);
+    return param?.value === undefined ? false : Boolean(param.value);
   };
 
   const isEnabledDirty = (provider: ProviderConfig): boolean =>
-    (enabled[provider.enabledKey] ?? true) !== persistedEnabled(provider);
+    (enabled[provider.enabledKey] ?? false) !== persistedEnabled(provider);
 
   const isCredentialDirty = (provider: ProviderConfig): boolean =>
     provider.fields.some((field) => {
@@ -177,7 +177,7 @@ function AuthSettingsPage() {
         writes.push(
           setParam.mutateAsync({
             key: provider.enabledKey,
-            value: enabled[provider.enabledKey] ?? true,
+            value: enabled[provider.enabledKey] ?? false,
           })
         );
       }
@@ -268,7 +268,7 @@ function AuthSettingsPage() {
               </Label>
               <Switch
                 id={`${provider.enabledKey}-switch`}
-                checked={enabled[provider.enabledKey] ?? true}
+                checked={enabled[provider.enabledKey] ?? false}
                 disabled={!isConfigured(provider) || setParam.isPending}
                 onCheckedChange={(next) => handleToggleEnabled(provider, next)}
                 data-testid={`provider-enabled-${provider.name.toLowerCase()}`}
