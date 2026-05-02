@@ -444,3 +444,24 @@ Stop conditions during build:
 - Migration is not idempotent (re-running the down + up cycle leaves diff) → block.
 
 **Status**: Todo | **Created**: 2026-04-29
+
+## Implementation Plan
+
+Following the order in §11. Each numbered step is a commit:
+
+1. **Migrations** (postgres + sqlite) `004_group_incidents.{up,down}.sql`: `incidents.check_group_uid` column with FK `ON DELETE SET NULL`; new `incident_member_checks` table; partial indexes.
+2. **Models**: add `Incident.CheckGroupUID *string`, new `IncidentMemberCheck` + `IncidentMemberUpdate` in `internal/db/models/`.
+3. **db.Service additions**: `FindActiveIncidentByGroupUID`, `FindRecentlyResolvedIncidentByGroupUID`, `ListIncidentMemberChecks`, `GetIncidentMemberCheck`, `UpsertIncidentMemberCheck`, `UpdateIncidentMemberCheck`, `CountFailingIncidentMembers`. Implement on both postgres and sqlite. Update `FindActiveIncidentByCheckUID` to also return group incidents containing the check.
+4. **State machine — failure path** in `incidents.Service`: `createOrReopenGroupIncident`, `handleGroupFailure`. Routing in `ProcessCheckResult` based on `check.CheckGroupUID`.
+5. **State machine — success path**: `handleGroupSuccess`, group resolution when `CountFailingIncidentMembers == 0`.
+6. **Notification dedup**: `queueGroupNotifications` building the union of failing members' connections; `emitEvent` chooses based on `incident.CheckGroupUID`.
+7. **API**: `IncidentResponse` gains `CheckGroupUID`, `CheckGroupSlug`, `Members[]`. Add `?checkGroupUid=` and `?memberCheckUid=` query filters. Wire member loading into `Get`/`List` handlers.
+8. **CheckUpdate side effects**: `OnCheckGroupChanged`, `OnCheckDisabled`, `OnCheckDeleted` helpers in `incidents.Service`, called from `checks.Service.UpdateCheck` / `DeleteCheck`.
+9. **Frontend**: incident list shows `<group> — N/M`; detail page renders members section + member-level events; check detail incidents tab uses `?memberCheckUid=`.
+10. **Tests**: new `service_group_test.go` covering the table from §9. Per-check incident tests must keep passing.
+11. **QA + archive**.
+
+Notes on safety:
+- All changes are additive — new column nullable, new table separate. Existing per-check incidents (where `CheckGroupUID IS NULL`) must keep behaving identically. Regression-test bar.
+- `FindActiveIncidentByCheckUID` semantics widen: it now also returns the group incident a check participates in. Callers see the returned `incident.CheckGroupUID` and route accordingly. Existing per-check tests pass because non-grouped checks still return the per-check incident.
+
