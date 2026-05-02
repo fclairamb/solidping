@@ -1537,8 +1537,6 @@ type CloneCheckRequest struct {
 // copied; status-page and maintenance-window references are not copied
 // either. Labels and check_connections (with their per-check setting
 // overrides) are re-linked to the new check.
-//
-//nolint:cyclop,funlen // Lots of fields to copy; flat is clearer than helpers here.
 func (s *Service) CloneCheck(
 	ctx context.Context, orgSlug, sourceIdentifier string, req *CloneCheckRequest,
 ) (CheckResponse, error) {
@@ -1624,34 +1622,11 @@ func (s *Service) cloneResolveSlug(
 func (s *Service) cloneBuildCheck(
 	orgUID string, source *models.Check, req *CloneCheckRequest, finalSlug string,
 ) *models.Check {
-	sourceName := ""
-	if source.Name != nil {
-		sourceName = *source.Name
-	}
-
-	var targetName string
-
-	switch {
-	case req != nil && req.Name != nil && *req.Name != "":
-		targetName = *req.Name
-	case sourceName != "":
-		targetName = sourceName + " (copy)"
-	default:
-		targetName = finalSlug
-	}
+	targetName := resolveCloneName(source, req, finalSlug)
 
 	clone := models.NewCheck(orgUID, finalSlug, source.Type)
 	clone.Name = &targetName
-
-	if source.Description != nil {
-		copied := *source.Description
-		clone.Description = &copied
-	}
-
-	if req != nil && req.Description != nil {
-		copied := *req.Description
-		clone.Description = &copied
-	}
+	clone.Description = resolveCloneDescription(source, req)
 
 	clone.Config = source.Config
 	clone.Regions = append([]string(nil), source.Regions...)
@@ -1663,16 +1638,7 @@ func (s *Service) cloneBuildCheck(
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
 	clone.EscalationPolicyUID = source.EscalationPolicyUID
-
-	switch {
-	case req != nil && req.CheckGroupUID != nil && *req.CheckGroupUID == "":
-		clone.CheckGroupUID = nil
-	case req != nil && req.CheckGroupUID != nil:
-		value := *req.CheckGroupUID
-		clone.CheckGroupUID = &value
-	default:
-		clone.CheckGroupUID = source.CheckGroupUID
-	}
+	clone.CheckGroupUID = resolveCloneGroup(source, req)
 
 	clone.Enabled = false
 	if req != nil && req.Enabled != nil {
@@ -1680,6 +1646,48 @@ func (s *Service) cloneBuildCheck(
 	}
 
 	return clone
+}
+
+func resolveCloneName(source *models.Check, req *CloneCheckRequest, fallback string) string {
+	if req != nil && req.Name != nil && *req.Name != "" {
+		return *req.Name
+	}
+
+	if source.Name != nil && *source.Name != "" {
+		return *source.Name + " (copy)"
+	}
+
+	return fallback
+}
+
+func resolveCloneDescription(source *models.Check, req *CloneCheckRequest) *string {
+	if req != nil && req.Description != nil {
+		copied := *req.Description
+
+		return &copied
+	}
+
+	if source.Description != nil {
+		copied := *source.Description
+
+		return &copied
+	}
+
+	return nil
+}
+
+func resolveCloneGroup(source *models.Check, req *CloneCheckRequest) *string {
+	if req == nil || req.CheckGroupUID == nil {
+		return source.CheckGroupUID
+	}
+
+	if *req.CheckGroupUID == "" {
+		return nil
+	}
+
+	value := *req.CheckGroupUID
+
+	return &value
 }
 
 func (s *Service) cloneCopyLabels(ctx context.Context, sourceUID, cloneUID string) error {

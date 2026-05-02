@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	fieldType      = "type"
-	fieldSlug      = "slug"
-	fieldBody      = "body"
-	msgInvalidJSON = "Invalid JSON format"
+	fieldType          = "type"
+	fieldSlug          = "slug"
+	fieldBody          = "body"
+	msgInvalidJSON     = "Invalid JSON format"
+	msgSlugConflictOrg = "A check with this slug already exists in this organization"
 )
 
 // Handler provides HTTP handlers for check management endpoints.
@@ -438,7 +439,7 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
 				Name:    fieldSlug,
-				Message: "A check with this slug already exists in this organization",
+				Message: msgSlugConflictOrg,
 			},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
@@ -481,7 +482,7 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
 				Name:    fieldSlug,
-				Message: "A check with this slug already exists in this organization",
+				Message: msgSlugConflictOrg,
 			},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
@@ -542,7 +543,7 @@ func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error 
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
 				Name:    fieldSlug,
-				Message: "A check with this slug already exists in this organization",
+				Message: msgSlugConflictOrg,
 			},
 		})
 	case errors.Is(err, ErrInvalidSlugFormat):
