@@ -32,6 +32,7 @@ import {
   type ExportDocument,
   type ImportResult,
 } from "@/api/hooks";
+import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -129,6 +130,34 @@ function CheckRow({
   groups: CheckGroup[];
 }) {
   const { t } = useTranslation("checks");
+  const { data: emailDomain } = useEmailAddressDomain();
+
+  function renderTarget(): React.ReactNode {
+    if (check.type === "heartbeat") {
+      return check.slug || "heartbeat";
+    }
+
+    if (check.type === "email") {
+      const token = check.config?.token as string | undefined;
+      if (!token || !emailDomain) {
+        return check.slug || "email";
+      }
+      const full = emailCheckAddress(token, emailDomain);
+      const truncated = `${token.slice(0, 8)}…@${emailDomain}`;
+      return (
+        <span title={full} className="font-mono text-xs">
+          {truncated}
+        </span>
+      );
+    }
+
+    return (
+      (check.config?.url as string) ||
+      (check.config?.host as string) ||
+      check.slug
+    );
+  }
+
   return (
     <TableRow>
       <TableCell>
@@ -155,11 +184,7 @@ function CheckRow({
         </div>
       </TableCell>
       <TableCell className="text-muted-foreground">
-        {check.type === "heartbeat"
-          ? (check.slug || "heartbeat")
-          : (check.config?.url as string) ||
-            (check.config?.host as string) ||
-            check.slug}
+        {renderTarget()}
       </TableCell>
       <TableCell>
         <StatusBadge status={check.lastResult?.status} />

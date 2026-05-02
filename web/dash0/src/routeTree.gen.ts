@@ -45,6 +45,7 @@ import { Route as OrgsOrgStatusPagesStatusPageUidRouteImport } from './routes/or
 import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.web'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
+import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$org/organization.settings'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
@@ -242,6 +243,11 @@ const OrgsOrgServerMailRoute = OrgsOrgServerMailRouteImport.update({
   path: '/mail',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerEmailInboxRoute = OrgsOrgServerEmailInboxRouteImport.update({
+  id: '/email-inbox',
+  path: '/email-inbox',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerAuthRoute = OrgsOrgServerAuthRouteImport.update({
   id: '/auth',
   path: '/auth',
@@ -339,6 +345,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -380,6 +387,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -430,6 +438,7 @@ export interface FileRoutesById {
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
+  '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
@@ -482,6 +491,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/web'
@@ -523,6 +533,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/web'
@@ -572,6 +583,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
+    | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/web'
@@ -859,6 +871,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgServerMailRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
+    '/orgs/$org/server/email-inbox': {
+      id: '/orgs/$org/server/email-inbox'
+      path: '/email-inbox'
+      fullPath: '/orgs/$org/server/email-inbox'
+      preLoaderRoute: typeof OrgsOrgServerEmailInboxRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
     '/orgs/$org/server/auth': {
       id: '/orgs/$org/server/auth'
       path: '/auth'
@@ -1023,6 +1042,7 @@ const OrgsOrgOrganizationRouteWithChildren =
 
 interface OrgsOrgServerRouteChildren {
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
+  OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerWebRoute: typeof OrgsOrgServerWebRoute
@@ -1031,6 +1051,7 @@ interface OrgsOrgServerRouteChildren {
 
 const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
+  OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerWebRoute: OrgsOrgServerWebRoute,

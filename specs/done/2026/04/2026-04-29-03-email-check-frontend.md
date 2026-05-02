@@ -180,3 +180,16 @@ If running the fake JMAP server in CI is too heavy, gate this behind a `@e2e-ema
 4. Send an email to that address from any client; refresh check detail → status UP within ~5s (EventSource) or one poll interval (polling).
 5. Send to `<token>+down@…` → status flips to DOWN.
 6. Wait past `period`; without further emails, worker flips status to DOWN.
+
+## Implementation Plan
+
+Backend first (small), then frontend:
+
+1. **Backend public projection** — add `GET /api/v1/system/parameters/email_inbox/public` returning `{ addressDomain }` for any authenticated user. Lives in `server/internal/handlers/system/handler.go` + service. Wire route in `internal/app/server.go` next to other authenticated routes (no super-admin gate).
+2. **TypeScript types & API hooks** — add `"email"` to the `Check.type` and `CreateCheckRequest.type` unions in `web/dash0/src/api/hooks.ts`. Add `EmailInboxConfig` and `EmailInboxStatus` types. New file `web/dash0/src/api/email-inbox.ts` exporting hooks (`useEmailAddressDomain`, `useEmailInboxStatus`, `useTestEmailInbox`, `useSyncEmailInbox`) and helpers (`emailCheckAddress`).
+3. **Check form** — add `"email"` to `CheckType` union and `checkTypes` array in `web/dash0/src/components/shared/check-form.tsx`. Include in heartbeat-style period UX (Expected Interval). Render config block: warning when domain unconfigured, otherwise an explainer.
+4. **Check detail** — add an `EmailEndpoint` component next to `HeartbeatEndpoint` in `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`. Show address with copy button + reporting-failure collapsible + mailto link, or placeholder when domain is unknown.
+5. **Check list** — extend the `Target` column rendering in `web/dash0/src/routes/orgs/$org/checks.index.tsx` to show truncated email address for `email` checks.
+6. **Admin Email Inbox page** — new route `web/dash0/src/routes/orgs/$org/server.email-inbox.tsx` (super-admin only, mirrors existing `server.mail.tsx` layout). Sections: Configuration form, live Status (5s poll), Actions (Test/Sync). Wire into the Server tab nav.
+7. **QA** — `make build-backend lint-back test` for the backend addition; `make build-dash0` (or `make build-client`) and `bun run lint` for the frontend. No e2e (gated to fixtures we don't have).
+

@@ -479,6 +479,13 @@ func (s *Server) setupRoutes() {
 	systemGroup.PUT("/:key", systemHandler.SetParameter)
 	systemGroup.DELETE("/:key", systemHandler.DeleteParameter)
 
+	// Public projection of email_inbox: any authenticated user can read
+	// addressDomain so per-check email addresses can be rendered without
+	// surfacing the rest of the JMAP credentials.
+	api.NewGroup("/system/parameters").
+		Use(authMiddleware.RequireAuth).
+		GET("/email_inbox/public", systemHandler.EmailInboxPublic)
+
 	// System actions routes (super admin only)
 	systemActions := api.NewGroup("/system").
 		Use(authMiddleware.RequireAuth).

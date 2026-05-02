@@ -22,6 +22,7 @@ import {
   useIncidents,
   useRegions,
 } from "@/api/hooks";
+import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -150,6 +151,80 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } }) {
+  const token = check.config?.token as string;
+  const { data: domain } = useEmailAddressDomain();
+  const [showHelp, setShowHelp] = useState(false);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Copied to clipboard");
+  };
+
+  if (!domain) {
+    return (
+      <div>
+        <div className="text-sm font-medium text-muted-foreground mb-2">
+          Email Endpoint
+        </div>
+        <div className="bg-muted rounded-md p-3 text-sm text-muted-foreground">
+          Email inbox not configured. The check is created but cannot receive pings until an administrator configures the shared inbox.
+        </div>
+      </div>
+    );
+  }
+
+  const address = emailCheckAddress(token, domain);
+  const mailto = `mailto:${address}?subject=Test`;
+
+  return (
+    <div>
+      <div className="text-sm font-medium text-muted-foreground mb-2">
+        Email Endpoint
+      </div>
+      <div className="space-y-3">
+        <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
+          <span className="flex-1" data-testid="email-check-address">{address}</span>
+          <button
+            type="button"
+            data-testid="email-check-copy-btn"
+            onClick={() => copyToClipboard(address)}
+            className="text-muted-foreground hover:text-foreground p-0.5 rounded shrink-0"
+          >
+            <Copy className="h-4 w-4" />
+          </button>
+        </div>
+        <div>
+          <a href={mailto} className="text-sm text-primary hover:underline inline-flex items-center gap-1">
+            Send test email
+            <ExternalLink className="h-3 w-3" />
+          </a>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          className="text-sm text-muted-foreground hover:text-foreground"
+        >
+          {showHelp ? "Hide" : "Show"} reporting failure options
+        </button>
+        {showHelp && (
+          <div className="bg-muted rounded-md p-3 text-sm space-y-2">
+            <p>To report a failure or non-default status, use any of:</p>
+            <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+              <li>Plus-addressing: send to <code className="font-mono">{token}+down@{domain}</code> (or <code className="font-mono">+error</code>, <code className="font-mono">+running</code>).</li>
+              <li>Header: include <code className="font-mono">X-SolidPing-Status: down</code>.</li>
+              <li>Subject prefix: start the subject with <code className="font-mono">[DOWN]</code>, <code className="font-mono">[ERROR]</code>, or <code className="font-mono">[RUNNING]</code>.</li>
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              Resolution priority: plus-address &gt; header &gt; subject &gt; default <code className="font-mono">up</code>.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -572,6 +647,9 @@ function CheckDetailPage() {
             )}
             {check.type === "heartbeat" && (check.config?.token as string) && (
               <HeartbeatEndpoint org={org} check={check} />
+            )}
+            {check.type === "email" && (check.config?.token as string) && (
+              <EmailEndpoint check={check} />
             )}
           </CardContent>
         </Card>
