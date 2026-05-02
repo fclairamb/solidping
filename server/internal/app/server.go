@@ -380,6 +380,7 @@ func (s *Server) setupRoutes() {
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
+	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
 
 	// Region routes
 	regionsService := regionshandler.NewService(s.dbService)
