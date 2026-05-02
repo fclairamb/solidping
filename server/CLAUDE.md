@@ -134,22 +134,35 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - `lease_expires_at` - Lease timeout
 - `lease_starts` - Execution attempt counter (0-1 normal, 10 indicates crash)
 
-**results** - Time-series monitoring results (partitioned by organization)
-- `organization_uid`, `check_uid`, `worker_uid` - Foreign keys
-- `context` (jsonb) - Execution context (e.g., {"region": "eu-1"})
-- `period` - Time period grouping (YYYY, YYYY-MM, YYYY-MM-DD)
-- `started_at` - Execution timestamp
-- `status` - Result status: 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
-- `duration_ms_*` - Response time metrics (avg/min/max)
-- `availability` - Uptime percentage
+**results** - Time-series monitoring data — both raw check executions and rollups
+- `uid` (UUIDv7, PK) - Time-ordered identifier; the embedded millisecond timestamp is used for fallback lookups when a row has been rolled up and deleted
+- `organization_uid`, `check_uid` - Foreign keys
+- `period_type` - Aggregation level: `raw` | `hour` | `day` | `month`. Aggregation job rolls `raw → hour → day → month` and deletes the source rows; retention thresholds are configurable
+- `period_start` (notnull) - Start of the period (raw: execution time; aggregated: bucket start)
+- `period_end` (nullable) - Bucket end, exclusive. Set for aggregated rows; nil for raw
+- `region` (nullable) - Region the check ran in. Aggregations are per-region (one row per period × region)
+
+Raw-only fields (period_type = 'raw'):
+- `worker_uid` - Worker that executed the check
+- `status` - 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error
+- `duration` (float32) - Response time
+- `metrics` (jsonb) - Per-execution metrics
 - `output` (jsonb) - Detailed results and error messages
+- `last_for_status` - True if this is the latest result that produced the check's current status
+
+Aggregated-only fields (period_type ∈ 'hour', 'day', 'month'):
+- `total_checks`, `successful_checks`, `availability_pct` - Uptime stats over the bucket
+- `duration_min`, `duration_max`, `duration_p95` - Response-time stats
+- `metrics` - Aggregated by suffix convention (`_min`, `_max`, `_avg`, `_pct`, `_rte`, `_sum`, `_cnt`, `_val`); see `server/internal/jobs/jobtypes/job_aggregation.go`
+
+- `created_at` - Insertion timestamp (set by DB default)
 
 ### Monitoring System Features
 - **Multi-tenancy**: All resources scoped to organizations via `organization_uid`
 - **Soft deletes**: Most tables support `deleted_at` for recovery
 - **Flexible authentication**: Email/password, OAuth2, and social providers
 - **Distributed workers**: Multiple workers can execute checks with lease-based distribution
-- **Results partitioning**: Results table partitioned by organization for performance
+- **Results aggregation**: Results table holds both raw rows and rolled-up aggregations (hour/day/month) in the same shape, distinguished by `period_type`
 - **Configuration management**: Flexible key-value config per organization via `parameters` table
 - **Real-time monitoring**: Sub-minute check frequencies with immediate alerting
 - **Domain Expiration Monitoring**: WHOIS-based domain expiration tracking with configurable alert thresholds (days remaining)
