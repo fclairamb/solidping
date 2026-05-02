@@ -142,3 +142,31 @@ func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
 		return h.WriteInternalError(writer, err)
 	}
 }
+
+// GetResult handles GET /api/v1/orgs/:org/checks/:check/results/:uid.
+// Returns the result row, falling back to the smallest covering aggregation
+// when the raw row has been rolled up.
+func (h *Handler) GetResult(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	checkIdent := req.Param("check")
+	resultUID := req.Param("uid")
+
+	resp, err := h.svc.GetResult(req.Context(), orgSlug, checkIdent, resultUID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case errors.Is(err, ErrCheckNotFound):
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+		case errors.Is(err, ErrResultNotFound):
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound, base.ErrorCodeResultNotFound, "Result not found", err)
+		default:
+			return h.WriteInternalError(writer, err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
