@@ -1645,11 +1645,26 @@ func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bu
 	if update.ClearResolvedAt {
 		query = query.Set("resolved_at = NULL")
 	}
+	if update.ClearResolvedBy {
+		query = query.Set("resolved_by = NULL")
+	}
+	if update.ClearResolutionType {
+		query = query.Set("resolution_type = NULL")
+	}
 	if update.ClearAcknowledgedAt {
 		query = query.Set("acknowledged_at = NULL")
 	}
 	if update.ClearAcknowledgedBy {
 		query = query.Set("acknowledged_by = NULL")
+	}
+	if update.ClearSnoozedUntil {
+		query = query.Set("snoozed_until = NULL")
+	}
+	if update.ClearSnoozedBy {
+		query = query.Set("snoozed_by = NULL")
+	}
+	if update.ClearSnoozeReason {
+		query = query.Set("snooze_reason = NULL")
 	}
 	return query
 }
@@ -1935,6 +1950,14 @@ func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models
 		query = query.Set("resolved_at = ?", *update.ResolvedAt)
 	}
 
+	if update.ResolvedBy != nil {
+		query = query.Set("resolved_by = ?", *update.ResolvedBy)
+	}
+
+	if update.ResolutionType != nil {
+		query = query.Set("resolution_type = ?", *update.ResolutionType)
+	}
+
 	if update.EscalatedAt != nil {
 		query = query.Set("escalated_at = ?", *update.EscalatedAt)
 	}
@@ -1945,6 +1968,18 @@ func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models
 
 	if update.AcknowledgedBy != nil {
 		query = query.Set("acknowledged_by = ?", *update.AcknowledgedBy)
+	}
+
+	if update.SnoozedUntil != nil {
+		query = query.Set("snoozed_until = ?", *update.SnoozedUntil)
+	}
+
+	if update.SnoozedBy != nil {
+		query = query.Set("snoozed_by = ?", *update.SnoozedBy)
+	}
+
+	if update.SnoozeReason != nil {
+		query = query.Set("snooze_reason = ?", *update.SnoozeReason)
 	}
 
 	if update.FailureCount != nil {

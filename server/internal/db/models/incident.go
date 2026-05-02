@@ -16,6 +16,15 @@ const (
 	IncidentStateResolved IncidentState = 2
 )
 
+// Resolution type values for the resolution_type column. Manual = closed by a
+// human action; auto = the adaptive resolution logic decided the check is up
+// again; expired = future use for time-based resolution.
+const (
+	ResolutionTypeAuto    = "auto"
+	ResolutionTypeManual  = "manual"
+	ResolutionTypeExpired = "expired"
+)
+
 // Incident represents a period when a check was down.
 type Incident struct {
 	UID             string        `bun:"uid,pk,type:varchar(36)"`
@@ -25,9 +34,14 @@ type Incident struct {
 	State           IncidentState `bun:"state,notnull,default:1"`
 	StartedAt       time.Time     `bun:"started_at,notnull"`
 	ResolvedAt      *time.Time    `bun:"resolved_at"`
+	ResolvedBy      *string       `bun:"resolved_by"`
+	ResolutionType  *string       `bun:"resolution_type"`
 	EscalatedAt     *time.Time    `bun:"escalated_at"`
 	AcknowledgedAt  *time.Time    `bun:"acknowledged_at"`
 	AcknowledgedBy  *string       `bun:"acknowledged_by"`
+	SnoozedUntil    *time.Time    `bun:"snoozed_until"`
+	SnoozedBy       *string       `bun:"snoozed_by"`
+	SnoozeReason    *string       `bun:"snooze_reason"`
 	FailureCount    int           `bun:"failure_count,notnull,default:1"`
 	RelapseCount    int           `bun:"relapse_count,notnull,default:0"`
 	LastReopenedAt  *time.Time    `bun:"last_reopened_at"`
@@ -64,9 +78,14 @@ type IncidentUpdate struct {
 	Region         *string
 	State          *IncidentState
 	ResolvedAt     *time.Time
+	ResolvedBy     *string
+	ResolutionType *string
 	EscalatedAt    *time.Time
 	AcknowledgedAt *time.Time
 	AcknowledgedBy *string
+	SnoozedUntil   *time.Time
+	SnoozedBy      *string
+	SnoozeReason   *string
 	FailureCount   *int
 	RelapseCount   *int
 	LastReopenedAt *time.Time
@@ -76,8 +95,13 @@ type IncidentUpdate struct {
 
 	// Clear* fields set columns to NULL on reopen
 	ClearResolvedAt     bool
+	ClearResolvedBy     bool
+	ClearResolutionType bool
 	ClearAcknowledgedAt bool
 	ClearAcknowledgedBy bool
+	ClearSnoozedUntil   bool
+	ClearSnoozedBy      bool
+	ClearSnoozeReason   bool
 }
 
 // IncidentMemberCheck tracks a single check's state inside a group incident.
