@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Plus, Loader2 } from "lucide-react";
@@ -28,6 +29,8 @@ interface CheckTemplate {
   behavior: string;
 }
 
+// Template names/descriptions/behavior are kept in English on purpose: they
+// describe fixed test fixtures and would be confusing to half-translate.
 const checkTemplates: CheckTemplate[] = [
   {
     name: "Fake API (Stable)",
@@ -72,6 +75,7 @@ const checkTemplates: CheckTemplate[] = [
 ];
 
 function TemplatesTab() {
+  const { t } = useTranslation("nav");
   const { org } = Route.useParams();
   const navigate = useNavigate();
   const createCheck = useCreateCheck(org);
@@ -102,9 +106,9 @@ function TemplatesTab() {
     setCreatingSlug(template.slug);
     try {
       const check = await createCheck.mutateAsync(buildRequest(template));
-      toast.success(`Created "${template.name}"`, {
+      toast.success(t("test.templates.createdToast", { name: template.name }), {
         action: {
-          label: "View",
+          label: t("test.templates.viewAction"),
           onClick: () =>
             navigate({
               to: "/orgs/$org/checks/$checkUid",
@@ -115,7 +119,7 @@ function TemplatesTab() {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to create check";
+        err instanceof Error ? err.message : t("test.templates.createFailed");
       toast.error(message);
     } finally {
       setCreatingSlug(null);
@@ -133,7 +137,7 @@ function TemplatesTab() {
         // Skip duplicates silently
       }
     }
-    toast.success(`Created ${created} checks`);
+    toast.success(t("test.templates.createdAllToast", { count: created }));
     setCreatingSlug(null);
   };
 
@@ -156,9 +160,9 @@ function TemplatesTab() {
         period: `00:00:${customPeriod.padStart(2, "0")}`,
         enabled: true,
       });
-      toast.success("Created custom check", {
+      toast.success(t("test.templates.createdCustom"), {
         action: {
-          label: "View",
+          label: t("test.templates.viewAction"),
           onClick: () =>
             navigate({
               to: "/orgs/$org/checks/$checkUid",
@@ -169,7 +173,7 @@ function TemplatesTab() {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to create check";
+        err instanceof Error ? err.message : t("test.templates.createFailed");
       toast.error(message);
     } finally {
       setCreatingCustom(false);
@@ -189,7 +193,7 @@ function TemplatesTab() {
           ) : (
             <Plus className="mr-2 h-4 w-4" />
           )}
-          Create all
+          {t("test.templates.createAll")}
         </Button>
       </div>
 
@@ -203,12 +207,12 @@ function TemplatesTab() {
             <CardContent>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Check interval</span>
+                  <span className="text-muted-foreground">{t("test.templates.checkInterval")}</span>
                   <span className="font-mono">{template.period}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">
-                    Fake API params
+                    {t("test.templates.fakeApiParams")}
                   </span>
                   <span className="font-mono text-xs">
                     {template.fakeParams}
@@ -231,7 +235,7 @@ function TemplatesTab() {
                 ) : (
                   <Plus className="mr-2 h-4 w-4" />
                 )}
-                Create
+                {t("test.templates.create")}
               </Button>
             </CardFooter>
           </Card>
@@ -240,15 +244,13 @@ function TemplatesTab() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Custom fake API check</CardTitle>
-          <CardDescription>
-            Create a check with custom fake API parameters
-          </CardDescription>
+          <CardTitle className="text-base">{t("test.templates.customTitle")}</CardTitle>
+          <CardDescription>{t("test.templates.customDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="custom-cycle">Fake API cycle (s)</Label>
+              <Label htmlFor="custom-cycle">{t("test.templates.customCycle")}</Label>
               <Input
                 id="custom-cycle"
                 type="number"
@@ -258,11 +260,11 @@ function TemplatesTab() {
                 onChange={(e) => setCustomCycle(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Up for half, down for half
+                {t("test.templates.customCycleHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="custom-period">Check interval (s)</Label>
+              <Label htmlFor="custom-period">{t("test.templates.customPeriod")}</Label>
               <Input
                 id="custom-period"
                 type="number"
@@ -273,7 +275,7 @@ function TemplatesTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="custom-status">Down status code</Label>
+              <Label htmlFor="custom-status">{t("test.templates.customStatus")}</Label>
               <Input
                 id="custom-status"
                 type="number"
@@ -284,7 +286,7 @@ function TemplatesTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="custom-delay">Response delay (ms)</Label>
+              <Label htmlFor="custom-delay">{t("test.templates.customDelay")}</Label>
               <Input
                 id="custom-delay"
                 type="number"
@@ -303,7 +305,7 @@ function TemplatesTab() {
             ) : (
               <Plus className="mr-2 h-4 w-4" />
             )}
-            Create custom check
+            {t("test.templates.createCustom")}
           </Button>
         </CardFooter>
       </Card>
