@@ -1,6 +1,8 @@
 {
   "title": "Contrôles",
   "subtitle": "Gérez vos contrôles de surveillance",
+  "loadSample": "Charger un exemple…",
+  "noSamples": "Aucun exemple pour ce type",
   "newCheck": "Nouveau contrôle",
   "newGroup": "Nouveau groupe",
   "searchChecks": "Rechercher des contrôles...",
