@@ -113,7 +113,7 @@ func (h *Handler) Handle(writer http.ResponseWriter, req bunrouter.Request) erro
 			errorResponse(nil, CodeParseError, "Parse error"))
 	}
 
-	if rpcReq.JSONRPC != "2.0" {
+	if rpcReq.JSONRPC != jsonRPCVersion {
 		return writeJSON(writer, http.StatusOK,
 			errorResponse(rpcReq.ID, CodeInvalidRequest, "Invalid JSON-RPC version"))
 	}

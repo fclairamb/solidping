@@ -11,8 +11,15 @@ import (
 )
 
 const (
-	opGte = "gte"
-	opLte = "lte"
+	opGte       = "gte"
+	opLte       = "lte"
+	opNeq       = "neq"
+	opContains  = "contains"
+	opRegex     = "regex"
+	opExists    = "exists"
+	opNotExists = "not_exists"
+
+	errPathNotFound = "path not found"
 )
 
 // AssertionNodeType represents the type of an assertion tree node.
@@ -81,15 +88,15 @@ func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 	results := expr.Get(data)
 
 	// Handle exists/not_exists operators
-	if n.Operator == "exists" {
+	if n.Operator == opExists {
 		result.Pass = len(results) > 0
 		if !result.Pass {
-			result.Error = "path not found"
+			result.Error = errPathNotFound
 		}
 		return result
 	}
 
-	if n.Operator == "not_exists" {
+	if n.Operator == opNotExists {
 		result.Pass = len(results) == 0
 		if !result.Pass {
 			result.Actual = fmt.Sprintf("%v", results[0])
@@ -100,7 +107,7 @@ func (n *AssertionNode) evaluateLeaf(data any) AssertionResult {
 
 	// For comparison operators, path must exist
 	if len(results) == 0 {
-		result.Error = "path not found"
+		result.Error = errPathNotFound
 		return result
 	}
 
@@ -151,11 +158,11 @@ func compareValues(operator, actual, expected string) bool {
 	switch operator {
 	case "eq":
 		return actual == expected
-	case "neq":
+	case opNeq:
 		return actual != expected
-	case "contains":
+	case opContains:
 		return strings.Contains(actual, expected)
-	case "regex":
+	case opRegex:
 		re, err := regexp.Compile(expected)
 		if err != nil {
 			return false
@@ -221,9 +228,9 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	validOps := map[string]bool{
-		"eq": true, "neq": true, "gt": true, opGte: true,
-		"lt": true, opLte: true, "contains": true, "regex": true,
-		"exists": true, "not_exists": true,
+		"eq": true, opNeq: true, "gt": true, opGte: true,
+		"lt": true, opLte: true, opContains: true, opRegex: true,
+		opExists: true, opNotExists: true,
 	}
 
 	if !validOps[n.Operator] {
@@ -231,7 +238,7 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	// exists/not_exists must have empty value
-	if (n.Operator == "exists" || n.Operator == "not_exists") && n.Value != "" {
+	if (n.Operator == opExists || n.Operator == opNotExists) && n.Value != "" {
 		return errExistsNoValue
 	}
 
@@ -243,7 +250,7 @@ func (n *AssertionNode) validateLeaf() error {
 	}
 
 	// Regex must compile
-	if n.Operator == "regex" {
+	if n.Operator == opRegex {
 		if _, err := regexp.Compile(n.Value); err != nil {
 			return fmt.Errorf("%w: %w", errInvalidRegex, err)
 		}

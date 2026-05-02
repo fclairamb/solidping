@@ -17,9 +17,9 @@ func listIncidentsDef() ToolDefinition {
 			"state":    stringProp("Comma-separated: active, resolved"),
 			"since":    stringProp("RFC3339 timestamp (started after)"),
 			"until":    stringProp("RFC3339 timestamp (started before)"),
-			"with":     stringProp("\"check\" to include check details"),
+			propWith:   stringProp("\"check\" to include check details"),
 			"size":     intProp("Max results (1-100, default 20)"),
-			"cursor":   stringProp("Pagination cursor"),
+			propCursor: stringProp("Pagination cursor"),
 		}, nil),
 	}
 }
@@ -74,8 +74,8 @@ func getIncidentDef() ToolDefinition {
 		Name:        "get_incident",
 		Description: "Get a single incident by UID.",
 		InputSchema: objectSchema(map[string]any{
-			"uid":  stringProp("Incident UID"),
-			"with": stringProp("\"check\" to include check details"),
+			"uid":    stringProp("Incident UID"),
+			propWith: stringProp("\"check\" to include check details"),
 		}, []string{"uid"}),
 	}
 }

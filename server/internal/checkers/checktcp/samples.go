@@ -7,8 +7,9 @@ import (
 )
 
 const (
-	samplePort    = 443             // HTTPS port for sample checks
-	sampleTimeout = 5 * time.Second // Default timeout for sample TCP checks
+	samplePort       = 443             // HTTPS port for sample checks
+	sampleTimeout    = 5 * time.Second // Default timeout for sample TCP checks
+	sampleHostGoogle = "google.com"
 )
 
 // GetSampleConfigs returns sample TCP check configurations.
@@ -19,7 +20,7 @@ func (c *TCPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Slug:   "tcp-google",
 			Period: time.Minute * 5,
 			Config: (&TCPConfig{
-				Host:    "google.com",
+				Host:    sampleHostGoogle,
 				Port:    samplePort,
 				Timeout: sampleTimeout,
 			}).GetConfig(),

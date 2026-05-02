@@ -9,16 +9,16 @@ import (
 func (h *Handler) getResourceDefinitions() []ResourceDefinition {
 	return []ResourceDefinition{
 		{
-			URI:         "solidping://organization",
+			URI:         uriOrganization,
 			Name:        "Organization",
 			Description: "Current organization metadata (slug, name).",
-			MimeType:    "application/json",
+			MimeType:    mimeTypeJSON,
 		},
 		{
-			URI:         "solidping://regions",
+			URI:         uriRegions,
 			Name:        "Regions",
 			Description: "Available monitoring regions.",
-			MimeType:    "application/json",
+			MimeType:    mimeTypeJSON,
 		},
 	}
 }
@@ -38,9 +38,9 @@ func (h *Handler) handleResourcesRead(
 	}
 
 	switch params.URI {
-	case "solidping://organization":
+	case uriOrganization:
 		return h.readOrganizationResource(ctx, req, orgSlug)
-	case "solidping://regions":
+	case uriRegions:
 		return h.readRegionsResource(ctx, req, orgSlug)
 	default:
 		resp := errorResponse(req.ID, CodeNotFound, "Resource not found: "+params.URI)
@@ -58,8 +58,8 @@ func (h *Handler) readOrganizationResource(
 	}
 
 	data, errMarshal := json.Marshal(map[string]string{
-		"slug": org.Slug,
-		"name": org.Name,
+		schemaKeySlug: org.Slug,
+		schemaKeyName: org.Name,
 	})
 	if errMarshal != nil {
 		resp := errorResponse(req.ID, CodeInternalError, "Failed to marshal organization")
@@ -68,7 +68,7 @@ func (h *Handler) readOrganizationResource(
 
 	resp := successResponse(req.ID, ResourceReadResult{
 		Contents: []ResourceContent{
-			{URI: "solidping://organization", MimeType: "application/json", Text: string(data)},
+			{URI: uriOrganization, MimeType: mimeTypeJSON, Text: string(data)},
 		},
 	})
 	return &resp, http.StatusOK
@@ -91,7 +91,7 @@ func (h *Handler) readRegionsResource(
 
 	resp := successResponse(req.ID, ResourceReadResult{
 		Contents: []ResourceContent{
-			{URI: "solidping://regions", MimeType: "application/json", Text: string(data)},
+			{URI: uriRegions, MimeType: mimeTypeJSON, Text: string(data)},
 		},
 	})
 	return &resp, http.StatusOK

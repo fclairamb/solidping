@@ -122,14 +122,14 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: time.Since(start),
-				Output:   mergeOutput(output, map[string]any{"error": "connection timeout"}),
+				Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "connection timeout"}),
 			}, nil
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
-			Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("connection failed: %v", err)}),
+			Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err)}),
 		}, nil
 	}
 
@@ -148,7 +148,7 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 				Status:   checkerdef.StatusTimeout,
 				Duration: time.Since(start),
 				Metrics:  metrics,
-				Output:   mergeOutput(output, map[string]any{"error": "authentication timeout"}),
+				Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: "authentication timeout"}),
 			}, nil
 		}
 
@@ -156,7 +156,7 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
 			Metrics:  metrics,
-			Output:   mergeOutput(output, map[string]any{"error": fmt.Sprintf("login failed: %v", err)}),
+			Output:   mergeOutput(output, map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("login failed: %v", err)}),
 		}, nil
 	}
 
@@ -172,7 +172,7 @@ func (c *FTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 				Duration: time.Since(start),
 				Metrics:  metrics,
 				Output: mergeOutput(output, map[string]any{
-					"error": fmt.Sprintf("path verification failed: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("path verification failed: %v", err),
 				}),
 			}, nil
 		}

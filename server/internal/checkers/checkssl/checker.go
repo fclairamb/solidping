@@ -186,7 +186,7 @@ func (c *SSLChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
-			Output:   map[string]any{"error": err.Error()},
+			Output:   map[string]any{checkerdef.OutputKeyError: err.Error()},
 		}, nil
 	}
 
@@ -214,9 +214,9 @@ func (c *SSLChecker) buildResult(
 	}
 
 	output := map[string]any{
-		"host":        targetIP.String(),
-		"port":        params.port,
-		"tls_version": tlsVersionString(result.state.Version),
+		checkerdef.OutputKeyHost: targetIP.String(),
+		checkerdef.OutputKeyPort: params.port,
+		"tls_version":            tlsVersionString(result.state.Version),
 	}
 
 	if len(result.state.PeerCertificates) == 0 {
@@ -225,9 +225,9 @@ func (c *SSLChecker) buildResult(
 			Duration: duration,
 			Metrics:  metrics,
 			Output: map[string]any{
-				"host":  targetIP.String(),
-				"port":  params.port,
-				"error": "no peer certificates presented",
+				checkerdef.OutputKeyHost:  targetIP.String(),
+				checkerdef.OutputKeyPort:  params.port,
+				checkerdef.OutputKeyError: "no peer certificates presented",
 			},
 		}
 	}
@@ -259,14 +259,14 @@ func (c *SSLChecker) handleConnectError(
 			return &checkerdef.Result{
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
-				Output:   map[string]any{"error": "connection timeout"},
+				Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 			}
 		}
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: duration,
-			Output:   map[string]any{"error": fmt.Sprintf("connection failed: %v", err)},
+			Output:   map[string]any{checkerdef.OutputKeyError: fmt.Sprintf("connection failed: %v", err)},
 		}
 	}
 
@@ -279,9 +279,9 @@ func (c *SSLChecker) handleConnectError(
 			"duration_ms":        durationMs(duration),
 		},
 		Output: map[string]any{
-			"host":  targetIP.String(),
-			"port":  port,
-			"error": fmt.Sprintf("TLS handshake failed: %v", err),
+			checkerdef.OutputKeyHost:  targetIP.String(),
+			checkerdef.OutputKeyPort:  port,
+			checkerdef.OutputKeyError: fmt.Sprintf("TLS handshake failed: %v", err),
 		},
 	}
 }

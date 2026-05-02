@@ -12,7 +12,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
-const msgInvalidJSON = "Invalid JSON format"
+const (
+	fieldBody      = "body"
+	msgInvalidJSON = "Invalid JSON format"
+)
 
 // Handler provides HTTP handlers for maintenance window management endpoints.
 type Handler struct {
@@ -65,7 +68,7 @@ func (h *Handler) Create(writer http.ResponseWriter, req bunrouter.Request) erro
 	var createReq CreateRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -98,7 +101,7 @@ func (h *Handler) Update(writer http.ResponseWriter, req bunrouter.Request) erro
 	var updateReq UpdateRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 
@@ -147,7 +150,7 @@ func (h *Handler) SetChecks(writer http.ResponseWriter, req bunrouter.Request) e
 	var setReq SetChecksRequest
 	if err := json.NewDecoder(req.Body).Decode(&setReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: msgInvalidJSON},
+			{Name: fieldBody, Message: msgInvalidJSON},
 		})
 	}
 

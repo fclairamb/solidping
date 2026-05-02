@@ -14,6 +14,8 @@ const (
 	defaultTimeout = 30 * time.Second
 	maxTimeout     = 60 * time.Second
 	maxEnvEntries  = 50
+
+	fieldScript = "script"
 )
 
 // JSConfig holds the configuration for JavaScript checks.
@@ -26,10 +28,10 @@ type JSConfig struct {
 // FromMap populates the configuration from a map.
 func (c *JSConfig) FromMap(configMap map[string]any) error {
 	// Extract Script (required)
-	if script, ok := configMap["script"].(string); ok {
+	if script, ok := configMap[fieldScript].(string); ok {
 		c.Script = script
-	} else if configMap["script"] != nil {
-		return checkerdef.NewConfigError("script", "must be a string")
+	} else if configMap[fieldScript] != nil {
+		return checkerdef.NewConfigError(fieldScript, "must be a string")
 	}
 
 	// Extract Timeout (optional, duration string)
@@ -70,7 +72,7 @@ func (c *JSConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *JSConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"script": c.Script,
+		fieldScript: c.Script,
 	}
 
 	if c.Timeout != 0 {
@@ -92,11 +94,11 @@ func (c *JSConfig) GetConfig() map[string]any {
 // Validate checks that the configuration fields are within acceptable bounds.
 func (c *JSConfig) Validate() error {
 	if c.Script == "" {
-		return checkerdef.NewConfigError("script", "is required")
+		return checkerdef.NewConfigError(fieldScript, "is required")
 	}
 
 	if len(c.Script) > maxScriptSize {
-		return checkerdef.NewConfigErrorf("script",
+		return checkerdef.NewConfigErrorf(fieldScript,
 			"must be at most %d bytes, got %d", maxScriptSize, len(c.Script))
 	}
 
@@ -112,8 +114,8 @@ func (c *JSConfig) Validate() error {
 
 	// Check for JavaScript syntax errors via Goja compilation
 	wrapped := "(function() {\n" + c.Script + "\n})()"
-	if _, err := goja.Compile("script", wrapped, true); err != nil {
-		return checkerdef.NewConfigError("script",
+	if _, err := goja.Compile(fieldScript, wrapped, true); err != nil {
+		return checkerdef.NewConfigError(fieldScript,
 			"syntax error: "+err.Error())
 	}
 

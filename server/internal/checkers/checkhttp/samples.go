@@ -9,6 +9,7 @@ import (
 const (
 	sampleExpectedStatus = 200 // HTTP 200 OK for sample checks
 	defaultBaseURL       = "http://localhost:4000"
+	methodGET            = "GET"
 )
 
 func baseURL(opts *checkerdef.ListSampleOptions) string {
@@ -32,7 +33,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Period: time.Second * 10,
 				Config: (&HTTPConfig{
 					URL:            base + "/api/v1/fake?period=86400",
-					Method:         "GET",
+					Method:         methodGET,
 					ExpectedStatus: sampleExpectedStatus,
 				}).GetConfig(),
 			},
@@ -42,7 +43,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Period: time.Second * 15,
 				Config: (&HTTPConfig{
 					URL:            base + "/api/v1/fake?period=120",
-					Method:         "GET",
+					Method:         methodGET,
 					ExpectedStatus: sampleExpectedStatus,
 				}).GetConfig(),
 			},
@@ -52,7 +53,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Period: time.Second * 15,
 				Config: (&HTTPConfig{
 					URL:            base + "/api/v1/fake?period=40",
-					Method:         "GET",
+					Method:         methodGET,
 					ExpectedStatus: sampleExpectedStatus,
 				}).GetConfig(),
 			},
@@ -62,7 +63,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Period: time.Second * 20,
 				Config: (&HTTPConfig{
 					URL:            base + "/api/v1/fake?period=86400&delay=2000",
-					Method:         "GET",
+					Method:         methodGET,
 					ExpectedStatus: sampleExpectedStatus,
 				}).GetConfig(),
 			},
@@ -72,7 +73,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				Period: time.Second * 15,
 				Config: (&HTTPConfig{
 					URL:            base + "/api/v1/fake?period=60&statusDown=503",
-					Method:         "GET",
+					Method:         methodGET,
 					ExpectedStatus: sampleExpectedStatus,
 				}).GetConfig(),
 			},
@@ -87,7 +88,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 			Period: time.Second * 20,
 			Config: (&HTTPConfig{
 				URL:            base + "/api/v1/fake?period=70",
-				Method:         "GET",
+				Method:         methodGET,
 				ExpectedStatus: sampleExpectedStatus,
 			}).GetConfig(),
 		},
@@ -97,7 +98,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 			Period: time.Minute,
 			Config: (&HTTPConfig{
 				URL:            "https://one.one.one.one",
-				Method:         "GET",
+				Method:         methodGET,
 				ExpectedStatus: sampleExpectedStatus,
 			}).GetConfig(),
 		},

@@ -15,19 +15,27 @@ import (
 const (
 	// Default values from spec.
 	defaultTimeout    = 5 * time.Second
-	defaultRecordType = "A"
+	defaultRecordType = recordTypeA
+
+	recordTypeA     = "A"
+	recordTypeAAAA  = "AAAA"
+	recordTypeCNAME = "CNAME"
+	recordTypeMX    = "MX"
+	recordTypeNS    = "NS"
+	recordTypeTXT   = "TXT"
+	recordTypeSOA   = "SOA"
 )
 
 var (
 	//nolint:gochecknoglobals // validRecordTypes is a constant lookup map
 	validRecordTypes = map[string]bool{
-		"A":     true,
-		"AAAA":  true,
-		"CNAME": true,
-		"MX":    true,
-		"NS":    true,
-		"TXT":   true,
-		"SOA":   true,
+		recordTypeA:     true,
+		recordTypeAAAA:  true,
+		recordTypeCNAME: true,
+		recordTypeMX:    true,
+		recordTypeNS:    true,
+		recordTypeTXT:   true,
+		recordTypeSOA:   true,
 	}
 	errSOANotSupported = errors.New("SOA record type not yet supported")
 )
@@ -116,19 +124,19 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	var resolvedValues []string
 
 	switch recordType {
-	case "A":
+	case recordTypeA:
 		resolvedIPs, err = c.lookupA(ctx, resolver, cfg.Host)
-	case "AAAA":
+	case recordTypeAAAA:
 		resolvedIPs, err = c.lookupAAAA(ctx, resolver, cfg.Host)
-	case "CNAME":
+	case recordTypeCNAME:
 		resolvedValues, err = c.lookupCNAME(ctx, resolver, cfg.Host)
-	case "MX":
+	case recordTypeMX:
 		resolvedValues, err = c.lookupMX(ctx, resolver, cfg.Host)
-	case "NS":
+	case recordTypeNS:
 		resolvedValues, err = c.lookupNS(ctx, resolver, cfg.Host)
-	case "TXT":
+	case recordTypeTXT:
 		resolvedValues, err = c.lookupTXT(ctx, resolver, cfg.Host)
-	case "SOA":
+	case recordTypeSOA:
 		resolvedValues, err = c.lookupSOA(ctx, resolver, cfg.Host)
 	}
 
@@ -143,8 +151,8 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Output: map[string]any{
-					"host":        cfg.Host,
-					"record_type": recordType,
+					checkerdef.OutputKeyHost:       cfg.Host,
+					checkerdef.OutputKeyRecordType: recordType,
 				},
 			}, nil
 		}
@@ -155,8 +163,8 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
 				Output: map[string]any{
-					"host":        cfg.Host,
-					"record_type": recordType,
+					checkerdef.OutputKeyHost:       cfg.Host,
+					checkerdef.OutputKeyRecordType: recordType,
 				},
 			}, nil
 		}
@@ -172,8 +180,8 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusDown,
 			Duration: duration,
 			Output: map[string]any{
-				"host":        cfg.Host,
-				"record_type": recordType,
+				checkerdef.OutputKeyHost:       cfg.Host,
+				checkerdef.OutputKeyRecordType: recordType,
 			},
 		}, nil
 	}
@@ -202,8 +210,8 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			"record_count":  recordCount,
 		},
 		Output: map[string]any{
-			"host":        cfg.Host,
-			"record_type": recordType,
+			checkerdef.OutputKeyHost:       cfg.Host,
+			checkerdef.OutputKeyRecordType: recordType,
 		},
 	}
 
@@ -220,7 +228,7 @@ func (c *DNSChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 	}
 
 	if status == checkerdef.StatusDown && (len(cfg.ExpectedIPs) > 0 || len(cfg.ExpectedValues) > 0) {
-		result.Output["error"] = "resolved values do not match expected values"
+		result.Output[checkerdef.OutputKeyError] = "resolved values do not match expected values"
 	}
 
 	return &result, nil

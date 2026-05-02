@@ -31,4 +31,8 @@ const (
 	usageHumanReadableName = "Human-readable name"
 	usagePaginationCursor  = "Pagination cursor for next page"
 	usageResultsPerPage    = "Results per page (max 100)"
+
+	keySuccess = "success"
+	keyMessage = "message"
+	keyFailed  = "failed"
 )

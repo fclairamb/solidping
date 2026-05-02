@@ -23,6 +23,21 @@ var (
 	ErrIncidentNotFound     = errors.New("incident not found")
 )
 
+// JSON event metadata keys.
+const (
+	keyCheckUID                   = "check_uid"
+	keyCheckSlug                  = "check_slug"
+	keyStartedAt                  = "started_at"
+	keyResultUID                  = "result_uid"
+	keyResolvedAt                 = "resolved_at"
+	keyDurationSeconds            = "duration_seconds"
+	keyTotalFailures              = "total_failures"
+	keyFailureCount               = "failure_count"
+	keyEscalationThreshold        = "escalation_threshold"
+	keyRelapseCount               = "relapse_count"
+	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
+)
+
 // Service provides incident management functionality.
 type Service struct {
 	db      db.Service
@@ -144,8 +159,8 @@ func (s *Service) handleFailure(
 		update.EscalatedAt = &now
 		// Emit escalation event
 		if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
-			"failure_count":        newFailureCount,
-			"escalation_threshold": check.EscalationThreshold,
+			keyFailureCount:        newFailureCount,
+			keyEscalationThreshold: check.EscalationThreshold,
 		}); err != nil {
 			return fmt.Errorf("failed to emit escalation event: %w", err)
 		}
@@ -191,10 +206,10 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	// Emit incident created event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
-		"started_at": result.PeriodStart,
-		"result_uid": result.UID,
+		keyCheckUID:  check.UID,
+		keyCheckSlug: check.Slug,
+		keyStartedAt: result.PeriodStart,
+		keyResultUID: result.UID,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident created event: %w", err)
 	}
@@ -223,11 +238,11 @@ func (s *Service) resolveIncident(
 
 	// Emit incident resolved event
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
-		"check_uid":        check.UID,
-		"check_slug":       check.Slug,
-		"resolved_at":      resolvedAt,
-		"duration_seconds": durationSeconds,
-		"total_failures":   incident.FailureCount,
+		keyCheckUID:        check.UID,
+		keyCheckSlug:       check.Slug,
+		keyResolvedAt:      resolvedAt,
+		keyDurationSeconds: durationSeconds,
+		keyTotalFailures:   incident.FailureCount,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
 	}
@@ -361,11 +376,11 @@ func (s *Service) reopenIncident(
 	incident.RelapseCount = newRelapseCount
 
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
-		"check_uid":                    check.UID,
-		"check_slug":                   check.Slug,
-		"relapse_count":                newRelapseCount,
-		"result_uid":                   result.UID,
-		"effective_recovery_threshold": effThreshold,
+		keyCheckUID:                   check.UID,
+		keyCheckSlug:                  check.Slug,
+		keyRelapseCount:               newRelapseCount,
+		keyResultUID:                  result.UID,
+		keyEffectiveRecoveryThreshold: effThreshold,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident reopened event: %w", err)
 	}

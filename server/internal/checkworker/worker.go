@@ -40,6 +40,10 @@ var (
 const (
 	// heartbeatInterval is how often the worker updates its last_active_at.
 	heartbeatInterval = 50 * time.Second
+
+	periodTypeRaw = "raw"
+
+	outputKeyMessage = "message"
 )
 
 // CheckWorker executes check jobs from the queue.
@@ -440,7 +444,7 @@ func (r *CheckWorker) executeJob(
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
 				Output: map[string]any{
-					"error": "check execution timed out",
+					checkerdef.OutputKeyError: "check execution timed out",
 				},
 			}
 		} else {
@@ -449,7 +453,7 @@ func (r *CheckWorker) executeJob(
 				Status:   checkerdef.StatusError,
 				Duration: duration,
 				Output: map[string]any{
-					"error": err.Error(),
+					checkerdef.OutputKeyError: err.Error(),
 				},
 			}
 		}
@@ -510,7 +514,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 		UID:             resultUID.String(),
 		OrganizationUID: checkJob.OrganizationUID,
 		CheckUID:        checkJob.CheckUID,
-		PeriodType:      "raw",
+		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &r.worker.UID,
 		Region:          checkJob.Region,
@@ -561,14 +565,14 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		UID:             resultUID.String(),
 		OrganizationUID: checkJob.OrganizationUID,
 		CheckUID:        checkJob.CheckUID,
-		PeriodType:      "raw",
+		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &r.worker.UID,
 		Region:          checkJob.Region,
 		Status:          &status,
 		Duration:        &durationMs,
 		Metrics:         make(models.JSONMap),
-		Output:          models.JSONMap{"error": err.Error()},
+		Output:          models.JSONMap{checkerdef.OutputKeyError: err.Error()},
 		CreatedAt:       time.Now(),
 		LastForStatus:   &lastForStatus,
 	}
@@ -621,7 +625,7 @@ func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logg
 
 	// Determine status based on recency of last heartbeat
 	status := checkerdef.StatusDown
-	output := map[string]any{"message": "No heartbeat received"}
+	output := map[string]any{outputKeyMessage: "No heartbeat received"}
 
 	if lastResult, ok := lastResults[checkJob.CheckUID]; ok && lastResult.Status != nil {
 		elapsed := time.Since(lastResult.PeriodStart)
@@ -631,33 +635,33 @@ func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logg
 		case *lastResult.Status == int(checkerdef.StatusUp) && elapsed <= period:
 			status = checkerdef.StatusUp
 			output = map[string]any{
-				"message":       "Heartbeat received",
-				"lastHeartbeat": lastResult.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage: "Heartbeat received",
+				"lastHeartbeat":  lastResult.PeriodStart.Format(time.RFC3339),
 			}
 
 		// Last result was UP but overdue
 		case *lastResult.Status == int(checkerdef.StatusUp):
 			output = map[string]any{
-				"message":       "Heartbeat overdue",
-				"lastHeartbeat": lastResult.PeriodStart.Format(time.RFC3339),
-				"overdueBy":     (elapsed - period).String(),
+				outputKeyMessage: "Heartbeat overdue",
+				"lastHeartbeat":  lastResult.PeriodStart.Format(time.RFC3339),
+				"overdueBy":      (elapsed - period).String(),
 			}
 
 		// Last result was RUNNING and still within grace period (2x period)
 		case *lastResult.Status == int(checkerdef.StatusRunning) && elapsed <= period*2:
 			status = checkerdef.StatusRunning
 			output = map[string]any{
-				"message":    "Run in progress",
-				"runStarted": lastResult.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage: "Run in progress",
+				"runStarted":     lastResult.PeriodStart.Format(time.RFC3339),
 			}
 
 		// Last result was RUNNING but exceeded grace period — stale run
 		case *lastResult.Status == int(checkerdef.StatusRunning):
 			status = checkerdef.StatusTimeout
 			output = map[string]any{
-				"message":    "Run started but never completed",
-				"runStarted": lastResult.PeriodStart.Format(time.RFC3339),
-				"overdueBy":  (elapsed - period*2).String(),
+				outputKeyMessage: "Run started but never completed",
+				"runStarted":     lastResult.PeriodStart.Format(time.RFC3339),
+				"overdueBy":      (elapsed - period*2).String(),
 			}
 		}
 	}
@@ -795,7 +799,7 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 		UID:             resultUID.String(),
 		OrganizationUID: r.defaultOrgUID,
 		CheckUID:        r.internalCheckUID,
-		PeriodType:      "raw",
+		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
 		WorkerUID:       &r.worker.UID,
 		Status:          &status,

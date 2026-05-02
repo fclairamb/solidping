@@ -255,8 +255,8 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusTimeout,
 				Duration: duration,
 				Output: map[string]any{
-					"error": "request timed out",
-					"url":   cfg.URL,
+					checkerdef.OutputKeyError: "request timed out",
+					checkerdef.OutputKeyURL:   cfg.URL,
 				},
 			}, nil
 		}
@@ -265,8 +265,8 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 			Status:   checkerdef.StatusDown,
 			Duration: duration,
 			Output: map[string]any{
-				"error": err.Error(),
-				"url":   cfg.URL,
+				checkerdef.OutputKeyError: err.Error(),
+				checkerdef.OutputKeyURL:   cfg.URL,
 			},
 		}, nil
 	}
@@ -283,10 +283,10 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Output: map[string]any{
-					"error":       fmt.Sprintf("invalid body_pattern regex: %v", err),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern regex: %v", err),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -300,10 +300,10 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Output: map[string]any{
-					"error":       fmt.Sprintf("invalid body_pattern_reject regex: %v", err),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("invalid body_pattern_reject regex: %v", err),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -319,10 +319,10 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 					Status:   checkerdef.StatusDown,
 					Duration: duration,
 					Output: map[string]any{
-						"error":       fmt.Sprintf("invalid headers_pattern regex for header %q: %v", headerName, err),
-						"url":         cfg.URL,
-						"status_code": resp.StatusCode,
-						"method":      method,
+						checkerdef.OutputKeyError:      fmt.Sprintf("invalid headers_pattern regex for header %q: %v", headerName, err),
+						checkerdef.OutputKeyURL:        cfg.URL,
+						checkerdef.OutputKeyStatusCode: resp.StatusCode,
+						checkerdef.OutputKeyMethod:     method,
 					},
 				}, nil
 			}
@@ -341,10 +341,10 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Output: map[string]any{
-					"error":       fmt.Sprintf("failed to read response body: %v", err),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("failed to read response body: %v", err),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -358,13 +358,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":       fmt.Sprintf("Expected string %q not found in response body", cfg.BodyExpect),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("Expected string %q not found in response body", cfg.BodyExpect),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -376,13 +376,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":       fmt.Sprintf("Rejected string %q found in response body", cfg.BodyReject),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected string %q found in response body", cfg.BodyReject),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -394,13 +394,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":       fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("Expected pattern %q not found in response body", cfg.BodyPattern),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -412,13 +412,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":       fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      fmt.Sprintf("Rejected pattern %q found in response body", cfg.BodyPatternReject),
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -433,13 +433,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 					Status:   checkerdef.StatusDown,
 					Duration: duration,
 					Metrics: map[string]any{
-						"duration_ms": float64(duration.Microseconds()) / 1000.0,
+						checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 					},
 					Output: map[string]any{
-						"error":       fmt.Sprintf("Required header %q not found in response", headerName),
-						"url":         cfg.URL,
-						"status_code": resp.StatusCode,
-						"method":      method,
+						checkerdef.OutputKeyError:      fmt.Sprintf("Required header %q not found in response", headerName),
+						checkerdef.OutputKeyURL:        cfg.URL,
+						checkerdef.OutputKeyStatusCode: resp.StatusCode,
+						checkerdef.OutputKeyMethod:     method,
 					},
 				}, nil
 			}
@@ -452,13 +452,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 					Status:   checkerdef.StatusDown,
 					Duration: duration,
 					Metrics: map[string]any{
-						"duration_ms": float64(duration.Microseconds()) / 1000.0,
+						checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 					},
 					Output: map[string]any{
-						"error":       errMsg,
-						"url":         cfg.URL,
-						"status_code": resp.StatusCode,
-						"method":      method,
+						checkerdef.OutputKeyError:      errMsg,
+						checkerdef.OutputKeyURL:        cfg.URL,
+						checkerdef.OutputKeyStatusCode: resp.StatusCode,
+						checkerdef.OutputKeyMethod:     method,
 					},
 				}, nil
 			}
@@ -473,13 +473,13 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":       "response body is not valid JSON for assertion evaluation",
-					"url":         cfg.URL,
-					"status_code": resp.StatusCode,
-					"method":      method,
+					checkerdef.OutputKeyError:      "response body is not valid JSON for assertion evaluation",
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
 				},
 			}, nil
 		}
@@ -490,14 +490,14 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 				Status:   checkerdef.StatusDown,
 				Duration: duration,
 				Metrics: map[string]any{
-					"duration_ms": float64(duration.Microseconds()) / 1000.0,
+					checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 				},
 				Output: map[string]any{
-					"error":                "JSON assertion failed",
-					"url":                  cfg.URL,
-					"status_code":          resp.StatusCode,
-					"method":               method,
-					"json_path_assertions": assertionResult,
+					checkerdef.OutputKeyError:      "JSON assertion failed",
+					checkerdef.OutputKeyURL:        cfg.URL,
+					checkerdef.OutputKeyStatusCode: resp.StatusCode,
+					checkerdef.OutputKeyMethod:     method,
+					"json_path_assertions":         assertionResult,
 				},
 			}, nil
 		}
@@ -521,12 +521,12 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 		Status:   status,
 		Duration: duration,
 		Metrics: map[string]any{
-			"duration_ms": float64(duration.Microseconds()) / 1000.0,
+			checkerdef.OutputKeyDurationMs: float64(duration.Microseconds()) / 1000.0,
 		},
 		Output: map[string]any{
-			"url":         cfg.URL,
-			"status_code": resp.StatusCode,
-			"method":      method,
+			checkerdef.OutputKeyURL:        cfg.URL,
+			checkerdef.OutputKeyStatusCode: resp.StatusCode,
+			checkerdef.OutputKeyMethod:     method,
 		},
 	}, nil
 }

@@ -145,11 +145,11 @@ type ResourceContent struct {
 // Helper constructors.
 
 func successResponse(id any, result any) Response {
-	return Response{JSONRPC: "2.0", ID: id, Result: result}
+	return Response{JSONRPC: jsonRPCVersion, ID: id, Result: result}
 }
 
 func errorResponse(id any, code int, message string) Response {
-	return Response{JSONRPC: "2.0", ID: id, Error: &RPCError{Code: code, Message: message}}
+	return Response{JSONRPC: jsonRPCVersion, ID: id, Error: &RPCError{Code: code, Message: message}}
 }
 
 func textResult(text string) ToolCallResult {

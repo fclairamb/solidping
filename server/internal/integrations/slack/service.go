@@ -637,17 +637,17 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 			Text: "SolidPing is ready!",
 			Blocks: []Block{
 				{
-					Type: "section",
+					Type: BlockTypeSection,
 					Text: &Text{
-						Type: "mrkdwn",
+						Type: BlockTypeMrkdwn,
 						Text: ":wave: *SolidPing is ready!*\n\nI'll send incident notifications here by default.",
 					},
 				},
 				{
-					Type: "context",
+					Type: BlockTypeContext,
 					Elements: []any{
 						ContextElement{
-							Type: "mrkdwn",
+							Type: BlockTypeMrkdwn,
 							Text: "Change the default channel anytime with `@solidping config default-channel #other-channel`",
 						},
 					},

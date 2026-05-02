@@ -31,7 +31,7 @@ func (c *DomainChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if err := cfg.Validate(); err != nil {
-		return checkerdef.NewConfigError("domain", err.Error())
+		return checkerdef.NewConfigError(checkerdef.OutputKeyDomain, err.Error())
 	}
 
 	// Auto-generate name and slug from domain if not provided
@@ -50,7 +50,7 @@ func errorResult(domain string, duration time.Duration, errMsg string) *checkerd
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: duration,
-		Output:   map[string]any{"domain": domain, "error": errMsg},
+		Output:   map[string]any{checkerdef.OutputKeyDomain: domain, "error": errMsg},
 	}
 }
 
@@ -106,10 +106,10 @@ func (c *DomainChecker) Execute(_ context.Context, config checkerdef.Config) (*c
 			"duration_ms":    float64(duration.Microseconds()) / 1000.0,
 		},
 		Output: map[string]any{
-			"domain":         cfg.Domain,
-			"expiry_date":    expiryDate.Format(time.RFC3339),
-			"days_remaining": daysRemaining,
-			"registrar":      parsed.Registrar.Name,
+			checkerdef.OutputKeyDomain: cfg.Domain,
+			"expiry_date":              expiryDate.Format(time.RFC3339),
+			"days_remaining":           daysRemaining,
+			"registrar":                parsed.Registrar.Name,
 		},
 	}, nil
 }

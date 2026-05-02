@@ -36,7 +36,7 @@ type SSLConfig struct {
 
 // FromMap populates the configuration from a map.
 func (c *SSLConfig) FromMap(configMap map[string]any) error {
-	if host, ok := configMap["host"].(string); ok {
+	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
 	}
 
@@ -71,7 +71,7 @@ func (c *SSLConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *SSLConfig) GetConfig() map[string]any {
 	config := map[string]any{
-		"host": c.Host,
+		checkerdef.OutputKeyHost: c.Host,
 	}
 
 	if c.Port != 0 && c.Port != defaultPort {

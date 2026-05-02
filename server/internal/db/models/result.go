@@ -24,6 +24,14 @@ const (
 	ResultStatusError ResultStatus = 6
 )
 
+// PeriodType values for the Result.PeriodType column.
+const (
+	PeriodTypeRaw   = "raw"
+	PeriodTypeHour  = "hour"
+	PeriodTypeDay   = "day"
+	PeriodTypeMonth = "month"
+)
+
 // StatusToString converts a ResultStatus integer to its string representation.
 func StatusToString(status int) string {
 	switch status {

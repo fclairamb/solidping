@@ -33,8 +33,8 @@ func (h *Handler) registerTools() {
 
 func objectSchema(props map[string]any, required []string) map[string]any {
 	schema := map[string]any{
-		"type":       "object",
-		"properties": props,
+		schemaKeyType: "object",
+		"properties":  props,
 	}
 	if len(required) > 0 {
 		schema["required"] = required
@@ -43,25 +43,25 @@ func objectSchema(props map[string]any, required []string) map[string]any {
 }
 
 func stringProp(desc string) map[string]any {
-	return map[string]any{"type": "string", "description": desc}
+	return map[string]any{schemaKeyType: "string", schemaKeyDescription: desc}
 }
 
 func intProp(desc string) map[string]any {
-	return map[string]any{"type": "integer", "description": desc}
+	return map[string]any{schemaKeyType: "integer", schemaKeyDescription: desc}
 }
 
 func boolProp(desc string) map[string]any {
-	return map[string]any{"type": "boolean", "description": desc}
+	return map[string]any{schemaKeyType: "boolean", schemaKeyDescription: desc}
 }
 
 func arrayOfStringsProp(desc string) map[string]any {
 	return map[string]any{
-		"type":        "array",
-		"items":       map[string]any{"type": "string"},
-		"description": desc,
+		schemaKeyType:        "array",
+		schemaKeyItems:       map[string]any{schemaKeyType: "string"},
+		schemaKeyDescription: desc,
 	}
 }
 
 func objectProp(desc string) map[string]any {
-	return map[string]any{"type": "object", "description": desc}
+	return map[string]any{schemaKeyType: "object", schemaKeyDescription: desc}
 }

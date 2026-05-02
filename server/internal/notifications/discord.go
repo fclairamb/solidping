@@ -67,7 +67,7 @@ func (ds *DiscordSender) buildMessage(payload *Payload) *discord.WebhookMessage 
 	}
 
 	return &discord.WebhookMessage{
-		Username: "SolidPing",
+		Username: productName,
 		Embeds:   []discord.Embed{embed},
 	}
 }
@@ -83,7 +83,7 @@ func (ds *DiscordSender) buildIncidentCreatedEmbed(payload *Payload) discord.Emb
 		Color:       discord.ColorRed,
 		Fields:      fields,
 		Timestamp:   payload.Incident.StartedAt.Format(time.RFC3339),
-		Footer:      &discord.Footer{Text: "SolidPing Monitoring"},
+		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -92,13 +92,13 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 	checkName := getCheckName(payload.Check)
 
 	fields := []discord.Field{
-		{Name: "Monitor", Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
 	}
 
 	if payload.Incident.ResolvedAt != nil {
 		duration := payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt)
 		fields = append(fields, discord.Field{
-			Name:   "Duration",
+			Name:   mmFieldDuration,
 			Value:  formatDuration(duration),
 			Inline: true,
 		})
@@ -110,7 +110,7 @@ func (ds *DiscordSender) buildIncidentResolvedEmbed(payload *Payload) discord.Em
 		Color:       discord.ColorGreen,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
-		Footer:      &discord.Footer{Text: "SolidPing Monitoring"},
+		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -120,15 +120,15 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 	duration := formatDuration(time.Since(payload.Incident.StartedAt))
 
 	fields := []discord.Field{
-		{Name: "Monitor", Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
 		{Name: "Failures", Value: strconv.Itoa(payload.Incident.FailureCount), Inline: true},
-		{Name: "Duration", Value: duration, Inline: true},
+		{Name: mmFieldDuration, Value: duration, Inline: true},
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, discord.Field{
-			Name:  "Check",
+			Name:  mmFieldCheck,
 			Value: fmt.Sprintf("%s `%s`", method, url),
 		})
 	}
@@ -139,7 +139,7 @@ func (ds *DiscordSender) buildIncidentEscalatedEmbed(payload *Payload) discord.E
 		Color:       discord.ColorOrange,
 		Fields:      fields,
 		Timestamp:   time.Now().Format(time.RFC3339),
-		Footer:      &discord.Footer{Text: "SolidPing Monitoring"},
+		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -166,7 +166,7 @@ func (ds *DiscordSender) buildIncidentReopenedEmbed(payload *Payload) discord.Em
 		Color:     discord.ColorRed,
 		Fields:    fields,
 		Timestamp: time.Now().Format(time.RFC3339),
-		Footer:    &discord.Footer{Text: "SolidPing Monitoring"},
+		Footer:    &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -179,7 +179,7 @@ func (ds *DiscordSender) buildDefaultEmbed(payload *Payload) discord.Embed {
 		Description: "An incident update occurred.",
 		Color:       discord.ColorBlue,
 		Timestamp:   time.Now().Format(time.RFC3339),
-		Footer:      &discord.Footer{Text: "SolidPing Monitoring"},
+		Footer:      &discord.Footer{Text: productMonitoring},
 	}
 }
 
@@ -188,14 +188,14 @@ func (ds *DiscordSender) buildCommonFields(
 	payload *Payload, checkName string,
 ) []discord.Field {
 	fields := []discord.Field{
-		{Name: "Monitor", Value: checkName, Inline: true},
+		{Name: fieldLabelMonitor, Value: checkName, Inline: true},
 		{Name: "Cause", Value: getFailureReason(payload.Incident), Inline: true},
 	}
 
 	if url := getCheckURL(payload.Check); url != "" {
 		method := getCheckMethod(payload.Check)
 		fields = append(fields, discord.Field{
-			Name:  "Check",
+			Name:  mmFieldCheck,
 			Value: fmt.Sprintf("%s `%s`", method, url),
 		})
 	}

@@ -92,7 +92,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"error": fmt.Sprintf("failed to resolve hostname: %v", err),
+				checkerdef.OutputKeyError: fmt.Sprintf("failed to resolve hostname: %v", err),
 			},
 		}, nil
 	}
@@ -102,7 +102,7 @@ func (c *TCPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 			Status:   checkerdef.StatusError,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"error": "no IP addresses found for host",
+				checkerdef.OutputKeyError: "no IP addresses found for host",
 			},
 		}, nil
 	}
@@ -180,7 +180,7 @@ func (c *TCPChecker) connect(
 			return checkerdef.Result{
 				Status: checkerdef.StatusTimeout,
 				Output: map[string]any{
-					"error": "connection timeout",
+					checkerdef.OutputKeyError: "connection timeout",
 				},
 			}
 		}
@@ -188,7 +188,7 @@ func (c *TCPChecker) connect(
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
 			Output: map[string]any{
-				"error": fmt.Sprintf("connection refused: %v", err),
+				checkerdef.OutputKeyError: fmt.Sprintf("connection refused: %v", err),
 			},
 		}
 	}
@@ -226,7 +226,7 @@ func (c *TCPChecker) connect(
 				Status:  checkerdef.StatusDown,
 				Metrics: metrics,
 				Output: map[string]any{
-					"error": fmt.Sprintf("TLS handshake failed: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("TLS handshake failed: %v", err),
 				},
 			}
 		}
@@ -252,7 +252,7 @@ func (c *TCPChecker) connect(
 				Status:  checkerdef.StatusError,
 				Metrics: metrics,
 				Output: map[string]any{
-					"error": fmt.Sprintf("failed to set write deadline: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("failed to set write deadline: %v", err),
 				},
 			}
 		}
@@ -263,7 +263,7 @@ func (c *TCPChecker) connect(
 				Status:  checkerdef.StatusDown,
 				Metrics: metrics,
 				Output: map[string]any{
-					"error": fmt.Sprintf("failed to send data: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("failed to send data: %v", err),
 				},
 			}
 		}
@@ -284,7 +284,7 @@ func (c *TCPChecker) connect(
 				Status:  checkerdef.StatusError,
 				Metrics: metrics,
 				Output: map[string]any{
-					"error": fmt.Sprintf("failed to set read deadline: %v", err),
+					checkerdef.OutputKeyError: fmt.Sprintf("failed to set read deadline: %v", err),
 				},
 			}
 		}
@@ -299,7 +299,7 @@ func (c *TCPChecker) connect(
 					Status:  checkerdef.StatusDown,
 					Metrics: metrics,
 					Output: map[string]any{
-						"error": fmt.Sprintf("failed to read response: %v", err),
+						checkerdef.OutputKeyError: fmt.Sprintf("failed to read response: %v", err),
 					},
 				}
 			}
@@ -325,8 +325,8 @@ func (c *TCPChecker) connect(
 					Status:  checkerdef.StatusDown,
 					Metrics: metrics,
 					Output: map[string]any{
-						"error":         fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
-						"received_data": receivedData,
+						checkerdef.OutputKeyError: fmt.Sprintf("expected data not found: '%s'", cfg.ExpectData),
+						"received_data":           receivedData,
 					},
 				}
 			}

@@ -46,7 +46,7 @@ func (s *NtfySender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Pa
 	req.Header.Set("Title", title)
 	req.Header.Set("Priority", priority)
 	req.Header.Set("Tags", tags)
-	req.Header.Set("User-Agent", "SolidPing")
+	req.Header.Set("User-Agent", productName)
 
 	if settings.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+settings.AccessToken)

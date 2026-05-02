@@ -22,7 +22,7 @@ var (
 			Name: "solidping_check_executions_total",
 			Help: "Total number of check executions",
 		},
-		[]string{labelCheckType, "status", "region", "organization"},
+		[]string{labelCheckType, labelStatus, labelRegion, labelOrganization},
 	)
 
 	// CheckDuration observes check execution duration in seconds.
@@ -32,7 +32,7 @@ var (
 			Help:    "Check execution duration in seconds",
 			Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30},
 		},
-		[]string{labelCheckType, "status", "region", "organization"},
+		[]string{labelCheckType, labelStatus, labelRegion, labelOrganization},
 	)
 
 	// SchedulingDelay observes delay between scheduled and actual execution time.
@@ -42,7 +42,7 @@ var (
 			Help:    "Delay between scheduled and actual execution time",
 			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60},
 		},
-		[]string{"region"},
+		[]string{labelRegion},
 	)
 
 	// CheckUp indicates whether a check is currently UP (1) or DOWN (0).
@@ -51,7 +51,7 @@ var (
 			Name: "solidping_check_up",
 			Help: "1 if check is currently UP, 0 otherwise",
 		},
-		[]string{"check_slug", labelCheckType, "region", "organization"},
+		[]string{labelCheckSlug, labelCheckType, labelRegion, labelOrganization},
 	)
 
 	// CheckStatusStreak tracks consecutive results with current status.
@@ -60,7 +60,7 @@ var (
 			Name: "solidping_check_status_streak",
 			Help: "Consecutive results with current status",
 		},
-		[]string{"check_slug", labelCheckType, "organization"},
+		[]string{labelCheckSlug, labelCheckType, labelOrganization},
 	)
 
 	// ChecksConfigured tracks the number of configured checks.
@@ -69,7 +69,7 @@ var (
 			Name: "solidping_checks_configured",
 			Help: "Number of configured checks",
 		},
-		[]string{labelCheckType, "organization", "enabled"},
+		[]string{labelCheckType, labelOrganization, "enabled"},
 	)
 
 	// WorkersActive tracks the number of active workers.
@@ -78,7 +78,7 @@ var (
 			Name: "solidping_workers_active",
 			Help: "Number of active workers",
 		},
-		[]string{"region"},
+		[]string{labelRegion},
 	)
 
 	// WorkerFreeRunners tracks available runner slots per worker.
@@ -87,7 +87,7 @@ var (
 			Name: "solidping_worker_free_runners",
 			Help: "Available runner slots per worker",
 		},
-		[]string{"worker_uid", "region"},
+		[]string{"worker_uid", labelRegion},
 	)
 
 	// WorkerJobsClaimed counts total jobs claimed by each worker.
@@ -96,7 +96,7 @@ var (
 			Name: "solidping_worker_jobs_claimed_total",
 			Help: "Total jobs claimed by worker",
 		},
-		[]string{"worker_uid", "region"},
+		[]string{"worker_uid", labelRegion},
 	)
 
 	// IncidentsActive tracks currently open incidents.
@@ -105,7 +105,7 @@ var (
 			Name: "solidping_incidents_active",
 			Help: "Currently open incidents",
 		},
-		[]string{"organization"},
+		[]string{labelOrganization},
 	)
 
 	// IncidentsTotal counts total incidents created.
@@ -114,7 +114,7 @@ var (
 			Name: "solidping_incidents_total",
 			Help: "Total incidents created",
 		},
-		[]string{"organization", labelCheckType},
+		[]string{labelOrganization, labelCheckType},
 	)
 
 	allCollectors = []prometheus.Collector{

@@ -151,14 +151,14 @@ func (c *MQTTChecker) connect(
 	if !token.WaitTimeout(timeout) {
 		return checkerdef.Result{
 			Status: checkerdef.StatusTimeout,
-			Output: map[string]any{"error": "connection timeout"},
+			Output: map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 		}
 	}
 
 	if token.Error() != nil {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{"error": "connection failed: " + token.Error().Error()},
+			Output: map[string]any{checkerdef.OutputKeyError: "connection failed: " + token.Error().Error()},
 		}
 	}
 
@@ -197,14 +197,14 @@ func (c *MQTTChecker) roundtrip(
 	if !subToken.WaitTimeout(timeout) {
 		return checkerdef.Result{
 			Status: checkerdef.StatusTimeout,
-			Output: map[string]any{"error": "subscribe timeout"},
+			Output: map[string]any{checkerdef.OutputKeyError: "subscribe timeout"},
 		}
 	}
 
 	if subToken.Error() != nil {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{"error": "subscribe failed: " + subToken.Error().Error()},
+			Output: map[string]any{checkerdef.OutputKeyError: "subscribe failed: " + subToken.Error().Error()},
 		}
 	}
 
@@ -215,14 +215,14 @@ func (c *MQTTChecker) roundtrip(
 	if !pubToken.WaitTimeout(timeout) {
 		return checkerdef.Result{
 			Status: checkerdef.StatusTimeout,
-			Output: map[string]any{"error": "publish timeout"},
+			Output: map[string]any{checkerdef.OutputKeyError: "publish timeout"},
 		}
 	}
 
 	if pubToken.Error() != nil {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{"error": "publish failed: " + pubToken.Error().Error()},
+			Output: map[string]any{checkerdef.OutputKeyError: "publish failed: " + pubToken.Error().Error()},
 		}
 	}
 
@@ -239,7 +239,7 @@ func (c *MQTTChecker) roundtrip(
 		return checkerdef.Result{
 			Status:  checkerdef.StatusTimeout,
 			Metrics: map[string]any{},
-			Output:  map[string]any{"error": "message roundtrip timeout"},
+			Output:  map[string]any{checkerdef.OutputKeyError: "message roundtrip timeout"},
 		}
 	}
 }

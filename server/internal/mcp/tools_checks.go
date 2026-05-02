@@ -13,12 +13,12 @@ func listChecksDef() ToolDefinition {
 		Name:        "list_checks",
 		Description: "List monitoring checks for the organization.",
 		InputSchema: objectSchema(map[string]any{
-			"q":             stringProp("Search query (name or slug substring)"),
-			"labels":        stringProp("Label filter (key:value,key2:value2)"),
-			"checkGroupUid": stringProp("Filter by check group UID or slug"),
-			"with":          stringProp("Include extra fields: lastResult, lastStatusChange (comma-separated)"),
-			"limit":         intProp("Max results (1-100, default 20)"),
-			"cursor":        stringProp("Pagination cursor from previous response"),
+			"q":               stringProp("Search query (name or slug substring)"),
+			propLabels:        stringProp("Label filter (key:value,key2:value2)"),
+			propCheckGroupUID: stringProp("Filter by check group UID or slug"),
+			propWith:          stringProp("Include extra fields: lastResult, lastStatusChange (comma-separated)"),
+			propLimit:         intProp("Max results (1-100, default 20)"),
+			propCursor:        stringProp("Pagination cursor from previous response"),
 		}, nil),
 	}
 }
@@ -75,9 +75,9 @@ func getCheckDef() ToolDefinition {
 		Name:        "get_check",
 		Description: "Get a single check by UID or slug.",
 		InputSchema: objectSchema(map[string]any{
-			"identifier": stringProp("Check UID or slug"),
-			"with":       stringProp("Include extra fields: lastResult, lastStatusChange"),
-		}, []string{"identifier"}),
+			propIdentifier: stringProp("Check UID or slug"),
+			propWith:       stringProp("Include extra fields: lastResult, lastStatusChange"),
+		}, []string{propIdentifier}),
 	}
 }
 
@@ -112,19 +112,19 @@ func createCheckDef() ToolDefinition {
 		Name:        "create_check",
 		Description: "Create a new monitoring check.",
 		InputSchema: objectSchema(map[string]any{
-			"name": stringProp("Human-readable name (auto-generated from URL if omitted)"),
-			"slug": stringProp("URL-friendly identifier (auto-generated if omitted)"),
-			"type": stringProp(
+			schemaKeyName: stringProp("Human-readable name (auto-generated from URL if omitted)"),
+			schemaKeySlug: stringProp("URL-friendly identifier (auto-generated if omitted)"),
+			schemaKeyType: stringProp(
 				"Check type: http, tcp, icmp, dns, ssl, heartbeat, domain (inferred if omitted)",
 			),
-			"config":        objectProp("Check-specific config (e.g., {\"url\": \"https://example.com\"})"),
-			"regions":       arrayOfStringsProp("Region slugs (e.g., [\"eu-west-1\", \"us-east-1\"])"),
-			"enabled":       boolProp("Default true"),
-			"period":        stringProp("Check interval (e.g., \"00:00:30\" for 30s, default \"00:01:00\")"),
-			"labels":        objectProp("Key-value labels (e.g., {\"env\": \"production\"})"),
-			"description":   stringProp("Free-text description"),
-			"checkGroupUid": stringProp("Assign to a check group"),
-		}, []string{"config"}),
+			schemaKeyConfig:      objectProp("Check-specific config (e.g., {\"url\": \"https://example.com\"})"),
+			"regions":            arrayOfStringsProp("Region slugs (e.g., [\"eu-west-1\", \"us-east-1\"])"),
+			schemaKeyEnabled:     boolProp("Default true"),
+			"period":             stringProp("Check interval (e.g., \"00:00:30\" for 30s, default \"00:01:00\")"),
+			propLabels:           objectProp("Key-value labels (e.g., {\"env\": \"production\"})"),
+			schemaKeyDescription: stringProp("Free-text description"),
+			propCheckGroupUID:    stringProp("Assign to a check group"),
+		}, []string{schemaKeyConfig}),
 	}
 }
 
@@ -166,17 +166,17 @@ func updateCheckDef() ToolDefinition {
 		Name:        "update_check",
 		Description: "Update an existing check by UID or slug. Only provided fields are modified (PATCH semantics).",
 		InputSchema: objectSchema(map[string]any{
-			"identifier":    stringProp("Check UID or slug"),
-			"name":          stringProp("New name"),
-			"slug":          stringProp("New slug"),
-			"config":        objectProp("Updated config"),
-			"regions":       arrayOfStringsProp("Updated regions"),
-			"enabled":       boolProp("Enable/disable"),
-			"period":        stringProp("New check interval"),
-			"labels":        objectProp("Replace labels (empty object clears)"),
-			"description":   stringProp("Updated description"),
-			"checkGroupUid": stringProp("Move to different group (empty string to ungroup)"),
-		}, []string{"identifier"}),
+			propIdentifier:       stringProp("Check UID or slug"),
+			schemaKeyName:        stringProp("New name"),
+			schemaKeySlug:        stringProp("New slug"),
+			schemaKeyConfig:      objectProp("Updated config"),
+			"regions":            arrayOfStringsProp("Updated regions"),
+			schemaKeyEnabled:     boolProp("Enable/disable"),
+			"period":             stringProp("New check interval"),
+			propLabels:           objectProp("Replace labels (empty object clears)"),
+			schemaKeyDescription: stringProp("Updated description"),
+			propCheckGroupUID:    stringProp("Move to different group (empty string to ungroup)"),
+		}, []string{propIdentifier}),
 	}
 }
 
@@ -228,8 +228,8 @@ func deleteCheckDef() ToolDefinition {
 		Name:        "delete_check",
 		Description: "Delete a check by UID or slug (soft delete).",
 		InputSchema: objectSchema(map[string]any{
-			"identifier": stringProp("Check UID or slug"),
-		}, []string{"identifier"}),
+			propIdentifier: stringProp("Check UID or slug"),
+		}, []string{propIdentifier}),
 	}
 }
 

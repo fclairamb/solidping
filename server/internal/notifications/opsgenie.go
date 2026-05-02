@@ -16,7 +16,7 @@ import (
 
 const (
 	opsgenieTimeout = 30 * time.Second
-	opsgenieSource  = "SolidPing"
+	keySource       = "source"
 )
 
 var (
@@ -120,7 +120,7 @@ func (s *OpsgenieSender) createAlert(
 		"description": description,
 		"priority":    settings.Priority,
 		"tags":        settings.Tags,
-		"source":      opsgenieSource,
+		keySource:     productName,
 		"details": map[string]string{
 			"checkUid":     payload.Check.UID,
 			"checkName":    checkName,
@@ -148,8 +148,8 @@ func (s *OpsgenieSender) closeAlert(
 
 	url := s.baseURL(settings.Region) + "/" + payload.Incident.UID + "/close?identifierType=alias"
 	closePayload := map[string]any{
-		"note":   note,
-		"source": opsgenieSource,
+		"note":    note,
+		keySource: productName,
 	}
 
 	err := s.doRequest(ctx, http.MethodPost, url, settings.APIKey, closePayload)
@@ -172,9 +172,9 @@ func (s *OpsgenieSender) addNote(
 
 	url := s.baseURL(settings.Region) + "/" + payload.Incident.UID + "/notes?identifierType=alias"
 	notePayload := map[string]any{
-		"body":   noteBody,
-		"user":   opsgenieSource,
-		"source": opsgenieSource,
+		"body":    noteBody,
+		"user":    productName,
+		keySource: productName,
 	}
 
 	return s.doRequest(ctx, http.MethodPost, url, settings.APIKey, notePayload)
@@ -195,7 +195,7 @@ func (s *OpsgenieSender) doRequest(
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "GenieKey "+apiKey)
-	req.Header.Set("User-Agent", opsgenieSource)
+	req.Header.Set("User-Agent", productName)
 
 	client := &http.Client{Timeout: opsgenieTimeout}
 

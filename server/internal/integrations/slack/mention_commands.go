@@ -99,9 +99,9 @@ func (h *Handler) handleChecksAdd(ctx context.Context, event *Event, cmd *Parsed
 		Text: fmt.Sprintf("Check `%s` added", result.Slug),
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: fmt.Sprintf(":white_check_mark: Check `%s` added for <%s|%s>", result.Slug, url, result.Name),
 				},
 			},
@@ -171,9 +171,9 @@ func (h *Handler) handleChecksList(ctx context.Context, event *Event) error {
 		Text: fmt.Sprintf("%d checks", len(checksList)),
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: strings.Join(lines, "\n"),
 				},
 			},
@@ -212,9 +212,9 @@ func (h *Handler) handleChecksRemove(ctx context.Context, event *Event, cmd *Par
 		Text: fmt.Sprintf("Check `%s` removed", checkSlug),
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: fmt.Sprintf(":wastebasket: Check `%s` removed", checkSlug),
 				},
 			},
@@ -293,9 +293,9 @@ func (h *Handler) handleResultsCommand(ctx context.Context, event *Event, cmd *P
 		Text: "Results for " + checkSlug,
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: strings.Join(lines, "\n"),
 				},
 			},
@@ -310,7 +310,7 @@ func (h *Handler) handleResultsCommand(ctx context.Context, event *Event, cmd *P
 //nolint:cyclop,funlen // Complex due to multiple validations and data fetching.
 func (h *Handler) handleIncidentsCommand(ctx context.Context, event *Event, cmd *ParsedCommand) error {
 	// Default to "list" if no subcommand
-	if cmd.Subcommand != "" && cmd.Subcommand != "list" && cmd.Subcommand != "ls" {
+	if cmd.Subcommand != "" && cmd.Subcommand != subList && cmd.Subcommand != "ls" {
 		errMsg := fmt.Sprintf("Unknown incidents subcommand: `%s`. Available: `list`", cmd.Subcommand)
 		return h.sendMentionError(ctx, event, errMsg)
 	}
@@ -407,9 +407,9 @@ func (h *Handler) handleIncidentsCommand(ctx context.Context, event *Event, cmd 
 		Text: fmt.Sprintf("%d incidents", len(incidentsList)),
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: strings.Join(lines, "\n"),
 				},
 			},
@@ -480,9 +480,9 @@ func (h *Handler) handleConfigDefaultChannel(ctx context.Context, event *Event, 
 		Text: "Default channel updated",
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: fmt.Sprintf(":white_check_mark: Default notification channel set to <#%s>", channelID),
 				},
 			},
@@ -539,9 +539,9 @@ func (h *Handler) handleHelpCommand(ctx context.Context, event *Event) error {
 		Text: "SolidPing Help",
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: helpText,
 				},
 			},
@@ -581,9 +581,9 @@ func (h *Handler) sendMentionError(ctx context.Context, event *Event, errMsg str
 		Text: errMsg,
 		Blocks: []Block{
 			{
-				Type: "section",
+				Type: BlockTypeSection,
 				Text: &Text{
-					Type: "mrkdwn",
+					Type: BlockTypeMrkdwn,
 					Text: ":warning: " + errMsg,
 				},
 			},

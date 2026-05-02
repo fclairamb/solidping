@@ -18,5 +18,5 @@ func (h *Handler) toolListCheckGroups(ctx context.Context, orgSlug string, _ map
 		return errorResult(err.Error())
 	}
 
-	return marshalResult(map[string]any{"data": result})
+	return marshalResult(map[string]any{schemaKeyData: result})
 }
