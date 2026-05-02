@@ -287,6 +287,33 @@ export function useUpdateCheck(org: string, uid: string) {
   });
 }
 
+export interface LabelSuggestion {
+  value: string;
+  count: number;
+}
+
+export function useLabelSuggestions(
+  org: string,
+  opts: { key?: string; q?: string; limit?: number; enabled?: boolean }
+) {
+  const params = new URLSearchParams();
+  if (opts.key) params.set("key", opts.key);
+  if (opts.q) params.set("q", opts.q);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+
+  return useQuery({
+    queryKey: ["labels", org, opts.key ?? "", opts.q ?? "", opts.limit ?? 50],
+    queryFn: async () => {
+      const path = `/api/v1/orgs/${org}/labels${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data: LabelSuggestion[] }>(path);
+      return response.data ?? [];
+    },
+    enabled: (opts.enabled ?? true) && !!org,
+    staleTime: 30_000,
+  });
+}
+
 export function useDeleteCheck(org: string) {
   const queryClient = useQueryClient();
 

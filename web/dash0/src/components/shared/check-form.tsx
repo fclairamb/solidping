@@ -26,6 +26,7 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import { useCheckTypes, useSampleConfigs } from "@/api/hooks";
@@ -162,6 +163,7 @@ export interface CheckFormData {
   regions?: string[];
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
+  labels?: Record<string, string>;
 }
 
 interface CheckFormProps {
@@ -250,6 +252,8 @@ export function CheckForm({
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
+  const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
+  const [labelsDirty, setLabelsDirty] = useState(false);
   const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
@@ -738,6 +742,7 @@ export function CheckForm({
         ...(showRegions ? { regions: selectedRegions } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
+        ...(mode === "create" || labelsDirty ? { labels } : {}),
       });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -1449,6 +1454,19 @@ export function CheckForm({
               ) : (
                 <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Labels</Label>
+              <LabelInput
+                org={org}
+                value={labels}
+                onChange={(next) => {
+                  setLabels(next);
+                  setLabelsDirty(true);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">Optional key/value tags for grouping and filtering.</p>
             </div>
 
             {checkGroups && checkGroups.length > 0 && (
