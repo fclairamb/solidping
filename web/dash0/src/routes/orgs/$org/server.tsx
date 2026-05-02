@@ -9,6 +9,7 @@ export const Route = createFileRoute("/orgs/$org/server")({
 const tabs = [
   { label: "Web", path: "/orgs/$org/server/web" },
   { label: "Mail", path: "/orgs/$org/server/mail" },
+  { label: "Email Inbox", path: "/orgs/$org/server/email-inbox" },
   { label: "Authentication", path: "/orgs/$org/server/auth" },
   { label: "Performance", path: "/orgs/$org/server/performance" },
 ];
