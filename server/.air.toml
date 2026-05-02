@@ -33,8 +33,11 @@ kill_delay = "500ms"
 send_interrupt = true
 # Delay before re-running after change (ms)
 delay = 1000
-# Stop running old binary after build failure
-stop_on_error = true
+# On build failure, keep running the previous good binary (tmp/solidping is
+# unchanged because `go build -o` does not overwrite on error). Air still
+# kills the running process before invoking the build (see engine.go:431) —
+# this only governs whether the old binary is relaunched after a failed build.
+stop_on_error = false
 
 [log]
 # Show timestamp in logs
