@@ -21,6 +21,7 @@ import (
 	"github.com/uptrace/bun/driver/pgdriver"
 	"github.com/uptrace/bun/migrate"
 
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
@@ -1001,6 +1002,24 @@ func (s *Service) GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier st
 	}
 
 	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return check, nil
+}
+
+// GetCheckByEmailToken looks up an email check by its random token. Tokens
+// are 24 random bytes (48 hex chars), so org scoping is unnecessary —
+// collisions are negligible globally.
+func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error) {
+	check := new(models.Check)
+
+	if err := s.db.NewSelect().
+		Model(check).
+		Where("type = ?", string(checkerdef.CheckTypeEmail)).
+		Where("deleted_at IS NULL").
+		Where("config->>'token' = ?", token).
+		Scan(ctx); err != nil {
 		return nil, err
 	}
 

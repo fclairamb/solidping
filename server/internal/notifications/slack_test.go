@@ -497,6 +497,10 @@ func (m *mockDBService) GetCheckByUidOrSlug( //nolint:revive // Interface method
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetCheckByEmailToken(_ context.Context, _ string) (*models.Check, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetOrCreateLabel(_ context.Context, _, _, _ string) (*models.Label, error) {
 	panic("not implemented")
 }

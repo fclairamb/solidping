@@ -378,9 +378,10 @@ func (r *CheckWorker) executeJob(
 	}
 	checkType := checkJob.Type
 
-	// Heartbeat checks are passive - check if a recent heartbeat was received
-	if checkerdef.CheckType(checkType) == checkerdef.CheckTypeHeartbeat {
-		return r.executeHeartbeatJob(ctx, logger, checkJob)
+	// Passive checks (heartbeat, email) don't make outbound requests — the
+	// worker just inspects whether a recent inbound signal arrived in time.
+	if isPassiveCheckType(checkerdef.CheckType(checkType)) {
+		return r.executePassiveJob(ctx, logger, checkJob)
 	}
 
 	// 2. Parse check configuration
@@ -612,10 +613,29 @@ func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJo
 	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.worker.UID, nextScheduledAt)
 }
 
-// executeHeartbeatJob handles heartbeat check jobs.
-// Instead of making a network request, it checks if a recent heartbeat was received.
-func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
+// isPassiveCheckType reports whether a check type is passive — driven by
+// inbound signals (HTTP heartbeats, incoming emails) rather than outbound
+// probes. Passive checks share the same overdue/grace-period logic.
+func isPassiveCheckType(t checkerdef.CheckType) bool {
+	return t == checkerdef.CheckTypeHeartbeat || t == checkerdef.CheckTypeEmail
+}
+
+// passiveSignalNoun returns the human-readable noun used in result messages
+// for the given passive check type ("heartbeat" / "email").
+func passiveSignalNoun(t checkerdef.CheckType) string {
+	if t == checkerdef.CheckTypeEmail {
+		return "Email"
+	}
+
+	return "Heartbeat"
+}
+
+// executePassiveJob handles passive check jobs (heartbeat, email).
+// Instead of making a network request, it inspects whether a recent inbound
+// signal landed within the check's period.
+func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger, checkJob *models.CheckJob) error {
 	period := time.Duration(checkJob.Period)
+	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
 	// Get the latest result for this check
 	lastResults, err := r.dbService.GetLastResultForChecks(ctx, []string{checkJob.CheckUID})
@@ -623,9 +643,9 @@ func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logg
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last result: %w", err))
 	}
 
-	// Determine status based on recency of last heartbeat
+	// Determine status based on recency of last passive signal
 	status := checkerdef.StatusDown
-	output := map[string]any{outputKeyMessage: "No heartbeat received"}
+	output := map[string]any{outputKeyMessage: "No " + strings.ToLower(noun) + " received"}
 
 	if lastResult, ok := lastResults[checkJob.CheckUID]; ok && lastResult.Status != nil {
 		elapsed := time.Since(lastResult.PeriodStart)
@@ -635,15 +655,15 @@ func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logg
 		case *lastResult.Status == int(checkerdef.StatusUp) && elapsed <= period:
 			status = checkerdef.StatusUp
 			output = map[string]any{
-				outputKeyMessage: "Heartbeat received",
-				"lastHeartbeat":  lastResult.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage: noun + " received",
+				"lastSignalAt":   lastResult.PeriodStart.Format(time.RFC3339),
 			}
 
 		// Last result was UP but overdue
 		case *lastResult.Status == int(checkerdef.StatusUp):
 			output = map[string]any{
-				outputKeyMessage: "Heartbeat overdue",
-				"lastHeartbeat":  lastResult.PeriodStart.Format(time.RFC3339),
+				outputKeyMessage: noun + " overdue",
+				"lastSignalAt":   lastResult.PeriodStart.Format(time.RFC3339),
 				"overdueBy":      (elapsed - period).String(),
 			}
 
@@ -676,14 +696,15 @@ func (r *CheckWorker) executeHeartbeatJob(ctx context.Context, logger *slog.Logg
 	r.stats.AddMetric(result.Status == checkerdef.StatusUp, result.Duration, 0)
 
 	if err := r.saveResult(ctx, checkJob, result); err != nil {
-		logger.ErrorContext(ctx, "Failed to save heartbeat result", "error", err)
+		logger.ErrorContext(ctx, "Failed to save passive check result", "error", err)
 	}
 
 	if err := r.releaseLease(ctx, checkJob); err != nil {
 		return fmt.Errorf("failed to release lease: %w", err)
 	}
 
-	logger.InfoContext(ctx, "Heartbeat check completed",
+	logger.InfoContext(ctx, "Passive check completed",
+		"type", checkJob.Type,
 		"status", result.Status,
 		"check_uid", checkJob.CheckUID)
 

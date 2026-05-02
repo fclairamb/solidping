@@ -6,6 +6,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkemail"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkgameserver"
@@ -69,6 +70,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checktcp.TCPChecker{}, true
 	case checkerdef.CheckTypeHeartbeat:
 		return &checkheartbeat.HeartbeatChecker{}, true
+	case checkerdef.CheckTypeEmail:
+		return &checkemail.EmailChecker{}, true
 	case checkerdef.CheckTypeDomain:
 		return &checkdomain.DomainChecker{}, true
 	case checkerdef.CheckTypeSSL:
@@ -142,6 +145,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checktcp.TCPConfig{}, true
 	case checkerdef.CheckTypeHeartbeat:
 		return &checkheartbeat.HeartbeatConfig{}, true
+	case checkerdef.CheckTypeEmail:
+		return &checkemail.EmailConfig{}, true
 	case checkerdef.CheckTypeDomain:
 		return &checkdomain.DomainConfig{}, true
 	case checkerdef.CheckTypeSSL:

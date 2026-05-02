@@ -93,6 +93,9 @@ type Service interface {
 	CreateCheck(ctx context.Context, check *models.Check) error
 	GetCheck(ctx context.Context, orgUID, checkUID string) (*models.Check, error)
 	GetCheckByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.Check, error)
+	// GetCheckByEmailToken finds an email-type check by its config.token across all
+	// organizations. The token alone is unique because it's 24 random bytes.
+	GetCheckByEmailToken(ctx context.Context, token string) (*models.Check, error)
 	ListChecks(ctx context.Context, orgUID string, filter *models.ListChecksFilter) ([]*models.Check, int64, error)
 	UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error
 	DeleteCheck(ctx context.Context, uid string) error

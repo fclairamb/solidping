@@ -424,6 +424,22 @@ func testChecksWithOrg(ctx context.Context, t *testing.T, svc db.Service) {
 		assert.Equal(t, check.UID, retrievedByUID.UID)
 	})
 
+	t.Run("GetByEmailToken", func(t *testing.T) {
+		token := "feedfacefeedfacefeedfacefeedfacefeedfacefeedface"
+		check := models.NewCheck(org.UID, "email-check", "email")
+		check.Config = models.JSONMap{"token": token}
+		err := svc.CreateCheck(ctx, check)
+		require.NoError(t, err)
+
+		retrieved, err := svc.GetCheckByEmailToken(ctx, token)
+		require.NoError(t, err)
+		assert.Equal(t, check.UID, retrieved.UID)
+
+		// Unknown token should return an error (sql.ErrNoRows)
+		_, err = svc.GetCheckByEmailToken(ctx, "unknown-token")
+		require.Error(t, err)
+	})
+
 	t.Run("List", func(t *testing.T) {
 		// Create checks with different periods to validate correct storage and retrieval
 		check1 := models.NewCheck(org.UID, "list-check-1", "http")

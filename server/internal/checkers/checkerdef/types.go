@@ -67,6 +67,8 @@ const (
 	CheckTypeSSL CheckType = "ssl"
 	// CheckTypeHeartbeat monitors via incoming pings (passive check).
 	CheckTypeHeartbeat CheckType = "heartbeat"
+	// CheckTypeEmail monitors via incoming emails to a unique address (passive check).
+	CheckTypeEmail CheckType = "email"
 	// CheckTypeDomain monitors domain name expiration.
 	CheckTypeDomain CheckType = "domain"
 	// CheckTypeSMTP performs SMTP server health checks.
@@ -180,6 +182,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
 	{Type: CheckTypeDomain, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
 	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Receive heartbeat pings"},
+	{Type: CheckTypeEmail, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Receive status updates via incoming email"},
 	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity"},
 	{Type: CheckTypeUDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check UDP port reachability"},
 	{Type: CheckTypeSSH, Labels: []string{labelSafe, labelStandalone, labelCatRemoteAccess}, Description: "Check SSH server availability"},
@@ -264,6 +267,7 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeICMP,
 		CheckTypeDNS,
 		CheckTypeHeartbeat,
+		CheckTypeEmail,
 		CheckTypeDomain,
 		CheckTypeSSL,
 		CheckTypeSMTP,

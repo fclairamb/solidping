@@ -258,3 +258,50 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | `server/internal/db/service.go` | add `GetCheckByEmailToken` |
 | `server/internal/migrations/NNNN_email_token_index.sql` | new partial index |
 | `server/internal/app/server.go` | construct + register `emailcheck.Handler` |
+
+---
+
+## Implementation Plan
+
+Sequential commits, each independently buildable + tested.
+
+### Step 1 — `checkerdef.CheckTypeEmail` registration
+
+Add the new check type and its registry entry. Trivial change but unlocks the rest of the work.
+
+### Step 2 — `checkemail` package
+
+`config.go` (`EmailConfig{Token string}` with FromMap/GetConfig), `checker.go` (`EmailChecker` returning `ErrNotExecutable` from Execute, generating a 24-byte hex token in Validate when missing). Mirror `checkheartbeat` exactly. Tests for token generation and validate idempotency.
+
+### Step 3 — Registry + sample
+
+Add `checkemail` to `registry.go` (GetChecker + ParseConfig switches). Optionally extend `/api/v1/check-types/samples` for the wizard.
+
+### Step 4 — Worker passive generalization
+
+Rename `executeHeartbeatJob` → `executePassiveJob` in `internal/checkworker/worker.go`. Add `isPassive(checkType)` returning true for both `Heartbeat` and `Email`. Update existing tests to parameterize over both types. Output messages parameterized on type (`"Email received"` vs `"Heartbeat received"`).
+
+### Step 5 — `db.Service.GetCheckByEmailToken`
+
+Interface method on `db.Service`. Implementations:
+- Postgres: `WHERE type = 'email' AND config->>'token' = ? AND deleted_at IS NULL`
+- SQLite: `WHERE type = 'email' AND json_extract(config, '$.token') = ? AND deleted_at IS NULL`
+
+Migration `NNNN_email_token_index.sql` adds a partial index for postgres only (SQLite path is a sequential scan; rare).
+
+### Step 6 — `emailcheck.Handler`
+
+`internal/handlers/emailcheck/handler.go` implements the `jmap.Handler` interface:
+- `extractTokenAndStatus(email)` — recipient regex `^([0-9a-f]{48})(\+(up|down|error|running))?@`. Header `X-SolidPing-Status` and subject tag `[DOWN]`/etc. as fallbacks.
+- `HandleEmail`: extract → lookup → save result → run incident processing.
+- `recordResult` mirrors `heartbeat.Service.ReceiveHeartbeat`. Skip incidents for `running`.
+
+Tests: token+status extraction (table-driven), happy path with in-memory DB, unknown token → Rejected, wrong check type → Rejected.
+
+### Step 7 — App wiring
+
+`internal/app/server.go`: build `emailcheck.NewHandler(s.dbService, ...)`, call `s.jmapManager.RegisterHandler(...)`. Done before `Start` so the handler is in place when the manager begins running.
+
+### Step 8 — QA + archive + merge
+
+`make build-backend lint-back test` clean. Move spec to `specs/done/2026/04/`. Open PR with `automerge` label.
