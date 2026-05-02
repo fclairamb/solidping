@@ -62,11 +62,16 @@
     "registrationEnabled": "Registro activado",
     "registrationEnabledDescription": "Permitir el registro de nuevos usuarios.",
     "providerDescription": "Configure las credenciales OAuth de {{provider}}.",
+    "enabled": "Activado",
+    "unsavedChanges": "Cambios sin guardar",
+    "helpText": "Los cambios de credenciales surten efecto tras reiniciar el servidor. El interruptor Activado se aplica inmediatamente a la página de inicio de sesión una vez guardado.",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "appId": "App ID",
-      "signingSecret": "Signing Secret"
+      "signingSecret": "Signing Secret",
+      "botToken": "Token del bot",
+      "redirectUrl": "URL de redirección"
     }
   },
   "performance": {

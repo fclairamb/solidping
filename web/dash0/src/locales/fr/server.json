@@ -62,11 +62,16 @@
     "registrationEnabled": "Inscription activée",
     "registrationEnabledDescription": "Autoriser les nouveaux utilisateurs à s'inscrire.",
     "providerDescription": "Configurez les identifiants OAuth de {{provider}}.",
+    "enabled": "Activé",
+    "unsavedChanges": "Modifications non enregistrées",
+    "helpText": "Les modifications d'identifiants prennent effet après le redémarrage du serveur. L'interrupteur Activé prend effet immédiatement pour la page de connexion une fois enregistré.",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "appId": "App ID",
-      "signingSecret": "Signing Secret"
+      "signingSecret": "Signing Secret",
+      "botToken": "Jeton du bot",
+      "redirectUrl": "URL de redirection"
     }
   },
   "performance": {
