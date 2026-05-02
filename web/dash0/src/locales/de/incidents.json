@@ -1,0 +1,37 @@
+{
+  "title": "Vorfälle",
+  "subtitle": "Verfolgen und verwalten Sie Überwachungsvorfälle",
+  "allIncidents": "Alle Vorfälle",
+  "activeOnly": "Nur aktive",
+  "resolvedOnly": "Nur gelöste",
+  "table": {
+    "incident": "Vorfall",
+    "check": "Prüfung",
+    "started": "Begonnen",
+    "duration": "Dauer",
+    "failures": "Fehler"
+  },
+  "allOperational": "Alle Systeme funktionieren ordnungsgemäß",
+  "noResolved": "Noch keine gelösten Vorfälle",
+  "noIncidents": "Es wurden keine Vorfälle aufgezeichnet",
+  "noIncidentsFound": "Keine Vorfälle gefunden",
+  "filterByState": "Nach Status filtern",
+  "relapse": "{{count}}× Rückfall",
+  "active": "Aktiv",
+  "resolved": "Gelöst",
+  "detail": {
+    "incidentDetail": "Vorfallsdetails",
+    "startedAt": "Begonnen am",
+    "resolvedAt": "Gelöst am",
+    "acknowledgedAt": "Bestätigt am",
+    "escalatedAt": "Eskaliert am",
+    "failureCount": "Anzahl Fehler",
+    "relapseCount": "Anzahl Rückfälle"
+  },
+  "time": {
+    "daysAgo": "vor {{count}} T",
+    "hoursAgo": "vor {{count}} Std",
+    "minutesAgo": "vor {{count}} Min",
+    "justNow": "gerade eben"
+  }
+}

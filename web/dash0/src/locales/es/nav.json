@@ -1,0 +1,19 @@
+{
+  "dashboard": "Panel",
+  "checks": "Comprobaciones",
+  "incidents": "Incidentes",
+  "events": "Eventos",
+  "statusPages": "Páginas de estado",
+  "badges": "Insignias",
+  "testTools": "Herramientas de prueba",
+  "new": "Nuevo",
+  "edit": "Editar",
+  "profile": "Perfil",
+  "tokens": "Tokens",
+  "invitations": "Invitaciones",
+  "settings": "Ajustes",
+  "web": "Web",
+  "mail": "Correo",
+  "authentication": "Autenticación",
+  "performance": "Rendimiento"
+}

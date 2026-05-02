@@ -1,0 +1,33 @@
+{
+  "title": "Páginas de estado",
+  "subtitle": "Gestione sus páginas de estado públicas",
+  "newStatusPage": "Nueva página de estado",
+  "noStatusPages": "Aún no hay páginas de estado",
+  "viewDetails": "Ver detalles",
+  "edit": "Editar",
+  "enabled": "Activada",
+  "disabled": "Desactivada",
+  "form": {
+    "title": "Título",
+    "slug": "Slug",
+    "description": "Descripción",
+    "checks": "Comprobaciones",
+    "selectChecks": "Seleccione las comprobaciones a mostrar",
+    "historyDays": "Días de historial",
+    "showAvailability": "Mostrar disponibilidad",
+    "showResponseTime": "Mostrar tiempo de respuesta",
+    "language": "Idioma",
+    "createStatusPage": "Crear página de estado",
+    "saveChanges": "Guardar cambios"
+  },
+  "detail": {
+    "configuration": "Configuración",
+    "preview": "Vista previa",
+    "publicUrl": "URL pública"
+  },
+  "toast": {
+    "created": "Página de estado creada",
+    "updated": "Página de estado actualizada",
+    "deleted": "Página de estado eliminada"
+  }
+}

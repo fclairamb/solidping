@@ -1,0 +1,29 @@
+{
+  "title": "Servereinstellungen",
+  "subtitle": "Serverweite Konfigurationsparameter verwalten",
+  "web": {
+    "title": "Web-Einstellungen",
+    "baseUrl": "Basis-URL",
+    "appName": "Anwendungsname"
+  },
+  "mail": {
+    "title": "E-Mail-Einstellungen",
+    "host": "SMTP-Host",
+    "port": "SMTP-Port",
+    "from": "Absenderadresse",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "protocol": "Protokoll",
+    "enabled": "E-Mail aktiviert"
+  },
+  "auth": {
+    "title": "Authentifizierungseinstellungen",
+    "registrationEnabled": "Registrierung aktiviert",
+    "registrationEnabledDescription": "Neuen Benutzern die Registrierung erlauben."
+  },
+  "performance": {
+    "title": "Leistungseinstellungen",
+    "subtitle": "Leistungsbezogene Parameter konfigurieren."
+  },
+  "saved": "Einstellungen gespeichert."
+}

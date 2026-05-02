@@ -1,0 +1,37 @@
+{
+  "title": "Incidentes",
+  "subtitle": "Siga y gestione los incidentes de monitorización",
+  "allIncidents": "Todos los incidentes",
+  "activeOnly": "Solo activos",
+  "resolvedOnly": "Solo resueltos",
+  "table": {
+    "incident": "Incidente",
+    "check": "Comprobación",
+    "started": "Iniciado",
+    "duration": "Duración",
+    "failures": "Fallos"
+  },
+  "allOperational": "Todos los sistemas funcionan correctamente",
+  "noResolved": "Aún no hay incidentes resueltos",
+  "noIncidents": "No se han registrado incidentes",
+  "noIncidentsFound": "No se han encontrado incidentes",
+  "filterByState": "Filtrar por estado",
+  "relapse": "{{count}}× recaída",
+  "active": "Activo",
+  "resolved": "Resuelto",
+  "detail": {
+    "incidentDetail": "Detalle del incidente",
+    "startedAt": "Iniciado el",
+    "resolvedAt": "Resuelto el",
+    "acknowledgedAt": "Reconocido el",
+    "escalatedAt": "Escalado el",
+    "failureCount": "Número de fallos",
+    "relapseCount": "Número de recaídas"
+  },
+  "time": {
+    "daysAgo": "hace {{count}} d",
+    "hoursAgo": "hace {{count}} h",
+    "minutesAgo": "hace {{count}} min",
+    "justNow": "ahora mismo"
+  }
+}

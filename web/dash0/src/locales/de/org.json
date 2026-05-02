@@ -1,0 +1,48 @@
+{
+  "settings": {
+    "title": "Organisationseinstellungen",
+    "autoJoin": "Automatischer Beitritt",
+    "autoJoinDescription": "Benutzer, deren E-Mail-Adresse diesem Muster entspricht, werden automatisch der Organisation hinzugefügt.",
+    "autoJoinFullDescription": "Benutzer, deren E-Mail diesem Muster entspricht, treten dieser Organisation automatisch bei, wenn sie sich registrieren oder über OAuth anmelden.",
+    "emailPattern": "E-Mail-Muster (Regex)",
+    "emailPlaceholder": "@example\\.com$",
+    "autoJoinHelp": "Lassen Sie das Feld leer, um den automatischen Beitritt zu deaktivieren. Beispiel: <code>@example\\.com$</code> entspricht allen @example.com-E-Mail-Adressen.",
+    "saved": "Einstellungen gespeichert.",
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
+  },
+  "invitations": {
+    "title": "Einladungen",
+    "subtitle": "Organisationseinladungen verwalten.",
+    "inviteUser": "Benutzer einladen",
+    "email": "E-Mail-Adresse",
+    "role": "Rolle",
+    "pending": "Ausstehend",
+    "accepted": "Angenommen",
+    "revoke": "Widerrufen",
+    "revoked": "Einladung widerrufen",
+    "sent": "Einladung gesendet",
+    "invite": "Einladen",
+    "inviteMember": "Mitglied einladen",
+    "sendDescription": "Senden Sie eine Einladung zum Beitritt zu dieser Organisation",
+    "invitationCreated": "Einladung erstellt. Teilen Sie diesen Link:",
+    "sendInvitation": "Einladung senden",
+    "sending": "Senden...",
+    "pendingTitle": "Ausstehende Einladungen",
+    "pendingDescription": "Einladungen, die noch nicht angenommen wurden",
+    "noPending": "Keine ausstehenden Einladungen",
+    "emailPlaceholder": "kollege@example.com",
+    "expires": "Läuft ab",
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
+  },
+  "members": {
+    "title": "Mitglieder",
+    "subtitle": "Organisationsmitglieder verwalten.",
+    "role": "Rolle",
+    "admin": "Admin",
+    "user": "Benutzer",
+    "viewer": "Betrachter",
+    "remove": "Entfernen",
+    "removed": "Mitglied entfernt",
+    "roleUpdated": "Rolle aktualisiert"
+  }
+}

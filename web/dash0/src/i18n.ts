@@ -23,6 +23,28 @@ import frOrg from "./locales/fr/org.json";
 import frServer from "./locales/fr/server.json";
 import frStatusPages from "./locales/fr/statusPages.json";
 import frBadges from "./locales/fr/badges.json";
+import deCommon from "./locales/de/common.json";
+import deNav from "./locales/de/nav.json";
+import deAuth from "./locales/de/auth.json";
+import deChecks from "./locales/de/checks.json";
+import deIncidents from "./locales/de/incidents.json";
+import deEvents from "./locales/de/events.json";
+import deAccount from "./locales/de/account.json";
+import deOrg from "./locales/de/org.json";
+import deServer from "./locales/de/server.json";
+import deStatusPages from "./locales/de/statusPages.json";
+import deBadges from "./locales/de/badges.json";
+import esCommon from "./locales/es/common.json";
+import esNav from "./locales/es/nav.json";
+import esAuth from "./locales/es/auth.json";
+import esChecks from "./locales/es/checks.json";
+import esIncidents from "./locales/es/incidents.json";
+import esEvents from "./locales/es/events.json";
+import esAccount from "./locales/es/account.json";
+import esOrg from "./locales/es/org.json";
+import esServer from "./locales/es/server.json";
+import esStatusPages from "./locales/es/statusPages.json";
+import esBadges from "./locales/es/badges.json";
 
 i18n
   .use(LanguageDetector)
@@ -54,6 +76,32 @@ i18n
         server: frServer,
         statusPages: frStatusPages,
         badges: frBadges,
+      },
+      de: {
+        common: deCommon,
+        nav: deNav,
+        auth: deAuth,
+        checks: deChecks,
+        incidents: deIncidents,
+        events: deEvents,
+        account: deAccount,
+        org: deOrg,
+        server: deServer,
+        statusPages: deStatusPages,
+        badges: deBadges,
+      },
+      es: {
+        common: esCommon,
+        nav: esNav,
+        auth: esAuth,
+        checks: esChecks,
+        incidents: esIncidents,
+        events: esEvents,
+        account: esAccount,
+        org: esOrg,
+        server: esServer,
+        statusPages: esStatusPages,
+        badges: esBadges,
       },
     },
     defaultNS: "common",

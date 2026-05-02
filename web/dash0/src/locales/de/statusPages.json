@@ -1,0 +1,33 @@
+{
+  "title": "Statusseiten",
+  "subtitle": "Verwalten Sie Ihre öffentlichen Statusseiten",
+  "newStatusPage": "Neue Statusseite",
+  "noStatusPages": "Noch keine Statusseiten",
+  "viewDetails": "Details anzeigen",
+  "edit": "Bearbeiten",
+  "enabled": "Aktiviert",
+  "disabled": "Deaktiviert",
+  "form": {
+    "title": "Titel",
+    "slug": "Slug",
+    "description": "Beschreibung",
+    "checks": "Prüfungen",
+    "selectChecks": "Anzuzeigende Prüfungen auswählen",
+    "historyDays": "Verlaufstage",
+    "showAvailability": "Verfügbarkeit anzeigen",
+    "showResponseTime": "Antwortzeit anzeigen",
+    "language": "Sprache",
+    "createStatusPage": "Statusseite erstellen",
+    "saveChanges": "Änderungen speichern"
+  },
+  "detail": {
+    "configuration": "Konfiguration",
+    "preview": "Vorschau",
+    "publicUrl": "Öffentliche URL"
+  },
+  "toast": {
+    "created": "Statusseite erstellt",
+    "updated": "Statusseite aktualisiert",
+    "deleted": "Statusseite gelöscht"
+  }
+}

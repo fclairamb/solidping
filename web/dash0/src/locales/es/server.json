@@ -1,0 +1,29 @@
+{
+  "title": "Ajustes del servidor",
+  "subtitle": "Gestione los parámetros de configuración del servidor",
+  "web": {
+    "title": "Ajustes web",
+    "baseUrl": "URL base",
+    "appName": "Nombre de la aplicación"
+  },
+  "mail": {
+    "title": "Ajustes de correo",
+    "host": "Host SMTP",
+    "port": "Puerto SMTP",
+    "from": "Dirección remitente",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "protocol": "Protocolo",
+    "enabled": "Correo activado"
+  },
+  "auth": {
+    "title": "Ajustes de autenticación",
+    "registrationEnabled": "Registro activado",
+    "registrationEnabledDescription": "Permitir el registro de nuevos usuarios."
+  },
+  "performance": {
+    "title": "Ajustes de rendimiento",
+    "subtitle": "Configure los parámetros relacionados con el rendimiento."
+  },
+  "saved": "Ajustes guardados."
+}
