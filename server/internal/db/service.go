@@ -138,6 +138,9 @@ type Service interface {
 	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error)
 	UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error
 	CountActiveIncidentsByCheckUID(ctx context.Context, checkUID string) (int, error)
+	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.
+	// Used by the auto-unsnooze sweeper.
+	ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error)
 
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)

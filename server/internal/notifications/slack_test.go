@@ -351,6 +351,10 @@ func (m *mockDBService) CountActiveIncidentsByCheckUID(_ context.Context, _ stri
 	return 0, nil
 }
 
+func (m *mockDBService) ListExpiredSnoozedIncidents(_ context.Context, _ time.Time) ([]*models.Incident, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) CreateEvent(_ context.Context, _ *models.Event) error {
 	panic("not implemented")
 }

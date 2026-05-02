@@ -58,7 +58,12 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	}
 
 	// Ensure state cleanup job exists (global, not per-org)
-	return r.ensureStateCleanupJob(ctx, jctx)
+	if err := r.ensureStateCleanupJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure snooze sweep job exists (global, not per-org)
+	return r.ensureSnoozeSweepJob(ctx, jctx)
 }
 
 // ensureDefaultOrganization creates a default organization if none exists.
@@ -349,6 +354,28 @@ func (r *StartupJobRun) ensureStateCleanupJob(ctx context.Context, jctx *jobdef.
 		log.InfoContext(ctx, "Failed to create state cleanup job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured state cleanup job exists")
+	}
+
+	return nil
+}
+
+// ensureSnoozeSweepJob provisions a global snooze sweep job. The job
+// reschedules itself; this just ensures the very first one exists.
+func (r *StartupJobRun) ensureSnoozeSweepJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping snooze sweep job provisioning (services not available)")
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring snooze sweep job exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeSnoozeSweep), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create snooze sweep job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured snooze sweep job exists")
 	}
 
 	return nil

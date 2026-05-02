@@ -27,6 +27,12 @@ const (
 	EventTypeIncidentReopened EventType = "incident.reopened"
 	// EventTypeIncidentAcknowledged indicates an incident was acknowledged.
 	EventTypeIncidentAcknowledged EventType = "incident.acknowledged"
+	// EventTypeIncidentUnacknowledged indicates an acknowledgment was cleared.
+	EventTypeIncidentUnacknowledged EventType = "incident.unacknowledged"
+	// EventTypeIncidentSnoozed indicates an incident was snoozed until a future time.
+	EventTypeIncidentSnoozed EventType = "incident.snoozed"
+	// EventTypeIncidentUnsnoozed indicates an incident's snooze was cleared.
+	EventTypeIncidentUnsnoozed EventType = "incident.unsnoozed"
 )
 
 // ActorType represents who triggered an event.

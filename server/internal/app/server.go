@@ -446,6 +446,11 @@ func (s *Server) setupRoutes() {
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
 	orgIncidents.GET("/:uid", incidentsHandler.GetIncident)
+	orgIncidents.POST("/:uid/ack", incidentsHandler.AcknowledgeIncident)
+	orgIncidents.POST("/:uid/unack", incidentsHandler.UnacknowledgeIncident)
+	orgIncidents.POST("/:uid/snooze", incidentsHandler.SnoozeIncident)
+	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
+	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
