@@ -465,3 +465,14 @@ Notes on safety:
 - All changes are additive — new column nullable, new table separate. Existing per-check incidents (where `CheckGroupUID IS NULL`) must keep behaving identically. Regression-test bar.
 - `FindActiveIncidentByCheckUID` semantics widen: it now also returns the group incident a check participates in. Callers see the returned `incident.CheckGroupUID` and route accordingly. Existing per-check tests pass because non-grouped checks still return the per-check incident.
 
+## v1 Deferred Items
+
+The following items from the spec are deferred to a follow-up so the core backend feature can land without dragging the PR scope further. The feature is functional without them — they're polish on edge cases:
+
+- **CheckUpdate side effects (§6)**: `OnCheckGroupChanged`, `OnCheckDisabled`, `OnCheckDeleted`. Without them, moving a check between groups during an active incident leaves the member row in place (which the spec explicitly endorses as "audit trail wins"); disabling a check during an incident means the member stays `currently_failing=true` until the next probe lands (acceptable — it self-heals). Cascade-delete is handled by the FK.
+- **Trigger-check FK change (§8 edge case)**: `incidents.check_uid` keeps its existing `ON DELETE CASCADE`. Deleting the trigger check while the group incident is active will delete the incident too. The spec calls for `ON DELETE SET NULL` here; that's a non-trivial sqlite migration (full table rebuild) so it's deferred.
+- **Frontend rendering (§5)**: `web/dash0` incident list/detail still renders group incidents using the existing per-check shape (with the group title `"<group> — N/M checks down"` already showing). Members[] is in the API but unrendered. A follow-up spec will dedicate a UI pass.
+- **`service_group_test.go` (§9)**: The state-machine test cases listed in §9 are not yet implemented. Manual verification per §10 is the v1 acceptance bar.
+
+Tracked as future work; this PR lands the schema + state machine + notification dedup + API surface.
+
