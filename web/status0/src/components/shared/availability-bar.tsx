@@ -30,7 +30,7 @@ export function AvailabilityBar({
   overallAvailabilityPct,
   historyDays,
 }: AvailabilityBarProps) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + "T00:00:00");
@@ -54,23 +54,23 @@ export function AvailabilityBar({
               <p className="font-medium">{formatDate(point.date)}</p>
               {point.status !== "noData" ? (
                 <p className="text-xs">
-                  {point.availabilityPct.toFixed(2)}% uptime
+                  {point.availabilityPct.toFixed(2)}% {t("uptime")}
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">No data</p>
+                <p className="text-xs text-muted-foreground">{t("noData")}</p>
               )}
             </TooltipContent>
           </Tooltip>
         ))}
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-        <span>{historyDays} days ago</span>
+        <span>{t("daysAgo", { count: historyDays })}</span>
         {overallAvailabilityPct != null && (
           <span className="font-medium text-foreground">
-            {overallAvailabilityPct.toFixed(3)}% uptime
+            {overallAvailabilityPct.toFixed(3)}% {t("uptime")}
           </span>
         )}
-        <span>Today</span>
+        <span>{t("today")}</span>
       </div>
     </div>
   );

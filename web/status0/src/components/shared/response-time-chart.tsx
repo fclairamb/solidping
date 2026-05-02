@@ -37,7 +37,7 @@ function CustomTooltip({
   active?: boolean;
   payload?: Array<{ payload: ResponseTimePoint }>;
 }) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   if (!active || !payload?.length) return null;
   const data = payload[0].payload;
   const date = new Date(data.time);
@@ -58,7 +58,7 @@ function CustomTooltip({
           {formatDuration(data.durationP95)}
         </p>
       ) : (
-        <p className="text-xs text-muted-foreground">No data</p>
+        <p className="text-xs text-muted-foreground">{t("noData")}</p>
       )}
     </div>
   );
@@ -69,7 +69,7 @@ interface ResponseTimeChartProps {
 }
 
 export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const hasData = data.some((d) => d.durationP95 != null);
   if (!hasData) return null;
 
@@ -84,7 +84,7 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
 
   return (
     <div className="mt-3">
-      <p className="mb-1 text-xs text-muted-foreground">Response Time</p>
+      <p className="mb-1 text-xs text-muted-foreground">{t("responseTime")}</p>
       <ResponsiveContainer width="100%" height={100}>
         <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
           <defs>

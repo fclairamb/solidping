@@ -13,5 +13,10 @@
   "statusPageNotFound": "Page de statut introuvable",
   "statusPageNotFoundDescription": "La page de statut demandée est introuvable.",
   "solidpingStatus": "Statut SolidPing",
-  "visitStatusPage": "Visitez une page de statut spécifique pour voir l'état des services."
+  "visitStatusPage": "Visitez une page de statut spécifique pour voir l'état des services.",
+  "daysAgo": "il y a {{count}} jours",
+  "today": "Aujourd'hui",
+  "uptime": "de disponibilité",
+  "noData": "Aucune donnée",
+  "responseTime": "Temps de réponse"
 }
