@@ -42,7 +42,7 @@ jobs:
         uses: golangci/golangci-lint-action@v9.2.0
         with:
           # https://github.com/golangci/golangci-lint/releases
-          version: v2.12.0
+          version: v2.12.1
           install-mode: goinstall
           working-directory: server
           # only-new-issues: true
