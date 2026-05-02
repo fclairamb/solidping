@@ -14,6 +14,7 @@ Project-wide standards and naming rules.
 - [conventions/checker-config.md](conventions/checker-config.md) — Checker configuration for all protocol types (HTTP, TCP, DNS, SMTP, etc.)
 - [conventions/checker-metrics.md](conventions/checker-metrics.md) — Metrics compaction suffixes (_min, _max, _avg, _pct, etc.)
 - [conventions/regions.md](conventions/regions.md) — Region naming (`$continent-$region-$city`) and wildcard matching
+- [conventions/runners.md](conventions/runners.md) — Check & job runner pools: configuration, sizing, fetching architecture, node roles
 - [conventions/state-entries.md](conventions/state-entries.md) — State entries table for Slack thread metadata
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
