@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 const LANGUAGES = [
-  { code: "en", flag: "\u{1F1EC}\u{1F1E7}", label: "English" },
+  { code: "en", flag: "\u{1F1FA}\u{1F1F8}", label: "English" },
   { code: "fr", flag: "\u{1F1EB}\u{1F1F7}", label: "Français" },
   { code: "de", flag: "\u{1F1E9}\u{1F1EA}", label: "Deutsch" },
   { code: "es", flag: "\u{1F1EA}\u{1F1F8}", label: "Español" },
