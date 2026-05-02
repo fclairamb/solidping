@@ -824,9 +824,16 @@ func (s *Service) emitEvent(
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
+		if incident.CheckGroupUID != nil {
+			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
+
+			return nil
+		}
+
 		checkUID, _ := payload["check_uid"].(string)
 		if checkUID == "" {
 			slog.WarnContext(ctx, "Missing check_uid in event payload", "eventType", eventType)
+
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
@@ -836,6 +843,78 @@ func (s *Service) emitEvent(
 	}
 
 	return nil
+}
+
+// queueGroupNotifications fans out a single notification per (connection,
+// event-type), where the connection set is the union of every currently-
+// failing member's connections. Recovered members do not bring their
+// channels into mid-incident events, but they DO contribute to the
+// resolved event so every channel that fired on creation also hears about
+// the recovery.
+func (s *Service) queueGroupNotifications(
+	ctx context.Context, orgUID, incidentUID string, eventType models.EventType,
+) {
+	members, err := s.db.ListIncidentMemberChecks(ctx, incidentUID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list group members for notification dedup",
+			"incidentUid", incidentUID, "error", err)
+
+		return
+	}
+
+	seen := make(map[string]bool)
+
+	for _, member := range members {
+		if !member.CurrentlyFailing && eventType != models.EventTypeIncidentResolved {
+			continue
+		}
+
+		conns, err := s.db.ListConnectionsForCheck(ctx, member.CheckUID)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to load connections for group member",
+				"checkUid", member.CheckUID, "error", err)
+
+			continue
+		}
+
+		for _, conn := range conns {
+			if !conn.Enabled || seen[conn.UID] {
+				continue
+			}
+
+			seen[conn.UID] = true
+			s.enqueueNotificationJob(ctx, orgUID, conn.UID, incidentUID, eventType)
+		}
+	}
+}
+
+// enqueueNotificationJob marshals the config and creates a single job row.
+// Shared between per-check and group fan-out paths.
+func (s *Service) enqueueNotificationJob(
+	ctx context.Context, orgUID, connectionUID, incidentUID string, eventType models.EventType,
+) {
+	config, err := json.Marshal(jobtypes.NotificationJobConfig{
+		ConnectionUID: connectionUID,
+		IncidentUID:   incidentUID,
+		EventType:     string(eventType),
+	})
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to marshal notification config",
+			"connectionUid", connectionUID,
+			"incidentUid", incidentUID,
+			"error", err,
+		)
+
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil); err != nil {
+		slog.WarnContext(ctx, "Failed to create notification job",
+			"connectionUid", connectionUID,
+			"incidentUid", incidentUID,
+			"error", err,
+		)
+	}
 }
 
 // queueNotifications queues notification jobs for an incident event.
