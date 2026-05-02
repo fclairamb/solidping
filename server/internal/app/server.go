@@ -51,6 +51,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
+	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
@@ -104,6 +105,7 @@ type Server struct {
 	authService *auth.Service
 	mcpHandler  *mcp.Handler
 	profilerSrv *profiler.Server
+	jmapManager *jmap.Manager
 	cancelCtx   context.CancelFunc
 	workersWg   sync.WaitGroup // Tracks workers
 }
@@ -458,6 +460,14 @@ func (s *Server) setupRoutes() {
 
 	// System parameters routes (super admin only)
 	systemService := system.NewService(s.dbService)
+
+	// JMAP inbox manager: long-running supervisor that connects to the
+	// configured JMAP server and dispatches incoming emails to handlers.
+	// Spec 02 will register the email-check handler. The supervisor is
+	// started from Server.Start() once we have a real cancellable context.
+	s.jmapManager = jmap.NewManager(s.dbService)
+	systemService.SetEmailInboxManager(s.jmapManager)
+
 	systemHandler := system.NewHandler(systemService, s.config)
 	systemGroup := api.NewGroup("/system/parameters").
 		Use(authMiddleware.RequireAuth).
@@ -472,6 +482,9 @@ func (s *Server) setupRoutes() {
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireSuperAdmin)
 	systemActions.POST("/test-email", systemHandler.TestEmail)
+	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
+	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
+	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 
 	// Integration connections routes (authentication required)
 	connectionsService := connections.NewService(s.dbService)
@@ -1043,6 +1056,15 @@ func (s *Server) Start(ctx context.Context) error {
 	// Start MCP session cleanup
 	s.mcpHandler.Start(runnerCtx) //nolint:contextcheck // runnerCtx is intentionally separate from request context
 
+	// Start JMAP inbox supervisor (idle when email_inbox not configured).
+	// runnerCtx is intentionally separate from request context.
+	if s.jmapManager != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runJMAPManager(runnerCtx)
+	}
+
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
@@ -1148,6 +1170,15 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 // startJobWorker starts the job worker with internal runner goroutines.
+// runJMAPManager wraps jmap.Manager.Run for the goroutine launched in Start.
+func (s *Server) runJMAPManager(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
+	}
+}
+
 func (s *Server) startJobWorker(ctx context.Context) {
 	nbRunners := s.config.Server.JobWorker.Nb
 	if nbRunners <= 0 {
