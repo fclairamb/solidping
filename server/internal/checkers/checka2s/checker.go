@@ -1,5 +1,5 @@
-// Package checkgameserver provides game server monitoring via A2S protocol.
-package checkgameserver
+// Package checka2s provides Source engine A2S protocol monitoring.
+package checka2s
 
 import (
 	"context"
@@ -12,17 +12,17 @@ import (
 
 const microsecondsPerMilli = 1000.0
 
-// GameServerChecker implements the Checker interface for game server A2S checks.
-type GameServerChecker struct{}
+// A2SChecker implements the Checker interface for Source engine A2S query checks.
+type A2SChecker struct{}
 
 // Type returns the check type identifier.
-func (c *GameServerChecker) Type() checkerdef.CheckType {
-	return checkerdef.CheckTypeGameServer
+func (c *A2SChecker) Type() checkerdef.CheckType {
+	return checkerdef.CheckTypeA2S
 }
 
 // Validate checks if the configuration is valid.
-func (c *GameServerChecker) Validate(spec *checkerdef.CheckSpec) error {
-	cfg := &GameServerConfig{}
+func (c *A2SChecker) Validate(spec *checkerdef.CheckSpec) error {
+	cfg := &A2SConfig{}
 	if err := cfg.FromMap(spec.Config); err != nil {
 		return err
 	}
@@ -42,12 +42,12 @@ func (c *GameServerChecker) Validate(spec *checkerdef.CheckSpec) error {
 	return nil
 }
 
-// Execute performs the game server A2S query and returns the result.
-func (c *GameServerChecker) Execute(
+// Execute performs the A2S query and returns the result.
+func (c *A2SChecker) Execute(
 	ctx context.Context,
 	config checkerdef.Config,
 ) (*checkerdef.Result, error) {
-	cfg, err := checkerdef.AssertConfig[*GameServerConfig](config)
+	cfg, err := checkerdef.AssertConfig[*A2SConfig](config)
 	if err != nil {
 		return nil, err
 	}
@@ -82,7 +82,7 @@ func (c *GameServerChecker) Execute(
 	return buildResult(cfg, info, start, metrics, output), nil
 }
 
-func queryServer(cfg *GameServerConfig) (*a2s.ServerInfo, error) {
+func queryServer(cfg *A2SConfig) (*a2s.ServerInfo, error) {
 	client, err := a2s.NewClient(
 		cfg.resolveTarget(),
 		a2s.SetMaxPacketSize(14000),
@@ -98,7 +98,7 @@ func queryServer(cfg *GameServerConfig) (*a2s.ServerInfo, error) {
 }
 
 func buildResult(
-	cfg *GameServerConfig,
+	cfg *A2SConfig,
 	info *a2s.ServerInfo,
 	start time.Time,
 	metrics map[string]any,

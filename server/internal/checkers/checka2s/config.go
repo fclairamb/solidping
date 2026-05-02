@@ -1,4 +1,4 @@
-package checkgameserver
+package checka2s
 
 import (
 	"net"
@@ -15,8 +15,8 @@ const (
 	maxTimeout     = 30 * time.Second
 )
 
-// GameServerConfig holds the configuration for game server A2S checks.
-type GameServerConfig struct {
+// A2SConfig holds the configuration for Source engine A2S query checks.
+type A2SConfig struct {
 	Host       string        `json:"host"`
 	Port       int           `json:"port,omitempty"`
 	Timeout    time.Duration `json:"timeout,omitempty"`
@@ -25,7 +25,7 @@ type GameServerConfig struct {
 }
 
 // FromMap populates the configuration from a map.
-func (c *GameServerConfig) FromMap(configMap map[string]any) error {
+func (c *A2SConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap["host"].(string); ok {
 		c.Host = host
 	} else if configMap["host"] != nil {
@@ -67,7 +67,7 @@ func (c *GameServerConfig) FromMap(configMap map[string]any) error {
 }
 
 // GetConfig returns the configuration as a map.
-func (c *GameServerConfig) GetConfig() map[string]any {
+func (c *A2SConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		"host": c.Host,
 	}
@@ -92,7 +92,7 @@ func (c *GameServerConfig) GetConfig() map[string]any {
 }
 
 // Validate checks if the configuration is valid.
-func (c *GameServerConfig) Validate() error {
+func (c *A2SConfig) Validate() error {
 	if c.Host == "" {
 		return checkerdef.NewConfigError("host", "is required")
 	}
@@ -118,7 +118,7 @@ func (c *GameServerConfig) Validate() error {
 	return nil
 }
 
-func (c *GameServerConfig) resolvePort() int {
+func (c *A2SConfig) resolvePort() int {
 	if c.Port != 0 {
 		return c.Port
 	}
@@ -126,7 +126,7 @@ func (c *GameServerConfig) resolvePort() int {
 	return defaultPort
 }
 
-func (c *GameServerConfig) resolveTimeout() time.Duration {
+func (c *A2SConfig) resolveTimeout() time.Duration {
 	if c.Timeout != 0 {
 		return c.Timeout
 	}
@@ -134,10 +134,10 @@ func (c *GameServerConfig) resolveTimeout() time.Duration {
 	return defaultTimeout
 }
 
-func (c *GameServerConfig) resolveTarget() string {
+func (c *A2SConfig) resolveTarget() string {
 	return net.JoinHostPort(c.Host, strconv.Itoa(c.resolvePort()))
 }
 
-func (c *GameServerConfig) resolveSlug() string {
-	return "game-" + strings.ReplaceAll(c.Host, ".", "-")
+func (c *A2SConfig) resolveSlug() string {
+	return "a2s-" + strings.ReplaceAll(c.Host, ".", "-")
 }
