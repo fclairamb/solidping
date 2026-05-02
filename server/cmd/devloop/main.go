@@ -33,44 +33,54 @@ const (
 	rootDir        = "."
 )
 
-var excludeDirs = map[string]struct{}{
-	"tmp":      {},
-	"vendor":   {},
-	".git":     {},
-	"testdata": {},
-	"res":      {},
-	"apps":     {},
-	"openapi":  {},
+func excludedDirNames() map[string]struct{} {
+	return map[string]struct{}{
+		"tmp":      {},
+		"vendor":   {},
+		".git":     {},
+		"testdata": {},
+		"res":      {},
+		"apps":     {},
+		"openapi":  {},
+	}
 }
 
 func main() {
 	log.SetFlags(log.Ltime)
 	log.SetPrefix("[devloop] ")
 
-	if err := os.MkdirAll("tmp", 0o755); err != nil {
-		log.Fatalf("mkdir tmp: %v", err)
-	}
-
-	if err := build(binPath); err != nil {
-		log.Fatalf("initial build failed: %v", err)
-	}
-
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+
+	err := run(ctx)
+	cancel()
+	if err != nil {
+		log.Printf("%v", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context) error {
+	if err := os.MkdirAll("tmp", 0o755); err != nil {
+		return fmt.Errorf("mkdir tmp: %w", err)
+	}
+
+	if err := build(ctx, binPath); err != nil {
+		return fmt.Errorf("initial build failed: %w", err)
+	}
 
 	supervisor := newSupervisor()
-	if err := supervisor.start(); err != nil {
-		log.Fatalf("start child: %v", err)
+	if err := supervisor.start(ctx); err != nil {
+		return fmt.Errorf("start child: %w", err)
 	}
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
-		log.Fatalf("fsnotify: %v", err)
+		return fmt.Errorf("fsnotify: %w", err)
 	}
 	defer func() { _ = watcher.Close() }()
 
 	if err := addWatches(watcher, rootDir); err != nil {
-		log.Fatalf("watch setup: %v", err)
+		return fmt.Errorf("watch setup: %w", err)
 	}
 	log.Printf("watching server/ for .go changes")
 
@@ -82,34 +92,39 @@ func main() {
 		case <-ctx.Done():
 			log.Printf("shutting down")
 			supervisor.stop()
-			return
+			return nil
 		case <-rebuilds:
-			if err := build(nextBinPath); err != nil {
-				log.Printf("build failed (server still running):\n%s", err)
-				_ = os.Remove(nextBinPath)
-				continue
-			}
-			supervisor.stop()
-			if err := os.Rename(nextBinPath, binPath); err != nil {
-				log.Printf("rename: %v", err)
-				continue
-			}
-			if err := supervisor.start(); err != nil {
-				log.Printf("start child: %v", err)
-			}
+			handleRebuild(ctx, supervisor)
 		}
 	}
 }
 
-func build(out string) error {
-	cmd := exec.Command("go", "build", "-o", out, ".")
-	cmd.Stdout = os.Stdout
+func handleRebuild(ctx context.Context, sup *supervisor) {
+	if err := build(ctx, nextBinPath); err != nil {
+		log.Printf("build failed (server still running):\n%v", err)
+		_ = os.Remove(nextBinPath)
+		return
+	}
+	sup.stop()
+	if err := os.Rename(nextBinPath, binPath); err != nil {
+		log.Printf("rename: %v", err)
+		return
+	}
+	if err := sup.start(ctx); err != nil {
+		log.Printf("start child: %v", err)
+	}
+}
+
+func build(ctx context.Context, out string) error {
+	cmd := exec.CommandContext(ctx, "go", "build", "-o", out, ".")
 	combined, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("%w\n%s", err, combined)
 	}
 	if len(combined) > 0 {
-		os.Stdout.Write(combined)
+		if _, werr := os.Stdout.Write(combined); werr != nil {
+			return fmt.Errorf("write build output: %w", werr)
+		}
 	}
 	return nil
 }
@@ -123,11 +138,11 @@ func newSupervisor() *supervisor {
 	return &supervisor{}
 }
 
-func (s *supervisor) start() error {
+func (s *supervisor) start(ctx context.Context) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	cmd := exec.Command(binPath, binArg)
+	cmd := exec.CommandContext(ctx, binPath, binArg)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = os.Environ()
@@ -173,30 +188,15 @@ func debounce(ctx context.Context, watcher *fsnotify.Watcher, out chan<- struct{
 		select {
 		case <-ctx.Done():
 			return
-		case ev, ok := <-watcher.Events:
+		case event, ok := <-watcher.Events:
 			if !ok {
 				return
 			}
-			if !shouldRebuild(ev) {
+			handleEvent(watcher, event)
+			if !shouldRebuild(event) {
 				continue
 			}
-			if ev.Has(fsnotify.Create) {
-				if info, err := os.Stat(ev.Name); err == nil && info.IsDir() && !isExcludedDir(ev.Name) {
-					_ = watcher.Add(ev.Name)
-				}
-			}
-			if timer == nil {
-				timer = time.NewTimer(debounceWindow)
-				timerC = timer.C
-			} else {
-				if !timer.Stop() {
-					select {
-					case <-timer.C:
-					default:
-					}
-				}
-				timer.Reset(debounceWindow)
-			}
+			timer, timerC = resetTimer(timer)
 		case <-timerC:
 			timer = nil
 			timerC = nil
@@ -213,29 +213,56 @@ func debounce(ctx context.Context, watcher *fsnotify.Watcher, out chan<- struct{
 	}
 }
 
-func shouldRebuild(ev fsnotify.Event) bool {
-	if !ev.Has(fsnotify.Create) && !ev.Has(fsnotify.Write) && !ev.Has(fsnotify.Remove) && !ev.Has(fsnotify.Rename) {
+func handleEvent(watcher *fsnotify.Watcher, event fsnotify.Event) {
+	if !event.Has(fsnotify.Create) {
+		return
+	}
+	info, err := os.Stat(event.Name)
+	if err != nil || !info.IsDir() || isExcludedDir(event.Name) {
+		return
+	}
+	_ = watcher.Add(event.Name)
+}
+
+func resetTimer(timer *time.Timer) (*time.Timer, <-chan time.Time) {
+	if timer == nil {
+		newTimer := time.NewTimer(debounceWindow)
+		return newTimer, newTimer.C
+	}
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+	timer.Reset(debounceWindow)
+	return timer, timer.C
+}
+
+func shouldRebuild(event fsnotify.Event) bool {
+	const watchedOps = fsnotify.Create | fsnotify.Write | fsnotify.Remove | fsnotify.Rename
+	if event.Op&watchedOps == 0 {
 		return false
 	}
-	name := filepath.Base(ev.Name)
+	name := filepath.Base(event.Name)
 	if !strings.HasSuffix(name, ".go") {
 		return false
 	}
 	if strings.HasSuffix(name, "_test.go") {
 		return false
 	}
-	return !isExcludedDir(filepath.Dir(ev.Name))
+	return !isExcludedDir(filepath.Dir(event.Name))
 }
 
 func addWatches(watcher *fsnotify.Watcher, root string) error {
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	return filepath.WalkDir(root, func(path string, dirEntry fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrPermission) {
 				return nil
 			}
 			return err
 		}
-		if !d.IsDir() {
+		if !dirEntry.IsDir() {
 			return nil
 		}
 		if isExcludedDir(path) {
@@ -246,10 +273,11 @@ func addWatches(watcher *fsnotify.Watcher, root string) error {
 }
 
 func isExcludedDir(path string) bool {
+	excluded := excludedDirNames()
 	clean := filepath.Clean(path)
 	parts := strings.Split(clean, string(filepath.Separator))
 	for _, p := range parts {
-		if _, ok := excludeDirs[p]; ok {
+		if _, ok := excluded[p]; ok {
 			return true
 		}
 	}
