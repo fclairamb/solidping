@@ -29,6 +29,7 @@ import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
 import { Route as OrgsOrgChecksRouteImport } from './routes/orgs/$org/checks'
 import { Route as OrgsOrgBadgesRouteImport } from './routes/orgs/$org/badges'
 import { Route as OrgsOrgAccountRouteImport } from './routes/orgs/$org/account'
+import { Route as AuthSlackCompleteRouteImport } from './routes/auth.slack.complete'
 import { Route as OrgsOrgTestIndexRouteImport } from './routes/orgs/$org/test.index'
 import { Route as OrgsOrgStatusPagesIndexRouteImport } from './routes/orgs/$org/status-pages.index'
 import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/server.index'
@@ -160,6 +161,11 @@ const OrgsOrgAccountRoute = OrgsOrgAccountRouteImport.update({
   id: '/account',
   path: '/account',
   getParentRoute: () => OrgsOrgRoute,
+} as any)
+const AuthSlackCompleteRoute = AuthSlackCompleteRouteImport.update({
+  id: '/auth/slack/complete',
+  path: '/auth/slack/complete',
+  getParentRoute: () => rootRouteImport,
 } as any)
 const OrgsOrgTestIndexRoute = OrgsOrgTestIndexRouteImport.update({
   id: '/',
@@ -332,6 +338,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
@@ -383,6 +390,7 @@ export interface FileRoutesByTo {
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
@@ -427,6 +435,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
@@ -481,6 +490,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
@@ -532,6 +542,7 @@ export interface FileRouteTypes {
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/badges'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
@@ -575,6 +586,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
@@ -628,6 +640,7 @@ export interface RootRouteChildren {
   InviteTokenRoute: typeof InviteTokenRoute
   OrgsOrgRoute: typeof OrgsOrgRouteWithChildren
   ResetPasswordTokenRoute: typeof ResetPasswordTokenRoute
+  AuthSlackCompleteRoute: typeof AuthSlackCompleteRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -771,6 +784,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/account'
       preLoaderRoute: typeof OrgsOrgAccountRouteImport
       parentRoute: typeof OrgsOrgRoute
+    }
+    '/auth/slack/complete': {
+      id: '/auth/slack/complete'
+      path: '/auth/slack/complete'
+      fullPath: '/auth/slack/complete'
+      preLoaderRoute: typeof AuthSlackCompleteRouteImport
+      parentRoute: typeof rootRouteImport
     }
     '/orgs/$org/test/': {
       id: '/orgs/$org/test/'
@@ -1181,6 +1201,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteTokenRoute: InviteTokenRoute,
   OrgsOrgRoute: OrgsOrgRouteWithChildren,
   ResetPasswordTokenRoute: ResetPasswordTokenRoute,
+  AuthSlackCompleteRoute: AuthSlackCompleteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
