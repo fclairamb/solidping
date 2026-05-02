@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -18,14 +19,6 @@ function getBarColor(status: string) {
   }
 }
 
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr + "T00:00:00");
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 interface AvailabilityBarProps {
   dailyAvailability: DailyAvailabilityPoint[];
   overallAvailabilityPct?: number;
@@ -37,6 +30,16 @@ export function AvailabilityBar({
   overallAvailabilityPct,
   historyDays,
 }: AvailabilityBarProps) {
+  const { i18n } = useTranslation();
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr + "T00:00:00");
+    return date.toLocaleDateString(i18n.language, {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   return (
     <div className="mt-2">
       <div className="flex gap-px">
