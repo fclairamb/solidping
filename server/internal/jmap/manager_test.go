@@ -15,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
@@ -246,4 +247,44 @@ func TestTriggerSyncIsNonBlocking(t *testing.T) {
 	r.NoError(mgr.TriggerSync(context.Background()))
 	r.NoError(mgr.TriggerSync(context.Background()))
 	r.NoError(mgr.TriggerSync(context.Background()))
+}
+
+// JSONMapToConfig must unwrap the {"value": ...} envelope produced by
+// SetSystemParameter; reading the wrapper directly used to leak through and
+// yield a zero Config (sessionUrl/username/etc. all empty).
+func TestJSONMapToConfigUnwrapsParameterEnvelope(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	wrapped := models.JSONMap{
+		"value": map[string]any{
+			"enabled":       true,
+			"sessionUrl":    "https://mail.example.com/.well-known/jmap",
+			"username":      "admin@example.com",
+			"password":      "secret",
+			"addressDomain": "example.com",
+		},
+	}
+
+	cfg, err := jmap.JSONMapToConfig(wrapped)
+	r.NoError(err)
+	r.NotNil(cfg)
+	r.True(cfg.Enabled)
+	r.Equal("https://mail.example.com/.well-known/jmap", cfg.SessionURL)
+	r.Equal("admin@example.com", cfg.Username)
+	r.Equal("secret", cfg.Password)
+	r.Equal("example.com", cfg.AddressDomain)
+
+	// Unwrapped (legacy / direct) input should still parse for callers that
+	// already extracted the inner value.
+	bare := models.JSONMap{
+		"sessionUrl": "https://bare.example.com/.well-known/jmap",
+		"username":   "bare@example.com",
+	}
+
+	cfg, err = jmap.JSONMapToConfig(bare)
+	r.NoError(err)
+	r.Equal("https://bare.example.com/.well-known/jmap", cfg.SessionURL)
+	r.Equal("bare@example.com", cfg.Username)
 }

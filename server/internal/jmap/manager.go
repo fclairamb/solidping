@@ -488,17 +488,7 @@ func (m *Manager) loadConfig(ctx context.Context) (*Config, error) {
 		return nil, nil
 	}
 
-	raw, err := json.Marshal(param.Value)
-	if err != nil {
-		return nil, fmt.Errorf("marshal stored config: %w", err)
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return nil, fmt.Errorf("parse stored config: %w", err)
-	}
-
-	return &cfg, nil
+	return JSONMapToConfig(param.Value)
 }
 
 func (m *Manager) setConfig(cfg *Config, client *Client, mboxes *Mailboxes) {
@@ -617,8 +607,16 @@ func sleepOrDone(ctx context.Context, d time.Duration) bool {
 // JSONMap a system parameter holds and returns a parsed Config. Used by the
 // admin TestConnection endpoint when the operator passes credentials in the
 // request body before persisting them.
+//
+// System parameters are stored as `{"value": <payload>}`, so the inner
+// "value" entry is unwrapped before decoding.
 func JSONMapToConfig(in models.JSONMap) (*Config, error) {
-	raw, err := json.Marshal(in)
+	payload := any(in)
+	if inner, ok := in["value"]; ok {
+		payload = inner
+	}
+
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal jsonmap: %w", err)
 	}
