@@ -38,6 +38,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
+	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -463,9 +464,10 @@ func (s *Server) setupRoutes() {
 
 	// JMAP inbox manager: long-running supervisor that connects to the
 	// configured JMAP server and dispatches incoming emails to handlers.
-	// Spec 02 will register the email-check handler. The supervisor is
-	// started from Server.Start() once we have a real cancellable context.
+	// The supervisor is started from Server.Start() once we have a real
+	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
