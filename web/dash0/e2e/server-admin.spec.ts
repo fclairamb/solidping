@@ -39,7 +39,7 @@ test.describe("Server Admin", () => {
 
     // Verify all tabs are visible
     await expect(page.getByRole("link", { name: "Web" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Mail" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Mail", exact: true })).toBeVisible();
     await expect(
       page.getByRole("link", { name: "Authentication" }),
     ).toBeVisible();
@@ -64,7 +64,7 @@ test.describe("Server Admin", () => {
     await navigateToServer(page);
 
     // Click Mail tab
-    await page.getByRole("link", { name: "Mail" }).click();
+    await page.getByRole("link", { name: "Mail", exact: true }).click();
     await page.waitForURL(/\/server\/mail/);
     await page.waitForLoadState("networkidle");
     await expect(page.getByLabel("SMTP Host")).toBeVisible();
@@ -107,7 +107,7 @@ test.describe("Server Admin", () => {
 
     // Navigate to server, then mail tab
     await navigateToServer(page);
-    await page.getByRole("link", { name: "Mail" }).click();
+    await page.getByRole("link", { name: "Mail", exact: true }).click();
     await page.waitForURL(/\/server\/mail/);
     await page.waitForLoadState("networkidle");
 
