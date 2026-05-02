@@ -20,7 +20,7 @@ interface ExchangeResponse {
   accessToken: string;
   refreshToken: string;
   orgSlug: string;
-  userUID: string;
+  userUid: string;
 }
 
 const installErrorPage = "https://www.solidping.io/saas/install-error";

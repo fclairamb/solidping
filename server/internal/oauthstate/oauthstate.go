@@ -21,7 +21,10 @@ import (
 // ErrInvalidState is returned when the state is missing, expired, already
 // used, or was minted for a different kind. Callers must not differentiate
 // between the failure modes back to the user — that would be a side channel.
-var ErrInvalidState = errors.New("oauth state invalid or expired")
+var (
+	ErrInvalidState = errors.New("oauth state invalid or expired")
+	ErrKindRequired = errors.New("oauthstate: kind is required")
+)
 
 // keyState matches the JSONMap key used by the legacy Slack/GitHub/GitLab
 // sign-in flows so existing rows in `state_entries` remain readable.
@@ -48,7 +51,7 @@ func Generate(
 	ctx context.Context, dbService db.Service, kind string, payload map[string]any, ttl time.Duration,
 ) (string, error) {
 	if kind == "" {
-		return "", fmt.Errorf("oauthstate: kind is required")
+		return "", ErrKindRequired
 	}
 
 	nonceBytes := make([]byte, nonceLen)

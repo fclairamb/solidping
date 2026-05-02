@@ -90,7 +90,7 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.R
 // minted session tokens. The dashboard calls this server-to-server
 // immediately after landing on /dash0/auth/slack/complete.
 //
-// POST /api/v1/auth/slack/exchange  body: {"code": "..."}
+// POST /api/v1/auth/slack/exchange  body: {"code": "..."}.
 func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req bunrouter.Request) error {
 	var body struct {
 		Code string `json:"code"`

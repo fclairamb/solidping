@@ -112,7 +112,7 @@ func TestHandleOAuthCallback_StateConsumedOnReuse(t *testing.T) {
 	// First call: state is consumed; the call fails on the Slack token
 	// exchange (no real network), surfacing as ErrOAuthFailed.
 	_, firstErr := svc.HandleOAuthCallback(ctx, "fake-code", stateValue)
-	r.NotNil(firstErr)
+	r.Error(firstErr)
 	r.NotErrorIs(firstErr, ErrInvalidState)
 
 	// Second call with the same state: ErrInvalidState (state is gone).

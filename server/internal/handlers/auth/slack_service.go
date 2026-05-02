@@ -118,7 +118,7 @@ type SlackExchangeResult struct {
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken"`
 	OrgSlug      string `json:"orgSlug"`
-	UserUID      string `json:"userUID"`
+	UserUID      string `json:"userUid"`
 }
 
 // ExchangeSlackInstallCode validates a single-use code minted by the Slack

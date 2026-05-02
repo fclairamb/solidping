@@ -38,7 +38,7 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 // fresh CSRF state and 302s to Slack. No auth required — Slack hits this
 // URL with no session.
 //
-// GET /api/v1/integrations/slack/install[?source=marketplace]
+// GET /api/v1/integrations/slack/install[?source=marketplace].
 func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
 	source := req.URL.Query().Get("source")
 
