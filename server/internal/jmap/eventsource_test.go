@@ -14,6 +14,54 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
+func TestExpandEventSourceURL(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name, raw, types, want string
+	}{
+		{
+			name:  "all placeholders substituted",
+			raw:   "https://api.example.com/jmap/event/?types={types}&closeafter={closeafter}&ping={ping}",
+			types: "Email",
+			want:  "https://api.example.com/jmap/event/?types=Email&closeafter=no&ping=300",
+		},
+		{
+			name:  "empty types becomes wildcard",
+			raw:   "https://api.example.com/jmap/event/?types={types}&closeafter={closeafter}&ping={ping}",
+			types: "",
+			want:  "https://api.example.com/jmap/event/?types=%2A&closeafter=no&ping=300",
+		},
+		{
+			name:  "no placeholders falls back to query append",
+			raw:   "https://api.example.com/events",
+			types: "Email",
+			want:  "https://api.example.com/events?types=Email",
+		},
+		{
+			name:  "no placeholders preserves existing query",
+			raw:   "https://api.example.com/events?token=x",
+			types: "Email",
+			want:  "https://api.example.com/events?token=x&types=Email",
+		},
+		{
+			name:  "comma-separated types are escaped",
+			raw:   "https://api.example.com/jmap/event/?types={types}",
+			types: "Email,Mailbox",
+			want:  "https://api.example.com/jmap/event/?types=Email%2CMailbox",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			r.Equal(tc.want, jmap.ExpandEventSourceURLForTest(tc.raw, tc.types))
+		})
+	}
+}
+
 func TestListenEventSourceDispatchesStateEvents(t *testing.T) {
 	t.Parallel()
 
@@ -29,10 +77,16 @@ func TestListenEventSourceDispatchesStateEvents(t *testing.T) {
 				`"accounts":{"a":{"name":"x","isPersonal":true}},` +
 				`"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},` +
 				`"apiUrl":"http://` + req.Host + `/jmap",` +
-				`"eventSourceUrl":"http://` + req.Host + `/events",` +
+				`"eventSourceUrl":"http://` + req.Host + `/events?types={types}&closeafter={closeafter}&ping={ping}",` +
 				`"state":"s"}`
 			_, _ = w.Write([]byte(payload))
 		case "/events":
+			if strings.ContainsAny(req.URL.RawQuery, "{}") {
+				t.Errorf("server received un-expanded URI template: %q", req.URL.RawQuery)
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			flusher, _ := w.(http.Flusher)
 
@@ -117,10 +171,16 @@ func TestListenEventSourceReconnects(t *testing.T) {
 				`"accounts":{"a":{"name":"x","isPersonal":true}},` +
 				`"primaryAccounts":{"urn:ietf:params:jmap:mail":"a"},` +
 				`"apiUrl":"http://` + req.Host + `/jmap",` +
-				`"eventSourceUrl":"http://` + req.Host + `/events",` +
+				`"eventSourceUrl":"http://` + req.Host + `/events?types={types}&closeafter={closeafter}&ping={ping}",` +
 				`"state":"s"}`
 			_, _ = w.Write([]byte(payload))
 		case "/events":
+			if strings.ContainsAny(req.URL.RawQuery, "{}") {
+				t.Errorf("server received un-expanded URI template: %q", req.URL.RawQuery)
+				w.WriteHeader(http.StatusBadRequest)
+
+				return
+			}
 			n := connectCount.Add(1)
 			w.Header().Set("Content-Type", "text/event-stream")
 			flusher, _ := w.(http.Flusher)

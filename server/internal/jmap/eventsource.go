@@ -8,9 +8,47 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
+
+// expandEventSourceURL substitutes the RFC 8620 §7.3 placeholders in the
+// discovered eventSourceUrl with the values we want for a long-lived inbox
+// listener:
+//
+//   - {types}      -> the comma-separated list passed by the caller, or "*"
+//   - {closeafter} -> "no" (we keep the stream open and reconnect on drop)
+//   - {ping}       -> "300" (server sends a ping comment every 5 min so we
+//     can detect dead TCP connections through middleboxes)
+//
+// If the URL contains none of the placeholders (non-conformant server), it is
+// returned unchanged with `?types=...` appended for backward compatibility.
+func expandEventSourceURL(raw, types string) string {
+	if types == "" {
+		types = "*"
+	}
+
+	hasPlaceholder := strings.Contains(raw, "{types}") ||
+		strings.Contains(raw, "{closeafter}") ||
+		strings.Contains(raw, "{ping}")
+
+	if !hasPlaceholder {
+		sep := "?"
+		if strings.Contains(raw, "?") {
+			sep = "&"
+		}
+
+		return raw + sep + "types=" + url.QueryEscape(types)
+	}
+
+	expanded := raw
+	expanded = strings.ReplaceAll(expanded, "{types}", url.QueryEscape(types))
+	expanded = strings.ReplaceAll(expanded, "{closeafter}", "no")
+	expanded = strings.ReplaceAll(expanded, "{ping}", "300")
+
+	return expanded
+}
 
 // EventSource backoff bounds (RFC 8620 §7.3 advises retry; we use exponential
 // backoff capped at 5 minutes).
@@ -36,21 +74,14 @@ func (c *Client) ListenEventSourceWithReconnect(
 	ctx context.Context, types string, handler EventSourceHandler,
 ) error {
 	c.mu.RLock()
-	url := c.eventSourceURL
+	streamURL := c.eventSourceURL
 	c.mu.RUnlock()
 
-	if url == "" {
+	if streamURL == "" {
 		return ErrNoSession
 	}
 
-	if types != "" {
-		separator := "?"
-		if strings.Contains(url, "?") {
-			separator = "&"
-		}
-
-		url += separator + "types=" + types
-	}
+	streamURL = expandEventSourceURL(streamURL, types)
 
 	backoff := eventSourceBackoffStart
 
@@ -59,7 +90,7 @@ func (c *Client) ListenEventSourceWithReconnect(
 			return ctx.Err()
 		}
 
-		err := c.streamOnce(ctx, url, handler)
+		err := c.streamOnce(ctx, streamURL, handler)
 
 		switch {
 		case err == nil, errors.Is(err, io.EOF):

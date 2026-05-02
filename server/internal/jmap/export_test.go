@@ -13,3 +13,8 @@ func (m *Manager) SyncEmailsForTest(
 func (m *Manager) RecordErrorForTest(err error) {
 	m.recordError(err)
 }
+
+// ExpandEventSourceURLForTest exposes the unexported helper for unit tests.
+//
+//nolint:gochecknoglobals // test-only export.
+var ExpandEventSourceURLForTest = expandEventSourceURL
