@@ -15,9 +15,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { ApiError } from "@/api/client";
-import { useSystemParameters } from "@/api/hooks";
 import {
   type EmailInboxConfig,
+  useEmailInboxConfig,
   useEmailInboxStatus,
   useSaveEmailInboxConfig,
   useSyncEmailInbox,
@@ -46,7 +46,7 @@ function useRelativeTime() {
 function EmailInboxPage() {
   const { t } = useTranslation(["server", "common"]);
   const relativeTime = useRelativeTime();
-  const { data: params, isLoading } = useSystemParameters();
+  const { data: config, isLoading } = useEmailInboxConfig();
   const save = useSaveEmailInboxConfig();
   const test = useTestEmailInbox();
   const sync = useSyncEmailInbox();
@@ -61,7 +61,7 @@ function EmailInboxPage() {
   const [addressDomain, setAddressDomain] = useState("");
   const [mailboxName, setMailboxName] = useState("Inbox");
   const [processedMailboxName, setProcessedMailboxName] = useState("Processed");
-  const [pollIntervalSeconds, setPollIntervalSeconds] = useState("60");
+  const [pollIntervalSeconds, setPollIntervalSeconds] = useState("900");
   const [processedRetentionDays, setProcessedRetentionDays] = useState("30");
   const [failedRetentionDays, setFailedRetentionDays] = useState("7");
   const [rewriteBaseUrl, setRewriteBaseUrl] = useState("");
@@ -71,24 +71,20 @@ function EmailInboxPage() {
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
 
   useEffect(() => {
-    if (!params) return;
-    const param = params.find((p) => p.key === "email_inbox");
-    if (!param) return;
+    if (!config) return;
+    setEnabled(config.enabled);
+    setSessionUrl(config.sessionUrl);
+    setUsername(config.username);
+    setAddressDomain(config.addressDomain);
+    setMailboxName(config.mailboxName || "Inbox");
+    setProcessedMailboxName(config.processedMailboxName || "Processed");
+    setPollIntervalSeconds(String(config.pollIntervalSeconds || 900));
+    setProcessedRetentionDays(String(config.processedRetentionDays || 30));
+    setFailedRetentionDays(String(config.failedRetentionDays || 7));
+    setRewriteBaseUrl(config.rewriteBaseUrl);
+  }, [config]);
 
-    const cfg = (param.value ?? {}) as Partial<EmailInboxConfig>;
-    setEnabled(cfg.enabled === true);
-    setSessionUrl(cfg.sessionUrl ?? "");
-    setUsername(cfg.username ?? "");
-    setAddressDomain(cfg.addressDomain ?? "");
-    setMailboxName(cfg.mailboxName ?? "Inbox");
-    setProcessedMailboxName(cfg.processedMailboxName ?? "Processed");
-    setPollIntervalSeconds(String(cfg.pollIntervalSeconds ?? 60));
-    setProcessedRetentionDays(String(cfg.processedRetentionDays ?? 30));
-    setFailedRetentionDays(String(cfg.failedRetentionDays ?? 7));
-    setRewriteBaseUrl(cfg.rewriteBaseUrl ?? "");
-  }, [params]);
-
-  const isSecretSet = params?.find((p) => p.key === "email_inbox")?.secret;
+  const isSecretSet = config?.passwordSet ?? false;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -102,7 +98,7 @@ function EmailInboxPage() {
       addressDomain,
       mailboxName,
       processedMailboxName,
-      pollIntervalSeconds: parseInt(pollIntervalSeconds, 10) || 60,
+      pollIntervalSeconds: parseInt(pollIntervalSeconds, 10) || 900,
       processedRetentionDays: parseInt(processedRetentionDays, 10) || 30,
       failedRetentionDays: parseInt(failedRetentionDays, 10) || 7,
       rewriteBaseUrl: rewriteBaseUrl || undefined,
@@ -302,11 +298,14 @@ function EmailInboxPage() {
                 <Input
                   id="pollIntervalSeconds"
                   type="number"
-                  min="5"
+                  min="60"
                   value={pollIntervalSeconds}
                   onChange={(e) => setPollIntervalSeconds(e.target.value)}
                   disabled={save.isPending}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {t("server:emailInbox.pollIntervalHelp")}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="processedRetentionDays">{t("server:emailInbox.processedRetention")}</Label>
@@ -380,6 +379,13 @@ function EmailInboxPage() {
                 {status?.enabled
                   ? t("server:emailInbox.status.disconnected")
                   : t("server:emailInbox.status.disabled")}
+              </span>
+            )}
+            {status?.connected && status.mode && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-blue-700 dark:text-blue-400">
+                {status.mode === "push"
+                  ? t("server:emailInbox.status.modePush")
+                  : t("server:emailInbox.status.modePoll")}
               </span>
             )}
           </div>

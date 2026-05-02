@@ -491,6 +491,7 @@ func (s *Server) setupRoutes() {
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireSuperAdmin)
 	systemActions.POST("/test-email", systemHandler.TestEmail)
+	systemActions.GET("/email-inbox/config", systemHandler.EmailInboxConfig)
 	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
