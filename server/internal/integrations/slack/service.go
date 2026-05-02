@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/oauthstate"
 )
 
 // IncidentService defines the interface for incident operations needed by Slack integration.
@@ -48,7 +50,55 @@ type OAuthResult struct {
 	AccessToken   string
 	RefreshToken  string
 	OrgSlug       string
+	UserUID       string
 }
+
+// installStateKind / installStateTTL govern the bot-install OAuth flow's
+// CSRF-state lifetime. exchangeStateKind backs the post-callback session
+// handoff (60s window between the redirect and the dashboard's exchange
+// call).
+const (
+	installStateKind  = "slack-install"
+	installStateTTL   = 10 * time.Minute
+	exchangeStateKind = "slack-exchange"
+	exchangeStateTTL  = 60 * time.Second
+)
+
+// payloadKey* are the keys used inside the exchange-state Payload map. They
+// are also the JSON field names returned by the exchange endpoint.
+const (
+	payloadKeyAccessToken  = "accessToken"
+	payloadKeyRefreshToken = "refreshToken"
+	payloadKeyOrgSlug      = "orgSlug"
+	payloadKeyUserUID      = "userUID"
+	payloadKeySource       = "source"
+)
+
+// slackBotScopes / slackUserScopes are the scopes requested during install.
+// Bot scopes drive the integration's runtime; user scopes drive the OpenID
+// Connect lookup that identifies the installing user.
+//
+//nolint:gochecknoglobals // package-level constant scope lists
+var (
+	slackBotScopes = []string{
+		"chat:write",
+		"chat:write.public",
+		"channels:read",
+		"groups:read",
+		"users:read",
+		"users:read.email",
+		"team:read",
+		"commands",
+		"app_mentions:read",
+		"reactions:write",
+		"links:read",
+	}
+	slackUserScopes = []string{
+		"openid",
+		"email",
+		"profile",
+	}
+)
 
 // Service provides business logic for Slack integration.
 type Service struct {
@@ -92,9 +142,61 @@ func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*mo
 	return conn, nil
 }
 
+// BuildInstallURL mints a fresh CSRF state and returns the Slack OAuth
+// authorization URL the user should be redirected to. `source` (when set)
+// is stashed in the state payload for install-source analytics on the
+// callback side.
+func (s *Service) BuildInstallURL(ctx context.Context, source string) (string, error) {
+	payload := map[string]any{}
+	if source != "" {
+		payload[payloadKeySource] = source
+	}
+
+	nonce, err := oauthstate.Generate(ctx, s.db, installStateKind, payload, installStateTTL)
+	if err != nil {
+		return "", fmt.Errorf("generate install state: %w", err)
+	}
+
+	redirectURI := s.cfg.Server.BaseURL + "/api/v1/integrations/slack/oauth"
+
+	params := url.Values{}
+	params.Set("client_id", s.cfg.Slack.ClientID)
+	params.Set("scope", strings.Join(slackBotScopes, ","))
+	params.Set("user_scope", strings.Join(slackUserScopes, ","))
+	params.Set("redirect_uri", redirectURI)
+	params.Set("state", nonce)
+
+	return "https://slack.com/oauth/v2/authorize?" + params.Encode(), nil
+}
+
+// IssueExchangeCode persists a single-use code that the dashboard will
+// trade in (server-to-server) for the freshly minted access/refresh tokens.
+// The 60-second TTL is intentionally tight — the dashboard hits the
+// exchange endpoint immediately after the post-install redirect.
+func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (string, error) {
+	payload := map[string]any{
+		payloadKeyAccessToken:  result.AccessToken,
+		payloadKeyRefreshToken: result.RefreshToken,
+		payloadKeyOrgSlug:      result.OrgSlug,
+		payloadKeyUserUID:      result.UserUID,
+	}
+
+	code, err := oauthstate.Generate(ctx, s.db, exchangeStateKind, payload, exchangeStateTTL)
+	if err != nil {
+		return "", fmt.Errorf("issue exchange code: %w", err)
+	}
+
+	return code, nil
+}
+
 // HandleOAuthCallback handles the OAuth callback from Slack.
-// It creates/updates the integration connection and also creates user and organization if needed.
-func (s *Service) HandleOAuthCallback(ctx context.Context, code, _ string) (*OAuthResult, error) {
+// It validates the CSRF state up front, then creates/updates the integration
+// connection and creates user and organization if needed.
+func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (*OAuthResult, error) {
+	if _, err := oauthstate.Validate(ctx, s.db, installStateKind, state); err != nil {
+		return nil, ErrInvalidState
+	}
+
 	// Exchange code for access token
 	oauthResp, err := ExchangeCode(
 		ctx,
@@ -171,6 +273,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, _ string) (*OAu
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
 		OrgSlug:       org.Slug,
+		UserUID:       user.UID,
 	}, nil
 }
 
@@ -477,45 +580,6 @@ func (s *Service) GetClient(ctx context.Context, teamID string) (*Client, error)
 	}
 
 	return NewClient(settings.AccessToken), nil
-}
-
-// GetOAuthURL returns the OAuth authorization URL.
-func (s *Service) GetOAuthURL(orgUID, redirectURI string) string {
-	// Bot scopes - what the bot can do in the workspace
-	botScopes := []string{
-		"chat:write",
-		"chat:write.public",
-		"channels:read",
-		"groups:read",
-		"users:read",
-		"users:read.email",
-		"team:read",
-		"commands",
-		"app_mentions:read",
-		"reactions:write",
-		"links:read",
-	}
-
-	// User scopes - needed to fetch the installing user's details via OpenID Connect
-	userScopes := []string{
-		"openid",
-		"email",
-		"profile",
-	}
-
-	// Generate a simple nonce (in production, store this for verification)
-	nonce := "0" // TODO: Generate proper nonce
-
-	state := orgUID + "_" + nonce
-
-	return fmt.Sprintf(
-		"https://slack.com/oauth/v2/authorize?client_id=%s&scope=%s&user_scope=%s&redirect_uri=%s&state=%s",
-		s.cfg.Slack.ClientID,
-		strings.Join(botScopes, ","),
-		strings.Join(userScopes, ","),
-		redirectURI,
-		state,
-	)
 }
 
 // CreateCheckResult contains the result of creating a check via Slack.

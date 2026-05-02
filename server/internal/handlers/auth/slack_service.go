@@ -111,6 +111,48 @@ func NewSlackOAuthService(dbService db.Service, cfg *config.Config, authService 
 	}
 }
 
+// SlackExchangeResult is what the exchange endpoint returns to the
+// dashboard. It mirrors the payload stashed by the Slack integration's
+// post-callback IssueExchangeCode call.
+type SlackExchangeResult struct {
+	AccessToken  string `json:"accessToken"`
+	RefreshToken string `json:"refreshToken"`
+	OrgSlug      string `json:"orgSlug"`
+	UserUID      string `json:"userUID"`
+}
+
+// ExchangeSlackInstallCode validates a single-use code minted by the Slack
+// integration's install callback and returns the freshly minted session
+// tokens. The code is consumed on success — repeat calls fail.
+func (s *SlackOAuthService) ExchangeSlackInstallCode(
+	ctx context.Context, code string,
+) (*SlackExchangeResult, error) {
+	entry, err := oauthstate.Validate(ctx, s.db, "slack-exchange", code)
+	if err != nil {
+		return nil, ErrInvalidOAuthState
+	}
+
+	if entry.Payload == nil {
+		return nil, ErrInvalidOAuthState
+	}
+
+	access, _ := entry.Payload["accessToken"].(string)
+	refresh, _ := entry.Payload["refreshToken"].(string)
+	orgSlug, _ := entry.Payload["orgSlug"].(string)
+	userUID, _ := entry.Payload["userUID"].(string)
+
+	if access == "" || refresh == "" || orgSlug == "" || userUID == "" {
+		return nil, ErrInvalidOAuthState
+	}
+
+	return &SlackExchangeResult{
+		AccessToken:  access,
+		RefreshToken: refresh,
+		OrgSlug:      orgSlug,
+		UserUID:      userUID,
+	}, nil
+}
+
 // GenerateOAuthState mints an OAuth state for the Sign-in-with-Slack flow.
 // The redirectURI is stashed in the entry payload so the callback can route
 // the user back where they came from.

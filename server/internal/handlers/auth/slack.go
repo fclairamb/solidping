@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -83,6 +84,34 @@ func (h *SlackOAuthHandler) Callback(writer http.ResponseWriter, req bunrouter.R
 	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
 
 	return nil
+}
+
+// Exchange trades a single-use install-callback code for the freshly
+// minted session tokens. The dashboard calls this server-to-server
+// immediately after landing on /dash0/auth/slack/complete.
+//
+// POST /api/v1/auth/slack/exchange  body: {"code": "..."}
+func (h *SlackOAuthHandler) Exchange(writer http.ResponseWriter, req bunrouter.Request) error {
+	var body struct {
+		Code string `json:"code"`
+	}
+
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil || body.Code == "" {
+		return h.WriteError(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Missing or invalid code",
+		)
+	}
+
+	result, err := h.svc.ExchangeSlackInstallCode(req.Context(), body.Code)
+	if err != nil {
+		return h.WriteError(
+			writer, http.StatusBadRequest, base.ErrorCodeInvalidToken,
+			"Code invalid or already used",
+		)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, result)
 }
 
 // buildSlackAuthURL constructs the Slack authorization URL.

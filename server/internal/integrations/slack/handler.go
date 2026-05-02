@@ -3,7 +3,6 @@ package slack
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -30,57 +29,93 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// installErrorPage is where we send the user when an install fails. The
+// page lives in the marketing site and renders a friendly explanation
+// based on the `reason` query parameter.
+const installErrorPage = "https://www.solidping.io/saas/install-error"
+
+// Install is the public Marketplace direct-install entry point. It mints a
+// fresh CSRF state and 302s to Slack. No auth required — Slack hits this
+// URL with no session.
+//
+// GET /api/v1/integrations/slack/install[?source=marketplace]
+func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
+	source := req.URL.Query().Get("source")
+
+	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source)
+	if err != nil {
+		slog.ErrorContext(req.Context(), "Failed to build Slack install URL", "error", err)
+		h.redirectInstallError(writer, req, "unknown")
+
+		return nil
+	}
+
+	http.Redirect(writer, req.Request, authorizeURL, http.StatusFound)
+
+	return nil
+}
+
 // OAuthCallback handles the OAuth callback from Slack.
 func (h *Handler) OAuthCallback(writer http.ResponseWriter, req bunrouter.Request) error {
 	code := req.URL.Query().Get("code")
 	state := req.URL.Query().Get("state")
 	errorParam := req.URL.Query().Get("error")
 
-	// Handle OAuth errors from Slack
 	if errorParam != "" {
 		slog.WarnContext(req.Context(), "OAuth error from Slack", "error", errorParam)
-		// Redirect to frontend with error
-		redirectURL := "/integrations?error=" + url.QueryEscape(errorParam)
-		http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+		h.redirectInstallError(writer, req, "oauth_failed")
 
 		return nil
 	}
 
-	if code == "" {
-		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
-			"Missing code parameter")
-	}
+	if code == "" || state == "" {
+		h.redirectInstallError(writer, req, "state_invalid")
 
-	if state == "" {
-		slog.DebugContext(req.Context(), "No state parameter passed")
+		return nil
 	}
 
 	result, err := h.svc.HandleOAuthCallback(req.Context(), code, state)
 	if err != nil {
-		slog.ErrorContext(req.Context(), "OAuth callback failed", "error", err)
-
 		switch {
+		case errors.Is(err, ErrInvalidState):
+			slog.WarnContext(req.Context(), "Slack OAuth state rejected", "error", err)
+			h.redirectInstallError(writer, req, "state_invalid")
 		case errors.Is(err, ErrEmailRequired):
-			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
-				"Email is required in your Slack profile")
+			slog.WarnContext(req.Context(), "Slack OAuth email missing", "error", err)
+			h.redirectInstallError(writer, req, "email_missing")
 		case errors.Is(err, ErrOAuthFailed):
-			return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError,
-				"OAuth exchange failed")
+			slog.ErrorContext(req.Context(), "Slack OAuth exchange failed", "error", err)
+			h.redirectInstallError(writer, req, "oauth_failed")
 		default:
-			return h.WriteInternalError(writer, err)
+			slog.ErrorContext(req.Context(), "Slack OAuth callback failed", "error", err)
+			h.redirectInstallError(writer, req, "unknown")
 		}
+
+		return nil
 	}
 
-	// Redirect to frontend success page with tokens
-	redirectURL := fmt.Sprintf("/dashboard/org/%s/integrations/slack/%s?success=true&access_token=%s&refresh_token=%s",
-		result.OrgSlug,
-		result.ConnectionUID,
-		url.QueryEscape(result.AccessToken),
-		url.QueryEscape(result.RefreshToken),
-	)
-	http.Redirect(writer, req.Request, redirectURL, http.StatusFound)
+	exchangeCode, err := h.svc.IssueExchangeCode(req.Context(), result)
+	if err != nil {
+		slog.ErrorContext(req.Context(), "Failed to issue Slack exchange code", "error", err)
+		h.redirectInstallError(writer, req, "unknown")
+
+		return nil
+	}
+
+	completeURL := h.cfg.Server.BaseURL + "/dash0/auth/slack/complete?code=" + url.QueryEscape(exchangeCode)
+	http.Redirect(writer, req.Request, completeURL, http.StatusFound)
 
 	return nil
+}
+
+// redirectInstallError sends the user to the marketing site's friendly
+// install-error page with a machine-readable reason code so the page can
+// surface the right message and Try-Again link.
+func (h *Handler) redirectInstallError(
+	writer http.ResponseWriter, req bunrouter.Request, reason string,
+) {
+	target := installErrorPage + "?reason=" + url.QueryEscape(reason)
+	http.Redirect(writer, req.Request, target, http.StatusFound)
 }
 
 // HandleEvents handles incoming Slack events.

@@ -299,6 +299,7 @@ func (s *Server) setupRoutes() {
 		slackAuth := api.NewGroup("/auth/slack")
 		slackAuth.GET("/login", slackOAuthHandler.Login)
 		slackAuth.GET("/callback", slackOAuthHandler.Callback)
+		slackAuth.POST("/exchange", slackOAuthHandler.Exchange)
 	}
 
 	// Google OAuth routes (org-scoped, public)
@@ -590,6 +591,7 @@ func (s *Server) setupRoutes() {
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
 	slackHandler := slack.NewHandler(slackService, s.config)
 	slackIntegration := api.NewGroup("/integrations/slack")
+	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
 	// Apply signature verification middleware to Slack webhooks
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
