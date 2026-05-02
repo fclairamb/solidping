@@ -960,13 +960,15 @@ func (s *Service) queueNotifications(
 
 // ListIncidentsOptions contains options for listing incidents.
 type ListIncidentsOptions struct {
-	CheckUIDs []string
-	States    []string // "active", "resolved"
-	Since     *time.Time
-	Until     *time.Time
-	Cursor    string
-	Size      int
-	WithCheck bool // Include check details in response
+	CheckUIDs      []string
+	CheckGroupUID  string
+	MemberCheckUID string
+	States         []string // "active", "resolved"
+	Since          *time.Time
+	Until          *time.Time
+	Cursor         string
+	Size           int
+	WithCheck      bool // Include check details in response
 }
 
 // CheckResponse represents check details embedded in incident responses.
@@ -978,21 +980,37 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID            string         `json:"uid"`
-	CheckUID       string         `json:"checkUid"`
-	CheckSlug      *string        `json:"checkSlug,omitempty"`
-	CheckName      *string        `json:"checkName,omitempty"`
-	State          string         `json:"state"`
-	StartedAt      time.Time      `json:"startedAt"`
-	ResolvedAt     *time.Time     `json:"resolvedAt,omitempty"`
-	EscalatedAt    *time.Time     `json:"escalatedAt,omitempty"`
-	AcknowledgedAt *time.Time     `json:"acknowledgedAt,omitempty"`
-	FailureCount   int            `json:"failureCount"`
-	RelapseCount   int            `json:"relapseCount"`
-	LastReopenedAt *time.Time     `json:"lastReopenedAt,omitempty"`
-	Title          *string        `json:"title,omitempty"`
-	Description    *string        `json:"description,omitempty"`
-	Check          *CheckResponse `json:"check,omitempty"`
+	UID            string                   `json:"uid"`
+	CheckUID       string                   `json:"checkUid"`
+	CheckSlug      *string                  `json:"checkSlug,omitempty"`
+	CheckName      *string                  `json:"checkName,omitempty"`
+	State          string                   `json:"state"`
+	StartedAt      time.Time                `json:"startedAt"`
+	ResolvedAt     *time.Time               `json:"resolvedAt,omitempty"`
+	EscalatedAt    *time.Time               `json:"escalatedAt,omitempty"`
+	AcknowledgedAt *time.Time               `json:"acknowledgedAt,omitempty"`
+	FailureCount   int                      `json:"failureCount"`
+	RelapseCount   int                      `json:"relapseCount"`
+	LastReopenedAt *time.Time               `json:"lastReopenedAt,omitempty"`
+	Title          *string                  `json:"title,omitempty"`
+	Description    *string                  `json:"description,omitempty"`
+	Check          *CheckResponse           `json:"check,omitempty"`
+	CheckGroupUID  *string                  `json:"checkGroupUid,omitempty"`
+	CheckGroupSlug *string                  `json:"checkGroupSlug,omitempty"`
+	Members        []IncidentMemberResponse `json:"members,omitempty"`
+}
+
+// IncidentMemberResponse represents a single member of a group incident.
+type IncidentMemberResponse struct {
+	CheckUID         string     `json:"checkUid"`
+	CheckSlug        *string    `json:"checkSlug,omitempty"`
+	CheckName        *string    `json:"checkName,omitempty"`
+	JoinedAt         time.Time  `json:"joinedAt"`
+	FirstFailureAt   time.Time  `json:"firstFailureAt"`
+	LastFailureAt    time.Time  `json:"lastFailureAt"`
+	LastRecoveryAt   *time.Time `json:"lastRecoveryAt,omitempty"`
+	FailureCount     int        `json:"failureCount"`
+	CurrentlyFailing bool       `json:"currentlyFailing"`
 }
 
 // ListIncidentsResponse represents the response for listing incidents.
@@ -1034,6 +1052,56 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		LastReopenedAt: inc.LastReopenedAt,
 		Title:          inc.Title,
 		Description:    inc.Description,
+		CheckGroupUID:  inc.CheckGroupUID,
+	}
+}
+
+// memberToResponse converts a model member row to an API response, optionally
+// embedding the resolved check name/slug.
+func memberToResponse(member *models.IncidentMemberCheck, check *models.Check) IncidentMemberResponse {
+	resp := IncidentMemberResponse{
+		CheckUID:         member.CheckUID,
+		JoinedAt:         member.JoinedAt,
+		FirstFailureAt:   member.FirstFailureAt,
+		LastFailureAt:    member.LastFailureAt,
+		LastRecoveryAt:   member.LastRecoveryAt,
+		FailureCount:     member.FailureCount,
+		CurrentlyFailing: member.CurrentlyFailing,
+	}
+
+	if check != nil {
+		resp.CheckSlug = check.Slug
+		resp.CheckName = check.Name
+	}
+
+	return resp
+}
+
+// loadIncidentMembers populates the Members slice on the response from the
+// incident_member_checks rows. Resolves each member's check for slug/name.
+func (s *Service) loadIncidentMembers(
+	ctx context.Context, orgUID string, inc *models.Incident, resp *IncidentResponse,
+) {
+	if inc.CheckGroupUID == nil {
+		return
+	}
+
+	members, err := s.db.ListIncidentMemberChecks(ctx, inc.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to list incident members for response",
+			"incidentUID", inc.UID, "error", err)
+
+		return
+	}
+
+	resp.Members = make([]IncidentMemberResponse, 0, len(members))
+	for _, member := range members {
+		check, _ := s.db.GetCheck(ctx, orgUID, member.CheckUID)
+		resp.Members = append(resp.Members, memberToResponse(member, check))
+	}
+
+	if group, err := s.db.GetCheckGroup(ctx, orgUID, *inc.CheckGroupUID); err == nil && group != nil {
+		resp.CheckGroupSlug = &group.Slug
 	}
 }
 
@@ -1094,6 +1162,8 @@ func (s *Service) ListIncidents(
 	filter := &models.ListIncidentsFilter{
 		OrganizationUID: org.UID,
 		CheckUIDs:       opts.CheckUIDs,
+		CheckGroupUID:   opts.CheckGroupUID,
+		MemberCheckUID:  opts.MemberCheckUID,
 		Since:           opts.Since,
 		Until:           opts.Until,
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
@@ -1139,6 +1209,9 @@ func (s *Service) ListIncidents(
 			incResponse.CheckSlug = check.Slug
 			incResponse.CheckName = check.Name
 		}
+
+		// Populate group members for group incidents.
+		s.loadIncidentMembers(ctx, org.UID, inc, &incResponse)
 
 		response.Data = append(response.Data, incResponse)
 	}
@@ -1186,6 +1259,9 @@ func (s *Service) GetIncident(
 			response.Check = checkToResponse(check)
 		}
 	}
+
+	// Populate group members for group incidents.
+	s.loadIncidentMembers(ctx, org.UID, incident, &response)
 
 	return &response, nil
 }

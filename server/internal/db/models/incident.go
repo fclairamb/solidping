@@ -104,6 +104,8 @@ type IncidentMemberUpdate struct {
 type ListIncidentsFilter struct {
 	OrganizationUID string          // Required: organization scope
 	CheckUIDs       []string        // Optional: filter by check UIDs
+	CheckGroupUID   string          // Optional: filter to group incidents on this group
+	MemberCheckUID  string          // Optional: incidents that contain this check (per-check or group member)
 	States          []IncidentState // Optional: filter by states (active, resolved)
 	Since           *time.Time      // Optional: incidents started after this time
 	Until           *time.Time      // Optional: incidents started before this time

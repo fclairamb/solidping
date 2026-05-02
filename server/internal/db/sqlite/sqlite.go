@@ -1874,6 +1874,18 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Where("check_uid IN (?)", bun.List(filter.CheckUIDs))
 	}
 
+	if filter.CheckGroupUID != "" {
+		query = query.Where("check_group_uid = ?", filter.CheckGroupUID)
+	}
+
+	if filter.MemberCheckUID != "" {
+		query = query.Where(
+			"(check_uid = ? OR uid IN ("+
+				"SELECT incident_uid FROM incident_member_checks WHERE check_uid = ?))",
+			filter.MemberCheckUID, filter.MemberCheckUID,
+		)
+	}
+
 	if len(filter.States) > 0 {
 		query = query.Where("state IN (?)", bun.List(filter.States))
 	}
