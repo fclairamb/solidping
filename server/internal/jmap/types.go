@@ -38,7 +38,7 @@ type Config struct {
 const (
 	DefaultMailboxName            = "Inbox"
 	DefaultProcessedMailboxName   = "Processed"
-	DefaultPollIntervalSeconds    = 60
+	DefaultPollIntervalSeconds    = 900
 	DefaultProcessedRetentionDays = 30
 	DefaultFailedRetentionDays    = 7
 )
