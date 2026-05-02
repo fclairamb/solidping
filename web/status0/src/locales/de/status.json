@@ -13,5 +13,10 @@
   "statusPageNotFound": "Statusseite nicht gefunden",
   "statusPageNotFoundDescription": "Die angeforderte Statusseite konnte nicht gefunden werden.",
   "solidpingStatus": "SolidPing-Status",
-  "visitStatusPage": "Besuchen Sie eine bestimmte Statusseite, um den Dienstzustand zu sehen."
+  "visitStatusPage": "Besuchen Sie eine bestimmte Statusseite, um den Dienstzustand zu sehen.",
+  "daysAgo": "vor {{count}} Tagen",
+  "today": "Heute",
+  "uptime": "Verfügbarkeit",
+  "noData": "Keine Daten",
+  "responseTime": "Antwortzeit"
 }

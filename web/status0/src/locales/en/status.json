@@ -13,5 +13,10 @@
   "statusPageNotFound": "Status Page Not Found",
   "statusPageNotFoundDescription": "The requested status page could not be found.",
   "solidpingStatus": "SolidPing Status",
-  "visitStatusPage": "Visit a specific status page to see service health."
+  "visitStatusPage": "Visit a specific status page to see service health.",
+  "daysAgo": "{{count}} days ago",
+  "today": "Today",
+  "uptime": "uptime",
+  "noData": "No data",
+  "responseTime": "Response Time"
 }
