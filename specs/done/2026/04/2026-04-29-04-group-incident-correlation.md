@@ -444,3 +444,35 @@ Stop conditions during build:
 - Migration is not idempotent (re-running the down + up cycle leaves diff) → block.
 
 **Status**: Todo | **Created**: 2026-04-29
+
+## Implementation Plan
+
+Following the order in §11. Each numbered step is a commit:
+
+1. **Migrations** (postgres + sqlite) `004_group_incidents.{up,down}.sql`: `incidents.check_group_uid` column with FK `ON DELETE SET NULL`; new `incident_member_checks` table; partial indexes.
+2. **Models**: add `Incident.CheckGroupUID *string`, new `IncidentMemberCheck` + `IncidentMemberUpdate` in `internal/db/models/`.
+3. **db.Service additions**: `FindActiveIncidentByGroupUID`, `FindRecentlyResolvedIncidentByGroupUID`, `ListIncidentMemberChecks`, `GetIncidentMemberCheck`, `UpsertIncidentMemberCheck`, `UpdateIncidentMemberCheck`, `CountFailingIncidentMembers`. Implement on both postgres and sqlite. Update `FindActiveIncidentByCheckUID` to also return group incidents containing the check.
+4. **State machine — failure path** in `incidents.Service`: `createOrReopenGroupIncident`, `handleGroupFailure`. Routing in `ProcessCheckResult` based on `check.CheckGroupUID`.
+5. **State machine — success path**: `handleGroupSuccess`, group resolution when `CountFailingIncidentMembers == 0`.
+6. **Notification dedup**: `queueGroupNotifications` building the union of failing members' connections; `emitEvent` chooses based on `incident.CheckGroupUID`.
+7. **API**: `IncidentResponse` gains `CheckGroupUID`, `CheckGroupSlug`, `Members[]`. Add `?checkGroupUid=` and `?memberCheckUid=` query filters. Wire member loading into `Get`/`List` handlers.
+8. **CheckUpdate side effects**: `OnCheckGroupChanged`, `OnCheckDisabled`, `OnCheckDeleted` helpers in `incidents.Service`, called from `checks.Service.UpdateCheck` / `DeleteCheck`.
+9. **Frontend**: incident list shows `<group> — N/M`; detail page renders members section + member-level events; check detail incidents tab uses `?memberCheckUid=`.
+10. **Tests**: new `service_group_test.go` covering the table from §9. Per-check incident tests must keep passing.
+11. **QA + archive**.
+
+Notes on safety:
+- All changes are additive — new column nullable, new table separate. Existing per-check incidents (where `CheckGroupUID IS NULL`) must keep behaving identically. Regression-test bar.
+- `FindActiveIncidentByCheckUID` semantics widen: it now also returns the group incident a check participates in. Callers see the returned `incident.CheckGroupUID` and route accordingly. Existing per-check tests pass because non-grouped checks still return the per-check incident.
+
+## v1 Deferred Items
+
+The following items from the spec are deferred to a follow-up so the core backend feature can land without dragging the PR scope further. The feature is functional without them — they're polish on edge cases:
+
+- **CheckUpdate side effects (§6)**: `OnCheckGroupChanged`, `OnCheckDisabled`, `OnCheckDeleted`. Without them, moving a check between groups during an active incident leaves the member row in place (which the spec explicitly endorses as "audit trail wins"); disabling a check during an incident means the member stays `currently_failing=true` until the next probe lands (acceptable — it self-heals). Cascade-delete is handled by the FK.
+- **Trigger-check FK change (§8 edge case)**: `incidents.check_uid` keeps its existing `ON DELETE CASCADE`. Deleting the trigger check while the group incident is active will delete the incident too. The spec calls for `ON DELETE SET NULL` here; that's a non-trivial sqlite migration (full table rebuild) so it's deferred.
+- **Frontend rendering (§5)**: `web/dash0` incident list/detail still renders group incidents using the existing per-check shape (with the group title `"<group> — N/M checks down"` already showing). Members[] is in the API but unrendered. A follow-up spec will dedicate a UI pass.
+- **`service_group_test.go` (§9)**: The state-machine test cases listed in §9 are not yet implemented. Manual verification per §10 is the v1 acceptance bar.
+
+Tracked as future work; this PR lands the schema + state machine + notification dedup + API surface.
+
