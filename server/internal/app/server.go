@@ -39,6 +39,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -468,6 +469,16 @@ func (s *Server) setupRoutes() {
 	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
 	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
 	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
+
+	// Escalation policies (authentication required)
+	escalationService := escalationpolicies.NewService(s.dbService)
+	escalationHandler := escalationpolicies.NewHandler(escalationService, s.config)
+	orgEscalation := api.NewGroup("/orgs/:org/escalation-policies").Use(authMiddleware.RequireAuth)
+	orgEscalation.GET("", escalationHandler.ListPolicies)
+	orgEscalation.POST("", escalationHandler.CreatePolicy)
+	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
+	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
+	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)

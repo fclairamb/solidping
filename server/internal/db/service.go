@@ -163,6 +163,22 @@ type Service interface {
 	GetOnCallScheduleOverride(ctx context.Context, overrideUID string) (*models.OnCallScheduleOverride, error)
 	DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error
 
+	// Escalation policies (header)
+	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
+	GetEscalationPolicy(ctx context.Context, orgUID, policyUID string) (*models.EscalationPolicy, error)
+	GetEscalationPolicyBySlug(ctx context.Context, orgUID, slug string) (*models.EscalationPolicy, error)
+	ListEscalationPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error)
+	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
+	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
+
+	// Escalation policy steps (replace-all is the typical write path)
+	ListEscalationPolicySteps(ctx context.Context, policyUID string) ([]*models.EscalationPolicyStep, error)
+	ReplaceEscalationPolicySteps(
+		ctx context.Context, policyUID string, steps []*models.EscalationPolicyStep,
+		targetsByStepIdx map[int][]*models.EscalationPolicyTarget,
+	) error
+	ListEscalationPolicyTargets(ctx context.Context, stepUIDs []string) ([]*models.EscalationPolicyTarget, error)
+
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
 	GetIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string) (*models.IncidentMemberCheck, error)
