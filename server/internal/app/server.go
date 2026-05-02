@@ -44,6 +44,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
@@ -381,6 +382,12 @@ func (s *Server) setupRoutes() {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+
+	// Label autocomplete routes
+	labelsService := labels.NewService(s.dbService)
+	labelsHandler := labels.NewHandler(labelsService, s.config)
+	orgLabels := api.NewGroup("/orgs/:org/labels").Use(authMiddleware.RequireAuth)
+	orgLabels.GET("", labelsHandler.ListLabels)
 
 	// Region routes
 	regionsService := regionshandler.NewService(s.dbService)
