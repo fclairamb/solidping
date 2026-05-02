@@ -570,7 +570,7 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 
 		// Execute heartbeat job
 		logger := runner.logger
-		err = runner.executeHeartbeatJob(ctx, logger, checkJob)
+		err = runner.executePassiveJob(ctx, logger, checkJob)
 		require.NoError(t, err)
 
 		// Get the latest result (should be RUNNING since within grace period)
@@ -627,7 +627,7 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 
 		// Execute heartbeat job
 		logger := runner.logger
-		err = runner.executeHeartbeatJob(ctx, logger, checkJob)
+		err = runner.executePassiveJob(ctx, logger, checkJob)
 		require.NoError(t, err)
 
 		// Get the latest result (should be TIMEOUT since grace period exceeded)
