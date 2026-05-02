@@ -79,7 +79,7 @@ jobs:
         run: bun run build
 
       - name: Upload dash dist
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dash-dist
           path: web/dash/dist
@@ -108,7 +108,7 @@ jobs:
         run: bun run build
 
       - name: Upload dash0 dist
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: dash0-dist
           path: web/dash0/dist
@@ -137,7 +137,7 @@ jobs:
         run: bun run build
 
       - name: Upload status0 dist
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: status0-dist
           path: web/status0/dist
@@ -161,19 +161,19 @@ jobs:
         run: go clean -cache
 
       - name: Download dash dist
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dash-dist
           path: server/internal/app/res
 
       - name: Download dash0 dist
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: dash0-dist
           path: server/internal/app/dash0res
 
       - name: Download status0 dist
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: status0-dist
           path: server/internal/app/status0res
@@ -193,7 +193,7 @@ jobs:
             -o ../solidping .
 
       - name: Upload binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: solidping-linux-amd64
           path: solidping
@@ -232,7 +232,7 @@ jobs:
           exit 1
 
       - name: Download solidping binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: solidping-linux-amd64
           path: .
@@ -266,7 +266,7 @@ jobs:
 
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report
           path: |
