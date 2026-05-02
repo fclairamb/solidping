@@ -46,6 +46,10 @@ type Check struct {
 	ReopenCooldownMultiplier *int `bun:"reopen_cooldown_multiplier"`
 	MaxAdaptiveIncrease      *int `bun:"max_adaptive_increase"`
 
+	// Optional escalation policy. Falls back to the check_group's policy
+	// (and ultimately to no escalation) when nil.
+	EscalationPolicyUID *string `bun:"escalation_policy_uid"`
+
 	// Status tracking
 	Status          CheckStatus `bun:"status,notnull,default:0"`
 	StatusStreak    int         `bun:"status_streak,notnull,default:0"`
@@ -104,6 +108,12 @@ type CheckUpdate struct {
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int
 	MaxAdaptiveIncrease      *int
+
+	// Optional escalation policy override (nil = inherit from group / none)
+	EscalationPolicyUID *string
+
+	// Clear* fields set the corresponding column to NULL on update.
+	ClearEscalationPolicyUID bool
 
 	// Status tracking (internal use)
 	Status          *CheckStatus

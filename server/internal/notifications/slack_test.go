@@ -432,6 +432,58 @@ func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _ string
 	return nil
 }
 
+func (m *mockDBService) CreateEscalationPolicy(_ context.Context, _ *models.EscalationPolicy) error {
+	return nil
+}
+
+func (m *mockDBService) GetEscalationPolicy(
+	_ context.Context, _, _ string,
+) (*models.EscalationPolicy, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetEscalationPolicyBySlug(
+	_ context.Context, _, _ string,
+) (*models.EscalationPolicy, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListEscalationPolicies(
+	_ context.Context, _ string,
+) ([]*models.EscalationPolicy, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateEscalationPolicy(
+	_ context.Context, _ string, _ *models.EscalationPolicyUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteEscalationPolicy(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListEscalationPolicySteps(
+	_ context.Context, _ string,
+) ([]*models.EscalationPolicyStep, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ReplaceEscalationPolicySteps(
+	_ context.Context, _ string,
+	_ []*models.EscalationPolicyStep,
+	_ map[int][]*models.EscalationPolicyTarget,
+) error {
+	return nil
+}
+
+func (m *mockDBService) ListEscalationPolicyTargets(
+	_ context.Context, _ []string,
+) ([]*models.EscalationPolicyTarget, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) CreateEvent(_ context.Context, _ *models.Event) error {
 	panic("not implemented")
 }
