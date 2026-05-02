@@ -436,6 +436,10 @@ func (s *Server) setupRoutes() {
 	orgResults := api.NewGroup("/orgs/:org/results").Use(authMiddleware.RequireAuth)
 	orgResults.GET("", resultsHandler.ListResults)
 
+	// Per-check single result fetch (with fallback to covering aggregation)
+	orgChecksResults := api.NewGroup("/orgs/:org/checks/:check/results").Use(authMiddleware.RequireAuth)
+	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
+
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)

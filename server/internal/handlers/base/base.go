@@ -53,6 +53,7 @@ const (
 	ErrorCodeEmailInboxDisabled        ErrorCode = "EMAIL_INBOX_DISABLED"
 	ErrorCodeEmailInboxTestFailed      ErrorCode = "EMAIL_INBOX_TEST_FAILED"
 	ErrorCodeEmailInboxNotAvailable    ErrorCode = "EMAIL_INBOX_NOT_AVAILABLE"
+	ErrorCodeResultNotFound            ErrorCode = "RESULT_NOT_FOUND"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

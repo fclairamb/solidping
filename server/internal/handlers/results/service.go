@@ -5,8 +5,11 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -17,6 +20,10 @@ var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	// ErrInvalidCursor is returned when cursor format is invalid.
 	ErrInvalidCursor = errors.New("invalid cursor")
+	// ErrCheckNotFound is returned when the check identifier doesn't resolve to a check in the org.
+	ErrCheckNotFound = errors.New("check not found")
+	// ErrResultNotFound is returned when no result and no covering aggregation exists for the given UID.
+	ErrResultNotFound = errors.New("result not found")
 )
 
 // Result status string labels.
@@ -341,4 +348,170 @@ func (s *Service) statusIntToString(status *int) string {
 	default:
 		return statusStrUnknown
 	}
+}
+
+const (
+	withDurationMs       = "durationms"
+	withDurationMinMs    = "durationminms"
+	withDurationMaxMs    = "durationmaxms"
+	withRegion           = "region"
+	withMetrics          = "metrics"
+	withOutput           = "output"
+	withAvailabilityPct  = "availabilitypct"
+	withTotalChecks      = "totalchecks"
+	withSuccessfulChecks = "successfulchecks"
+	withCheckSlug        = "checkslug"
+	withCheckName        = "checkname"
+)
+
+// allWithFields returns the union of every optional `with` field that the
+// detail endpoint always projects into the response.
+func allWithFields() []string {
+	return []string{
+		withDurationMs, withDurationMinMs, withDurationMaxMs,
+		withRegion, withMetrics, withOutput,
+		withAvailabilityPct, withTotalChecks, withSuccessfulChecks,
+		withCheckSlug, withCheckName,
+	}
+}
+
+// FallbackInfo describes the fallback that was applied when the requested
+// raw result UID had been rolled up into an aggregation.
+type FallbackInfo struct {
+	RequestedUID string    `json:"requestedUid"`
+	RequestedAt  time.Time `json:"requestedAt"`
+	Reason       string    `json:"reason"` // rolled_up_to_hour | rolled_up_to_day | rolled_up_to_month
+}
+
+// GetResultResponse wraps the standard ResultResponse and an optional
+// FallbackInfo describing how the response was resolved when the raw row
+// had already been rolled up into an aggregation.
+type GetResultResponse struct {
+	ResultResponse
+	Fallback *FallbackInfo `json:"fallback,omitempty"`
+}
+
+// GetResult fetches a single result by UID, falling back to the smallest-period
+// aggregation that covers the UID's embedded UUIDv7 timestamp when the raw
+// row has been rolled up. checkIdent may be the check UID or slug.
+func (s *Service) GetResult(
+	ctx context.Context, orgSlug, checkIdent, resultUID string,
+) (*GetResultResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	check, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, checkIdent)
+	if err != nil || check == nil {
+		return nil, ErrCheckNotFound
+	}
+
+	withAll := allWithFields()
+
+	if direct, getErr := s.db.GetResult(ctx, resultUID); getErr == nil && direct != nil {
+		if direct.OrganizationUID == org.UID && direct.CheckUID == check.UID {
+			resp := s.convertResultToResponse(direct, withAll)
+
+			return &GetResultResponse{ResultResponse: resp}, nil
+		}
+	}
+
+	// UUIDv7 timestamps the row was created with; matches PeriodStart for raw
+	// rows within ms, and for aggregations matches the rollup time (which still
+	// falls inside the larger covering periods).
+	parsed, parseErr := uuid.Parse(resultUID)
+	if parseErr != nil || parsed.Version() != 7 {
+		return nil, ErrResultNotFound
+	}
+
+	sec, nsec := parsed.Time().UnixTime()
+	requestedAt := time.Unix(sec, nsec).UTC()
+
+	for _, level := range []string{"hour", "day", "month"} {
+		row, hitErr := s.findCoveringAggregation(ctx, org.UID, check.UID, level, requestedAt)
+		if hitErr != nil {
+			return nil, hitErr
+		}
+
+		if row == nil {
+			continue
+		}
+
+		resp := s.convertResultToResponse(row, withAll)
+
+		return &GetResultResponse{
+			ResultResponse: resp,
+			Fallback: &FallbackInfo{
+				RequestedUID: resultUID,
+				RequestedAt:  requestedAt,
+				Reason:       "rolled_up_to_" + level,
+			},
+		}, nil
+	}
+
+	return nil, ErrResultNotFound
+}
+
+// findCoveringAggregation returns the aggregation row of `level` that covers
+// `requestedAt` for the given check, or nil if no such row exists. When
+// several rows match (e.g. one per region), pick the highest total_checks;
+// ties broken by region ASC for determinism.
+func (s *Service) findCoveringAggregation(
+	ctx context.Context, orgUID, checkUID, level string, requestedAt time.Time,
+) (*models.Result, error) {
+	startBefore := requestedAt.Add(time.Nanosecond)
+
+	filter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        []string{checkUID},
+		PeriodTypes:      []string{level},
+		PeriodStartAfter: nil,
+		PeriodEndBefore:  &startBefore,
+		Limit:            32,
+	}
+
+	resp, err := s.db.ListResults(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	candidates := make([]*models.Result, 0, len(resp.Results))
+	for _, row := range resp.Results {
+		if !row.PeriodStart.After(requestedAt) && (row.PeriodEnd == nil || row.PeriodEnd.After(requestedAt)) {
+			candidates = append(candidates, row)
+		}
+	}
+
+	if len(candidates) == 0 {
+		return nil, nil //nolint:nilnil // nil,nil signals no match to the caller.
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		countI, countJ := 0, 0
+		if candidates[i].TotalChecks != nil {
+			countI = *candidates[i].TotalChecks
+		}
+
+		if candidates[j].TotalChecks != nil {
+			countJ = *candidates[j].TotalChecks
+		}
+
+		if countI != countJ {
+			return countI > countJ
+		}
+
+		regionI, regionJ := "", ""
+		if candidates[i].Region != nil {
+			regionI = *candidates[i].Region
+		}
+
+		if candidates[j].Region != nil {
+			regionJ = *candidates[j].Region
+		}
+
+		return regionI < regionJ
+	})
+
+	return candidates[0], nil
 }
