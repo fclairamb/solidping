@@ -118,6 +118,16 @@ export interface OrgResult {
   output?: Record<string, unknown>;
 }
 
+export interface ResultFallbackInfo {
+  requestedUid: string;
+  requestedAt: string;
+  reason: "rolled_up_to_hour" | "rolled_up_to_day" | "rolled_up_to_month";
+}
+
+export interface OrgResultDetail extends OrgResult {
+  fallback?: ResultFallbackInfo;
+}
+
 export interface IncidentDetail {
   uid?: string;
   checkUid?: string;
@@ -446,6 +456,18 @@ export function useResults(
     },
     enabled: !!org,
     refetchInterval,
+  });
+}
+
+export function useResult(org: string, checkUid: string, resultUid: string) {
+  return useQuery<OrgResultDetail>({
+    queryKey: ["result", org, checkUid, resultUid],
+    queryFn: () =>
+      apiFetch<OrgResultDetail>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}`,
+      ),
+    enabled: !!org && !!checkUid && !!resultUid,
+    staleTime: Infinity,
   });
 }
 

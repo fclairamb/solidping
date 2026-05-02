@@ -169,6 +169,31 @@
     "30m": "30 minutos",
     "1h": "1 hora"
   },
+  "resultDetail": {
+    "title": "Resultado",
+    "back": "Volver a la comprobación",
+    "period": "Periodo",
+    "region": "Región",
+    "worker": "Worker",
+    "duration": "Duración",
+    "durationMin": "Mín",
+    "durationMax": "Máx",
+    "durationP95": "P95",
+    "totalChecks": "Total de comprobaciones",
+    "successfulChecks": "Comprobaciones correctas",
+    "availability": "Disponibilidad",
+    "metrics": "Métricas",
+    "output": "Salida",
+    "viewAll": "Ver todos los resultados de esta comprobación",
+    "fallback": {
+      "title": "El resultado exacto solicitado ya no se almacena.",
+      "rolledUpToHour": "Se incluyó en esta agregación horaria ({{start}}–{{end}}) que cubre su marca de tiempo ({{ts}}).",
+      "rolledUpToDay": "Se incluyó en esta agregación diaria ({{start}}–{{end}}) que cubre su marca de tiempo ({{ts}}).",
+      "rolledUpToMonth": "Se incluyó en esta agregación mensual ({{start}}–{{end}}) que cubre su marca de tiempo ({{ts}}).",
+      "originalUid": "El UID original {{uid}} se eliminó como parte de la agregación automática."
+    },
+    "notFound": "Resultado no encontrado — puede que se haya eliminado durante la agregación automática y no hemos encontrado ninguna agregación que cubra su marca de tiempo."
+  },
   "detail": {
     "checkDetails": "Detalles de la comprobación",
     "configuration": "Configuración",

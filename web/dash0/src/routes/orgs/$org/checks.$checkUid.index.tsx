@@ -764,7 +764,18 @@ function CheckDetailPage() {
               </TableHeader>
               <TableBody>
                 {results.data.map((result) => (
-                  <TableRow key={result.uid}>
+                  <TableRow
+                    key={result.uid}
+                    className={result.uid ? "cursor-pointer hover:bg-muted/50" : ""}
+                    data-testid={`result-row-${result.uid}`}
+                    onClick={() => {
+                      if (!result.uid) return;
+                      navigate({
+                        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                        params: { org, checkUid, resultUid: result.uid },
+                      });
+                    }}
+                  >
                     <TableCell className="text-sm">
                       {result.periodStart
                         ? new Date(result.periodStart).toLocaleString()

@@ -169,6 +169,31 @@
     "30m": "30 Minuten",
     "1h": "1 Stunde"
   },
+  "resultDetail": {
+    "title": "Ergebnis",
+    "back": "Zurück zur Prüfung",
+    "period": "Zeitraum",
+    "region": "Region",
+    "worker": "Worker",
+    "duration": "Dauer",
+    "durationMin": "Min",
+    "durationMax": "Max",
+    "durationP95": "P95",
+    "totalChecks": "Prüfungen gesamt",
+    "successfulChecks": "Erfolgreiche Prüfungen",
+    "availability": "Verfügbarkeit",
+    "metrics": "Metriken",
+    "output": "Ausgabe",
+    "viewAll": "Alle Ergebnisse dieser Prüfung anzeigen",
+    "fallback": {
+      "title": "Das angeforderte Ergebnis wird nicht mehr gespeichert.",
+      "rolledUpToHour": "Es wurde in diese Stunden-Aggregation ({{start}}–{{end}}) zusammengefasst, die seinen Zeitstempel abdeckt ({{ts}}).",
+      "rolledUpToDay": "Es wurde in diese Tages-Aggregation ({{start}}–{{end}}) zusammengefasst, die seinen Zeitstempel abdeckt ({{ts}}).",
+      "rolledUpToMonth": "Es wurde in diese Monats-Aggregation ({{start}}–{{end}}) zusammengefasst, die seinen Zeitstempel abdeckt ({{ts}}).",
+      "originalUid": "Die ursprüngliche UID {{uid}} wurde im Rahmen der automatischen Aggregation gelöscht."
+    },
+    "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt."
+  },
   "detail": {
     "checkDetails": "Prüfungsdetails",
     "configuration": "Konfiguration",

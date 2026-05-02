@@ -169,6 +169,31 @@
     "30m": "30 minutes",
     "1h": "1 heure"
   },
+  "resultDetail": {
+    "title": "Résultat",
+    "back": "Retour au contrôle",
+    "period": "Période",
+    "region": "Région",
+    "worker": "Worker",
+    "duration": "Durée",
+    "durationMin": "Min",
+    "durationMax": "Max",
+    "durationP95": "P95",
+    "totalChecks": "Total des contrôles",
+    "successfulChecks": "Contrôles réussis",
+    "availability": "Disponibilité",
+    "metrics": "Métriques",
+    "output": "Sortie",
+    "viewAll": "Voir tous les résultats de ce contrôle",
+    "fallback": {
+      "title": "Le résultat exact demandé n'est plus stocké.",
+      "rolledUpToHour": "Il a été agrégé dans cette agrégation horaire ({{start}}–{{end}}) couvrant son horodatage ({{ts}}).",
+      "rolledUpToDay": "Il a été agrégé dans cette agrégation journalière ({{start}}–{{end}}) couvrant son horodatage ({{ts}}).",
+      "rolledUpToMonth": "Il a été agrégé dans cette agrégation mensuelle ({{start}}–{{end}}) couvrant son horodatage ({{ts}}).",
+      "originalUid": "L'UID d'origine {{uid}} a été supprimé lors de l'agrégation automatique."
+    },
+    "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée."
+  },
   "detail": {
     "checkDetails": "Détails du contrôle",
     "configuration": "Configuration",
