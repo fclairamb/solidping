@@ -102,6 +102,7 @@ func (r *StartupJobRun) ensureDefaultOrganization(ctx context.Context, jctx *job
 
 	adminUser := models.NewUser(adminEmail)
 	adminUser.PasswordHash = &passwordHash
+	adminUser.SuperAdmin = true
 
 	if createErr := jctx.DBService.CreateUser(ctx, adminUser); createErr != nil {
 		return fmt.Errorf("failed to create admin user: %w", createErr)
