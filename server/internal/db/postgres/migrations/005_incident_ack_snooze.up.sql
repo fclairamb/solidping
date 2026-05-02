@@ -18,10 +18,10 @@ CREATE INDEX idx_incidents_snoozed_until
   WHERE snoozed_until IS NOT NULL AND deleted_at IS NULL;
 
 -- Used by the cancellation sweep that fires whenever an incident is
--- ack'd / snoozed / resolved. The job table stores the incident UID inside
--- its JSONB config under the "incident_uid" key for notification jobs.
+-- ack'd / snoozed / resolved. Notification jobs serialize their config with
+-- the incident UID under the "incidentUid" key (NotificationJobConfig).
 CREATE INDEX idx_jobs_incident_uid_pending
-  ON jobs ((config->>'incident_uid'))
+  ON jobs ((config->>'incidentUid'))
   WHERE status IN ('pending', 'running')
-    AND config ? 'incident_uid'
+    AND config ? 'incidentUid'
     AND deleted_at IS NULL;

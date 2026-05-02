@@ -1637,6 +1637,71 @@ func (s *Service) DeleteJob(ctx context.Context, uid string) error {
 
 // Incident operations
 
+// applyIncidentSetFields walks the non-clear pointer fields and writes the
+// corresponding Set() calls. Split out of UpdateIncident so the caller stays
+// under the cyclop limit.
+func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bun.UpdateQuery {
+	type setter struct {
+		col string
+		val any
+	}
+
+	setters := []setter{
+		{"region", update.Region},
+		{"state", update.State},
+		{"resolved_at", update.ResolvedAt},
+		{"resolved_by", update.ResolvedBy},
+		{"resolution_type", update.ResolutionType},
+		{"escalated_at", update.EscalatedAt},
+		{"acknowledged_at", update.AcknowledgedAt},
+		{"acknowledged_by", update.AcknowledgedBy},
+		{"snoozed_until", update.SnoozedUntil},
+		{"snoozed_by", update.SnoozedBy},
+		{"snooze_reason", update.SnoozeReason},
+		{"failure_count", update.FailureCount},
+		{"relapse_count", update.RelapseCount},
+		{"last_reopened_at", update.LastReopenedAt},
+		{"title", update.Title},
+		{"description", update.Description},
+		{"details", update.Details},
+	}
+
+	for i := range setters {
+		query = applyIncidentSet(query, setters[i].col, setters[i].val)
+	}
+
+	return query
+}
+
+// applyIncidentSet writes a single Set() if the pointer is non-nil. The
+// switch covers every concrete pointer type used in IncidentUpdate.
+func applyIncidentSet(query *bun.UpdateQuery, column string, value any) *bun.UpdateQuery {
+	switch typed := value.(type) {
+	case *string:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *time.Time:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *int:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *models.IncidentState:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *models.JSONMap:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	}
+
+	return query
+}
+
 // applyClearFields applies the Clear* boolean fields from IncidentUpdate to set columns to NULL.
 func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bun.UpdateQuery {
 	if update.ClearResolvedAt {
@@ -1939,74 +2004,7 @@ func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
 
-	if update.Region != nil {
-		query = query.Set("region = ?", *update.Region)
-	}
-
-	if update.State != nil {
-		query = query.Set("state = ?", *update.State)
-	}
-
-	if update.ResolvedAt != nil {
-		query = query.Set("resolved_at = ?", *update.ResolvedAt)
-	}
-
-	if update.ResolvedBy != nil {
-		query = query.Set("resolved_by = ?", *update.ResolvedBy)
-	}
-
-	if update.ResolutionType != nil {
-		query = query.Set("resolution_type = ?", *update.ResolutionType)
-	}
-
-	if update.EscalatedAt != nil {
-		query = query.Set("escalated_at = ?", *update.EscalatedAt)
-	}
-
-	if update.AcknowledgedAt != nil {
-		query = query.Set("acknowledged_at = ?", *update.AcknowledgedAt)
-	}
-
-	if update.AcknowledgedBy != nil {
-		query = query.Set("acknowledged_by = ?", *update.AcknowledgedBy)
-	}
-
-	if update.SnoozedUntil != nil {
-		query = query.Set("snoozed_until = ?", *update.SnoozedUntil)
-	}
-
-	if update.SnoozedBy != nil {
-		query = query.Set("snoozed_by = ?", *update.SnoozedBy)
-	}
-
-	if update.SnoozeReason != nil {
-		query = query.Set("snooze_reason = ?", *update.SnoozeReason)
-	}
-
-	if update.FailureCount != nil {
-		query = query.Set("failure_count = ?", *update.FailureCount)
-	}
-
-	if update.RelapseCount != nil {
-		query = query.Set("relapse_count = ?", *update.RelapseCount)
-	}
-
-	if update.LastReopenedAt != nil {
-		query = query.Set("last_reopened_at = ?", *update.LastReopenedAt)
-	}
-
-	if update.Title != nil {
-		query = query.Set("title = ?", *update.Title)
-	}
-
-	if update.Description != nil {
-		query = query.Set("description = ?", *update.Description)
-	}
-
-	if update.Details != nil {
-		query = query.Set("details = ?", *update.Details)
-	}
-
+	query = applyIncidentSetFields(query, update)
 	query = applyClearFields(query, update)
 
 	_, err := query.Exec(ctx)
@@ -2023,6 +2021,24 @@ func (s *Service) CountActiveIncidentsByCheckUID(ctx context.Context, checkUID s
 		Count(ctx)
 
 	return count, err
+}
+
+func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error) {
+	var incidents []*models.Incident
+
+	err := s.db.NewSelect().
+		Model(&incidents).
+		Where("state = ?", models.IncidentStateActive).
+		Where("snoozed_until IS NOT NULL").
+		Where("snoozed_until <= ?", now).
+		Where("deleted_at IS NULL").
+		Order("snoozed_until ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list expired snoozed incidents: %w", err)
+	}
+
+	return incidents, nil
 }
 
 func (s *Service) UpdateCheckStatus(

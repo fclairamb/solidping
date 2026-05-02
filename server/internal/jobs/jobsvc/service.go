@@ -47,6 +47,18 @@ type Service interface {
 	// CancelJob cancels a pending job (soft delete)
 	CancelJob(ctx context.Context, uid string) error
 
+	// CancelPendingForIncident soft-deletes all pending jobs whose config
+	// references the given incident UID under the "incidentUid" key. Returns
+	// the number of jobs canceled. Used by ack / snooze / resolve to stop
+	// pending notification jobs from firing on an incident the operator has
+	// taken responsibility for.
+	//
+	// If notBefore is non-nil, only jobs scheduled strictly before that
+	// timestamp are canceled — used by snooze, where notifications scheduled
+	// for after the snooze window are kept (they fire only if the incident
+	// is still open then).
+	CancelPendingForIncident(ctx context.Context, incidentUID string, notBefore *time.Time) (int64, error)
+
 	// GetJobWait waits for and claims the next available job
 	// Uses PostgreSQL LISTEN/NOTIFY for efficient waiting
 	GetJobWait(ctx context.Context) (*models.Job, error)
@@ -268,6 +280,50 @@ func (s *serviceImpl) ListJobs(
 	}
 
 	return jobs, nil
+}
+
+// CancelPendingForIncident soft-deletes pending jobs that reference an
+// incident UID in their config. The expression varies by dialect because
+// PostgreSQL uses ->> and SQLite uses json_extract.
+func (s *serviceImpl) CancelPendingForIncident(
+	ctx context.Context, incidentUID string, notBefore *time.Time,
+) (int64, error) {
+	if incidentUID == "" {
+		return 0, nil
+	}
+
+	now := time.Now()
+
+	var configExpr string
+	if _, isPostgres := s.db.Dialect().(*pgdialect.Dialect); isPostgres {
+		configExpr = "config->>'incidentUid' = ?"
+	} else {
+		configExpr = "json_extract(config, '$.incidentUid') = ?"
+	}
+
+	query := s.db.NewUpdate().
+		Model((*models.Job)(nil)).
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NULL").
+		Where(configExpr, incidentUID)
+
+	if notBefore != nil {
+		query = query.Where("scheduled_at < ?", *notBefore)
+	}
+
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to cancel jobs for incident: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	return rows, nil
 }
 
 // CancelJob cancels a pending job (soft delete).

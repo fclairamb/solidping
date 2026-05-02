@@ -11,9 +11,9 @@ CREATE INDEX idx_incidents_snoozed_until
   WHERE snoozed_until IS NOT NULL AND deleted_at IS NULL;
 
 -- SQLite stores config as JSON text; json_extract is the equivalent of
--- Postgres' ->> operator. The cancellation sweep reads incident_uid out of
--- the notification job's config.
+-- Postgres' ->> operator. Notification jobs serialize the incident UID
+-- under the "incidentUid" key (NotificationJobConfig).
 CREATE INDEX idx_jobs_incident_uid_pending
-  ON jobs (json_extract(config, '$.incident_uid'))
+  ON jobs (json_extract(config, '$.incidentUid'))
   WHERE status IN ('pending', 'running')
     AND deleted_at IS NULL;
