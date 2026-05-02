@@ -142,6 +142,27 @@ type Service interface {
 	// Used by the auto-unsnooze sweeper.
 	ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error)
 
+	// On-call schedule operations
+	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
+	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleBySlug(ctx context.Context, orgUID, slug string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error)
+	ListOnCallSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error)
+	UpdateOnCallSchedule(ctx context.Context, scheduleUID string, update *models.OnCallScheduleUpdate) error
+	DeleteOnCallSchedule(ctx context.Context, scheduleUID string) error
+
+	// On-call schedule users (roster) — replace-all is the typical write path
+	ListOnCallScheduleUsers(ctx context.Context, scheduleUID string) ([]*models.OnCallScheduleUser, error)
+	ReplaceOnCallScheduleUsers(ctx context.Context, scheduleUID string, userUIDs []string) error
+
+	// On-call schedule overrides
+	CreateOnCallScheduleOverride(ctx context.Context, override *models.OnCallScheduleOverride) error
+	ListOnCallScheduleOverrides(
+		ctx context.Context, scheduleUID string, from, until *time.Time,
+	) ([]*models.OnCallScheduleOverride, error)
+	GetOnCallScheduleOverride(ctx context.Context, overrideUID string) (*models.OnCallScheduleOverride, error)
+	DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error
+
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
 	GetIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string) (*models.IncidentMemberCheck, error)

@@ -18,6 +18,11 @@ import (
 // errDatabaseError is a test error for database failures.
 var errDatabaseError = errors.New("database error")
 
+// errMockNotImplemented is returned by mock methods that don't apply to the
+// notifications-package tests. It satisfies the linter's nilnil rule for
+// pointer-returning methods that have no real implementation.
+var errMockNotImplemented = errors.New("mock method not implemented")
+
 // mockDBService is a test double for the database service.
 type mockDBService struct {
 	getStateEntryFunc func(ctx context.Context, orgUID *string, key string) (*models.StateEntry, error)
@@ -353,6 +358,78 @@ func (m *mockDBService) CountActiveIncidentsByCheckUID(_ context.Context, _ stri
 
 func (m *mockDBService) ListExpiredSnoozedIncidents(_ context.Context, _ time.Time) ([]*models.Incident, error) {
 	return nil, nil
+}
+
+func (m *mockDBService) CreateOnCallSchedule(_ context.Context, _ *models.OnCallSchedule) error {
+	return nil
+}
+
+func (m *mockDBService) GetOnCallSchedule(
+	_ context.Context, _, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOnCallScheduleBySlug(
+	_ context.Context, _, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOnCallScheduleByICalSecret(
+	_ context.Context, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListOnCallSchedules(
+	_ context.Context, _ string,
+) ([]*models.OnCallSchedule, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateOnCallSchedule(
+	_ context.Context, _ string, _ *models.OnCallScheduleUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteOnCallSchedule(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListOnCallScheduleUsers(
+	_ context.Context, _ string,
+) ([]*models.OnCallScheduleUser, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ReplaceOnCallScheduleUsers(
+	_ context.Context, _ string, _ []string,
+) error {
+	return nil
+}
+
+func (m *mockDBService) CreateOnCallScheduleOverride(
+	_ context.Context, _ *models.OnCallScheduleOverride,
+) error {
+	return nil
+}
+
+func (m *mockDBService) ListOnCallScheduleOverrides(
+	_ context.Context, _ string, _, _ *time.Time,
+) ([]*models.OnCallScheduleOverride, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) GetOnCallScheduleOverride(
+	_ context.Context, _ string,
+) (*models.OnCallScheduleOverride, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _ string) error {
+	return nil
 }
 
 func (m *mockDBService) CreateEvent(_ context.Context, _ *models.Event) error {

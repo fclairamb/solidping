@@ -45,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
+	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
@@ -451,6 +452,22 @@ func (s *Server) setupRoutes() {
 	orgIncidents.POST("/:uid/snooze", incidentsHandler.SnoozeIncident)
 	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
 	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
+
+	// On-call schedules (authentication required)
+	onCallService := oncallschedules.NewService(s.dbService)
+	onCallHandler := oncallschedules.NewHandler(onCallService, s.dbService, s.config)
+	orgOnCall := api.NewGroup("/orgs/:org/on-call-schedules").Use(authMiddleware.RequireAuth)
+	orgOnCall.GET("", onCallHandler.ListSchedules)
+	orgOnCall.POST("", onCallHandler.CreateSchedule)
+	orgOnCall.GET("/:slug", onCallHandler.GetSchedule)
+	orgOnCall.PATCH("/:slug", onCallHandler.UpdateSchedule)
+	orgOnCall.DELETE("/:slug", onCallHandler.DeleteSchedule)
+	orgOnCall.GET("/:slug/preview", onCallHandler.PreviewSchedule)
+	orgOnCall.GET("/:slug/overrides", onCallHandler.ListOverrides)
+	orgOnCall.POST("/:slug/overrides", onCallHandler.CreateOverride)
+	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
+	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
+	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
