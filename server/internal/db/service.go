@@ -125,11 +125,26 @@ type Service interface {
 	// Incident operations
 	CreateIncident(ctx context.Context, incident *models.Incident) error
 	GetIncident(ctx context.Context, orgUID, uid string) (*models.Incident, error)
+	// FindActiveIncidentByCheckUID returns the incident a check is participating in, whether
+	// per-check (incidents.check_uid = $1) or via a group (incident_member_checks row exists
+	// with currently_failing = true). Returns sql.ErrNoRows if none.
 	FindActiveIncidentByCheckUID(ctx context.Context, checkUID string) (*models.Incident, error)
 	FindRecentlyResolvedIncidentByCheckUID(ctx context.Context, checkUID string, since time.Time) (*models.Incident, error)
+	// FindActiveIncidentByGroupUID returns the active group incident keyed on check_group_uid.
+	FindActiveIncidentByGroupUID(ctx context.Context, groupUID string) (*models.Incident, error)
+	// FindRecentlyResolvedIncidentByGroupUID returns the most recent resolved group incident
+	// for a group resolved after `since`. Used for the reopen-within-cooldown path.
+	FindRecentlyResolvedIncidentByGroupUID(ctx context.Context, groupUID string, since time.Time) (*models.Incident, error)
 	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error)
 	UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error
 	CountActiveIncidentsByCheckUID(ctx context.Context, checkUID string) (int, error)
+
+	// Incident member operations (group incidents only)
+	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
+	GetIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string) (*models.IncidentMemberCheck, error)
+	UpsertIncidentMemberCheck(ctx context.Context, member *models.IncidentMemberCheck) error
+	UpdateIncidentMemberCheck(ctx context.Context, incidentUID, checkUID string, update *models.IncidentMemberUpdate) error
+	CountFailingIncidentMembers(ctx context.Context, incidentUID string) (int, error)
 
 	// Check status update
 	UpdateCheckStatus(
