@@ -56,8 +56,8 @@ func (c *A2SChecker) Execute(
 
 	metrics := map[string]any{}
 	output := map[string]any{
-		"host": cfg.Host,
-		"port": cfg.resolvePort(),
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: cfg.resolvePort(),
 	}
 
 	info, queryErr := queryServer(cfg)

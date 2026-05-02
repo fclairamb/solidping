@@ -55,16 +55,16 @@ func (c *MinecraftChecker) Execute(
 	start := time.Now()
 
 	output := map[string]any{
-		"host":    cfg.Host,
-		"port":    cfg.resolvePort(),
-		"edition": cfg.resolveEdition(),
+		checkerdef.OutputKeyHost: cfg.Host,
+		checkerdef.OutputKeyPort: cfg.resolvePort(),
+		"edition":                cfg.resolveEdition(),
 	}
 
 	metrics := map[string]any{}
 
 	var queryErr error
 	if cfg.resolveEdition() == EditionBedrock {
-		queryErr = pingBedrock(cfg, metrics, output)
+		queryErr = pingBedrock(ctx, cfg, metrics, output)
 	} else {
 		queryErr = pingJava(cfg, metrics, output)
 	}
@@ -110,8 +110,8 @@ func pingJava(cfg *MinecraftConfig, metrics, output map[string]any) error {
 
 	if len(status.SamplePlayers) > 0 {
 		names := make([]string, 0, len(status.SamplePlayers))
-		for _, p := range status.SamplePlayers {
-			names = append(names, p.Nickname)
+		for i := range status.SamplePlayers {
+			names = append(names, status.SamplePlayers[i].Nickname)
 		}
 
 		output["samplePlayers"] = names
@@ -120,8 +120,8 @@ func pingJava(cfg *MinecraftConfig, metrics, output map[string]any) error {
 	return nil
 }
 
-func pingBedrock(cfg *MinecraftConfig, metrics, output map[string]any) error {
-	status, err := bedrockUnconnectedPing(cfg.Host, cfg.resolvePort(), cfg.resolveTimeout())
+func pingBedrock(ctx context.Context, cfg *MinecraftConfig, metrics, output map[string]any) error {
+	status, err := bedrockUnconnectedPing(ctx, cfg.Host, cfg.resolvePort(), cfg.resolveTimeout())
 	if err != nil {
 		return err
 	}

@@ -99,7 +99,14 @@ func TestMinecraftConfig_GetConfig_RoundTrip(t *testing.T) {
 	r.False(hasEdition)
 
 	// Bedrock edition is preserved
-	cfg = &MinecraftConfig{Host: "h", Edition: "bedrock", Port: 19200, Timeout: 3 * time.Second, MinPlayers: 1, MaxPlayers: 5}
+	cfg = &MinecraftConfig{
+		Host:       "h",
+		Edition:    "bedrock",
+		Port:       19200,
+		Timeout:    3 * time.Second,
+		MinPlayers: 1,
+		MaxPlayers: 5,
+	}
 	out = cfg.GetConfig()
 	r.Equal("h", out["host"])
 	r.Equal("bedrock", out["edition"])

@@ -6,6 +6,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+const sampleHost = "play.example.com"
+
 // GetSampleConfigs returns sample Minecraft check configurations.
 func (c *MinecraftChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	return []checkerdef.CheckSpec{
@@ -14,7 +16,7 @@ func (c *MinecraftChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []c
 			Slug:   "minecraft-java",
 			Period: 5 * time.Minute,
 			Config: (&MinecraftConfig{
-				Host:    "play.example.com",
+				Host:    sampleHost,
 				Edition: EditionJava,
 			}).GetConfig(),
 		},

@@ -169,7 +169,8 @@ solidping/
         checkgrpc/             # gRPC services
         checkdocker/           # Docker container health
         checksnmp/             # SNMP monitoring
-        checkgameserver/       # Game server queries
+        checka2s/              # Source engine A2S query
+        checkminecraft/        # Minecraft Server List Ping
         checkjs/               # JavaScript custom checks
         checkbrowser/          # Browser-based checks
         checkheartbeat/        # Heartbeat (passive, push-based)

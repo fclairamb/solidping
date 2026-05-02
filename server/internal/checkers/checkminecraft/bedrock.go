@@ -1,6 +1,7 @@
 package checkminecraft
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -38,32 +39,48 @@ const (
 	bedrockMOTDFieldsExtended      = 9
 )
 
+var (
+	errPongTooShort       = errors.New("pong too short")
+	errUnexpectedPongID   = errors.New("unexpected packet id")
+	errPongStringTruncate = errors.New("pong string truncated")
+	errMalformedMOTD      = errors.New("malformed MOTD")
+)
+
 // bedrockUnconnectedPing sends a RakNet Unconnected Ping packet and parses the response.
-func bedrockUnconnectedPing(host string, port int, timeout time.Duration) (*BedrockStatus, error) {
+func bedrockUnconnectedPing(
+	ctx context.Context,
+	host string,
+	port int,
+	timeout time.Duration,
+) (*BedrockStatus, error) {
 	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
-	conn, err := net.DialTimeout("udp", addr, timeout)
+	dialer := &net.Dialer{Timeout: timeout}
+
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	conn, err := dialer.DialContext(dialCtx, "udp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("dial: %w", err)
 	}
 
 	defer func() { _ = conn.Close() }()
 
-	deadline := time.Now().Add(timeout)
-	if err := conn.SetDeadline(deadline); err != nil {
-		return nil, fmt.Errorf("set deadline: %w", err)
+	if dlErr := conn.SetDeadline(time.Now().Add(timeout)); dlErr != nil {
+		return nil, fmt.Errorf("set deadline: %w", dlErr)
 	}
 
 	packet := buildBedrockPing()
-	if _, err := conn.Write(packet); err != nil {
-		return nil, fmt.Errorf("write: %w", err)
+	if _, wErr := conn.Write(packet); wErr != nil {
+		return nil, fmt.Errorf("write: %w", wErr)
 	}
 
 	buf := make([]byte, 2048)
 
-	n, err := conn.Read(buf)
-	if err != nil {
-		return nil, fmt.Errorf("read: %w", err)
+	n, rErr := conn.Read(buf)
+	if rErr != nil {
+		return nil, fmt.Errorf("read: %w", rErr)
 	}
 
 	return parseBedrockPong(buf[:n])
@@ -75,7 +92,7 @@ func buildBedrockPing() []byte {
 	packet = append(packet, bedrockUnconnectedPingID)
 
 	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, uint64(time.Now().UnixMilli())) //nolint:gosec // wraps fine
+	binary.BigEndian.PutUint64(ts, uint64(time.Now().UnixMilli()))
 
 	packet = append(packet, ts...)
 	packet = append(packet, raknetMagic...)
@@ -89,11 +106,11 @@ func buildBedrockPing() []byte {
 
 func parseBedrockPong(payload []byte) (*BedrockStatus, error) {
 	if len(payload) < bedrockMinResponseLen {
-		return nil, errors.New("pong too short")
+		return nil, errPongTooShort
 	}
 
 	if payload[0] != bedrockUnconnectedPongID {
-		return nil, fmt.Errorf("unexpected packet id 0x%x", payload[0])
+		return nil, fmt.Errorf("%w: 0x%x", errUnexpectedPongID, payload[0])
 	}
 
 	// Skip: id (1) + timestamp (8) + serverGUID (8) + magic (16) = 33 bytes
@@ -104,7 +121,7 @@ func parseBedrockPong(payload []byte) (*BedrockStatus, error) {
 	start := headerLen + 2
 
 	if len(payload) < start+stringLen {
-		return nil, errors.New("pong string truncated")
+		return nil, errPongStringTruncate
 	}
 
 	motdString := string(payload[start : start+stringLen])
@@ -115,7 +132,7 @@ func parseBedrockPong(payload []byte) (*BedrockStatus, error) {
 func parseBedrockMOTD(s string) (*BedrockStatus, error) {
 	parts := strings.Split(s, ";")
 	if len(parts) < bedrockMOTDFieldsMin {
-		return nil, fmt.Errorf("malformed MOTD: %q", s)
+		return nil, fmt.Errorf("%w: %q", errMalformedMOTD, s)
 	}
 
 	protocol, _ := strconv.Atoi(parts[2])
