@@ -24,8 +24,12 @@ See web/dash0/CLAUDE.md for dashboard-specific commands
 - **Reset SQLite database**: Delete the `solidping.db` file or use `SP_DB_RESET=true` environment variable to reset on startup
 
 ## Development Workflow
-If the server is currently running on port 4000, you can just apply code changes,
-wait 5s for it to build and then test your changes.
+If the server is currently running on port 4000, you can just apply code changes
+and test them. The `cmd/devloop` watcher (used by `make dev` / `make dev-test`)
+builds the new binary first and only signals the running process to exit once
+the build succeeds, so the API stays up across reloads — bounded by graceful
+shutdown (sub-second) rather than build time. A failed build leaves the
+previous binary running; check the dev log for the compiler error.
 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
