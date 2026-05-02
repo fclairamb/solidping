@@ -13,13 +13,19 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
+type PeriodId = "today" | "last7" | "last30" | "last365";
+
+export type AvailabilityChartPeriod = "day" | "week" | "month";
+
 interface AvailabilityTableProps {
   org: string;
   checkUid: string;
   refetchInterval?: number;
+  onPeriodSelect?: (period: AvailabilityChartPeriod) => void;
 }
 
 interface PeriodConfig {
+  id: PeriodId;
   label: string;
   getStart: () => Date;
   durationMs: number;
@@ -27,26 +33,37 @@ interface PeriodConfig {
 
 const PERIODS: PeriodConfig[] = [
   {
+    id: "today",
     label: "Today",
     getStart: () => startOfDay(new Date()),
     durationMs: Date.now() - startOfDay(new Date()).getTime(),
   },
   {
+    id: "last7",
     label: "Last 7 days",
     getStart: () => subDays(new Date(), 7),
     durationMs: 7 * 24 * 60 * 60 * 1000,
   },
   {
+    id: "last30",
     label: "Last 30 days",
     getStart: () => subDays(new Date(), 30),
     durationMs: 30 * 24 * 60 * 60 * 1000,
   },
   {
+    id: "last365",
     label: "Last 365 days",
     getStart: () => subDays(new Date(), 365),
     durationMs: 365 * 24 * 60 * 60 * 1000,
   },
 ];
+
+const ROW_TO_GRAPH: Record<PeriodId, AvailabilityChartPeriod | null> = {
+  today: "day",
+  last7: "week",
+  last30: "month",
+  last365: null,
+};
 
 function formatDuration(ms: number): string {
   if (ms <= 0) return "0s";
@@ -94,7 +111,7 @@ function computeIncidentStats(
   };
 }
 
-export function AvailabilityTable({ org, checkUid, refetchInterval }: AvailabilityTableProps) {
+export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSelect }: AvailabilityTableProps) {
   // Memoize timestamps to the current minute so query keys are stable across re-renders
   const yearAgo = useMemo(() => {
     const now = startOfMinute(new Date());
@@ -170,17 +187,17 @@ export function AvailabilityTable({ org, checkUid, refetchInterval }: Availabili
 
     return PERIODS.map((period) => {
       let availability: number | null;
-      switch (period.label) {
-        case "Today":
+      switch (period.id) {
+        case "today":
           availability = avgAvailability(hourlyResults);
           break;
-        case "Last 7 days":
+        case "last7":
           availability = avgAvailability(daily7d);
           break;
-        case "Last 30 days":
+        case "last30":
           availability = avgAvailability(dailyResults);
           break;
-        case "Last 365 days":
+        case "last365":
           availability = avgAvailability(monthlyResults);
           break;
         default:
@@ -204,6 +221,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval }: Availabili
           : null;
 
       return {
+        id: period.id,
         label: period.label,
         availability,
         downtime,
@@ -245,26 +263,36 @@ export function AvailabilityTable({ org, checkUid, refetchInterval }: Availabili
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.label}>
-                <TableCell className="font-medium">{row.label}</TableCell>
-                <TableCell>
-                  {row.availability != null
-                    ? `${row.availability.toFixed(4)}%`
-                    : "-"}
-                </TableCell>
-                <TableCell>
-                  {row.downtime != null ? formatDuration(row.downtime) : "-"}
-                </TableCell>
-                <TableCell>{row.incidents}</TableCell>
-                <TableCell>
-                  {row.incidents > 0 ? formatDuration(row.longest) : "none"}
-                </TableCell>
-                <TableCell>
-                  {row.incidents > 0 ? formatDuration(row.average) : "none"}
-                </TableCell>
-              </TableRow>
-            ))}
+            {rows.map((row) => {
+              const graphPeriod = ROW_TO_GRAPH[row.id];
+              const clickable = graphPeriod != null && onPeriodSelect != null;
+              return (
+                <TableRow
+                  key={row.id}
+                  className={clickable ? "cursor-pointer hover:bg-muted/50" : undefined}
+                  onClick={
+                    clickable ? () => onPeriodSelect!(graphPeriod!) : undefined
+                  }
+                >
+                  <TableCell className="font-medium">{row.label}</TableCell>
+                  <TableCell>
+                    {row.availability != null
+                      ? `${row.availability.toFixed(4)}%`
+                      : "-"}
+                  </TableCell>
+                  <TableCell>
+                    {row.downtime != null ? formatDuration(row.downtime) : "-"}
+                  </TableCell>
+                  <TableCell>{row.incidents}</TableCell>
+                  <TableCell>
+                    {row.incidents > 0 ? formatDuration(row.longest) : "none"}
+                  </TableCell>
+                  <TableCell>
+                    {row.incidents > 0 ? formatDuration(row.average) : "none"}
+                  </TableCell>
+                </TableRow>
+              );
+            })}
           </TableBody>
         </Table>
       </CardContent>

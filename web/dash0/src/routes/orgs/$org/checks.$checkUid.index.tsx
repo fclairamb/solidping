@@ -262,6 +262,7 @@ function CheckDetailPage() {
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const {
     data: check,
@@ -531,26 +532,48 @@ function CheckDetailPage() {
       />
 
       {/* Response time chart */}
-      <ResponseTimeChart
+      <div ref={chartRef}>
+        <ResponseTimeChart
+          org={org}
+          checkUid={checkUid}
+          refetchInterval={refetchInterval}
+          initialPeriod={graphPeriod}
+          initialFullRange={graphFull}
+          onSettingsChange={(period, full) =>
+            navigate({
+              to: ".",
+              search: {
+                graphPeriod: period !== "day" ? period : undefined,
+                graphFull: full ? true : undefined,
+              },
+              replace: true,
+            })
+          }
+        />
+      </div>
+
+      {/* Availability table */}
+      <AvailabilityTable
         org={org}
         checkUid={checkUid}
         refetchInterval={refetchInterval}
-        initialPeriod={graphPeriod}
-        initialFullRange={graphFull}
-        onSettingsChange={(period, full) =>
+        onPeriodSelect={(period) => {
           navigate({
             to: ".",
             search: {
-              graphPeriod: period !== "day" ? period : undefined,
-              graphFull: full ? true : undefined,
+              graphPeriod: period === "day" ? undefined : period,
+              graphFull: undefined,
             },
             replace: true,
-          })
-        }
+          });
+          requestAnimationFrame(() => {
+            chartRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          });
+        }}
       />
-
-      {/* Availability table */}
-      <AvailabilityTable org={org} checkUid={checkUid} refetchInterval={refetchInterval} />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
