@@ -4,6 +4,7 @@ package checks
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -309,6 +310,28 @@ func (h *Handler) DeleteCheck(writer http.ResponseWriter, req bunrouter.Request)
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
 }
 
+// CloneCheck handles POST /api/v1/orgs/:org/checks/:checkUid/clone.
+// Empty body is valid; defaults produce a disabled clone with `(copy)` /
+// `-copy` suffixes on name/slug.
+func (h *Handler) CloneCheck(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	identifier := req.Param("checkUid")
+
+	var cloneReq CloneCheckRequest
+	if err := json.NewDecoder(req.Body).Decode(&cloneReq); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	check, err := h.svc.CloneCheck(req.Context(), orgSlug, identifier, &cloneReq)
+	if err != nil {
+		return h.handleCloneError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, check)
+}
+
 // ExportChecks handles exporting all checks for an organization as JSON.
 func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
@@ -501,6 +524,35 @@ func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	default:
+		return h.WriteInternalError(writer, err)
+	}
+}
+
+// handleCloneError handles errors from CloneCheck.
+func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrOrganizationNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+	case errors.Is(err, ErrCheckNotFound):
+		return h.WriteErrorErr(
+			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case errors.Is(err, ErrSlugConflict):
+		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
+			{
+				Name:    fieldSlug,
+				Message: "A check with this slug already exists in this organization",
+			},
+		})
+	case errors.Is(err, ErrInvalidSlugFormat):
+		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
+			{
+				Name: fieldSlug,
+				Message: "Slug must start with a lowercase letter, be 3-20 characters, " +
+					"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed.",
+			},
+		})
 	default:
 		return h.WriteInternalError(writer, err)
 	}

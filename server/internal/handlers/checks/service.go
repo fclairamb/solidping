@@ -1520,3 +1520,212 @@ func (s *Service) importSingleCheck(
 
 	return created, nil
 }
+
+// CloneCheckRequest carries the optional overrides for the clone endpoint.
+// All fields are optional — an empty body produces a clone with safe defaults
+// (`(copy)` suffix on name, `-copy` suffix on slug, enabled=false).
+type CloneCheckRequest struct {
+	Name          *string `json:"name,omitempty"`
+	Slug          *string `json:"slug,omitempty"`
+	Description   *string `json:"description,omitempty"`
+	CheckGroupUID *string `json:"checkGroupUid,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+}
+
+// CloneCheck creates a near-identical copy of an existing check, server-side.
+// Runtime state (status streak, results, incidents, scheduler row) is not
+// copied; status-page and maintenance-window references are not copied
+// either. Labels and check_connections (with their per-check setting
+// overrides) are re-linked to the new check.
+//
+//nolint:cyclop,funlen // Lots of fields to copy; flat is clearer than helpers here.
+func (s *Service) CloneCheck(
+	ctx context.Context, orgSlug, sourceIdentifier string, req *CloneCheckRequest,
+) (CheckResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return CheckResponse{}, ErrOrganizationNotFound
+	}
+
+	source, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, sourceIdentifier)
+	if err != nil || source == nil {
+		return CheckResponse{}, ErrCheckNotFound
+	}
+
+	finalSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
+	if err != nil {
+		return CheckResponse{}, err
+	}
+
+	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
+
+	if createErr := s.db.CreateCheck(ctx, clone); createErr != nil {
+		return CheckResponse{}, fmt.Errorf("create clone: %w", createErr)
+	}
+
+	if labelErr := s.cloneCopyLabels(ctx, source.UID, clone.UID); labelErr != nil {
+		slog.WarnContext(ctx, "failed to copy labels for clone",
+			"source_uid", source.UID, "clone_uid", clone.UID, "error", labelErr)
+	}
+
+	if connErr := s.cloneCopyConnections(ctx, source.UID, clone.UID, org.UID); connErr != nil {
+		slog.WarnContext(ctx, "failed to copy check connections for clone",
+			"source_uid", source.UID, "clone_uid", clone.UID, "error", connErr)
+	}
+
+	if eventErr := s.emitEvent(ctx, org.UID, models.EventTypeCheckCreated, clone); eventErr != nil {
+		slog.WarnContext(ctx, "failed to emit check.created event for clone", "error", eventErr)
+	}
+
+	response := s.convertCheckToResponse(clone)
+
+	if labels, lerr := s.db.GetLabelsForCheck(ctx, clone.UID); lerr == nil && len(labels) > 0 {
+		response.Labels = make(map[string]string, len(labels))
+		for _, lbl := range labels {
+			response.Labels[lbl.Key] = lbl.Value
+		}
+	}
+
+	return response, nil
+}
+
+func (s *Service) cloneResolveSlug(
+	ctx context.Context, orgUID string, source *models.Check, req *CloneCheckRequest,
+) (string, error) {
+	sourceSlug := ""
+	if source.Slug != nil {
+		sourceSlug = *source.Slug
+	}
+
+	var (
+		targetSlug       string
+		userProvidedSlug bool
+	)
+
+	if req != nil && req.Slug != nil && *req.Slug != "" {
+		if err := validateSlug(*req.Slug); err != nil {
+			return "", err
+		}
+
+		targetSlug = *req.Slug
+		userProvidedSlug = true
+	} else {
+		base := sourceSlug
+		if base == "" {
+			base = source.Type
+		}
+
+		targetSlug = base + "-copy"
+	}
+
+	return s.ensureUniqueSlug(ctx, orgUID, targetSlug, userProvidedSlug)
+}
+
+func (s *Service) cloneBuildCheck(
+	orgUID string, source *models.Check, req *CloneCheckRequest, finalSlug string,
+) *models.Check {
+	sourceName := ""
+	if source.Name != nil {
+		sourceName = *source.Name
+	}
+
+	var targetName string
+
+	switch {
+	case req != nil && req.Name != nil && *req.Name != "":
+		targetName = *req.Name
+	case sourceName != "":
+		targetName = sourceName + " (copy)"
+	default:
+		targetName = finalSlug
+	}
+
+	clone := models.NewCheck(orgUID, finalSlug, source.Type)
+	clone.Name = &targetName
+
+	if source.Description != nil {
+		copied := *source.Description
+		clone.Description = &copied
+	}
+
+	if req != nil && req.Description != nil {
+		copied := *req.Description
+		clone.Description = &copied
+	}
+
+	clone.Config = source.Config
+	clone.Regions = append([]string(nil), source.Regions...)
+	clone.Period = source.Period
+	clone.Internal = source.Internal
+	clone.IncidentThreshold = source.IncidentThreshold
+	clone.EscalationThreshold = source.EscalationThreshold
+	clone.RecoveryThreshold = source.RecoveryThreshold
+	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
+	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
+	clone.EscalationPolicyUID = source.EscalationPolicyUID
+
+	switch {
+	case req != nil && req.CheckGroupUID != nil && *req.CheckGroupUID == "":
+		clone.CheckGroupUID = nil
+	case req != nil && req.CheckGroupUID != nil:
+		value := *req.CheckGroupUID
+		clone.CheckGroupUID = &value
+	default:
+		clone.CheckGroupUID = source.CheckGroupUID
+	}
+
+	clone.Enabled = false
+	if req != nil && req.Enabled != nil {
+		clone.Enabled = *req.Enabled
+	}
+
+	return clone
+}
+
+func (s *Service) cloneCopyLabels(ctx context.Context, sourceUID, cloneUID string) error {
+	labels, err := s.db.GetLabelsForCheck(ctx, sourceUID)
+	if err != nil {
+		return fmt.Errorf("load source labels: %w", err)
+	}
+
+	if len(labels) == 0 {
+		return nil
+	}
+
+	uids := make([]string, 0, len(labels))
+	for _, lbl := range labels {
+		uids = append(uids, lbl.UID)
+	}
+
+	if err := s.db.SetCheckLabels(ctx, cloneUID, uids); err != nil {
+		return fmt.Errorf("set clone labels: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) cloneCopyConnections(ctx context.Context, sourceUID, cloneUID, orgUID string) error {
+	srcConns, err := s.db.ListCheckConnectionsWithSettings(ctx, sourceUID)
+	if err != nil {
+		return fmt.Errorf("list source check connections: %w", err)
+	}
+
+	for _, src := range srcConns {
+		newConn := models.NewCheckConnection(cloneUID, src.ConnectionUID, orgUID)
+
+		if src.Settings != nil {
+			copied := make(models.JSONMap, len(*src.Settings))
+			for key, value := range *src.Settings {
+				copied[key] = value
+			}
+
+			newConn.Settings = &copied
+		}
+
+		if err := s.db.CreateCheckConnection(ctx, newConn); err != nil {
+			return fmt.Errorf("create clone check connection: %w", err)
+		}
+	}
+
+	return nil
+}
