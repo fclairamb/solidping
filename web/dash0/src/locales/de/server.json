@@ -62,11 +62,16 @@
     "registrationEnabled": "Registrierung aktiviert",
     "registrationEnabledDescription": "Neuen Benutzern die Registrierung erlauben.",
     "providerDescription": "OAuth-Anmeldedaten für {{provider}} konfigurieren.",
+    "enabled": "Aktiviert",
+    "unsavedChanges": "Nicht gespeicherte Änderungen",
+    "helpText": "Änderungen an den Anmeldedaten werden nach einem Server-Neustart wirksam. Der Schalter \"Aktiviert\" wirkt nach dem Speichern sofort auf die Anmeldeseite.",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "appId": "App ID",
-      "signingSecret": "Signing Secret"
+      "signingSecret": "Signing Secret",
+      "botToken": "Bot-Token",
+      "redirectUrl": "Weiterleitungs-URL"
     }
   },
   "performance": {

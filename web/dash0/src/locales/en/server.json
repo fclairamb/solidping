@@ -62,11 +62,16 @@
     "registrationEnabled": "Registration Enabled",
     "registrationEnabledDescription": "Allow new users to register.",
     "providerDescription": "Configure {{provider}} OAuth credentials.",
+    "enabled": "Enabled",
+    "unsavedChanges": "Unsaved changes",
+    "helpText": "Credential changes take effect after a server restart. The Enabled toggle takes effect immediately for the login page once saved.",
     "fields": {
       "clientId": "Client ID",
       "clientSecret": "Client Secret",
       "appId": "App ID",
-      "signingSecret": "Signing Secret"
+      "signingSecret": "Signing Secret",
+      "botToken": "Bot Token",
+      "redirectUrl": "Redirect URL"
     }
   },
   "performance": {
