@@ -2,9 +2,7 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/oauthstate"
 )
 
 // Slack OAuth specific errors.
@@ -29,11 +28,16 @@ var (
 )
 
 const (
-	oauthStatePrefix = "oauth_state:slack:"
-	oauthStateTTL    = 10 * time.Minute
-	slackOAuthURL    = "https://slack.com/api/oauth.v2.access"
-	slackAPIBaseURL  = "https://slack.com/api"
-	defaultTimeout   = 30 * time.Second
+	// slackSignInStateKind is the oauthstate kind for the Sign-in-with-Slack
+	// flow (separate from the bot-install kind so a state minted for one
+	// flow cannot be redeemed by the other's callback).
+	slackSignInStateKind = "slack-signin"
+	oauthStateTTL        = 10 * time.Minute
+	slackOAuthURL        = "https://slack.com/api/oauth.v2.access"
+	slackAPIBaseURL      = "https://slack.com/api"
+	defaultTimeout       = 30 * time.Second
+
+	payloadKeyRedirectURI = "redirectUri"
 )
 
 // Slack API types (inlined to avoid import cycle).
@@ -107,69 +111,42 @@ func NewSlackOAuthService(dbService db.Service, cfg *config.Config, authService 
 	}
 }
 
-// GenerateOAuthState creates a new OAuth state and stores it in the database.
+// GenerateOAuthState mints an OAuth state for the Sign-in-with-Slack flow.
+// The redirectURI is stashed in the entry payload so the callback can route
+// the user back where they came from.
 func (s *SlackOAuthService) GenerateOAuthState(ctx context.Context, redirectURI string) (string, error) {
-	// Generate nonce
-	nonceBytes := make([]byte, 32)
-	if _, err := rand.Read(nonceBytes); err != nil {
-		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	payload := map[string]any{}
+	if redirectURI != "" {
+		payload[payloadKeyRedirectURI] = redirectURI
 	}
 
-	nonce := base64.URLEncoding.EncodeToString(nonceBytes)
-
-	// Create state object
-	state := OAuthState{
-		Nonce:       nonce,
-		RedirectURI: redirectURI,
-		CreatedAt:   time.Now().Unix(),
-	}
-
-	// Encode state as JSON
-	stateJSON, err := json.Marshal(state)
+	nonce, err := oauthstate.Generate(ctx, s.db, slackSignInStateKind, payload, oauthStateTTL)
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal state: %w", err)
+		return "", fmt.Errorf("failed to generate oauth state: %w", err)
 	}
 
-	// Store in state_entries table with TTL
-	stateValue := &models.JSONMap{keyState: string(stateJSON)}
-	ttl := oauthStateTTL
-
-	if err := s.db.SetStateEntry(ctx, nil, oauthStatePrefix+nonce, stateValue, &ttl); err != nil {
-		return "", fmt.Errorf("failed to store state: %w", err)
-	}
-
-	// Return nonce as state parameter
 	return nonce, nil
 }
 
-// ValidateOAuthState validates and consumes an OAuth state.
+// ValidateOAuthState validates and consumes a Sign-in-with-Slack OAuth state.
 func (s *SlackOAuthService) ValidateOAuthState(ctx context.Context, stateParam string) (*OAuthState, error) {
-	// Retrieve state from store
-	entry, err := s.db.GetStateEntry(ctx, nil, oauthStatePrefix+stateParam)
-	if err != nil || entry == nil {
+	entry, err := oauthstate.Validate(ctx, s.db, slackSignInStateKind, stateParam)
+	if err != nil {
 		return nil, ErrInvalidOAuthState
 	}
 
-	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, oauthStatePrefix+stateParam)
-
-	// Parse state
-	stateJSON, ok := (*entry.Value)[keyState].(string)
-	if !ok {
-		return nil, ErrInvalidOAuthState
+	state := &OAuthState{
+		Nonce:     entry.Nonce,
+		CreatedAt: entry.CreatedAt,
 	}
 
-	var state OAuthState
-	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
-		return nil, ErrInvalidOAuthState
+	if entry.Payload != nil {
+		if rawURI, ok := entry.Payload[payloadKeyRedirectURI].(string); ok {
+			state.RedirectURI = rawURI
+		}
 	}
 
-	// Check expiry
-	if time.Now().Unix()-state.CreatedAt > int64(oauthStateTTL.Seconds()) {
-		return nil, ErrInvalidOAuthState
-	}
-
-	return &state, nil
+	return state, nil
 }
 
 // exchangeCode exchanges an OAuth code for an access token.
