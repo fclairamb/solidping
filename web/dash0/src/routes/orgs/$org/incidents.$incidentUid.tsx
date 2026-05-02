@@ -123,7 +123,7 @@ function IncidentDetailPage() {
 
   const handleAcknowledge = async () => {
     try {
-      await acknowledgeIncident.mutateAsync(incidentUid);
+      await acknowledgeIncident.mutateAsync({ uid: incidentUid });
       toast.success(t("actions.acknowledged"));
       refetch();
     } catch {
@@ -133,7 +133,7 @@ function IncidentDetailPage() {
 
   const handleResolve = async () => {
     try {
-      await resolveIncident.mutateAsync(incidentUid);
+      await resolveIncident.mutateAsync({ uid: incidentUid });
       toast.success(t("actions.resolved"));
       refetch();
     } catch {

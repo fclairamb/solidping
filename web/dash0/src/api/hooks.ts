@@ -572,37 +572,64 @@ export function useIncident(org: string, uid: string) {
   });
 }
 
-export function useAcknowledgeIncident(org: string) {
+interface IncidentMutationVars {
+  uid: string;
+  body?: Record<string, unknown>;
+}
+
+function useIncidentAction<TVars extends IncidentMutationVars>(
+  org: string,
+  path: (uid: string) => string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (uid: string) =>
-      apiFetch<IncidentDetail>(
-        `/api/v1/orgs/${org}/incidents/${uid}/acknowledge`,
-        {
-          method: "POST",
-        }
-      ),
-    onSuccess: (_, uid) => {
+    mutationFn: (vars: TVars) =>
+      apiFetch<IncidentDetail>(path(vars.uid), {
+        method: "POST",
+        body: vars.body ? JSON.stringify(vars.body) : undefined,
+        headers: vars.body ? { "Content-Type": "application/json" } : undefined,
+      }),
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["incidents", org] });
-      queryClient.invalidateQueries({ queryKey: ["incident", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["incident", org, vars.uid] });
     },
   });
 }
 
-export function useResolveIncident(org: string) {
-  const queryClient = useQueryClient();
+export function useAcknowledgeIncident(org: string) {
+  return useIncidentAction<{ uid: string; body?: { note?: string } }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/ack`,
+  );
+}
 
-  return useMutation({
-    mutationFn: (uid: string) =>
-      apiFetch<IncidentDetail>(`/api/v1/orgs/${org}/incidents/${uid}/resolve`, {
-        method: "POST",
-      }),
-    onSuccess: (_, uid) => {
-      queryClient.invalidateQueries({ queryKey: ["incidents", org] });
-      queryClient.invalidateQueries({ queryKey: ["incident", org, uid] });
-    },
-  });
+export function useUnacknowledgeIncident(org: string) {
+  return useIncidentAction<{ uid: string }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/unack`,
+  );
+}
+
+export function useSnoozeIncident(org: string) {
+  return useIncidentAction<{
+    uid: string;
+    body: { duration?: string; until?: string; reason?: string };
+  }>(org, (uid) => `/api/v1/orgs/${org}/incidents/${uid}/snooze`);
+}
+
+export function useUnsnoozeIncident(org: string) {
+  return useIncidentAction<{ uid: string }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/unsnooze`,
+  );
+}
+
+export function useResolveIncident(org: string) {
+  return useIncidentAction<{ uid: string; body?: { note?: string } }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/resolve`,
+  );
 }
 
 // Events hooks
