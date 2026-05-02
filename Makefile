@@ -122,14 +122,14 @@ dev: kill ## Run backend, dash0 and status0 in development mode
 	@mkdir -p $(LOG_DIR)
 	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
 	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" air 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
 	@mkdir -p $(LOG_DIR)
 	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
 	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" air 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 clean: ## Remove built binaries and dash artifacts
 	@echo "Cleaning build artifacts..."
