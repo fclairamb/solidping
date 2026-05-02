@@ -2,6 +2,7 @@
 package incidents
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/url"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // Handler handles HTTP requests for incidents.
@@ -159,7 +161,140 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrIncidentNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
+	case errors.Is(err, ErrSnoozeUntilInPast),
+		errors.Is(err, ErrSnoozeTooLong),
+		errors.Is(err, ErrSnoozeMissingDur),
+		errors.Is(err, ErrSnoozeInvalidDur):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
 	}
+}
+
+func (h *Handler) actorUID(req bunrouter.Request) string {
+	if user, ok := middleware.GetUserFromContext(req.Context()); ok && user != nil {
+		return user.UID
+	}
+
+	return ""
+}
+
+// AcknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/ack.
+func (h *Handler) AcknowledgeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	var body struct {
+		Note string `json:"note"`
+	}
+
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&body) // body is optional
+	}
+
+	incident, err := h.svc.AcknowledgeIncident(req.Context(), orgSlug, &AcknowledgeIncidentRequest{
+		IncidentUID:    incidentUID,
+		AcknowledgedBy: h.actorUID(req),
+		Note:           body.Note,
+		Via:            viaWeb,
+	})
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, incident)
+}
+
+// UnacknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unack.
+func (h *Handler) UnacknowledgeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	incident, err := h.svc.UnacknowledgeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), viaWeb)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, incident)
+}
+
+// SnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/snooze.
+func (h *Handler) SnoozeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	var body struct {
+		Until    *time.Time `json:"until"`
+		Duration string     `json:"duration"`
+		Reason   string     `json:"reason"`
+	}
+
+	if req.Body != nil {
+		if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
+		}
+	}
+
+	snoozeReq := &SnoozeIncidentRequest{
+		IncidentUID: incidentUID,
+		ActorUID:    h.actorUID(req),
+		Until:       body.Until,
+		Reason:      body.Reason,
+		Via:         viaWeb,
+	}
+
+	if body.Duration != "" {
+		dur, err := time.ParseDuration(body.Duration)
+		if err != nil {
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, ErrSnoozeInvalidDur.Error())
+		}
+
+		snoozeReq.Duration = &dur
+	}
+
+	incident, err := h.svc.SnoozeIncident(req.Context(), orgSlug, snoozeReq)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, incident)
+}
+
+// UnsnoozeIncident handles POST /api/v1/orgs/:org/incidents/:uid/unsnooze.
+func (h *Handler) UnsnoozeIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	incident, err := h.svc.UnsnoozeIncident(req.Context(), orgSlug, incidentUID, h.actorUID(req), "manual")
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, incident)
+}
+
+// ResolveIncident handles POST /api/v1/orgs/:org/incidents/:uid/resolve.
+func (h *Handler) ResolveIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+
+	var body struct {
+		Note string `json:"note"`
+	}
+
+	if req.Body != nil {
+		_ = json.NewDecoder(req.Body).Decode(&body)
+	}
+
+	incident, err := h.svc.ResolveIncident(req.Context(), orgSlug, &ResolveIncidentRequest{
+		IncidentUID: incidentUID,
+		ActorUID:    h.actorUID(req),
+		Note:        body.Note,
+		Via:         viaWeb,
+	})
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, incident)
 }
