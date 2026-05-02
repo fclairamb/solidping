@@ -203,8 +203,10 @@ func (r *AggregationJobRun) findAggregatableResults(
 	jctx *jobdef.JobContext,
 	orgUID, sourcePeriod string,
 ) (string, *string, time.Time, bool, error) {
+	rawHours, hourDays, dayMonths := retentionFromConfig(jctx)
+
 	// 1. Calculate boundary in Go based on source period type
-	boundary, err := calculateAggregationBoundary(sourcePeriod)
+	boundary, err := calculateAggregationBoundary(sourcePeriod, rawHours, hourDays, dayMonths)
 	if err != nil {
 		return "", nil, time.Time{}, false, err
 	}
@@ -234,20 +236,55 @@ func (r *AggregationJobRun) findAggregatableResults(
 	return firstResult.CheckUID, firstResult.Region, firstResult.PeriodStart, true, nil
 }
 
-// calculateAggregationBoundary returns the timestamp before which data is ready to aggregate.
-func calculateAggregationBoundary(sourcePeriod string) (time.Time, error) {
+// retentionFromConfig pulls the per-tier retention values from JobContext.AppConfig,
+// falling back to the historical "1/1/1" behavior when the config is absent (e.g.
+// in tests that don't wire AppConfig).
+func retentionFromConfig(jctx *jobdef.JobContext) (int, int, int) {
+	rawHours := 1
+	hourDays := 1
+	dayMonths := 1
+
+	if jctx == nil || jctx.AppConfig == nil {
+		return rawHours, hourDays, dayMonths
+	}
+
+	if v := jctx.AppConfig.Aggregation.RetentionRaw; v >= 1 {
+		rawHours = v
+	}
+
+	if v := jctx.AppConfig.Aggregation.RetentionHour; v >= 1 {
+		hourDays = v
+	}
+
+	if v := jctx.AppConfig.Aggregation.RetentionDay; v >= 1 {
+		dayMonths = v
+	}
+
+	return rawHours, hourDays, dayMonths
+}
+
+// calculateAggregationBoundary returns the timestamp before which data of
+// sourcePeriod is ready to be rolled up. With retention=N, the current
+// (incomplete) period plus N-1 prior completed periods are kept; everything
+// older is rolled up.
+func calculateAggregationBoundary(
+	sourcePeriod string,
+	retentionRawHours, retentionHourDays, retentionDayMonths int,
+) (time.Time, error) {
 	now := time.Now().UTC()
 
 	switch sourcePeriod {
 	case periodRaw:
-		// Raw data older than current hour is ready to aggregate into hourly
-		return now.Truncate(time.Hour), nil
+		return now.Truncate(time.Hour).
+			Add(-time.Duration(retentionRawHours-1) * time.Hour), nil
 	case periodHour:
-		// Hourly data older than current day is ready to aggregate into daily
-		return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC), nil
+		startOfToday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+
+		return startOfToday.AddDate(0, 0, -(retentionHourDays - 1)), nil
 	case periodDay:
-		// Daily data older than current month is ready to aggregate into monthly
-		return time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC), nil
+		startOfMonth := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+
+		return startOfMonth.AddDate(0, -(retentionDayMonths - 1), 0), nil
 	default:
 		return time.Time{}, fmt.Errorf("%w: %s", ErrInvalidSourcePeriod, sourcePeriod)
 	}

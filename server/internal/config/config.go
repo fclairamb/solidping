@@ -47,6 +47,8 @@ var (
 	ErrInvalidNodeRole = errors.New("node role must be 'all', 'api', 'jobs', or 'checks'")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
+	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
+	ErrInvalidAggregationRetention = errors.New("aggregation retention values must be >= 1")
 )
 
 // ValidNodeRoles returns all valid role values.
@@ -88,25 +90,26 @@ type SentryConfig struct {
 
 // Config represents the application configuration structure.
 type Config struct {
-	Server     ServerConfig         `koanf:"server"`
-	Database   DatabaseConfig       `koanf:"db"`
-	Auth       AuthConfig           `koanf:"auth"`
-	Email      EmailConfig          `koanf:"email"`
-	Slack      SlackConfig          `koanf:"slack"`
-	Google     GoogleOAuthConfig    `koanf:"google"`
-	GitHub     GitHubOAuthConfig    `koanf:"github"`
-	Microsoft  MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab     GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord    DiscordOAuthConfig   `koanf:"discord"`
-	Node       NodeConfig           `koanf:"node"`
-	Profiler   ProfilerConfig       `koanf:"profiler"`
-	OTel       OTelConfig           `koanf:"otel"`
-	Sentry     SentryConfig         `koanf:"sentry"`
-	Prometheus PrometheusConfig     `koanf:"prometheus"`
-	Checkers   CheckersConfig       `koanf:"checkers"`
-	RunMode    string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent  string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel   slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	Server      ServerConfig         `koanf:"server"`
+	Database    DatabaseConfig       `koanf:"db"`
+	Auth        AuthConfig           `koanf:"auth"`
+	Email       EmailConfig          `koanf:"email"`
+	Slack       SlackConfig          `koanf:"slack"`
+	Google      GoogleOAuthConfig    `koanf:"google"`
+	GitHub      GitHubOAuthConfig    `koanf:"github"`
+	Microsoft   MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab      GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord     DiscordOAuthConfig   `koanf:"discord"`
+	Node        NodeConfig           `koanf:"node"`
+	Profiler    ProfilerConfig       `koanf:"profiler"`
+	OTel        OTelConfig           `koanf:"otel"`
+	Sentry      SentryConfig         `koanf:"sentry"`
+	Prometheus  PrometheusConfig     `koanf:"prometheus"`
+	Checkers    CheckersConfig       `koanf:"checkers"`
+	Aggregation AggregationConfig    `koanf:"aggregation"`
+	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
 
 // NodeConfig contains node role configuration.
@@ -148,6 +151,15 @@ type EmailConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecureskipverify"` // Skip TLS certificate verification
 	AuthType           string `koanf:"authtype"`           // SMTP auth type: plain, login, cram-md5 (default: login)
 	Protocol           string `koanf:"protocol"`           // SMTP encryption: none, starttls, ssl (default: starttls)
+}
+
+// AggregationConfig controls how aggressively raw/hour/day result data is compacted.
+// Each value is the number of completed periods of that tier to retain before
+// rolling up to the next tier. Minimum 1 (the previous behavior).
+type AggregationConfig struct {
+	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
+	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 30)
+	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 12)
 }
 
 // AuthConfig contains authentication configuration.
@@ -241,6 +253,11 @@ func Load() (*Config, error) {
 			Port:     587,
 			Protocol: "starttls",
 			Enabled:  false,
+		},
+		Aggregation: AggregationConfig{
+			RetentionRaw:  24,
+			RetentionHour: 30,
+			RetentionDay:  12,
 		},
 		Google:    GoogleOAuthConfig{Enabled: true},
 		GitHub:    GitHubOAuthConfig{Enabled: true},
@@ -378,6 +395,17 @@ func (c *Config) Validate() error {
 	// Validate checks role requires region
 	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
 		return ErrRegionRequiredForChecks
+	}
+
+	// Validate aggregation retention values are positive
+	if c.Aggregation.RetentionRaw < 1 ||
+		c.Aggregation.RetentionHour < 1 ||
+		c.Aggregation.RetentionDay < 1 {
+		return fmt.Errorf("%w: raw=%d hour=%d day=%d",
+			ErrInvalidAggregationRetention,
+			c.Aggregation.RetentionRaw,
+			c.Aggregation.RetentionHour,
+			c.Aggregation.RetentionDay)
 	}
 
 	return nil

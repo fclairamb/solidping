@@ -40,28 +40,31 @@ const (
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	KeyEmailProtocol            ParameterKey = "email.protocol"
 
-	KeyGoogleClientID        ParameterKey = "auth.google.client_id"
-	KeyGoogleClientSecret    ParameterKey = "auth.google.client_secret"
-	KeyGitHubClientID        ParameterKey = "auth.github.client_id"
-	KeyGitHubClientSecret    ParameterKey = "auth.github.client_secret"
-	KeyGitLabClientID        ParameterKey = "auth.gitlab.client_id"
-	KeyGitLabClientSecret    ParameterKey = "auth.gitlab.client_secret"
-	KeyMicrosoftClientID     ParameterKey = "auth.microsoft.client_id"
-	KeyMicrosoftClientSecret ParameterKey = "auth.microsoft.client_secret"
-	KeySlackAppID            ParameterKey = "auth.slack.app_id"
-	KeySlackClientID         ParameterKey = "auth.slack.client_id"
-	KeySlackClientSecret     ParameterKey = "auth.slack.client_secret"
-	KeySlackSigningSecret    ParameterKey = "auth.slack.signing_secret"
-	KeyDiscordClientID       ParameterKey = "auth.discord.client_id"
-	KeyDiscordClientSecret   ParameterKey = "auth.discord.client_secret"
-	KeyDiscordBotToken       ParameterKey = "auth.discord.bot_token"
-	KeyDiscordRedirectURL    ParameterKey = "auth.discord.redirect_url"
-	KeyGoogleEnabled         ParameterKey = "auth.google.enabled"
-	KeyGitHubEnabled         ParameterKey = "auth.github.enabled"
-	KeyGitLabEnabled         ParameterKey = "auth.gitlab.enabled"
-	KeyMicrosoftEnabled      ParameterKey = "auth.microsoft.enabled"
-	KeySlackEnabled          ParameterKey = "auth.slack.enabled"
-	KeyDiscordEnabled        ParameterKey = "auth.discord.enabled"
+	KeyGoogleClientID           ParameterKey = "auth.google.client_id"
+	KeyGoogleClientSecret       ParameterKey = "auth.google.client_secret"
+	KeyGitHubClientID           ParameterKey = "auth.github.client_id"
+	KeyGitHubClientSecret       ParameterKey = "auth.github.client_secret"
+	KeyGitLabClientID           ParameterKey = "auth.gitlab.client_id"
+	KeyGitLabClientSecret       ParameterKey = "auth.gitlab.client_secret"
+	KeyMicrosoftClientID        ParameterKey = "auth.microsoft.client_id"
+	KeyMicrosoftClientSecret    ParameterKey = "auth.microsoft.client_secret"
+	KeySlackAppID               ParameterKey = "auth.slack.app_id"
+	KeySlackClientID            ParameterKey = "auth.slack.client_id"
+	KeySlackClientSecret        ParameterKey = "auth.slack.client_secret"
+	KeySlackSigningSecret       ParameterKey = "auth.slack.signing_secret"
+	KeyDiscordClientID          ParameterKey = "auth.discord.client_id"
+	KeyDiscordClientSecret      ParameterKey = "auth.discord.client_secret"
+	KeyDiscordBotToken          ParameterKey = "auth.discord.bot_token"
+	KeyDiscordRedirectURL       ParameterKey = "auth.discord.redirect_url"
+	KeyGoogleEnabled            ParameterKey = "auth.google.enabled"
+	KeyGitHubEnabled            ParameterKey = "auth.github.enabled"
+	KeyGitLabEnabled            ParameterKey = "auth.gitlab.enabled"
+	KeyMicrosoftEnabled         ParameterKey = "auth.microsoft.enabled"
+	KeySlackEnabled             ParameterKey = "auth.slack.enabled"
+	KeyDiscordEnabled           ParameterKey = "auth.discord.enabled"
+	KeyAggregationRetentionRaw  ParameterKey = "aggregation.retention_raw"
+	KeyAggregationRetentionHour ParameterKey = "aggregation.retention_hour"
+	KeyAggregationRetentionDay  ParameterKey = "aggregation.retention_day"
 )
 
 // ParameterDefinition defines a system parameter with its env var mapping.
@@ -465,7 +468,55 @@ func getKnownParameters() []ParameterDefinition {
 				cfg.Discord.Enabled = parseBool(value, cfg.Discord.Enabled)
 			},
 		},
+		{
+			Key:    KeyAggregationRetentionRaw,
+			EnvVar: "SP_AGGREGATION_RETENTION_RAW",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseInt(value); ok {
+					cfg.Aggregation.RetentionRaw = v
+				}
+			},
+		},
+		{
+			Key:    KeyAggregationRetentionHour,
+			EnvVar: "SP_AGGREGATION_RETENTION_HOUR",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseInt(value); ok {
+					cfg.Aggregation.RetentionHour = v
+				}
+			},
+		},
+		{
+			Key:    KeyAggregationRetentionDay,
+			EnvVar: "SP_AGGREGATION_RETENTION_DAY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseInt(value); ok {
+					cfg.Aggregation.RetentionDay = v
+				}
+			},
+		},
 	}
+}
+
+// parseInt coerces a config value to int. Accepts native int / float64 / numeric
+// string. Returns ok=false on any other input so the caller can keep its default.
+func parseInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case int:
+		return typed, true
+	case float64:
+		return int(typed), true
+	case string:
+		var n int
+		if _, err := fmt.Sscanf(strings.TrimSpace(typed), "%d", &n); err == nil {
+			return n, true
+		}
+	}
+
+	return 0, false
 }
 
 const (
