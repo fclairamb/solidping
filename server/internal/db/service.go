@@ -110,6 +110,12 @@ type Service interface {
 	SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error
 	GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error)
 	GetLabelsForChecks(ctx context.Context, checkUIDs []string) (map[string][]*models.Label, error)
+	ListDistinctLabelKeys(
+		ctx context.Context, orgUID, query string, limit int,
+	) ([]models.LabelSuggestion, error)
+	ListDistinctLabelValues(
+		ctx context.Context, orgUID, key, query string, limit int,
+	) ([]models.LabelSuggestion, error)
 
 	// Result operations
 	CreateResult(ctx context.Context, result *models.Result) error

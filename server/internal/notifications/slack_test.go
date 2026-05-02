@@ -686,6 +686,18 @@ func (m *mockDBService) GetLabelsForChecks(_ context.Context, _ []string) (map[s
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListDistinctLabelKeys(
+	_ context.Context, _, _ string, _ int,
+) ([]models.LabelSuggestion, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListDistinctLabelValues(
+	_ context.Context, _, _, _ string, _ int,
+) ([]models.LabelSuggestion, error) {
+	return nil, errMockNotImplemented
+}
+
 func (m *mockDBService) GetLastResultForChecks(_ context.Context, _ []string) (map[string]*models.Result, error) {
 	panic("not implemented")
 }

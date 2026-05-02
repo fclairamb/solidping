@@ -1330,6 +1330,84 @@ func (s *Service) GetLabelsForChecks(ctx context.Context, checkUIDs []string) (m
 	return labelMap, nil
 }
 
+// ListDistinctLabelKeys returns distinct label keys used by checks in the org,
+// sorted by usage count DESC then key ASC. SQLite uses LOWER(...) + LIKE since
+// it has no ILIKE.
+func (s *Service) ListDistinctLabelKeys(
+	ctx context.Context, orgUID, query string, limit int,
+) ([]models.LabelSuggestion, error) {
+	type row struct {
+		Value string `bun:"value"`
+		Count int    `bun:"count"`
+	}
+
+	stmt := s.db.NewSelect().
+		TableExpr("labels AS label").
+		ColumnExpr("label.key AS value").
+		ColumnExpr("COUNT(DISTINCT cl.check_uid) AS count").
+		Join("JOIN check_labels cl ON cl.label_uid = label.uid").
+		Where("label.organization_uid = ?", orgUID).
+		Where("label.deleted_at IS NULL").
+		GroupExpr("label.key").
+		OrderExpr("count DESC, label.key ASC").
+		Limit(limit)
+
+	if query != "" {
+		stmt = stmt.Where("LOWER(label.key) LIKE LOWER(?)", query+"%")
+	}
+
+	var rows []row
+	if err := stmt.Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list distinct label keys: %w", err)
+	}
+
+	out := make([]models.LabelSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = models.LabelSuggestion{Value: r.Value, Count: r.Count}
+	}
+
+	return out, nil
+}
+
+// ListDistinctLabelValues returns distinct values for a given label key in
+// the org, sorted by usage count DESC then value ASC. SQLite variant.
+func (s *Service) ListDistinctLabelValues(
+	ctx context.Context, orgUID, key, query string, limit int,
+) ([]models.LabelSuggestion, error) {
+	type row struct {
+		Value string `bun:"value"`
+		Count int    `bun:"count"`
+	}
+
+	stmt := s.db.NewSelect().
+		TableExpr("labels AS label").
+		ColumnExpr("label.value AS value").
+		ColumnExpr("COUNT(DISTINCT cl.check_uid) AS count").
+		Join("JOIN check_labels cl ON cl.label_uid = label.uid").
+		Where("label.organization_uid = ?", orgUID).
+		Where("label.key = ?", key).
+		Where("label.deleted_at IS NULL").
+		GroupExpr("label.value").
+		OrderExpr("count DESC, label.value ASC").
+		Limit(limit)
+
+	if query != "" {
+		stmt = stmt.Where("LOWER(label.value) LIKE LOWER(?)", query+"%")
+	}
+
+	var rows []row
+	if err := stmt.Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list distinct label values: %w", err)
+	}
+
+	out := make([]models.LabelSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = models.LabelSuggestion{Value: r.Value, Count: r.Count}
+	}
+
+	return out, nil
+}
+
 // Result operations
 
 func (s *Service) CreateResult(ctx context.Context, result *models.Result) error {

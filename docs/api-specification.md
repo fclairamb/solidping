@@ -189,6 +189,26 @@ Query parameters:
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
 
+### GET /api/v1/orgs/:org/labels
+Autocomplete suggestions for label keys (or values for a given key) used by checks in the org. Returns rows sorted by usage count DESC, then `value` ASC for stable ties. Auth: required.
+
+Query parameters:
+- `key` - if omitted, lists distinct keys; if provided, lists distinct values for that key
+- `q` - case-insensitive prefix filter on the returned `value`
+- `limit` - page size (default 50, silently clamped to max 200)
+
+Response:
+```json
+{
+  "data": [
+    {"value": "environment", "count": 12},
+    {"value": "team", "count": 8}
+  ]
+}
+```
+
+`count` is the number of distinct checks carrying that key (or key/value pair). Empty result returns `{"data": []}` (200), not 404.
+
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
 

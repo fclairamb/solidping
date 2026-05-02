@@ -144,6 +144,14 @@ func NewLabel(orgUID, key, value string) *Label {
 	}
 }
 
+// LabelSuggestion is one row of an autocomplete query: either a label key
+// (when listing distinct keys) or a label value (when listing distinct values
+// for a given key), together with the number of distinct checks carrying it.
+type LabelSuggestion struct {
+	Value string
+	Count int
+}
+
 // CheckLabel represents the many-to-many relationship between checks and labels.
 type CheckLabel struct {
 	UID       string    `bun:"uid,pk,type:varchar(36)"`
