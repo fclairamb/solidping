@@ -138,6 +138,18 @@ type EmailInboxTestRequest struct {
 	AddressDomain string `json:"addressDomain,omitempty"`
 }
 
+// EmailInboxPublic handles GET /api/v1/system/parameters/email_inbox/public.
+// Returns just the addressDomain so any authenticated user can render the
+// per-check email address. Empty when the inbox isn't configured.
+func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req bunrouter.Request) error {
+	domain, err := h.svc.EmailInboxPublicAddressDomain(req.Context())
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]string{"addressDomain": domain})
+}
+
 // EmailInboxStatus handles GET /api/v1/system/email-inbox/status.
 func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
 	status, err := h.svc.EmailInboxStatus()

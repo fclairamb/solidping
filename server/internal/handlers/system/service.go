@@ -320,6 +320,23 @@ func (s *Service) EmailInboxSync(ctx context.Context) error {
 	return s.inbox.TriggerSync(ctx)
 }
 
+// EmailInboxPublicAddressDomain returns the address domain configured on the
+// shared inbox so authenticated users can render the per-check email
+// address. Returns an empty string (not an error) when the inbox isn't
+// configured — UIs use that to show the "configure first" placeholder.
+func (s *Service) EmailInboxPublicAddressDomain(ctx context.Context) (string, error) {
+	cfg, err := s.loadEmailInboxConfig(ctx)
+	if err != nil {
+		if errors.Is(err, ErrEmailInboxNotConfigured) {
+			return "", nil
+		}
+
+		return "", err
+	}
+
+	return cfg.AddressDomain, nil
+}
+
 // loadEmailInboxConfig reads the stored configuration. Returns
 // ErrEmailInboxNotConfigured if the parameter does not exist.
 func (s *Service) loadEmailInboxConfig(ctx context.Context) (*jmap.Config, error) {
