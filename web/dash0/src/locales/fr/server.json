@@ -1,29 +1,136 @@
 {
   "title": "Paramètres du serveur",
   "subtitle": "Gérer les paramètres de configuration du serveur",
+  "saved": "Paramètres enregistrés.",
+  "unexpectedError": "Une erreur inattendue s'est produite",
+  "tabs": {
+    "web": "Web",
+    "mail": "E-mail",
+    "emailInbox": "Boîte de réception",
+    "authentication": "Authentification",
+    "performance": "Performances"
+  },
   "web": {
-    "title": "Paramètres web",
+    "title": "Web",
+    "description": "Configurez l'URL de base et les identifiants d'authentification du serveur web.",
     "baseUrl": "URL de base",
+    "baseUrlPlaceholder": "https://solidping.exemple.com",
+    "baseUrlHelp": "URL publique à laquelle SolidPing est accessible.",
+    "jwtSecret": "Secret JWT",
+    "jwtSecretPlaceholder": "Saisir le nouveau secret JWT",
+    "jwtSecretHelp": "Utilisé pour signer les jetons d'authentification. Le modifier invalidera toutes les sessions existantes.",
     "appName": "Nom de l'application"
   },
   "mail": {
-    "title": "Paramètres de messagerie",
+    "title": "E-mail",
+    "description": "Configurez les paramètres SMTP pour les notifications et invitations.",
+    "enable": "Activer l'envoi d'e-mails",
     "host": "Hôte SMTP",
+    "hostPlaceholder": "smtp.exemple.com",
     "port": "Port SMTP",
-    "from": "Adresse d'expédition",
     "username": "Nom d'utilisateur",
+    "usernamePlaceholder": "utilisateur@exemple.com",
     "password": "Mot de passe",
-    "protocol": "Protocole",
-    "enabled": "Messagerie activée"
+    "passwordPlaceholder": "Mot de passe SMTP",
+    "authType": "Type d'authentification",
+    "authOptions": {
+      "plain": "Plain",
+      "login": "Login",
+      "cramMd5": "CRAM-MD5"
+    },
+    "encryption": "Chiffrement",
+    "encryptionOptions": {
+      "none": "Aucun",
+      "starttls": "STARTTLS",
+      "ssl": "SSL/TLS"
+    },
+    "from": "Adresse d'expédition",
+    "fromPlaceholder": "noreply@exemple.com",
+    "fromName": "Nom d'expéditeur",
+    "fromNamePlaceholder": "SolidPing",
+    "test": {
+      "title": "E-mail de test",
+      "description": "Envoyez un e-mail de test pour vérifier votre configuration SMTP.",
+      "recipient": "E-mail du destinataire",
+      "recipientPlaceholder": "destinataire@exemple.com",
+      "send": "Envoyer un e-mail de test",
+      "sending": "Envoi..."
+    }
   },
   "auth": {
     "title": "Paramètres d'authentification",
     "registrationEnabled": "Inscription activée",
-    "registrationEnabledDescription": "Autoriser les nouveaux utilisateurs à s'inscrire."
+    "registrationEnabledDescription": "Autoriser les nouveaux utilisateurs à s'inscrire.",
+    "providerDescription": "Configurez les identifiants OAuth de {{provider}}.",
+    "enabled": "Activé",
+    "unsavedChanges": "Modifications non enregistrées",
+    "helpText": "Les modifications d'identifiants prennent effet après le redémarrage du serveur. L'interrupteur Activé prend effet immédiatement pour la page de connexion une fois enregistré.",
+    "fields": {
+      "clientId": "Client ID",
+      "clientSecret": "Client Secret",
+      "appId": "App ID",
+      "signingSecret": "Signing Secret",
+      "botToken": "Jeton du bot",
+      "redirectUrl": "URL de redirection"
+    }
   },
   "performance": {
-    "title": "Paramètres de performance",
-    "subtitle": "Configurer les paramètres liés aux performances."
+    "title": "Performances",
+    "subtitle": "Configurer les paramètres liés aux performances.",
+    "description": "Configurez le nombre de workers concurrents pour les vérifications et les tâches. Les modifications prennent effet après redémarrage du serveur.",
+    "checkRunners": "Workers de vérification",
+    "checkRunnersHelp": "Nombre de goroutines concurrentes pour exécuter les vérifications.",
+    "jobRunners": "Workers de tâches",
+    "jobRunnersHelp": "Nombre de goroutines concurrentes pour traiter les tâches en arrière-plan."
   },
-  "saved": "Paramètres enregistrés."
+  "emailInbox": {
+    "title": "Boîte de réception e-mail",
+    "description": "Configurez la boîte JMAP partagée utilisée par les vérifications passives par e-mail. Fastmail, Stalwart et autres fournisseurs compatibles JMAP sont pris en charge.",
+    "enable": "Activer la boîte de réception e-mail",
+    "sessionUrl": "URL de session JMAP",
+    "sessionUrlPlaceholder": "https://jmap.exemple.com/.well-known/jmap",
+    "addressDomain": "Domaine d'adresse",
+    "addressDomainPlaceholder": "ingest.solidping.exemple",
+    "username": "Nom d'utilisateur",
+    "usernamePlaceholder": "ingest@exemple.com",
+    "password": "Mot de passe",
+    "passwordPlaceholder": "Mot de passe JMAP ou jeton d'application",
+    "inboxMailbox": "Boîte de réception",
+    "processedMailbox": "Boîte « Traités »",
+    "pollInterval": "Intervalle de relève (fallback, secondes)",
+    "pollIntervalHelp": "Filet de sécurité quand la diffusion JMAP n'est pas disponible. Par défaut 900 s (15 min).",
+    "processedRetention": "Rétention « traités » (jours)",
+    "failedRetention": "Rétention « échoués » (jours)",
+    "rewriteBaseUrl": "URL de base à réécrire (avancé)",
+    "rewriteBaseUrlPlaceholder": "https://proxy.exemple.com (optionnel)",
+    "rewriteBaseUrlHelp": "Permet de remplacer l'URL de base publiée par le serveur JMAP en cas de proxy inverse.",
+    "saveFailed": "Échec de l'enregistrement des paramètres",
+    "status": {
+      "title": "État",
+      "description": "État en direct du superviseur JMAP.",
+      "connection": "Connexion :",
+      "connected": "Connecté",
+      "disconnected": "Déconnecté",
+      "disabled": "Désactivé",
+      "modePush": "Direct",
+      "modePoll": "Relève",
+      "lastSync": "Dernière synchro :",
+      "addressDomain": "Domaine d'adresse :",
+      "never": "jamais",
+      "justNow": "à l'instant",
+      "secondsAgo": "il y a {{count}} s",
+      "minutesAgo": "il y a {{count}} min",
+      "hoursAgo": "il y a {{count}} h",
+      "daysAgo": "il y a {{count}} j"
+    },
+    "actions": {
+      "title": "Actions",
+      "test": "Tester la connexion",
+      "sync": "Synchroniser maintenant",
+      "syncTriggered": "Synchronisation déclenchée",
+      "testFailed": "Échec du test",
+      "syncFailed": "Échec de la synchronisation",
+      "connectedMailboxes": "Connecté. Boîtes : {{mailboxes}}"
+    }
+  }
 }

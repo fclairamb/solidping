@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   ResponsiveContainer,
   AreaChart,
@@ -8,15 +9,15 @@ import {
 } from "recharts";
 import type { ResponseTimePoint } from "@/api/hooks";
 
-function formatTick(isoStr: string, spansDays: boolean) {
+function formatTick(isoStr: string, spansDays: boolean, locale: string) {
   const date = new Date(isoStr);
   if (spansDays) {
-    return date.toLocaleDateString(undefined, {
+    return date.toLocaleDateString(locale, {
       month: "short",
       day: "numeric",
     });
   }
-  return date.toLocaleTimeString(undefined, {
+  return date.toLocaleTimeString(locale, {
     hour: "numeric",
     minute: "2-digit",
   });
@@ -36,17 +37,18 @@ function CustomTooltip({
   active?: boolean;
   payload?: Array<{ payload: ResponseTimePoint }>;
 }) {
+  const { t, i18n } = useTranslation();
   if (!active || !payload?.length) return null;
   const data = payload[0].payload;
   const date = new Date(data.time);
   return (
     <div className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
       <p className="font-medium">
-        {date.toLocaleDateString(undefined, {
+        {date.toLocaleDateString(i18n.language, {
           month: "short",
           day: "numeric",
         })}{" "}
-        {date.toLocaleTimeString(undefined, {
+        {date.toLocaleTimeString(i18n.language, {
           hour: "numeric",
           minute: "2-digit",
         })}
@@ -56,7 +58,7 @@ function CustomTooltip({
           {formatDuration(data.durationP95)}
         </p>
       ) : (
-        <p className="text-xs text-muted-foreground">No data</p>
+        <p className="text-xs text-muted-foreground">{t("noData")}</p>
       )}
     </div>
   );
@@ -67,6 +69,7 @@ interface ResponseTimeChartProps {
 }
 
 export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
+  const { t, i18n } = useTranslation();
   const hasData = data.some((d) => d.durationP95 != null);
   if (!hasData) return null;
 
@@ -81,7 +84,7 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
 
   return (
     <div className="mt-3">
-      <p className="mb-1 text-xs text-muted-foreground">Response Time</p>
+      <p className="mb-1 text-xs text-muted-foreground">{t("responseTime")}</p>
       <ResponsiveContainer width="100%" height={100}>
         <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
           <defs>
@@ -92,7 +95,7 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
           </defs>
           <XAxis
             dataKey="time"
-            tickFormatter={(v) => formatTick(v, spansDays)}
+            tickFormatter={(v) => formatTick(v, spansDays, i18n.language)}
             tick={{ fontSize: 10 }}
             tickLine={false}
             axisLine={false}

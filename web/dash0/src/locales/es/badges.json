@@ -1,0 +1,46 @@
+{
+  "title": "Insignias",
+  "subtitle": "Genere insignias de estado incrustables para sus comprobaciones",
+  "configuration": "Configuración",
+  "check": "Comprobación",
+  "selectCheck": "Seleccione una comprobación",
+  "loadFailed": "Error al cargar las comprobaciones",
+  "format": "Formato",
+  "period": "Período",
+  "style": "Estilo",
+  "customLabel": "Etiqueta personalizada",
+  "customLabelPlaceholder": "Déjelo vacío para usar el nombre de la comprobación",
+  "preview": "Vista previa",
+  "refresh": "Actualizar",
+  "selectCheckPrompt": "Seleccione una comprobación para previsualizar y generar insignias",
+  "download": "Descargar",
+  "downloadDescription": "Descargue la insignia en distintos formatos",
+  "downloadFailed": "Error al descargar la insignia",
+  "embedCode": "Código de integración",
+  "embedCodeDescription": "Copie la URL o el código de la insignia para su README o sitio web",
+  "url": "URL",
+  "markdown": "Markdown",
+  "html": "HTML",
+  "copied": "Copiado",
+  "copiedToClipboard": "{{label}} copiado al portapapeles",
+  "formats": {
+    "status": "Estado",
+    "statusDescription": "Estado actual up/down",
+    "availability": "Disponibilidad",
+    "availabilityDescription": "Porcentaje de disponibilidad",
+    "availabilityDuration": "Disponibilidad + duración",
+    "availabilityDurationDescription": "% de disponibilidad con duración"
+  },
+  "periods": {
+    "1h": "1 hora",
+    "24h": "24 horas",
+    "7d": "7 días",
+    "30d": "30 días"
+  },
+  "styles": {
+    "flat": "Plano",
+    "flatSquare": "Plano cuadrado"
+  },
+  "availability": "Disponibilidad",
+  "status": "Estado"
+}

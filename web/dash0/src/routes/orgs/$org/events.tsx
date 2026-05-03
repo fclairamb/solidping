@@ -3,6 +3,10 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
+import {
+  getEventIcon,
+  getEventLabel,
+} from "@/components/dashboard/event-display";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -47,26 +51,6 @@ const eventTypeValues: (EventType | "all")[] = [
   "incident.resolved",
 ];
 
-function getEventIcon(eventType?: string) {
-  if (!eventType) return <Calendar className="h-4 w-4" />;
-
-  if (eventType.startsWith("check.")) {
-    return <Cpu className="h-4 w-4 text-blue-400" />;
-  }
-  if (eventType === "incident.resolved") {
-    return <Calendar className="h-4 w-4 text-green-500" />;
-  }
-  if (eventType.startsWith("incident.")) {
-    return <Calendar className="h-4 w-4 text-yellow-500" />;
-  }
-  return <Calendar className="h-4 w-4" />;
-}
-
-function getEventLabel(eventType: string | undefined, t: (key: string, options?: Record<string, unknown>) => string): string {
-  if (!eventType) return t("unknown");
-  return t(`types.${eventType}`, { defaultValue: eventType });
-}
-
 function EventsPage() {
   const { t } = useTranslation("events");
   const { org } = Route.useParams();
@@ -87,7 +71,10 @@ function EventsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Calendar className="h-7 w-7 text-muted-foreground" />
+            {t("title")}
+          </h1>
           <p className="text-muted-foreground">
             {t("subtitle")}
           </p>

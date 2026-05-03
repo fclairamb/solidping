@@ -107,6 +107,29 @@ func TestToolDefinitions(t *testing.T) {
 		createConnectionDef(),
 		listCheckGroupsDef(),
 		listRegionsDef(),
+		diagnoseCheckDef(),
+		listStatusPagesDef(),
+		getStatusPageDef(),
+		createStatusPageDef(),
+		updateStatusPageDef(),
+		deleteStatusPageDef(),
+		listStatusPageSectionsDef(),
+		createStatusPageSectionDef(),
+		updateStatusPageSectionDef(),
+		deleteStatusPageSectionDef(),
+		listStatusPageResourcesDef(),
+		createStatusPageResourceDef(),
+		updateStatusPageResourceDef(),
+		deleteStatusPageResourceDef(),
+		listMaintenanceWindowsDef(),
+		getMaintenanceWindowDef(),
+		createMaintenanceWindowDef(),
+		updateMaintenanceWindowDef(),
+		deleteMaintenanceWindowDef(),
+		setMaintenanceWindowChecksDef(),
+		listCheckTypesDef(),
+		getCheckTypeSamplesDef(),
+		validateCheckDef(),
 	}
 
 	for _, def := range defs {
@@ -131,12 +154,51 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 12)
-	r.Len(handler.toolMap, 12)
+	r.Len(handler.tools, 35)
+	r.Len(handler.toolMap, 35)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {
 		_, exists := handler.toolMap[tool.Name]
 		r.True(exists, "tool %q registered in tools but not in toolMap", tool.Name)
+	}
+}
+
+// TestAllToolDescriptionsMeetMinimum enforces a soft bar so future tool
+// additions don't ship with one-word descriptions. Adjust the minimums only
+// if you have a legitimately short description (no current tools do).
+func TestAllToolDescriptionsMeetMinimum(t *testing.T) {
+	t.Parallel()
+
+	const minToolDescChars = 40
+	const minParamDescChars = 20
+
+	handler := newTestHandler()
+
+	for i := range handler.tools {
+		tool := handler.tools[i]
+		t.Run(tool.Name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			r.GreaterOrEqual(
+				len(tool.Description), minToolDescChars,
+				"tool %q description too short: %q", tool.Name, tool.Description,
+			)
+			schema, ok := tool.InputSchema.(map[string]any)
+			r.True(ok)
+			props, ok := schema["properties"].(map[string]any)
+			if !ok {
+				return
+			}
+			for name, p := range props {
+				propMap, ok := p.(map[string]any)
+				r.True(ok, "tool %q param %q schema malformed", tool.Name, name)
+				desc, _ := propMap[schemaKeyDescription].(string)
+				r.GreaterOrEqual(
+					len(desc), minParamDescChars,
+					"tool %q param %q description too short: %q", tool.Name, name, desc,
+				)
+			}
+		})
 	}
 }

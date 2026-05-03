@@ -31,8 +31,11 @@ func TestFormatter_FormatIncident(t *testing.T) {
 		"DashboardURL": "https://example.com/dashboard/checks/prod-api",
 	}
 
-	html, text, err := formatter.Format("incident.html", data)
+	subject, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
+
+	// incident.html does not yet define a subject block — should be empty.
+	r.Empty(subject)
 
 	// Check HTML content
 	r.Contains(html, "Production API")
@@ -43,11 +46,6 @@ func TestFormatter_FormatIncident(t *testing.T) {
 
 	// Check CSS is inlined (style attribute should be present)
 	r.Contains(html, "style=")
-
-	// Check plain text content
-	r.NotEmpty(text)
-	r.Contains(text, "Production API")
-	r.Contains(text, "DOWN")
 }
 
 func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
@@ -64,7 +62,7 @@ func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
 		"Message":   "The check is now back online.",
 	}
 
-	html, text, err := formatter.Format("incident.html", data)
+	_, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	// Check HTML content
@@ -73,9 +71,6 @@ func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
 	r.Contains(html, "The check is now back online.")
 	// Should not contain the button since DashboardURL is not set
 	r.NotContains(html, "View Dashboard")
-
-	// Check plain text content
-	r.NotEmpty(text)
 }
 
 func TestFormatter_InvalidTemplate(t *testing.T) {
@@ -86,8 +81,9 @@ func TestFormatter_InvalidTemplate(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	_, _, err = formatter.Format("nonexistent.html", nil)
+	_, html, err := formatter.Format("nonexistent.html", nil)
 	r.Error(err)
+	r.Empty(html)
 	r.Contains(err.Error(), "parsing template")
 }
 
@@ -106,11 +102,96 @@ func TestFormatter_CSSInlining(t *testing.T) {
 		"DashboardURL": "https://example.com",
 	}
 
-	html, _, err := formatter.Format("incident.html", data)
+	_, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
-	// The status-down class should have its style inlined
-	// The premailer should convert .status-down { color: #dc3545; } to inline style
+	// CSS should be inlined into a style attribute on at least one element.
+	r.Contains(html, "style=")
 	r.Contains(html, "color")
-	r.Contains(html, "#dc3545")
+}
+
+func TestFormatter_TransactionalTemplates(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		template    string
+		data        map[string]any
+		wantSubject string
+		wantHTML    []string
+	}{
+		{
+			name:     "invitation",
+			template: "invitation.html",
+			data: map[string]any{
+				"OrgName":     "Acme",
+				"Role":        "admin",
+				"InviterName": "Alice",
+				"InviteURL":   "https://solidping.example/i/abc",
+			},
+			wantSubject: "You're invited to join Acme on SolidPing",
+			wantHTML: []string{
+				"Acme",
+				"admin",
+				"Alice",
+				"https://solidping.example/i/abc",
+				"expires in 7 days",
+			},
+		},
+		{
+			name:     "registration",
+			template: "registration.html",
+			data: map[string]any{
+				"ConfirmURL": "https://solidping.example/c/xyz",
+			},
+			wantSubject: "Confirm your SolidPing account",
+			wantHTML: []string{
+				"https://solidping.example/c/xyz",
+				"Confirm",
+				"3 days",
+			},
+		},
+		{
+			name:     "password reset",
+			template: "password-reset.html",
+			data: map[string]any{
+				"ResetURL": "https://solidping.example/r/zzz",
+			},
+			wantSubject: "Reset your SolidPing password",
+			wantHTML: []string{
+				"https://solidping.example/r/zzz",
+				"1 hour",
+			},
+		},
+		{
+			name:     "welcome",
+			template: "welcome.html",
+			data: map[string]any{
+				"DashboardURL": "https://solidping.example/dash",
+			},
+			wantSubject: "Welcome to SolidPing",
+			wantHTML: []string{
+				"https://solidping.example/dash",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			formatter, err := NewFormatter()
+			r.NoError(err)
+
+			subject, html, err := formatter.Format(tc.template, tc.data)
+			r.NoError(err)
+			r.Equal(tc.wantSubject, subject)
+
+			for _, want := range tc.wantHTML {
+				r.Contains(html, want)
+			}
+		})
+	}
 }

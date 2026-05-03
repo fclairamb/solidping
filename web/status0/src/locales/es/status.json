@@ -1,0 +1,22 @@
+{
+  "operational": "Operativo",
+  "outage": "Caída",
+  "degraded": "Degradado",
+  "unknown": "Desconocido",
+  "allSystemsOperational": "Todos los sistemas operativos",
+  "someSystemsDegraded": "Algunos sistemas degradados",
+  "systemOutage": "Caída del sistema",
+  "noResourcesConfigured": "No hay recursos configurados",
+  "noSectionsConfigured": "Aún no hay secciones configuradas",
+  "poweredBy": "Con tecnología de SolidPing",
+  "loading": "Cargando...",
+  "statusPageNotFound": "Página de estado no encontrada",
+  "statusPageNotFoundDescription": "No se ha podido encontrar la página de estado solicitada.",
+  "solidpingStatus": "Estado de SolidPing",
+  "visitStatusPage": "Visite una página de estado específica para ver el estado del servicio.",
+  "daysAgo": "hace {{count}} días",
+  "today": "Hoy",
+  "uptime": "de disponibilidad",
+  "noData": "Sin datos",
+  "responseTime": "Tiempo de respuesta"
+}

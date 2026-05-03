@@ -1,4 +1,8 @@
 {
+  "layout": {
+    "title": "Organization",
+    "subtitle": "Manage your organization settings and members"
+  },
   "settings": {
     "title": "Organization Settings",
     "autoJoin": "Auto-join",
@@ -36,13 +40,34 @@
   },
   "members": {
     "title": "Members",
-    "subtitle": "Manage organization members.",
-    "role": "Role",
-    "admin": "Admin",
-    "user": "User",
-    "viewer": "Viewer",
+    "subtitle": "Manage who has access to this organization.",
+    "column": {
+      "member": "Member",
+      "email": "Email",
+      "role": "Role",
+      "joinedAt": "Joined"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "User",
+      "viewer": "Viewer"
+    },
+    "empty": "No members yet — invite your first teammate.",
+    "cannotEditSelf": "Use your profile settings to change your own membership.",
     "remove": "Remove",
-    "removed": "Member removed",
-    "roleUpdated": "Role updated"
+    "removeConfirm": {
+      "title": "Remove member",
+      "body": "Remove {{email}} from {{org}}? They will lose access to this organization.",
+      "action": "Remove"
+    },
+    "demoteConfirm": {
+      "title": "Change role to viewer",
+      "body": "{{email}} will lose write access. Continue?",
+      "action": "Change role"
+    },
+    "roleUpdated": "Role updated",
+    "memberRemoved": "Member removed",
+    "removeFailed": "Failed to remove member",
+    "updateFailed": "Failed to update role"
   }
 }

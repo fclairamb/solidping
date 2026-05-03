@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import {
   ArrowLeft,
@@ -80,6 +81,7 @@ function formatDuration(ms: number): string {
 }
 
 function IncidentDuration({ incident }: { incident: IncidentDetail }) {
+  const { t } = useTranslation("checks");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -96,9 +98,19 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
     );
   }
   if (incident.startedAt) {
-    return formatDuration(now - new Date(incident.startedAt).getTime()) + " (ongoing)";
+    return formatDuration(now - new Date(incident.startedAt).getTime()) + " " + t("detail.ongoing");
   }
   return "-";
+}
+
+function formatResultTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay ? d.toLocaleTimeString() : d.toLocaleString();
 }
 
 /** Parse HH:MM:SS period string to milliseconds */
@@ -112,6 +124,7 @@ function parsePeriodMs(period?: string): number | undefined {
 }
 
 function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string; uid: string; config?: Record<string, unknown> } }) {
+  const { t } = useTranslation("checks");
   const token = check.config?.token as string;
   const identifier = check.slug || check.uid;
   const heartbeatUrl = `${window.location.origin}/api/v1/heartbeat/${org}/${identifier}?token=${token}`;
@@ -119,13 +132,13 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(t("detail.toast.copied"));
   };
 
   return (
     <div>
       <div className="text-sm font-medium text-muted-foreground mb-2">
-        Heartbeat Endpoint
+        {t("endpoints.heartbeat.title")}
       </div>
       <div className="space-y-3">
         <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
@@ -139,7 +152,7 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
           </button>
         </div>
         <div>
-          <div className="text-xs text-muted-foreground mb-1">Sample curl command:</div>
+          <div className="text-xs text-muted-foreground mb-1">{t("endpoints.heartbeat.curl")}</div>
           <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
             <span className="flex-1">{curlCommand}</span>
             <button
@@ -157,23 +170,24 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
 }
 
 function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } }) {
+  const { t } = useTranslation("checks");
   const token = check.config?.token as string;
   const { data: domain } = useEmailAddressDomain();
   const [showHelp, setShowHelp] = useState(false);
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    toast.success("Copied to clipboard");
+    toast.success(t("detail.toast.copied"));
   };
 
   if (!domain) {
     return (
       <div>
         <div className="text-sm font-medium text-muted-foreground mb-2">
-          Email Endpoint
+          {t("endpoints.email.title")}
         </div>
         <div className="bg-muted rounded-md p-3 text-sm text-muted-foreground">
-          Email inbox not configured. The check is created but cannot receive pings until an administrator configures the shared inbox.
+          {t("endpoints.email.notConfigured")}
         </div>
       </div>
     );
@@ -185,7 +199,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
   return (
     <div>
       <div className="text-sm font-medium text-muted-foreground mb-2">
-        Email Endpoint
+        {t("endpoints.email.title")}
       </div>
       <div className="space-y-3">
         <div className="bg-muted rounded-md p-3 text-sm font-mono break-all flex items-start gap-2">
@@ -201,7 +215,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
         </div>
         <div>
           <a href={mailto} className="text-sm text-primary hover:underline inline-flex items-center gap-1">
-            Send test email
+            {t("endpoints.email.sendTest")}
             <ExternalLink className="h-3 w-3" />
           </a>
         </div>
@@ -210,18 +224,37 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
           onClick={() => setShowHelp((v) => !v)}
           className="text-sm text-muted-foreground hover:text-foreground"
         >
-          {showHelp ? "Hide" : "Show"} reporting failure options
+          {showHelp ? t("endpoints.email.hideOptions") : t("endpoints.email.showOptions")}
         </button>
         {showHelp && (
           <div className="bg-muted rounded-md p-3 text-sm space-y-2">
-            <p>To report a failure or non-default status, use any of:</p>
+            <p>{t("endpoints.email.help.intro")}</p>
             <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
-              <li>Plus-addressing: send to <code className="font-mono">{token}+down@{domain}</code> (or <code className="font-mono">+error</code>, <code className="font-mono">+running</code>).</li>
-              <li>Header: include <code className="font-mono">X-SolidPing-Status: down</code>.</li>
-              <li>Subject prefix: start the subject with <code className="font-mono">[DOWN]</code>, <code className="font-mono">[ERROR]</code>, or <code className="font-mono">[RUNNING]</code>.</li>
+              <li>
+                <Trans
+                  i18nKey="checks:endpoints.email.help.plus"
+                  values={{ token, domain }}
+                  components={{ code: <code className="font-mono" /> }}
+                />
+              </li>
+              <li>
+                <Trans
+                  i18nKey="checks:endpoints.email.help.header"
+                  components={{ code: <code className="font-mono" /> }}
+                />
+              </li>
+              <li>
+                <Trans
+                  i18nKey="checks:endpoints.email.help.subject"
+                  components={{ code: <code className="font-mono" /> }}
+                />
+              </li>
             </ul>
             <p className="text-xs text-muted-foreground">
-              Resolution priority: plus-address &gt; header &gt; subject &gt; default <code className="font-mono">up</code>.
+              <Trans
+                i18nKey="checks:endpoints.email.help.priority"
+                components={{ code: <code className="font-mono" /> }}
+              />
             </p>
           </div>
         )}
@@ -231,6 +264,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
 }
 
 function CheckDetailPage() {
+  const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
   const { graphPeriod, graphFull } = Route.useSearch();
   const navigate = useNavigate();
@@ -238,6 +272,7 @@ function CheckDetailPage() {
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   const {
     data: check,
@@ -247,10 +282,26 @@ function CheckDetailPage() {
     isRefetching,
   } = useCheck(org, checkUid, { with: "last_result,last_status_change" });
 
-  const refetchInterval = useMemo(
+  const periodMs = useMemo(
     () => parsePeriodMs(check?.period),
     [check?.period]
   );
+
+  // While the very first result is still the "created" placeholder, poll
+  // fast enough that a freshly-created check shows its first real status
+  // without making the user wait for a full check period. Cap the fast
+  // phase so a stuck worker can't trigger runaway polling at 1.5 s.
+  const fastPollMs = 1500;
+  const fastPollWindowMs = 30_000;
+  const isPendingFirstRun = check?.lastResult?.status === "created";
+  const [withinFastWindow, setWithinFastWindow] = useState(true);
+  useEffect(() => {
+    const id = setTimeout(() => setWithinFastWindow(false), fastPollWindowMs);
+    return () => clearTimeout(id);
+  }, []);
+
+  const refetchInterval =
+    isPendingFirstRun && withinFastWindow ? fastPollMs : periodMs;
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {
@@ -285,7 +336,7 @@ function CheckDetailPage() {
     }
     try {
       await updateCheck.mutateAsync({ slug: trimmed });
-      toast.success("Slug updated");
+      toast.success(t("checks:detail.toast.slugUpdated"));
       setEditingSlug(false);
       navigate({
         to: "/orgs/$org/checks/$checkUid",
@@ -294,7 +345,7 @@ function CheckDetailPage() {
         replace: true,
       });
     } catch {
-      toast.error("Failed to update slug");
+      toast.error(t("checks:detail.toast.slugUpdateFailed"));
     }
   };
 
@@ -306,10 +357,10 @@ function CheckDetailPage() {
   const handleDelete = async () => {
     try {
       await deleteCheck.mutateAsync(checkUid);
-      toast.success("Check deleted successfully");
+      toast.success(t("checks:toast.deleted"));
       navigate({ to: "/orgs/$org/checks", params: { org } });
     } catch {
-      toast.error("Failed to delete check");
+      toast.error(t("checks:detail.toast.deleteFailed"));
     }
   };
 
@@ -331,9 +382,9 @@ function CheckDetailPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Check"
+        resource={t("checks:title")}
         backTo="/orgs/$org/checks"
-        backLabel="Back to Checks"
+        backLabel={t("checks:detail.backToChecks")}
         onRetry={() => refetch()}
       />
     );
@@ -342,9 +393,9 @@ function CheckDetailPage() {
   if (!check) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">Check not found</p>
+        <p className="text-muted-foreground mb-4">{t("checks:detail.notFound")}</p>
         <Link to="/orgs/$org/checks" params={{ org }}>
-          <Button variant="outline">Back to Checks</Button>
+          <Button variant="outline">{t("checks:detail.backToChecks")}</Button>
         </Link>
       </div>
     );
@@ -380,7 +431,7 @@ function CheckDetailPage() {
                 {check.name || check.slug || check.uid?.slice(0, 8)}
               </h1>
               {check.slug && !editingSlug && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.slug }}
@@ -400,7 +451,7 @@ function CheckDetailPage() {
                 </div>
               )}
               {editingSlug && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <span className="text-xs">🔗</span>
                   <input
                     ref={slugInputRef}
@@ -432,7 +483,7 @@ function CheckDetailPage() {
                 </div>
               )}
               {check.uid && checkUid !== check.uid && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
@@ -445,6 +496,16 @@ function CheckDetailPage() {
               )}
             </div>
             <Badge variant="outline">{check.type}</Badge>
+            {isPendingFirstRun && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-muted-foreground"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t("checks:detail.pendingFirstRun")}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -474,14 +535,13 @@ function CheckDetailPage() {
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete Check</AlertDialogTitle>
+                <AlertDialogTitle>{t("checks:detail.deleteTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete this check? This action cannot
-                  be undone.
+                  {t("checks:detail.deleteDescription")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDelete}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -489,10 +549,10 @@ function CheckDetailPage() {
                   {deleteCheck.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Deleting...
+                      {t("checks:detail.deleting")}
                     </>
                   ) : (
-                    "Delete"
+                    t("checks:detail.delete")
                   )}
                 </AlertDialogAction>
               </AlertDialogFooter>
@@ -508,52 +568,74 @@ function CheckDetailPage() {
       />
 
       {/* Response time chart */}
-      <ResponseTimeChart
+      <div ref={chartRef}>
+        <ResponseTimeChart
+          org={org}
+          checkUid={checkUid}
+          refetchInterval={refetchInterval}
+          initialPeriod={graphPeriod}
+          initialFullRange={graphFull}
+          onSettingsChange={(period, full) =>
+            navigate({
+              to: ".",
+              search: {
+                graphPeriod: period !== "day" ? period : undefined,
+                graphFull: full ? true : undefined,
+              },
+              replace: true,
+            })
+          }
+        />
+      </div>
+
+      {/* Availability table */}
+      <AvailabilityTable
         org={org}
         checkUid={checkUid}
         refetchInterval={refetchInterval}
-        initialPeriod={graphPeriod}
-        initialFullRange={graphFull}
-        onSettingsChange={(period, full) =>
+        onPeriodSelect={(period) => {
           navigate({
             to: ".",
             search: {
-              graphPeriod: period !== "day" ? period : undefined,
-              graphFull: full ? true : undefined,
+              graphPeriod: period === "day" ? undefined : period,
+              graphFull: undefined,
             },
             replace: true,
-          })
-        }
+          });
+          requestAnimationFrame(() => {
+            chartRef.current?.scrollIntoView({
+              behavior: "smooth",
+              block: "start",
+            });
+          });
+        }}
       />
-
-      {/* Availability table */}
-      <AvailabilityTable org={org} checkUid={checkUid} refetchInterval={refetchInterval} />
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Configuration</CardTitle>
-            <CardDescription>Check settings and parameters</CardDescription>
+            <CardTitle>{t("checks:detail.configuration")}</CardTitle>
+            <CardDescription>{t("checks:detail.configurationDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {check.description && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Description
+                  {t("checks:detail.descriptionLabel")}
                 </div>
                 <div>{check.description}</div>
               </div>
             )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">
-                Type
+                {t("checks:detail.typeLabel")}
               </div>
               <div className="capitalize">{check.type}</div>
             </div>
             {check.period && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Check Interval
+                  {t("checks:detail.checkInterval")}
                 </div>
                 <div>{check.period}</div>
               </div>
@@ -561,7 +643,7 @@ function CheckDetailPage() {
             {check.regions && check.regions.length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-1">
-                  Regions
+                  {t("checks:detail.regionsLabel")}
                 </div>
                 <div className="flex gap-1 flex-wrap">
                   {check.regions.map((slug) => {
@@ -577,7 +659,7 @@ function CheckDetailPage() {
             )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">
-                Status
+                {t("checks:detail.statusLabel")}
               </div>
               <div className="flex items-center gap-2">
                 <Badge
@@ -591,17 +673,17 @@ function CheckDetailPage() {
                         : ""
                   }
                 >
-                  {check.lastResult?.status || "unknown"}
+                  {check.lastResult?.status || t("checks:detail.unknown").toLowerCase()}
                 </Badge>
                 {check.enabled === false && (
-                  <Badge variant="outline">Disabled</Badge>
+                  <Badge variant="outline">{t("checks:detail.disabled")}</Badge>
                 )}
               </div>
             </div>
             {check.config && Object.keys(check.config).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
-                  Configuration
+                  {t("checks:detail.configuration")}
                 </div>
                 <div className="bg-muted rounded-md p-3 text-sm font-mono">
                   {Object.entries(check.config).map(([key, value]) => (
@@ -634,7 +716,7 @@ function CheckDetailPage() {
             {check.labels && Object.keys(check.labels).length > 0 && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground mb-2">
-                  Labels
+                  {t("checks:detail.labelsLabel")}
                 </div>
                 <div className="flex gap-1 flex-wrap">
                   {Object.entries(check.labels).map(([key, value]) => (
@@ -656,8 +738,8 @@ function CheckDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Last Result</CardTitle>
-            <CardDescription>Most recent check execution</CardDescription>
+            <CardTitle>{t("checks:detail.lastResult")}</CardTitle>
+            <CardDescription>{t("checks:detail.lastResultDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {check.lastResult ? (
@@ -666,12 +748,12 @@ function CheckDetailPage() {
                   <Clock className="h-4 w-4" />
                   {check.lastResult.timestamp
                     ? new Date(check.lastResult.timestamp).toLocaleString()
-                    : "Unknown"}
+                    : t("checks:detail.unknown")}
                 </div>
                 {check.lastResult.metrics && (
                   <div>
                     <div className="text-sm font-medium text-muted-foreground mb-2">
-                      Metrics
+                      {t("checks:detail.metricsLabel")}
                     </div>
                     <div className="bg-muted rounded-md p-3 text-sm font-mono">
                       {Object.entries(check.lastResult.metrics).map(
@@ -695,7 +777,7 @@ function CheckDetailPage() {
                   Object.keys(check.lastResult.output).length > 0 && (
                     <div>
                       <div className="text-sm font-medium text-muted-foreground mb-2">
-                        Output
+                        {t("checks:detail.outputLabel")}
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
                         {Object.entries(check.lastResult.output).map(
@@ -717,7 +799,7 @@ function CheckDetailPage() {
                   )}
               </>
             ) : (
-              <p className="text-muted-foreground">No results yet</p>
+              <p className="text-muted-foreground">{t("checks:detail.noResults")}</p>
             )}
           </CardContent>
         </Card>
@@ -725,26 +807,37 @@ function CheckDetailPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Recent Results</CardTitle>
-          <CardDescription>History of check executions</CardDescription>
+          <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
+          <CardDescription>{t("checks:detail.recentResultsDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           {results?.data && results.data.length > 0 ? (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Duration</TableHead>
-                  <TableHead>Region</TableHead>
+                  <TableHead>{t("checks:detail.results.time")}</TableHead>
+                  <TableHead>{t("checks:detail.results.status")}</TableHead>
+                  <TableHead>{t("checks:detail.results.duration")}</TableHead>
+                  <TableHead>{t("checks:detail.results.region")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {results.data.map((result) => (
-                  <TableRow key={result.uid}>
+                  <TableRow
+                    key={result.uid}
+                    className={result.uid ? "cursor-pointer hover:bg-muted/50" : ""}
+                    data-testid={`result-row-${result.uid}`}
+                    onClick={() => {
+                      if (!result.uid) return;
+                      navigate({
+                        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                        params: { org, checkUid, resultUid: result.uid },
+                      });
+                    }}
+                  >
                     <TableCell className="text-sm">
                       {result.periodStart
-                        ? new Date(result.periodStart).toLocaleString()
+                        ? formatResultTime(result.periodStart)
                         : "-"}
                     </TableCell>
                     <TableCell>
@@ -777,7 +870,7 @@ function CheckDetailPage() {
             </Table>
           ) : (
             <p className="text-center py-6 text-muted-foreground">
-              No results available
+              {t("checks:detail.noResultsAvailable")}
             </p>
           )}
         </CardContent>
@@ -786,16 +879,16 @@ function CheckDetailPage() {
       {incidents?.data && incidents.data.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Recent Incidents</CardTitle>
-            <CardDescription>Issues related to this check</CardDescription>
+            <CardTitle>{t("checks:detail.recentIncidents")}</CardTitle>
+            <CardDescription>{t("checks:detail.recentIncidentsDescription")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Started</TableHead>
-                  <TableHead>State</TableHead>
-                  <TableHead>Duration</TableHead>
+                  <TableHead>{t("checks:detail.incidents.started")}</TableHead>
+                  <TableHead>{t("checks:detail.incidents.state")}</TableHead>
+                  <TableHead>{t("checks:detail.incidents.duration")}</TableHead>
                   <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
@@ -804,7 +897,7 @@ function CheckDetailPage() {
                   <TableRow key={incident.uid}>
                     <TableCell className="text-sm">
                       {incident.startedAt
-                        ? new Date(incident.startedAt).toLocaleString()
+                        ? formatResultTime(incident.startedAt)
                         : "-"}
                     </TableCell>
                     <TableCell>
@@ -827,7 +920,7 @@ function CheckDetailPage() {
                         params={{ org, incidentUid: incident.uid! }}
                       >
                         <Button variant="ghost" size="sm">
-                          View
+                          {t("checks:detail.viewButton")}
                         </Button>
                       </Link>
                     </TableCell>

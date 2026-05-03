@@ -38,7 +38,7 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
   config?: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -49,7 +49,7 @@ export interface Check {
   updatedAt?: string;
   lastResult?: {
     uid?: string;
-    status?: "up" | "down" | "error" | "timeout";
+    status?: "up" | "down" | "error" | "timeout" | "created";
     timestamp?: string;
     durationMs?: number;
     metrics?: Record<string, unknown>;
@@ -74,7 +74,7 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
   config: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -116,6 +116,16 @@ export interface OrgResult {
   region?: string;
   metrics?: Record<string, unknown>;
   output?: Record<string, unknown>;
+}
+
+export interface ResultFallbackInfo {
+  requestedUid: string;
+  requestedAt: string;
+  reason: "rolled_up_to_hour" | "rolled_up_to_day" | "rolled_up_to_month";
+}
+
+export interface OrgResultDetail extends OrgResult {
+  fallback?: ResultFallbackInfo;
 }
 
 export interface IncidentDetail {
@@ -274,6 +284,33 @@ export function useUpdateCheck(org: string, uid: string) {
       queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
       queryClient.invalidateQueries({ queryKey: ["check", org, uid] });
     },
+  });
+}
+
+export interface LabelSuggestion {
+  value: string;
+  count: number;
+}
+
+export function useLabelSuggestions(
+  org: string,
+  opts: { key?: string; q?: string; limit?: number; enabled?: boolean }
+) {
+  const params = new URLSearchParams();
+  if (opts.key) params.set("key", opts.key);
+  if (opts.q) params.set("q", opts.q);
+  if (opts.limit) params.set("limit", String(opts.limit));
+  const query = params.toString();
+
+  return useQuery({
+    queryKey: ["labels", org, opts.key ?? "", opts.q ?? "", opts.limit ?? 50],
+    queryFn: async () => {
+      const path = `/api/v1/orgs/${org}/labels${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data: LabelSuggestion[] }>(path);
+      return response.data ?? [];
+    },
+    enabled: (opts.enabled ?? true) && !!org,
+    staleTime: 30_000,
   });
 }
 
@@ -449,6 +486,18 @@ export function useResults(
   });
 }
 
+export function useResult(org: string, checkUid: string, resultUid: string) {
+  return useQuery<OrgResultDetail>({
+    queryKey: ["result", org, checkUid, resultUid],
+    queryFn: () =>
+      apiFetch<OrgResultDetail>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}`,
+      ),
+    enabled: !!org && !!checkUid && !!resultUid,
+    staleTime: Infinity,
+  });
+}
+
 /** Fetches all result pages by following cursors until exhausted. */
 export function useAllResults(
   org: string,
@@ -550,37 +599,64 @@ export function useIncident(org: string, uid: string) {
   });
 }
 
-export function useAcknowledgeIncident(org: string) {
+interface IncidentMutationVars {
+  uid: string;
+  body?: Record<string, unknown>;
+}
+
+function useIncidentAction<TVars extends IncidentMutationVars>(
+  org: string,
+  path: (uid: string) => string,
+) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: (uid: string) =>
-      apiFetch<IncidentDetail>(
-        `/api/v1/orgs/${org}/incidents/${uid}/acknowledge`,
-        {
-          method: "POST",
-        }
-      ),
-    onSuccess: (_, uid) => {
+    mutationFn: (vars: TVars) =>
+      apiFetch<IncidentDetail>(path(vars.uid), {
+        method: "POST",
+        body: vars.body ? JSON.stringify(vars.body) : undefined,
+        headers: vars.body ? { "Content-Type": "application/json" } : undefined,
+      }),
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: ["incidents", org] });
-      queryClient.invalidateQueries({ queryKey: ["incident", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["incident", org, vars.uid] });
     },
   });
 }
 
-export function useResolveIncident(org: string) {
-  const queryClient = useQueryClient();
+export function useAcknowledgeIncident(org: string) {
+  return useIncidentAction<{ uid: string; body?: { note?: string } }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/ack`,
+  );
+}
 
-  return useMutation({
-    mutationFn: (uid: string) =>
-      apiFetch<IncidentDetail>(`/api/v1/orgs/${org}/incidents/${uid}/resolve`, {
-        method: "POST",
-      }),
-    onSuccess: (_, uid) => {
-      queryClient.invalidateQueries({ queryKey: ["incidents", org] });
-      queryClient.invalidateQueries({ queryKey: ["incident", org, uid] });
-    },
-  });
+export function useUnacknowledgeIncident(org: string) {
+  return useIncidentAction<{ uid: string }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/unack`,
+  );
+}
+
+export function useSnoozeIncident(org: string) {
+  return useIncidentAction<{
+    uid: string;
+    body: { duration?: string; until?: string; reason?: string };
+  }>(org, (uid) => `/api/v1/orgs/${org}/incidents/${uid}/snooze`);
+}
+
+export function useUnsnoozeIncident(org: string) {
+  return useIncidentAction<{ uid: string }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/unsnooze`,
+  );
+}
+
+export function useResolveIncident(org: string) {
+  return useIncidentAction<{ uid: string; body?: { note?: string } }>(
+    org,
+    (uid) => `/api/v1/orgs/${org}/incidents/${uid}/resolve`,
+  );
 }
 
 // Events hooks
@@ -592,10 +668,12 @@ export function useEvents(
     eventType?: string;
     cursor?: string;
     size?: number;
+    refetchInterval?: number;
   }
 ) {
+  const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
-    queryKey: ["events", org, options],
+    queryKey: ["events", org, queryOptions],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options?.checkUid) params.set("checkUid", options.checkUid);
@@ -616,6 +694,7 @@ export function useEvents(
       };
     },
     enabled: !!org,
+    refetchInterval,
   });
 }
 
@@ -1117,6 +1196,177 @@ export function useRevokeInvitation(org: string) {
   });
 }
 
+// Membership-request hooks
+export type MembershipRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "canceled";
+
+export interface MembershipRequestSummary {
+  uid: string;
+  organization: { uid: string; slug: string; name: string };
+  status: MembershipRequestStatus;
+  message?: string;
+  decisionReason?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface MembershipRequestAdminView {
+  uid: string;
+  user: { uid: string; email: string; name?: string; avatarUrl?: string };
+  status: MembershipRequestStatus;
+  message?: string;
+  decisionReason?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export function useCreateMembershipRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { orgSlug: string; message?: string }) =>
+      apiFetch<MembershipRequestSummary>("/api/v1/auth/membership-requests", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+}
+
+export function useMyMembershipRequests() {
+  return useQuery({
+    queryKey: ["membership-requests", "me"],
+    queryFn: () =>
+      apiFetch<{ data: MembershipRequestSummary[] }>(
+        "/api/v1/auth/membership-requests"
+      ),
+  });
+}
+
+export function useCancelMembershipRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/auth/membership-requests/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+}
+
+export function useOrgMembershipRequests(
+  org: string,
+  opts?: { status?: MembershipRequestStatus; enabled?: boolean }
+) {
+  const status = opts?.status;
+  const qs = status ? `?status=${status}` : "";
+  return useQuery({
+    queryKey: ["membership-requests", "org", org, status ?? "all"],
+    queryFn: () =>
+      apiFetch<{ data: MembershipRequestAdminView[] }>(
+        `/api/v1/orgs/${org}/membership-requests${qs}`
+      ),
+    enabled: opts?.enabled !== false,
+  });
+}
+
+export function useApproveMembershipRequest(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, role }: { uid: string; role?: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/membership-requests/${uid}/approve`,
+        {
+          method: "POST",
+          body: JSON.stringify(role ? { role } : {}),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "org", org],
+      });
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+export function useRejectMembershipRequest(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, reason }: { uid: string; reason?: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/membership-requests/${uid}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify(reason ? { reason } : {}),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "org", org],
+      });
+    },
+  });
+}
+
+// Member hooks
+export type MemberRole = "admin" | "user" | "viewer";
+
+export interface MemberResponse {
+  uid: string;
+  userUid: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  role: MemberRole;
+  joinedAt?: string;
+  createdAt: string;
+}
+
+export function useMembers(org: string) {
+  return useQuery({
+    queryKey: ["members", org],
+    queryFn: () =>
+      apiFetch<{ data: MemberResponse[] }>(`/api/v1/orgs/${org}/members`),
+    enabled: !!org,
+  });
+}
+
+export function useUpdateMember(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, role }: { uid: string; role: MemberRole }) =>
+      apiFetch<MemberResponse>(`/api/v1/orgs/${org}/members/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+export function useRemoveMember(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/members/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
 export interface InviteInfo {
   orgName: string;
   orgSlug: string;
@@ -1202,6 +1452,18 @@ export function useVersion() {
         runMode?: string;
       }>("/api/mgmt/version"),
     staleTime: Infinity,
+  });
+}
+
+export interface FeaturesResponse {
+  bugReport: boolean;
+}
+
+export function useFeatures() {
+  return useQuery({
+    queryKey: ["features"],
+    queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
+    staleTime: 5 * 60 * 1000,
   });
 }
 

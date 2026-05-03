@@ -29,6 +29,7 @@ import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
 import { Route as OrgsOrgChecksRouteImport } from './routes/orgs/$org/checks'
 import { Route as OrgsOrgBadgesRouteImport } from './routes/orgs/$org/badges'
 import { Route as OrgsOrgAccountRouteImport } from './routes/orgs/$org/account'
+import { Route as AuthSlackCompleteRouteImport } from './routes/auth.slack.complete'
 import { Route as OrgsOrgTestIndexRouteImport } from './routes/orgs/$org/test.index'
 import { Route as OrgsOrgStatusPagesIndexRouteImport } from './routes/orgs/$org/status-pages.index'
 import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/server.index'
@@ -48,6 +49,8 @@ import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$org/organization.settings'
+import { Route as OrgsOrgOrganizationRequestsRouteImport } from './routes/orgs/$org/organization.requests'
+import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
@@ -58,6 +61,7 @@ import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './rout
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
+import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
 const NoOrgRoute = NoOrgRouteImport.update({
   id: '/no-org',
@@ -160,6 +164,11 @@ const OrgsOrgAccountRoute = OrgsOrgAccountRouteImport.update({
   path: '/account',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
+const AuthSlackCompleteRoute = AuthSlackCompleteRouteImport.update({
+  id: '/auth/slack/complete',
+  path: '/auth/slack/complete',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const OrgsOrgTestIndexRoute = OrgsOrgTestIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -259,6 +268,18 @@ const OrgsOrgOrganizationSettingsRoute =
     path: '/settings',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationRequestsRoute =
+  OrgsOrgOrganizationRequestsRouteImport.update({
+    id: '/requests',
+    path: '/requests',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
+const OrgsOrgOrganizationMembersRoute =
+  OrgsOrgOrganizationMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationInvitationsRoute =
   OrgsOrgOrganizationInvitationsRouteImport.update({
     id: '/invitations',
@@ -315,6 +336,12 @@ const OrgsOrgChecksCheckUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgChecksCheckUidRoute,
   } as any)
+const OrgsOrgChecksCheckUidResultsResultUidRoute =
+  OrgsOrgChecksCheckUidResultsResultUidRouteImport.update({
+    id: '/results/$resultUid',
+    path: '/results/$resultUid',
+    getParentRoute: () => OrgsOrgChecksCheckUidRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -325,6 +352,7 @@ export interface FileRoutesByFullPath {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
@@ -343,6 +371,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -366,6 +396,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -375,6 +406,7 @@ export interface FileRoutesByTo {
   '/confirm-registration/$token': typeof ConfirmRegistrationTokenRoute
   '/invite/$token': typeof InviteTokenRoute
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
@@ -385,6 +417,8 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -407,6 +441,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -418,6 +453,7 @@ export interface FileRoutesById {
   '/invite/$token': typeof InviteTokenRoute
   '/orgs/$org': typeof OrgsOrgRouteWithChildren
   '/reset-password/$token': typeof ResetPasswordTokenRoute
+  '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
@@ -436,6 +472,8 @@ export interface FileRoutesById {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
+  '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -459,6 +497,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
+  '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -471,6 +510,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
@@ -489,6 +529,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -512,6 +554,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -521,6 +564,7 @@ export interface FileRouteTypes {
     | '/confirm-registration/$token'
     | '/invite/$token'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/badges'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
@@ -531,6 +575,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -553,6 +599,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/status-pages/$statusPageUid'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   id:
     | '__root__'
     | '/'
@@ -563,6 +610,7 @@ export interface FileRouteTypes {
     | '/invite/$token'
     | '/orgs/$org'
     | '/reset-password/$token'
+    | '/auth/slack/complete'
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
@@ -581,6 +629,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
+    | '/orgs/$org/organization/requests'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -604,6 +654,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
+    | '/orgs/$org/checks/$checkUid/results/$resultUid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -615,6 +666,7 @@ export interface RootRouteChildren {
   InviteTokenRoute: typeof InviteTokenRoute
   OrgsOrgRoute: typeof OrgsOrgRouteWithChildren
   ResetPasswordTokenRoute: typeof ResetPasswordTokenRoute
+  AuthSlackCompleteRoute: typeof AuthSlackCompleteRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -759,6 +811,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/auth/slack/complete': {
+      id: '/auth/slack/complete'
+      path: '/auth/slack/complete'
+      fullPath: '/auth/slack/complete'
+      preLoaderRoute: typeof AuthSlackCompleteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/orgs/$org/test/': {
       id: '/orgs/$org/test/'
       path: '/'
@@ -892,6 +951,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationSettingsRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
+    '/orgs/$org/organization/requests': {
+      id: '/orgs/$org/organization/requests'
+      path: '/requests'
+      fullPath: '/orgs/$org/organization/requests'
+      preLoaderRoute: typeof OrgsOrgOrganizationRequestsRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/organization/members': {
+      id: '/orgs/$org/organization/members'
+      path: '/members'
+      fullPath: '/orgs/$org/organization/members'
+      preLoaderRoute: typeof OrgsOrgOrganizationMembersRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
     '/orgs/$org/organization/invitations': {
       id: '/orgs/$org/organization/invitations'
       path: '/invitations'
@@ -962,6 +1035,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksCheckUidEditRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
     }
+    '/orgs/$org/checks/$checkUid/results/$resultUid': {
+      id: '/orgs/$org/checks/$checkUid/results/$resultUid'
+      path: '/results/$resultUid'
+      fullPath: '/orgs/$org/checks/$checkUid/results/$resultUid'
+      preLoaderRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRouteImport
+      parentRoute: typeof OrgsOrgChecksCheckUidRoute
+    }
   }
 }
 
@@ -984,11 +1064,14 @@ const OrgsOrgAccountRouteWithChildren = OrgsOrgAccountRoute._addFileChildren(
 interface OrgsOrgChecksCheckUidRouteChildren {
   OrgsOrgChecksCheckUidEditRoute: typeof OrgsOrgChecksCheckUidEditRoute
   OrgsOrgChecksCheckUidIndexRoute: typeof OrgsOrgChecksCheckUidIndexRoute
+  OrgsOrgChecksCheckUidResultsResultUidRoute: typeof OrgsOrgChecksCheckUidResultsResultUidRoute
 }
 
 const OrgsOrgChecksCheckUidRouteChildren: OrgsOrgChecksCheckUidRouteChildren = {
   OrgsOrgChecksCheckUidEditRoute: OrgsOrgChecksCheckUidEditRoute,
   OrgsOrgChecksCheckUidIndexRoute: OrgsOrgChecksCheckUidIndexRoute,
+  OrgsOrgChecksCheckUidResultsResultUidRoute:
+    OrgsOrgChecksCheckUidResultsResultUidRoute,
 }
 
 const OrgsOrgChecksCheckUidRouteWithChildren =
@@ -1027,12 +1110,16 @@ const OrgsOrgIncidentsRouteWithChildren =
 
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
+  OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
+  OrgsOrgOrganizationRequestsRoute: typeof OrgsOrgOrganizationRequestsRoute
   OrgsOrgOrganizationSettingsRoute: typeof OrgsOrgOrganizationSettingsRoute
   OrgsOrgOrganizationIndexRoute: typeof OrgsOrgOrganizationIndexRoute
 }
 
 const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
+  OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
+  OrgsOrgOrganizationRequestsRoute: OrgsOrgOrganizationRequestsRoute,
   OrgsOrgOrganizationSettingsRoute: OrgsOrgOrganizationSettingsRoute,
   OrgsOrgOrganizationIndexRoute: OrgsOrgOrganizationIndexRoute,
 }
@@ -1158,6 +1245,7 @@ const rootRouteChildren: RootRouteChildren = {
   InviteTokenRoute: InviteTokenRoute,
   OrgsOrgRoute: OrgsOrgRouteWithChildren,
   ResetPasswordTokenRoute: ResetPasswordTokenRoute,
+  AuthSlackCompleteRoute: AuthSlackCompleteRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

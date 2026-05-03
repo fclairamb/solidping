@@ -1,0 +1,13 @@
+{
+  "trigger_title": "Signaler un bug",
+  "dialog_title": "Signaler un bug",
+  "comment_label": "Que s'est-il passé ?",
+  "comment_placeholder": "Décrivez ce qui n'a pas fonctionné…",
+  "no_screenshot": "Pas de capture d'écran disponible",
+  "capturing": "Capture en cours…",
+  "cancel": "Annuler",
+  "submit": "Envoyer",
+  "sending": "Envoi…",
+  "success": "Merci ! Votre rapport a été envoyé.",
+  "error": "Une erreur est survenue. Veuillez réessayer."
+}

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import {
   Plus,
   Search,
@@ -13,6 +13,7 @@ import {
   Eye,
   FolderPlus,
   FolderSymlink,
+  ListChecks,
   Pencil,
   ArrowUp,
   ArrowDown,
@@ -78,11 +79,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { LabelInput } from "@/components/shared/label-input";
 import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
+import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface ChecksIndexSearch {
+  labels?: string;
+}
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
+  validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
+    labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
+  }),
 });
 
 function StatusDot({ status }: { status?: string | null }) {
@@ -297,6 +308,7 @@ function CheckGroupSection({
   org,
   search,
   internalFilter,
+  labelsFilter,
   isFirst,
   isLast,
   onDelete,
@@ -311,6 +323,7 @@ function CheckGroupSection({
   org: string;
   search: string;
   internalFilter?: string;
+  labelsFilter?: string;
   isFirst: boolean;
   isLast: boolean;
   onDelete: () => void;
@@ -337,6 +350,7 @@ function CheckGroupSection({
     checkGroupUid: group.uid,
     q: search || undefined,
     internal: internalFilter,
+    labels: labelsFilter,
     limit: 20,
   });
 
@@ -464,6 +478,7 @@ function UngroupedChecksSection({
   org,
   search,
   internalFilter,
+  labelsFilter,
   onDeleteCheck,
   onChangeGroup,
   groups,
@@ -471,6 +486,7 @@ function UngroupedChecksSection({
   org: string;
   search: string;
   internalFilter?: string;
+  labelsFilter?: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
@@ -490,6 +506,7 @@ function UngroupedChecksSection({
     checkGroupUid: "none",
     q: search || undefined,
     internal: internalFilter,
+    labels: labelsFilter,
     limit: 20,
   });
 
@@ -566,7 +583,11 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
+  const { labels: labelsParam } = Route.useSearch();
+  const navigate = useNavigate({ from: Route.fullPath });
+  const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
@@ -722,15 +743,28 @@ function ChecksIndexPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <ListChecks className="h-7 w-7 text-muted-foreground" />
+            {t("title")}
+          </h1>
           <p className="text-muted-foreground">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExport} data-testid="export-button">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            data-testid="export-button"
+            className="hidden sm:inline-flex"
+          >
             <Download className="mr-2 h-4 w-4" />
             {t("export")}
           </Button>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()} data-testid="import-button">
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="import-button"
+            className="hidden sm:inline-flex"
+          >
             <Upload className="mr-2 h-4 w-4" />
             {t("import")}
           </Button>
@@ -742,20 +776,20 @@ function ChecksIndexPage() {
             onChange={handleImportFile}
           />
           <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
-            <FolderPlus className="mr-2 h-4 w-4" />
-            {t("newGroup")}
+            <FolderPlus className="sm:mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{t("newGroup")}</span>
           </Button>
           <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined }}>
             <Button data-testid="new-check-button">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("newCheck")}
+              <Plus className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t("newCheck")}</span>
             </Button>
           </Link>
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder={t("searchChecks")}
@@ -764,16 +798,18 @@ function ChecksIndexPage() {
             className="pl-9"
           />
         </div>
-        <Select value={internalFilter} onValueChange={setInternalFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="false">{t("userChecks")}</SelectItem>
-            <SelectItem value="true">{t("internalOnly")}</SelectItem>
-            <SelectItem value="all">{t("allChecks")}</SelectItem>
-          </SelectContent>
-        </Select>
+        {user?.isSuperAdmin && (
+          <Select value={internalFilter} onValueChange={setInternalFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="false">{t("userChecks")}</SelectItem>
+              <SelectItem value="true">{t("internalOnly")}</SelectItem>
+              <SelectItem value="all">{t("allChecks")}</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Button
           variant="outline"
           size="icon"
@@ -784,6 +820,38 @@ function ChecksIndexPage() {
             className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
           />
         </Button>
+        <div className="flex flex-1 min-w-[260px] flex-wrap items-center gap-2">
+          <span className="text-sm font-medium text-muted-foreground">Labels:</span>
+          <div className="flex-1 min-w-[200px]">
+            <LabelInput
+              org={org}
+              value={labelFilters}
+              onChange={(next) => {
+                const serialized = serializeLabelsParam(next);
+                void navigate({
+                  search: (prev) => ({ ...prev, labels: serialized || undefined }),
+                  replace: true,
+                });
+              }}
+              placeholder={{ key: "filter by key…", value: "value…" }}
+            />
+          </div>
+          {Object.keys(labelFilters).length > 0 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() =>
+                void navigate({
+                  search: (prev) => ({ ...prev, labels: undefined }),
+                  replace: true,
+                })
+              }
+              data-testid="clear-label-filters"
+            >
+              Clear filters
+            </Button>
+          )}
+        </div>
       </div>
 
       {groupsError ? (
@@ -803,6 +871,7 @@ function ChecksIndexPage() {
               org={org}
               search={debouncedSearch}
               internalFilter={internalFilter}
+              labelsFilter={labelsParam}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
               onDelete={() => setDeleteGroupUid(group.uid)}
@@ -822,6 +891,7 @@ function ChecksIndexPage() {
             org={org}
             search={debouncedSearch}
             internalFilter={internalFilter}
+            labelsFilter={labelsParam}
             onDeleteCheck={setDeleteCheckUid}
             onChangeGroup={setChangeGroupCheck}
             groups={groups || []}

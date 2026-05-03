@@ -24,8 +24,12 @@ See web/dash0/CLAUDE.md for dashboard-specific commands
 - **Reset SQLite database**: Delete the `solidping.db` file or use `SP_DB_RESET=true` environment variable to reset on startup
 
 ## Development Workflow
-If the server is currently running on port 4000, you can just apply code changes,
-wait 5s for it to build and then test your changes.
+If the server is currently running on port 4000, you can just apply code changes
+and test them. The `cmd/devloop` watcher (used by `make dev` / `make dev-test`)
+builds the new binary first and only signals the running process to exit once
+the build succeeds, so the API stays up across reloads — bounded by graceful
+shutdown (sub-second) rather than build time. A failed build leaves the
+previous binary running; check the dev log for the compiler error.
 
 1. Start infrastructure: `docker-compose up -d`
 2. Run everything: `make dev` (backend + dash0 + status0 with hot reload)
@@ -87,6 +91,8 @@ wait 5s for it to build and then test your changes.
 ### API Endpoints (key routes, see `docs/api-specification.md` for full list)
 - GET /api/mgmt/version - Version info
 - GET /api/mgmt/health - Health check
+- POST /api/mgmt/report - In-app bug report (multipart, public)
+- GET /api/v1/features - Frontend feature flags (auth)
 - POST /api/v1/auth/login - Login (org optional in body)
 - POST /api/v1/auth/logout - Logout
 - POST /api/v1/auth/refresh - Refresh token
@@ -183,8 +189,9 @@ See `docs/conventions/frontend-errors.md` for full details.
 - **502/503/504**: Auto-retry with exponential backoff (transient errors)
 
 ## Specs
-- All spec files must be prefixed with a date: `YYYY-MM-DD-` (e.g., `2026-02-21-adaptive-incident-resolution.md`)
-- `specs/done/` contains completed specs in `YYYY/MM/` subdirectories (e.g., `specs/done/2025/12/2025-12-07-auth.md`)
+- All spec files must be prefixed with `YYYY-MM-DD-NN-` where `NN` is a zero-padded two-digit order number (e.g., `2026-02-21-01-adaptive-incident-resolution.md`)
+- The order number `NN` resets per date: it must be unique among specs sharing the same `YYYY-MM-DD` day, across both `specs/todos/` and `specs/done/YYYY/MM/`, but two specs on different dates may reuse the same number (e.g., `2026-05-01-01`, `2026-05-01-02`, `2026-05-01-03`, `2026-05-02-01`, `2026-05-02-02`). Before creating a new spec, list existing files in those locations for the current date and pick the next available number.
+- `specs/done/` contains completed specs in `YYYY/MM/` subdirectories (e.g., `specs/done/2025/12/2025-12-07-01-auth.md`)
 - `specs/backlog/` contains specs planned for future implementation
 - `specs/cancelled/` contains abandoned specs (same `YYYY/MM/` structure)
 

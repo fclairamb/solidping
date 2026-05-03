@@ -1327,6 +1327,85 @@ func (s *Service) GetLabelsForChecks(ctx context.Context, checkUIDs []string) (m
 	return labelMap, nil
 }
 
+// ListDistinctLabelKeys returns distinct label keys used by checks in the org,
+// sorted by usage count DESC then key ASC. Filters by case-insensitive prefix
+// on key when query != "". Excludes orphaned (un-attached) labels.
+func (s *Service) ListDistinctLabelKeys(
+	ctx context.Context, orgUID, query string, limit int,
+) ([]models.LabelSuggestion, error) {
+	type row struct {
+		Value string `bun:"value"`
+		Count int    `bun:"count"`
+	}
+
+	stmt := s.db.NewSelect().
+		TableExpr("labels AS label").
+		ColumnExpr("label.key AS value").
+		ColumnExpr("COUNT(DISTINCT cl.check_uid) AS count").
+		Join("JOIN check_labels cl ON cl.label_uid = label.uid").
+		Where("label.organization_uid = ?", orgUID).
+		Where("label.deleted_at IS NULL").
+		GroupExpr("label.key").
+		OrderExpr("count DESC, label.key ASC").
+		Limit(limit)
+
+	if query != "" {
+		stmt = stmt.Where("label.key ILIKE ?", query+"%")
+	}
+
+	var rows []row
+	if err := stmt.Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list distinct label keys: %w", err)
+	}
+
+	out := make([]models.LabelSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = models.LabelSuggestion{Value: r.Value, Count: r.Count}
+	}
+
+	return out, nil
+}
+
+// ListDistinctLabelValues returns distinct values for a given label key in
+// the org, sorted by usage count DESC then value ASC. Filters by
+// case-insensitive prefix on value when query != "". Excludes orphaned labels.
+func (s *Service) ListDistinctLabelValues(
+	ctx context.Context, orgUID, key, query string, limit int,
+) ([]models.LabelSuggestion, error) {
+	type row struct {
+		Value string `bun:"value"`
+		Count int    `bun:"count"`
+	}
+
+	stmt := s.db.NewSelect().
+		TableExpr("labels AS label").
+		ColumnExpr("label.value AS value").
+		ColumnExpr("COUNT(DISTINCT cl.check_uid) AS count").
+		Join("JOIN check_labels cl ON cl.label_uid = label.uid").
+		Where("label.organization_uid = ?", orgUID).
+		Where("label.key = ?", key).
+		Where("label.deleted_at IS NULL").
+		GroupExpr("label.value").
+		OrderExpr("count DESC, label.value ASC").
+		Limit(limit)
+
+	if query != "" {
+		stmt = stmt.Where("label.value ILIKE ?", query+"%")
+	}
+
+	var rows []row
+	if err := stmt.Scan(ctx, &rows); err != nil {
+		return nil, fmt.Errorf("failed to list distinct label values: %w", err)
+	}
+
+	out := make([]models.LabelSuggestion, len(rows))
+	for i, r := range rows {
+		out[i] = models.LabelSuggestion{Value: r.Value, Count: r.Count}
+	}
+
+	return out, nil
+}
+
 // Result operations
 
 func (s *Service) CreateResult(ctx context.Context, result *models.Result) error {
@@ -1637,16 +1716,96 @@ func (s *Service) DeleteJob(ctx context.Context, uid string) error {
 
 // Incident operations
 
+// applyIncidentSetFields walks the non-clear pointer fields and writes the
+// corresponding Set() calls. Split out of UpdateIncident so the caller stays
+// under the cyclop limit.
+func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bun.UpdateQuery {
+	type setter struct {
+		col string
+		val any
+	}
+
+	setters := []setter{
+		{"region", update.Region},
+		{"state", update.State},
+		{"resolved_at", update.ResolvedAt},
+		{"resolved_by", update.ResolvedBy},
+		{"resolution_type", update.ResolutionType},
+		{"escalated_at", update.EscalatedAt},
+		{"acknowledged_at", update.AcknowledgedAt},
+		{"acknowledged_by", update.AcknowledgedBy},
+		{"snoozed_until", update.SnoozedUntil},
+		{"snoozed_by", update.SnoozedBy},
+		{"snooze_reason", update.SnoozeReason},
+		{"failure_count", update.FailureCount},
+		{"relapse_count", update.RelapseCount},
+		{"last_reopened_at", update.LastReopenedAt},
+		{"title", update.Title},
+		{"description", update.Description},
+		{"details", update.Details},
+	}
+
+	for i := range setters {
+		query = applyIncidentSet(query, setters[i].col, setters[i].val)
+	}
+
+	return query
+}
+
+// applyIncidentSet writes a single Set() if the pointer is non-nil. The
+// switch covers every concrete pointer type used in IncidentUpdate.
+func applyIncidentSet(query *bun.UpdateQuery, column string, value any) *bun.UpdateQuery {
+	switch typed := value.(type) {
+	case *string:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *time.Time:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *int:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *models.IncidentState:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	case *models.JSONMap:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
+	}
+
+	return query
+}
+
 // applyClearFields applies the Clear* boolean fields from IncidentUpdate to set columns to NULL.
 func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bun.UpdateQuery {
 	if update.ClearResolvedAt {
 		query = query.Set("resolved_at = NULL")
+	}
+	if update.ClearResolvedBy {
+		query = query.Set("resolved_by = NULL")
+	}
+	if update.ClearResolutionType {
+		query = query.Set("resolution_type = NULL")
 	}
 	if update.ClearAcknowledgedAt {
 		query = query.Set("acknowledged_at = NULL")
 	}
 	if update.ClearAcknowledgedBy {
 		query = query.Set("acknowledged_by = NULL")
+	}
+	if update.ClearSnoozedUntil {
+		query = query.Set("snoozed_until = NULL")
+	}
+	if update.ClearSnoozedBy {
+		query = query.Set("snoozed_by = NULL")
+	}
+	if update.ClearSnoozeReason {
+		query = query.Set("snooze_reason = NULL")
 	}
 	return query
 }
@@ -1924,54 +2083,7 @@ func (s *Service) UpdateIncident(ctx context.Context, uid string, update *models
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
 
-	if update.Region != nil {
-		query = query.Set("region = ?", *update.Region)
-	}
-
-	if update.State != nil {
-		query = query.Set("state = ?", *update.State)
-	}
-
-	if update.ResolvedAt != nil {
-		query = query.Set("resolved_at = ?", *update.ResolvedAt)
-	}
-
-	if update.EscalatedAt != nil {
-		query = query.Set("escalated_at = ?", *update.EscalatedAt)
-	}
-
-	if update.AcknowledgedAt != nil {
-		query = query.Set("acknowledged_at = ?", *update.AcknowledgedAt)
-	}
-
-	if update.AcknowledgedBy != nil {
-		query = query.Set("acknowledged_by = ?", *update.AcknowledgedBy)
-	}
-
-	if update.FailureCount != nil {
-		query = query.Set("failure_count = ?", *update.FailureCount)
-	}
-
-	if update.RelapseCount != nil {
-		query = query.Set("relapse_count = ?", *update.RelapseCount)
-	}
-
-	if update.LastReopenedAt != nil {
-		query = query.Set("last_reopened_at = ?", *update.LastReopenedAt)
-	}
-
-	if update.Title != nil {
-		query = query.Set("title = ?", *update.Title)
-	}
-
-	if update.Description != nil {
-		query = query.Set("description = ?", *update.Description)
-	}
-
-	if update.Details != nil {
-		query = query.Set("details = ?", *update.Details)
-	}
-
+	query = applyIncidentSetFields(query, update)
 	query = applyClearFields(query, update)
 
 	_, err := query.Exec(ctx)
@@ -1988,6 +2100,24 @@ func (s *Service) CountActiveIncidentsByCheckUID(ctx context.Context, checkUID s
 		Count(ctx)
 
 	return count, err
+}
+
+func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error) {
+	var incidents []*models.Incident
+
+	err := s.db.NewSelect().
+		Model(&incidents).
+		Where("state = ?", models.IncidentStateActive).
+		Where("snoozed_until IS NOT NULL").
+		Where("snoozed_until <= ?", now).
+		Where("deleted_at IS NULL").
+		Order("snoozed_until ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list expired snoozed incidents: %w", err)
+	}
+
+	return incidents, nil
 }
 
 func (s *Service) UpdateCheckStatus(
@@ -2097,17 +2227,47 @@ func (s *Service) GetStateEntry(ctx context.Context, orgUID *string, key string)
 }
 
 // SetStateEntry creates or updates a state entry.
+//
+// PostgreSQL (and SQLite) treat NULL values as distinct in UNIQUE
+// constraints by default, so INSERT … ON CONFLICT(organization_uid, key)
+// does not fire when organization_uid is NULL — duplicate global rows
+// would silently accumulate. To keep callers' upsert intent honest we
+// run an explicit UPDATE first when orgUID is nil; if no row matches we
+// fall through to INSERT.
 func (s *Service) SetStateEntry(
 	ctx context.Context, orgUID *string, key string, value *models.JSONMap, ttl *time.Duration,
 ) error {
 	now := time.Now()
+
+	var expiresAt *time.Time
+	if ttl != nil {
+		ts := now.Add(*ttl)
+		expiresAt = &ts
+	}
+
+	if orgUID == nil {
+		res, err := s.db.NewUpdate().
+			Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update state entry: %w", err)
+		}
+
+		rows, _ := res.RowsAffected()
+		if rows > 0 {
+			return nil
+		}
+	}
+
 	entry := models.NewStateEntry(orgUID, key)
 	entry.Value = value
-
-	if ttl != nil {
-		expiresAt := now.Add(*ttl)
-		entry.ExpiresAt = &expiresAt
-	}
+	entry.ExpiresAt = expiresAt
 
 	_, err := s.db.NewInsert().
 		Model(entry).
@@ -3417,4 +3577,220 @@ func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID strin
 	}
 
 	return false, nil
+}
+
+// CreateFile inserts a new file row.
+func (s *Service) CreateFile(ctx context.Context, file *models.File) error {
+	_, err := s.db.NewInsert().Model(file).Exec(ctx)
+
+	return err
+}
+
+// GetFile retrieves a file by UID for an organization, excluding soft-deleted rows.
+func (s *Service) GetFile(ctx context.Context, orgUID, uid string) (*models.File, error) {
+	file := new(models.File)
+
+	err := s.db.NewSelect().
+		Model(file).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
+// GetFileAny retrieves a file by UID without org scoping. Used by the public
+// signed-URL handler — the signature already proves authorization.
+func (s *Service) GetFileAny(ctx context.Context, uid string) (*models.File, error) {
+	file := new(models.File)
+
+	err := s.db.NewSelect().
+		Model(file).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
+// ListFiles returns files for an organization with optional substring search on name.
+func (s *Service) ListFiles(
+	ctx context.Context, orgUID string, filter models.ListFilesFilter,
+) ([]*models.File, int64, error) {
+	var files []*models.File
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC")
+
+	if filter.Q != "" {
+		query = query.Where("name ILIKE ?", "%"+filter.Q+"%")
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	err = query.Scan(ctx)
+
+	return files, int64(total), err
+}
+
+// DeleteFile soft-deletes a file by UID, scoped to org.
+func (s *Service) DeleteFile(ctx context.Context, orgUID, uid string) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.File)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}
+
+// CreateMembershipRequest inserts a new pending request.
+func (s *Service) CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error {
+	_, err := s.db.NewInsert().Model(request).Exec(ctx)
+
+	return err
+}
+
+// UpdateMembershipRequest persists status / decision changes.
+func (s *Service) UpdateMembershipRequest(
+	ctx context.Context, request *models.MembershipRequest,
+) error {
+	request.UpdatedAt = time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model(request).
+		WherePK().
+		Exec(ctx)
+
+	return err
+}
+
+// GetMembershipRequest fetches a request by UID with relations.
+func (s *Service) GetMembershipRequest(
+	ctx context.Context, uid string,
+) (*models.MembershipRequest, error) {
+	request := new(models.MembershipRequest)
+
+	err := s.db.NewSelect().
+		Model(request).
+		Relation("Organization").
+		Relation("User").
+		Where("mr.uid = ?", uid).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
+// GetMembershipRequestByOrgAndUser returns the (org,user) row if any.
+func (s *Service) GetMembershipRequestByOrgAndUser(
+	ctx context.Context, orgUID, userUID string,
+) (*models.MembershipRequest, error) {
+	request := new(models.MembershipRequest)
+
+	err := s.db.NewSelect().
+		Model(request).
+		Where("organization_uid = ?", orgUID).
+		Where("user_uid = ?", userUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
+// ListMembershipRequests returns requests matching the filter, ordered by
+// most recently created first.
+func (s *Service) ListMembershipRequests(
+	ctx context.Context, filter models.ListMembershipRequestsFilter,
+) ([]*models.MembershipRequest, error) {
+	var requests []*models.MembershipRequest
+
+	query := s.db.NewSelect().
+		Model(&requests).
+		Relation("Organization").
+		Relation("User").
+		Order("membership_request.created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("membership_request.organization_uid = ?", filter.OrganizationUID)
+	}
+	if filter.UserUID != "" {
+		query = query.Where("membership_request.user_uid = ?", filter.UserUID)
+	}
+	if filter.Status != "" {
+		query = query.Where("membership_request.status = ?", filter.Status)
+	}
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return requests, nil
+}
+
+// ApproveMembershipRequest commits the request status change AND the new
+// membership row in a single transaction.
+func (s *Service) ApproveMembershipRequest(
+	ctx context.Context,
+	request *models.MembershipRequest,
+	member *models.OrganizationMember,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		request.UpdatedAt = time.Now()
+
+		if _, err := tx.NewUpdate().Model(request).WherePK().Exec(ctx); err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(member).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

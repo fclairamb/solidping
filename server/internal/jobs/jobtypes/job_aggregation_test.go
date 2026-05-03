@@ -59,7 +59,7 @@ func TestCalculateAggregationBoundary(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			got, err := calculateAggregationBoundary(tt.sourcePeriod)
+			got, err := calculateAggregationBoundary(tt.sourcePeriod, 1, 1, 1)
 			if tt.wantErr {
 				require.Error(t, err)
 				return
@@ -76,13 +76,24 @@ func TestCalculateAggregationBoundary(t *testing.T) {
 
 	// Test with controlled time - at least verify the logic is correct
 	t.Run("raw period boundary logic", func(t *testing.T) {
-		boundary, err := calculateAggregationBoundary("raw")
+		t.Parallel()
+		boundary, err := calculateAggregationBoundary("raw", 1, 1, 1)
 		require.NoError(t, err)
 
 		// Should be truncated to the hour
 		assert.Equal(t, 0, boundary.Minute())
 		assert.Equal(t, 0, boundary.Second())
 		assert.Equal(t, 0, boundary.Nanosecond())
+	})
+
+	t.Run("retention > 1 extends the keep window", func(t *testing.T) {
+		t.Parallel()
+		// raw=24 means current hour + 23 prior completed hours stay raw
+		boundary, err := calculateAggregationBoundary("raw", 24, 30, 12)
+		require.NoError(t, err)
+
+		expected := time.Now().UTC().Truncate(time.Hour).Add(-23 * time.Hour)
+		assert.WithinDuration(t, expected, boundary, time.Second)
 	})
 
 	_ = now // Suppress unused variable warning

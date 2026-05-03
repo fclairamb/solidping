@@ -1,6 +1,10 @@
-# Dash0 - Public Status Dashboard
+# Dash0 - Operator Dashboard
 
-A React-based public status page for displaying SolidPing monitoring status. This is a read-only dashboard meant to be embedded or shared publicly.
+A React-based multi-tenant authenticated admin app for SolidPing operators.
+This is the primary operator UI: it manages checks, incidents, status pages,
+organizations, members, tokens, and integrations. The public read-only status
+page (subscriber view) lives in `web/status0`, not here — do not conflate the
+two.
 
 ## Tech Stack
 
@@ -20,9 +24,10 @@ A React-based public status page for displaying SolidPing monitoring status. Thi
 web/dash0/
 ├── src/
 │   ├── components/
-│   │   ├── shared/           # Business logic components
-│   │   │   ├── status-dashboard.tsx  # Main dashboard
-│   │   │   └── status-timeline.tsx   # Timeline visualization
+│   │   ├── dashboard/        # Org dashboard (welcome page) and shared event display helpers
+│   │   ├── shared/           # Cross-feature business logic components
+│   │   ├── checks/           # Check list, form, summary cards, charts
+│   │   ├── layout/           # AppSidebar, OrgLayout
 │   │   └── ui/               # Reusable UI primitives
 │   ├── routes/               # File-based routes
 │   │   ├── __root.tsx        # Root layout
@@ -90,18 +95,30 @@ VITE_BASE_URL=/status/ bun run build
 
 ## API Endpoints Used
 
-The dashboard fetches data from these public-facing endpoints:
+The operator app talks to the full authenticated API surface — see the
+top-level `CLAUDE.md` for the canonical list. The most-used endpoints in this
+client are:
 
-- `GET /api/v1/orgs/{org}/checks` - List all checks with status
-- `GET /api/v1/orgs/{org}/results?checkUid={uid}&limit=48` - Recent results for timeline
+- `GET /api/v1/orgs/{org}/checks` — list checks (`?with=last_result,last_status_change` for the dashboard / list views)
+- `GET /api/v1/orgs/{org}/incidents` — incidents, filterable by `state`
+- `GET /api/v1/orgs/{org}/events` — audit events
+- `GET /api/v1/orgs/{org}/results` — raw and aggregated check results
+- `POST/PATCH/DELETE` for the matching resource paths (auth handled by `apiFetch`)
 
 ## Features
 
-### Status Dashboard
-- Overall system status (ok/warning/error)
-- Service cards with current status
-- 48-point status timeline per service
-- Auto-refresh every 30 seconds (checks) / 60 seconds (results)
+### Org dashboard (`/orgs/$org`)
+- Operator-facing welcome page composed from list endpoints
+- Overall status banner (green / yellow / red) keyed off check + incident counts
+- 4 KPI tiles: monitored checks, currently down, active incidents, 24h availability
+- Two-column body: Needs attention + Active incidents
+- Recent activity feed (last 8 events)
+- Per-card error boundaries — one failed query does not blank the page
+- Polls at 30s (checks/incidents) and 60s (results/events)
+
+### Public-side status (handled elsewhere)
+The subscriber-facing public status page lives in `web/status0`. dash0 only
+renders the operator UI — when working on subscriber-facing UX, switch repos.
 
 ### Theming
 - Light/dark mode support via CSS variables

@@ -39,6 +39,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useVersion } from "@/api/hooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LanguageSwitcher } from "@/components/shared/language-switcher";
 
 const navItems = [
   {
@@ -219,6 +220,12 @@ export function AppSidebar() {
 
       <SidebarFooter>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <div className="flex items-center justify-around gap-1 px-2 py-1">
+              <LanguageSwitcher />
+              <ThemeToggle />
+            </div>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

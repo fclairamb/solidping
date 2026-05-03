@@ -4,8 +4,10 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,9 +23,29 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
+
+// State entry value keys shared between producers and consumers of
+// password-reset and counter entries; centralized so a typo can't drift
+// the wire format silently.
+const (
+	stateValueKeyUserUID = "userUid"
+	stateValueKeyCount   = "count"
+)
+
+// emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
+// duplicate it here to avoid an import cycle (auth → jobtypes →
+// notifications → slack → auth). Keep the JSON tags in sync with the
+// receiver struct in jobs/jobtypes/job_email.go.
+type emailJobConfig struct {
+	To           []string `json:"to"`
+	Subject      string   `json:"subject"`
+	Template     string   `json:"template,omitempty"`
+	TemplateData any      `json:"templateData,omitempty"`
+}
 
 // Internal property/key constants used in JSONMap fields and OAuth flows.
 const (
@@ -33,6 +55,7 @@ const (
 	keyName        = "name"
 	keyMethod      = "method"
 	keyCreatedWith = "created_with"
+	keyScopes      = "scopes"
 
 	tokenTypeBearer = "Bearer"
 	jwtIssuer       = "solidping"
@@ -63,17 +86,33 @@ var (
 	ErrInvalidRecoveryCode     = errors.New("invalid recovery code")
 	ErrTwoFAAlreadyEnabled     = errors.New("2FA is already enabled")
 	ErrTwoFANotEnabled         = errors.New("2FA is not enabled")
+	// ErrRateLimited is returned when a client exceeds the per-endpoint
+	// rate limit. The handler maps this to HTTP 429.
+	ErrRateLimited = errors.New("rate limit exceeded")
+	// ErrInvalidAutoJoinRegex is returned when an admin tries to set a
+	// dangerously broad registration email pattern.
+	ErrInvalidAutoJoinRegex = errors.New("invalid auto-join regex pattern")
+	// ErrAlreadyAMember is returned when a user tries to request membership
+	// in an org they already belong to.
+	ErrAlreadyAMember = errors.New("already a member of this organization")
+	// ErrRequestPending is returned when a user re-requests membership
+	// while a previous request is still pending.
+	ErrRequestPending = errors.New("a membership request is already pending")
+	// ErrRequestNotFound is returned when a membership request lookup fails.
+	ErrRequestNotFound = errors.New("membership request not found")
+	// ErrRequestCooldownActive is returned when a user re-requests
+	// membership during the rejection cooldown window.
+	ErrRequestCooldownActive = errors.New("membership request cooldown active")
 )
 
 // Service provides authentication business logic.
 type Service struct {
-	db             db.Service
-	cfg            config.AuthConfig
-	fullCfg        *config.Config
-	emailSender    email.Sender
-	emailFormatter email.Formatter
-	patCache       map[string]*cachedPATClaims
-	cacheMux       sync.RWMutex
+	db       db.Service
+	cfg      config.AuthConfig
+	fullCfg  *config.Config
+	jobsSvc  jobsvc.Service
+	patCache map[string]*cachedPATClaims
+	cacheMux sync.RWMutex
 }
 
 type cachedPATClaims struct {
@@ -86,6 +125,12 @@ type Claims struct {
 	UserUID string `json:"userUid"`
 	OrgSlug string `json:"orgSlug"`
 	Role    string `json:"role,omitempty"`
+	// Scopes lists fine-grained capabilities granted to this credential.
+	// Empty means "no scope restrictions" — the credential is treated as a
+	// full user session (back-compat for dashboard JWTs that pre-date scopes).
+	// Populated values gate access to specific subsystems; see e.g. the
+	// "mcp" / "mcp:read" scopes consumed by the MCP handler.
+	Scopes []string `json:"scopes,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -199,10 +244,30 @@ type Disable2FARequest struct {
 
 // MeResponse contains the current user's information.
 type MeResponse struct {
-	User          *UserInfo             `json:"user"`
-	Organization  *OrganizationInfo     `json:"organization"`
-	Organizations []OrganizationSummary `json:"organizations"`
-	TOTPEnabled   bool                  `json:"totpEnabled"`
+	User                      *UserInfo                  `json:"user"`
+	Organization              *OrganizationInfo          `json:"organization"`
+	Organizations             []OrganizationSummary      `json:"organizations"`
+	TOTPEnabled               bool                       `json:"totpEnabled"`
+	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
+}
+
+// MembershipRequestSummary is the compact form returned on /auth/me and
+// /auth/membership-requests for the requester to render their queue.
+type MembershipRequestSummary struct {
+	UID            string                         `json:"uid"`
+	Organization   OrganizationRef                `json:"organization"`
+	Status         models.MembershipRequestStatus `json:"status"`
+	Message        string                         `json:"message,omitempty"`
+	DecisionReason string                         `json:"decisionReason,omitempty"`
+	CreatedAt      time.Time                      `json:"createdAt"`
+	DecidedAt      *time.Time                     `json:"decidedAt,omitempty"`
+}
+
+// OrganizationRef is a slug+name handle to an org.
+type OrganizationRef struct {
+	UID  string `json:"uid"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 // UpdateProfileRequest contains the fields that can be updated on the user profile.
@@ -237,6 +302,10 @@ type TokenListResponse struct {
 type CreateTokenRequest struct {
 	Name      string     `json:"name"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// Scopes restricts the capabilities of the token. Empty means the token
+	// inherits the user's full role (back-compat). See Claims.Scopes for the
+	// well-known values, e.g. "mcp" or "mcp:read".
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // CreateTokenResponse contains the response data for a created token.
@@ -251,15 +320,47 @@ type CreateTokenResponse struct {
 // NewService creates a new authentication service.
 func NewService(
 	dbService db.Service, cfg config.AuthConfig, fullCfg *config.Config,
-	emailSender email.Sender, emailFormatter email.Formatter,
+	jobsSvc jobsvc.Service,
 ) *Service {
 	return &Service{
-		db:             dbService,
-		cfg:            cfg,
-		fullCfg:        fullCfg,
-		emailSender:    emailSender,
-		emailFormatter: emailFormatter,
-		patCache:       make(map[string]*cachedPATClaims),
+		db:       dbService,
+		cfg:      cfg,
+		fullCfg:  fullCfg,
+		jobsSvc:  jobsSvc,
+		patCache: make(map[string]*cachedPATClaims),
+	}
+}
+
+// enqueueEmail builds an email job and pushes it onto the job queue.
+// Errors are logged but never bubbled to the caller — transactional emails
+// must not block registration, password reset, or invitation flows.
+//
+// The subject is left blank: every template defines its own
+// {{define "subject"}} block, so duplicating the subject at the call
+// site only invites drift.
+func (s *Service) enqueueEmail(
+	ctx context.Context, orgUID, recipient, template string, data any,
+) {
+	if s.jobsSvc == nil || recipient == "" {
+		return
+	}
+
+	cfg := emailJobConfig{
+		To:           []string{recipient},
+		Template:     template,
+		TemplateData: data,
+	}
+
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to marshal email job config",
+			"template", template, "error", err)
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); err != nil {
+		slog.ErrorContext(ctx, "Failed to enqueue email job",
+			"template", template, "error", err)
 	}
 }
 
@@ -861,6 +962,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		UserUID: user.UID,
 		OrgSlug: org.Slug,
 		Role:    role,
+		Scopes:  scopesFromProperties(token.Properties),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: expiresAt,
 			IssuedAt:  jwt.NewNumericDate(token.CreatedAt),
@@ -941,6 +1043,11 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		return nil, err
 	}
 
+	pending, err := s.listPendingMembershipRequests(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MeResponse{
 		User: &UserInfo{
 			UID:       user.UID,
@@ -954,8 +1061,9 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			Slug: org.Slug,
 			Name: org.Name,
 		},
-		Organizations: orgs,
-		TOTPEnabled:   user.TOTPEnabled,
+		Organizations:             orgs,
+		TOTPEnabled:               user.TOTPEnabled,
+		PendingMembershipRequests: pending,
 	}, nil
 }
 
@@ -1111,6 +1219,15 @@ func (s *Service) CreatePAT(
 
 	token := models.NewUserToken(userUID, &org.UID, tokenValue, models.TokenTypePAT)
 	token.Properties = models.JSONMap{keyName: req.Name}
+
+	if len(req.Scopes) > 0 {
+		// Stored as []any so json round-trips through JSONMap cleanly.
+		scopes := make([]any, len(req.Scopes))
+		for i, s := range req.Scopes {
+			scopes[i] = s
+		}
+		token.Properties[keyScopes] = scopes
+	}
 
 	token.ExpiresAt = req.ExpiresAt
 
@@ -1418,14 +1535,28 @@ type RegisterResponse struct {
 }
 
 const (
-	registrationKeyPrefix  = "email_registration:"
-	registrationTTL        = 3 * 24 * time.Hour
-	inviteKeyPrefix        = "invite:"
-	passwordResetKeyPrefix = "password_reset:"
-	passwordResetTTL       = 1 * time.Hour
-	minPasswordLength      = 8
-	registrationTokenSize  = 32
+	registrationKeyPrefix       = "email_registration:"
+	registrationTTL             = 3 * 24 * time.Hour
+	inviteKeyPrefix             = "invite:"
+	passwordResetKeyPrefix      = "password_reset:"
+	passwordResetCountKeyPrefix = "password_reset_count:"
+	passwordResetIPKeyPrefix    = "pwd_reset_rl:"
+	passwordResetTTL            = 1 * time.Hour
+	passwordResetIPWindow       = time.Minute
+	passwordResetMaxPerUser     = 3
+	passwordResetMaxPerIP       = 5
+	minPasswordLength           = 8
+	registrationTokenSize       = 32
 )
+
+// hashResetToken derives the storage key suffix for a plaintext reset
+// token. Inputs are 32 random bytes hex-encoded (256 bits), so plain
+// SHA-256 is sufficient — no salt or stretching needed.
+func hashResetToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+
+	return hex.EncodeToString(sum[:])
+}
 
 // Register creates a pending registration entry and sends a confirmation email.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
@@ -1487,28 +1618,12 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("failed to store registration: %w", err)
 	}
 
-	// Send confirmation email
-	if s.emailSender != nil && s.emailFormatter != nil {
-		baseURL := s.fullCfg.Server.BaseURL
-		confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s", baseURL, token)
-
-		htmlBody, textBody, fmtErr := s.emailFormatter.Format("registration.html", map[string]any{
-			"ConfirmURL": confirmURL,
-		})
-		if fmtErr != nil {
-			slog.ErrorContext(ctx, "Failed to format registration email", "error", fmtErr)
-		} else {
-			msg := &email.Message{
-				Recipients: email.Recipients{To: []string{req.Email}},
-				Subject:    "[SolidPing] Confirm your account",
-				HTML:       htmlBody,
-				Text:       textBody,
-			}
-			if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-				slog.ErrorContext(ctx, "Failed to send registration email", "error", sendErr)
-			}
-		}
-	}
+	// Send confirmation email asynchronously via the email job
+	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
+		s.fullCfg.Server.BaseURL, token)
+	s.enqueueEmail(ctx, "", req.Email, "registration.html",
+		map[string]any{"ConfirmURL": confirmURL},
+	)
 
 	return &RegisterResponse{Message: "Check your email to confirm your account"}, nil
 }
@@ -1669,6 +1784,18 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 			continue
 		}
 
+		// Defensive: leftover unsafe patterns (set before validation existed)
+		// must be skipped so they cannot adopt every signup. Log and move on
+		// rather than blowing up the registration confirmation path.
+		if err := validateAutoJoinRegex(patternVal); err != nil {
+			slog.WarnContext(
+				ctx, "skipping unsafe auto-join regex",
+				"orgUID", *param.OrganizationUID, "error", err,
+			)
+
+			continue
+		}
+
 		re, err := regexp.Compile(patternVal)
 		if err != nil {
 			continue
@@ -1717,17 +1844,44 @@ type ResetPasswordResponse struct {
 }
 
 // RequestPasswordReset creates a password reset token and sends a reset email.
-// Always returns success to prevent email enumeration.
+// Always returns success to the caller (anti-enumeration); the only error
+// path the handler must surface is ErrRateLimited so it can map to 429.
+//
+// remoteAddr is the request's client IP (best-effort — passed through from
+// the handler). Used solely for the per-IP rate limit; an empty string
+// disables that check.
 func (s *Service) RequestPasswordReset(
-	ctx context.Context, req RequestPasswordResetRequest,
+	ctx context.Context, req RequestPasswordResetRequest, remoteAddr string,
 ) (*RequestPasswordResetResponse, error) {
 	successMsg := &RequestPasswordResetResponse{
 		Message: "If an account exists with that email, a reset link has been sent.",
 	}
 
+	// Per-IP rate limit. We always check this first so abusers paying no
+	// attention to the success-shaped response also can't drive load on
+	// the user lookup or state-entry write.
+	if remoteAddr != "" {
+		exceeded, err := s.bumpResetIPCounter(ctx, remoteAddr)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to track password-reset IP counter", "error", err)
+		} else if exceeded {
+			return nil, ErrRateLimited
+		}
+	}
+
 	// Look up user by email — return success even if not found (anti-enumeration)
 	user, _ := s.db.GetUserByEmail(ctx, req.Email)
 	if user == nil || user.PasswordHash == nil || *user.PasswordHash == "" {
+		return successMsg, nil
+	}
+
+	// Per-user cap: drop silently above the limit. Returning success keeps
+	// the response shape uniform with the unknown-email path so abusers
+	// can't tell the difference.
+	overCap, err := s.bumpResetUserCounter(ctx, user.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to track password-reset user counter", "error", err, "userUID", user.UID)
+	} else if overCap {
 		return successMsg, nil
 	}
 
@@ -1738,105 +1892,178 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	token := hex.EncodeToString(tokenBytes)
+	tokenHash := hashResetToken(token)
 
-	// Store in state entries (upsert — replaces any existing reset for this email)
-	stateValue := &models.JSONMap{
-		keyToken: token,
-		keyEmail: req.Email,
-	}
+	// Store at password_reset:<sha256(token)> with userUid only. The
+	// plaintext token never lands on disk; a leaked DB snapshot has no
+	// way to mint a valid reset URL.
+	stateValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
 	ttl := passwordResetTTL
 
-	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+req.Email, stateValue, &ttl); err != nil {
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
 		return nil, fmt.Errorf("failed to store password reset: %w", err)
 	}
 
-	// Send reset email
-	if s.emailSender != nil && s.emailFormatter != nil {
-		baseURL := s.fullCfg.Server.BaseURL
-		resetURL := fmt.Sprintf("%s/dash0/reset-password/%s", baseURL, token)
-
-		htmlBody, textBody, fmtErr := s.emailFormatter.Format("password-reset.html", map[string]any{
-			"ResetURL": resetURL,
-		})
-		if fmtErr != nil {
-			slog.ErrorContext(ctx, "Failed to format password reset email", "error", fmtErr)
-		} else {
-			msg := &email.Message{
-				Recipients: email.Recipients{To: []string{req.Email}},
-				Subject:    "[SolidPing] Reset your password",
-				HTML:       htmlBody,
-				Text:       textBody,
-			}
-			if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-				slog.ErrorContext(ctx, "Failed to send password reset email", "error", sendErr)
-			}
-		}
-	}
+	// Send reset email asynchronously via the email job
+	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
+		s.fullCfg.Server.BaseURL, token)
+	s.enqueueEmail(ctx, "", req.Email, "password-reset.html",
+		map[string]any{"ResetURL": resetURL},
+	)
 
 	return successMsg, nil
 }
 
-// ResetPassword validates a reset token and sets a new password.
-func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (*ResetPasswordResponse, error) {
-	// Search state entries for matching token
-	entries, err := s.db.ListStateEntries(ctx, nil, passwordResetKeyPrefix)
+// counterValue extracts the integer value from a state entry that holds
+// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
+// accept both shapes; anything else is treated as zero.
+func counterValue(entry *models.StateEntry) int {
+	if entry == nil || entry.Value == nil {
+		return 0
+	}
+
+	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
+	case float64:
+		return int(raw)
+	case int:
+		return raw
+	case int64:
+		return int(raw)
+	default:
+		return 0
+	}
+}
+
+// bumpCounter loads / increments / persists a counter at the given state
+// key, scoped to the supplied TTL. Reports whether the count was already
+// at or above the limit (in which case no bump happens).
+func (s *Service) bumpCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	current, err := s.db.GetStateEntry(ctx, nil, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list password reset entries: %w", err)
+		return false, err
 	}
 
-	var matchedEntry *models.StateEntry
+	count := counterValue(current)
 
-	for _, entry := range entries {
-		if entry.Value == nil {
-			continue
-		}
-
-		val := *entry.Value
-		if tokenVal, ok := val["token"].(string); ok && tokenVal == req.Token {
-			matchedEntry = entry
-
-			break
-		}
+	if count >= limit {
+		return true, nil
 	}
 
-	if matchedEntry == nil {
-		return nil, ErrPasswordResetExpired
+	count++
+	value := &models.JSONMap{stateValueKeyCount: count}
+	scopedTTL := ttl
+	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
+		return false, err
 	}
 
-	// Extract email from key
-	resetEmail := strings.TrimPrefix(matchedEntry.Key, passwordResetKeyPrefix)
+	return false, nil
+}
 
-	// Look up user
-	user, err := s.db.GetUserByEmail(ctx, resetEmail)
-	if err != nil || user == nil {
-		return nil, ErrPasswordResetExpired
-	}
+// bumpResetUserCounter increments (or seeds) the per-user reset counter
+// and reports whether the new value exceeds the configured cap. The
+// counter shares the reset TTL so it ages out with the entries it bounds.
+func (s *Service) bumpResetUserCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		passwordResetCountKeyPrefix+userUID, passwordResetMaxPerUser, passwordResetTTL)
+}
 
-	// Validate new password
+// bumpResetIPCounter increments (or seeds) the per-IP reset counter on a
+// 1-minute window and reports whether the new value exceeds the cap.
+func (s *Service) bumpResetIPCounter(ctx context.Context, remoteAddr string) (bool, error) {
+	return s.bumpCounter(ctx,
+		passwordResetIPKeyPrefix+remoteAddr, passwordResetMaxPerIP, passwordResetIPWindow)
+}
+
+// ResetPassword validates a reset token and sets a new password.
+//
+// Validation order matters for the regression guarantees in this spec:
+// password length is checked *before* the state entry is touched so a
+// rejected weak password doesn't burn the user's reset opportunity.
+func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (*ResetPasswordResponse, error) {
 	if len(req.Password) < minPasswordLength {
 		return nil, fmt.Errorf("%w: password must be at least %d characters",
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	// Hash new password
+	tokenHash := hashResetToken(req.Token)
+
+	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load password reset entry: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
+		return nil, ErrPasswordResetExpired
+	}
+
+	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
+	if !ok || userUID == "" {
+		return nil, ErrPasswordResetExpired
+	}
+
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil || user == nil {
+		return nil, ErrPasswordResetExpired
+	}
+
 	hash, err := passwords.Hash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Update user's password
 	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
-	// Delete the state entry
-	if err := s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key); err != nil {
+	// Best-effort cleanup. We log but never fail the reset on these:
+	// the password is already rotated and the entry is single-use, so
+	// stale state is the worst outcome and it ages out at the TTL.
+	if err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err)
 	}
+
+	if err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete password reset counter", "error", err)
+	}
+
+	// Revoke active refresh tokens so an attacker who triggered the reset
+	// from a compromised session can't keep using the old session. PATs
+	// (TokenTypePAT) are intentionally preserved — they're separately
+	// managed credentials the user controls from the tokens UI.
+	s.revokeRefreshTokensForUser(ctx, user.UID)
+
+	// Confirmation email so the legitimate user sees a record of the
+	// change even if the attacker controls the password-reset link.
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
+		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+	)
 
 	return &ResetPasswordResponse{
 		Message: "Your password has been reset. You can now log in.",
 	}, nil
+}
+
+// revokeRefreshTokensForUser deletes every refresh token attached to the
+// user. PATs are deliberately untouched. Errors are logged, never fatal —
+// stateless access tokens (JWTs) can't be revoked synchronously anyway,
+// so the goal here is best-effort hygiene, not a security boundary.
+func (s *Service) revokeRefreshTokensForUser(ctx context.Context, userUID string) {
+	tokens, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list refresh tokens for revocation",
+			"error", err, "userUID", userUID)
+
+		return
+	}
+
+	for _, token := range tokens {
+		if delErr := s.db.DeleteUserToken(ctx, token.UID); delErr != nil {
+			slog.ErrorContext(ctx, "Failed to delete refresh token",
+				"error", delErr, "tokenUID", token.UID)
+		}
+	}
 }
 
 // CreateOrgRequest contains the request data for creating an organization.
@@ -2027,7 +2254,7 @@ func (s *Service) CreateInvitation(
 	expiresAt := time.Now().Add(ttl)
 
 	// Send invitation email
-	s.sendInvitationEmail(ctx, req.Email, inviterUID, org.Name, req.Role, inviteURL)
+	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
 
 	return &InviteResponse{
 		UID:       entry.UID,
@@ -2322,11 +2549,37 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 		return s.db.DeleteOrgParameter(ctx, orgUID, "registration.email_pattern")
 	}
 
-	if _, compileErr := regexp.Compile(pattern); compileErr != nil {
-		return fmt.Errorf("%w: invalid regex pattern", ErrInvalidCredentials)
+	if err := validateAutoJoinRegex(pattern); err != nil {
+		return err
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)
+}
+
+// scopesFromProperties extracts the scopes list previously stored on a
+// PAT's Properties JSONMap. JSONMap round-trips through json.Unmarshal,
+// so a stored []string comes back as []any of strings; we coerce it
+// back. Unknown shapes return nil (= no scope restrictions).
+func scopesFromProperties(props models.JSONMap) []string {
+	raw, ok := props[keyScopes]
+	if !ok {
+		return nil
+	}
+
+	switch typed := raw.(type) {
+	case []string:
+		return typed
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, v := range typed {
+			if s, isStr := v.(string); isStr {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func stringFromMap(m models.JSONMap, key string) string {
@@ -2356,36 +2609,22 @@ func maskEmail(email string) string {
 }
 
 func (s *Service) sendInvitationEmail(
-	ctx context.Context, recipientEmail, inviterUID, orgName, role, inviteURL string,
+	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, inviteURL string,
 ) {
-	if recipientEmail == "" || s.emailSender == nil || s.emailFormatter == nil {
+	if recipientEmail == "" {
 		return
 	}
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	htmlBody, textBody, fmtErr := s.emailFormatter.Format("invitation.html", map[string]any{
-		"OrgName":     orgName,
-		"Role":        role,
-		"InviterName": inviterName,
-		"InviteURL":   inviteURL,
-	})
-	if fmtErr != nil {
-		slog.ErrorContext(ctx, "Failed to format invitation email", "error", fmtErr)
-
-		return
-	}
-
-	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipientEmail}},
-		Subject:    "[SolidPing] You're invited to " + orgName,
-		HTML:       htmlBody,
-		Text:       textBody,
-	}
-
-	if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-		slog.ErrorContext(ctx, "Failed to send invitation email", "error", sendErr)
-	}
+	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
+		map[string]any{
+			"OrgName":     orgName,
+			"Role":        role,
+			"InviterName": inviterName,
+			"InviteURL":   inviteURL,
+		},
+	)
 }
 
 func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {

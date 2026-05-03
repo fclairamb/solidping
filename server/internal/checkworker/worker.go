@@ -3,6 +3,7 @@ package checkworker
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -131,7 +132,11 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 	r.wg.Add(1)
 	go r.fetcherLoop(ctx)
 
-	// 6. Wait for shutdown signal
+	// 6. Start express runner (handles check.created events directly)
+	r.wg.Add(1)
+	go r.expressLoop(ctx)
+
+	// 7. Wait for shutdown signal
 	<-ctx.Done()
 	r.logger.InfoContext(ctx, "Check worker stopping, waiting for goroutines")
 
@@ -292,6 +297,71 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 	}
 
 	return nil
+}
+
+// expressLoop subscribes to check.created and runs the freshly-created
+// check on its own goroutine, bypassing the regular runner pool. This
+// keeps first-run latency bounded by execution time rather than by
+// however long the busiest pool runner is mid-check. Jobs claimed here
+// are atomic via the shared lease mechanism, so a parallel
+// fetcherLoop pickup of the same row cannot double-execute it.
+func (r *CheckWorker) expressLoop(ctx context.Context) {
+	defer r.wg.Done()
+
+	logger := r.logger.With("role", "express")
+	logger.InfoContext(ctx, "Express runner started")
+	defer logger.InfoContext(ctx, "Express runner stopped")
+
+	events := r.services.EventNotifier.Listen("check.created")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case payload, ok := <-events:
+			if !ok {
+				return
+			}
+			r.handleExpressEvent(ctx, logger, payload)
+		}
+	}
+}
+
+// handleExpressEvent decodes one check.created payload and runs the
+// matching job, if it can claim it. Old senders publish "{}" (no
+// check_uid), in which case the express path silently no-ops and the
+// regular fetcher still picks the new check up on its next poll.
+func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logger, payload string) {
+	// The wire format uses snake_case to stay aligned with the check.* event
+	// payloads stored in the events table; switching only the notifier
+	// payload to camelCase would split the convention across two surfaces
+	// for the same check_uid concept.
+	var msg struct {
+		CheckUID string `json:"check_uid"` //nolint:tagliatelle // intentional: matches event payload convention
+	}
+
+	if err := json.Unmarshal([]byte(payload), &msg); err != nil || msg.CheckUID == "" {
+		return
+	}
+
+	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, r.worker.UID, r.worker.Region, msg.CheckUID)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			logger.WarnContext(ctx, "express claim failed",
+				"error", err,
+				"check_uid", msg.CheckUID)
+		}
+
+		return
+	}
+
+	for _, job := range jobs {
+		if err := r.executeJob(ctx, logger, job); err != nil && !errors.Is(err, context.Canceled) {
+			logger.ErrorContext(ctx, "express execution failed",
+				"error", err,
+				"check_uid", job.CheckUID)
+		}
+	}
 }
 
 // runnerLoop is the main loop for a runner goroutine.

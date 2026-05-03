@@ -1,6 +1,15 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Search, RefreshCw, MoreVertical, Trash2, Star } from "lucide-react";
+import { useTranslation } from "react-i18next";
+import {
+  Plus,
+  Search,
+  RefreshCw,
+  MoreVertical,
+  Trash2,
+  Star,
+  Globe,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useStatusPages, useDeleteStatusPage, type StatusPage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -47,6 +56,7 @@ function StatusPageRow({
   org: string;
   onDelete: (uid: string) => void;
 }) {
+  const { t } = useTranslation("statusPages");
   return (
     <TableRow>
       <TableCell>
@@ -62,12 +72,14 @@ function StatusPageRow({
       <TableCell className="text-muted-foreground">{page.slug}</TableCell>
       <TableCell>
         <Badge variant={page.visibility === "public" ? "default" : "secondary"}>
-          {page.visibility}
+          {page.visibility === "public"
+            ? t("visibility.public")
+            : t("visibility.restricted")}
         </Badge>
       </TableCell>
       <TableCell>
         <Badge variant={page.enabled ? "default" : "outline"}>
-          {page.enabled ? "Enabled" : "Disabled"}
+          {page.enabled ? t("enabled") : t("disabled")}
         </Badge>
       </TableCell>
       <TableCell>
@@ -83,7 +95,7 @@ function StatusPageRow({
                 to="/orgs/$org/status-pages/$statusPageUid"
                 params={{ org, statusPageUid: page.uid }}
               >
-                View Details
+                {t("viewDetails")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem asChild>
@@ -91,7 +103,7 @@ function StatusPageRow({
                 to="/orgs/$org/status-pages/$statusPageUid/edit"
                 params={{ org, statusPageUid: page.uid }}
               >
-                Edit
+                {t("edit")}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem
@@ -99,7 +111,7 @@ function StatusPageRow({
               onClick={() => onDelete(page.uid)}
             >
               <Trash2 className="mr-2 h-4 w-4" />
-              Delete
+              {t("delete")}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -109,6 +121,7 @@ function StatusPageRow({
 }
 
 function StatusPagesIndexPage() {
+  const { t } = useTranslation(["statusPages", "common"]);
   const { org } = Route.useParams();
   const [search, setSearch] = useState("");
   const [deleteUid, setDeleteUid] = useState<string | null>(null);
@@ -136,10 +149,10 @@ function StatusPagesIndexPage() {
     if (!deleteUid) return;
     try {
       await deleteStatusPage.mutateAsync(deleteUid);
-      toast.success("Status page deleted successfully");
+      toast.success(t("statusPages:toast.deleted"));
       setDeleteUid(null);
     } catch (err) {
-      toast.error(err instanceof ApiError ? err.message : "Failed to delete status page");
+      toast.error(err instanceof ApiError ? err.message : t("statusPages:toast.deleteFailed"));
     }
   };
 
@@ -147,13 +160,16 @@ function StatusPagesIndexPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Status Pages</h1>
-          <p className="text-muted-foreground">Manage your public status pages</p>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Globe className="h-7 w-7 text-muted-foreground" />
+            {t("statusPages:title")}
+          </h1>
+          <p className="text-muted-foreground">{t("statusPages:subtitle")}</p>
         </div>
         <Link to="/orgs/$org/status-pages/new" params={{ org }}>
           <Button>
             <Plus className="mr-2 h-4 w-4" />
-            New Status Page
+            {t("statusPages:newStatusPage")}
           </Button>
         </Link>
       </div>
@@ -162,7 +178,7 @@ function StatusPagesIndexPage() {
         <div className="relative flex-1 max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search status pages..."
+            placeholder={t("statusPages:searchPlaceholder")}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -191,10 +207,10 @@ function StatusPagesIndexPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Slug</TableHead>
-                <TableHead>Visibility</TableHead>
-                <TableHead>Status</TableHead>
+                <TableHead>{t("statusPages:table.name")}</TableHead>
+                <TableHead>{t("statusPages:table.slug")}</TableHead>
+                <TableHead>{t("statusPages:table.visibility")}</TableHead>
+                <TableHead>{t("statusPages:table.status")}</TableHead>
                 <TableHead className="w-[50px]" />
               </TableRow>
             </TableHeader>
@@ -213,15 +229,15 @@ function StatusPagesIndexPage() {
       ) : pages && pages.length > 0 ? (
         <div className="text-center py-12 text-muted-foreground">
           <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p>No status pages match your search</p>
+          <p>{t("statusPages:noMatch")}</p>
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
-          <p className="mb-2">No status pages configured yet</p>
+          <p className="mb-2">{t("statusPages:noStatusPages")}</p>
           <Link to="/orgs/$org/status-pages/new" params={{ org }}>
             <Button>
               <Plus className="mr-2 h-4 w-4" />
-              Create your first status page
+              {t("statusPages:createFirst")}
             </Button>
           </Link>
         </div>
@@ -230,19 +246,18 @@ function StatusPagesIndexPage() {
       <AlertDialog open={!!deleteUid} onOpenChange={() => setDeleteUid(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Status Page</AlertDialogTitle>
+            <AlertDialogTitle>{t("statusPages:deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete this status page? This action cannot be
-              undone.
+              {t("statusPages:deleteDialog.description")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {t("statusPages:delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

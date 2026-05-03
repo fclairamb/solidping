@@ -45,7 +45,7 @@ func setupGitLabTestService(t *testing.T) (*GitLabOAuthService, context.Context)
 		},
 	}
 
-	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
+	authService := NewService(dbService, cfg.Auth, cfg, nil)
 	svc := NewGitLabOAuthService(dbService, cfg, authService)
 
 	return svc, ctx

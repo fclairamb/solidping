@@ -1,6 +1,6 @@
 # SolidPing Architecture
 
-This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 30+ protocols.
+This document describes the architecture of SolidPing, a distributed monitoring platform for checking availability and performance of services across 32 protocols.
 
 ## System Overview
 
@@ -169,7 +169,8 @@ solidping/
         checkgrpc/             # gRPC services
         checkdocker/           # Docker container health
         checksnmp/             # SNMP monitoring
-        checkgameserver/       # Game server queries
+        checka2s/              # Source engine A2S query
+        checkminecraft/        # Minecraft Server List Ping
         checkjs/               # JavaScript custom checks
         checkbrowser/          # Browser-based checks
         checkheartbeat/        # Heartbeat (passive, push-based)
@@ -247,10 +248,10 @@ solidping/
 
 ## Monitoring Features
 
-### Check Types (30)
+### Check Types (32)
 
 **Network:**
-- HTTP/HTTPS: Status code validation, response time, content checks, custom headers
+- HTTP/HTTPS: Status code validation, response time, JSON body validation, custom headers, custom user-agent
 - TCP: Port connectivity, response time
 - UDP: UDP connectivity checks
 - ICMP: Ping, packet loss, round-trip time
@@ -263,6 +264,7 @@ solidping/
 - SMTP: Mail server connectivity and authentication
 - POP3: POP3 mailbox access
 - IMAP: IMAP mailbox access
+- Email (JMAP): Passive inbox monitoring — receive a known message via JMAP and assert delivery
 
 **Databases:**
 - PostgreSQL, MySQL, MongoDB, MSSQL, Oracle, Redis: Connection and query checks
@@ -276,17 +278,18 @@ solidping/
 - gRPC: gRPC service health
 - Docker: Container health monitoring
 - SNMP: SNMP device monitoring
-- Game Server: Game server query protocol
+- A2S: Source / Steam game server query (Valve A2S)
+- Minecraft: Minecraft server query
 
 **Specialized:**
-- JavaScript: Custom check logic via JS scripts
-- Browser: Full browser-based checks (Playwright)
+- JavaScript: Sandboxed custom check logic
+- Browser: Full browser-based checks (Rod)
 - Heartbeat: Passive push-based monitoring (services report in)
 
 ### Notification Channels (9)
 
-- **Slack**: Rich message formatting with incident details
-- **Discord**: Webhook-based notifications
+- **Slack**: OAuth + threaded incident messages, Marketplace direct install
+- **Discord**: OAuth + webhook embeds
 - **Email**: SMTP-based email alerts
 - **Webhooks**: Generic HTTP webhook delivery
 - **Google Chat**: Google Workspace notifications
@@ -296,16 +299,23 @@ solidping/
 - **Pushover**: Mobile push notifications
 
 ### Incident Management
-- Automatic incident creation on status changes
-- Escalation policies
-- Acknowledgment tracking
-- Relapse detection (re-opening incidents on repeated failures)
+- Automatic incident creation on check status changes
+- **Adaptive resolution**: Smart thresholds with cooldown to absorb flaps without spamming
+- **Group-incident correlation**: When multiple checks in a `check_group` fail simultaneously, one group incident is opened with a per-member timeline; notifications fan out once per channel instead of once per check
+- **Acknowledgment, snooze, manual resolve**: Operators can ack from dashboard, Slack, or email; snoozing silences pending notifications until a time; manual resolve closes incidents that are known-fixed
+- Relapse detection (re-opening incidents on repeated failures within the cooldown)
 - Incident timeline and event log
 
+### On-call & Escalation
+- **On-call schedules**: Daily/weekly rotations with explicit handoff time and timezone, plus time-bounded user overrides (e.g., PTO coverage)
+- **Escalation policies**: Ordered steps with delay-from-previous, repeats, and targets — user, on-call schedule (resolved at fire time), notification connection, or all org admins
+- **"Who is on call"** resolver API and a current-and-next preview for the dashboard
+
 ### Status Pages
-- Public-facing status pages with custom domains
+- Public-facing status pages with custom slugs
 - Sections and resource grouping
-- Real-time status updates
+- Real-time status updates with availability bar/chart
+- Locale-aware date formatting and translated UI
 - Embedded status page frontend (status0)
 
 ### Maintenance Windows
@@ -313,13 +323,22 @@ solidping/
 - Recurrence support (daily, weekly, monthly)
 - Automatic check suppression during windows
 
-### Additional Features
-- **Check Groups**: Logical grouping of related checks
+### Security
 - **Two-Factor Authentication**: TOTP-based 2FA
+- **Credentials encryption at rest**: Envelope encryption with an out-of-band master key (`SP_ENCRYPTION_MASTER_KEY` / `_FILE`); per-check secret fields stored in a separate `config_private` column and never echoed back to the dashboard
+- **Personal Access Tokens** with scoped revocation
+- **OAuth providers**: Google, GitHub, GitLab, Microsoft, Slack, Discord (per-provider enable toggle)
+
+### Additional Features
+- **Check Groups**: Logical grouping of related checks (used by group-incident correlation)
+- **Labels**: Free-form `key:value` tags on checks with autocomplete API and list-page filtering
+- **Check clone**: Duplicate a check (config + connections) to bootstrap a near-identical one
+- **Check templates**: Picker in the create form, seeded by check type
 - **MCP Support**: Model Context Protocol for AI tool integration
 - **Badges**: Embeddable status badges (SVG)
-- **Check Import/Export**: Bulk check management
+- **Check Import/Export**: Bulk check management (JSON)
 - **Connections**: Reusable connection configurations shared across checks
+- **Configurable aggregation retention**: Per-org override of how long raw / hour / day / month rollups are kept
 
 ## Data Model
 
@@ -348,7 +367,7 @@ solidping/
 - Heartbeat mechanism via `last_active_at`
 
 #### Checks
-- Monitoring target definitions with 30 protocol types
+- Monitoring target definitions with 32 protocol types
 - JSONB configuration for check-specific parameters
 - Configurable frequency (period)
 - Enable/disable flag

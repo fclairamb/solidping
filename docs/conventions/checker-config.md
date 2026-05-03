@@ -468,7 +468,7 @@ Requires Chrome/Chromium installed.
 
 ---
 
-### `gameserver` -- Game server A2S query
+### `a2s` -- Source engine A2S query
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
@@ -478,4 +478,19 @@ Requires Chrome/Chromium installed.
 | `minPlayers` | int | O | | Minimum player count to consider healthy. Must be >= 0 |
 | `maxPlayers` | int | O | | Maximum player count to consider healthy. Must be >= 0 |
 
-Uses the Source Engine A2S_INFO query protocol.
+Uses the Source Engine A2S_INFO query protocol — covers Counter-Strike, TF2, Garry's Mod, Rust, ARK, etc.
+
+---
+
+### `minecraft` -- Minecraft Server List Ping
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `host` | string | R | | Minecraft server hostname |
+| `port` | int | O | 25565 (java) / 19132 (bedrock) | Query port. Validation: 0-65535 |
+| `edition` | string | O | `java` | `java` or `bedrock` |
+| `timeout` | duration | O | 10s | Query timeout (max: 30s) |
+| `minPlayers` | int | O | | Minimum player count to consider healthy. Must be >= 0 |
+| `maxPlayers` | int | O | | Maximum player count to consider healthy. Must be >= 0 |
+
+Uses Server List Ping (Java 1.7+ status protocol over TCP) or RakNet Unconnected Ping (Bedrock UDP).

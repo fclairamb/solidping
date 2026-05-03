@@ -107,8 +107,10 @@ const (
 	CheckTypeKafka CheckType = "kafka"
 	// CheckTypeMQTT performs MQTT broker health checks.
 	CheckTypeMQTT CheckType = "mqtt"
-	// CheckTypeGameServer performs game server A2S query health checks.
-	CheckTypeGameServer CheckType = "gameserver"
+	// CheckTypeA2S performs Source engine game server health checks via the A2S query protocol.
+	CheckTypeA2S CheckType = "a2s"
+	// CheckTypeMinecraft performs Minecraft server health checks (Java + Bedrock editions).
+	CheckTypeMinecraft CheckType = "minecraft"
 	// CheckTypeRabbitMQ performs RabbitMQ health checks.
 	CheckTypeRabbitMQ CheckType = "rabbitmq"
 	// CheckTypeSNMP performs SNMP health checks.
@@ -181,8 +183,8 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeDNS, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor DNS resolution", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeSSL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check SSL certificate validity", MinPeriod: time.Hour, DefaultPeriod: 6 * time.Hour},
 	{Type: CheckTypeDomain, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Monitor domain expiration", MinPeriod: 6 * time.Hour, DefaultPeriod: 24 * time.Hour},
-	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Receive heartbeat pings"},
-	{Type: CheckTypeEmail, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Receive status updates via incoming email"},
+	{Type: CheckTypeHeartbeat, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Passive HTTP check"},
+	{Type: CheckTypeEmail, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Email reception (passive)"},
 	{Type: CheckTypeSMTP, Labels: []string{labelSafe, labelReqMailProtocol, labelCatMail}, Description: "Check SMTP server connectivity"},
 	{Type: CheckTypeUDP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check UDP port reachability"},
 	{Type: CheckTypeSSH, Labels: []string{labelSafe, labelStandalone, labelCatRemoteAccess}, Description: "Check SSH server availability"},
@@ -201,7 +203,8 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health"},
 	{Type: CheckTypeKafka, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check Kafka cluster health"},
 	{Type: CheckTypeMQTT, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check MQTT broker connectivity"},
-	{Type: CheckTypeGameServer, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor game server via A2S protocol"},
+	{Type: CheckTypeA2S, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor Source engine game servers via the A2S query protocol"},
+	{Type: CheckTypeMinecraft, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Monitor Minecraft servers (Java + Bedrock)"},
 	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health"},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
@@ -288,7 +291,8 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeGRPC,
 		CheckTypeKafka,
 		CheckTypeMQTT,
-		CheckTypeGameServer,
+		CheckTypeA2S,
+		CheckTypeMinecraft,
 		CheckTypeRabbitMQ,
 		CheckTypeSNMP,
 		CheckTypeDocker,

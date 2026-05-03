@@ -20,6 +20,12 @@ All API routes are prefixed with `/api/v1` unless otherwise noted. Organization-
 ### GET /api/mgmt/health
 Health check. Auth: public
 
+### POST /api/mgmt/report
+Submit an in-app bug report (multipart/form-data). Public endpoint, optional bearer token for user attribution. Body fields: `url` (required), `comment`, `org`, `annotations`, `context` (JSON), `screenshot` (file). Returns `{ uid }`. The screenshot is stored as a `File` (group `reports`) and a GitHub issue is created asynchronously when `app.github.*` is configured.
+
+### GET /api/v1/features
+Return the active feature flags for the frontend (e.g. `{ "bugReport": true }`). Auth required.
+
 ### GET /api/mgmt/version
 Returns server version, build hash, and build date. Auth: public
 
@@ -188,6 +194,26 @@ Query parameters:
 
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
+
+### GET /api/v1/orgs/:org/labels
+Autocomplete suggestions for label keys (or values for a given key) used by checks in the org. Returns rows sorted by usage count DESC, then `value` ASC for stable ties. Auth: required.
+
+Query parameters:
+- `key` - if omitted, lists distinct keys; if provided, lists distinct values for that key
+- `q` - case-insensitive prefix filter on the returned `value`
+- `limit` - page size (default 50, silently clamped to max 200)
+
+Response:
+```json
+{
+  "data": [
+    {"value": "environment", "count": 12},
+    {"value": "team", "count": 8}
+  ]
+}
+```
+
+`count` is the number of distinct checks carrying that key (or key/value pair). Empty result returns `{"data": []}` (200), not 404.
 
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
@@ -454,6 +480,27 @@ Set (replace) the checks associated with a maintenance window. Auth: required
 
 ### GET /api/v1/orgs/:org/checks/:check/badges/:format
 Get a status badge for a check (e.g., SVG). Auth: public
+
+---
+
+## Files
+
+Generic file storage. Bytes live behind a pluggable backend (local FS or S3); metadata lives in the `files` table. Authenticated read/list/delete are scoped to the requesting organization. Public access is via signed URL only.
+
+### GET /api/v1/orgs/:org/files
+List files for an organization. Query: `q`, `limit`, `offset`. Auth: required.
+
+### GET /api/v1/orgs/:org/files/:uid
+Get file metadata. Auth: required.
+
+### GET /api/v1/orgs/:org/files/:uid/content
+Stream file bytes (org-scoped). Auth: required.
+
+### DELETE /api/v1/orgs/:org/files/:uid
+Soft-delete a file (the blob in storage is left in place). Auth: required.
+
+### GET /pub/files/:uid?exp=&sig=
+Public read via HMAC-signed URL. `exp` (unix seconds) and `sig` are required. Returns 403 on bad signature, 410 on expired, 404 on unknown / soft-deleted file. Auth: public (signature gates access).
 
 ---
 

@@ -10,10 +10,13 @@ import {
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  BadgeCheck,
+  Bug,
   Building,
   Calendar,
   ChevronRight,
   Globe,
+  LayoutDashboard,
   ListChecks,
   Server,
   User2,
@@ -23,12 +26,14 @@ import {
   SidebarInset,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { AppSidebar, ThemeToggle } from "@/components/layout/AppSidebar";
-import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { CommandMenu } from "@/components/CommandMenu";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCheck, useIncident, useStatusPage } from "@/api/hooks";
+import { useCheck, useFeatures, useIncident, useStatusPage } from "@/api/hooks";
+import { FeedbackButton } from "@/components/feedback/FeedbackButton";
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
+import { useFeedback } from "@/components/feedback/useFeedback";
 import { useTranslation } from "react-i18next";
 
 function hasOAuthTokenInURL(): boolean {
@@ -78,6 +83,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const params = Object.assign({}, ...matches.map((m) => m.params)) as Record<string, string>;
 
   // Determine the active section
+  const isDashboard = routeIds.has("/orgs/$org/");
   const isChecks = matches.some((m) => m.routeId.startsWith("/orgs/$org/checks"));
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
@@ -89,6 +95,15 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: incident } = useIncident(org, params.incidentUid ?? "");
   // Status pages section
   const { data: statusPage } = useStatusPage(org, params.statusPageUid ?? "");
+
+  if (isDashboard) {
+    return (
+      <span className={activeClass}>
+        <LayoutDashboard className={iconClass} />
+        {t("dashboard")}
+      </span>
+    );
+  }
 
   if (isChecks) {
     const checkUid = params.checkUid;
@@ -182,13 +197,20 @@ function Breadcrumbs({ org }: { org: string }) {
   // Organization section
   const isOrganization = matches.some((m) => m.routeId.startsWith("/orgs/$org/organization"));
   if (isOrganization) {
+    const isMembers = routeIds.has("/orgs/$org/organization/members");
     const isInvitations = routeIds.has("/orgs/$org/organization/invitations");
     const isSettings = routeIds.has("/orgs/$org/organization/settings");
-    const subLabel = isInvitations ? t("invitations") : isSettings ? t("settings") : null;
+    const subLabel = isMembers
+      ? t("members")
+      : isInvitations
+        ? t("invitations")
+        : isSettings
+          ? t("settings")
+          : null;
     return (
       <>
         {subLabel ? (
-          <Link to="/orgs/$org/organization/invitations" params={{ org }} className={linkClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</Link>
+          <Link to="/orgs/$org/organization/members" params={{ org }} className={linkClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</Link>
         ) : (
           <span className={activeClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</span>
         )}
@@ -255,6 +277,26 @@ function Breadcrumbs({ org }: { org: string }) {
     );
   }
 
+  const isBadges = routeIds.has("/orgs/$org/badges");
+  if (isBadges) {
+    return (
+      <span className={activeClass}>
+        <BadgeCheck className={iconClass} />
+        {t("badges")}
+      </span>
+    );
+  }
+
+  const isTest = matches.some((m) => m.routeId.startsWith("/orgs/$org/test"));
+  if (isTest) {
+    return (
+      <span className={activeClass}>
+        <Bug className={iconClass} />
+        {t("testTools")}
+      </span>
+    );
+  }
+
   return null;
 }
 
@@ -265,6 +307,9 @@ function OrgLayout() {
   const auth = useAuth();
   const isLoginPage = location.pathname.endsWith("/login") || location.pathname.endsWith("/register");
   const [oauthProcessing, setOauthProcessing] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const { data: features } = useFeatures();
+  const feedback = useFeedback({ enabled: features?.bugReport === true, org });
 
   // Handle OAuth callback tokens in URL
   useEffect(() => {
@@ -278,21 +323,15 @@ function OrgLayout() {
     auth
       .loginWithOAuth(accessToken, oauthOrg)
       .then(() => {
-        // Clean the URL by removing OAuth params
-        const cleanPath = window.location.pathname;
-        window.history.replaceState({}, "", cleanPath);
-        navigate({ to: "/orgs/$org", params: { org: oauthOrg }, replace: true });
+        // Hard navigation: forces a clean reload so URL/org context is in sync
+        // before any child routes fire org-scoped API calls.
+        const basepath = import.meta.env.VITE_BASE_URL || "";
+        window.location.replace(`${basepath}/orgs/${oauthOrg}`);
       })
       .catch(() => {
-        // On failure, redirect to login with error
-        navigate({
-          to: "/orgs/$org/login",
-          params: { org: oauthOrg },
-          search: { session_expired: false, returnTo: undefined },
-          replace: true,
-        });
-      })
-      .finally(() => setOauthProcessing(false));
+        const basepath = import.meta.env.VITE_BASE_URL || "";
+        window.location.replace(`${basepath}/orgs/${oauthOrg}/login?session_expired=false`);
+      });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Login page should render without sidebar
@@ -322,18 +361,29 @@ function OrgLayout() {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
-      <CommandMenu />
+      <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
       <SidebarInset className="md:ml-0">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" data-testid="sidebar-trigger" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumbs org={org} />
           <div className="ml-auto flex items-center gap-1">
-            <LanguageSwitcher />
-            <ThemeToggle />
+            {features?.bugReport && (
+              <FeedbackButton onClick={() => void feedback.open()} isCapturing={feedback.isCapturing} />
+            )}
+            <CommandMenuTrigger onOpen={() => setCommandMenuOpen(true)} />
           </div>
         </header>
-        <div className="flex-1 overflow-auto p-4">
+        {features?.bugReport && (
+          <FeedbackDialog
+            open={feedback.isOpen}
+            onOpenChange={(next) => (next ? null : feedback.close())}
+            screenshot={feedback.screenshot}
+            isCapturing={feedback.isCapturing}
+            onSubmit={feedback.submit}
+          />
+        )}
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
           <Outlet />
         </div>
       </SidebarInset>

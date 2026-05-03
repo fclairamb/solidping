@@ -1,0 +1,38 @@
+{
+  "title": "Eventos",
+  "subtitle": "Registro de auditoría de actividades del sistema",
+  "noEvents": "No se han encontrado eventos",
+  "noEventsMatchFilter": "Ningún evento coincide con el filtro seleccionado",
+  "noEventsRecorded": "Aún no se han registrado eventos",
+  "allEvents": "Todos los eventos",
+  "filterByType": "Filtrar por tipo",
+  "table": {
+    "time": "Hora",
+    "event": "Evento",
+    "actor": "Actor",
+    "related": "Relacionado",
+    "timestamp": "Marca de tiempo",
+    "type": "Tipo",
+    "resource": "Recurso",
+    "details": "Detalles"
+  },
+  "types": {
+    "check.created": "Comprobación creada",
+    "check.updated": "Comprobación actualizada",
+    "check.deleted": "Comprobación eliminada",
+    "incident.created": "Incidente creado",
+    "incident.opened": "Incidente abierto",
+    "incident.resolved": "Incidente resuelto",
+    "incident.escalated": "Incidente escalado",
+    "incident.acknowledged": "Incidente reconocido"
+  },
+  "links": {
+    "check": "Comprobación",
+    "incident": "Incidente"
+  },
+  "actorTypes": {
+    "user": "usuario",
+    "system": "sistema"
+  },
+  "unknown": "Desconocido"
+}

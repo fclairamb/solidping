@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +15,7 @@ export const Route = createFileRoute("/orgs/$org/register")({
 });
 
 function RegisterPage() {
+  const { t } = useTranslation(["auth", "common"]);
   const { org } = Route.useParams();
   const register = useRegister();
 
@@ -29,12 +31,12 @@ function RegisterPage() {
     setError(null);
 
     if (password !== confirmPassword) {
-      setError("Passwords do not match");
+      setError(t("auth:passwordsDoNotMatch"));
       return;
     }
 
     if (password.length < 8) {
-      setError("Password must be at least 8 characters");
+      setError(t("auth:passwordTooShort"));
       return;
     }
 
@@ -49,7 +51,7 @@ function RegisterPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("auth:unexpectedError"));
       }
     }
   };
@@ -62,13 +64,15 @@ function RegisterPage() {
             <div className="flex justify-center mb-4">
               <CheckCircle2 className="h-12 w-12 text-green-500" />
             </div>
-            <CardTitle className="text-2xl">Check your email</CardTitle>
+            <CardTitle className="text-2xl">{t("auth:checkYourEmail")}</CardTitle>
           </CardHeader>
           <CardContent className="text-center">
             <p className="text-muted-foreground mb-4">
-              We&apos;ve sent a confirmation link to <strong>{email}</strong>.
-              Please check your inbox and click the link to activate your
-              account.
+              <Trans
+                i18nKey="auth:confirmationLinkSentTo"
+                values={{ email }}
+                components={{ strong: <strong /> }}
+              />
             </p>
             <Link
               to="/orgs/$org/login"
@@ -76,7 +80,7 @@ function RegisterPage() {
               search={{ session_expired: false, returnTo: undefined }}
               className="text-primary underline-offset-4 hover:underline text-sm"
             >
-              Back to login
+              {t("auth:backToLogin")}
             </Link>
           </CardContent>
         </Card>
@@ -91,9 +95,9 @@ function RegisterPage() {
           <div className="flex justify-center mb-4">
             <Activity className="h-12 w-12 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Create an account</CardTitle>
+          <CardTitle className="text-2xl">{t("auth:createAccount")}</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
-            Sign up for SolidPing
+            {t("auth:signUpForSolidPing")}
           </p>
         </CardHeader>
         <CardContent>
@@ -106,11 +110,11 @@ function RegisterPage() {
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="name">Name (optional)</Label>
+              <Label htmlFor="name">{t("auth:nameOptional")}</Label>
               <Input
                 id="name"
                 type="text"
-                placeholder="Your name"
+                placeholder={t("auth:yourNamePlaceholder")}
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 disabled={register.isPending}
@@ -118,11 +122,11 @@ function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">{t("common:email")}</Label>
               <Input
                 id="email"
                 type="email"
-                placeholder="you@example.com"
+                placeholder={t("auth:emailPlaceholder")}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -131,7 +135,7 @@ function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("common:password")}</Label>
               <Input
                 id="password"
                 type="password"
@@ -143,7 +147,7 @@ function RegisterPage() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm password</Label>
+              <Label htmlFor="confirmPassword">{t("auth:confirmPassword")}</Label>
               <Input
                 id="confirmPassword"
                 type="password"
@@ -162,23 +166,23 @@ function RegisterPage() {
               {register.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating account...
+                  {t("auth:creatingAccount")}
                 </>
               ) : (
-                "Create account"
+                t("auth:createAccountButton")
               )}
             </Button>
           </form>
 
           <div className="mt-4 text-center text-sm text-muted-foreground">
-            Already have an account?{" "}
+            {t("auth:alreadyHaveAccount")}{" "}
             <Link
               to="/orgs/$org/login"
               params={{ org }}
               search={{ session_expired: false, returnTo: undefined }}
               className="text-primary underline-offset-4 hover:underline"
             >
-              Sign in
+              {t("auth:signIn")}
             </Link>
           </div>
         </CardContent>

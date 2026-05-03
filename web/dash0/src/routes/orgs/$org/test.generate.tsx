@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Loader2, Plus } from "lucide-react";
@@ -26,6 +27,7 @@ function formatDefaultStartDate(daysAgo: number): string {
 }
 
 function GenerateDataTab() {
+  const { t } = useTranslation("nav");
   const { org } = Route.useParams();
   const navigate = useNavigate();
   const generateData = useGenerateData();
@@ -48,9 +50,9 @@ function GenerateDataTab() {
         failureBurstSec: Number(failureBurstSec),
         avgDurationMs: Number(avgDurationMs),
       });
-      toast.success(`Created check with ${result.resultsCount} results`, {
+      toast.success(t("test.generate.createdResults", { count: result.resultsCount }), {
         action: {
-          label: "View",
+          label: t("test.generate.viewAction"),
           onClick: () =>
             navigate({
               to: "/orgs/$org/checks/$checkUid",
@@ -61,7 +63,7 @@ function GenerateDataTab() {
       });
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to generate data";
+        err instanceof Error ? err.message : t("test.generate.generateFailed");
       toast.error(message);
     }
   };
@@ -78,16 +80,13 @@ function GenerateDataTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Generate historical data</CardTitle>
-          <CardDescription>
-            Create an HTTP check (1.1.1.1) and backfill it with simulated
-            results from a start date up to now.
-          </CardDescription>
+          <CardTitle className="text-base">{t("test.generate.title")}</CardTitle>
+          <CardDescription>{t("test.generate.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="gen-name">Check name</Label>
+              <Label htmlFor="gen-name">{t("test.generate.checkName")}</Label>
               <Input
                 id="gen-name"
                 value={name}
@@ -95,7 +94,7 @@ function GenerateDataTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gen-start">Start date</Label>
+              <Label htmlFor="gen-start">{t("test.generate.startDate")}</Label>
               <Input
                 id="gen-start"
                 type="date"
@@ -104,7 +103,7 @@ function GenerateDataTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gen-period">Check period (seconds)</Label>
+              <Label htmlFor="gen-period">{t("test.generate.checkPeriod")}</Label>
               <Input
                 id="gen-period"
                 type="number"
@@ -114,11 +113,11 @@ function GenerateDataTab() {
                 onChange={(e) => setCheckPeriodSec(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Interval between each simulated result
+                {t("test.generate.checkPeriodHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gen-duration">Avg response time (ms)</Label>
+              <Label htmlFor="gen-duration">{t("test.generate.avgDuration")}</Label>
               <Input
                 id="gen-duration"
                 type="number"
@@ -128,11 +127,11 @@ function GenerateDataTab() {
                 onChange={(e) => setAvgDurationMs(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                Randomized with ~20% standard deviation
+                {t("test.generate.avgDurationHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gen-failure-rate">Failure rate (0-1)</Label>
+              <Label htmlFor="gen-failure-rate">{t("test.generate.failureRate")}</Label>
               <Input
                 id="gen-failure-rate"
                 type="number"
@@ -143,11 +142,11 @@ function GenerateDataTab() {
                 onChange={(e) => setFailureRate(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                0 = no failures, 0.05 = 5% failure rate
+                {t("test.generate.failureRateHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="gen-burst">Failure burst duration (s)</Label>
+              <Label htmlFor="gen-burst">{t("test.generate.failureBurst")}</Label>
               <Input
                 id="gen-burst"
                 type="number"
@@ -157,14 +156,13 @@ function GenerateDataTab() {
                 onChange={(e) => setFailureBurstSec(e.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                0 = random failures, &gt;0 = consecutive failure bursts of this
-                duration
+                {t("test.generate.failureBurstHelp")}
               </p>
             </div>
           </div>
 
           <div className="mt-4 text-sm text-muted-foreground">
-            Estimated results:{" "}
+            {t("test.generate.estimatedResults")}{" "}
             <span className="font-mono font-medium text-foreground">
               {estimatedResults.toLocaleString()}
             </span>
@@ -182,7 +180,7 @@ function GenerateDataTab() {
             ) : (
               <Plus className="mr-2 h-4 w-4" />
             )}
-            Generate
+            {t("test.generate.generate")}
           </Button>
         </CardFooter>
       </Card>

@@ -320,6 +320,34 @@ func (s *Service) EmailInboxSync(ctx context.Context) error {
 	return s.inbox.TriggerSync(ctx)
 }
 
+// EmailInboxConfig returns the stored email_inbox config with the password
+// elided, suitable for prefilling the admin form. Returns a zero-valued
+// response when the inbox has never been configured.
+func (s *Service) EmailInboxConfig(ctx context.Context) (*EmailInboxConfigResponse, error) {
+	cfg, err := s.loadEmailInboxConfig(ctx)
+	if err != nil {
+		if errors.Is(err, ErrEmailInboxNotConfigured) {
+			return &EmailInboxConfigResponse{}, nil
+		}
+
+		return nil, err
+	}
+
+	return &EmailInboxConfigResponse{
+		Enabled:                cfg.Enabled,
+		SessionURL:             cfg.SessionURL,
+		Username:               cfg.Username,
+		AddressDomain:          cfg.AddressDomain,
+		MailboxName:            cfg.MailboxName,
+		ProcessedMailboxName:   cfg.ProcessedMailboxName,
+		PollIntervalSeconds:    cfg.PollIntervalSeconds,
+		ProcessedRetentionDays: cfg.ProcessedRetentionDays,
+		FailedRetentionDays:    cfg.FailedRetentionDays,
+		RewriteBaseURL:         cfg.RewriteBaseURL,
+		PasswordSet:            cfg.Password != "",
+	}, nil
+}
+
 // EmailInboxPublicAddressDomain returns the address domain configured on the
 // shared inbox so authenticated users can render the per-check email
 // address. Returns an empty string (not an error) when the inbox isn't

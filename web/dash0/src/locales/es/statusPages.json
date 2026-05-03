@@ -1,0 +1,84 @@
+{
+  "title": "Páginas de estado",
+  "subtitle": "Gestione sus páginas de estado públicas",
+  "newStatusPage": "Nueva página de estado",
+  "noStatusPages": "Aún no hay páginas de estado configuradas",
+  "noMatch": "Ninguna página de estado coincide con su búsqueda",
+  "searchPlaceholder": "Buscar páginas de estado...",
+  "createFirst": "Crear su primera página de estado",
+  "viewDetails": "Ver detalles",
+  "edit": "Editar",
+  "delete": "Eliminar",
+  "enabled": "Activada",
+  "disabled": "Desactivada",
+  "table": {
+    "name": "Nombre",
+    "slug": "Slug",
+    "visibility": "Visibilidad",
+    "status": "Estado"
+  },
+  "visibility": {
+    "public": "pública",
+    "restricted": "restringida"
+  },
+  "deleteDialog": {
+    "title": "Eliminar página de estado",
+    "description": "¿Seguro que desea eliminar esta página de estado? Esta acción no se puede deshacer."
+  },
+  "form": {
+    "title": "Título",
+    "slug": "Slug",
+    "description": "Descripción",
+    "checks": "Comprobaciones",
+    "selectChecks": "Seleccione las comprobaciones a mostrar",
+    "historyDays": "Días de historial",
+    "showAvailability": "Mostrar disponibilidad",
+    "showResponseTime": "Mostrar tiempo de respuesta",
+    "language": "Idioma",
+    "createStatusPage": "Crear página de estado",
+    "saveChanges": "Guardar cambios"
+  },
+  "detail": {
+    "configuration": "Configuración",
+    "preview": "Vista previa",
+    "publicUrl": "URL pública",
+    "view": "Ver",
+    "sections": "Secciones",
+    "noSections": "Aún no hay secciones"
+  },
+  "sections": {
+    "add": "Añadir sección",
+    "addDescription": "Cree una nueva sección para agrupar comprobaciones en esta página de estado.",
+    "name": "Nombre",
+    "slug": "Slug",
+    "namePlaceholder": "Servicios principales",
+    "slugPlaceholder": "servicios-principales",
+    "create": "Crear sección",
+    "created": "Sección creada",
+    "createFailed": "Error al crear la sección",
+    "delete": "Eliminar sección",
+    "deleteDescription": "¿Eliminar esta sección y todas sus asignaciones de recursos? Las comprobaciones en sí no se verán afectadas.",
+    "deleted": "Sección eliminada",
+    "deleteFailed": "Error al eliminar la sección",
+    "empty": "Aún no hay comprobaciones en esta sección"
+  },
+  "resources": {
+    "add": "Añadir comprobación",
+    "addToSection": "Añadir comprobación a la sección",
+    "addDescription": "Seleccione una comprobación para añadir a esta sección.",
+    "selectCheck": "Seleccionar una comprobación...",
+    "added": "Comprobación añadida a la sección",
+    "addFailed": "Error al añadir la comprobación",
+    "remove": "Quitar comprobación",
+    "removeDescription": "¿Quitar esta comprobación de la sección? La comprobación en sí no se eliminará.",
+    "removed": "Comprobación quitada de la sección",
+    "removeFailed": "Error al quitar la comprobación",
+    "removeButton": "Quitar"
+  },
+  "toast": {
+    "created": "Página de estado creada correctamente",
+    "updated": "Página de estado actualizada correctamente",
+    "deleted": "Página de estado eliminada correctamente",
+    "deleteFailed": "Error al eliminar la página de estado"
+  }
+}

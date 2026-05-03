@@ -6,8 +6,9 @@ import (
 
 func listCheckGroupsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_check_groups",
-		Description: "List all check groups for the organization.",
+		Name: "list_check_groups",
+		Description: "List all check groups for the organization. Check groups bundle related " +
+			"checks together for shared incident handling and dashboard organization.",
 		InputSchema: objectSchema(map[string]any{}, nil),
 	}
 }

@@ -19,6 +19,34 @@ func (h *Handler) registerTools() {
 		{createConnectionDef(), h.toolCreateConnection},
 		{listCheckGroupsDef(), h.toolListCheckGroups},
 		{listRegionsDef(), h.toolListRegions},
+		{diagnoseCheckDef(), h.toolDiagnoseCheck},
+		// Status pages
+		{listStatusPagesDef(), h.toolListStatusPages},
+		{getStatusPageDef(), h.toolGetStatusPage},
+		{createStatusPageDef(), h.toolCreateStatusPage},
+		{updateStatusPageDef(), h.toolUpdateStatusPage},
+		{deleteStatusPageDef(), h.toolDeleteStatusPage},
+		// Status page sections
+		{listStatusPageSectionsDef(), h.toolListStatusPageSections},
+		{createStatusPageSectionDef(), h.toolCreateStatusPageSection},
+		{updateStatusPageSectionDef(), h.toolUpdateStatusPageSection},
+		{deleteStatusPageSectionDef(), h.toolDeleteStatusPageSection},
+		// Status page resources
+		{listStatusPageResourcesDef(), h.toolListStatusPageResources},
+		{createStatusPageResourceDef(), h.toolCreateStatusPageResource},
+		{updateStatusPageResourceDef(), h.toolUpdateStatusPageResource},
+		{deleteStatusPageResourceDef(), h.toolDeleteStatusPageResource},
+		// Maintenance windows
+		{listMaintenanceWindowsDef(), h.toolListMaintenanceWindows},
+		{getMaintenanceWindowDef(), h.toolGetMaintenanceWindow},
+		{createMaintenanceWindowDef(), h.toolCreateMaintenanceWindow},
+		{updateMaintenanceWindowDef(), h.toolUpdateMaintenanceWindow},
+		{deleteMaintenanceWindowDef(), h.toolDeleteMaintenanceWindow},
+		{setMaintenanceWindowChecksDef(), h.toolSetMaintenanceWindowChecks},
+		// Check type discovery & validation
+		{listCheckTypesDef(), h.toolListCheckTypes},
+		{getCheckTypeSamplesDef(), h.toolGetCheckTypeSamples},
+		{validateCheckDef(), h.toolValidateCheck},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))

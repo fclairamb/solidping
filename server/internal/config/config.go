@@ -47,6 +47,8 @@ var (
 	ErrInvalidNodeRole = errors.New("node role must be 'all', 'api', 'jobs', or 'checks'")
 	// ErrRegionRequiredForChecks is returned when role is "checks" but region is not set.
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
+	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
+	ErrInvalidAggregationRetention = errors.New("aggregation retention values must be >= 1")
 )
 
 // ValidNodeRoles returns all valid role values.
@@ -63,6 +65,19 @@ type OTelConfig struct {
 	Logs     bool   `koanf:"logs"`
 	Traces   bool   `koanf:"traces"`
 	Metrics  bool   `koanf:"metrics"`
+}
+
+// EncryptionConfig configures the credential-encryption KEK. The master
+// key MUST come from outside the database (env var or mounted file). When
+// neither is set the credentials service operates in disabled mode and
+// secrets are stored in plaintext (V1 fallback for self-hosted users).
+type EncryptionConfig struct {
+	// MasterKey is the base64-encoded 32-byte KEK. SP_ENCRYPTION_MASTER_KEY.
+	MasterKey string `koanf:"master_key"`
+	// MasterKeyFile is the path to a file containing the base64 KEK.
+	// SP_ENCRYPTION_MASTER_KEY_FILE. Wins over MasterKey when both set —
+	// matches the Kubernetes secret-mount pattern.
+	MasterKeyFile string `koanf:"master_key_file"`
 }
 
 // PrometheusConfig contains Prometheus metrics endpoint configuration.
@@ -88,25 +103,29 @@ type SentryConfig struct {
 
 // Config represents the application configuration structure.
 type Config struct {
-	Server     ServerConfig         `koanf:"server"`
-	Database   DatabaseConfig       `koanf:"db"`
-	Auth       AuthConfig           `koanf:"auth"`
-	Email      EmailConfig          `koanf:"email"`
-	Slack      SlackConfig          `koanf:"slack"`
-	Google     GoogleOAuthConfig    `koanf:"google"`
-	GitHub     GitHubOAuthConfig    `koanf:"github"`
-	Microsoft  MicrosoftOAuthConfig `koanf:"microsoft"`
-	GitLab     GitLabOAuthConfig    `koanf:"gitlab"`
-	Discord    DiscordOAuthConfig   `koanf:"discord"`
-	Node       NodeConfig           `koanf:"node"`
-	Profiler   ProfilerConfig       `koanf:"profiler"`
-	OTel       OTelConfig           `koanf:"otel"`
-	Sentry     SentryConfig         `koanf:"sentry"`
-	Prometheus PrometheusConfig     `koanf:"prometheus"`
-	Checkers   CheckersConfig       `koanf:"checkers"`
-	RunMode    string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
-	UserAgent  string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
-	LogLevel   slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+	Server      ServerConfig         `koanf:"server"`
+	Database    DatabaseConfig       `koanf:"db"`
+	Auth        AuthConfig           `koanf:"auth"`
+	Encryption  EncryptionConfig     `koanf:"encryption"`
+	Email       EmailConfig          `koanf:"email"`
+	Slack       SlackConfig          `koanf:"slack"`
+	Google      GoogleOAuthConfig    `koanf:"google"`
+	GitHub      GitHubOAuthConfig    `koanf:"github"`
+	Microsoft   MicrosoftOAuthConfig `koanf:"microsoft"`
+	GitLab      GitLabOAuthConfig    `koanf:"gitlab"`
+	Discord     DiscordOAuthConfig   `koanf:"discord"`
+	Node        NodeConfig           `koanf:"node"`
+	Profiler    ProfilerConfig       `koanf:"profiler"`
+	OTel        OTelConfig           `koanf:"otel"`
+	Sentry      SentryConfig         `koanf:"sentry"`
+	Prometheus  PrometheusConfig     `koanf:"prometheus"`
+	Checkers    CheckersConfig       `koanf:"checkers"`
+	Aggregation AggregationConfig    `koanf:"aggregation"`
+	FileStorage FileStorageConfig    `koanf:"filestorage"`
+	App         AppConfig            `koanf:"app"`
+	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
+	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
+	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
 }
 
 // NodeConfig contains node role configuration.
@@ -150,6 +169,44 @@ type EmailConfig struct {
 	Protocol           string `koanf:"protocol"`           // SMTP encryption: none, starttls, ssl (default: starttls)
 }
 
+// FileStorageConfig controls where File blobs are persisted. The bytes live
+// behind one of the registered backends (local FS, S3); the metadata always
+// lives in the `files` table. AWS credentials are not stored here — they
+// come from the standard AWS SDK chain (env, IAM role, shared config).
+type FileStorageConfig struct {
+	Type      string `koanf:"type"`       // "local" (default) or "s3"
+	LocalRoot string `koanf:"local_root"` // local backend root, e.g. "./data/files"
+	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
+	S3Region  string `koanf:"s3_region"`  // S3 backend region
+	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
+}
+
+// AppConfig contains application-level integration settings: in-app bug
+// reports, feature flags computed at startup. Persisted state lives here
+// (env / parameters), not in normal user-facing tables.
+type AppConfig struct {
+	// EnableBugReport is computed (App.GitHub.IssuesToken != "" && App.GitHub.Repo != "").
+	// Never read directly from config — call ComputeBugReportEnabled.
+	EnableBugReport bool            `koanf:"-"`
+	GitHub          AppGitHubConfig `koanf:"github"`
+}
+
+// AppGitHubConfig holds the GitHub credentials used for in-app feature integrations
+// (bug reports today). Token comes from env / system parameters; never from a user-facing API.
+type AppGitHubConfig struct {
+	IssuesToken string `koanf:"issues_token"` // fine-grained PAT, issues:write only
+	Repo        string `koanf:"repo"`         // "owner/name"
+}
+
+// AggregationConfig controls how aggressively raw/hour/day result data is compacted.
+// Each value is the number of completed periods of that tier to retain before
+// rolling up to the next tier. Minimum 1 (the previous behavior).
+type AggregationConfig struct {
+	RetentionRaw  int `koanf:"retention_raw"`  // hours of raw to keep (default 24)
+	RetentionHour int `koanf:"retention_hour"` // days of hourly to keep (default 30)
+	RetentionDay  int `koanf:"retention_day"`  // months of daily to keep (default 12)
+}
+
 // AuthConfig contains authentication configuration.
 type AuthConfig struct {
 	JWTSecret                string        `koanf:"jwt_secret"`
@@ -160,6 +217,7 @@ type AuthConfig struct {
 
 // SlackConfig contains Slack integration configuration.
 type SlackConfig struct {
+	Enabled          bool   `koanf:"enabled"`
 	AppID            string `koanf:"app_id"`
 	ClientID         string `koanf:"client_id"`
 	ClientSecret     string `koanf:"client_secret"`
@@ -241,6 +299,26 @@ func Load() (*Config, error) {
 			Protocol: "starttls",
 			Enabled:  false,
 		},
+		Aggregation: AggregationConfig{
+			RetentionRaw:  24,
+			RetentionHour: 30,
+			RetentionDay:  12,
+		},
+		FileStorage: FileStorageConfig{
+			Type:      "local",
+			LocalRoot: "./data/files",
+		},
+		App: AppConfig{
+			GitHub: AppGitHubConfig{
+				Repo: "fclairamb/solidping",
+			},
+		},
+		Google:    GoogleOAuthConfig{Enabled: false},
+		GitHub:    GitHubOAuthConfig{Enabled: false},
+		GitLab:    GitLabOAuthConfig{Enabled: false},
+		Microsoft: MicrosoftOAuthConfig{Enabled: false},
+		Slack:     SlackConfig{Enabled: false},
+		Discord:   DiscordOAuthConfig{Enabled: false},
 		Node: NodeConfig{
 			Role:   NodeRoleAll,
 			Region: "",
@@ -336,7 +414,28 @@ func Load() (*Config, error) {
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
 
+	// App / GitHub: SP_APP_GITHUB_ISSUES_TOKEN takes precedence over the
+	// bare GITHUB_ISSUES_TOKEN — keeps SP_*-prefixed conventions while
+	// allowing CI to reuse the standard token name when SP_* isn't set.
+	if v := os.Getenv("SP_APP_GITHUB_ISSUES_TOKEN"); v != "" {
+		cfg.App.GitHub.IssuesToken = v
+	} else if v := os.Getenv("GITHUB_ISSUES_TOKEN"); v != "" {
+		cfg.App.GitHub.IssuesToken = v
+	}
+
+	if v := os.Getenv("SP_APP_GITHUB_REPO"); v != "" {
+		cfg.App.GitHub.Repo = v
+	}
+
+	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
+
 	return &cfg, nil
+}
+
+// ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
+// Used at startup and after a system-parameter reload of app.github.* keys.
+func ComputeBugReportEnabled(gh *AppGitHubConfig) bool {
+	return gh.IssuesToken != "" && gh.Repo != ""
 }
 
 // Validate checks that the configuration is valid and returns an error if not.
@@ -371,6 +470,17 @@ func (c *Config) Validate() error {
 	// Validate checks role requires region
 	if c.Node.Role == NodeRoleChecks && c.Node.Region == "" {
 		return ErrRegionRequiredForChecks
+	}
+
+	// Validate aggregation retention values are positive
+	if c.Aggregation.RetentionRaw < 1 ||
+		c.Aggregation.RetentionHour < 1 ||
+		c.Aggregation.RetentionDay < 1 {
+		return fmt.Errorf("%w: raw=%d hour=%d day=%d",
+			ErrInvalidAggregationRetention,
+			c.Aggregation.RetentionRaw,
+			c.Aggregation.RetentionHour,
+			c.Aggregation.RetentionDay)
 	}
 
 	return nil

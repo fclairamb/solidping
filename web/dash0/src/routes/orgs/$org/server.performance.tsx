@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ export const Route = createFileRoute("/orgs/$org/server/performance")({
 });
 
 function PerformanceSettingsPage() {
+  const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
 
@@ -60,7 +62,7 @@ function PerformanceSettingsPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("server:unexpectedError"));
       }
     }
   };
@@ -76,11 +78,8 @@ function PerformanceSettingsPage() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Performance</CardTitle>
-        <CardDescription>
-          Configure the number of concurrent workers for checks and jobs.
-          Changes take effect after server restart.
-        </CardDescription>
+        <CardTitle>{t("server:performance.title")}</CardTitle>
+        <CardDescription>{t("server:performance.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4">
@@ -93,13 +92,13 @@ function PerformanceSettingsPage() {
           {saved && (
             <Alert>
               <Check className="h-4 w-4" />
-              <AlertDescription>Settings saved.</AlertDescription>
+              <AlertDescription>{t("server:saved")}</AlertDescription>
             </Alert>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="checkWorkers">Check Runners</Label>
+              <Label htmlFor="checkWorkers">{t("server:performance.checkRunners")}</Label>
               <Input
                 id="checkWorkers"
                 type="number"
@@ -110,11 +109,11 @@ function PerformanceSettingsPage() {
                 disabled={setParam.isPending}
               />
               <p className="text-xs text-muted-foreground">
-                Number of concurrent goroutines for running health checks.
+                {t("server:performance.checkRunnersHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="jobWorkers">Job Runners</Label>
+              <Label htmlFor="jobWorkers">{t("server:performance.jobRunners")}</Label>
               <Input
                 id="jobWorkers"
                 type="number"
@@ -125,7 +124,7 @@ function PerformanceSettingsPage() {
                 disabled={setParam.isPending}
               />
               <p className="text-xs text-muted-foreground">
-                Number of concurrent goroutines for processing background jobs.
+                {t("server:performance.jobRunnersHelp")}
               </p>
             </div>
           </div>
@@ -134,10 +133,10 @@ function PerformanceSettingsPage() {
             {setParam.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t("common:saving")}
               </>
             ) : (
-              "Save"
+              t("common:save")
             )}
           </Button>
         </form>

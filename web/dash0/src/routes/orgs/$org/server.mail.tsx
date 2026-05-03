@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/orgs/$org/server/mail")({
 });
 
 function MailSettingsPage() {
+  const { t } = useTranslation(["server", "common"]);
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
   const testEmail = useTestEmail();
@@ -100,7 +102,7 @@ function MailSettingsPage() {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
-        setError("An unexpected error occurred");
+        setError(t("server:unexpectedError"));
       }
     }
   };
@@ -117,10 +119,8 @@ function MailSettingsPage() {
     <>
     <Card>
       <CardHeader>
-        <CardTitle>Mail</CardTitle>
-        <CardDescription>
-          Configure SMTP email settings for notifications and invitations.
-        </CardDescription>
+        <CardTitle>{t("server:mail.title")}</CardTitle>
+        <CardDescription>{t("server:mail.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSave} className="space-y-4">
@@ -133,7 +133,7 @@ function MailSettingsPage() {
           {saved && (
             <Alert>
               <Check className="h-4 w-4" />
-              <AlertDescription>Settings saved.</AlertDescription>
+              <AlertDescription>{t("server:saved")}</AlertDescription>
             </Alert>
           )}
 
@@ -144,22 +144,22 @@ function MailSettingsPage() {
               onCheckedChange={setEnabled}
               disabled={setParam.isPending}
             />
-            <Label htmlFor="emailEnabled">Enable email sending</Label>
+            <Label htmlFor="emailEnabled">{t("server:mail.enable")}</Label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="host">SMTP Host</Label>
+              <Label htmlFor="host">{t("server:mail.host")}</Label>
               <Input
                 id="host"
-                placeholder="smtp.example.com"
+                placeholder={t("server:mail.hostPlaceholder")}
                 value={host}
                 onChange={(e) => setHost(e.target.value)}
                 disabled={setParam.isPending}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="port">SMTP Port</Label>
+              <Label htmlFor="port">{t("server:mail.port")}</Label>
               <Input
                 id="port"
                 type="number"
@@ -173,17 +173,17 @@ function MailSettingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username">{t("server:mail.username")}</Label>
               <Input
                 id="username"
-                placeholder="user@example.com"
+                placeholder={t("server:mail.usernamePlaceholder")}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 disabled={setParam.isPending}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">{t("server:mail.password")}</Label>
               {!editingPassword && isPasswordSecret ? (
                 <div className="flex items-center gap-2">
                   <Input id="password" type="password" value="******" disabled />
@@ -196,7 +196,7 @@ function MailSettingsPage() {
                       setPassword("");
                     }}
                   >
-                    Edit
+                    {t("common:edit")}
                   </Button>
                 </div>
               ) : (
@@ -205,7 +205,7 @@ function MailSettingsPage() {
                     <Input
                       id="password"
                       type={showPassword ? "text" : "password"}
-                      placeholder="SMTP password"
+                      placeholder={t("server:mail.passwordPlaceholder")}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       disabled={setParam.isPending}
@@ -237,7 +237,7 @@ function MailSettingsPage() {
                         setPassword(original);
                       }}
                     >
-                      Cancel
+                      {t("common:cancel")}
                     </Button>
                   )}
                 </div>
@@ -247,7 +247,7 @@ function MailSettingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="authType">Auth Type</Label>
+              <Label htmlFor="authType">{t("server:mail.authType")}</Label>
               <Select
                 value={authType}
                 onValueChange={setAuthType}
@@ -257,14 +257,14 @@ function MailSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="plain">Plain</SelectItem>
-                  <SelectItem value="login">Login</SelectItem>
-                  <SelectItem value="cram-md5">CRAM-MD5</SelectItem>
+                  <SelectItem value="plain">{t("server:mail.authOptions.plain")}</SelectItem>
+                  <SelectItem value="login">{t("server:mail.authOptions.login")}</SelectItem>
+                  <SelectItem value="cram-md5">{t("server:mail.authOptions.cramMd5")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="protocol">Encryption</Label>
+              <Label htmlFor="protocol">{t("server:mail.encryption")}</Label>
               <Select
                 value={protocol}
                 onValueChange={setProtocol}
@@ -274,9 +274,9 @@ function MailSettingsPage() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="none">None</SelectItem>
-                  <SelectItem value="starttls">STARTTLS</SelectItem>
-                  <SelectItem value="ssl">SSL/TLS</SelectItem>
+                  <SelectItem value="none">{t("server:mail.encryptionOptions.none")}</SelectItem>
+                  <SelectItem value="starttls">{t("server:mail.encryptionOptions.starttls")}</SelectItem>
+                  <SelectItem value="ssl">{t("server:mail.encryptionOptions.ssl")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -284,21 +284,21 @@ function MailSettingsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="from">From Address</Label>
+              <Label htmlFor="from">{t("server:mail.from")}</Label>
               <Input
                 id="from"
                 type="email"
-                placeholder="noreply@example.com"
+                placeholder={t("server:mail.fromPlaceholder")}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
                 disabled={setParam.isPending}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="fromName">From Name</Label>
+              <Label htmlFor="fromName">{t("server:mail.fromName")}</Label>
               <Input
                 id="fromName"
-                placeholder="SolidPing"
+                placeholder={t("server:mail.fromNamePlaceholder")}
                 value={fromName}
                 onChange={(e) => setFromName(e.target.value)}
                 disabled={setParam.isPending}
@@ -310,10 +310,10 @@ function MailSettingsPage() {
             {setParam.isPending ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Saving...
+                {t("common:saving")}
               </>
             ) : (
-              "Save"
+              t("common:save")
             )}
           </Button>
         </form>
@@ -322,10 +322,8 @@ function MailSettingsPage() {
 
     <Card>
       <CardHeader>
-        <CardTitle>Test Email</CardTitle>
-        <CardDescription>
-          Send a test email to verify your SMTP configuration is working.
-        </CardDescription>
+        <CardTitle>{t("server:mail.test.title")}</CardTitle>
+        <CardDescription>{t("server:mail.test.description")}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
@@ -347,11 +345,11 @@ function MailSettingsPage() {
           )}
           <div className="flex items-end gap-2">
             <div className="flex-1 space-y-2">
-              <Label htmlFor="testRecipient">Recipient Email</Label>
+              <Label htmlFor="testRecipient">{t("server:mail.test.recipient")}</Label>
               <Input
                 id="testRecipient"
                 type="email"
-                placeholder="recipient@example.com"
+                placeholder={t("server:mail.test.recipientPlaceholder")}
                 value={testRecipient}
                 onChange={(e) => setTestRecipient(e.target.value)}
                 disabled={testEmail.isPending}
@@ -371,7 +369,7 @@ function MailSettingsPage() {
                   if (err instanceof ApiError) {
                     setTestError(err.message);
                   } else {
-                    setTestError("An unexpected error occurred");
+                    setTestError(t("server:unexpectedError"));
                   }
                 }
               }}
@@ -379,12 +377,12 @@ function MailSettingsPage() {
               {testEmail.isPending ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Sending...
+                  {t("server:mail.test.sending")}
                 </>
               ) : (
                 <>
                   <Send className="mr-2 h-4 w-4" />
-                  Send Test Email
+                  {t("server:mail.test.send")}
                 </>
               )}
             </Button>

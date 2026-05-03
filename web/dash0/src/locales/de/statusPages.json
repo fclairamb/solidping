@@ -1,0 +1,84 @@
+{
+  "title": "Statusseiten",
+  "subtitle": "Verwalten Sie Ihre öffentlichen Statusseiten",
+  "newStatusPage": "Neue Statusseite",
+  "noStatusPages": "Noch keine Statusseiten konfiguriert",
+  "noMatch": "Keine Statusseite entspricht Ihrer Suche",
+  "searchPlaceholder": "Statusseiten durchsuchen...",
+  "createFirst": "Erstellen Sie Ihre erste Statusseite",
+  "viewDetails": "Details anzeigen",
+  "edit": "Bearbeiten",
+  "delete": "Löschen",
+  "enabled": "Aktiviert",
+  "disabled": "Deaktiviert",
+  "table": {
+    "name": "Name",
+    "slug": "Slug",
+    "visibility": "Sichtbarkeit",
+    "status": "Status"
+  },
+  "visibility": {
+    "public": "öffentlich",
+    "restricted": "eingeschränkt"
+  },
+  "deleteDialog": {
+    "title": "Statusseite löschen",
+    "description": "Möchten Sie diese Statusseite wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+  },
+  "form": {
+    "title": "Titel",
+    "slug": "Slug",
+    "description": "Beschreibung",
+    "checks": "Prüfungen",
+    "selectChecks": "Anzuzeigende Prüfungen auswählen",
+    "historyDays": "Verlaufstage",
+    "showAvailability": "Verfügbarkeit anzeigen",
+    "showResponseTime": "Antwortzeit anzeigen",
+    "language": "Sprache",
+    "createStatusPage": "Statusseite erstellen",
+    "saveChanges": "Änderungen speichern"
+  },
+  "detail": {
+    "configuration": "Konfiguration",
+    "preview": "Vorschau",
+    "publicUrl": "Öffentliche URL",
+    "view": "Anzeigen",
+    "sections": "Bereiche",
+    "noSections": "Noch keine Bereiche"
+  },
+  "sections": {
+    "add": "Bereich hinzufügen",
+    "addDescription": "Erstellen Sie einen neuen Bereich, um Prüfungen auf dieser Statusseite zu gruppieren.",
+    "name": "Name",
+    "slug": "Slug",
+    "namePlaceholder": "Kerndienste",
+    "slugPlaceholder": "kerndienste",
+    "create": "Bereich erstellen",
+    "created": "Bereich erstellt",
+    "createFailed": "Erstellen des Bereichs fehlgeschlagen",
+    "delete": "Bereich löschen",
+    "deleteDescription": "Diesen Bereich und alle zugehörigen Ressourcen-Zuordnungen löschen? Die Prüfungen selbst werden nicht beeinflusst.",
+    "deleted": "Bereich gelöscht",
+    "deleteFailed": "Löschen des Bereichs fehlgeschlagen",
+    "empty": "Noch keine Prüfungen in diesem Bereich"
+  },
+  "resources": {
+    "add": "Prüfung hinzufügen",
+    "addToSection": "Prüfung zum Bereich hinzufügen",
+    "addDescription": "Wählen Sie eine Prüfung aus, die zu diesem Bereich hinzugefügt werden soll.",
+    "selectCheck": "Prüfung auswählen...",
+    "added": "Prüfung zum Bereich hinzugefügt",
+    "addFailed": "Hinzufügen der Prüfung fehlgeschlagen",
+    "remove": "Prüfung entfernen",
+    "removeDescription": "Diese Prüfung aus dem Bereich entfernen? Die Prüfung selbst wird nicht gelöscht.",
+    "removed": "Prüfung aus dem Bereich entfernt",
+    "removeFailed": "Entfernen der Prüfung fehlgeschlagen",
+    "removeButton": "Entfernen"
+  },
+  "toast": {
+    "created": "Statusseite erfolgreich erstellt",
+    "updated": "Statusseite erfolgreich aktualisiert",
+    "deleted": "Statusseite erfolgreich gelöscht",
+    "deleteFailed": "Löschen der Statusseite fehlgeschlagen"
+  }
+}

@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
@@ -25,12 +26,13 @@ import {
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
 import { useCheckTypes, useSampleConfigs } from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "gameserver" | "rabbitmq" | "snmp" | "docker" | "browser";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -68,7 +70,8 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "grpc", label: "gRPC", description: "Check gRPC service health" },
   { value: "kafka", label: "Kafka", description: "Check Kafka cluster health" },
   { value: "mqtt", label: "MQTT", description: "Check MQTT broker connectivity" },
-  { value: "gameserver", label: "Game Server", description: "Monitor game server via A2S protocol" },
+  { value: "a2s", label: "A2S Game Server", description: "Monitor Source engine game servers via A2S" },
+  { value: "minecraft", label: "Minecraft", description: "Monitor Minecraft servers (Java + Bedrock)" },
   { value: "rabbitmq", label: "RabbitMQ", description: "Check RabbitMQ server health" },
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
@@ -160,6 +163,7 @@ export interface CheckFormData {
   regions?: string[];
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
+  labels?: Record<string, string>;
 }
 
 interface CheckFormProps {
@@ -187,6 +191,7 @@ export function CheckForm({
   onCancel,
   onTypeChange,
 }: CheckFormProps) {
+  const { t } = useTranslation("checks");
   // Fetch enabled check types from API; fall back to hardcoded list if unavailable
   const { data: apiCheckTypes } = useCheckTypes(org);
   const { data: emailDomain } = useEmailAddressDomain();
@@ -247,6 +252,8 @@ export function CheckForm({
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
+  const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
+  const [labelsDirty, setLabelsDirty] = useState(false);
   const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
@@ -273,6 +280,7 @@ export function CheckForm({
   const [tls, setTls] = useState(getConfigField(initialData?.config, "tls") === "true");
   const [minPlayers, setMinPlayers] = useState(getConfigField(initialData?.config, "minPlayers"));
   const [maxPlayersField, setMaxPlayersField] = useState(getConfigField(initialData?.config, "maxPlayers"));
+  const [edition, setEdition] = useState(getConfigField(initialData?.config, "edition") || "java");
   const [brokers, setBrokers] = useState(
     Array.isArray(initialData?.config?.brokers)
       ? (initialData.config.brokers as string[]).join(", ")
@@ -315,11 +323,12 @@ export function CheckForm({
 
   // Lazy-loaded samples for the currently selected type
   const { data: fetchedSamples, refetch: fetchSamples, isFetching: isFetchingSamples } = useSampleConfigs(type);
-  const [showSamples, setShowSamples] = useState(false);
+  const [samplePickerOpen, setSamplePickerOpen] = useState(false);
 
-  // Reset sample dropdown when type changes
+  // Close sample picker when type changes; the query key includes type, so the
+  // next open will refetch automatically.
   useEffect(() => {
-    setShowSamples(false);
+    setSamplePickerOpen(false);
   }, [type]);
 
   // Interval options filtered by type constraints
@@ -485,9 +494,16 @@ export function CheckForm({
         if (topic) cfg.topic = topic;
         if (tls) cfg.tls = true;
         break;
-      case "gameserver":
+      case "a2s":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
+        if (minPlayers) cfg.minPlayers = parseInt(minPlayers, 10);
+        if (maxPlayersField) cfg.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
+      case "minecraft":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (edition && edition !== "java") cfg.edition = edition;
         if (minPlayers) cfg.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) cfg.maxPlayers = parseInt(maxPlayersField, 10);
         break;
@@ -513,7 +529,7 @@ export function CheckForm({
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
-    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField,
+    serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
     waitSelector, keyword]);
 
@@ -654,10 +670,18 @@ export function CheckForm({
         if (topic) config.topic = topic;
         if (tls) config.tls = true;
         break;
-      case "gameserver":
+      case "a2s":
         if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
+        if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
+        if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
+        break;
+      case "minecraft":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (edition && edition !== "java") config.edition = edition;
         if (minPlayers) config.minPlayers = parseInt(minPlayers, 10);
         if (maxPlayersField) config.maxPlayers = parseInt(maxPlayersField, 10);
         break;
@@ -718,6 +742,7 @@ export function CheckForm({
         ...(showRegions ? { regions: selectedRegions } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
+        ...(mode === "create" || labelsDirty ? { labels } : {}),
       });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -1082,7 +1107,7 @@ export function CheckForm({
             </div>
           </>
         );
-      case "gameserver":
+      case "a2s":
         return (
           <>
             <div className="space-y-2">
@@ -1091,6 +1116,32 @@ export function CheckForm({
                 <Input id="host" type="text" placeholder="game.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
                 <Input id="port" type="number" placeholder="27015" value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
               </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1"><Label htmlFor="minPlayers">Min Players (optional)</Label><Input id="minPlayers" type="number" min={0} placeholder="0" value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if fewer players</p></div>
+              <div className="space-y-2 flex-1"><Label htmlFor="maxPlayers">Max Players (optional)</Label><Input id="maxPlayers" type="number" min={0} placeholder="0" value={maxPlayersField} onChange={(e) => setMaxPlayersField(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if more players</p></div>
+            </div>
+          </>
+        );
+      case "minecraft":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="play.example.com" value={host} onChange={(e) => setHost(e.target.value)} className="flex-1" />
+                <Input id="port" type="number" placeholder={edition === "bedrock" ? "19132" : "25565"} value={port} onChange={(e) => setPort(e.target.value)} className="w-24" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edition">Edition</Label>
+              <Select value={edition} onValueChange={setEdition}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="java">Java</SelectItem>
+                  <SelectItem value="bedrock">Bedrock</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="flex gap-4">
               <div className="space-y-2 flex-1"><Label htmlFor="minPlayers">Min Players (optional)</Label><Input id="minPlayers" type="number" min={0} placeholder="0" value={minPlayers} onChange={(e) => setMinPlayers(e.target.value)} /><p className="text-xs text-muted-foreground">Alert if fewer players</p></div>
@@ -1289,44 +1340,54 @@ export function CheckForm({
                       </div>
                     </PopoverContent>
                   </Popover>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    disabled={isFetchingSamples}
-                    onClick={async () => {
-                      const result = await fetchSamples();
-                      if (result.data && result.data.length > 0) {
-                        setShowSamples(true);
+                  <Popover
+                    open={samplePickerOpen}
+                    onOpenChange={(open) => {
+                      setSamplePickerOpen(open);
+                      if (open) {
+                        void fetchSamples();
                       }
                     }}
-                    data-testid="check-load-template-button"
                   >
-                    {isFetchingSamples ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "Template"
-                    )}
-                  </Button>
-                </div>
-              )}
-
-              {/* Sample list shown after clicking Template button */}
-              {showSamples && fetchedSamples && fetchedSamples.length > 0 && (
-                <div className="grid gap-1">
-                  {fetchedSamples.map((sample) => (
-                    <button
-                      key={sample.slug}
-                      type="button"
-                      className="flex items-center gap-2 rounded-md border px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
-                      data-testid={`check-sample-${sample.slug}`}
-                      onClick={() => {
-                        applySample(sample);
-                        setShowSamples(false);
-                      }}
-                    >
-                      {sample.name}
-                    </button>
-                  ))}
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        data-testid="check-load-template-button"
+                        disabled={!type}
+                      >
+                        {t("loadSample", "Load sample…")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[320px] p-1" align="end">
+                      {isFetchingSamples ? (
+                        <div className="flex items-center justify-center py-4">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        </div>
+                      ) : !fetchedSamples || fetchedSamples.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          {t("noSamples", "No samples for this type")}
+                        </div>
+                      ) : (
+                        <div className="grid max-h-[280px] gap-0.5 overflow-y-auto">
+                          {fetchedSamples.map((sample) => (
+                            <button
+                              key={sample.slug}
+                              type="button"
+                              className="rounded-md px-3 py-2 text-left text-sm transition-colors hover:bg-accent"
+                              data-testid={`check-sample-${sample.slug}`}
+                              onClick={() => {
+                                applySample(sample);
+                                setSamplePickerOpen(false);
+                              }}
+                            >
+                              {sample.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </PopoverContent>
+                  </Popover>
                 </div>
               )}
             </div>
@@ -1393,6 +1454,19 @@ export function CheckForm({
               ) : (
                 <p className="text-xs text-muted-foreground">URL-friendly identifier for the check</p>
               )}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Labels</Label>
+              <LabelInput
+                org={org}
+                value={labels}
+                onChange={(next) => {
+                  setLabels(next);
+                  setLabelsDirty(true);
+                }}
+              />
+              <p className="text-xs text-muted-foreground">Optional key/value tags for grouping and filtering.</p>
             </div>
 
             {checkGroups && checkGroups.length > 0 && (

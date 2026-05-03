@@ -124,10 +124,28 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 type EmailInboxStatusResponse struct {
 	Enabled       bool       `json:"enabled"`
 	Connected     bool       `json:"connected"`
+	Mode          string     `json:"mode,omitempty"`
 	LastSyncedAt  *time.Time `json:"lastSyncedAt,omitempty"`
 	LastError     string     `json:"lastError,omitempty"`
 	AddressDomain string     `json:"addressDomain,omitempty"`
 	AccountID     string     `json:"accountId,omitempty"`
+}
+
+// EmailInboxConfigResponse mirrors jmap.Config for the admin form, but never
+// includes the password. PasswordSet tells the frontend whether to render the
+// edit-password affordance.
+type EmailInboxConfigResponse struct {
+	Enabled                bool   `json:"enabled"`
+	SessionURL             string `json:"sessionUrl"`
+	Username               string `json:"username"`
+	AddressDomain          string `json:"addressDomain"`
+	MailboxName            string `json:"mailboxName"`
+	ProcessedMailboxName   string `json:"processedMailboxName"`
+	PollIntervalSeconds    int    `json:"pollIntervalSeconds"`
+	ProcessedRetentionDays int    `json:"processedRetentionDays"`
+	FailedRetentionDays    int    `json:"failedRetentionDays"`
+	RewriteBaseURL         string `json:"rewriteBaseUrl"`
+	PasswordSet            bool   `json:"passwordSet"`
 }
 
 // EmailInboxTestRequest is the optional request body for POST /email-inbox/test.
@@ -150,6 +168,18 @@ func (h *Handler) EmailInboxPublic(writer http.ResponseWriter, req bunrouter.Req
 	return h.WriteJSON(writer, http.StatusOK, map[string]string{"addressDomain": domain})
 }
 
+// EmailInboxConfig handles GET /api/v1/system/email-inbox/config.
+// Returns the saved JMAP config with the password elided. Used by the admin
+// form to prefill its fields after navigating back to the page.
+func (h *Handler) EmailInboxConfig(writer http.ResponseWriter, req bunrouter.Request) error {
+	cfg, err := h.svc.EmailInboxConfig(req.Context())
+	if err != nil {
+		return h.handleEmailInboxError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, cfg)
+}
+
 // EmailInboxStatus handles GET /api/v1/system/email-inbox/status.
 func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
 	status, err := h.svc.EmailInboxStatus()
@@ -160,6 +190,7 @@ func (h *Handler) EmailInboxStatus(writer http.ResponseWriter, _ bunrouter.Reque
 	resp := EmailInboxStatusResponse{
 		Enabled:       status.Enabled,
 		Connected:     status.Connected,
+		Mode:          status.Mode,
 		LastSyncedAt:  status.LastSyncedAt,
 		LastError:     status.LastError,
 		AddressDomain: status.AddressDomain,

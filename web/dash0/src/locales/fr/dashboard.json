@@ -1,0 +1,53 @@
+{
+  "subtitle": "Ce qui ne va pas maintenant, ce qui a changé, et où aller",
+  "updatedAgo": "Mis à jour il y a {{time}}",
+  "justUpdated": "À l'instant",
+  "refresh": "Actualiser",
+  "welcome": {
+    "title": "Bienvenue sur SolidPing",
+    "subtitle": "Créez votre première sonde pour commencer la surveillance.",
+    "cta": "Créer votre première sonde"
+  },
+  "banner": {
+    "allGreen": "Tous les systèmes opérationnels",
+    "allGreenSub_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 24h",
+    "allGreenSub_other": "{{count}} sondes surveillées, {{availability}}% de disponibilité sur 24h",
+    "issues": "Problèmes détectés",
+    "issuesSub_zero": "Aucun incident actif",
+    "issuesSub_one": "{{down}} sonde en panne, {{incidents}} incidents actifs",
+    "issuesSub_other": "{{down}} sondes en panne, {{incidents}} incidents actifs",
+    "warning": "Sondes dégradées",
+    "warningSub": "Délais d'attente détectés sur {{count}} sondes"
+  },
+  "kpi": {
+    "monitored": "Sondes surveillées",
+    "monitoredDisabled": "{{count}} désactivées",
+    "down": "En panne",
+    "downSubNone": "Tout est en ligne",
+    "incidents": "Incidents actifs",
+    "incidentsSubNone": "Aucun actif",
+    "availability": "Disponibilité 24h",
+    "availabilityNoData": "Pas encore de données"
+  },
+  "needsAttention": {
+    "title": "Nécessite votre attention",
+    "footer": "Voir toutes les sondes →",
+    "empty": "Tout est en ligne",
+    "since": "depuis {{time}}"
+  },
+  "activeIncidents": {
+    "title": "Incidents actifs",
+    "footer": "Voir tous les incidents →",
+    "empty": "Aucun incident actif",
+    "untitled": "Incident sans titre"
+  },
+  "recentActivity": {
+    "title": "Activité récente",
+    "footer": "Voir tous les événements →",
+    "empty": "Aucune activité récente"
+  },
+  "errors": {
+    "section": "Échec du chargement.",
+    "retry": "Réessayer"
+  }
+}

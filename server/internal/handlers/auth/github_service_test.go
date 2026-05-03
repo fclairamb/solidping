@@ -45,7 +45,7 @@ func setupGitHubTestService(t *testing.T) (*GitHubOAuthService, context.Context)
 		},
 	}
 
-	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
+	authService := NewService(dbService, cfg.Auth, cfg, nil)
 	svc := NewGitHubOAuthService(dbService, cfg, authService)
 
 	return svc, ctx

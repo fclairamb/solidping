@@ -2,11 +2,29 @@
   "title": "Status Pages",
   "subtitle": "Manage your public status pages",
   "newStatusPage": "New Status Page",
-  "noStatusPages": "No status pages yet",
+  "noStatusPages": "No status pages configured yet",
+  "noMatch": "No status pages match your search",
+  "searchPlaceholder": "Search status pages...",
+  "createFirst": "Create your first status page",
   "viewDetails": "View Details",
   "edit": "Edit",
+  "delete": "Delete",
   "enabled": "Enabled",
   "disabled": "Disabled",
+  "table": {
+    "name": "Name",
+    "slug": "Slug",
+    "visibility": "Visibility",
+    "status": "Status"
+  },
+  "visibility": {
+    "public": "public",
+    "restricted": "restricted"
+  },
+  "deleteDialog": {
+    "title": "Delete Status Page",
+    "description": "Are you sure you want to delete this status page? This action cannot be undone."
+  },
   "form": {
     "title": "Title",
     "slug": "Slug",
@@ -23,11 +41,44 @@
   "detail": {
     "configuration": "Configuration",
     "preview": "Preview",
-    "publicUrl": "Public URL"
+    "publicUrl": "Public URL",
+    "view": "View",
+    "sections": "Sections",
+    "noSections": "No sections yet"
+  },
+  "sections": {
+    "add": "Add Section",
+    "addDescription": "Create a new section to group checks on this status page.",
+    "name": "Name",
+    "slug": "Slug",
+    "namePlaceholder": "Core Services",
+    "slugPlaceholder": "core-services",
+    "create": "Create Section",
+    "created": "Section created",
+    "createFailed": "Failed to create section",
+    "delete": "Delete Section",
+    "deleteDescription": "Delete this section and all its resource assignments? The checks themselves will not be affected.",
+    "deleted": "Section deleted",
+    "deleteFailed": "Failed to delete section",
+    "empty": "No checks in this section yet"
+  },
+  "resources": {
+    "add": "Add Check",
+    "addToSection": "Add Check to Section",
+    "addDescription": "Select a check to add to this section.",
+    "selectCheck": "Select a check...",
+    "added": "Check added to section",
+    "addFailed": "Failed to add check",
+    "remove": "Remove Check",
+    "removeDescription": "Remove this check from the section? The check itself will not be deleted.",
+    "removed": "Check removed from section",
+    "removeFailed": "Failed to remove check",
+    "removeButton": "Remove"
   },
   "toast": {
-    "created": "Status page created",
-    "updated": "Status page updated",
-    "deleted": "Status page deleted"
+    "created": "Status page created successfully",
+    "updated": "Status page updated successfully",
+    "deleted": "Status page deleted successfully",
+    "deleteFailed": "Failed to delete status page"
   }
 }

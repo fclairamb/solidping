@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import {
   Tooltip,
   TooltipContent,
@@ -18,14 +19,6 @@ function getBarColor(status: string) {
   }
 }
 
-function formatDate(dateStr: string) {
-  const date = new Date(dateStr + "T00:00:00");
-  return date.toLocaleDateString(undefined, {
-    month: "short",
-    day: "numeric",
-  });
-}
-
 interface AvailabilityBarProps {
   dailyAvailability: DailyAvailabilityPoint[];
   overallAvailabilityPct?: number;
@@ -37,6 +30,16 @@ export function AvailabilityBar({
   overallAvailabilityPct,
   historyDays,
 }: AvailabilityBarProps) {
+  const { t, i18n } = useTranslation();
+
+  const formatDate = (dateStr: string) => {
+    const date = new Date(dateStr + "T00:00:00");
+    return date.toLocaleDateString(i18n.language, {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
   return (
     <div className="mt-2">
       <div className="flex gap-px">
@@ -51,23 +54,23 @@ export function AvailabilityBar({
               <p className="font-medium">{formatDate(point.date)}</p>
               {point.status !== "noData" ? (
                 <p className="text-xs">
-                  {point.availabilityPct.toFixed(2)}% uptime
+                  {point.availabilityPct.toFixed(2)}% {t("uptime")}
                 </p>
               ) : (
-                <p className="text-xs text-muted-foreground">No data</p>
+                <p className="text-xs text-muted-foreground">{t("noData")}</p>
               )}
             </TooltipContent>
           </Tooltip>
         ))}
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-        <span>{historyDays} days ago</span>
+        <span>{t("daysAgo", { count: historyDays })}</span>
         {overallAvailabilityPct != null && (
           <span className="font-medium text-foreground">
-            {overallAvailabilityPct.toFixed(3)}% uptime
+            {overallAvailabilityPct.toFixed(3)}% {t("uptime")}
           </span>
         )}
-        <span>Today</span>
+        <span>{t("today")}</span>
       </div>
     </div>
   );

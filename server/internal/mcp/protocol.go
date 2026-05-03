@@ -68,6 +68,7 @@ type InitializeResult struct {
 type ServerCaps struct {
 	Tools     *ToolsCap     `json:"tools,omitempty"`
 	Resources *ResourcesCap `json:"resources,omitempty"`
+	Prompts   *PromptsCap   `json:"prompts,omitempty"`
 }
 
 // ToolsCap represents the tools capability.
@@ -75,6 +76,9 @@ type ToolsCap struct{}
 
 // ResourcesCap represents the resources capability.
 type ResourcesCap struct{}
+
+// PromptsCap represents the prompts capability.
+type PromptsCap struct{}
 
 // ServerInfo represents the server information.
 type ServerInfo struct {
@@ -100,10 +104,16 @@ type ToolCallParams struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
-// ToolCallResult represents the result of a tools/call request.
+// ToolCallResult represents the result of a tools/call request. Content is
+// the human/text-form payload kept for client compat. StructuredContent is
+// the typed object form that newer MCP clients (Claude Desktop, Cursor)
+// consume directly without re-parsing JSON. Both are populated when the
+// underlying tool returns structured data via marshalResult; only Content
+// is populated for confirmation-only tools that use textResult.
 type ToolCallResult struct {
-	Content []ContentBlock `json:"content"`
-	IsError bool           `json:"isError,omitempty"`
+	Content           []ContentBlock `json:"content"`
+	StructuredContent any            `json:"structuredContent,omitempty"`
+	IsError           bool           `json:"isError,omitempty"`
 }
 
 // ContentBlock represents a content block in a tool call result.
@@ -142,6 +152,43 @@ type ResourceContent struct {
 	Text     string `json:"text,omitempty"`
 }
 
+// PromptDefinition describes a registered prompt template.
+type PromptDefinition struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes one argument accepted by a prompt template.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptsListResult is the result of a prompts/list request.
+type PromptsListResult struct {
+	Prompts []PromptDefinition `json:"prompts"`
+}
+
+// PromptGetParams are the params for a prompts/get request.
+type PromptGetParams struct {
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+// PromptGetResult is the result of a prompts/get request.
+type PromptGetResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// PromptMessage is a single conversation seed message.
+type PromptMessage struct {
+	Role    string       `json:"role"`
+	Content ContentBlock `json:"content"`
+}
+
 // Helper constructors.
 
 func successResponse(id any, result any) Response {
@@ -154,13 +201,13 @@ func errorResponse(id any, code int, message string) Response {
 
 func textResult(text string) ToolCallResult {
 	return ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: text}},
+		Content: []ContentBlock{{Type: contentTypeText, Text: text}},
 	}
 }
 
 func errorResult(text string) ToolCallResult {
 	return ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: text}},
+		Content: []ContentBlock{{Type: contentTypeText, Text: text}},
 		IsError: true,
 	}
 }

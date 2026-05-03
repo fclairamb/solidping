@@ -1,0 +1,73 @@
+{
+  "layout": {
+    "title": "Organización",
+    "subtitle": "Gestione los ajustes y miembros de la organización"
+  },
+  "settings": {
+    "title": "Ajustes de la organización",
+    "autoJoin": "Adhesión automática",
+    "autoJoinDescription": "Añade automáticamente a la organización a los usuarios cuyo correo coincida con este patrón.",
+    "autoJoinFullDescription": "Los usuarios cuyo correo coincida con este patrón se unirán automáticamente a esta organización al registrarse o iniciar sesión vía OAuth.",
+    "emailPattern": "Patrón de correo (regex)",
+    "emailPlaceholder": "@example\\.com$",
+    "autoJoinHelp": "Deje vacío para desactivar la adhesión automática. Ejemplo: <code>@example\\.com$</code> coincide con todos los correos @example.com.",
+    "saved": "Ajustes guardados.",
+    "unexpectedError": "Se ha producido un error inesperado"
+  },
+  "invitations": {
+    "title": "Invitaciones",
+    "subtitle": "Gestione las invitaciones de la organización.",
+    "inviteUser": "Invitar usuario",
+    "email": "Dirección de correo",
+    "role": "Rol",
+    "pending": "Pendiente",
+    "accepted": "Aceptada",
+    "revoke": "Revocar",
+    "revoked": "Invitación revocada",
+    "sent": "Invitación enviada",
+    "invite": "Invitar",
+    "inviteMember": "Invitar a un miembro",
+    "sendDescription": "Envíe una invitación para unirse a esta organización",
+    "invitationCreated": "Invitación creada. Comparta este enlace:",
+    "sendInvitation": "Enviar invitación",
+    "sending": "Enviando...",
+    "pendingTitle": "Invitaciones pendientes",
+    "pendingDescription": "Invitaciones que aún no se han aceptado",
+    "noPending": "No hay invitaciones pendientes",
+    "emailPlaceholder": "colega@ejemplo.com",
+    "expires": "Caduca",
+    "unexpectedError": "Se ha producido un error inesperado"
+  },
+  "members": {
+    "title": "Miembros",
+    "subtitle": "Gestione quién tiene acceso a esta organización.",
+    "column": {
+      "member": "Miembro",
+      "email": "Correo",
+      "role": "Rol",
+      "joinedAt": "Se unió"
+    },
+    "role": {
+      "admin": "Administrador",
+      "user": "Usuario",
+      "viewer": "Lector"
+    },
+    "empty": "Aún no hay miembros — invite a su primer compañero.",
+    "cannotEditSelf": "Use los ajustes de su perfil para cambiar su propia membresía.",
+    "remove": "Eliminar",
+    "removeConfirm": {
+      "title": "Eliminar miembro",
+      "body": "¿Eliminar a {{email}} de {{org}}? Perderá el acceso a esta organización.",
+      "action": "Eliminar"
+    },
+    "demoteConfirm": {
+      "title": "Cambiar rol a lector",
+      "body": "{{email}} perderá los permisos de escritura. ¿Continuar?",
+      "action": "Cambiar rol"
+    },
+    "roleUpdated": "Rol actualizado",
+    "memberRemoved": "Miembro eliminado",
+    "removeFailed": "No se pudo eliminar al miembro",
+    "updateFailed": "No se pudo actualizar el rol"
+  }
+}

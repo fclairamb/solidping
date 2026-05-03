@@ -1,41 +1,17 @@
-# Notification Channels: Discord, Teams, Telegram, PagerDuty
+# Notification Channels: Teams, Telegram, PagerDuty
 
 ## Overview
 
-SolidPing currently supports only 3 notification channels (Email, Slack, Webhooks). All major competitors offer 12-90+ channels. Adding Discord, Microsoft Teams, Telegram, and PagerDuty covers the most requested integrations across the industry.
+SolidPing has 9 native notification channels today (Slack, Discord, Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover). Major competitors offer 12-90+ channels. Adding Microsoft Teams, Telegram, and PagerDuty covers the most-requested remaining integrations and brings parity with BetterStack on the channels DevOps teams expect.
 
-Telegram already has a dedicated spec: `specs/next/2026-03-22-telegram-notifications.md`.
+Telegram has its own dedicated spec: `specs/ideas/2026-03-22-telegram-notifications.md`. Discord shipped earlier (`specs/done/2026/03/2026-03-22-discord-integration.md`) and is the reference for the webhook + embed pattern below.
 
 ## Goals
 
-1. Add Discord, Microsoft Teams, and PagerDuty as notification channels
-2. Follow the same connection-based architecture as Slack and Webhooks
+1. Add Microsoft Teams, Telegram, and PagerDuty as notification channels
+2. Follow the same connection-based architecture as Slack, Discord, and Webhooks
 3. Support all incident event types: `incident.created`, `incident.resolved`, `incident.escalated`, `incident.reopened`
-
----
-
-## Discord
-
-Connection type: `discord`
-
-### Settings (JSONB)
-
-```json
-{
-  "webhook_url": "https://discord.com/api/webhooks/1234567890/abcdef..."
-}
-```
-
-### Implementation
-
-- Uses Discord webhook API (no bot/OAuth needed)
-- POST JSON to webhook URL with embed format
-- Color-coded embeds: red (created), green (resolved), orange (escalated), yellow (reopened)
-- Fields: check name, status, duration, region, link to dashboard
-
-### Competitor Reference
-
-BetterStack, UptimeRobot, StatusCake, Checkly, Healthchecks.io, Uptime Kuma, Gatus — all support Discord.
+4. Respect group-incident correlation: each connection fires once per group event, not once per member
 
 ---
 
@@ -93,14 +69,14 @@ BetterStack, UptimeRobot, Pingdom, StatusCake, Checkly, Healthchecks.io, Uptime 
 
 ## Implementation Notes
 
-- Each channel is a new sender in `back/internal/notifications/`
-- Each channel registers as a connection type in the connection system
-- Per-check overrides (e.g., channel selection) follow existing Slack pattern
-- All channels share the same incident event payload structure
-- Dashboard UI: add icons and setup forms for each new connection type
+- Each channel is a new sender in `server/internal/notifications/` (registered in `registry.go`)
+- Each channel registers as a connection type in `server/internal/db/models/integration.go`
+- Per-check overrides (e.g., channel selection) follow the existing Slack/Discord pattern
+- All channels share the same incident event payload structure and respect group-incident correlation
+- Dashboard UI: add icons and setup forms for each new connection type, plus i18n keys
 
 ## Priority
 
-Discord and Teams are the simplest (webhook-only, no OAuth). PagerDuty requires Events API v2 integration but is critical for DevOps teams. Telegram is covered by its own spec.
+Teams is the simplest (incoming webhook + adaptive card). PagerDuty requires Events API v2 integration but is critical for DevOps teams. Telegram is covered by its own spec and uses bot token + chat ID.
 
-**Suggested order**: Telegram → Discord → Teams → PagerDuty
+**Suggested order**: Telegram → Teams → PagerDuty

@@ -39,12 +39,20 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
+	"github.com/fclairamb/solidping/server/internal/handlers/features"
+	"github.com/fclairamb/solidping/server/internal/handlers/feedback"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
+	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
@@ -212,7 +220,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	// Create auth service
-	authService := auth.NewService(dbService, cfg.Auth, cfg, emailSender, emailFormatter)
+	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService)
+
+	// Register file storage backends. Idempotent — safe to call once at startup.
+	localfs.Register()
+	s3fs.Register()
 
 	server := &Server{
 		dbService:   dbService,
@@ -228,7 +240,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	return server, nil
 }
 
-//nolint:funlen // Route registration function naturally grows with new routes
+//nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) setupRoutes() {
 	router := bunrouter.New()
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
@@ -268,6 +280,9 @@ func (s *Server) setupRoutes() {
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
+	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
+	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
+	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
 
 	// Org creation (protected)
 	orgsGroup := api.NewGroup("/orgs").Use(authMiddleware.RequireAuth)
@@ -289,17 +304,24 @@ func (s *Server) setupRoutes() {
 	orgSettings.GET("", authHandler.GetOrgSettings)
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
 
+	// Org membership requests (protected, admin-only checked in handler)
+	orgMembershipRequests := api.NewGroup("/orgs/:org/membership-requests").Use(authMiddleware.RequireAuth)
+	orgMembershipRequests.GET("", authHandler.ListOrgMembershipRequestsHandler)
+	orgMembershipRequests.POST("/:uid/approve", authHandler.ApproveMembershipRequestHandler)
+	orgMembershipRequests.POST("/:uid/reject", authHandler.RejectMembershipRequestHandler)
+
 	// Slack OAuth routes (org-independent, public)
-	if s.config.Slack.ClientID != "" {
+	if s.config.Slack.Enabled && s.config.Slack.ClientID != "" {
 		slackOAuthService := auth.NewSlackOAuthService(s.dbService, s.config, s.authService)
 		slackOAuthHandler := auth.NewSlackOAuthHandler(slackOAuthService, s.config)
 		slackAuth := api.NewGroup("/auth/slack")
 		slackAuth.GET("/login", slackOAuthHandler.Login)
 		slackAuth.GET("/callback", slackOAuthHandler.Callback)
+		slackAuth.POST("/exchange", slackOAuthHandler.Exchange)
 	}
 
 	// Google OAuth routes (org-scoped, public)
-	if s.config.Google.ClientID != "" {
+	if s.config.Google.Enabled && s.config.Google.ClientID != "" {
 		googleOAuthService := auth.NewGoogleOAuthService(s.dbService, s.config, s.authService)
 		googleOAuthHandler := auth.NewGoogleOAuthHandler(googleOAuthService, s.config)
 		googleAuth := api.NewGroup("/auth/google")
@@ -308,7 +330,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// GitHub OAuth routes (org-scoped, public)
-	if s.config.GitHub.ClientID != "" {
+	if s.config.GitHub.Enabled && s.config.GitHub.ClientID != "" {
 		gitHubOAuthService := auth.NewGitHubOAuthService(s.dbService, s.config, s.authService)
 		gitHubOAuthHandler := auth.NewGitHubOAuthHandler(gitHubOAuthService, s.config)
 		gitHubAuth := api.NewGroup("/auth/github")
@@ -317,7 +339,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Microsoft OAuth routes (org-scoped, public)
-	if s.config.Microsoft.ClientID != "" {
+	if s.config.Microsoft.Enabled && s.config.Microsoft.ClientID != "" {
 		microsoftOAuthService := auth.NewMicrosoftOAuthService(s.dbService, s.config, s.authService)
 		microsoftOAuthHandler := auth.NewMicrosoftOAuthHandler(microsoftOAuthService, s.config)
 		microsoftAuth := api.NewGroup("/auth/microsoft")
@@ -326,7 +348,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// GitLab OAuth routes (org-scoped, public)
-	if s.config.GitLab.ClientID != "" {
+	if s.config.GitLab.Enabled && s.config.GitLab.ClientID != "" {
 		gitLabOAuthService := auth.NewGitLabOAuthService(s.dbService, s.config, s.authService)
 		gitLabOAuthHandler := auth.NewGitLabOAuthHandler(gitLabOAuthService, s.config)
 		gitLabAuth := api.NewGroup("/auth/gitlab")
@@ -335,7 +357,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Discord OAuth routes (org-independent, public)
-	if s.config.Discord.ClientID != "" {
+	if s.config.Discord.Enabled && s.config.Discord.ClientID != "" {
 		discordOAuthService := auth.NewDiscordOAuthService(s.dbService, s.config, s.authService)
 		discordOAuthHandler := auth.NewDiscordOAuthHandler(discordOAuthService, s.config)
 		discordAuth := api.NewGroup("/auth/discord")
@@ -347,8 +369,12 @@ func (s *Server) setupRoutes() {
 	providersHandler := auth.NewProvidersHandler(s.config)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
+	// Check types service (constructed early so MCP can use it too)
+	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
+
 	// MCP endpoint (auth via PAT token, org derived from token)
-	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc)
+	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
@@ -357,8 +383,6 @@ func (s *Server) setupRoutes() {
 	jobHandler.RegisterRoutes(api)
 
 	// Check types routes
-	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
-	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
 	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth
@@ -378,6 +402,13 @@ func (s *Server) setupRoutes() {
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
+	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+
+	// Label autocomplete routes
+	labelsService := labels.NewService(s.dbService)
+	labelsHandler := labels.NewHandler(labelsService, s.config)
+	orgLabels := api.NewGroup("/orgs/:org/labels").Use(authMiddleware.RequireAuth)
+	orgLabels.GET("", labelsHandler.ListLabels)
 
 	// Region routes
 	regionsService := regionshandler.NewService(s.dbService)
@@ -436,18 +467,70 @@ func (s *Server) setupRoutes() {
 	orgResults := api.NewGroup("/orgs/:org/results").Use(authMiddleware.RequireAuth)
 	orgResults.GET("", resultsHandler.ListResults)
 
+	// Per-check single result fetch (with fallback to covering aggregation)
+	orgChecksResults := api.NewGroup("/orgs/:org/checks/:check/results").Use(authMiddleware.RequireAuth)
+	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
+
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
 	orgIncidents.GET("/:uid", incidentsHandler.GetIncident)
+	orgIncidents.POST("/:uid/ack", incidentsHandler.AcknowledgeIncident)
+	orgIncidents.POST("/:uid/unack", incidentsHandler.UnacknowledgeIncident)
+	orgIncidents.POST("/:uid/snooze", incidentsHandler.SnoozeIncident)
+	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
+	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
+
+	// On-call schedules (authentication required)
+	onCallService := oncallschedules.NewService(s.dbService)
+	onCallHandler := oncallschedules.NewHandler(onCallService, s.dbService, s.config)
+	orgOnCall := api.NewGroup("/orgs/:org/on-call-schedules").Use(authMiddleware.RequireAuth)
+	orgOnCall.GET("", onCallHandler.ListSchedules)
+	orgOnCall.POST("", onCallHandler.CreateSchedule)
+	orgOnCall.GET("/:slug", onCallHandler.GetSchedule)
+	orgOnCall.PATCH("/:slug", onCallHandler.UpdateSchedule)
+	orgOnCall.DELETE("/:slug", onCallHandler.DeleteSchedule)
+	orgOnCall.GET("/:slug/preview", onCallHandler.PreviewSchedule)
+	orgOnCall.GET("/:slug/overrides", onCallHandler.ListOverrides)
+	orgOnCall.POST("/:slug/overrides", onCallHandler.CreateOverride)
+	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
+	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
+	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
+
+	// Escalation policies (authentication required)
+	escalationService := escalationpolicies.NewService(s.dbService)
+	escalationHandler := escalationpolicies.NewHandler(escalationService, s.config)
+	orgEscalation := api.NewGroup("/orgs/:org/escalation-policies").Use(authMiddleware.RequireAuth)
+	orgEscalation.GET("", escalationHandler.ListPolicies)
+	orgEscalation.POST("", escalationHandler.CreatePolicy)
+	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
+	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
+	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
 	eventsHandler := events.NewHandler(eventsService, s.config)
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
+
+	// Files routes (authentication required for org-scoped, plus public signed-URL route)
+	filesService := files.NewService(s.dbService, s.config)
+	filesHandler := files.NewHandler(filesService, s.config)
+	orgFiles := api.NewGroup("/orgs/:org/files").Use(authMiddleware.RequireAuth)
+	orgFiles.GET("", filesHandler.List)
+	orgFiles.GET("/:uid", filesHandler.Get)
+	orgFiles.GET("/:uid/content", filesHandler.GetContent)
+	orgFiles.DELETE("/:uid", filesHandler.Delete)
+	pubFiles := mainGroup.NewGroup("/pub/files")
+	pubFiles.GET("/:uid", filesHandler.PublicGet)
+
+	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
+	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
+	feedbackHandler := feedback.NewHandler(feedbackService, s.authService, s.config)
+	featuresHandler := features.NewHandler(s.config)
+	api.NewGroup("/features").Use(authMiddleware.RequireAuth).GET("", featuresHandler.GetFeatures)
 
 	// Members routes (authentication required)
 	membersService := members.NewService(s.dbService)
@@ -491,6 +574,7 @@ func (s *Server) setupRoutes() {
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireSuperAdmin)
 	systemActions.POST("/test-email", systemHandler.TestEmail)
+	systemActions.GET("/email-inbox/config", systemHandler.EmailInboxConfig)
 	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
@@ -544,6 +628,7 @@ func (s *Server) setupRoutes() {
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
 	slackHandler := slack.NewHandler(slackService, s.config)
 	slackIntegration := api.NewGroup("/integrations/slack")
+	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
 	// Apply signature verification middleware to Slack webhooks
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
@@ -560,6 +645,7 @@ func (s *Server) setupRoutes() {
 	mgmt := mainGroup.NewGroup("/api/mgmt")
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
+	mgmt.POST("/report", feedbackHandler.SubmitReport)
 
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {

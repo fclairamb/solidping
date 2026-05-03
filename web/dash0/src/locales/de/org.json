@@ -1,0 +1,73 @@
+{
+  "layout": {
+    "title": "Organisation",
+    "subtitle": "Organisationseinstellungen und Mitglieder verwalten"
+  },
+  "settings": {
+    "title": "Organisationseinstellungen",
+    "autoJoin": "Automatischer Beitritt",
+    "autoJoinDescription": "Benutzer, deren E-Mail-Adresse diesem Muster entspricht, werden automatisch der Organisation hinzugefügt.",
+    "autoJoinFullDescription": "Benutzer, deren E-Mail diesem Muster entspricht, treten dieser Organisation automatisch bei, wenn sie sich registrieren oder über OAuth anmelden.",
+    "emailPattern": "E-Mail-Muster (Regex)",
+    "emailPlaceholder": "@example\\.com$",
+    "autoJoinHelp": "Lassen Sie das Feld leer, um den automatischen Beitritt zu deaktivieren. Beispiel: <code>@example\\.com$</code> entspricht allen @example.com-E-Mail-Adressen.",
+    "saved": "Einstellungen gespeichert.",
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
+  },
+  "invitations": {
+    "title": "Einladungen",
+    "subtitle": "Organisationseinladungen verwalten.",
+    "inviteUser": "Benutzer einladen",
+    "email": "E-Mail-Adresse",
+    "role": "Rolle",
+    "pending": "Ausstehend",
+    "accepted": "Angenommen",
+    "revoke": "Widerrufen",
+    "revoked": "Einladung widerrufen",
+    "sent": "Einladung gesendet",
+    "invite": "Einladen",
+    "inviteMember": "Mitglied einladen",
+    "sendDescription": "Senden Sie eine Einladung zum Beitritt zu dieser Organisation",
+    "invitationCreated": "Einladung erstellt. Teilen Sie diesen Link:",
+    "sendInvitation": "Einladung senden",
+    "sending": "Senden...",
+    "pendingTitle": "Ausstehende Einladungen",
+    "pendingDescription": "Einladungen, die noch nicht angenommen wurden",
+    "noPending": "Keine ausstehenden Einladungen",
+    "emailPlaceholder": "kollege@example.com",
+    "expires": "Läuft ab",
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
+  },
+  "members": {
+    "title": "Mitglieder",
+    "subtitle": "Verwalten Sie, wer auf diese Organisation zugreifen darf.",
+    "column": {
+      "member": "Mitglied",
+      "email": "E-Mail",
+      "role": "Rolle",
+      "joinedAt": "Beigetreten"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "Benutzer",
+      "viewer": "Betrachter"
+    },
+    "empty": "Noch keine Mitglieder — laden Sie Ihr erstes Teammitglied ein.",
+    "cannotEditSelf": "Verwenden Sie Ihre Profileinstellungen, um Ihre eigene Mitgliedschaft zu ändern.",
+    "remove": "Entfernen",
+    "removeConfirm": {
+      "title": "Mitglied entfernen",
+      "body": "{{email}} aus {{org}} entfernen? Diese Person verliert den Zugriff auf die Organisation.",
+      "action": "Entfernen"
+    },
+    "demoteConfirm": {
+      "title": "Rolle in Betrachter ändern",
+      "body": "{{email}} verliert die Schreibrechte. Fortfahren?",
+      "action": "Rolle ändern"
+    },
+    "roleUpdated": "Rolle aktualisiert",
+    "memberRemoved": "Mitglied entfernt",
+    "removeFailed": "Mitglied konnte nicht entfernt werden",
+    "updateFailed": "Rolle konnte nicht aktualisiert werden"
+  }
+}

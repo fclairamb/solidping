@@ -10,6 +10,7 @@ import {
   ReferenceArea,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
+import { useNavigate } from "@tanstack/react-router";
 import { useAllResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,8 @@ interface ChartPoint {
   ts: number;
   durationMs: number | null;
   status: string;
+  uid?: string;
+  periodType?: string;
 }
 
 interface GapRegion {
@@ -79,7 +82,10 @@ function median(sorted: number[]): number {
     : sorted[mid];
 }
 
-/** Detect gaps in data where interval exceeds 5x the median check interval */
+/** Detect gaps in data where interval exceeds 5x the per-tier median interval.
+ * Transitions between different periodTypes (raw → hour → day → month) are
+ * not gaps — the aggregator deletes source rows so the timeline is contiguous
+ * across tiers, just at different densities. */
 function detectGaps(
   data: ChartPoint[],
   domainMin: number,
@@ -87,29 +93,35 @@ function detectGaps(
 ): GapRegion[] {
   if (data.length < 2) return [];
 
-  // Calculate intervals between consecutive points
-  const intervals: number[] = [];
+  // Per-tier median: only count intervals between same-tier neighbors.
+  const intervalsByType: Record<string, number[]> = {};
   for (let i = 1; i < data.length; i++) {
-    intervals.push(data[i].ts - data[i - 1].ts);
+    const prev = data[i - 1];
+    const cur = data[i];
+    if (prev.periodType !== cur.periodType) continue;
+    const key = cur.periodType ?? "";
+    (intervalsByType[key] ??= []).push(cur.ts - prev.ts);
+  }
+  const medianByType: Record<string, number> = {};
+  for (const [key, list] of Object.entries(intervalsByType)) {
+    medianByType[key] = median([...list].sort((a, b) => a - b));
   }
 
-  // Sort for median
-  const sortedIntervals = [...intervals].sort((a, b) => a - b);
-  const medianInterval = median(sortedIntervals);
-  if (medianInterval === 0) return [];
-
-  const gapThreshold = medianInterval * 5;
   const domainSpan = domainMax - domainMin;
   const gaps: GapRegion[] = [];
 
   for (let i = 1; i < data.length; i++) {
-    const interval = data[i].ts - data[i - 1].ts;
-    if (interval > gapThreshold) {
-      const gapWidth = data[i].ts - data[i - 1].ts;
+    const prev = data[i - 1];
+    const cur = data[i];
+    if (prev.periodType !== cur.periodType) continue;
+    const tierMedian = medianByType[cur.periodType ?? ""] ?? 0;
+    if (tierMedian === 0) continue;
+    const interval = cur.ts - prev.ts;
+    if (interval > tierMedian * 5) {
       gaps.push({
-        x1: data[i - 1].ts,
-        x2: data[i].ts,
-        showLabel: domainSpan > 0 && gapWidth / domainSpan > 0.1,
+        x1: prev.ts,
+        x2: cur.ts,
+        showLabel: domainSpan > 0 && interval / domainSpan > 0.1,
       });
     }
   }
@@ -193,6 +205,7 @@ export function ResponseTimeChart({
   initialFullRange,
   onSettingsChange,
 }: ResponseTimeChartProps) {
+  const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
 
@@ -208,8 +221,19 @@ export function ResponseTimeChart({
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
-  // Use hourly aggregations for longer ranges to avoid fetching thousands of raw results
-  const periodType = timeRange === "week" || timeRange === "month" ? "hour" : "raw";
+  // Each timestamp lives in exactly one tier (the aggregator deletes source rows
+  // when rolling up). Querying a single tier misses the rest of the timeline:
+  // a Week view that asks only for `hour` skips the recent raw window plus any
+  // older buckets already rolled to `day`. Pass the union of tiers that can
+  // contain data within this range.
+  const periodType =
+    timeRange === "month"
+      ? "raw,hour,day,month"
+      : timeRange === "week"
+        ? "raw,hour,day"
+        : timeRange === "day"
+          ? "raw,hour"
+          : "raw";
 
   const { data: results, isLoading } = useAllResults(org, {
     checkUid,
@@ -245,6 +269,8 @@ export function ResponseTimeChart({
             ts: new Date(r.periodStart!).getTime(),
             durationMs: r.durationMs ?? 0,
             status: r.status ?? "up",
+            uid: r.uid,
+            periodType: r.periodType,
           };
         });
 
@@ -371,16 +397,16 @@ export function ResponseTimeChart({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
         <CardTitle>Response Times</CardTitle>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <Switch
               checked={fullRange}
               onCheckedChange={updateFullRange}
               className="scale-75"
             />
-            Full range
+            <span className="hidden sm:inline">Full range</span>
           </label>
           <div className="flex items-center gap-1">
             {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
@@ -389,9 +415,10 @@ export function ResponseTimeChart({
                 variant={timeRange === range ? "default" : "outline"}
                 size="sm"
                 onClick={() => updateTimeRange(range)}
-                className="capitalize"
+                className="px-2 text-xs sm:px-3 sm:text-sm"
               >
-                {range}
+                <span className="sm:hidden">{range[0].toUpperCase()}</span>
+                <span className="hidden sm:inline capitalize">{range}</span>
               </Button>
             ))}
           </div>
@@ -480,6 +507,11 @@ export function ResponseTimeChart({
                           {data.status}
                         </p>
                       )}
+                      {data.uid && (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Click point for details
+                        </p>
+                      )}
                     </div>
                   );
                 }}
@@ -511,6 +543,48 @@ export function ResponseTimeChart({
                 strokeWidth={2}
                 connectNulls={false}
                 animationDuration={300}
+                dot={(props) => {
+                  const dotProps = props as {
+                    cx?: number;
+                    cy?: number;
+                    payload?: ChartPoint;
+                    key?: React.Key | null;
+                  };
+                  const { cx, cy, payload, key } = dotProps;
+                  const reactKey =
+                    key == null ? undefined : (key as React.Key);
+                  if (cx == null || cy == null || !payload?.uid) {
+                    return <g key={reactKey} />;
+                  }
+                  const fill =
+                    payload.status === "down" ||
+                    payload.status === "unknown"
+                      ? COLOR_DOWN
+                      : COLOR_UP;
+                  return (
+                    <circle
+                      key={reactKey}
+                      cx={cx}
+                      cy={cy}
+                      r={3.5}
+                      fill={fill}
+                      style={{ cursor: "pointer" }}
+                      onClick={() =>
+                        navigate({
+                          to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                          params: {
+                            org,
+                            checkUid,
+                            resultUid: payload.uid!,
+                          },
+                        })
+                      }
+                    >
+                      <title>Click for details</title>
+                    </circle>
+                  );
+                }}
+                activeDot={{ r: 5, style: { cursor: "pointer" } }}
               />
             </AreaChart>
           </ResponsiveContainer>

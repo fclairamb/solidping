@@ -19,4 +19,6 @@ const (
 	JobTypeStateCleanup JobType = "state_cleanup"
 	// JobTypeNotification sends incident notifications via connections.
 	JobTypeNotification JobType = "notification"
+	// JobTypeSnoozeSweep auto-unsnoozes incidents whose snooze window has passed.
+	JobTypeSnoozeSweep JobType = "snooze_sweep"
 )

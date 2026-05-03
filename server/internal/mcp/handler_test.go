@@ -181,7 +181,7 @@ func TestDispatch_Initialize(t *testing.T) {
 	// Verify result structure
 	result, ok := resp.Result.(map[string]any)
 	r.True(ok)
-	r.Equal(mcpProtocolVer, result["protocolVersion"])
+	r.Equal(protocolVersion2025_03_26, result["protocolVersion"])
 
 	serverInfo, ok := result["serverInfo"].(map[string]any)
 	r.True(ok)
@@ -220,7 +220,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 
 	tools, ok := result["tools"].([]any)
 	r.True(ok)
-	r.Len(tools, 12)
+	r.Len(tools, 35)
 
 	// Verify tool names
 	names := make(map[string]bool)
@@ -238,6 +238,17 @@ func TestDispatch_ToolsList(t *testing.T) {
 		"list_results", "list_incidents", "get_incident",
 		"list_connections", "create_connection",
 		"list_check_groups", "list_regions",
+		"diagnose_check",
+		"list_status_pages", "get_status_page", "create_status_page",
+		"update_status_page", "delete_status_page",
+		"list_status_page_sections", "create_status_page_section",
+		"update_status_page_section", "delete_status_page_section",
+		"list_status_page_resources", "create_status_page_resource",
+		"update_status_page_resource", "delete_status_page_resource",
+		"list_maintenance_windows", "get_maintenance_window",
+		"create_maintenance_window", "update_maintenance_window",
+		"delete_maintenance_window", "set_maintenance_window_checks",
+		"list_check_types", "get_check_type_samples", "validate_check",
 	}
 	for _, name := range expectedTools {
 		r.True(names[name], "missing tool: %s", name)
@@ -502,4 +513,95 @@ func TestGetStringMapArg(t *testing.T) {
 		t.Parallel()
 		r.Nil(getStringMapArg(map[string]any{}, "data"))
 	})
+}
+
+// --- MCP scope gating tests ---
+
+func claimsWithScopes(scopes ...string) *auth.Claims {
+	c := defaultClaims()
+	c.Scopes = scopes
+	return c
+}
+
+func TestHandle_RejectsTokensWithoutMCPScope(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("checks:read"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusForbidden, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.NotNil(resp.Error)
+	r.Equal(CodeForbidden, resp.Error.Code)
+}
+
+func TestHandle_AllowsBackCompatJWTWithoutScopes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, defaultClaims())
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.Nil(resp.Error)
+}
+
+func TestHandle_MCPScopeAllowsToolCalls(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+}
+
+func TestHandle_MCPReadAllowsListAndGet(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+
+	// tools/list works
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp:read"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.Nil(resp.Error)
+}
+
+func TestHandle_MCPReadRefusesMutationTools(t *testing.T) {
+	t.Parallel()
+
+	mutationCalls := []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_check","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_check","arguments":{"identifier":"x"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_check","arguments":{"identifier":"x"}}}`,
+	}
+
+	for _, body := range mutationCalls {
+		t.Run(body[:60], func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			handler := newTestHandler()
+			rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp:read"))
+			r.NoError(handler.Handle(rec, req))
+			r.Equal(http.StatusOK, rec.Code)
+
+			resp := decodeResponse(t, rec)
+			r.NotNil(resp.Error)
+			r.Equal(CodeForbidden, resp.Error.Code)
+			r.Contains(resp.Error.Message, "mcp:read")
+		})
+	}
 }

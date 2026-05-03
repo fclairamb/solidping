@@ -110,6 +110,12 @@ type Service interface {
 	SetCheckLabels(ctx context.Context, checkUID string, labelUIDs []string) error
 	GetLabelsForCheck(ctx context.Context, checkUID string) ([]*models.Label, error)
 	GetLabelsForChecks(ctx context.Context, checkUIDs []string) (map[string][]*models.Label, error)
+	ListDistinctLabelKeys(
+		ctx context.Context, orgUID, query string, limit int,
+	) ([]models.LabelSuggestion, error)
+	ListDistinctLabelValues(
+		ctx context.Context, orgUID, key, query string, limit int,
+	) ([]models.LabelSuggestion, error)
 
 	// Result operations
 	CreateResult(ctx context.Context, result *models.Result) error
@@ -138,6 +144,46 @@ type Service interface {
 	ListIncidents(ctx context.Context, filter *models.ListIncidentsFilter) ([]*models.Incident, error)
 	UpdateIncident(ctx context.Context, uid string, update *models.IncidentUpdate) error
 	CountActiveIncidentsByCheckUID(ctx context.Context, checkUID string) (int, error)
+	// ListExpiredSnoozedIncidents returns active incidents whose snoozed_until <= now.
+	// Used by the auto-unsnooze sweeper.
+	ListExpiredSnoozedIncidents(ctx context.Context, now time.Time) ([]*models.Incident, error)
+
+	// On-call schedule operations
+	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
+	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleBySlug(ctx context.Context, orgUID, slug string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error)
+	ListOnCallSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error)
+	UpdateOnCallSchedule(ctx context.Context, scheduleUID string, update *models.OnCallScheduleUpdate) error
+	DeleteOnCallSchedule(ctx context.Context, scheduleUID string) error
+
+	// On-call schedule users (roster) — replace-all is the typical write path
+	ListOnCallScheduleUsers(ctx context.Context, scheduleUID string) ([]*models.OnCallScheduleUser, error)
+	ReplaceOnCallScheduleUsers(ctx context.Context, scheduleUID string, userUIDs []string) error
+
+	// On-call schedule overrides
+	CreateOnCallScheduleOverride(ctx context.Context, override *models.OnCallScheduleOverride) error
+	ListOnCallScheduleOverrides(
+		ctx context.Context, scheduleUID string, from, until *time.Time,
+	) ([]*models.OnCallScheduleOverride, error)
+	GetOnCallScheduleOverride(ctx context.Context, overrideUID string) (*models.OnCallScheduleOverride, error)
+	DeleteOnCallScheduleOverride(ctx context.Context, overrideUID string) error
+
+	// Escalation policies (header)
+	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
+	GetEscalationPolicy(ctx context.Context, orgUID, policyUID string) (*models.EscalationPolicy, error)
+	GetEscalationPolicyBySlug(ctx context.Context, orgUID, slug string) (*models.EscalationPolicy, error)
+	ListEscalationPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error)
+	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
+	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
+
+	// Escalation policy steps (replace-all is the typical write path)
+	ListEscalationPolicySteps(ctx context.Context, policyUID string) ([]*models.EscalationPolicyStep, error)
+	ReplaceEscalationPolicySteps(
+		ctx context.Context, policyUID string, steps []*models.EscalationPolicyStep,
+		targetsByStepIdx map[int][]*models.EscalationPolicyTarget,
+	) error
+	ListEscalationPolicyTargets(ctx context.Context, stepUIDs []string) ([]*models.EscalationPolicyTarget, error)
 
 	// Incident member operations (group incidents only)
 	ListIncidentMemberChecks(ctx context.Context, incidentUID string) ([]*models.IncidentMemberCheck, error)
@@ -274,6 +320,29 @@ type Service interface {
 	SetMaintenanceWindowChecks(ctx context.Context, windowUID string, checkUIDs, checkGroupUIDs []string) error
 	ListMaintenanceWindowChecks(ctx context.Context, windowUID string) ([]*models.MaintenanceWindowCheck, error)
 	IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error)
+
+	// File operations
+	CreateFile(ctx context.Context, file *models.File) error
+	GetFile(ctx context.Context, orgUID, uid string) (*models.File, error)
+	GetFileAny(ctx context.Context, uid string) (*models.File, error)
+	ListFiles(
+		ctx context.Context, orgUID string, filter models.ListFilesFilter,
+	) ([]*models.File, int64, error)
+	DeleteFile(ctx context.Context, orgUID, uid string) error
+
+	// Membership-request operations
+	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
+	UpdateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
+	GetMembershipRequest(ctx context.Context, uid string) (*models.MembershipRequest, error)
+	GetMembershipRequestByOrgAndUser(
+		ctx context.Context, orgUID, userUID string,
+	) (*models.MembershipRequest, error)
+	ListMembershipRequests(
+		ctx context.Context, filter models.ListMembershipRequestsFilter,
+	) ([]*models.MembershipRequest, error)
+	ApproveMembershipRequest(
+		ctx context.Context, request *models.MembershipRequest, member *models.OrganizationMember,
+	) error
 
 	// Close closes the database connection and cleans up resources
 	io.Closer

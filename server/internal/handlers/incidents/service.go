@@ -21,7 +21,25 @@ import (
 var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	ErrIncidentNotFound     = errors.New("incident not found")
+	ErrSnoozeUntilInPast    = errors.New("snooze 'until' must be in the future")
+	ErrSnoozeTooLong        = errors.New("snooze cannot exceed 7 days")
+	ErrSnoozeMissingDur     = errors.New("snooze requires either 'until' or 'duration'")
+	ErrSnoozeInvalidDur     = errors.New("snooze duration is not a valid Go duration")
 )
+
+// MaxSnoozeDuration caps how long an operator can silence an incident in a
+// single call. Beyond a week the request is almost certainly a mistake — for
+// genuinely long-term silencing, use a maintenance window or resolve the
+// incident manually.
+const MaxSnoozeDuration = 7 * 24 * time.Hour
+
+// payloadKeyVia identifies the channel an incident action came from in the
+// event payload (web | slack | email | manual | auto). Centralizing the key
+// avoids drift across events.
+const payloadKeyVia = "via"
+
+// viaWeb identifies an action taken from the dashboard.
+const viaWeb = "web"
 
 // JSON event metadata keys.
 const (
@@ -838,8 +856,10 @@ func (s *Service) emitEvent(
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
-		models.EventTypeCheckDeleted, models.EventTypeIncidentAcknowledged:
-		// No notifications for these event types
+		models.EventTypeCheckDeleted,
+		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
+		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed:
+		// No notifications for these event types — operator actions, not lifecycle changes.
 	}
 
 	return nil
@@ -1284,7 +1304,8 @@ type AcknowledgeIncidentRequest struct {
 	AcknowledgedBy string // User UID or identifier
 	SlackUserID    string // Slack user ID if acknowledged via Slack
 	SlackUsername  string // Slack username for display
-	Via            string // "slack", "web", etc.
+	Note           string // Optional free-text note
+	Via            string // "slack", "web", "email", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged.
@@ -1330,9 +1351,10 @@ func (s *Service) AcknowledgeIncident(
 	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
 	event.Payload = models.JSONMap{
-		"via":            req.Via,
+		payloadKeyVia:    req.Via,
 		"slack_user_id":  req.SlackUserID,
 		"slack_username": req.SlackUsername,
+		"note":           req.Note,
 	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
@@ -1346,6 +1368,8 @@ func (s *Service) AcknowledgeIncident(
 		// Don't fail the acknowledgment for event creation errors
 	}
 
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
 	slog.InfoContext(ctx, "Incident acknowledged",
 		"incident_uid", incident.UID,
 		"via", req.Via,
@@ -1353,6 +1377,28 @@ func (s *Service) AcknowledgeIncident(
 	)
 
 	return incident, nil
+}
+
+// cancelPendingNotifications soft-deletes future notification jobs for an
+// incident. Logs but never returns the error — cancellation is best-effort
+// and must not fail the user-visible action that triggered it.
+func (s *Service) cancelPendingNotifications(ctx context.Context, incidentUID string, notBefore *time.Time) {
+	canceled, err := s.jobsSvc.CancelPendingForIncident(ctx, incidentUID, notBefore)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to cancel pending notifications",
+			"incident_uid", incidentUID,
+			"error", err,
+		)
+
+		return
+	}
+
+	if canceled > 0 {
+		slog.InfoContext(ctx, "Canceled pending notification jobs",
+			"incident_uid", incidentUID,
+			"count", canceled,
+		)
+	}
 }
 
 // GetCheckByUID gets a check by UID within an organization.
@@ -1371,4 +1417,308 @@ func (s *Service) AcknowledgeIncidentFromSlack(
 		SlackUsername: slackUsername,
 		Via:           "slack",
 	})
+}
+
+// UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
+// ack'd by mistake, want escalation to resume.
+func (s *Service) UnacknowledgeIncident(
+	ctx context.Context, orgUID, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get incident: %w", err)
+	}
+
+	if incident.AcknowledgedAt == nil {
+		return incident, nil
+	}
+
+	update := models.IncidentUpdate{
+		ClearAcknowledgedAt: true,
+		ClearAcknowledgedBy: true,
+	}
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return nil, fmt.Errorf("failed to update incident: %w", err)
+	}
+
+	incident.AcknowledgedAt = nil
+	incident.AcknowledgedBy = nil
+
+	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.Payload = models.JSONMap{payloadKeyVia: via}
+
+	if actorUID != "" {
+		event.ActorUID = &actorUID
+	}
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "Failed to create unack event",
+			"incident_uid", incident.UID, "error", err)
+	}
+
+	return incident, nil
+}
+
+// SnoozeIncidentRequest carries the validated parameters for SnoozeIncident.
+// Either Until or Duration must be set; the handler is responsible for
+// translating the API form to one of these.
+type SnoozeIncidentRequest struct {
+	IncidentUID string
+	ActorUID    string // user UID, empty for system
+	Until       *time.Time
+	Duration    *time.Duration
+	Reason      string
+	Via         string // "web" | "slack" | "email"
+}
+
+// SnoozeIncident silences an incident until a future time. Snooze implies
+// acknowledgment — silencing an unack'd incident is the worst-of-both-worlds
+// state, so the ack is set if missing.
+func (s *Service) SnoozeIncident(
+	ctx context.Context, orgUID string, req *SnoozeIncidentRequest,
+) (*models.Incident, error) {
+	until, err := s.resolveSnoozeUntil(req)
+	if err != nil {
+		return nil, err
+	}
+
+	incident, err := s.db.GetIncident(ctx, orgUID, req.IncidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get incident: %w", err)
+	}
+
+	now := time.Now()
+	update := models.IncidentUpdate{
+		SnoozedUntil: &until,
+	}
+	if req.ActorUID != "" {
+		update.SnoozedBy = &req.ActorUID
+	}
+	if req.Reason != "" {
+		update.SnoozeReason = &req.Reason
+	}
+	if incident.AcknowledgedAt == nil {
+		update.AcknowledgedAt = &now
+		if req.ActorUID != "" {
+			update.AcknowledgedBy = &req.ActorUID
+		}
+	}
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return nil, fmt.Errorf("failed to update incident: %w", err)
+	}
+
+	incident.SnoozedUntil = &until
+	incident.SnoozedBy = update.SnoozedBy
+	incident.SnoozeReason = update.SnoozeReason
+	if update.AcknowledgedAt != nil {
+		incident.AcknowledgedAt = update.AcknowledgedAt
+		incident.AcknowledgedBy = update.AcknowledgedBy
+	}
+
+	event := models.NewEvent(orgUID, models.EventTypeIncidentSnoozed, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.Payload = models.JSONMap{
+		"until":       until.Format(time.RFC3339),
+		"reason":      req.Reason,
+		payloadKeyVia: req.Via,
+	}
+
+	if req.ActorUID != "" {
+		event.ActorUID = &req.ActorUID
+	}
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "Failed to create snooze event",
+			"incident_uid", incident.UID, "error", err)
+	}
+
+	s.cancelPendingNotifications(ctx, incident.UID, &until)
+
+	return incident, nil
+}
+
+// resolveSnoozeUntil normalizes Until / Duration into a single timestamp and
+// validates the resulting window. Pulled out so SnoozeIncident stays simple.
+func (s *Service) resolveSnoozeUntil(req *SnoozeIncidentRequest) (time.Time, error) {
+	now := time.Now()
+
+	var until time.Time
+
+	switch {
+	case req.Until != nil:
+		until = *req.Until
+	case req.Duration != nil:
+		until = now.Add(*req.Duration)
+	default:
+		return time.Time{}, ErrSnoozeMissingDur
+	}
+
+	if !until.After(now) {
+		return time.Time{}, ErrSnoozeUntilInPast
+	}
+
+	if until.Sub(now) > MaxSnoozeDuration {
+		return time.Time{}, ErrSnoozeTooLong
+	}
+
+	return until, nil
+}
+
+// UnsnoozeIncident clears the snooze on an incident. via is "manual" or
+// "auto" (the auto sweeper uses "auto").
+func (s *Service) UnsnoozeIncident(
+	ctx context.Context, orgUID, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get incident: %w", err)
+	}
+
+	if incident.SnoozedUntil == nil {
+		return incident, nil
+	}
+
+	update := models.IncidentUpdate{
+		ClearSnoozedUntil: true,
+		ClearSnoozedBy:    true,
+		ClearSnoozeReason: true,
+	}
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return nil, fmt.Errorf("failed to update incident: %w", err)
+	}
+
+	incident.SnoozedUntil = nil
+	incident.SnoozedBy = nil
+	incident.SnoozeReason = nil
+
+	event := models.NewEvent(orgUID, models.EventTypeIncidentUnsnoozed, models.ActorTypeUser)
+	if via == "auto" {
+		event.ActorType = models.ActorTypeSystem
+	}
+
+	event.IncidentUID = &incident.UID
+	event.Payload = models.JSONMap{payloadKeyVia: via}
+
+	if actorUID != "" {
+		event.ActorUID = &actorUID
+	}
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "Failed to create unsnooze event",
+			"incident_uid", incident.UID, "error", err)
+	}
+
+	return incident, nil
+}
+
+// ResolveIncidentRequest carries the parameters for ResolveIncident.
+type ResolveIncidentRequest struct {
+	IncidentUID string
+	ActorUID    string
+	Note        string
+	Via         string // "web" | "slack" | "email"
+}
+
+// ResolveIncident closes an incident manually. Idempotent: returns the
+// existing incident if already resolved. If a new failure rolls in after a
+// manual resolve, the existing incident-creation logic opens a fresh
+// incident — manual resolutions are never reopened.
+func (s *Service) ResolveIncident(
+	ctx context.Context, orgUID string, req *ResolveIncidentRequest,
+) (*models.Incident, error) {
+	incident, err := s.db.GetIncident(ctx, orgUID, req.IncidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, fmt.Errorf("failed to get incident: %w", err)
+	}
+
+	if incident.State == models.IncidentStateResolved {
+		return incident, nil
+	}
+
+	now := time.Now()
+	state := models.IncidentStateResolved
+	resolutionType := models.ResolutionTypeManual
+	update := models.IncidentUpdate{
+		State:          &state,
+		ResolvedAt:     &now,
+		ResolutionType: &resolutionType,
+	}
+	if req.ActorUID != "" {
+		update.ResolvedBy = &req.ActorUID
+	}
+
+	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
+		return nil, fmt.Errorf("failed to update incident: %w", err)
+	}
+
+	incident.State = state
+	incident.ResolvedAt = &now
+	incident.ResolutionType = &resolutionType
+	incident.ResolvedBy = update.ResolvedBy
+
+	event := models.NewEvent(orgUID, models.EventTypeIncidentResolved, models.ActorTypeUser)
+	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
+	event.Payload = models.JSONMap{
+		payloadKeyVia:     req.Via,
+		"note":            req.Note,
+		"resolution_type": resolutionType,
+	}
+
+	if req.ActorUID != "" {
+		event.ActorUID = &req.ActorUID
+	}
+
+	if err := s.db.CreateEvent(ctx, event); err != nil {
+		slog.WarnContext(ctx, "Failed to create resolve event",
+			"incident_uid", incident.UID, "error", err)
+	}
+
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
+	return incident, nil
+}
+
+// SweepUnsnooze clears expired snoozes on active incidents. Intended to be
+// called by a periodic background job. Returns the number of incidents
+// unsnoozed and any error from the listing query (per-incident update
+// errors are logged and skipped).
+func (s *Service) SweepUnsnooze(ctx context.Context) (int, error) {
+	incidents, err := s.db.ListExpiredSnoozedIncidents(ctx, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("failed to list expired snoozes: %w", err)
+	}
+
+	count := 0
+
+	for _, inc := range incidents {
+		if _, err := s.UnsnoozeIncident(ctx, inc.OrganizationUID, inc.UID, "", "auto"); err != nil {
+			slog.WarnContext(ctx, "Failed to auto-unsnooze incident",
+				"incident_uid", inc.UID, "error", err)
+
+			continue
+		}
+
+		count++
+	}
+
+	return count, nil
 }

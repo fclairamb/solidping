@@ -1,4 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCheck, useUpdateCheck, useCheckGroups, useRegions } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -10,6 +11,7 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/edit")({
 });
 
 function CheckEditPage() {
+  const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
   const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
@@ -76,7 +78,7 @@ function CheckEditPage() {
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
           maxAdaptiveIncrease: data.maxAdaptiveIncrease,
         });
-        toast.success("Check updated successfully");
+        toast.success(t("toast.updated"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: redirectToUid },

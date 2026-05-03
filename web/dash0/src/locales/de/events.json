@@ -1,0 +1,38 @@
+{
+  "title": "Ereignisse",
+  "subtitle": "Audit-Protokoll der Systemaktivitäten",
+  "noEvents": "Keine Ereignisse gefunden",
+  "noEventsMatchFilter": "Keine Ereignisse entsprechen dem ausgewählten Filter",
+  "noEventsRecorded": "Es wurden noch keine Ereignisse aufgezeichnet",
+  "allEvents": "Alle Ereignisse",
+  "filterByType": "Nach Typ filtern",
+  "table": {
+    "time": "Zeit",
+    "event": "Ereignis",
+    "actor": "Akteur",
+    "related": "Verknüpft",
+    "timestamp": "Zeitstempel",
+    "type": "Typ",
+    "resource": "Ressource",
+    "details": "Details"
+  },
+  "types": {
+    "check.created": "Prüfung erstellt",
+    "check.updated": "Prüfung aktualisiert",
+    "check.deleted": "Prüfung gelöscht",
+    "incident.created": "Vorfall erstellt",
+    "incident.opened": "Vorfall eröffnet",
+    "incident.resolved": "Vorfall gelöst",
+    "incident.escalated": "Vorfall eskaliert",
+    "incident.acknowledged": "Vorfall bestätigt"
+  },
+  "links": {
+    "check": "Prüfung",
+    "incident": "Vorfall"
+  },
+  "actorTypes": {
+    "user": "Benutzer",
+    "system": "System"
+  },
+  "unknown": "Unbekannt"
+}

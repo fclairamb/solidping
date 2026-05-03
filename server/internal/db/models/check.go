@@ -46,6 +46,10 @@ type Check struct {
 	ReopenCooldownMultiplier *int `bun:"reopen_cooldown_multiplier"`
 	MaxAdaptiveIncrease      *int `bun:"max_adaptive_increase"`
 
+	// Optional escalation policy. Falls back to the check_group's policy
+	// (and ultimately to no escalation) when nil.
+	EscalationPolicyUID *string `bun:"escalation_policy_uid"`
+
 	// Status tracking
 	Status          CheckStatus `bun:"status,notnull,default:0"`
 	StatusStreak    int         `bun:"status_streak,notnull,default:0"`
@@ -105,6 +109,12 @@ type CheckUpdate struct {
 	ReopenCooldownMultiplier *int
 	MaxAdaptiveIncrease      *int
 
+	// Optional escalation policy override (nil = inherit from group / none)
+	EscalationPolicyUID *string
+
+	// Clear* fields set the corresponding column to NULL on update.
+	ClearEscalationPolicyUID bool
+
 	// Status tracking (internal use)
 	Status          *CheckStatus
 	StatusStreak    *int
@@ -132,6 +142,14 @@ func NewLabel(orgUID, key, value string) *Label {
 		Value:           value,
 		CreatedAt:       now,
 	}
+}
+
+// LabelSuggestion is one row of an autocomplete query: either a label key
+// (when listing distinct keys) or a label value (when listing distinct values
+// for a given key), together with the number of distinct checks carrying it.
+type LabelSuggestion struct {
+	Value string
+	Count int
 }
 
 // CheckLabel represents the many-to-many relationship between checks and labels.

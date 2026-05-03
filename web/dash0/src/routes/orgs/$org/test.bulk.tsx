@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Loader2, Plus, Trash2 } from "lucide-react";
@@ -25,6 +26,7 @@ export const Route = createFileRoute("/orgs/$org/test/bulk")({
 });
 
 function BulkChecksTab() {
+  const { t } = useTranslation("nav");
   const { org } = Route.useParams();
   const bulkCreate = useBulkCreateChecks();
   const bulkDelete = useBulkDeleteChecks();
@@ -54,15 +56,15 @@ function BulkChecksTab() {
       });
       setLastResult({ type: "create", data: result });
       if (result.failed === 0) {
-        toast.success(`Created ${result.created} checks`);
+        toast.success(t("test.bulk.createSuccess", { created: result.created }));
       } else {
         toast.warning(
-          `Created ${result.created}, failed ${result.failed} checks`,
+          t("test.bulk.createPartial", { created: result.created, failed: result.failed }),
         );
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Bulk create failed";
+        err instanceof Error ? err.message : t("test.bulk.createFailed");
       toast.error(message);
     }
   };
@@ -75,10 +77,10 @@ function BulkChecksTab() {
         count: Number(count),
       });
       setLastResult({ type: "delete", data: result });
-      toast.success(`Deleted ${result.deleted} checks`);
+      toast.success(t("test.bulk.deleteSuccess", { deleted: result.deleted }));
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Bulk delete failed";
+        err instanceof Error ? err.message : t("test.bulk.deleteFailed");
       toast.error(message);
     }
   };
@@ -92,17 +94,13 @@ function BulkChecksTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Bulk check operations</CardTitle>
-          <CardDescription>
-            Create or delete up to 10,000 checks at once for performance
-            testing. The <code className="text-xs">{"{nb}"}</code> placeholder
-            in slug and URL is replaced with the check number (0, 1, 2, ...).
-          </CardDescription>
+          <CardTitle className="text-base">{t("test.bulk.title")}</CardTitle>
+          <CardDescription>{t("test.bulk.description")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="bulk-count">Count</Label>
+              <Label htmlFor="bulk-count">{t("test.bulk.count")}</Label>
               <Input
                 id="bulk-count"
                 type="number"
@@ -111,43 +109,34 @@ function BulkChecksTab() {
                 value={count}
                 onChange={(e) => setCount(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Number of checks (1-10,000)
-              </p>
+              <p className="text-xs text-muted-foreground">{t("test.bulk.countHelp")}</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bulk-period">Period</Label>
+              <Label htmlFor="bulk-period">{t("test.bulk.period")}</Label>
               <Input
                 id="bulk-period"
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Check interval (e.g. 10s, 1m, 5m)
-              </p>
+              <p className="text-xs text-muted-foreground">{t("test.bulk.periodHelp")}</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bulk-slug">Slug template</Label>
+              <Label htmlFor="bulk-slug">{t("test.bulk.slugTemplate")}</Label>
               <Input
                 id="bulk-slug"
                 value={slug}
                 onChange={(e) => setSlug(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Must contain <code className="text-xs">{"{nb}"}</code>
-              </p>
+              <p className="text-xs text-muted-foreground">{t("test.bulk.slugTemplateHelp")}</p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bulk-url">URL template</Label>
+              <Label htmlFor="bulk-url">{t("test.bulk.urlTemplate")}</Label>
               <Input
                 id="bulk-url"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                <code className="text-xs">{"{nb}"}</code> is replaced with the
-                check number
-              </p>
+              <p className="text-xs text-muted-foreground">{t("test.bulk.urlTemplateHelp")}</p>
             </div>
           </div>
         </CardContent>
@@ -158,7 +147,7 @@ function BulkChecksTab() {
             ) : (
               <Plus className="mr-2 h-4 w-4" />
             )}
-            Create {count} checks
+            {t("test.bulk.createButton", { count })}
           </Button>
           <Button
             variant="destructive"
@@ -170,7 +159,7 @@ function BulkChecksTab() {
             ) : (
               <Trash2 className="mr-2 h-4 w-4" />
             )}
-            Delete {count} checks
+            {t("test.bulk.deleteButton", { count })}
           </Button>
         </CardFooter>
       </Card>
@@ -178,22 +167,22 @@ function BulkChecksTab() {
       {lastResult && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Result</CardTitle>
+            <CardTitle className="text-base">{t("test.bulk.result")}</CardTitle>
           </CardHeader>
           <CardContent>
             {lastResult.type === "create" && (
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Created</span>
+                  <span className="text-muted-foreground">{t("test.bulk.created")}</span>
                   <span className="font-mono">{lastResult.data.created}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Failed</span>
+                  <span className="text-muted-foreground">{t("test.bulk.failed")}</span>
                   <span className="font-mono">{lastResult.data.failed}</span>
                 </div>
                 {lastResult.data.firstSlug && (
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Range</span>
+                    <span className="text-muted-foreground">{t("test.bulk.range")}</span>
                     <span className="font-mono">
                       {lastResult.data.firstSlug} ... {lastResult.data.lastSlug}
                     </span>
@@ -201,7 +190,7 @@ function BulkChecksTab() {
                 )}
                 {lastResult.data.errors && lastResult.data.errors.length > 0 && (
                   <div className="mt-2">
-                    <p className="text-muted-foreground mb-1">Errors:</p>
+                    <p className="text-muted-foreground mb-1">{t("test.bulk.errors")}</p>
                     <ul className="list-disc list-inside text-xs text-destructive">
                       {lastResult.data.errors.map((error, i) => (
                         <li key={i}>{error}</li>
@@ -213,7 +202,7 @@ function BulkChecksTab() {
             )}
             {lastResult.type === "delete" && (
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Deleted</span>
+                <span className="text-muted-foreground">{t("test.bulk.deleted")}</span>
                 <span className="font-mono">{lastResult.data.deleted}</span>
               </div>
             )}

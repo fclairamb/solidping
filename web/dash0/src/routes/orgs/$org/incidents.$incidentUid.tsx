@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -60,6 +61,7 @@ function TotalDuration({
   startedAt?: string;
   resolvedAt?: string;
 }) {
+  const { t } = useTranslation("incidents");
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
@@ -76,7 +78,7 @@ function TotalDuration({
       new Date(resolvedAt).getTime() - new Date(startedAt).getTime()
     );
   }
-  return formatDuration(now - new Date(startedAt).getTime()) + " (ongoing)";
+  return formatDuration(now - new Date(startedAt).getTime()) + " " + t("detail.ongoing");
 }
 
 function TimelineItem({
@@ -102,6 +104,7 @@ function TimelineItem({
 }
 
 function IncidentDetailPage() {
+  const { t } = useTranslation("incidents");
   const { org, incidentUid } = Route.useParams();
   const navigate = useNavigate();
 
@@ -120,21 +123,21 @@ function IncidentDetailPage() {
 
   const handleAcknowledge = async () => {
     try {
-      await acknowledgeIncident.mutateAsync(incidentUid);
-      toast.success("Incident acknowledged");
+      await acknowledgeIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.acknowledged"));
       refetch();
     } catch {
-      toast.error("Failed to acknowledge incident");
+      toast.error(t("actions.acknowledgeFailed"));
     }
   };
 
   const handleResolve = async () => {
     try {
-      await resolveIncident.mutateAsync(incidentUid);
-      toast.success("Incident resolved");
+      await resolveIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.resolved"));
       refetch();
     } catch {
-      toast.error("Failed to resolve incident");
+      toast.error(t("actions.resolveFailed"));
     }
   };
 
@@ -155,9 +158,9 @@ function IncidentDetailPage() {
       <QueryErrorView
         error={error}
         org={org}
-        resource="Incident"
+        resource={t("fallbackTitle")}
         backTo="/orgs/$org/incidents"
-        backLabel="Back to Incidents"
+        backLabel={t("backToIncidents")}
         onRetry={() => refetch()}
       />
     );
@@ -166,15 +169,16 @@ function IncidentDetailPage() {
   if (!incident) {
     return (
       <div className="text-center py-12">
-        <p className="text-muted-foreground mb-4">Incident not found</p>
+        <p className="text-muted-foreground mb-4">{t("incidentNotFound")}</p>
         <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }}>
-          <Button variant="outline">Back to Incidents</Button>
+          <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
       </div>
     );
   }
 
   const isActive = incident.state === "active";
+  const relapseCount = incident.relapseCount ?? 0;
 
   return (
     <div className="space-y-6">
@@ -199,15 +203,20 @@ function IncidentDetailPage() {
               {incident.title ||
                 incident.checkName ||
                 incident.checkSlug ||
-                "Incident"}
+                t("fallbackTitle")}
             </h1>
             <Badge variant={isActive ? "destructive" : "secondary"}>
-              {incident.state}
+              {isActive ? t("active") : t("resolved")}
             </Badge>
-            {(incident.relapseCount ?? 0) > 0 && (
-              <Badge variant="outline">Reopened ({incident.relapseCount} {incident.relapseCount === 1 ? "time" : "times"})</Badge>
+            {relapseCount > 0 && (
+              <Badge variant="outline">
+                {t("reopenedTimes", {
+                  count: relapseCount,
+                  unit: relapseCount === 1 ? t("timeUnit.time") : t("timeUnit.times"),
+                })}
+              </Badge>
             )}
-            {incident.escalatedAt && <Badge variant="outline">Escalated</Badge>}
+            {incident.escalatedAt && <Badge variant="outline">{t("escalated")}</Badge>}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -230,7 +239,7 @@ function IncidentDetailPage() {
               {acknowledgeIncident.isPending ? (
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
-              Acknowledge
+              {t("actions.acknowledge")}
             </Button>
           )}
           {isActive && (
@@ -243,7 +252,7 @@ function IncidentDetailPage() {
               ) : (
                 <CheckCircle className="mr-2 h-4 w-4" />
               )}
-              Resolve
+              {t("actions.resolve")}
             </Button>
           )}
         </div>
@@ -252,21 +261,21 @@ function IncidentDetailPage() {
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
-            <CardTitle>Incident Details</CardTitle>
-            <CardDescription>Information about this incident</CardDescription>
+            <CardTitle>{t("detail.incidentDetails")}</CardTitle>
+            <CardDescription>{t("detail.incidentDetailsDescription")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {incident.description && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Description
+                  {t("detail.descriptionLabel")}
                 </div>
                 <div>{incident.description}</div>
               </div>
             )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">
-                Check
+                {t("detail.checkLabel")}
               </div>
               <Link
                 to="/orgs/$org/checks/$checkUid"
@@ -283,14 +292,14 @@ function IncidentDetailPage() {
             {incident.check?.type && (
               <div>
                 <div className="text-sm font-medium text-muted-foreground">
-                  Check Type
+                  {t("detail.checkTypeLabel")}
                 </div>
                 <div className="capitalize">{incident.check.type}</div>
               </div>
             )}
             <div>
               <div className="text-sm font-medium text-muted-foreground">
-                Failure Count
+                {t("detail.failureCount")}
               </div>
               <div>{incident.failureCount ?? 0}</div>
             </div>
@@ -299,40 +308,40 @@ function IncidentDetailPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Timeline</CardTitle>
-            <CardDescription>Key events in this incident</CardDescription>
+            <CardTitle>{t("timeline.title")}</CardTitle>
+            <CardDescription>{t("timeline.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-3">
               <TimelineItem
-                label="Started"
+                label={t("timeline.started")}
                 timestamp={incident.startedAt}
                 icon={<AlertTriangle className="h-4 w-4 text-yellow-500" />}
               />
               {incident.acknowledgedAt && (
                 <TimelineItem
-                  label="Acknowledged"
+                  label={t("timeline.acknowledged")}
                   timestamp={incident.acknowledgedAt}
                   icon={<Clock className="h-4 w-4 text-blue-400" />}
                 />
               )}
               {incident.escalatedAt && (
                 <TimelineItem
-                  label="Escalated"
+                  label={t("timeline.escalated")}
                   timestamp={incident.escalatedAt}
                   icon={<AlertTriangle className="h-4 w-4 text-red-500" />}
                 />
               )}
               {incident.lastReopenedAt && (
                 <TimelineItem
-                  label={`Reopened (relapse #${incident.relapseCount})`}
+                  label={t("timeline.reopenedRelapse", { count: relapseCount })}
                   timestamp={incident.lastReopenedAt}
                   icon={<RotateCcw className="h-4 w-4 text-orange-500" />}
                 />
               )}
               {incident.resolvedAt && (
                 <TimelineItem
-                  label="Resolved"
+                  label={t("timeline.resolved")}
                   timestamp={incident.resolvedAt}
                   icon={<CheckCircle className="h-4 w-4 text-green-500" />}
                 />
@@ -341,7 +350,7 @@ function IncidentDetailPage() {
             {incident.startedAt && (
               <div className="pt-4 border-t">
                 <div className="text-sm font-medium text-muted-foreground">
-                  Total Duration
+                  {t("detail.totalDuration")}
                 </div>
                 <div className="text-lg font-semibold">
                   <TotalDuration
@@ -358,18 +367,16 @@ function IncidentDetailPage() {
       {events?.data && events.data.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Event Log</CardTitle>
-            <CardDescription>
-              Detailed history of incident events
-            </CardDescription>
+            <CardTitle>{t("eventLog.title")}</CardTitle>
+            <CardDescription>{t("eventLog.description")}</CardDescription>
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Time</TableHead>
-                  <TableHead>Event Type</TableHead>
-                  <TableHead>Actor</TableHead>
+                  <TableHead>{t("eventLog.time")}</TableHead>
+                  <TableHead>{t("eventLog.eventType")}</TableHead>
+                  <TableHead>{t("eventLog.actor")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>

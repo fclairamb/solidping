@@ -18,6 +18,11 @@ import (
 // errDatabaseError is a test error for database failures.
 var errDatabaseError = errors.New("database error")
 
+// errMockNotImplemented is returned by mock methods that don't apply to the
+// notifications-package tests. It satisfies the linter's nilnil rule for
+// pointer-returning methods that have no real implementation.
+var errMockNotImplemented = errors.New("mock method not implemented")
+
 // mockDBService is a test double for the database service.
 type mockDBService struct {
 	getStateEntryFunc func(ctx context.Context, orgUID *string, key string) (*models.StateEntry, error)
@@ -351,6 +356,134 @@ func (m *mockDBService) CountActiveIncidentsByCheckUID(_ context.Context, _ stri
 	return 0, nil
 }
 
+func (m *mockDBService) ListExpiredSnoozedIncidents(_ context.Context, _ time.Time) ([]*models.Incident, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) CreateOnCallSchedule(_ context.Context, _ *models.OnCallSchedule) error {
+	return nil
+}
+
+func (m *mockDBService) GetOnCallSchedule(
+	_ context.Context, _, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOnCallScheduleBySlug(
+	_ context.Context, _, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetOnCallScheduleByICalSecret(
+	_ context.Context, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListOnCallSchedules(
+	_ context.Context, _ string,
+) ([]*models.OnCallSchedule, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateOnCallSchedule(
+	_ context.Context, _ string, _ *models.OnCallScheduleUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteOnCallSchedule(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListOnCallScheduleUsers(
+	_ context.Context, _ string,
+) ([]*models.OnCallScheduleUser, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ReplaceOnCallScheduleUsers(
+	_ context.Context, _ string, _ []string,
+) error {
+	return nil
+}
+
+func (m *mockDBService) CreateOnCallScheduleOverride(
+	_ context.Context, _ *models.OnCallScheduleOverride,
+) error {
+	return nil
+}
+
+func (m *mockDBService) ListOnCallScheduleOverrides(
+	_ context.Context, _ string, _, _ *time.Time,
+) ([]*models.OnCallScheduleOverride, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) GetOnCallScheduleOverride(
+	_ context.Context, _ string,
+) (*models.OnCallScheduleOverride, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) DeleteOnCallScheduleOverride(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) CreateEscalationPolicy(_ context.Context, _ *models.EscalationPolicy) error {
+	return nil
+}
+
+func (m *mockDBService) GetEscalationPolicy(
+	_ context.Context, _, _ string,
+) (*models.EscalationPolicy, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) GetEscalationPolicyBySlug(
+	_ context.Context, _, _ string,
+) (*models.EscalationPolicy, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListEscalationPolicies(
+	_ context.Context, _ string,
+) ([]*models.EscalationPolicy, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) UpdateEscalationPolicy(
+	_ context.Context, _ string, _ *models.EscalationPolicyUpdate,
+) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteEscalationPolicy(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListEscalationPolicySteps(
+	_ context.Context, _ string,
+) ([]*models.EscalationPolicyStep, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ReplaceEscalationPolicySteps(
+	_ context.Context, _ string,
+	_ []*models.EscalationPolicyStep,
+	_ map[int][]*models.EscalationPolicyTarget,
+) error {
+	return nil
+}
+
+func (m *mockDBService) ListEscalationPolicyTargets(
+	_ context.Context, _ []string,
+) ([]*models.EscalationPolicyTarget, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) CreateEvent(_ context.Context, _ *models.Event) error {
 	panic("not implemented")
 }
@@ -551,6 +684,18 @@ func (m *mockDBService) GetLabelsForCheck(_ context.Context, _ string) ([]*model
 
 func (m *mockDBService) GetLabelsForChecks(_ context.Context, _ []string) (map[string][]*models.Label, error) {
 	panic("not implemented")
+}
+
+func (m *mockDBService) ListDistinctLabelKeys(
+	_ context.Context, _, _ string, _ int,
+) ([]models.LabelSuggestion, error) {
+	return nil, errMockNotImplemented
+}
+
+func (m *mockDBService) ListDistinctLabelValues(
+	_ context.Context, _, _, _ string, _ int,
+) ([]models.LabelSuggestion, error) {
+	return nil, errMockNotImplemented
 }
 
 func (m *mockDBService) GetLastResultForChecks(_ context.Context, _ []string) (map[string]*models.Result, error) {
@@ -761,6 +906,64 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 }
 
 func (m *mockDBService) IsCheckInActiveMaintenance(_ context.Context, _ string) (bool, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateFile(_ context.Context, _ *models.File) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetFile(_ context.Context, _, _ string) (*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetFileAny(_ context.Context, _ string) (*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListFiles(
+	_ context.Context, _ string, _ models.ListFilesFilter,
+) ([]*models.File, int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetMembershipRequest(
+	_ context.Context, _ string,
+) (*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetMembershipRequestByOrgAndUser(
+	_ context.Context, _, _ string,
+) (*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListMembershipRequests(
+	_ context.Context, _ models.ListMembershipRequestsFilter,
+) ([]*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ApproveMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest, _ *models.OrganizationMember,
+) error {
 	panic("not implemented")
 }
 

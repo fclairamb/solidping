@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +35,11 @@ type ValidateCheckResponse struct {
 	Valid  bool                        `json:"valid"`
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
 }
+
+// eventPayloadCheckUIDKey is the JSON key used in check.* event payloads
+// for the check UID. Centralized so producers and consumers (notably the
+// express runner) cannot drift out of sync.
+const eventPayloadCheckUIDKey = "check_uid"
 
 // slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
 // Total length: 3-20 characters.
@@ -946,7 +952,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":              check.UID,
+		eventPayloadCheckUIDKey:  check.UID,
 		"check_slug":             check.Slug,
 		"check_name":             check.Name,
 		"check_type":             check.Type,
@@ -1221,19 +1227,27 @@ func (s *Service) emitEvent(
 	event := models.NewEvent(orgUID, eventType, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
-		"check_name": check.Name,
-		"check_type": check.Type,
+		eventPayloadCheckUIDKey: check.UID,
+		"check_slug":            check.Slug,
+		"check_name":            check.Name,
+		"check_type":            check.Type,
 	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
 	}
 
-	// Notify workers to pick up the new check immediately
+	// Notify workers to pick up the new check immediately. The express
+	// runner subscribes to check.created and pulls the check_uid out of
+	// the payload so it can claim the new job without going through the
+	// regular fetcher pool.
 	if s.eventNotifier != nil {
-		if err := s.eventNotifier.Notify(ctx, string(eventType), "{}"); err != nil {
+		payload := "{}"
+		if encoded, err := json.Marshal(map[string]string{eventPayloadCheckUIDKey: check.UID}); err == nil {
+			payload = string(encoded)
+		}
+
+		if err := s.eventNotifier.Notify(ctx, string(eventType), payload); err != nil {
 			slog.WarnContext(ctx, "failed to send real-time notification",
 				"event_type", eventType,
 				"error", err,
@@ -1519,4 +1533,221 @@ func (s *Service) importSingleCheck(
 	}
 
 	return created, nil
+}
+
+// CloneCheckRequest carries the optional overrides for the clone endpoint.
+// All fields are optional — an empty body produces a clone with safe defaults
+// (`(copy)` suffix on name, `-copy` suffix on slug, enabled=false).
+type CloneCheckRequest struct {
+	Name          *string `json:"name,omitempty"`
+	Slug          *string `json:"slug,omitempty"`
+	Description   *string `json:"description,omitempty"`
+	CheckGroupUID *string `json:"checkGroupUid,omitempty"`
+	Enabled       *bool   `json:"enabled,omitempty"`
+}
+
+// CloneCheck creates a near-identical copy of an existing check, server-side.
+// Runtime state (status streak, results, incidents, scheduler row) is not
+// copied; status-page and maintenance-window references are not copied
+// either. Labels and check_connections (with their per-check setting
+// overrides) are re-linked to the new check.
+func (s *Service) CloneCheck(
+	ctx context.Context, orgSlug, sourceIdentifier string, req *CloneCheckRequest,
+) (CheckResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return CheckResponse{}, ErrOrganizationNotFound
+	}
+
+	source, err := s.db.GetCheckByUidOrSlug(ctx, org.UID, sourceIdentifier)
+	if err != nil || source == nil {
+		return CheckResponse{}, ErrCheckNotFound
+	}
+
+	finalSlug, err := s.cloneResolveSlug(ctx, org.UID, source, req)
+	if err != nil {
+		return CheckResponse{}, err
+	}
+
+	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
+
+	if createErr := s.db.CreateCheck(ctx, clone); createErr != nil {
+		return CheckResponse{}, fmt.Errorf("create clone: %w", createErr)
+	}
+
+	if labelErr := s.cloneCopyLabels(ctx, source.UID, clone.UID); labelErr != nil {
+		slog.WarnContext(ctx, "failed to copy labels for clone",
+			"source_uid", source.UID, "clone_uid", clone.UID, "error", labelErr)
+	}
+
+	if connErr := s.cloneCopyConnections(ctx, source.UID, clone.UID, org.UID); connErr != nil {
+		slog.WarnContext(ctx, "failed to copy check connections for clone",
+			"source_uid", source.UID, "clone_uid", clone.UID, "error", connErr)
+	}
+
+	if eventErr := s.emitEvent(ctx, org.UID, models.EventTypeCheckCreated, clone); eventErr != nil {
+		slog.WarnContext(ctx, "failed to emit check.created event for clone", "error", eventErr)
+	}
+
+	response := s.convertCheckToResponse(clone)
+
+	if labels, lerr := s.db.GetLabelsForCheck(ctx, clone.UID); lerr == nil && len(labels) > 0 {
+		response.Labels = make(map[string]string, len(labels))
+		for _, lbl := range labels {
+			response.Labels[lbl.Key] = lbl.Value
+		}
+	}
+
+	return response, nil
+}
+
+func (s *Service) cloneResolveSlug(
+	ctx context.Context, orgUID string, source *models.Check, req *CloneCheckRequest,
+) (string, error) {
+	sourceSlug := ""
+	if source.Slug != nil {
+		sourceSlug = *source.Slug
+	}
+
+	var (
+		targetSlug       string
+		userProvidedSlug bool
+	)
+
+	if req != nil && req.Slug != nil && *req.Slug != "" {
+		if err := validateSlug(*req.Slug); err != nil {
+			return "", err
+		}
+
+		targetSlug = *req.Slug
+		userProvidedSlug = true
+	} else {
+		base := sourceSlug
+		if base == "" {
+			base = source.Type
+		}
+
+		targetSlug = base + "-copy"
+	}
+
+	return s.ensureUniqueSlug(ctx, orgUID, targetSlug, userProvidedSlug)
+}
+
+func (s *Service) cloneBuildCheck(
+	orgUID string, source *models.Check, req *CloneCheckRequest, finalSlug string,
+) *models.Check {
+	targetName := resolveCloneName(source, req, finalSlug)
+
+	clone := models.NewCheck(orgUID, finalSlug, source.Type)
+	clone.Name = &targetName
+	clone.Description = resolveCloneDescription(source, req)
+
+	clone.Config = source.Config
+	clone.Regions = append([]string(nil), source.Regions...)
+	clone.Period = source.Period
+	clone.Internal = source.Internal
+	clone.IncidentThreshold = source.IncidentThreshold
+	clone.EscalationThreshold = source.EscalationThreshold
+	clone.RecoveryThreshold = source.RecoveryThreshold
+	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
+	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
+	clone.EscalationPolicyUID = source.EscalationPolicyUID
+	clone.CheckGroupUID = resolveCloneGroup(source, req)
+
+	clone.Enabled = false
+	if req != nil && req.Enabled != nil {
+		clone.Enabled = *req.Enabled
+	}
+
+	return clone
+}
+
+func resolveCloneName(source *models.Check, req *CloneCheckRequest, fallback string) string {
+	if req != nil && req.Name != nil && *req.Name != "" {
+		return *req.Name
+	}
+
+	if source.Name != nil && *source.Name != "" {
+		return *source.Name + " (copy)"
+	}
+
+	return fallback
+}
+
+func resolveCloneDescription(source *models.Check, req *CloneCheckRequest) *string {
+	if req != nil && req.Description != nil {
+		copied := *req.Description
+
+		return &copied
+	}
+
+	if source.Description != nil {
+		copied := *source.Description
+
+		return &copied
+	}
+
+	return nil
+}
+
+func resolveCloneGroup(source *models.Check, req *CloneCheckRequest) *string {
+	if req == nil || req.CheckGroupUID == nil {
+		return source.CheckGroupUID
+	}
+
+	if *req.CheckGroupUID == "" {
+		return nil
+	}
+
+	value := *req.CheckGroupUID
+
+	return &value
+}
+
+func (s *Service) cloneCopyLabels(ctx context.Context, sourceUID, cloneUID string) error {
+	labels, err := s.db.GetLabelsForCheck(ctx, sourceUID)
+	if err != nil {
+		return fmt.Errorf("load source labels: %w", err)
+	}
+
+	if len(labels) == 0 {
+		return nil
+	}
+
+	uids := make([]string, 0, len(labels))
+	for _, lbl := range labels {
+		uids = append(uids, lbl.UID)
+	}
+
+	if err := s.db.SetCheckLabels(ctx, cloneUID, uids); err != nil {
+		return fmt.Errorf("set clone labels: %w", err)
+	}
+
+	return nil
+}
+
+func (s *Service) cloneCopyConnections(ctx context.Context, sourceUID, cloneUID, orgUID string) error {
+	srcConns, err := s.db.ListCheckConnectionsWithSettings(ctx, sourceUID)
+	if err != nil {
+		return fmt.Errorf("list source check connections: %w", err)
+	}
+
+	for _, src := range srcConns {
+		newConn := models.NewCheckConnection(cloneUID, src.ConnectionUID, orgUID)
+
+		if src.Settings != nil {
+			copied := make(models.JSONMap, len(*src.Settings))
+			for key, value := range *src.Settings {
+				copied[key] = value
+			}
+
+			newConn.Settings = &copied
+		}
+
+		if err := s.db.CreateCheckConnection(ctx, newConn); err != nil {
+			return fmt.Errorf("create clone check connection: %w", err)
+		}
+	}
+
+	return nil
 }

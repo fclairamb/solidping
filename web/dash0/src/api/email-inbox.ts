@@ -18,10 +18,25 @@ export interface EmailInboxConfig {
 export interface EmailInboxStatus {
   enabled: boolean;
   connected: boolean;
+  mode?: "push" | "poll" | "";
   lastSyncedAt?: string;
   lastError?: string;
   addressDomain?: string;
   accountId?: string;
+}
+
+export interface EmailInboxConfigSnapshot {
+  enabled: boolean;
+  sessionUrl: string;
+  username: string;
+  addressDomain: string;
+  mailboxName: string;
+  processedMailboxName: string;
+  pollIntervalSeconds: number;
+  processedRetentionDays: number;
+  failedRetentionDays: number;
+  rewriteBaseUrl: string;
+  passwordSet: boolean;
 }
 
 export interface EmailInboxTestRequest {
@@ -58,6 +73,16 @@ export function useEmailAddressDomain() {
       );
       return res.addressDomain || null;
     },
+    staleTime: 30_000,
+  });
+}
+
+/** Saved JMAP config (without password). Used by the admin form to prefill. */
+export function useEmailInboxConfig() {
+  return useQuery({
+    queryKey: ["email-inbox", "config"],
+    queryFn: () =>
+      apiFetch<EmailInboxConfigSnapshot>("/api/v1/system/email-inbox/config"),
     staleTime: 30_000,
   });
 }

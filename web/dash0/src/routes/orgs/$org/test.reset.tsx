@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { Trans, useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { Loader2, Trash2 } from "lucide-react";
 import { useDeleteAllChecks } from "@/api/hooks";
@@ -28,6 +29,7 @@ export const Route = createFileRoute("/orgs/$org/test/reset")({
 });
 
 function ResetTab() {
+  const { t } = useTranslation(["nav", "common"]);
   const { org } = Route.useParams();
   const deleteAllChecks = useDeleteAllChecks();
 
@@ -35,15 +37,18 @@ function ResetTab() {
     try {
       const result = await deleteAllChecks.mutateAsync(org);
       if (result.failed === 0) {
-        toast.success(`Deleted ${result.deleted} checks`);
+        toast.success(t("nav:test.reset.deletedCount", { count: result.deleted }));
       } else {
         toast.warning(
-          `Deleted ${result.deleted}, failed ${result.failed} checks`,
+          t("nav:test.reset.deletedWithFailures", {
+            deleted: result.deleted,
+            failed: result.failed,
+          }),
         );
       }
     } catch (err) {
       const message =
-        err instanceof Error ? err.message : "Failed to delete checks";
+        err instanceof Error ? err.message : t("nav:test.reset.deleteFailed");
       toast.error(message);
     }
   };
@@ -52,17 +57,17 @@ function ResetTab() {
     <div className="space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Delete all checks</CardTitle>
+          <CardTitle className="text-base">{t("nav:test.reset.title")}</CardTitle>
           <CardDescription>
-            Remove every check and its associated results from the organization{" "}
-            <code className="text-xs">{org}</code>. This cannot be undone.
+            <Trans
+              i18nKey="nav:test.reset.description"
+              values={{ org }}
+              components={{ strong: <code className="text-xs" /> }}
+            />
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            This will permanently delete all checks, their results, incidents,
-            and check jobs for this organization.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("nav:test.reset.warning")}</p>
         </CardContent>
         <CardFooter>
           <AlertDialog>
@@ -76,25 +81,27 @@ function ResetTab() {
                 ) : (
                   <Trash2 className="mr-2 h-4 w-4" />
                 )}
-                Delete all checks
+                {t("nav:test.reset.button")}
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete all checks?</AlertDialogTitle>
+                <AlertDialogTitle>{t("nav:test.reset.confirmTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  This will permanently delete every check in the{" "}
-                  <strong>{org}</strong> organization along with all associated
-                  data. This action cannot be undone.
+                  <Trans
+                    i18nKey="nav:test.reset.confirmDescription"
+                    values={{ org }}
+                    components={{ strong: <strong /> }}
+                  />
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleDeleteAll}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Delete all
+                  {t("nav:test.reset.confirmAction")}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>

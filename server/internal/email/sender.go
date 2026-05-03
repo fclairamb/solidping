@@ -6,11 +6,18 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wneessen/go-mail"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
+
+// defaultFromName is used as the display name in the From header when the
+// operator has not set one explicitly. Mail clients render bare addresses
+// awkwardly, so we always send a name.
+const defaultFromName = "SolidPing"
 
 // ErrNoRecipients is returned when no recipients are specified.
 var ErrNoRecipients = errors.New("no recipients specified")
@@ -33,6 +40,9 @@ func NewSender(cfg *config.EmailConfig, logger *slog.Logger) *SMTPSender {
 type SendResult struct {
 	Sent    bool   `json:"sent"`
 	Message string `json:"message"`
+	// MessageID is the RFC 5322 Message-ID auto-stamped by go-mail (or set by
+	// the caller). Brackets are stripped so the JSON value is a plain id.
+	MessageID string `json:"messageId,omitempty"`
 }
 
 // Send delivers an email. Returns nil immediately if email is disabled (no-op).
@@ -59,6 +69,9 @@ func (s *SMTPSender) Send(ctx context.Context, msg *Message) (*SendResult, error
 func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	mailMsg := mail.NewMsg()
 
+	// Identify ourselves; otherwise go-mail stamps "go-mail vX.Y.Z" as X-Mailer.
+	mailMsg.SetGenHeader(mail.HeaderXMailer, "SolidPing/"+version.Version)
+
 	if err := s.setFrom(mailMsg); err != nil {
 		return nil, err
 	}
@@ -73,16 +86,16 @@ func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	return mailMsg, nil
 }
 
-// setFrom sets the sender address on the message.
+// setFrom sets the sender address on the message, defaulting the display
+// name when the operator has not configured one.
 func (s *SMTPSender) setFrom(mailMsg *mail.Msg) error {
-	if s.config.FromName != "" {
-		if err := mailMsg.FromFormat(s.config.FromName, s.config.From); err != nil {
-			return fmt.Errorf("setting from address: %w", err)
-		}
-	} else {
-		if err := mailMsg.From(s.config.From); err != nil {
-			return fmt.Errorf("setting from address: %w", err)
-		}
+	name := s.config.FromName
+	if name == "" {
+		name = defaultFromName
+	}
+
+	if err := mailMsg.FromFormat(name, s.config.From); err != nil {
+		return fmt.Errorf("setting from address: %w", err)
 	}
 
 	return nil
@@ -115,18 +128,23 @@ func (s *SMTPSender) setRecipients(mailMsg *mail.Msg, recipients *Recipients) er
 	return nil
 }
 
-// setBody sets the HTML and/or plain text body on the message.
+// setBody sets the plaintext and/or HTML body on the message.
+//
+// Per RFC 2046 §5.1.4, multipart/alternative parts must be ordered from
+// least to most preferred (preferred last). Spec-compliant readers
+// (Gmail, Apple Mail) pick the LAST part they can render, so plaintext
+// goes first and HTML goes last — otherwise Gmail renders our auto-text
+// (which lynx-renders the wrapper tables in base.html) instead of our
+// styled HTML.
 func (s *SMTPSender) setBody(mailMsg *mail.Msg, msg *Message) {
-	if msg.HTML != "" {
+	switch {
+	case msg.HTML != "" && msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
+		mailMsg.AddAlternativeString(mail.TypeTextHTML, msg.HTML)
+	case msg.HTML != "":
 		mailMsg.SetBodyString(mail.TypeTextHTML, msg.HTML)
-	}
-
-	if msg.Text != "" {
-		if msg.HTML != "" {
-			mailMsg.AddAlternativeString(mail.TypeTextPlain, msg.Text)
-		} else {
-			mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
-		}
+	case msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
 	}
 }
 
@@ -154,7 +172,19 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		mail.WithSMTPAuth(s.getAuthType()),
 		mail.WithUsername(s.config.Username),
 		mail.WithPassword(s.config.Password),
-		mail.WithTLSPortPolicy(mail.TLSOpportunistic),
+	}
+
+	// Implicit TLS (smtps, port 465 style) requires a TLS handshake on
+	// connect. STARTTLS upgrades a plaintext connection. We default to
+	// opportunistic STARTTLS for back-compat with existing configs that
+	// leave protocol unset.
+	switch s.config.Protocol {
+	case "tls", "ssl", "smtps":
+		opts = append(opts, mail.WithSSL())
+	case "none", "plain":
+		opts = append(opts, mail.WithTLSPortPolicy(mail.NoTLS))
+	default:
+		opts = append(opts, mail.WithTLSPortPolicy(mail.TLSOpportunistic))
 	}
 
 	if s.config.InsecureSkipVerify {
@@ -183,10 +213,17 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		return nil, fmt.Errorf("sending email: %w", err)
 	}
 
+	messageID := strings.Trim(mailMsg.GetMessageID(), "<>")
+
 	s.logger.InfoContext(ctx, "email sent successfully",
 		"to", msg.Recipients.To,
 		"subject", msg.Subject,
+		"messageId", messageID,
 	)
 
-	return &SendResult{Sent: true, Message: "email sent successfully"}, nil
+	return &SendResult{
+		Sent:      true,
+		Message:   "email sent successfully",
+		MessageID: messageID,
+	}, nil
 }

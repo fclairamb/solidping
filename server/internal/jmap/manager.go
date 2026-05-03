@@ -15,13 +15,13 @@ import (
 
 // SystemParameterKey is the key under which the inbox config lives in the
 // `system_parameters` table.
-const SystemParameterKey = "email_inbox"
+const SystemParameterKey = "email.inbox"
 
 // Manager validation errors.
 var (
 	ErrSessionURLRequired    = errors.New("jmap: sessionUrl is required")
 	ErrAddressDomainRequired = errors.New("jmap: addressDomain is required")
-	ErrConfigNotFound        = errors.New("jmap: email_inbox system parameter not configured")
+	ErrConfigNotFound        = errors.New("jmap: email.inbox system parameter not configured")
 )
 
 // Outcome describes how a Handler decided to dispose of an email.
@@ -58,6 +58,7 @@ type Handler interface {
 type Status struct {
 	Enabled       bool       `json:"enabled"`
 	Connected     bool       `json:"connected"`
+	Mode          string     `json:"mode,omitempty"` // "push" | "poll" | ""
 	LastSyncedAt  *time.Time `json:"lastSyncedAt,omitempty"`
 	LastError     string     `json:"lastError,omitempty"`
 	AddressDomain string     `json:"addressDomain,omitempty"`
@@ -79,7 +80,17 @@ type Manager struct {
 	statusMu     sync.RWMutex
 	lastSyncedAt time.Time
 	lastError    string
+	mode         string
 	syncTrigger  chan struct{}
+}
+
+// setMode records whether the supervisor is currently running in push or poll
+// mode. Called from runEventSource and runPolling.
+func (m *Manager) setMode(mode string) {
+	m.statusMu.Lock()
+	defer m.statusMu.Unlock()
+
+	m.mode = mode
 }
 
 // NewManager builds a Manager. The dbService is used to read the system
@@ -110,10 +121,16 @@ func (m *Manager) GetStatus() Status {
 	m.statusMu.RLock()
 	last := m.lastSyncedAt
 	lastErr := m.lastError
+	mode := m.mode
 	m.statusMu.RUnlock()
 
 	status := Status{
 		Connected: connected,
+		Mode:      mode,
+	}
+
+	if !connected {
+		status.Mode = ""
 	}
 
 	if cfg != nil {
@@ -200,6 +217,7 @@ func (m *Manager) Run(ctx context.Context) error {
 			}
 
 			m.setConnected(false)
+			m.setMode("")
 			logger.InfoContext(ctx, "JMAP supervisor cycle ended; will reconnect")
 
 			continue
@@ -260,11 +278,15 @@ func (m *Manager) connect(
 }
 
 // runEventSource listens on the SSE channel and triggers a sync each time the
-// Email state actually changes. Initial sync runs unconditionally on connect.
+// Email state actually changes. The shared syncLoop also runs a fallback
+// ticker so a silently-dropped SSE stream doesn't strand the inbox.
 func (m *Manager) runEventSource(
 	ctx context.Context, client *Client, mboxes *Mailboxes, cfg *Config, logger *slog.Logger,
 ) {
-	logger.InfoContext(ctx, "starting JMAP EventSource listener")
+	logger.InfoContext(ctx, "starting JMAP EventSource listener",
+		"fallbackPollSeconds", cfg.PollIntervalSeconds)
+
+	m.setMode("push")
 
 	if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
 		m.recordError(err)
@@ -290,47 +312,42 @@ func (m *Manager) runEventSource(
 		})
 	}()
 
-	cleanupTicker := time.NewTicker(time.Hour)
-	defer cleanupTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-m.syncTrigger:
-			if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
-				m.recordError(err)
-				logger.WarnContext(ctx, "JMAP sync error", "error", err)
-			}
-		case <-cleanupTicker.C:
-			if err := m.cleanupOldEmails(ctx, client, mboxes, cfg); err != nil {
-				logger.WarnContext(ctx, "JMAP cleanup error", "error", err)
-			}
-		}
-	}
+	m.syncLoop(ctx, client, mboxes, cfg, logger)
 }
 
-// runPolling does an initial sync and then ticks every PollIntervalSeconds.
+// runPolling does an initial sync and then enters the shared sync loop. Used
+// when the JMAP server doesn't advertise an EventSource URL.
 func (m *Manager) runPolling(
 	ctx context.Context, client *Client, mboxes *Mailboxes, cfg *Config, logger *slog.Logger,
 ) {
 	logger.InfoContext(ctx, "starting JMAP polling", "intervalSeconds", cfg.PollIntervalSeconds)
 
-	ticker := time.NewTicker(time.Duration(cfg.PollIntervalSeconds) * time.Second)
-	defer ticker.Stop()
-
-	cleanupTicker := time.NewTicker(time.Hour)
-	defer cleanupTicker.Stop()
+	m.setMode("poll")
 
 	if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
 		m.recordError(err)
 	}
 
+	m.syncLoop(ctx, client, mboxes, cfg, logger)
+}
+
+// syncLoop runs the steady-state ticker, the cleanup ticker, and the
+// SSE-driven trigger. Used by both runEventSource and runPolling so the
+// fallback ticker is always active.
+func (m *Manager) syncLoop(
+	ctx context.Context, client *Client, mboxes *Mailboxes, cfg *Config, logger *slog.Logger,
+) {
+	syncTicker := time.NewTicker(time.Duration(cfg.PollIntervalSeconds) * time.Second)
+	defer syncTicker.Stop()
+
+	cleanupTicker := time.NewTicker(time.Hour)
+	defer cleanupTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		case <-syncTicker.C:
 			if err := m.syncEmails(ctx, client, mboxes, cfg); err != nil {
 				m.recordError(err)
 				logger.WarnContext(ctx, "JMAP sync error", "error", err)
@@ -473,7 +490,7 @@ func (m *Manager) moveOld(ctx context.Context, client *Client, fromMailboxID, to
 	return client.EmailSetMailbox(ctx, client.AccountID(), ids, fromMailboxID, toMailboxID)
 }
 
-// loadConfig reads the stored email_inbox system parameter. If the parameter
+// loadConfig reads the stored email.inbox system parameter. If the parameter
 // is missing, returns (nil, nil) so the supervisor loop can idle gracefully —
 // missing config is not an error condition for the long-running manager.
 //
@@ -488,17 +505,7 @@ func (m *Manager) loadConfig(ctx context.Context) (*Config, error) {
 		return nil, nil
 	}
 
-	raw, err := json.Marshal(param.Value)
-	if err != nil {
-		return nil, fmt.Errorf("marshal stored config: %w", err)
-	}
-
-	var cfg Config
-	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return nil, fmt.Errorf("parse stored config: %w", err)
-	}
-
-	return &cfg, nil
+	return JSONMapToConfig(param.Value)
 }
 
 func (m *Manager) setConfig(cfg *Config, client *Client, mboxes *Mailboxes) {
@@ -617,8 +624,16 @@ func sleepOrDone(ctx context.Context, d time.Duration) bool {
 // JSONMap a system parameter holds and returns a parsed Config. Used by the
 // admin TestConnection endpoint when the operator passes credentials in the
 // request body before persisting them.
+//
+// System parameters are stored as `{"value": <payload>}`, so the inner
+// "value" entry is unwrapped before decoding.
 func JSONMapToConfig(in models.JSONMap) (*Config, error) {
-	raw, err := json.Marshal(in)
+	payload := any(in)
+	if inner, ok := in["value"]; ok {
+		payload = inner
+	}
+
+	raw, err := json.Marshal(payload)
 	if err != nil {
 		return nil, fmt.Errorf("marshal jsonmap: %w", err)
 	}
