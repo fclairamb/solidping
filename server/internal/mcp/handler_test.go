@@ -181,7 +181,7 @@ func TestDispatch_Initialize(t *testing.T) {
 	// Verify result structure
 	result, ok := resp.Result.(map[string]any)
 	r.True(ok)
-	r.Equal(mcpProtocolVer, result["protocolVersion"])
+	r.Equal(protocolVersion2025_03_26, result["protocolVersion"])
 
 	serverInfo, ok := result["serverInfo"].(map[string]any)
 	r.True(ok)
