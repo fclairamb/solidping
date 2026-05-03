@@ -49,6 +49,7 @@ import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$org/organization.settings'
+import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
@@ -266,6 +267,12 @@ const OrgsOrgOrganizationSettingsRoute =
     path: '/settings',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOrganizationMembersRoute =
+  OrgsOrgOrganizationMembersRouteImport.update({
+    id: '/members',
+    path: '/members',
+    getParentRoute: () => OrgsOrgOrganizationRoute,
+  } as any)
 const OrgsOrgOrganizationInvitationsRoute =
   OrgsOrgOrganizationInvitationsRouteImport.update({
     id: '/invitations',
@@ -357,6 +364,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -401,6 +409,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -454,6 +463,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
+  '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/settings': typeof OrgsOrgOrganizationSettingsRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
@@ -509,6 +519,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -553,6 +564,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -605,6 +617,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/organization/invitations'
+    | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/settings'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
@@ -925,6 +938,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationSettingsRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
     }
+    '/orgs/$org/organization/members': {
+      id: '/orgs/$org/organization/members'
+      path: '/members'
+      fullPath: '/orgs/$org/organization/members'
+      preLoaderRoute: typeof OrgsOrgOrganizationMembersRouteImport
+      parentRoute: typeof OrgsOrgOrganizationRoute
+    }
     '/orgs/$org/organization/invitations': {
       id: '/orgs/$org/organization/invitations'
       path: '/invitations'
@@ -1070,12 +1090,14 @@ const OrgsOrgIncidentsRouteWithChildren =
 
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
+  OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
   OrgsOrgOrganizationSettingsRoute: typeof OrgsOrgOrganizationSettingsRoute
   OrgsOrgOrganizationIndexRoute: typeof OrgsOrgOrganizationIndexRoute
 }
 
 const OrgsOrgOrganizationRouteChildren: OrgsOrgOrganizationRouteChildren = {
   OrgsOrgOrganizationInvitationsRoute: OrgsOrgOrganizationInvitationsRoute,
+  OrgsOrgOrganizationMembersRoute: OrgsOrgOrganizationMembersRoute,
   OrgsOrgOrganizationSettingsRoute: OrgsOrgOrganizationSettingsRoute,
   OrgsOrgOrganizationIndexRoute: OrgsOrgOrganizationIndexRoute,
 }
