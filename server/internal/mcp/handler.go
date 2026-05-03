@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
+	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -43,6 +44,7 @@ type Handler struct {
 	checksSvc      *checks.Service
 	resultsSvc     *results.Service
 	incidentsSvc   *incidents.Service
+	eventsSvc      *events.Service
 	connectionsSvc *connections.Service
 	checkGroupsSvc *checkgroups.Service
 	regionsSvc     *regionshandler.Service
@@ -67,6 +69,7 @@ func NewHandler(
 		checksSvc:      checks.NewService(dbService, eventNotifier),
 		resultsSvc:     results.NewService(dbService),
 		incidentsSvc:   incidents.NewService(dbService, jobSvc),
+		eventsSvc:      events.NewService(dbService),
 		connectionsSvc: connections.NewService(dbService),
 		checkGroupsSvc: checkgroups.NewService(dbService),
 		regionsSvc:     regionshandler.NewService(dbService),
