@@ -321,6 +321,15 @@ type Service interface {
 	ListMaintenanceWindowChecks(ctx context.Context, windowUID string) ([]*models.MaintenanceWindowCheck, error)
 	IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error)
 
+	// File operations
+	CreateFile(ctx context.Context, file *models.File) error
+	GetFile(ctx context.Context, orgUID, uid string) (*models.File, error)
+	GetFileAny(ctx context.Context, uid string) (*models.File, error)
+	ListFiles(
+		ctx context.Context, orgUID string, filter models.ListFilesFilter,
+	) ([]*models.File, int64, error)
+	DeleteFile(ctx context.Context, orgUID, uid string) error
+
 	// Close closes the database connection and cleans up resources
 	io.Closer
 }
