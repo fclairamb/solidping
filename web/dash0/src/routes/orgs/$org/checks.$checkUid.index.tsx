@@ -103,6 +103,16 @@ function IncidentDuration({ incident }: { incident: IncidentDetail }) {
   return "-";
 }
 
+function formatResultTime(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  return sameDay ? d.toLocaleTimeString() : d.toLocaleString();
+}
+
 /** Parse HH:MM:SS period string to milliseconds */
 function parsePeriodMs(period?: string): number | undefined {
   if (!period) return undefined;
@@ -421,7 +431,7 @@ function CheckDetailPage() {
                 {check.name || check.slug || check.uid?.slice(0, 8)}
               </h1>
               {check.slug && !editingSlug && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.slug }}
@@ -441,7 +451,7 @@ function CheckDetailPage() {
                 </div>
               )}
               {editingSlug && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <span className="text-xs">🔗</span>
                   <input
                     ref={slugInputRef}
@@ -473,7 +483,7 @@ function CheckDetailPage() {
                 </div>
               )}
               {check.uid && checkUid !== check.uid && (
-                <div className="flex items-center gap-1 mt-1">
+                <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
@@ -827,7 +837,7 @@ function CheckDetailPage() {
                   >
                     <TableCell className="text-sm">
                       {result.periodStart
-                        ? new Date(result.periodStart).toLocaleString()
+                        ? formatResultTime(result.periodStart)
                         : "-"}
                     </TableCell>
                     <TableCell>
@@ -887,7 +897,7 @@ function CheckDetailPage() {
                   <TableRow key={incident.uid}>
                     <TableCell className="text-sm">
                       {incident.startedAt
-                        ? new Date(incident.startedAt).toLocaleString()
+                        ? formatResultTime(incident.startedAt)
                         : "-"}
                     </TableCell>
                     <TableCell>
