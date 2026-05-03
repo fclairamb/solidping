@@ -215,7 +215,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	// Create auth service
-	authService := auth.NewService(dbService, cfg.Auth, cfg, emailSender, emailFormatter)
+	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService)
 
 	server := &Server{
 		dbService:   dbService,

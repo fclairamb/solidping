@@ -46,7 +46,7 @@ func setupMicrosoftTestService(t *testing.T) (*MicrosoftOAuthService, context.Co
 		},
 	}
 
-	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
+	authService := NewService(dbService, cfg.Auth, cfg, nil)
 	svc := NewMicrosoftOAuthService(dbService, cfg, authService)
 
 	return svc, ctx
