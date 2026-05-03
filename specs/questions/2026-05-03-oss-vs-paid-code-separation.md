@@ -40,6 +40,8 @@ Almost every variation below is a different point in this 3D space.
 - Main repo `PostHog/posthog`: most of it MIT, but `ee/` has its own non-MIT `ee/LICENSE`.
 - For a strictly MIT build users can either delete `ee/` from a clone or pull `posthog-foss`, an automated mirror that already has `ee/` stripped.
 - Runtime gating inside `ee/` decides whether EE features activate.
+- Self-hosters do **not** owe money based on usage volume — only based on which features they use. There is no "pay-once-you-exceed-X-events" license trigger.
+- The only volume-related number PostHog publishes is operational, not legal: **~100k events/month** is the recommended ceiling for the self-hosted "hobby" deployment, above which they suggest migrating to PostHog Cloud (where the free tier covers 1M events/month and usage-based billing kicks in beyond that). Going past 100k self-hosted is not a license breach; it's a "you'll start hitting operational pain, our Cloud is cheaper than running this yourself" recommendation.
 
 ### n8n — filename/dirname marker (`.ee`)
 - Single repo, but every file or directory containing the literal `.ee` (e.g. `something.ee.ts`, an `ee/` dir) is governed by the **n8n Enterprise License** instead of the **Sustainable Use License** that covers the rest.
@@ -150,7 +152,7 @@ All Pro/Enterprise features are buyable as a key for self-hosted. Metabase Cloud
 4. **Multiple environments / unlimited projects** with isolation. Enterprise only.
 5. **HIPAA BAA, white-labeling, priority support, dedicated CSM**. Enterprise only.
 
-PostHog's twist: every paid feature is in the `ee/` directory and *technically runs* on self-host, but the `ee/LICENSE` requires a paid agreement once you exceed usage thresholds or use Enterprise features in production.
+PostHog's twist: every paid feature is in the `ee/` directory and *technically runs* on self-host, but using those Enterprise features in production requires a paid agreement under the `ee/LICENSE`. Importantly, the gate is **feature-based, not volume-based** — a self-hoster running 10M events/month with only the MIT-licensed core features owes nothing. The "100k events/month" number is operational scaling guidance, not a payment threshold.
 
 ### n8n — Community (free, self-host) / Starter / Pro / Business / Enterprise (Cloud + self-host)
 1. **SSO via SAML / LDAP / OIDC** — Enterprise only.
