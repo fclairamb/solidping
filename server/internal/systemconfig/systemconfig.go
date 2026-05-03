@@ -22,12 +22,12 @@ type ParameterKey string
 
 // Known system parameter keys.
 const (
-	KeyJWTSecret                ParameterKey = "jwt_secret"
-	KeyJobWorkers               ParameterKey = "job_workers"
-	KeyCheckWorkers             ParameterKey = "check_workers"
-	KeyBaseURL                  ParameterKey = "base_url"
-	KeyNodeRole                 ParameterKey = "node_role"
-	KeyNodeRegion               ParameterKey = "node_region"
+	KeyJWTSecret                ParameterKey = "auth.jwt_secret"
+	KeyJobWorkers               ParameterKey = "server.job_workers"
+	KeyCheckWorkers             ParameterKey = "server.check_workers"
+	KeyBaseURL                  ParameterKey = "server.base_url"
+	KeyNodeRole                 ParameterKey = "node.role"
+	KeyNodeRegion               ParameterKey = "node.region"
 	KeyEmailHost                ParameterKey = "email.host"
 	KeyEmailPort                ParameterKey = "email.port"
 	KeyEmailUsername            ParameterKey = "email.username"
