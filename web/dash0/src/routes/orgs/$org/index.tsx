@@ -1,16 +1,18 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
+import { OrgDashboardPage } from "@/components/dashboard/dashboard-page";
 
 export const Route = createFileRoute("/orgs/$org/")({
-  beforeLoad: ({ params, location }) => {
-    // Don't redirect when an OAuth callback drops tokens here; let OrgLayout
-    // consume them. Otherwise this redirect strips ?access_token=... and the
-    // login flow ends up on the wrong org's login page.
+  beforeLoad: ({ location }) => {
+    // OAuth callback drops `?access_token=` here for OrgLayout to consume.
+    // We let the layout handle it; otherwise we render the dashboard.
     if (new URLSearchParams(location.searchStr || "").has("access_token")) {
       return;
     }
-    throw redirect({
-      to: "/orgs/$org/checks",
-      params: { org: params.org },
-    });
   },
+  component: DashboardRoute,
 });
+
+function DashboardRoute() {
+  const { org } = Route.useParams();
+  return <OrgDashboardPage org={org} />;
+}
