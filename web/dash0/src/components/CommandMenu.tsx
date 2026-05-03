@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Command } from "cmdk";
@@ -15,6 +15,7 @@ import {
   Settings,
   BadgeCheck,
   Users,
+  Search,
 } from "lucide-react";
 import { useChecks } from "@/api/hooks";
 
@@ -47,9 +48,27 @@ const groupLabelKey: Record<GroupKey, string> = {
   organization: "command.groupOrganization",
 };
 
-export function CommandMenu() {
+export interface CommandMenuProps {
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuProps = {}) {
   const { t } = useTranslation("nav");
-  const [open, setOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? controlledOpen : uncontrolledOpen;
+  const openRef = useRef(open);
+  openRef.current = open;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const isControlledRef = useRef(isControlled);
+  isControlledRef.current = isControlled;
+  const setOpen = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    const next = typeof v === "function" ? v(openRef.current) : v;
+    if (!isControlledRef.current) setUncontrolledOpen(next);
+    onOpenChangeRef.current?.(next);
+  }, []);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const navigate = useNavigate();
@@ -79,7 +98,7 @@ export function CommandMenu() {
     // a stale handler.
     document.addEventListener("keydown", onKeyDown, true);
     return () => document.removeEventListener("keydown", onKeyDown, true);
-  }, []);
+  }, [setOpen]);
 
   function goTo(path: string) {
     setOpen(false);
@@ -193,5 +212,25 @@ export function CommandMenu() {
         )}
       </Command.List>
     </Command.Dialog>
+  );
+}
+
+export interface CommandMenuTriggerProps {
+  onOpen: () => void;
+}
+
+export function CommandMenuTrigger({ onOpen }: CommandMenuTriggerProps) {
+  const { t } = useTranslation("nav");
+  return (
+    <button
+      type="button"
+      data-testid="command-menu-trigger"
+      onClick={onOpen}
+      aria-label={t("command.searchPlaceholder")}
+      className="inline-flex items-center gap-2 rounded-md border border-input bg-background px-2 sm:px-3 h-9 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground"
+    >
+      <Search className="h-4 w-4" />
+      <span className="hidden md:inline text-muted-foreground text-xs">⌘K</span>
+    </button>
   );
 }

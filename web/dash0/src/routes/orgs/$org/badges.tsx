@@ -204,7 +204,7 @@ function BadgePreview({
           </Button>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-8">
+          <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
             <img
               ref={imgRef}
               src={previewUrl}

@@ -27,6 +27,7 @@ interface AvailabilityTableProps {
 interface PeriodConfig {
   id: PeriodId;
   label: string;
+  shortLabel: string;
   getStart: () => Date;
   durationMs: number;
 }
@@ -35,28 +36,38 @@ const PERIODS: PeriodConfig[] = [
   {
     id: "today",
     label: "Today",
+    shortLabel: "1d",
     getStart: () => startOfDay(new Date()),
     durationMs: Date.now() - startOfDay(new Date()).getTime(),
   },
   {
     id: "last7",
     label: "Last 7 days",
+    shortLabel: "7d",
     getStart: () => subDays(new Date(), 7),
     durationMs: 7 * 24 * 60 * 60 * 1000,
   },
   {
     id: "last30",
     label: "Last 30 days",
+    shortLabel: "30d",
     getStart: () => subDays(new Date(), 30),
     durationMs: 30 * 24 * 60 * 60 * 1000,
   },
   {
     id: "last365",
     label: "Last 365 days",
+    shortLabel: "1y",
     getStart: () => subDays(new Date(), 365),
     durationMs: 365 * 24 * 60 * 60 * 1000,
   },
 ];
+
+function formatAvailability(pct: number): string {
+  if (pct >= 100) return "100%";
+  if (pct >= 99) return `${pct.toFixed(2)}%`;
+  return `${pct.toFixed(1)}%`;
+}
 
 const ROW_TO_GRAPH: Record<PeriodId, AvailabilityChartPeriod | null> = {
   today: "day",
@@ -223,6 +234,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
       return {
         id: period.id,
         label: period.label,
+        shortLabel: period.shortLabel,
         availability,
         downtime,
         incidents: incStats.count,
@@ -274,10 +286,13 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
                     clickable ? () => onPeriodSelect!(graphPeriod!) : undefined
                   }
                 >
-                  <TableCell className="font-medium">{row.label}</TableCell>
+                  <TableCell className="font-medium">
+                    <span className="sm:hidden">{row.shortLabel}</span>
+                    <span className="hidden sm:inline">{row.label}</span>
+                  </TableCell>
                   <TableCell>
                     {row.availability != null
-                      ? `${row.availability.toFixed(4)}%`
+                      ? formatAvailability(row.availability)
                       : "-"}
                   </TableCell>
                   <TableCell>
