@@ -36,8 +36,13 @@ func TestVerify_BadSignature(t *testing.T) {
 
 	exp, sig := signedurl.Sign(secret, fileUID, time.Hour)
 
-	// Tamper one char
-	tampered := "0" + sig[1:]
+	// Tamper deterministically: flip the first hex char to a different
+	// value (sig[0] may itself be "0", so prefixing with "0" is a no-op).
+	flip := byte('1')
+	if sig[0] == '1' {
+		flip = '2'
+	}
+	tampered := string(flip) + sig[1:]
 	r.ErrorIs(
 		signedurl.Verify(secret, fileUID, exp, tampered, time.Now()),
 		signedurl.ErrSignedURLBadSignature,
