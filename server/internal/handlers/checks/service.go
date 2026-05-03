@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -1231,9 +1232,17 @@ func (s *Service) emitEvent(
 		return fmt.Errorf("failed to create event: %w", err)
 	}
 
-	// Notify workers to pick up the new check immediately
+	// Notify workers to pick up the new check immediately. The express
+	// runner subscribes to check.created and pulls the check_uid out of
+	// the payload so it can claim the new job without going through the
+	// regular fetcher pool.
 	if s.eventNotifier != nil {
-		if err := s.eventNotifier.Notify(ctx, string(eventType), "{}"); err != nil {
+		payload := "{}"
+		if encoded, err := json.Marshal(map[string]string{"check_uid": check.UID}); err == nil {
+			payload = string(encoded)
+		}
+
+		if err := s.eventNotifier.Notify(ctx, string(eventType), payload); err != nil {
 			slog.WarnContext(ctx, "failed to send real-time notification",
 				"event_type", eventType,
 				"error", err,
