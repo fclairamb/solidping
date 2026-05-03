@@ -20,6 +20,22 @@ func (h *Handler) registerTools() {
 		{listCheckGroupsDef(), h.toolListCheckGroups},
 		{listRegionsDef(), h.toolListRegions},
 		{diagnoseCheckDef(), h.toolDiagnoseCheck},
+		// Status pages
+		{listStatusPagesDef(), h.toolListStatusPages},
+		{getStatusPageDef(), h.toolGetStatusPage},
+		{createStatusPageDef(), h.toolCreateStatusPage},
+		{updateStatusPageDef(), h.toolUpdateStatusPage},
+		{deleteStatusPageDef(), h.toolDeleteStatusPage},
+		// Status page sections
+		{listStatusPageSectionsDef(), h.toolListStatusPageSections},
+		{createStatusPageSectionDef(), h.toolCreateStatusPageSection},
+		{updateStatusPageSectionDef(), h.toolUpdateStatusPageSection},
+		{deleteStatusPageSectionDef(), h.toolDeleteStatusPageSection},
+		// Status page resources
+		{listStatusPageResourcesDef(), h.toolListStatusPageResources},
+		{createStatusPageResourceDef(), h.toolCreateStatusPageResource},
+		{updateStatusPageResourceDef(), h.toolUpdateStatusPageResource},
+		{deleteStatusPageResourceDef(), h.toolDeleteStatusPageResource},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))
