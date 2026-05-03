@@ -21,7 +21,7 @@ func TestToResponse_MasksSecrets(t *testing.T) {
 
 	param := &models.Parameter{
 		UID:       "test-uid",
-		Key:       "jwt_secret",
+		Key:       "auth.jwt_secret",
 		Value:     models.JSONMap{"value": "super-secret-value"},
 		Secret:    &secret,
 		UpdatedAt: now,
@@ -29,7 +29,7 @@ func TestToResponse_MasksSecrets(t *testing.T) {
 
 	resp := svc.toResponse(param)
 
-	r.Equal("jwt_secret", resp.Key)
+	r.Equal("auth.jwt_secret", resp.Key)
 	r.Equal("******", resp.Value)
 	r.True(resp.Secret)
 	r.Equal(now, resp.UpdatedAt)
@@ -45,7 +45,7 @@ func TestToResponse_NonSecret(t *testing.T) {
 
 	param := &models.Parameter{
 		UID:       "test-uid",
-		Key:       "base_url",
+		Key:       "server.base_url",
 		Value:     models.JSONMap{"value": "https://example.com"},
 		Secret:    &secret,
 		UpdatedAt: now,
@@ -53,7 +53,7 @@ func TestToResponse_NonSecret(t *testing.T) {
 
 	resp := svc.toResponse(param)
 
-	r.Equal("base_url", resp.Key)
+	r.Equal("server.base_url", resp.Key)
 	r.Equal("https://example.com", resp.Value)
 	r.False(resp.Secret)
 }

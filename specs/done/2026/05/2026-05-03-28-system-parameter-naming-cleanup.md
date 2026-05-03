@@ -174,7 +174,9 @@ No code outside the systemconfig / jmap / migrations packages should care: every
 
 ## Implementation Plan
 
-1. Write the migration SQL (postgres + sqlite, up + down). Confirm migration runs cleanly against a DB that has the old keys set.
+> **Migration number adjustment**: `008_add_discord_provider_type` already exists in both postgres and sqlite migration directories, so the rename migration ships as `009_rename_legacy_param_keys` instead of `008_*`. The renames themselves are unchanged.
+
+1. Write the migration SQL as `009_rename_legacy_param_keys.{up,down}.sql` (postgres + sqlite). Confirm migration runs cleanly against a DB that has the old keys set.
 2. Update the seven string literals in `systemconfig.go` and the constant in `jmap/manager.go`.
 3. `rg` for any test fixtures or string references to the old key names; update them.
 4. Add the convention paragraph to `server/CLAUDE.md`.

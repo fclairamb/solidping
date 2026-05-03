@@ -15,13 +15,13 @@ import (
 
 // SystemParameterKey is the key under which the inbox config lives in the
 // `system_parameters` table.
-const SystemParameterKey = "email_inbox"
+const SystemParameterKey = "email.inbox"
 
 // Manager validation errors.
 var (
 	ErrSessionURLRequired    = errors.New("jmap: sessionUrl is required")
 	ErrAddressDomainRequired = errors.New("jmap: addressDomain is required")
-	ErrConfigNotFound        = errors.New("jmap: email_inbox system parameter not configured")
+	ErrConfigNotFound        = errors.New("jmap: email.inbox system parameter not configured")
 )
 
 // Outcome describes how a Handler decided to dispose of an email.
@@ -490,7 +490,7 @@ func (m *Manager) moveOld(ctx context.Context, client *Client, fromMailboxID, to
 	return client.EmailSetMailbox(ctx, client.AccountID(), ids, fromMailboxID, toMailboxID)
 }
 
-// loadConfig reads the stored email_inbox system parameter. If the parameter
+// loadConfig reads the stored email.inbox system parameter. If the parameter
 // is missing, returns (nil, nil) so the supervisor loop can idle gracefully —
 // missing config is not an error condition for the long-running manager.
 //
