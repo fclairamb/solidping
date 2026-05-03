@@ -17,7 +17,7 @@ const (
 
 func diagnoseCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "diagnose_check",
+		Name: toolDiagnoseCheck,
 		Description: "Return everything an operator would want to look at to diagnose " +
 			"a single check's current state in one call: current status, recent raw " +
 			"results across regions, any active incident, and the most recent resolved " +

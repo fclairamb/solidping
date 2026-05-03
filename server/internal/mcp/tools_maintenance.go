@@ -276,7 +276,7 @@ func (h *Handler) toolDeleteMaintenanceWindow(
 
 func setMaintenanceWindowChecksDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "set_maintenance_window_checks",
+		Name: toolSetMaintenanceWindowCheck,
 		Description: "Replace the set of checks (and/or check groups) attached to a maintenance window. " +
 			"Pass empty arrays to clear. To leave one of the two collections untouched, pass it with its " +
 			"current contents — partial updates are not supported by this endpoint.",

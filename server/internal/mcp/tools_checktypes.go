@@ -45,7 +45,7 @@ func (h *Handler) toolGetCheckTypeSamples(_ context.Context, _ string, args map[
 
 func validateCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "validate_check",
+		Name: toolValidateCheck,
 		Description: "Dry-run validate a check config without creating the check. " +
 			"Returns {valid: true} on success or {valid: false, fields: [...]} listing the " +
 			"specific fields with errors. Use this before create_check when you've assembled " +
