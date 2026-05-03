@@ -1196,6 +1196,127 @@ export function useRevokeInvitation(org: string) {
   });
 }
 
+// Membership-request hooks
+export type MembershipRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "canceled";
+
+export interface MembershipRequestSummary {
+  uid: string;
+  organization: { uid: string; slug: string; name: string };
+  status: MembershipRequestStatus;
+  message?: string;
+  decisionReason?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export interface MembershipRequestAdminView {
+  uid: string;
+  user: { uid: string; email: string; name?: string; avatarUrl?: string };
+  status: MembershipRequestStatus;
+  message?: string;
+  decisionReason?: string;
+  createdAt: string;
+  decidedAt?: string;
+}
+
+export function useCreateMembershipRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { orgSlug: string; message?: string }) =>
+      apiFetch<MembershipRequestSummary>("/api/v1/auth/membership-requests", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+}
+
+export function useMyMembershipRequests() {
+  return useQuery({
+    queryKey: ["membership-requests", "me"],
+    queryFn: () =>
+      apiFetch<{ data: MembershipRequestSummary[] }>(
+        "/api/v1/auth/membership-requests"
+      ),
+  });
+}
+
+export function useCancelMembershipRequest() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/auth/membership-requests/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["membership-requests", "me"] });
+      queryClient.invalidateQueries({ queryKey: ["auth", "me"] });
+    },
+  });
+}
+
+export function useOrgMembershipRequests(
+  org: string,
+  opts?: { status?: MembershipRequestStatus; enabled?: boolean }
+) {
+  const status = opts?.status;
+  const qs = status ? `?status=${status}` : "";
+  return useQuery({
+    queryKey: ["membership-requests", "org", org, status ?? "all"],
+    queryFn: () =>
+      apiFetch<{ data: MembershipRequestAdminView[] }>(
+        `/api/v1/orgs/${org}/membership-requests${qs}`
+      ),
+    enabled: opts?.enabled !== false,
+  });
+}
+
+export function useApproveMembershipRequest(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, role }: { uid: string; role?: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/membership-requests/${uid}/approve`,
+        {
+          method: "POST",
+          body: JSON.stringify(role ? { role } : {}),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "org", org],
+      });
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+export function useRejectMembershipRequest(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, reason }: { uid: string; reason?: string }) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/membership-requests/${uid}/reject`,
+        {
+          method: "POST",
+          body: JSON.stringify(reason ? { reason } : {}),
+        }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["membership-requests", "org", org],
+      });
+    },
+  });
+}
+
 // Member hooks
 export type MemberRole = "admin" | "user" | "viewer";
 
