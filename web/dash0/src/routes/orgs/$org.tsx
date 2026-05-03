@@ -23,9 +23,8 @@ import {
   SidebarInset,
   SidebarTrigger,
 } from "@/components/ui/sidebar";
-import { AppSidebar, ThemeToggle } from "@/components/layout/AppSidebar";
-import { LanguageSwitcher } from "@/components/shared/language-switcher";
-import { CommandMenu } from "@/components/CommandMenu";
+import { AppSidebar } from "@/components/layout/AppSidebar";
+import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCheck, useIncident, useStatusPage } from "@/api/hooks";
@@ -272,6 +271,7 @@ function OrgLayout() {
   const auth = useAuth();
   const isLoginPage = location.pathname.endsWith("/login") || location.pathname.endsWith("/register");
   const [oauthProcessing, setOauthProcessing] = useState(false);
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
 
   // Handle OAuth callback tokens in URL
   useEffect(() => {
@@ -323,18 +323,17 @@ function OrgLayout() {
   return (
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
-      <CommandMenu />
+      <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
       <SidebarInset className="md:ml-0">
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger className="-ml-1" data-testid="sidebar-trigger" />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumbs org={org} />
           <div className="ml-auto flex items-center gap-1">
-            <LanguageSwitcher />
-            <ThemeToggle />
+            <CommandMenuTrigger onOpen={() => setCommandMenuOpen(true)} />
           </div>
         </header>
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-3 sm:p-4">
           <Outlet />
         </div>
       </SidebarInset>
