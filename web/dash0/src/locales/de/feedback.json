@@ -1,0 +1,13 @@
+{
+  "trigger_title": "Fehler melden",
+  "dialog_title": "Fehler melden",
+  "comment_label": "Was ist passiert?",
+  "comment_placeholder": "Beschreiben Sie, was schiefgegangen ist…",
+  "no_screenshot": "Kein Screenshot verfügbar",
+  "capturing": "Bildschirm wird erfasst…",
+  "cancel": "Abbrechen",
+  "submit": "Senden",
+  "sending": "Wird gesendet…",
+  "success": "Danke! Ihr Bericht wurde gesendet.",
+  "error": "Etwas ist schiefgegangen. Bitte erneut versuchen."
+}
