@@ -23,11 +23,13 @@ import {
   type StatusPageResource,
   type Check,
 } from "@/api/hooks";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -92,6 +94,58 @@ function StatusDot({ status }: { status?: string }) {
   return <div className={`h-2.5 w-2.5 rounded-full ${color}`} />;
 }
 
+function EnabledDot({
+  enabled,
+  enabledLabel,
+  disabledLabel,
+}: {
+  enabled: boolean;
+  enabledLabel: string;
+  disabledLabel: string;
+}) {
+  const label = enabled ? enabledLabel : disabledLabel;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={label}
+          className={cn(
+            "inline-block h-2 w-2 rounded-full shrink-0",
+            enabled ? "bg-green-500" : "bg-muted-foreground/40",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function VisibilityDot({
+  isPublic,
+  publicLabel,
+  restrictedLabel,
+}: {
+  isPublic: boolean;
+  publicLabel: string;
+  restrictedLabel: string;
+}) {
+  const label = isPublic ? publicLabel : restrictedLabel;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          aria-label={label}
+          className={cn(
+            "inline-block h-2 w-2 rounded-full shrink-0",
+            isPublic ? "bg-blue-500" : "bg-amber-500",
+          )}
+        />
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function AddSectionDialog({
   org,
   statusPageUid,
@@ -124,12 +178,20 @@ function AddSectionDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <Plus className="mr-2 h-4 w-4" />
-          {t("statusPages:sections.add")}
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label={t("statusPages:sections.add")}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("statusPages:sections.add")}</TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("statusPages:sections.add")}</DialogTitle>
@@ -206,12 +268,20 @@ function AddResourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button variant="ghost" size="sm">
-          <Plus className="mr-1 h-3 w-3" />
-          {t("statusPages:resources.add")}
-        </Button>
-      </DialogTrigger>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DialogTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("statusPages:resources.add")}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </DialogTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{t("statusPages:resources.add")}</TooltipContent>
+      </Tooltip>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t("statusPages:resources.addToSection")}</DialogTitle>
@@ -471,62 +541,82 @@ function StatusPageDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-start gap-4">
+      <div className="flex items-start gap-3 justify-between">
+        <div className="flex items-start gap-2 min-w-0 flex-1">
           <Link to="/orgs/$org/status-pages" params={{ org }}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{page.name}</h1>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">
+                {page.name}
+              </h1>
               {page.isDefault && (
                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 shrink-0" />
               )}
+              <EnabledDot
+                enabled={page.enabled}
+                enabledLabel={t("statusPages:enabled")}
+                disabledLabel={t("statusPages:disabled")}
+              />
+              <VisibilityDot
+                isPublic={page.visibility === "public"}
+                publicLabel={t("statusPages:visibility.public")}
+                restrictedLabel={t("statusPages:visibility.restricted")}
+              />
             </div>
-            <p className="text-muted-foreground">
+            <p className="text-muted-foreground mt-1">
               /{page.slug}
               {page.description && ` - ${page.description}`}
             </p>
-            <div className="mt-2 flex flex-wrap gap-2">
-              <Badge
-                variant={page.visibility === "public" ? "default" : "secondary"}
-                className="text-xs py-0 sm:text-sm sm:py-0.5"
-              >
-                {page.visibility === "public"
-                  ? t("statusPages:visibility.public")
-                  : t("statusPages:visibility.restricted")}
-              </Badge>
-              <Badge
-                variant={page.enabled ? "default" : "outline"}
-                className="text-xs py-0 sm:text-sm sm:py-0.5"
-              >
-                {page.enabled ? t("statusPages:enabled") : t("statusPages:disabled")}
-              </Badge>
-            </div>
           </div>
         </div>
-        <div className="flex gap-2 self-end sm:self-auto">
-          <a
-            href={`/status0/${org}/${page.slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Button variant="outline" size="sm">
-              <ExternalLink className="sm:mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t("statusPages:detail.view")}</span>
-            </Button>
-          </a>
-          <Link
-            to="/orgs/$org/status-pages/$statusPageUid/edit"
-            params={{ org, statusPageUid }}
-          >
-            <Button variant="outline" size="sm">
-              <Pencil className="sm:mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t("statusPages:edit")}</span>
-            </Button>
-          </Link>
+        <div className="flex gap-2 shrink-0">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={`/status0/${org}/${page.slug}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("statusPages:detail.view")}
+                >
+                  <ExternalLink className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t("statusPages:detail.view")}
+                  </span>
+                </Button>
+              </a>
+            </TooltipTrigger>
+            <TooltipContent className="sm:hidden">
+              {t("statusPages:detail.view")}
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Link
+                to="/orgs/$org/status-pages/$statusPageUid/edit"
+                params={{ org, statusPageUid }}
+              >
+                <Button
+                  variant="outline"
+                  size="sm"
+                  aria-label={t("statusPages:edit")}
+                >
+                  <Pencil className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">{t("statusPages:edit")}</span>
+                </Button>
+              </Link>
+            </TooltipTrigger>
+            <TooltipContent className="sm:hidden">
+              {t("statusPages:edit")}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
