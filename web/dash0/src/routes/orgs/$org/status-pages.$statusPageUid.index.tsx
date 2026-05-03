@@ -471,43 +471,51 @@ function StatusPageDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-4">
           <Link to="/orgs/$org/status-pages" params={{ org }}>
             <Button variant="ghost" size="icon">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-bold tracking-tight">{page.name}</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{page.name}</h1>
               {page.isDefault && (
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
+                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 shrink-0" />
               )}
             </div>
             <p className="text-muted-foreground">
               /{page.slug}
               {page.description && ` - ${page.description}`}
             </p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Badge
+                variant={page.visibility === "public" ? "default" : "secondary"}
+                className="text-xs py-0 sm:text-sm sm:py-0.5"
+              >
+                {page.visibility === "public"
+                  ? t("statusPages:visibility.public")
+                  : t("statusPages:visibility.restricted")}
+              </Badge>
+              <Badge
+                variant={page.enabled ? "default" : "outline"}
+                className="text-xs py-0 sm:text-sm sm:py-0.5"
+              >
+                {page.enabled ? t("statusPages:enabled") : t("statusPages:disabled")}
+              </Badge>
+            </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Badge variant={page.visibility === "public" ? "default" : "secondary"}>
-            {page.visibility === "public"
-              ? t("statusPages:visibility.public")
-              : t("statusPages:visibility.restricted")}
-          </Badge>
-          <Badge variant={page.enabled ? "default" : "outline"}>
-            {page.enabled ? t("statusPages:enabled") : t("statusPages:disabled")}
-          </Badge>
+        <div className="flex gap-2 self-end sm:self-auto">
           <a
             href={`/status0/${org}/${page.slug}`}
             target="_blank"
             rel="noopener noreferrer"
           >
             <Button variant="outline" size="sm">
-              <ExternalLink className="mr-2 h-4 w-4" />
-              {t("statusPages:detail.view")}
+              <ExternalLink className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t("statusPages:detail.view")}</span>
             </Button>
           </a>
           <Link
@@ -515,8 +523,8 @@ function StatusPageDetailPage() {
             params={{ org, statusPageUid }}
           >
             <Button variant="outline" size="sm">
-              <Pencil className="mr-2 h-4 w-4" />
-              {t("statusPages:edit")}
+              <Pencil className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t("statusPages:edit")}</span>
             </Button>
           </Link>
         </div>
