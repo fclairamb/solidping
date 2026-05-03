@@ -40,13 +40,34 @@
   },
   "members": {
     "title": "Membres",
-    "subtitle": "Gérer les membres de l'organisation.",
-    "role": "Rôle",
-    "admin": "Administrateur",
-    "user": "Utilisateur",
-    "viewer": "Lecteur",
+    "subtitle": "Gérez qui a accès à cette organisation.",
+    "column": {
+      "member": "Membre",
+      "email": "E-mail",
+      "role": "Rôle",
+      "joinedAt": "Rejoint le"
+    },
+    "role": {
+      "admin": "Administrateur",
+      "user": "Utilisateur",
+      "viewer": "Lecteur"
+    },
+    "empty": "Aucun membre pour le moment. Invitez quelqu'un depuis l'onglet Invitations.",
+    "cannotEditSelf": "Utilisez vos paramètres de profil pour modifier votre propre adhésion.",
     "remove": "Retirer",
-    "removed": "Membre retiré",
-    "roleUpdated": "Rôle mis à jour"
+    "removeConfirm": {
+      "title": "Retirer un membre",
+      "body": "Retirer {{email}} de {{org}} ? Cette personne perdra l'accès à l'organisation.",
+      "action": "Retirer"
+    },
+    "demoteConfirm": {
+      "title": "Passer en lecteur",
+      "body": "{{email}} perdra ses droits d'écriture. Continuer ?",
+      "action": "Modifier le rôle"
+    },
+    "roleUpdated": "Rôle mis à jour",
+    "memberRemoved": "Membre retiré",
+    "removeFailed": "Échec du retrait du membre",
+    "updateFailed": "Échec de la mise à jour du rôle"
   }
 }

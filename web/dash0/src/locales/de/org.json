@@ -40,13 +40,34 @@
   },
   "members": {
     "title": "Mitglieder",
-    "subtitle": "Organisationsmitglieder verwalten.",
-    "role": "Rolle",
-    "admin": "Admin",
-    "user": "Benutzer",
-    "viewer": "Betrachter",
+    "subtitle": "Verwalten Sie, wer auf diese Organisation zugreifen darf.",
+    "column": {
+      "member": "Mitglied",
+      "email": "E-Mail",
+      "role": "Rolle",
+      "joinedAt": "Beigetreten"
+    },
+    "role": {
+      "admin": "Admin",
+      "user": "Benutzer",
+      "viewer": "Betrachter"
+    },
+    "empty": "Noch keine Mitglieder. Laden Sie jemanden über den Reiter Einladungen ein.",
+    "cannotEditSelf": "Verwenden Sie Ihre Profileinstellungen, um Ihre eigene Mitgliedschaft zu ändern.",
     "remove": "Entfernen",
-    "removed": "Mitglied entfernt",
-    "roleUpdated": "Rolle aktualisiert"
+    "removeConfirm": {
+      "title": "Mitglied entfernen",
+      "body": "{{email}} aus {{org}} entfernen? Diese Person verliert den Zugriff auf die Organisation.",
+      "action": "Entfernen"
+    },
+    "demoteConfirm": {
+      "title": "Rolle in Betrachter ändern",
+      "body": "{{email}} verliert die Schreibrechte. Fortfahren?",
+      "action": "Rolle ändern"
+    },
+    "roleUpdated": "Rolle aktualisiert",
+    "memberRemoved": "Mitglied entfernt",
+    "removeFailed": "Mitglied konnte nicht entfernt werden",
+    "updateFailed": "Rolle konnte nicht aktualisiert werden"
   }
 }

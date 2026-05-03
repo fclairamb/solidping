@@ -40,13 +40,34 @@
   },
   "members": {
     "title": "Miembros",
-    "subtitle": "Gestione los miembros de la organización.",
-    "role": "Rol",
-    "admin": "Administrador",
-    "user": "Usuario",
-    "viewer": "Lector",
+    "subtitle": "Gestione quién tiene acceso a esta organización.",
+    "column": {
+      "member": "Miembro",
+      "email": "Correo",
+      "role": "Rol",
+      "joinedAt": "Se unió"
+    },
+    "role": {
+      "admin": "Administrador",
+      "user": "Usuario",
+      "viewer": "Lector"
+    },
+    "empty": "Aún no hay miembros. Invite a alguien desde la pestaña Invitaciones.",
+    "cannotEditSelf": "Use los ajustes de su perfil para cambiar su propia membresía.",
     "remove": "Eliminar",
-    "removed": "Miembro eliminado",
-    "roleUpdated": "Rol actualizado"
+    "removeConfirm": {
+      "title": "Eliminar miembro",
+      "body": "¿Eliminar a {{email}} de {{org}}? Perderá el acceso a esta organización.",
+      "action": "Eliminar"
+    },
+    "demoteConfirm": {
+      "title": "Cambiar rol a lector",
+      "body": "{{email}} perderá los permisos de escritura. ¿Continuar?",
+      "action": "Cambiar rol"
+    },
+    "roleUpdated": "Rol actualizado",
+    "memberRemoved": "Miembro eliminado",
+    "removeFailed": "No se pudo eliminar al miembro",
+    "updateFailed": "No se pudo actualizar el rol"
   }
 }
