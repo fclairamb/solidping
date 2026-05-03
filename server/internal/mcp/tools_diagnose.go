@@ -55,7 +55,7 @@ func (h *Handler) toolDiagnoseCheck(
 		return errorResult(err.Error())
 	}
 
-	recent, err := h.fetchRecentResults(ctx, orgSlug, check, perRegion)
+	recent, err := h.fetchRecentResults(ctx, orgSlug, &check, perRegion)
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -63,7 +63,7 @@ func (h *Handler) toolDiagnoseCheck(
 	active := h.fetchSingleIncident(ctx, orgSlug, check.UID, "active")
 	resolved := h.fetchSingleIncident(ctx, orgSlug, check.UID, "resolved")
 
-	return marshalResult(buildDiagnoseResponse(check, recent, active, resolved, perRegion))
+	return marshalResult(buildDiagnoseResponse(&check, recent, active, resolved, perRegion))
 }
 
 func clampPerRegion(value int) int {
@@ -77,7 +77,7 @@ func clampPerRegion(value int) int {
 }
 
 func (h *Handler) fetchRecentResults(
-	ctx context.Context, orgSlug string, check checks.CheckResponse, perRegion int,
+	ctx context.Context, orgSlug string, check *checks.CheckResponse, perRegion int,
 ) ([]results.ResultResponse, error) {
 	regionCount := len(check.Regions)
 	if regionCount < 1 {
@@ -119,34 +119,34 @@ func (h *Handler) fetchSingleIncident(
 // per region (preserving the upstream DESC-by-time ordering) and assembles the
 // final result struct. It is a pure function for easy unit testing.
 func buildDiagnoseResponse(
-	check checks.CheckResponse,
+	check *checks.CheckResponse,
 	recent []results.ResultResponse,
 	active, resolved *incidents.IncidentResponse,
 	perRegion int,
 ) DiagnoseCheckResult {
 	return DiagnoseCheckResult{
-		Check:                check,
+		Check:                *check,
 		RecentResults:        trimResultsPerRegion(recent, perRegion),
 		ActiveIncident:       active,
 		LastResolvedIncident: resolved,
 	}
 }
 
-func trimResultsPerRegion(in []results.ResultResponse, perRegion int) []results.ResultResponse {
-	if perRegion < 1 || len(in) == 0 {
+func trimResultsPerRegion(recent []results.ResultResponse, perRegion int) []results.ResultResponse {
+	if perRegion < 1 || len(recent) == 0 {
 		return []results.ResultResponse{}
 	}
-	counts := make(map[string]int, len(in))
-	out := make([]results.ResultResponse, 0, len(in))
-	for _, r := range in {
+	counts := make(map[string]int, len(recent))
+	out := make([]results.ResultResponse, 0, len(recent))
+	for i := range recent {
 		region := ""
-		if r.Region != nil {
-			region = *r.Region
+		if recent[i].Region != nil {
+			region = *recent[i].Region
 		}
 		if counts[region] >= perRegion {
 			continue
 		}
-		out = append(out, r)
+		out = append(out, recent[i])
 		counts[region]++
 	}
 	return out

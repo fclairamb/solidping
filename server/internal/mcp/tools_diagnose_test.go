@@ -160,7 +160,7 @@ func TestBuildDiagnoseResponse(t *testing.T) {
 			{UID: "r3", Region: &region},
 		}
 
-		out := buildDiagnoseResponse(check, recent, nil, nil, 2)
+		out := buildDiagnoseResponse(&check, recent, nil, nil, 2)
 		r.Equal("check-1", out.Check.UID)
 		r.Len(out.RecentResults, 2)
 		r.Nil(out.ActiveIncident)
@@ -172,7 +172,7 @@ func TestBuildDiagnoseResponse(t *testing.T) {
 		r := require.New(t)
 
 		active := &incidents.IncidentResponse{UID: "inc-active", State: "active"}
-		out := buildDiagnoseResponse(check, nil, active, nil, 5)
+		out := buildDiagnoseResponse(&check, nil, active, nil, 5)
 		r.NotNil(out.ActiveIncident)
 		r.Equal("inc-active", out.ActiveIncident.UID)
 		r.Nil(out.LastResolvedIncident)
@@ -184,7 +184,7 @@ func TestBuildDiagnoseResponse(t *testing.T) {
 
 		active := &incidents.IncidentResponse{UID: "inc-active", State: "active"}
 		resolved := &incidents.IncidentResponse{UID: "inc-resolved", State: "resolved"}
-		out := buildDiagnoseResponse(check, nil, active, resolved, 5)
+		out := buildDiagnoseResponse(&check, nil, active, resolved, 5)
 		r.NotNil(out.ActiveIncident)
 		r.Equal("inc-active", out.ActiveIncident.UID)
 		r.NotNil(out.LastResolvedIncident)
