@@ -320,10 +320,18 @@ func (h *Handler) toolDeleteCheck(ctx context.Context, orgSlug string, args map[
 	return textResult("Check deleted successfully.")
 }
 
-func marshalResult(v any) ToolCallResult {
-	data, err := json.Marshal(v)
+// marshalResult wraps a typed value as a tool call result. It populates both
+// content (stringified JSON for older MCP clients) and structuredContent
+// (the typed object for clients that consume it directly). The dual-form
+// is the spec-recommended pattern during the 2025-03-26 → 2025-06-18
+// transition.
+func marshalResult(value any) ToolCallResult {
+	data, err := json.Marshal(value)
 	if err != nil {
 		return errorResult("Failed to marshal result: " + err.Error())
 	}
-	return textResult(string(data))
+	return ToolCallResult{
+		Content:           []ContentBlock{{Type: contentTypeText, Text: string(data)}},
+		StructuredContent: value,
+	}
 }

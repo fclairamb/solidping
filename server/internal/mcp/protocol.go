@@ -100,10 +100,16 @@ type ToolCallParams struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
-// ToolCallResult represents the result of a tools/call request.
+// ToolCallResult represents the result of a tools/call request. Content is
+// the human/text-form payload kept for client compat. StructuredContent is
+// the typed object form that newer MCP clients (Claude Desktop, Cursor)
+// consume directly without re-parsing JSON. Both are populated when the
+// underlying tool returns structured data via marshalResult; only Content
+// is populated for confirmation-only tools that use textResult.
 type ToolCallResult struct {
-	Content []ContentBlock `json:"content"`
-	IsError bool           `json:"isError,omitempty"`
+	Content           []ContentBlock `json:"content"`
+	StructuredContent any            `json:"structuredContent,omitempty"`
+	IsError           bool           `json:"isError,omitempty"`
 }
 
 // ContentBlock represents a content block in a tool call result.
@@ -154,13 +160,13 @@ func errorResponse(id any, code int, message string) Response {
 
 func textResult(text string) ToolCallResult {
 	return ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: text}},
+		Content: []ContentBlock{{Type: contentTypeText, Text: text}},
 	}
 }
 
 func errorResult(text string) ToolCallResult {
 	return ToolCallResult{
-		Content: []ContentBlock{{Type: "text", Text: text}},
+		Content: []ContentBlock{{Type: contentTypeText, Text: text}},
 		IsError: true,
 	}
 }

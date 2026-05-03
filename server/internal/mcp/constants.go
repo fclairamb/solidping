@@ -23,6 +23,8 @@ const (
 
 	mimeTypeJSON = "application/json"
 
+	contentTypeText = "text"
+
 	uriOrganization = "solidping://organization"
 	uriRegions      = "solidping://regions"
 
