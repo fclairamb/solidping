@@ -26,14 +26,14 @@ func NewHandler(cfg *config.Config) *Handler {
 	}
 }
 
-// FeaturesResponse is the JSON shape returned by GET /api/v1/features.
-type FeaturesResponse struct {
+// Response is the JSON shape returned by GET /api/v1/features.
+type Response struct {
 	BugReport bool `json:"bugReport"`
 }
 
 // GetFeatures handles GET /api/v1/features (auth required upstream).
 func (h *Handler) GetFeatures(writer http.ResponseWriter, _ bunrouter.Request) error {
-	return h.WriteJSON(writer, http.StatusOK, FeaturesResponse{
+	return h.WriteJSON(writer, http.StatusOK, Response{
 		BugReport: h.cfg.App.EnableBugReport,
 	})
 }

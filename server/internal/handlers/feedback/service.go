@@ -26,19 +26,22 @@ import (
 var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	ErrURLRequired          = errors.New("url is required")
+	// ErrGitHubBadStatus indicates a non-2xx response from the GitHub Issues API.
+	// The error string includes the status code and body preview for diagnostics.
+	ErrGitHubBadStatus = errors.New("github returned non-2xx status")
 )
 
 // SubmitReportRequest carries all the inputs from the multipart form.
 // Screenshot is optional — text-only reports are valid.
 type SubmitReportRequest struct {
-	URL          string
-	Comment      string
-	OrgSlug      string
-	Annotations  string
-	Context      ContextPayload
-	UserUID      string
-	UserEmail    string
-	Screenshot   io.Reader
+	URL            string
+	Comment        string
+	OrgSlug        string
+	Annotations    string
+	Context        ContextPayload
+	UserUID        string
+	UserEmail      string
+	Screenshot     io.Reader
 	ScreenshotSize int64
 	ScreenshotName string
 	ScreenshotMIME string
@@ -57,12 +60,12 @@ type GitHubIssuePoster interface {
 
 // Service implements the bug-report flow.
 type Service struct {
-	db        db.Service
-	files     *files.Service
-	cfg       *config.Config
-	github    GitHubIssuePoster
-	logger    *slog.Logger
-	clock     func() time.Time
+	db     db.Service
+	files  *files.Service
+	cfg    *config.Config
+	github GitHubIssuePoster
+	logger *slog.Logger
+	clock  func() time.Time
 }
 
 // NewService constructs a feedback service. github may be nil — when so, a
@@ -150,7 +153,9 @@ func (s *Service) SubmitReport(
 	}
 
 	if s.cfg.App.EnableBugReport {
-		go s.dispatchGitHubIssue(req, org.Slug, fileUID, fileURI, fileMIME)
+		// Detached context — the HTTP request is already done. We log the
+		// goroutine err separately rather than propagating to the caller.
+		go s.dispatchGitHubIssue(context.WithoutCancel(ctx), req, org.Slug, fileUID, fileURI, fileMIME)
 	}
 
 	return &SubmitReportResponse{UID: fileUID}, nil
@@ -159,22 +164,21 @@ func (s *Service) SubmitReport(
 // dispatchGitHubIssue is the async side. Logs failures but never propagates
 // to the caller — the report is already saved.
 func (s *Service) dispatchGitHubIssue(
-	req *SubmitReportRequest, orgSlug, fileUID, fileURI, fileMIME string,
+	parent context.Context, req *SubmitReportRequest, orgSlug, fileUID, fileURI, fileMIME string,
 ) {
-	// Decouple from the request context — the HTTP request is already done.
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 30*time.Second)
 	defer cancel()
 
-	gh := s.cfg.App.GitHub
-	if gh.IssuesToken == "" || gh.Repo == "" {
-		s.logger.Warn("bug_report: github not configured")
+	github := s.cfg.App.GitHub
+	if github.IssuesToken == "" || github.Repo == "" {
+		s.logger.WarnContext(ctx, "bug_report: github not configured")
 
 		return
 	}
 
 	signedURL, exp := s.signedScreenshotURL(req.URL, fileUID, fileURI)
 
-	in := &IssueInput{
+	input := &IssueInput{
 		URL:           req.URL,
 		Comment:       req.Comment,
 		OrgSlug:       orgSlug,
@@ -190,11 +194,13 @@ func (s *Service) dispatchGitHubIssue(
 		ReportedAt:    s.clock(),
 	}
 
-	title := BuildIssueTitle(in)
-	body := BuildIssueBody(in)
+	title := BuildIssueTitle(input)
+	body := BuildIssueBody(input)
 
-	if err := s.github.CreateIssue(ctx, gh.Repo, gh.IssuesToken, title, body, []string{"in-app-report"}); err != nil {
-		s.logger.Warn("bug_report: github create issue failed",
+	if err := s.github.CreateIssue(
+		ctx, github.Repo, github.IssuesToken, title, body, []string{"in-app-report"},
+	); err != nil {
+		s.logger.WarnContext(ctx, "bug_report: github create issue failed",
 			"err", err.Error(),
 			"file_uid", fileUID,
 		)
@@ -202,7 +208,7 @@ func (s *Service) dispatchGitHubIssue(
 		return
 	}
 
-	s.logger.Info("bug_report: issue created", "file_uid", fileUID)
+	s.logger.InfoContext(ctx, "bug_report: issue created", "file_uid", fileUID)
 }
 
 // signedScreenshotURL returns the absolute URL the issue body should embed,
@@ -236,7 +242,7 @@ func (s *Service) baseURLFor(reportURL string) string {
 
 // httpGitHubPoster is the production implementation of GitHubIssuePoster.
 type httpGitHubPoster struct {
-	client     *http.Client
+	client             *http.Client
 	overrideAPIBaseURL string // for tests
 }
 
@@ -267,7 +273,7 @@ func (p *httpGitHubPoster) CreateIssue(
 	}
 
 	httpReq.Header.Set("Authorization", "Bearer "+token)
-	httpReq.Header.Set("X-GitHub-Api-Version", "2022-11-28")
+	httpReq.Header.Set("X-Github-Api-Version", "2022-11-28")
 	httpReq.Header.Set("Accept", "application/vnd.github+json")
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -281,7 +287,7 @@ func (p *httpGitHubPoster) CreateIssue(
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		preview, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
 
-		return fmt.Errorf("github returned %d: %s", resp.StatusCode, string(preview))
+		return fmt.Errorf("%w: %d: %s", ErrGitHubBadStatus, resp.StatusCode, string(preview))
 	}
 
 	return nil

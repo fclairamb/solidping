@@ -77,9 +77,9 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req bunrouter.Request
 	h.attachUserIfAuthenticated(req.Context(), req.Header.Get("Authorization"), submission)
 
 	if files := form.File["screenshot"]; len(files) > 0 {
-		fh := files[0]
+		header := files[0]
 
-		opened, err := fh.Open()
+		opened, err := header.Open()
 		if err != nil {
 			return h.WriteInternalError(writer, err)
 		}
@@ -87,9 +87,9 @@ func (h *Handler) SubmitReport(writer http.ResponseWriter, req bunrouter.Request
 		defer func() { _ = opened.Close() }()
 
 		submission.Screenshot = opened
-		submission.ScreenshotName = fh.Filename
-		submission.ScreenshotSize = fh.Size
-		submission.ScreenshotMIME = fh.Header.Get("Content-Type")
+		submission.ScreenshotName = header.Filename
+		submission.ScreenshotSize = header.Size
+		submission.ScreenshotMIME = header.Header.Get("Content-Type")
 	}
 
 	resp, err := h.svc.SubmitReport(req.Context(), submission)

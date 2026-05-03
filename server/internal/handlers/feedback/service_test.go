@@ -28,7 +28,7 @@ func TestHTTPPoster_RequestShape(t *testing.T) {
 		gotPath = req.URL.Path
 		gotAuth = req.Header.Get("Authorization")
 		gotAccept = req.Header.Get("Accept")
-		gotAPIVer = req.Header.Get("X-GitHub-Api-Version")
+		gotAPIVer = req.Header.Get("X-Github-Api-Version")
 
 		buf, _ := io.ReadAll(req.Body)
 		_ = json.Unmarshal(buf, &gotBody)

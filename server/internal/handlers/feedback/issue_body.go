@@ -14,41 +14,41 @@ import (
 // time. All fields are optional — a malformed JSON blob from the frontend
 // degrades to "Unknown" rendered cells, never blocks submission.
 type ContextPayload struct {
-	UserAgent     string   `json:"userAgent,omitempty"`
-	Viewport      string   `json:"viewport,omitempty"`
-	PixelRatio    float64  `json:"pixelRatio,omitempty"`
-	Platform      string   `json:"platform,omitempty"`
-	Language      string   `json:"language,omitempty"`
-	Build         string   `json:"build,omitempty"`
-	RecentErrors  []string `json:"recentErrors,omitempty"`
+	UserAgent    string   `json:"userAgent,omitempty"`
+	Viewport     string   `json:"viewport,omitempty"`
+	PixelRatio   float64  `json:"pixelRatio,omitempty"`
+	Platform     string   `json:"platform,omitempty"`
+	Language     string   `json:"language,omitempty"`
+	Build        string   `json:"build,omitempty"`
+	RecentErrors []string `json:"recentErrors,omitempty"`
 }
 
 // IssueInput bundles everything buildIssueBody needs. Kept as a struct so
 // adding fields doesn't churn every test signature.
 type IssueInput struct {
-	URL            string
-	Comment        string
-	OrgSlug        string
-	UserEmail      string
-	ServerVersion  string
-	GitHash        string
-	FrontendBuild  string
-	Context        ContextPayload
-	FileUID        string
-	SignedURL      string
-	SignedURLExp   time.Time
-	MimeType       string
-	ReportedAt     time.Time
+	URL           string
+	Comment       string
+	OrgSlug       string
+	UserEmail     string
+	ServerVersion string
+	GitHash       string
+	FrontendBuild string
+	Context       ContextPayload
+	FileUID       string
+	SignedURL     string
+	SignedURLExp  time.Time
+	MimeType      string
+	ReportedAt    time.Time
 }
 
 // BuildIssueTitle returns the issue title: "Bug report: <first 60 chars>".
 // Falls back to the URL path if no comment was given.
-func BuildIssueTitle(in *IssueInput) string {
+func BuildIssueTitle(input *IssueInput) string {
 	const maxLen = 60
 
-	subject := strings.TrimSpace(in.Comment)
+	subject := strings.TrimSpace(input.Comment)
 	if subject == "" {
-		subject = in.URL
+		subject = input.URL
 	}
 
 	if subject == "" {
@@ -65,89 +65,89 @@ func BuildIssueTitle(in *IssueInput) string {
 
 // BuildIssueBody renders the markdown body. Branches on MimeType to use the
 // right "Screenshot" vs "Screen recording" heading.
-func BuildIssueBody(in *IssueInput) string {
-	var sb strings.Builder
+func BuildIssueBody(input *IssueInput) string {
+	var builder strings.Builder
 
-	sb.WriteString("## Report\n\n")
-	if in.Comment != "" {
-		sb.WriteString(in.Comment)
+	builder.WriteString("## Report\n\n")
+	if input.Comment != "" {
+		builder.WriteString(input.Comment)
 	} else {
-		sb.WriteString("_(no description)_")
+		builder.WriteString("_(no description)_")
 	}
 
-	sb.WriteString("\n\n## Page\n\n")
-	sb.WriteString(in.URL)
+	builder.WriteString("\n\n## Page\n\n")
+	builder.WriteString(input.URL)
 
-	sb.WriteString("\n\n## Context\n\n")
-	sb.WriteString("| Field | Value |\n|-------|-------|\n")
-	writeContextRow(&sb, "Organization", in.OrgSlug)
-	writeContextRow(&sb, "User", in.UserEmail)
-	writeContextRow(&sb, "Server Version", joinNonEmpty(in.ServerVersion, in.GitHash, " "))
-	writeContextRow(&sb, "Frontend Version", in.FrontendBuild)
-	writeContextRow(&sb, "Browser", in.Context.UserAgent)
-	writeContextRow(&sb, "Viewport", in.Context.Viewport)
+	builder.WriteString("\n\n## Context\n\n")
+	builder.WriteString("| Field | Value |\n|-------|-------|\n")
+	writeContextRow(&builder, "Organization", input.OrgSlug)
+	writeContextRow(&builder, "User", input.UserEmail)
+	writeContextRow(&builder, "Server Version", joinNonEmpty(input.ServerVersion, input.GitHash, " "))
+	writeContextRow(&builder, "Frontend Version", input.FrontendBuild)
+	writeContextRow(&builder, "Browser", input.Context.UserAgent)
+	writeContextRow(&builder, "Viewport", input.Context.Viewport)
 
-	if in.Context.PixelRatio > 0 {
-		writeContextRow(&sb, "Pixel Ratio", fmt.Sprintf("%g", in.Context.PixelRatio))
+	if input.Context.PixelRatio > 0 {
+		writeContextRow(&builder, "Pixel Ratio", fmt.Sprintf("%g", input.Context.PixelRatio))
 	}
 
-	writeContextRow(&sb, "Platform", in.Context.Platform)
-	writeContextRow(&sb, "Language", in.Context.Language)
-	writeContextRow(&sb, "Reported At", in.ReportedAt.UTC().Format(time.RFC3339))
+	writeContextRow(&builder, "Platform", input.Context.Platform)
+	writeContextRow(&builder, "Language", input.Context.Language)
+	writeContextRow(&builder, "Reported At", input.ReportedAt.UTC().Format(time.RFC3339))
 
-	if len(in.Context.RecentErrors) > 0 {
-		sb.WriteString("\n## Console Errors\n\n```\n")
+	if len(input.Context.RecentErrors) > 0 {
+		builder.WriteString("\n## Console Errors\n\n```\n")
 
-		for _, line := range in.Context.RecentErrors {
-			sb.WriteString(strings.ReplaceAll(line, "```", "ʼʼʼ"))
-			sb.WriteString("\n")
+		for _, line := range input.Context.RecentErrors {
+			builder.WriteString(strings.ReplaceAll(line, "```", "ʼʼʼ"))
+			builder.WriteString("\n")
 		}
 
-		sb.WriteString("```\n")
+		builder.WriteString("```\n")
 	}
 
-	if in.SignedURL != "" {
-		mediaSection(&sb, in)
+	if input.SignedURL != "" {
+		mediaSection(&builder, input)
 	}
 
-	sb.WriteString("\n---\n*Auto-generated from in-app bug report*\n")
+	builder.WriteString("\n---\n*Auto-generated from in-app bug report*\n")
 
-	return sb.String()
+	return builder.String()
 }
 
 // mediaSection adds the Screenshot/Recording block. For images we inline; for
 // videos we drop the bare URL so GitHub's auto-player picks it up, plus a
 // download fallback link.
-func mediaSection(sb *strings.Builder, in *IssueInput) {
-	if strings.HasPrefix(in.MimeType, "video/") {
-		sb.WriteString("\n## Screen recording\n\n")
-		sb.WriteString(in.SignedURL)
-		sb.WriteString("\n\n[Download](")
-		sb.WriteString(in.SignedURL)
-		sb.WriteString(")\n")
+func mediaSection(builder *strings.Builder, input *IssueInput) {
+	if strings.HasPrefix(input.MimeType, "video/") {
+		builder.WriteString("\n## Screen recording\n\n")
+		builder.WriteString(input.SignedURL)
+		builder.WriteString("\n\n[Download](")
+		builder.WriteString(input.SignedURL)
+		builder.WriteString(")\n")
 	} else {
-		sb.WriteString("\n## Screenshot\n\n![Screenshot](")
-		sb.WriteString(in.SignedURL)
-		sb.WriteString(")\n")
+		builder.WriteString("\n## Screenshot\n\n![Screenshot](")
+		builder.WriteString(input.SignedURL)
+		builder.WriteString(")\n")
 	}
 
-	sb.WriteString(fmt.Sprintf(
+	fmt.Fprintf(builder,
 		"\n<sub>File UID: `%s` · link valid until %s</sub>\n",
-		in.FileUID,
-		in.SignedURLExp.UTC().Format(time.RFC3339),
-	))
+		input.FileUID,
+		input.SignedURLExp.UTC().Format(time.RFC3339),
+	)
 }
 
-func writeContextRow(sb *strings.Builder, key, value string) {
+func writeContextRow(builder *strings.Builder, key, value string) {
 	if value == "" {
 		value = "_unknown_"
 	}
 
-	sb.WriteString("| ")
-	sb.WriteString(key)
-	sb.WriteString(" | ")
-	sb.WriteString(value)
-	sb.WriteString(" |\n")
+	builder.WriteString("| ")
+	builder.WriteString(key)
+	builder.WriteString(" | ")
+	builder.WriteString(value)
+	builder.WriteString(" |\n")
 }
 
 func joinNonEmpty(left, right, sep string) string {
