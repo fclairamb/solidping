@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
@@ -118,6 +119,12 @@ func (h *Handler) Handle(writer http.ResponseWriter, req bunrouter.Request) erro
 		return writeJSON(writer, http.StatusUnauthorized,
 			errorResponse(nil, CodeInvalidRequest, "Authentication required"))
 	}
+
+	if !hasMCPAccess(claims) {
+		return writeJSON(writer, http.StatusForbidden,
+			errorResponse(nil, CodeForbidden, "Token lacks mcp or mcp:read scope"))
+	}
+
 	orgSlug := claims.OrgSlug
 
 	var rpcReq Request
@@ -131,7 +138,7 @@ func (h *Handler) Handle(writer http.ResponseWriter, req bunrouter.Request) erro
 			errorResponse(rpcReq.ID, CodeInvalidRequest, "Invalid JSON-RPC version"))
 	}
 
-	resp, statusCode := h.dispatch(req.Context(), &rpcReq, orgSlug, writer)
+	resp, statusCode := h.dispatch(req.Context(), &rpcReq, orgSlug, claims, writer)
 	if resp == nil {
 		return nil
 	}
@@ -140,7 +147,8 @@ func (h *Handler) Handle(writer http.ResponseWriter, req bunrouter.Request) erro
 }
 
 func (h *Handler) dispatch(
-	ctx context.Context, req *Request, orgSlug string, writer http.ResponseWriter,
+	ctx context.Context, req *Request, orgSlug string,
+	claims *auth.Claims, writer http.ResponseWriter,
 ) (*Response, int) {
 	switch req.Method {
 	case methodInitialize:
@@ -154,7 +162,7 @@ func (h *Handler) dispatch(
 	case methodToolsList:
 		return h.handleToolsList(req)
 	case methodToolsCall:
-		return h.handleToolsCall(ctx, req, orgSlug)
+		return h.handleToolsCall(ctx, req, orgSlug, claims)
 	case methodResourcesList:
 		return h.handleResourcesList(req)
 	case methodResourcesRead:
@@ -212,7 +220,7 @@ func (h *Handler) handleToolsList(req *Request) (*Response, int) {
 }
 
 func (h *Handler) handleToolsCall(
-	ctx context.Context, req *Request, orgSlug string,
+	ctx context.Context, req *Request, orgSlug string, claims *auth.Claims,
 ) (*Response, int) {
 	var params ToolCallParams
 	if err := json.Unmarshal(req.Params, &params); err != nil {
@@ -223,6 +231,12 @@ func (h *Handler) handleToolsCall(
 	toolFn, ok := h.toolMap[params.Name]
 	if !ok {
 		resp := errorResponse(req.ID, CodeMethodNotFound, "Unknown tool: "+params.Name)
+		return &resp, http.StatusOK
+	}
+
+	if isMCPReadOnly(claims) && isMutationTool(params.Name) {
+		resp := errorResponse(req.ID, CodeForbidden,
+			"Tool "+params.Name+" requires the mcp scope; current token has mcp:read only")
 		return &resp, http.StatusOK
 	}
 

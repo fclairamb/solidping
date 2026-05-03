@@ -514,3 +514,94 @@ func TestGetStringMapArg(t *testing.T) {
 		r.Nil(getStringMapArg(map[string]any{}, "data"))
 	})
 }
+
+// --- MCP scope gating tests ---
+
+func claimsWithScopes(scopes ...string) *auth.Claims {
+	c := defaultClaims()
+	c.Scopes = scopes
+	return c
+}
+
+func TestHandle_RejectsTokensWithoutMCPScope(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("checks:read"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusForbidden, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.NotNil(resp.Error)
+	r.Equal(CodeForbidden, resp.Error.Code)
+}
+
+func TestHandle_AllowsBackCompatJWTWithoutScopes(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, defaultClaims())
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.Nil(resp.Error)
+}
+
+func TestHandle_MCPScopeAllowsToolCalls(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+	body := `{"jsonrpc":"2.0","id":1,"method":"ping"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+}
+
+func TestHandle_MCPReadAllowsListAndGet(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	handler := newTestHandler()
+
+	// tools/list works
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
+	rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp:read"))
+	r.NoError(handler.Handle(rec, req))
+	r.Equal(http.StatusOK, rec.Code)
+
+	resp := decodeResponse(t, rec)
+	r.Nil(resp.Error)
+}
+
+func TestHandle_MCPReadRefusesMutationTools(t *testing.T) {
+	t.Parallel()
+
+	mutationCalls := []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_check","arguments":{}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_check","arguments":{"identifier":"x"}}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"delete_check","arguments":{"identifier":"x"}}}`,
+	}
+
+	for _, body := range mutationCalls {
+		t.Run(body[:60], func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			handler := newTestHandler()
+			rec, req := makeRequest(t, http.MethodPost, body, claimsWithScopes("mcp:read"))
+			r.NoError(handler.Handle(rec, req))
+			r.Equal(http.StatusOK, rec.Code)
+
+			resp := decodeResponse(t, rec)
+			r.NotNil(resp.Error)
+			r.Equal(CodeForbidden, resp.Error.Code)
+			r.Contains(resp.Error.Message, "mcp:read")
+		})
+	}
+}

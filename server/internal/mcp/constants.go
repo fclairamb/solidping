@@ -55,3 +55,16 @@ const (
 	propIdentifier    = "identifier"
 	propUID           = "uid"
 )
+
+// Canonical tool names. Prefer constants over string literals so that
+// scope-gating tests, dispatch wiring, and tool definitions stay in sync.
+const (
+	toolListChecks                = "list_checks"
+	toolGetCheck                  = "get_check"
+	toolCreateCheck               = "create_check"
+	toolUpdateCheck               = "update_check"
+	toolDeleteCheck               = "delete_check"
+	toolDiagnoseCheck             = "diagnose_check"
+	toolValidateCheck             = "validate_check"
+	toolSetMaintenanceWindowCheck = "set_maintenance_window_checks"
+)

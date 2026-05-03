@@ -46,6 +46,7 @@ const (
 	keyName        = "name"
 	keyMethod      = "method"
 	keyCreatedWith = "created_with"
+	keyScopes      = "scopes"
 
 	tokenTypeBearer = "Bearer"
 	jwtIssuer       = "solidping"
@@ -98,6 +99,12 @@ type Claims struct {
 	UserUID string `json:"userUid"`
 	OrgSlug string `json:"orgSlug"`
 	Role    string `json:"role,omitempty"`
+	// Scopes lists fine-grained capabilities granted to this credential.
+	// Empty means "no scope restrictions" — the credential is treated as a
+	// full user session (back-compat for dashboard JWTs that pre-date scopes).
+	// Populated values gate access to specific subsystems; see e.g. the
+	// "mcp" / "mcp:read" scopes consumed by the MCP handler.
+	Scopes []string `json:"scopes,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -249,6 +256,10 @@ type TokenListResponse struct {
 type CreateTokenRequest struct {
 	Name      string     `json:"name"`
 	ExpiresAt *time.Time `json:"expiresAt,omitempty"`
+	// Scopes restricts the capabilities of the token. Empty means the token
+	// inherits the user's full role (back-compat). See Claims.Scopes for the
+	// well-known values, e.g. "mcp" or "mcp:read".
+	Scopes []string `json:"scopes,omitempty"`
 }
 
 // CreateTokenResponse contains the response data for a created token.
@@ -902,6 +913,7 @@ func (s *Service) ValidatePATToken(ctx context.Context, patToken string) (*Claim
 		UserUID: user.UID,
 		OrgSlug: org.Slug,
 		Role:    role,
+		Scopes:  scopesFromProperties(token.Properties),
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: expiresAt,
 			IssuedAt:  jwt.NewNumericDate(token.CreatedAt),
@@ -1152,6 +1164,15 @@ func (s *Service) CreatePAT(
 
 	token := models.NewUserToken(userUID, &org.UID, tokenValue, models.TokenTypePAT)
 	token.Properties = models.JSONMap{keyName: req.Name}
+
+	if len(req.Scopes) > 0 {
+		// Stored as []any so json round-trips through JSONMap cleanly.
+		scopes := make([]any, len(req.Scopes))
+		for i, s := range req.Scopes {
+			scopes[i] = s
+		}
+		token.Properties[keyScopes] = scopes
+	}
 
 	token.ExpiresAt = req.ExpiresAt
 
@@ -2336,6 +2357,32 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)
+}
+
+// scopesFromProperties extracts the scopes list previously stored on a
+// PAT's Properties JSONMap. JSONMap round-trips through json.Unmarshal,
+// so a stored []string comes back as []any of strings; we coerce it
+// back. Unknown shapes return nil (= no scope restrictions).
+func scopesFromProperties(props models.JSONMap) []string {
+	raw, ok := props[keyScopes]
+	if !ok {
+		return nil
+	}
+
+	switch typed := raw.(type) {
+	case []string:
+		return typed
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, v := range typed {
+			if s, isStr := v.(string); isStr {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }
 
 func stringFromMap(m models.JSONMap, key string) string {

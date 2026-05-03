@@ -11,7 +11,7 @@ import (
 
 func listChecksDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_checks",
+		Name: toolListChecks,
 		Description: "List monitoring checks for the organization, optionally filtered by " +
 			"name/slug substring, labels, or check group. Use this for browsing or " +
 			"filtering a fleet of checks. To investigate a single check's current " +
@@ -104,7 +104,7 @@ func parseLabelsArg(raw any) (map[string]string, string) {
 
 func getCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "get_check",
+		Name: toolGetCheck,
 		Description: "Get a single check's metadata by UID or slug. For a full triage " +
 			"briefing (current status + recent results + active incidents), prefer " +
 			"diagnose_check instead.",
@@ -148,7 +148,7 @@ func (h *Handler) toolGetCheck(ctx context.Context, orgSlug string, args map[str
 
 func createCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_check",
+		Name: toolCreateCheck,
 		Description: "Create a new monitoring check. If you don't know what config shape a " +
 			"given type expects, call get_check_type_samples first to fetch a working " +
 			"starting config, then use validate_check to dry-run before creating.",
@@ -225,7 +225,7 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 
 func updateCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "update_check",
+		Name: toolUpdateCheck,
 		Description: "Update an existing check by UID or slug. PATCH semantics — only the " +
 			"fields you pass are modified, others stay as-is.",
 		InputSchema: objectSchema(map[string]any{
@@ -298,7 +298,7 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 
 func deleteCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "delete_check",
+		Name: toolDeleteCheck,
 		Description: "Soft-delete a monitoring check by UID or slug. The check stops running " +
 			"immediately; historical results are kept.",
 		InputSchema: objectSchema(map[string]any{
