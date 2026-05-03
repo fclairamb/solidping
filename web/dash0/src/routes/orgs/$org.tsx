@@ -14,6 +14,7 @@ import {
   Calendar,
   ChevronRight,
   Globe,
+  LayoutDashboard,
   ListChecks,
   Server,
   User2,
@@ -80,6 +81,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const params = Object.assign({}, ...matches.map((m) => m.params)) as Record<string, string>;
 
   // Determine the active section
+  const isDashboard = routeIds.has("/orgs/$org/");
   const isChecks = matches.some((m) => m.routeId.startsWith("/orgs/$org/checks"));
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
@@ -91,6 +93,15 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: incident } = useIncident(org, params.incidentUid ?? "");
   // Status pages section
   const { data: statusPage } = useStatusPage(org, params.statusPageUid ?? "");
+
+  if (isDashboard) {
+    return (
+      <span className={activeClass}>
+        <LayoutDashboard className={iconClass} />
+        {t("dashboard")}
+      </span>
+    );
+  }
 
   if (isChecks) {
     const checkUid = params.checkUid;
