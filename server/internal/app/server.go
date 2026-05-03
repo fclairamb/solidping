@@ -351,8 +351,12 @@ func (s *Server) setupRoutes() {
 	providersHandler := auth.NewProvidersHandler(s.config)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
+	// Check types service (constructed early so MCP can use it too)
+	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
+	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
+
 	// MCP endpoint (auth via PAT token, org derived from token)
-	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc)
+	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
@@ -361,8 +365,6 @@ func (s *Server) setupRoutes() {
 	jobHandler.RegisterRoutes(api)
 
 	// Check types routes
-	activationResolver := checkerdef.NewActivationResolver(s.config.Checkers)
-	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
 	api.GET("/check-types/samples", checkTypesHandler.ListSampleConfigs) // Public, no auth

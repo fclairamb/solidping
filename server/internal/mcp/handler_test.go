@@ -220,7 +220,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 
 	tools, ok := result["tools"].([]any)
 	r.True(ok)
-	r.Len(tools, 32)
+	r.Len(tools, 35)
 
 	// Verify tool names
 	names := make(map[string]bool)
@@ -248,6 +248,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 		"list_maintenance_windows", "get_maintenance_window",
 		"create_maintenance_window", "update_maintenance_window",
 		"delete_maintenance_window", "set_maintenance_window_checks",
+		"list_check_types", "get_check_type_samples", "validate_check",
 	}
 	for _, name := range expectedTools {
 		r.True(names[name], "missing tool: %s", name)

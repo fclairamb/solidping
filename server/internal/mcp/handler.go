@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -44,6 +45,7 @@ type session struct {
 // Handler handles MCP requests over Streamable HTTP.
 type Handler struct {
 	checksSvc      *checks.Service
+	checkTypesSvc  *checktypes.Service
 	resultsSvc     *results.Service
 	incidentsSvc   *incidents.Service
 	eventsSvc      *events.Service
@@ -68,9 +70,11 @@ func NewHandler(
 	dbService db.Service,
 	eventNotifier notifier.EventNotifier,
 	jobSvc jobsvc.Service,
+	checkTypesSvc *checktypes.Service,
 ) *Handler {
 	handler := &Handler{
 		checksSvc:      checks.NewService(dbService, eventNotifier),
+		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
 		incidentsSvc:   incidents.NewService(dbService, jobSvc),
 		eventsSvc:      events.NewService(dbService),

@@ -43,6 +43,10 @@ func (h *Handler) registerTools() {
 		{updateMaintenanceWindowDef(), h.toolUpdateMaintenanceWindow},
 		{deleteMaintenanceWindowDef(), h.toolDeleteMaintenanceWindow},
 		{setMaintenanceWindowChecksDef(), h.toolSetMaintenanceWindowChecks},
+		// Check type discovery & validation
+		{listCheckTypesDef(), h.toolListCheckTypes},
+		{getCheckTypeSamplesDef(), h.toolGetCheckTypeSamples},
+		{validateCheckDef(), h.toolValidateCheck},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))
