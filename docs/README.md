@@ -1,5 +1,9 @@
 # SolidPing Documentation
 
+## Roadmap
+
+- [roadmap.md](roadmap.md) — Current feature roadmap and priorities (refreshed May 2026)
+
 ## Architecture & Design
 
 - [architecture.md](architecture.md) — System architecture: handler-service pattern, multi-tenancy, distributed checks, data model, scalability
