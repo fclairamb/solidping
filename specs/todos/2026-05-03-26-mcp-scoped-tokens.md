@@ -202,11 +202,15 @@ No DB migration if the scopes column is `text[]` or similar — verify. If scope
 
 ## Implementation Plan
 
-1. Locate the token-scope model and add `mcp` + `mcp:read`. Verify storage shape (text array vs enum) and migrate if needed.
-2. Update token creation validation to accept the new scopes.
-3. Implement `hasMCPAccess`, `isMCPReadOnly`, `isMutationTool` in `mcp/handler.go`. Wire into `Handle` and `handleToolsCall`.
-4. Backend tests for the 5 cases.
-5. Frontend: scope selector + "Generate MCP token" dialog. i18n keys.
-6. Frontend tests if Playwright coverage exists.
-7. `make gotest` + `make lint-back` + `make lint-dash` clean.
-8. End-to-end smoke test: mint MCP token via UI, paste into Claude Desktop, confirm read-only constraint kicks in.
+There is no existing token-scope system in solidping today: PATs have no scope storage, and `Claims` (`server/internal/handlers/auth/service.go:97`) carries only `UserUID/OrgSlug/Role`. This plan adds the missing plumbing along with the MCP gate.
+
+1. Add `Scopes []string` to `Claims` and a `[]string` field on `CreateTokenRequest`. Store the scopes inside the token's existing `Properties JSONMap` (`token.Properties["scopes"]`) so no DB migration is needed.
+2. In `Service.CreateToken` (`auth/service.go:1153`), persist the scope list when supplied. In `Service.ValidatePATToken`, read the scopes back from `Properties` and populate `Claims.Scopes`. Update the PAT cache to remember the new field.
+3. In `mcp/handler.go`:
+   - `hasMCPAccess(claims)` — true when scopes are empty (back-compat: dashboard JWT keeps working) OR scopes contain `mcp` / `mcp:read`. Wire into `Handle()`.
+   - `isMCPReadOnly(claims)` — true when scopes contain `mcp:read` and not `mcp`.
+   - `isMutationTool(name)` — deny-list of name prefixes (`create_`, `update_`, `delete_`, `set_`).
+   - In `handleToolsCall`, refuse mutation tools for read-only tokens with `CodeForbidden`.
+4. Add `internal/mcp/scope_test.go` for the predicate functions and extend `handler_test.go` with the five scenarios (mcp full / mcp:read full / mcp:read mutation refused / no scope rejected / back-compat user JWT allowed).
+5. Drop the spec's frontend section out of this PR — explicitly call it out in the spec as deferred. The REST API alone lets a power user `curl` a token, which is what the spec says is acceptable for shipping the backend half.
+6. `make fmt && make lint-back && make test`.
