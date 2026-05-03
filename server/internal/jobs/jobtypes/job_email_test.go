@@ -249,15 +249,15 @@ func (m *mockSender) Send(ctx context.Context, msg *email.Message) (*email.SendR
 
 // mockFormatter is a test double for email.Formatter.
 type mockFormatter struct {
-	formatFunc func(templateName string, data any) (string, string, error)
+	formatFunc func(templateName string, data any) (string, string, string, error)
 }
 
-func (m *mockFormatter) Format(templateName string, data any) (string, string, error) {
+func (m *mockFormatter) Format(templateName string, data any) (string, string, string, error) {
 	if m.formatFunc != nil {
 		return m.formatFunc(templateName, data)
 	}
 
-	return "<html>formatted</html>", "plain text", nil
+	return "", "<html>formatted</html>", "plain text", nil
 }
 
 func TestEmailJobRun_Run(t *testing.T) {
@@ -354,8 +354,8 @@ func TestEmailJobRun_Run(t *testing.T) {
 			},
 			sender: &mockSender{},
 			formatter: &mockFormatter{
-				formatFunc: func(_ string, _ any) (string, string, error) {
-					return "", "", errTemplateNotFound
+				formatFunc: func(_ string, _ any) (string, string, string, error) {
+					return "", "", "", errTemplateNotFound
 				},
 			},
 			wantErr: true,

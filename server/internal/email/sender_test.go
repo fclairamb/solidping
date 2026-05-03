@@ -162,7 +162,7 @@ func TestSendEmail_Integration(t *testing.T) {
 		"DashboardURL": "https://solidping.com/dashboard",
 	}
 
-	html, text, err := formatter.Format("incident.html", data)
+	_, html, text, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	result, err := sender.Send(context.Background(), &Message{

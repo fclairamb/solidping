@@ -59,40 +59,58 @@ func (f *TemplateFormatter) parseTemplate(templateName string) (*template.Templa
 	return tmpl, nil
 }
 
-// Format renders a template with the given data.
-// Returns both HTML (with inlined CSS) and plain text versions.
-func (f *TemplateFormatter) Format(templateName string, data any) (string, string, error) {
-	var buf bytes.Buffer
-
-	// Parse the template with base
+// Format renders a template with the given data and returns the rendered
+// subject (from a {{define "subject"}} block, or "" when the template has
+// none), the HTML body with inlined CSS, and a plain-text fallback.
+func (f *TemplateFormatter) Format(templateName string, data any) (string, string, string, error) {
 	tmpl, err := f.parseTemplate(templateName)
 	if err != nil {
-		return "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
+		return "", "", "", fmt.Errorf("parsing template %s: %w", templateName, err)
 	}
 
-	// Execute the child template which invokes base.html
-	if execErr := tmpl.ExecuteTemplate(&buf, templateName, data); execErr != nil {
-		return "", "", fmt.Errorf("executing template %s: %w", templateName, execErr)
-	}
-
-	html := buf.String()
-
-	// Inline CSS using premailer
-	prem, err := premailer.NewPremailerFromString(html, premailer.NewOptions())
+	subject, err := f.renderSubject(tmpl, templateName, data)
 	if err != nil {
-		return "", "", fmt.Errorf("creating premailer: %w", err)
+		return "", "", "", err
+	}
+
+	var buf bytes.Buffer
+	if execErr := tmpl.ExecuteTemplate(&buf, templateName, data); execErr != nil {
+		return "", "", "", fmt.Errorf("executing template %s: %w", templateName, execErr)
+	}
+
+	prem, err := premailer.NewPremailerFromString(buf.String(), premailer.NewOptions())
+	if err != nil {
+		return "", "", "", fmt.Errorf("creating premailer: %w", err)
 	}
 
 	inlinedHTML, err := prem.Transform()
 	if err != nil {
-		return "", "", fmt.Errorf("inlining CSS: %w", err)
+		return "", "", "", fmt.Errorf("inlining CSS: %w", err)
 	}
 
-	// Generate plain text version
 	plainText, err := prem.TransformText()
 	if err != nil {
-		return "", "", fmt.Errorf("generating plain text: %w", err)
+		return "", "", "", fmt.Errorf("generating plain text: %w", err)
 	}
 
-	return inlinedHTML, plainText, nil
+	return subject, inlinedHTML, plainText, nil
+}
+
+// renderSubject executes a template's {{define "subject"}} block, if present.
+// Returns "" when no subject block is defined — callers may then fall back
+// to a static subject.
+func (f *TemplateFormatter) renderSubject(
+	tmpl *template.Template, templateName string, data any,
+) (string, error) {
+	subjTmpl := tmpl.Lookup("subject")
+	if subjTmpl == nil {
+		return "", nil
+	}
+
+	var buf bytes.Buffer
+	if err := subjTmpl.Execute(&buf, data); err != nil {
+		return "", fmt.Errorf("executing subject for %s: %w", templateName, err)
+	}
+
+	return strings.TrimSpace(buf.String()), nil
 }

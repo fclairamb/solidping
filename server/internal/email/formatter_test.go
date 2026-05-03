@@ -31,8 +31,11 @@ func TestFormatter_FormatIncident(t *testing.T) {
 		"DashboardURL": "https://example.com/dashboard/checks/prod-api",
 	}
 
-	html, text, err := formatter.Format("incident.html", data)
+	subject, html, text, err := formatter.Format("incident.html", data)
 	r.NoError(err)
+
+	// incident.html does not yet define a subject block — should be empty.
+	r.Empty(subject)
 
 	// Check HTML content
 	r.Contains(html, "Production API")
@@ -64,7 +67,7 @@ func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
 		"Message":   "The check is now back online.",
 	}
 
-	html, text, err := formatter.Format("incident.html", data)
+	_, html, text, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	// Check HTML content
@@ -86,8 +89,10 @@ func TestFormatter_InvalidTemplate(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	_, _, err = formatter.Format("nonexistent.html", nil)
+	_, html, text, err := formatter.Format("nonexistent.html", nil)
 	r.Error(err)
+	r.Empty(html)
+	r.Empty(text)
 	r.Contains(err.Error(), "parsing template")
 }
 
@@ -106,11 +111,113 @@ func TestFormatter_CSSInlining(t *testing.T) {
 		"DashboardURL": "https://example.com",
 	}
 
-	html, _, err := formatter.Format("incident.html", data)
+	_, html, _, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
-	// The status-down class should have its style inlined
-	// The premailer should convert .status-down { color: #dc3545; } to inline style
+	// CSS should be inlined into a style attribute on at least one element.
+	r.Contains(html, "style=")
 	r.Contains(html, "color")
-	r.Contains(html, "#dc3545")
+}
+
+func TestFormatter_TransactionalTemplates(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		template    string
+		data        map[string]any
+		wantSubject string
+		wantHTML    []string
+		wantText    []string
+	}{
+		{
+			name:     "invitation",
+			template: "invitation.html",
+			data: map[string]any{
+				"OrgName":     "Acme",
+				"Role":        "admin",
+				"InviterName": "Alice",
+				"InviteURL":   "https://solidping.example/i/abc",
+			},
+			wantSubject: "You're invited to join Acme on SolidPing",
+			wantHTML: []string{
+				"Acme",
+				"admin",
+				"Alice",
+				"https://solidping.example/i/abc",
+				"expires in 7 days",
+			},
+			// premailer's text fallback word-wraps inside table cells, so
+			// human prose can split across lines. Verify the URL only —
+			// it's unbreakable and is the most important fallback content.
+			wantText: []string{
+				"https://solidping.example/i/abc",
+			},
+		},
+		{
+			name:     "registration",
+			template: "registration.html",
+			data: map[string]any{
+				"ConfirmURL": "https://solidping.example/c/xyz",
+			},
+			wantSubject: "Confirm your SolidPing account",
+			wantHTML: []string{
+				"https://solidping.example/c/xyz",
+				"Confirm",
+				"3 days",
+			},
+			wantText: []string{"https://solidping.example/c/xyz"},
+		},
+		{
+			name:     "password reset",
+			template: "password-reset.html",
+			data: map[string]any{
+				"ResetURL": "https://solidping.example/r/zzz",
+			},
+			wantSubject: "Reset your SolidPing password",
+			wantHTML: []string{
+				"https://solidping.example/r/zzz",
+				"1 hour",
+			},
+			wantText: []string{
+				"https://solidping.example/r/zzz",
+			},
+		},
+		{
+			name:     "welcome",
+			template: "welcome.html",
+			data: map[string]any{
+				"DashboardURL": "https://solidping.example/dash",
+			},
+			wantSubject: "Welcome to SolidPing",
+			wantHTML: []string{
+				"https://solidping.example/dash",
+			},
+			wantText: []string{
+				"https://solidping.example/dash",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			formatter, err := NewFormatter()
+			r.NoError(err)
+
+			subject, html, text, err := formatter.Format(tc.template, tc.data)
+			r.NoError(err)
+			r.Equal(tc.wantSubject, subject)
+
+			for _, want := range tc.wantHTML {
+				r.Contains(html, want)
+			}
+			for _, want := range tc.wantText {
+				r.Contains(text, want)
+			}
+		})
+	}
 }

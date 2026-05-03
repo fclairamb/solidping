@@ -1531,9 +1531,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email,
-		"[SolidPing] Confirm your account",
-		"registration.html",
+	s.enqueueEmail(ctx, "", req.Email, "", "registration.html",
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -1780,9 +1778,7 @@ func (s *Service) RequestPasswordReset(
 	// Send reset email asynchronously via the email job
 	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email,
-		"[SolidPing] Reset your password",
-		"password-reset.html",
+	s.enqueueEmail(ctx, "", req.Email, "", "password-reset.html",
 		map[string]any{"ResetURL": resetURL},
 	)
 
@@ -2377,9 +2373,7 @@ func (s *Service) sendInvitationEmail(
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	s.enqueueEmail(ctx, orgUID, recipientEmail,
-		"[SolidPing] You're invited to "+orgName,
-		"invitation.html",
+	s.enqueueEmail(ctx, orgUID, recipientEmail, "", "invitation.html",
 		map[string]any{
 			"OrgName":     orgName,
 			"Role":        role,

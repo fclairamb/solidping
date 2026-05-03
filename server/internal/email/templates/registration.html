@@ -1,9 +1,11 @@
+{{define "subject"}}Confirm your SolidPing account{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-<div class="content">
-    <h2>Confirm Your Account</h2>
-    <p>You're almost there! Click the button below to confirm your SolidPing account.</p>
-    <p><a href="{{.ConfirmURL}}" class="button button-success">Confirm Account</a></p>
-    <p style="color: #666; font-size: 14px;">This link will expire in 3 days. If you didn't create this account, you can safely ignore this email.</p>
-</div>
+    <h1>Confirm your account</h1>
+    <p>Hi,</p>
+    <p>You're almost there. Click below to confirm your SolidPing account and finish setting things up.</p>
+    <p class="cta-wrap"><a href="{{.ConfirmURL}}" class="cta cta-success">Confirm account</a></p>
+    <p>Or paste this link into your browser:</p>
+    <p class="fallback">{{.ConfirmURL}}</p>
+    <p class="meta">This confirmation link expires in 3 days. If you didn't sign up for SolidPing, you can safely ignore this email.</p>
 {{end}}

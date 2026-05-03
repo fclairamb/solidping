@@ -181,3 +181,16 @@ One per template. Keep them small and assertion-focused — these are sanity che
 - `server/internal/jobs/jobtypes/job_email.go` — `validateEmailConfig` relaxation, `buildMessage` use-rendered-subject.
 - `server/internal/notifications/email.go` — call-site update.
 - `server/internal/email/formatter_test.go` — snapshot tests (new or extended).
+
+## Implementation Plan
+
+1. Extend the `email.Formatter` interface and `TemplateFormatter.Format` method to return `(subject, html, text, err)`. Subject comes from a `{{define "subject"}}` block on the template; empty string when none.
+2. Update the existing call sites:
+   - `internal/jobs/jobtypes/job_email.go` — use the rendered subject when `EmailJobConfig.Subject` is empty; relax `validateEmailConfig` so subject is required only when no template is supplied.
+   - `internal/email/formatter_test.go` and `internal/email/sender_test.go` — adjust to the 4-return signature.
+   - `internal/notifications/email.go` does NOT use Format directly (verified — it constructs HTML inline) so no change there.
+3. Rewrite `templates/base.html` with a 600px-max table layout, system font stack, responsive `<style>` block, refined header / button / footer styles. Adds a "subject" placeholder convention — child templates define their own `{{define "subject"}}`.
+4. Rewrite `templates/invitation.html`, `templates/registration.html`, `templates/password-reset.html`, `templates/welcome.html` with greeting + context + CTA + fallback URL + expiration + ignore-if-not-you note. Each gets a `{{define "subject"}}` block; subjects drop the `[SolidPing]` prefix (the From-name change in spec 24 already attributes the brand).
+5. Update auth service callers to pass `Subject: ""` (template provides it) instead of hard-coding `[SolidPing] ...` strings.
+6. Add subject + fallback-URL snapshot tests in `internal/email/formatter_test.go`, one per template.
+7. Run `make fmt`, `make lint-back`, `make test`.

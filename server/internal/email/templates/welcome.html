@@ -1,14 +1,17 @@
+{{define "subject"}}Welcome to SolidPing{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-<div class="content">
-    <h2>Welcome to SolidPing!</h2>
+    <h1>Welcome to SolidPing</h1>
+    <p>Hi,</p>
     {{if .message}}
     <p>{{.message}}</p>
     {{else}}
-    <p>Thank you for joining SolidPing. We're excited to help you monitor your services and keep them running smoothly.</p>
+    <p>Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.</p>
     {{end}}
     {{if .DashboardURL}}
-    <p><a href="{{.DashboardURL}}" class="button button-success">Go to Dashboard</a></p>
+    <p class="cta-wrap"><a href="{{.DashboardURL}}" class="cta cta-success">Open your dashboard</a></p>
+    <p>Or paste this link into your browser:</p>
+    <p class="fallback">{{.DashboardURL}}</p>
     {{end}}
-</div>
+    <p class="meta">Need help getting started? Just reply to this email.</p>
 {{end}}
