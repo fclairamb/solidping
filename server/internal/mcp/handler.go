@@ -143,22 +143,26 @@ func (h *Handler) dispatch(
 	ctx context.Context, req *Request, orgSlug string, writer http.ResponseWriter,
 ) (*Response, int) {
 	switch req.Method {
-	case "initialize":
+	case methodInitialize:
 		return h.handleInitialize(req, orgSlug, writer)
-	case "notifications/initialized":
+	case methodInitialized:
 		writer.WriteHeader(http.StatusAccepted)
 		return nil, 0
-	case "ping":
+	case methodPing:
 		resp := successResponse(req.ID, map[string]any{})
 		return &resp, http.StatusOK
-	case "tools/list":
+	case methodToolsList:
 		return h.handleToolsList(req)
-	case "tools/call":
+	case methodToolsCall:
 		return h.handleToolsCall(ctx, req, orgSlug)
-	case "resources/list":
+	case methodResourcesList:
 		return h.handleResourcesList(req)
-	case "resources/read":
+	case methodResourcesRead:
 		return h.handleResourcesRead(ctx, req, orgSlug)
+	case methodPromptsList:
+		return h.handlePromptsList(req)
+	case methodPromptsGet:
+		return h.handlePromptsGet(req)
 	default:
 		resp := errorResponse(req.ID, CodeMethodNotFound, "Method not found")
 		return &resp, http.StatusOK
@@ -194,6 +198,7 @@ func (h *Handler) handleInitialize(
 		Capabilities: ServerCaps{
 			Tools:     &ToolsCap{},
 			Resources: &ResourcesCap{},
+			Prompts:   &PromptsCap{},
 		},
 		ServerInfo: ServerInfo{Name: "solidping", Version: "0.1.0"},
 	})

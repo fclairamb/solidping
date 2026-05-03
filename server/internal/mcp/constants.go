@@ -25,6 +25,16 @@ const (
 
 	contentTypeText = "text"
 
+	methodInitialize    = "initialize"
+	methodInitialized   = "notifications/initialized"
+	methodPing          = "ping"
+	methodToolsList     = "tools/list"
+	methodToolsCall     = "tools/call"
+	methodResourcesList = "resources/list"
+	methodResourcesRead = "resources/read"
+	methodPromptsList   = "prompts/list"
+	methodPromptsGet    = "prompts/get"
+
 	uriOrganization = "solidping://organization"
 	uriRegions      = "solidping://regions"
 

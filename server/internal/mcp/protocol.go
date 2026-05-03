@@ -68,6 +68,7 @@ type InitializeResult struct {
 type ServerCaps struct {
 	Tools     *ToolsCap     `json:"tools,omitempty"`
 	Resources *ResourcesCap `json:"resources,omitempty"`
+	Prompts   *PromptsCap   `json:"prompts,omitempty"`
 }
 
 // ToolsCap represents the tools capability.
@@ -75,6 +76,9 @@ type ToolsCap struct{}
 
 // ResourcesCap represents the resources capability.
 type ResourcesCap struct{}
+
+// PromptsCap represents the prompts capability.
+type PromptsCap struct{}
 
 // ServerInfo represents the server information.
 type ServerInfo struct {
@@ -146,6 +150,43 @@ type ResourceContent struct {
 	URI      string `json:"uri"`
 	MimeType string `json:"mimeType,omitempty"`
 	Text     string `json:"text,omitempty"`
+}
+
+// PromptDefinition describes a registered prompt template.
+type PromptDefinition struct {
+	Name        string           `json:"name"`
+	Description string           `json:"description,omitempty"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+}
+
+// PromptArgument describes one argument accepted by a prompt template.
+type PromptArgument struct {
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Required    bool   `json:"required,omitempty"`
+}
+
+// PromptsListResult is the result of a prompts/list request.
+type PromptsListResult struct {
+	Prompts []PromptDefinition `json:"prompts"`
+}
+
+// PromptGetParams are the params for a prompts/get request.
+type PromptGetParams struct {
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+// PromptGetResult is the result of a prompts/get request.
+type PromptGetResult struct {
+	Description string          `json:"description,omitempty"`
+	Messages    []PromptMessage `json:"messages"`
+}
+
+// PromptMessage is a single conversation seed message.
+type PromptMessage struct {
+	Role    string       `json:"role"`
+	Content ContentBlock `json:"content"`
 }
 
 // Helper constructors.
