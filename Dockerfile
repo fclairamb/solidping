@@ -42,6 +42,28 @@ COPY web/dash0/ ./
 # Build dash0
 RUN bun run build
 
+# Stage 1c: Status0 Build
+FROM node:24-alpine AS status0-builder
+
+# Install bun
+RUN apk add --no-cache curl unzip bash && \
+    curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
+WORKDIR /build/status0
+
+# Copy status0 package files
+COPY web/status0/package.json web/status0/bun.lock ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# Copy status0 source
+COPY web/status0/ ./
+
+# Build status0
+RUN bun run build
+
 # Stage 2: Backend Build
 FROM golang:1.26.2-trixie AS backend-builder
 
@@ -71,6 +93,7 @@ COPY server/ ./
 # Copy dash build artifacts to embed location
 COPY --from=dash-builder /build/dash/dist ./internal/app/res
 COPY --from=dash0-builder /build/dash0/dist ./internal/app/dash0res
+COPY --from=status0-builder /build/status0/dist ./internal/app/status0res
 
 # Build the backend binary with version information
 # CGO is needed for SQLite support

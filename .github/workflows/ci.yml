@@ -20,7 +20,7 @@ jobs:
   backend-lint:
     name: Backend Lint & Test
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
         working-directory: server
@@ -56,7 +56,7 @@ jobs:
   dash:
     name: Dash Build
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
         working-directory: web/dash
@@ -88,7 +88,7 @@ jobs:
   dash0:
     name: Dash0 Build
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
         working-directory: web/dash0
@@ -117,7 +117,7 @@ jobs:
   status0:
     name: Status0 Build
     runs-on: ubuntu-24.04
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
         working-directory: web/status0
@@ -147,7 +147,7 @@ jobs:
     name: Build Binary
     runs-on: ubuntu-24.04
     needs: [dash, dash0, status0]
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     steps:
       - uses: actions/checkout@v6
 
@@ -203,7 +203,7 @@ jobs:
     name: E2E Tests
     runs-on: ubuntu-24.04
     needs: [build]
-    if: github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
       run:
         working-directory: web/dash0
@@ -279,7 +279,7 @@ jobs:
     name: CI
     runs-on: ubuntu-24.04
     needs: [backend-lint, dash, dash0, status0, build, e2e-tests]
-    if: always()
+    if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures
         run: |
@@ -292,7 +292,6 @@ jobs:
   docker:
     name: Build and Push Docker Image
     runs-on: ubuntu-24.04
-    needs: [backend-lint, dash, dash0, status0]
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: read
@@ -334,8 +333,8 @@ jobs:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},enable=${{ !contains(github.ref, '-') }}
+            type=raw,value=latest,enable=${{ !contains(github.ref, '-') }}
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7.1.0
@@ -353,7 +352,7 @@ jobs:
     name: Deploy to k8xp
     runs-on: ubuntu-24.04
     needs: [docker]
-    if: startsWith(github.ref, 'refs/tags/')
+    if: ${{ startsWith(github.ref, 'refs/tags/v') && !contains(github.ref, '-') }}
 
     steps:
       - name: Deploy to k8xp.com
