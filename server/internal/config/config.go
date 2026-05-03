@@ -173,11 +173,11 @@ type EmailConfig struct {
 // lives in the `files` table. AWS credentials are not stored here — they
 // come from the standard AWS SDK chain (env, IAM role, shared config).
 type FileStorageConfig struct {
-	Type      string `koanf:"type"`        // "local" (default) or "s3"
-	LocalRoot string `koanf:"local_root"`  // local backend root, e.g. "./data/files"
-	S3Bucket  string `koanf:"s3_bucket"`   // S3 backend bucket name
-	S3Region  string `koanf:"s3_region"`   // S3 backend region
-	S3Prefix  string `koanf:"s3_prefix"`   // optional key prefix
+	Type      string `koanf:"type"`       // "local" (default) or "s3"
+	LocalRoot string `koanf:"local_root"` // local backend root, e.g. "./data/files"
+	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
+	S3Region  string `koanf:"s3_region"`  // S3 backend region
+	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
 }
 
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
