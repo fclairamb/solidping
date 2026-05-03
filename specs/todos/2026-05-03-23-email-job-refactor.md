@@ -127,3 +127,12 @@ Add one new test: SMTP failure scenario at the job level — enqueue succeeds, `
 - `server/internal/jobs/jobdef/types.go` — `JobTypeEmail` constant.
 - `server/internal/handlers/incidents/service.go:931` — reference example of `CreateJob` from a handler.
 - `server/internal/app/server.go` — DI wiring point for auth service construction.
+
+## Implementation Plan
+
+1. Replace the `emailSender`/`emailFormatter` fields on `auth.Service` with a single `jobsSvc jobsvc.Service`. Update `NewService` signature accordingly.
+2. Update the four `NewService(...)` call sites (server.go + four test files) to pass the jobs service (nil where tests don't care).
+3. Add private `enqueueEmail(ctx, orgUID, to, subject, template, data)` helper on `auth.Service` that marshals `EmailJobConfig` and calls `jobsSvc.CreateJob`. Log and swallow errors — preserve "log and continue" behaviour.
+4. Refactor `Register` (registration confirmation), `RequestPasswordReset`, and `sendInvitationEmail` to call the helper. Drop the no-longer-needed `email` package import if it falls out.
+5. Wire the existing `jobService` from `server.go` into `auth.NewService`.
+6. Run `make fmt`, `make lint-back`, `make test` and fix anything that breaks.
