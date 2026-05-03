@@ -2,9 +2,12 @@ package auth
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -431,4 +434,347 @@ func TestRefreshUserInfo(t *testing.T) {
 	r.Equal("Refresh User", refreshResp.User.Name)
 	r.Equal("https://example.com/refresh.jpg", refreshResp.User.AvatarURL)
 	r.Equal("Refresh Org", refreshResp.Organization.Name)
+}
+
+// passwordResetUser is a small helper that wires up an org + a user with a
+// real password hash, so reset tests can exercise the happy path without
+// duplicating a dozen lines per case.
+func passwordResetUser(t *testing.T, ctx context.Context, dbSvc db.Service, email string) *models.User {
+	t.Helper()
+	r := require.New(t)
+
+	hash, err := passwords.Hash("oldpassword")
+	r.NoError(err)
+
+	user := models.NewUser(email)
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+
+	return user
+}
+
+func extractResetTokenFromState(t *testing.T, ctx context.Context, dbSvc db.Service) string {
+	t.Helper()
+	r := require.New(t)
+
+	entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+	r.NoError(err)
+
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Key, "password_reset:") {
+			continue
+		}
+		// Skip the per-user counter; it has its own prefix.
+		if strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+			continue
+		}
+
+		return strings.TrimPrefix(e.Key, "password_reset:")
+	}
+
+	return ""
+}
+
+func TestRequestPasswordReset(t *testing.T) {
+	t.Parallel()
+
+	t.Run("creates hashed entry and counts toward per-user cap", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		passwordResetUser(t, ctx, dbSvc, "reset1@example.com")
+
+		_, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "reset1@example.com"}, "127.0.0.1")
+		r.NoError(err)
+
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		// Exactly one reset entry; key must be a 64-char hex hash, not the email.
+		var resetEntries []*models.StateEntry
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				resetEntries = append(resetEntries, e)
+			}
+		}
+		r.Len(resetEntries, 1)
+
+		hashSuffix := strings.TrimPrefix(resetEntries[0].Key, "password_reset:")
+		r.Len(hashSuffix, 64, "key suffix should be sha256 hex")
+		// Regression guard: no plaintext token, no email anywhere in the value.
+		val := *resetEntries[0].Value
+		r.NotContains(val, "token")
+		r.NotContains(val, "email")
+		userUID, ok := val["userUid"].(string)
+		r.True(ok)
+		r.NotEmpty(userUID)
+	})
+
+	t.Run("OAuth-only user produces no entry and no email", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		// Create a user without a password hash.
+		user := models.NewUser("oauth@example.com")
+		r.NoError(dbSvc.CreateUser(ctx, user))
+
+		resp, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "oauth@example.com"}, "127.0.0.1")
+		r.NoError(err)
+		r.NotEmpty(resp.Message)
+
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		r.Empty(entries, "no entry should exist for OAuth-only user")
+	})
+
+	t.Run("unknown email returns success but creates nothing", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+
+		resp, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "ghost@example.com"}, "127.0.0.1")
+		r.NoError(err)
+		r.NotEmpty(resp.Message)
+
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		r.Empty(entries)
+	})
+
+	t.Run("per-user cap drops the 4th request silently", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		passwordResetUser(t, ctx, dbSvc, "cap@example.com")
+
+		// Distinct IP per call so the per-IP limit doesn't kick in first.
+		for i := 0; i < passwordResetMaxPerUser; i++ {
+			ip := fmt.Sprintf("192.0.2.%d", i+1)
+			_, err := svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "cap@example.com"}, ip)
+			r.NoError(err)
+		}
+
+		// Sanity: cap entries created (we may have one per request).
+		var beforeReset []*models.StateEntry
+		entries, err := dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				beforeReset = append(beforeReset, e)
+			}
+		}
+		r.Len(beforeReset, passwordResetMaxPerUser)
+
+		// 4th request is silently dropped.
+		_, err = svc.RequestPasswordReset(ctx, RequestPasswordResetRequest{Email: "cap@example.com"}, "192.0.2.99")
+		r.NoError(err)
+
+		var afterReset []*models.StateEntry
+		entries, err = dbSvc.ListStateEntries(ctx, nil, "password_reset:")
+		r.NoError(err)
+		for _, e := range entries {
+			if !strings.HasPrefix(e.Key, passwordResetCountKeyPrefix) {
+				afterReset = append(afterReset, e)
+			}
+		}
+		r.Len(afterReset, passwordResetMaxPerUser, "no new entry beyond the cap")
+	})
+
+	t.Run("per-IP rate limit returns ErrRateLimited beyond the cap", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		passwordResetUser(t, ctx, dbSvc, "iprl@example.com")
+
+		// Up to the cap, all calls succeed.
+		for i := 0; i < passwordResetMaxPerIP; i++ {
+			_, err := svc.RequestPasswordReset(ctx,
+				RequestPasswordResetRequest{Email: "iprl@example.com"}, "203.0.113.1")
+			r.NoError(err)
+		}
+
+		// One past the cap → ErrRateLimited.
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "iprl@example.com"}, "203.0.113.1")
+		r.ErrorIs(err, ErrRateLimited)
+	})
+}
+
+func TestResetPassword(t *testing.T) {
+	t.Parallel()
+
+	t.Run("happy path: updates password, deletes entry, revokes refresh tokens, preserves PATs", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		user := passwordResetUser(t, ctx, dbSvc, "happy@example.com")
+
+		// Seed a refresh token + a PAT for this user.
+		refresh := &models.UserToken{
+			UID:     uuidV7(t),
+			UserUID: user.UID,
+			Type:    models.TokenTypeRefresh,
+			Token:   "r-" + user.UID,
+		}
+		r.NoError(dbSvc.CreateUserToken(ctx, refresh))
+		pat := &models.UserToken{
+			UID:     uuidV7(t),
+			UserUID: user.UID,
+			Type:    models.TokenTypePAT,
+			Token:   "p-" + user.UID,
+		}
+		r.NoError(dbSvc.CreateUserToken(ctx, pat))
+
+		_, err := svc.RequestPasswordReset(ctx,
+			RequestPasswordResetRequest{Email: "happy@example.com"}, "127.0.0.1")
+		r.NoError(err)
+		token := extractResetTokenFromState(t, ctx, dbSvc)
+		r.NotEmpty(token, "RequestPasswordReset must produce a state entry")
+
+		// We don't get the plaintext token back through the API, but we can
+		// reconstruct it: the entry's key suffix is sha256(token). For tests
+		// we can't reverse the hash, so we exercise the happy path by also
+		// directly writing a new entry under a known token and using that.
+		knownToken := "test-known-token"
+		stateValue := &models.JSONMap{"userUid": user.UID}
+		ttl := passwordResetTTL
+		r.NoError(dbSvc.SetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(knownToken), stateValue, &ttl))
+
+		resp, err := svc.ResetPassword(ctx, ResetPasswordRequest{
+			Token:    knownToken,
+			Password: "newpassword",
+		})
+		r.NoError(err)
+		r.NotEmpty(resp.Message)
+
+		// Password updated.
+		updated, err := dbSvc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.NotNil(updated.PasswordHash)
+		r.NotEqual("", *updated.PasswordHash)
+		// Old password no longer matches.
+		r.False(passwords.Verify("oldpassword", *updated.PasswordHash))
+		r.True(passwords.Verify("newpassword", *updated.PasswordHash))
+
+		// State entry for the used token is gone.
+		entry, err := dbSvc.GetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(knownToken))
+		r.NoError(err)
+		r.Nil(entry)
+
+		// Refresh tokens revoked.
+		refreshes, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypeRefresh)
+		r.NoError(err)
+		r.Empty(refreshes)
+
+		// PAT preserved.
+		pats, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypePAT)
+		r.NoError(err)
+		r.Len(pats, 1)
+	})
+
+	t.Run("malformed or unknown token returns ErrPasswordResetExpired", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, _, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+
+		_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: "nope", Password: "newpassword"})
+		r.ErrorIs(err, ErrPasswordResetExpired)
+	})
+
+	t.Run("already-used token returns ErrPasswordResetExpired", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		user := passwordResetUser(t, ctx, dbSvc, "used@example.com")
+
+		token := "token-used-once"
+		stateValue := &models.JSONMap{"userUid": user.UID}
+		ttl := passwordResetTTL
+		r.NoError(dbSvc.SetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+
+		_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "newpassword"})
+		r.NoError(err)
+
+		// Second use must fail.
+		_, err = svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "anothernew"})
+		r.ErrorIs(err, ErrPasswordResetExpired)
+	})
+
+	t.Run("short password is rejected before any DB mutation", func(t *testing.T) {
+		t.Parallel()
+		r := require.New(t)
+
+		svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "https://example.com")
+		user := passwordResetUser(t, ctx, dbSvc, "short@example.com")
+		originalHash := *user.PasswordHash
+
+		token := "token-short-pw"
+		stateValue := &models.JSONMap{"userUid": user.UID}
+		ttl := passwordResetTTL
+		r.NoError(dbSvc.SetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(token), stateValue, &ttl))
+
+		_, err := svc.ResetPassword(ctx, ResetPasswordRequest{Token: token, Password: "short"})
+		r.ErrorIs(err, ErrInvalidCredentials)
+
+		// Password unchanged.
+		refreshed, err := dbSvc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.Equal(originalHash, *refreshed.PasswordHash)
+
+		// State entry still present (the user hasn't burned their reset).
+		entry, err := dbSvc.GetStateEntry(ctx, nil,
+			passwordResetKeyPrefix+hashResetToken(token))
+		r.NoError(err)
+		r.NotNil(entry)
+	})
+}
+
+// uuidV7 returns a UUIDv7 string for tests that need to seed unique IDs.
+func uuidV7(t *testing.T) string {
+	t.Helper()
+	id, err := uuid.NewV7()
+	require.NoError(t, err)
+
+	return id.String()
+}
+
+// TestStateEntryUpsertWithNullOrg pins the upsert semantics SetStateEntry
+// owes its callers: writing the same key twice with a NULL orgUID must
+// leave exactly one row. Both SQLite and Postgres treat NULL as distinct
+// in UNIQUE constraints by default, so the implementation runs an
+// UPDATE-first / INSERT-fallback pattern; this test would catch a
+// regression that lets duplicate rows accumulate and rendered counters
+// or one-shot tokens silently wrong.
+func TestStateEntryUpsertWithNullOrg(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	_, dbSvc, ctx := setupAuthTestService(t)
+
+	value1 := &models.JSONMap{"count": 1}
+	value2 := &models.JSONMap{"count": 2}
+	ttl := time.Hour
+
+	r.NoError(dbSvc.SetStateEntry(ctx, nil, "test:upsert", value1, &ttl))
+	r.NoError(dbSvc.SetStateEntry(ctx, nil, "test:upsert", value2, &ttl))
+
+	entries, err := dbSvc.ListStateEntries(ctx, nil, "test:upsert")
+	r.NoError(err)
+	r.Len(entries, 1, "second SetStateEntry must replace the first, not duplicate it")
+
+	got, err := dbSvc.GetStateEntry(ctx, nil, "test:upsert")
+	r.NoError(err)
+	r.NotNil(got)
+	r.NotNil(got.Value)
+	r.InEpsilon(2.0, (*got.Value)["count"], 0.0001)
 }

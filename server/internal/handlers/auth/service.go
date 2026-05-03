@@ -1851,69 +1851,66 @@ func (s *Service) RequestPasswordReset(
 	return successMsg, nil
 }
 
-// bumpResetUserCounter increments (or seeds) the per-user reset counter
-// and reports whether the new value exceeds the configured cap. Returns
-// (true, nil) only when the bump pushed the count beyond
-// passwordResetMaxPerUser. The counter shares the reset TTL so it ages
-// out with the entries it bounds.
-func (s *Service) bumpResetUserCounter(ctx context.Context, userUID string) (bool, error) {
-	key := passwordResetCountKeyPrefix + userUID
+// counterValue extracts the integer value from a state entry that holds
+// a {"count": N} payload. JSON marshalling promotes ints to float64 so we
+// accept both shapes; anything else is treated as zero.
+func counterValue(entry *models.StateEntry) int {
+	if entry == nil || entry.Value == nil {
+		return 0
+	}
 
+	switch v := (*entry.Value)["count"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	case int64:
+		return int(v)
+	default:
+		return 0
+	}
+}
+
+// bumpCounter loads / increments / persists a counter at the given state
+// key, scoped to the supplied TTL. Reports whether the count was already
+// at or above the cap (in which case no bump happens).
+func (s *Service) bumpCounter(
+	ctx context.Context, key string, cap int, ttl time.Duration,
+) (bool, error) {
 	current, err := s.db.GetStateEntry(ctx, nil, key)
 	if err != nil {
 		return false, err
 	}
 
-	count := 0
-	if current != nil && current.Value != nil {
-		if v, ok := (*current.Value)["count"].(float64); ok {
-			count = int(v)
-		}
-	}
+	count := counterValue(current)
 
-	if count >= passwordResetMaxPerUser {
+	if count >= cap {
 		return true, nil
 	}
 
 	count++
 	value := &models.JSONMap{"count": count}
-	ttl := passwordResetTTL
-	if err := s.db.SetStateEntry(ctx, nil, key, value, &ttl); err != nil {
+	scopedTTL := ttl
+	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
 		return false, err
 	}
 
 	return false, nil
 }
 
+// bumpResetUserCounter increments (or seeds) the per-user reset counter
+// and reports whether the new value exceeds the configured cap. The
+// counter shares the reset TTL so it ages out with the entries it bounds.
+func (s *Service) bumpResetUserCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		passwordResetCountKeyPrefix+userUID, passwordResetMaxPerUser, passwordResetTTL)
+}
+
 // bumpResetIPCounter increments (or seeds) the per-IP reset counter on a
 // 1-minute window and reports whether the new value exceeds the cap.
 func (s *Service) bumpResetIPCounter(ctx context.Context, remoteAddr string) (bool, error) {
-	key := passwordResetIPKeyPrefix + remoteAddr
-
-	current, err := s.db.GetStateEntry(ctx, nil, key)
-	if err != nil {
-		return false, err
-	}
-
-	count := 0
-	if current != nil && current.Value != nil {
-		if v, ok := (*current.Value)["count"].(float64); ok {
-			count = int(v)
-		}
-	}
-
-	if count >= passwordResetMaxPerIP {
-		return true, nil
-	}
-
-	count++
-	value := &models.JSONMap{"count": count}
-	ttl := passwordResetIPWindow
-	if err := s.db.SetStateEntry(ctx, nil, key, value, &ttl); err != nil {
-		return false, err
-	}
-
-	return false, nil
+	return s.bumpCounter(ctx,
+		passwordResetIPKeyPrefix+remoteAddr, passwordResetMaxPerIP, passwordResetIPWindow)
 }
 
 // ResetPassword validates a reset token and sets a new password.
