@@ -49,7 +49,7 @@ export interface Check {
   updatedAt?: string;
   lastResult?: {
     uid?: string;
-    status?: "up" | "down" | "error" | "timeout";
+    status?: "up" | "down" | "error" | "timeout" | "created";
     timestamp?: string;
     durationMs?: number;
     metrics?: Record<string, unknown>;

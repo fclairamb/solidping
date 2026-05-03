@@ -198,6 +198,7 @@
   },
   "detail": {
     "checkDetails": "Prüfungsdetails",
+    "pendingFirstRun": "Erste Ausführung läuft …",
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
     "results": "Ergebnisse",
