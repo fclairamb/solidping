@@ -330,6 +330,20 @@ type Service interface {
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
 
+	// Membership-request operations
+	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
+	UpdateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
+	GetMembershipRequest(ctx context.Context, uid string) (*models.MembershipRequest, error)
+	GetMembershipRequestByOrgAndUser(
+		ctx context.Context, orgUID, userUID string,
+	) (*models.MembershipRequest, error)
+	ListMembershipRequests(
+		ctx context.Context, filter models.ListMembershipRequestsFilter,
+	) ([]*models.MembershipRequest, error)
+	ApproveMembershipRequest(
+		ctx context.Context, request *models.MembershipRequest, member *models.OrganizationMember,
+	) error
+
 	// Close closes the database connection and cleans up resources
 	io.Closer
 }
