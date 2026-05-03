@@ -188,7 +188,7 @@ See `docs/conventions/frontend-errors.md` for full details.
 
 ## Specs
 - All spec files must be prefixed with `YYYY-MM-DD-NN-` where `NN` is a zero-padded two-digit order number (e.g., `2026-02-21-01-adaptive-incident-resolution.md`)
-- The order number `NN` must not conflict with any other spec sharing the same `YYYY-MM` month, across both `specs/todos/` and `specs/done/YYYY/MM/`. Before creating a new spec, list existing files in those locations for the current month and pick the next available number.
+- The order number `NN` resets per date: it must be unique among specs sharing the same `YYYY-MM-DD` day, across both `specs/todos/` and `specs/done/YYYY/MM/`, but two specs on different dates may reuse the same number (e.g., `2026-05-01-01`, `2026-05-01-02`, `2026-05-01-03`, `2026-05-02-01`, `2026-05-02-02`). Before creating a new spec, list existing files in those locations for the current date and pick the next available number.
 - `specs/done/` contains completed specs in `YYYY/MM/` subdirectories (e.g., `specs/done/2025/12/2025-12-07-01-auth.md`)
 - `specs/backlog/` contains specs planned for future implementation
 - `specs/cancelled/` contains abandoned specs (same `YYYY/MM/` structure)
