@@ -141,6 +141,27 @@ Ship incrementally — each step leaves the app in a working state.
 7. Run all `make dev-test` verification scenarios above.
 8. Refresh `web/dash0/CLAUDE.md` to drop the stale "public read-only" framing.
 
+## Implementation Plan
+
+The "Implementation order" section above defines the steps. We commit at each
+of those boundaries:
+
+1. Extract `getEventIcon` / `getEventLabel` into a shared `event-display.tsx`;
+   refactor `events.tsx` to consume it.
+2. Add the `refetchInterval?` option to `useEvents` in `hooks.ts` (matching
+   the `useIncidents` and `useResults` pattern).
+3. Add the `dashboard.json` i18n namespace (en/fr/de/es) and register it in
+   `i18n.ts`.
+4. Build the `OrgDashboardPage` component (header, overall-status banner,
+   KPI tiles, two-column body, recent activity) with per-card error
+   boundaries and 30/60s polling.
+5. Swap the `/orgs/$org` redirect for `component: OrgDashboardPage` while
+   keeping the `?access_token=` early-return guard.
+6. Refresh `web/dash0/CLAUDE.md` to drop the stale "public read-only status
+   page" framing.
+7. QA: `make build-backend`, `make lint-back`, `make test`, plus
+   `cd web/dash0 && bun run lint && bun run build:no-check`.
+
 ## Critical files (read these first)
 
 - `web/dash0/src/routes/orgs/$org/index.tsx` — current redirect stub being replaced.

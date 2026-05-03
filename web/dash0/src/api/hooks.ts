@@ -668,10 +668,12 @@ export function useEvents(
     eventType?: string;
     cursor?: string;
     size?: number;
+    refetchInterval?: number;
   }
 ) {
+  const { refetchInterval, ...queryOptions } = options || {};
   return useQuery({
-    queryKey: ["events", org, options],
+    queryKey: ["events", org, queryOptions],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (options?.checkUid) params.set("checkUid", options.checkUid);
@@ -692,6 +694,7 @@ export function useEvents(
       };
     },
     enabled: !!org,
+    refetchInterval,
   });
 }
 

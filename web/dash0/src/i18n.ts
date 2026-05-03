@@ -12,6 +12,7 @@ import enOrg from "./locales/en/org.json";
 import enServer from "./locales/en/server.json";
 import enStatusPages from "./locales/en/statusPages.json";
 import enBadges from "./locales/en/badges.json";
+import enDashboard from "./locales/en/dashboard.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -23,6 +24,7 @@ import frOrg from "./locales/fr/org.json";
 import frServer from "./locales/fr/server.json";
 import frStatusPages from "./locales/fr/statusPages.json";
 import frBadges from "./locales/fr/badges.json";
+import frDashboard from "./locales/fr/dashboard.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -34,6 +36,7 @@ import deOrg from "./locales/de/org.json";
 import deServer from "./locales/de/server.json";
 import deStatusPages from "./locales/de/statusPages.json";
 import deBadges from "./locales/de/badges.json";
+import deDashboard from "./locales/de/dashboard.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -45,6 +48,7 @@ import esOrg from "./locales/es/org.json";
 import esServer from "./locales/es/server.json";
 import esStatusPages from "./locales/es/statusPages.json";
 import esBadges from "./locales/es/badges.json";
+import esDashboard from "./locales/es/dashboard.json";
 
 i18n
   .use(LanguageDetector)
@@ -63,6 +67,7 @@ i18n
         server: enServer,
         statusPages: enStatusPages,
         badges: enBadges,
+        dashboard: enDashboard,
       },
       fr: {
         common: frCommon,
@@ -76,6 +81,7 @@ i18n
         server: frServer,
         statusPages: frStatusPages,
         badges: frBadges,
+        dashboard: frDashboard,
       },
       de: {
         common: deCommon,
@@ -89,6 +95,7 @@ i18n
         server: deServer,
         statusPages: deStatusPages,
         badges: deBadges,
+        dashboard: deDashboard,
       },
       es: {
         common: esCommon,
@@ -102,6 +109,7 @@ i18n
         server: esServer,
         statusPages: esStatusPages,
         badges: esBadges,
+        dashboard: esDashboard,
       },
     },
     defaultNS: "common",
