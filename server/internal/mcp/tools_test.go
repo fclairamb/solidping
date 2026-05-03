@@ -121,6 +121,12 @@ func TestToolDefinitions(t *testing.T) {
 		createStatusPageResourceDef(),
 		updateStatusPageResourceDef(),
 		deleteStatusPageResourceDef(),
+		listMaintenanceWindowsDef(),
+		getMaintenanceWindowDef(),
+		createMaintenanceWindowDef(),
+		updateMaintenanceWindowDef(),
+		deleteMaintenanceWindowDef(),
+		setMaintenanceWindowChecksDef(),
 	}
 
 	for _, def := range defs {
@@ -145,8 +151,8 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 26)
-	r.Len(handler.toolMap, 26)
+	r.Len(handler.tools, 32)
+	r.Len(handler.toolMap, 32)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {

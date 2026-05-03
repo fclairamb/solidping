@@ -36,6 +36,13 @@ func (h *Handler) registerTools() {
 		{createStatusPageResourceDef(), h.toolCreateStatusPageResource},
 		{updateStatusPageResourceDef(), h.toolUpdateStatusPageResource},
 		{deleteStatusPageResourceDef(), h.toolDeleteStatusPageResource},
+		// Maintenance windows
+		{listMaintenanceWindowsDef(), h.toolListMaintenanceWindows},
+		{getMaintenanceWindowDef(), h.toolGetMaintenanceWindow},
+		{createMaintenanceWindowDef(), h.toolCreateMaintenanceWindow},
+		{updateMaintenanceWindowDef(), h.toolUpdateMaintenanceWindow},
+		{deleteMaintenanceWindowDef(), h.toolDeleteMaintenanceWindow},
+		{setMaintenanceWindowChecksDef(), h.toolSetMaintenanceWindowChecks},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))
