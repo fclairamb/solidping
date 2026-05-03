@@ -909,6 +909,28 @@ func (m *mockDBService) IsCheckInActiveMaintenance(_ context.Context, _ string) 
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateFile(_ context.Context, _ *models.File) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetFile(_ context.Context, _, _ string) (*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetFileAny(_ context.Context, _ string) (*models.File, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListFiles(
+	_ context.Context, _ string, _ models.ListFilesFilter,
+) ([]*models.File, int64, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

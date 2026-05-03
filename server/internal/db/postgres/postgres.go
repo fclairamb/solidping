@@ -3578,3 +3578,103 @@ func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID strin
 
 	return false, nil
 }
+
+// CreateFile inserts a new file row.
+func (s *Service) CreateFile(ctx context.Context, file *models.File) error {
+	_, err := s.db.NewInsert().Model(file).Exec(ctx)
+
+	return err
+}
+
+// GetFile retrieves a file by UID for an organization, excluding soft-deleted rows.
+func (s *Service) GetFile(ctx context.Context, orgUID, uid string) (*models.File, error) {
+	file := new(models.File)
+
+	err := s.db.NewSelect().
+		Model(file).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
+// GetFileAny retrieves a file by UID without org scoping. Used by the public
+// signed-URL handler — the signature already proves authorization.
+func (s *Service) GetFileAny(ctx context.Context, uid string) (*models.File, error) {
+	file := new(models.File)
+
+	err := s.db.NewSelect().
+		Model(file).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return file, nil
+}
+
+// ListFiles returns files for an organization with optional substring search on name.
+func (s *Service) ListFiles(
+	ctx context.Context, orgUID string, filter models.ListFilesFilter,
+) ([]*models.File, int64, error) {
+	var files []*models.File
+
+	query := s.db.NewSelect().
+		Model(&files).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC")
+
+	if filter.Q != "" {
+		query = query.Where("name ILIKE ?", "%"+filter.Q+"%")
+	}
+
+	total, err := query.Count(ctx)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	err = query.Scan(ctx)
+
+	return files, int64(total), err
+}
+
+// DeleteFile soft-deletes a file by UID, scoped to org.
+func (s *Service) DeleteFile(ctx context.Context, orgUID, uid string) error {
+	res, err := s.db.NewUpdate().
+		Model((*models.File)(nil)).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+	if err != nil {
+		return err
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return sql.ErrNoRows
+	}
+
+	return nil
+}

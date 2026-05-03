@@ -23,6 +23,7 @@ Project-wide standards and naming rules.
 - [conventions/frontend-urls.md](conventions/frontend-urls.md) — Dashboard URL routing (`/dash/orgs/{orgSlug}/...`)
 - [conventions/event-colors.md](conventions/event-colors.md) — Event color scheme: per-type color assignments for check and incident events
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
+- [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions
 
 ## Testing
 
@@ -36,6 +37,7 @@ Project-wide standards and naming rules.
 
 ## Research
 
+- [research/market-feedback.md](research/market-feedback.md) — User pain points, feature wishes, and willingness-to-pay across BetterStack and the competitive set, with SolidPing positioning implications
 - [research/screenshot-tools.md](research/screenshot-tools.md) — Go screenshot tools comparison (chromedp, Rod, gowitness, gochro) — Rod recommended
 
 ## Competitors

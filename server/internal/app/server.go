@@ -41,6 +41,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
+	"github.com/fclairamb/solidping/server/internal/handlers/files"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
+	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
@@ -216,6 +219,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Create auth service
 	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService)
+
+	// Register file storage backends. Idempotent — safe to call once at startup.
+	localfs.Register()
+	s3fs.Register()
 
 	server := &Server{
 		dbService:   dbService,
@@ -496,6 +503,17 @@ func (s *Server) setupRoutes() {
 	eventsHandler := events.NewHandler(eventsService, s.config)
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
+
+	// Files routes (authentication required for org-scoped, plus public signed-URL route)
+	filesService := files.NewService(s.dbService, s.config)
+	filesHandler := files.NewHandler(filesService, s.config)
+	orgFiles := api.NewGroup("/orgs/:org/files").Use(authMiddleware.RequireAuth)
+	orgFiles.GET("", filesHandler.List)
+	orgFiles.GET("/:uid", filesHandler.Get)
+	orgFiles.GET("/:uid/content", filesHandler.GetContent)
+	orgFiles.DELETE("/:uid", filesHandler.Delete)
+	pubFiles := mainGroup.NewGroup("/pub/files")
+	pubFiles.GET("/:uid", filesHandler.PublicGet)
 
 	// Members routes (authentication required)
 	membersService := members.NewService(s.dbService)

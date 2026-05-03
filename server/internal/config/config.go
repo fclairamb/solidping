@@ -121,6 +121,7 @@ type Config struct {
 	Prometheus  PrometheusConfig     `koanf:"prometheus"`
 	Checkers    CheckersConfig       `koanf:"checkers"`
 	Aggregation AggregationConfig    `koanf:"aggregation"`
+	FileStorage FileStorageConfig    `koanf:"filestorage"`
 	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -165,6 +166,18 @@ type EmailConfig struct {
 	InsecureSkipVerify bool   `koanf:"insecureskipverify"` // Skip TLS certificate verification
 	AuthType           string `koanf:"authtype"`           // SMTP auth type: plain, login, cram-md5 (default: login)
 	Protocol           string `koanf:"protocol"`           // SMTP encryption: none, starttls, ssl (default: starttls)
+}
+
+// FileStorageConfig controls where File blobs are persisted. The bytes live
+// behind one of the registered backends (local FS, S3); the metadata always
+// lives in the `files` table. AWS credentials are not stored here — they
+// come from the standard AWS SDK chain (env, IAM role, shared config).
+type FileStorageConfig struct {
+	Type      string `koanf:"type"`       // "local" (default) or "s3"
+	LocalRoot string `koanf:"local_root"` // local backend root, e.g. "./data/files"
+	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
+	S3Region  string `koanf:"s3_region"`  // S3 backend region
+	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
 }
 
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
@@ -272,6 +285,10 @@ func Load() (*Config, error) {
 			RetentionRaw:  24,
 			RetentionHour: 30,
 			RetentionDay:  12,
+		},
+		FileStorage: FileStorageConfig{
+			Type:      "local",
+			LocalRoot: "./data/files",
 		},
 		Google:    GoogleOAuthConfig{Enabled: false},
 		GitHub:    GitHubOAuthConfig{Enabled: false},
