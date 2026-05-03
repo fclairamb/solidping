@@ -263,3 +263,15 @@ template stay as-is. The only new public knob is the rate-limit code (point 4).
 ### Frontend (existing)
 - `web/dash0/src/routes/forgot-password.tsx` — stop swallowing errors
 - `web/dash0/src/locales/{en,de,es,fr}/auth.json` — generic send-failure string
+
+## Implementation Plan
+
+1. Add `ErrorCodeRateLimited` to `server/internal/handlers/base/base.go` and add a small helper `WriteRateLimitError` if it makes downstream wiring shorter.
+2. Storage rework — switch reset entries to `password_reset:{sha256_hex(token)}` with `{userUid: …}` value, add a per-user counter `password_reset_count:{userUid}` (TTL = passwordResetTTL) so we can enforce the per-email cap without scanning. Keep the public token wire format unchanged (32-byte hex string).
+3. Update `RequestPasswordReset` to use the new storage, increment the counter, drop the request silently on >3 active entries per user.
+4. Per-IP rate limit on `RequestPasswordReset` — 5/min via a `pwd_reset_rl:{ip}` counter; on overflow return 429 with `RATE_LIMITED`. Plumb the IP through from the handler.
+5. Update `ResetPassword` to hash the inbound token, do an O(1) `GetStateEntry`, look up user by UID, validate + hash + update, revoke refresh tokens (PATs preserved), enqueue confirmation email, delete the entry + counter.
+6. Add `password-changed.html` template + matching subject in the mailer.
+7. Frontend: stop swallowing errors in `web/dash0/src/routes/forgot-password.tsx`; add a generic send-failure i18n key in en/de/es/fr.
+8. Tests in `service_test.go` covering all 11 scenarios from the table above.
+9. `make build-backend lint-back test` clean; manual smoke per the verification section.
