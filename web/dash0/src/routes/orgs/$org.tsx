@@ -182,13 +182,20 @@ function Breadcrumbs({ org }: { org: string }) {
   // Organization section
   const isOrganization = matches.some((m) => m.routeId.startsWith("/orgs/$org/organization"));
   if (isOrganization) {
+    const isMembers = routeIds.has("/orgs/$org/organization/members");
     const isInvitations = routeIds.has("/orgs/$org/organization/invitations");
     const isSettings = routeIds.has("/orgs/$org/organization/settings");
-    const subLabel = isInvitations ? t("invitations") : isSettings ? t("settings") : null;
+    const subLabel = isMembers
+      ? t("members")
+      : isInvitations
+        ? t("invitations")
+        : isSettings
+          ? t("settings")
+          : null;
     return (
       <>
         {subLabel ? (
-          <Link to="/orgs/$org/organization/invitations" params={{ org }} className={linkClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</Link>
+          <Link to="/orgs/$org/organization/members" params={{ org }} className={linkClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</Link>
         ) : (
           <span className={activeClass}><Building className={iconClass} />{t("organization", { ns: "common" })}</span>
         )}
