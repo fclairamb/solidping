@@ -198,3 +198,12 @@ Run `make dev-test` and exercise the page end-to-end:
 10. Run `make lint` and `make test` — both clean.
 
 Known limitation to document in the PR description (not a verification step): a removed member's existing JWT remains valid until expiry. Track in a separate spec for session/JWT invalidation on membership delete.
+
+## Implementation Plan
+
+1. Extend `web/dash0/src/api/hooks.ts` with `MemberResponse`, `useMembers`, `useUpdateMember`, `useRemoveMember` (no `useAddMember`). Place next to the invitation hooks.
+2. Extend the four locale files (`en/`, `fr/`, `de/`, `es/`) — add `nav:members` and the new `members.*` keys to `org.json`. Re-export them in `i18n.ts` if needed (the org namespace is already wired).
+3. Insert the Members tab as the first tab in `organization.tsx`.
+4. Create `organization.members.tsx` — Card + Table + AlertDialogs + Tooltip; inline role Select with optimistic update; disable both controls on the current user's row by email match; demote-to-viewer confirmation gate.
+5. Lint + build the dash0 bundle to confirm types.
+6. `make build-backend build-dash0 lint-back test` clean.
