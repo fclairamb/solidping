@@ -11,7 +11,7 @@ func (c *WebSocketChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []c
 	return []checkerdef.CheckSpec{
 		{
 			Name:   "WebSocket: echo.websocket.org",
-			Slug:   "ws-echo-websocket-org",
+			Slug:   "ws-websocket",
 			Period: 5 * time.Minute,
 			Config: (&WebSocketConfig{
 				URL:    "wss://echo.websocket.org",

@@ -10,11 +10,11 @@ import (
 func (c *A2SChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	return []checkerdef.CheckSpec{
 		{
-			Name:   "A2S Server",
-			Slug:   "a2s-server",
+			Name:   "A2S Public Server (116.202.55.117)",
+			Slug:   "a2s-1",
 			Period: 5 * time.Minute,
 			Config: (&A2SConfig{
-				Host: "game.example.com",
+				Host: "116.202.55.117",
 				Port: defaultPort,
 			}).GetConfig(),
 		},
