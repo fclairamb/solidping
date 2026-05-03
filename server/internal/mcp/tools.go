@@ -19,6 +19,7 @@ func (h *Handler) registerTools() {
 		{createConnectionDef(), h.toolCreateConnection},
 		{listCheckGroupsDef(), h.toolListCheckGroups},
 		{listRegionsDef(), h.toolListRegions},
+		{diagnoseCheckDef(), h.toolDiagnoseCheck},
 	}
 
 	h.tools = make([]ToolDefinition, len(all))
