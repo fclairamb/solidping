@@ -164,3 +164,15 @@ Run `make dev-test`, log in as `admin@solidping.com` / `solidpass`, and exercise
 4. **Equivalence with the Invitations page.** Open the same `+ Invite` flow from the Invitations tab. Same dialog, same form fields, same error display, same success view. (Sanity-check that the extraction didn't drop any behavior.)
 5. **Empty state.** If an org has zero members visible to the table (this is essentially a synthetic case — the viewing admin is always present — but seed it via `SP_DB_RESET=true` and a test fixture if needed): the empty state reads "No members yet — invite your first teammate." with no pointer to the Invitations tab.
 6. **Lints + tests.** `make lint` and `make test` clean.
+
+## Implementation Plan
+
+> Note: when picking up this spec mid-stream, the command-palette `members` entry already
+> landed in `web/dash0/src/components/CommandMenu.tsx` (commit `6d55d594` on the batch
+> branch). Steps below cover only the bits that aren't already in place.
+
+1. Extract `<CreateInvitationDialog>` to `web/dash0/src/components/shared/create-invitation-dialog.tsx`. Move the form / success / copy / error states + the `useCreateInvitation` wiring out of `organization.invitations.tsx`. Keep behavior identical; expose `org`, optional `trigger`, optional `onCreated`. Default trigger renders the `+ Invite` button.
+2. Rewire `organization.invitations.tsx` to consume `<CreateInvitationDialog>`; drop the now-unused state / imports.
+3. Add `<CreateInvitationDialog>` to the Members page header and update the empty-state copy across all four locales (`members.empty`).
+4. Add the `Members` case to the breadcrumb branch in `routes/orgs/$org.tsx` (organization section).
+5. Build + lint + test green.
