@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
+  BadgeCheck,
   Copy,
   Check as CheckIcon,
   Download,
@@ -317,7 +318,10 @@ function BadgesPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-3xl font-bold tracking-tight">{t("title")}</h1>
+        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+          <BadgeCheck className="h-7 w-7 text-muted-foreground" />
+          {t("title")}
+        </h1>
         <p className="text-muted-foreground">{t("subtitle")}</p>
       </div>
 
