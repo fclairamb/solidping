@@ -10,7 +10,13 @@ import (
 	"github.com/wneessen/go-mail"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/version"
 )
+
+// defaultFromName is used as the display name in the From header when the
+// operator has not set one explicitly. Mail clients render bare addresses
+// awkwardly, so we always send a name.
+const defaultFromName = "SolidPing"
 
 // ErrNoRecipients is returned when no recipients are specified.
 var ErrNoRecipients = errors.New("no recipients specified")
@@ -59,6 +65,9 @@ func (s *SMTPSender) Send(ctx context.Context, msg *Message) (*SendResult, error
 func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	mailMsg := mail.NewMsg()
 
+	// Identify ourselves; otherwise go-mail stamps "go-mail vX.Y.Z" as X-Mailer.
+	mailMsg.SetGenHeader(mail.HeaderXMailer, "SolidPing/"+version.Version)
+
 	if err := s.setFrom(mailMsg); err != nil {
 		return nil, err
 	}
@@ -73,16 +82,16 @@ func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 	return mailMsg, nil
 }
 
-// setFrom sets the sender address on the message.
+// setFrom sets the sender address on the message, defaulting the display
+// name when the operator has not configured one.
 func (s *SMTPSender) setFrom(mailMsg *mail.Msg) error {
-	if s.config.FromName != "" {
-		if err := mailMsg.FromFormat(s.config.FromName, s.config.From); err != nil {
-			return fmt.Errorf("setting from address: %w", err)
-		}
-	} else {
-		if err := mailMsg.From(s.config.From); err != nil {
-			return fmt.Errorf("setting from address: %w", err)
-		}
+	name := s.config.FromName
+	if name == "" {
+		name = defaultFromName
+	}
+
+	if err := mailMsg.FromFormat(name, s.config.From); err != nil {
+		return fmt.Errorf("setting from address: %w", err)
 	}
 
 	return nil

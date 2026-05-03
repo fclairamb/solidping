@@ -5,9 +5,11 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/wneessen/go-mail"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 )
@@ -63,6 +65,62 @@ func TestSender_NoRecipients(t *testing.T) {
 	r.Error(err)
 	r.Nil(result)
 	r.ErrorIs(err, ErrNoRecipients)
+}
+
+func TestBuildMessage_HeadersIdentitySolidPing(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		fromName    string
+		wantFromHas string
+	}{
+		{
+			name:        "default from name when unset",
+			fromName:    "",
+			wantFromHas: `"` + defaultFromName + `" <`,
+		},
+		{
+			name:        "custom from name preserved",
+			fromName:    "Acme Status",
+			wantFromHas: `"Acme Status" <`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			cfg := &config.EmailConfig{
+				Enabled:  true,
+				Host:     "localhost",
+				Port:     587,
+				From:     "noreply@example.com",
+				FromName: tc.fromName,
+			}
+
+			sender := NewSender(cfg, slog.Default())
+			mailMsg, err := sender.buildMessage(&Message{
+				Recipients: Recipients{To: []string{"to@example.com"}},
+				Subject:    "Hello",
+				Text:       "Body",
+			})
+			r.NoError(err)
+
+			xMailers := mailMsg.GetGenHeader(mail.HeaderXMailer)
+			r.Len(xMailers, 1)
+			r.True(strings.HasPrefix(xMailers[0], "SolidPing/"),
+				"X-Mailer should start with SolidPing/, got %q", xMailers[0])
+			r.NotContains(xMailers[0], "go-mail")
+
+			froms := mailMsg.GetFromString()
+			r.Len(froms, 1)
+			r.Contains(froms[0], tc.wantFromHas)
+			r.Contains(froms[0], "noreply@example.com")
+		})
+	}
 }
 
 func TestSendEmail_Integration(t *testing.T) {
