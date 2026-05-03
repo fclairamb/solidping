@@ -36,6 +36,11 @@ type ValidateCheckResponse struct {
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
 }
 
+// eventPayloadCheckUIDKey is the JSON key used in check.* event payloads
+// for the check UID. Centralized so producers and consumers (notably the
+// express runner) cannot drift out of sync.
+const eventPayloadCheckUIDKey = "check_uid"
+
 // slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
 // Total length: 3-20 characters.
 var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,19}$`)
@@ -947,7 +952,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":              check.UID,
+		eventPayloadCheckUIDKey:  check.UID,
 		"check_slug":             check.Slug,
 		"check_name":             check.Name,
 		"check_type":             check.Type,
@@ -1222,10 +1227,10 @@ func (s *Service) emitEvent(
 	event := models.NewEvent(orgUID, eventType, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
-		"check_name": check.Name,
-		"check_type": check.Type,
+		eventPayloadCheckUIDKey: check.UID,
+		"check_slug":            check.Slug,
+		"check_name":            check.Name,
+		"check_type":            check.Type,
 	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
@@ -1238,7 +1243,7 @@ func (s *Service) emitEvent(
 	// regular fetcher pool.
 	if s.eventNotifier != nil {
 		payload := "{}"
-		if encoded, err := json.Marshal(map[string]string{"check_uid": check.UID}); err == nil {
+		if encoded, err := json.Marshal(map[string]string{eventPayloadCheckUIDKey: check.UID}); err == nil {
 			payload = string(encoded)
 		}
 

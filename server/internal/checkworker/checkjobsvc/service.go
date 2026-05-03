@@ -104,7 +104,7 @@ const expressClaimLimit = 4
 // ClaimJobsForCheck claims any due check_jobs rows for a specific check
 // without consulting the rest of the queue. Reuses the same select +
 // lease-update plumbing as ClaimJobs so lease semantics, lease_starts
-// counting and SKIP LOCKED behaviour are identical.
+// counting and SKIP LOCKED behavior are identical.
 func (s *serviceImpl) ClaimJobsForCheck(
 	ctx context.Context,
 	workerUID string,

@@ -312,13 +312,13 @@ func (r *CheckWorker) expressLoop(ctx context.Context) {
 	logger.InfoContext(ctx, "Express runner started")
 	defer logger.InfoContext(ctx, "Express runner stopped")
 
-	ch := r.services.EventNotifier.Listen("check.created")
+	events := r.services.EventNotifier.Listen("check.created")
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case payload, ok := <-ch:
+		case payload, ok := <-events:
 			if !ok {
 				return
 			}
@@ -332,8 +332,12 @@ func (r *CheckWorker) expressLoop(ctx context.Context) {
 // check_uid), in which case the express path silently no-ops and the
 // regular fetcher still picks the new check up on its next poll.
 func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logger, payload string) {
+	// The wire format uses snake_case to stay aligned with the check.* event
+	// payloads stored in the events table; switching only the notifier
+	// payload to camelCase would split the convention across two surfaces
+	// for the same check_uid concept.
 	var msg struct {
-		CheckUID string `json:"check_uid"`
+		CheckUID string `json:"check_uid"` //nolint:tagliatelle // intentional: matches event payload convention
 	}
 
 	if err := json.Unmarshal([]byte(payload), &msg); err != nil || msg.CheckUID == "" {
