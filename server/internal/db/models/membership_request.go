@@ -14,7 +14,7 @@ const (
 	MembershipRequestStatusPending   MembershipRequestStatus = "pending"
 	MembershipRequestStatusApproved  MembershipRequestStatus = "approved"
 	MembershipRequestStatusRejected  MembershipRequestStatus = "rejected"
-	MembershipRequestStatusCancelled MembershipRequestStatus = "cancelled"
+	MembershipRequestStatusCancelled MembershipRequestStatus = "canceled"
 )
 
 // MembershipRequest represents a user's ask to join an organization.

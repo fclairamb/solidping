@@ -280,6 +280,9 @@ func (s *Server) setupRoutes() {
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
+	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
+	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
+	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
 
 	// Org creation (protected)
 	orgsGroup := api.NewGroup("/orgs").Use(authMiddleware.RequireAuth)
@@ -300,6 +303,12 @@ func (s *Server) setupRoutes() {
 	orgSettings := api.NewGroup("/orgs/:org/settings").Use(authMiddleware.RequireAuth)
 	orgSettings.GET("", authHandler.GetOrgSettings)
 	orgSettings.PATCH("", authHandler.UpdateOrgSettings)
+
+	// Org membership requests (protected, admin-only checked in handler)
+	orgMembershipRequests := api.NewGroup("/orgs/:org/membership-requests").Use(authMiddleware.RequireAuth)
+	orgMembershipRequests.GET("", authHandler.ListOrgMembershipRequestsHandler)
+	orgMembershipRequests.POST("/:uid/approve", authHandler.ApproveMembershipRequestHandler)
+	orgMembershipRequests.POST("/:uid/reject", authHandler.RejectMembershipRequestHandler)
 
 	// Slack OAuth routes (org-independent, public)
 	if s.config.Slack.Enabled && s.config.Slack.ClientID != "" {

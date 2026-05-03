@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,10 +46,7 @@ func TestValidateAutoJoinRegex(t *testing.T) {
 			err := validateAutoJoinRegex(tc.pattern)
 			if tc.wantErr {
 				r.Error(err)
-				r.True(
-					errors.Is(err, ErrInvalidAutoJoinRegex),
-					"expected ErrInvalidAutoJoinRegex, got %v", err,
-				)
+				r.ErrorIs(err, ErrInvalidAutoJoinRegex)
 			} else {
 				r.NoError(err)
 			}

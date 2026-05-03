@@ -244,10 +244,30 @@ type Disable2FARequest struct {
 
 // MeResponse contains the current user's information.
 type MeResponse struct {
-	User          *UserInfo             `json:"user"`
-	Organization  *OrganizationInfo     `json:"organization"`
-	Organizations []OrganizationSummary `json:"organizations"`
-	TOTPEnabled   bool                  `json:"totpEnabled"`
+	User                      *UserInfo                  `json:"user"`
+	Organization              *OrganizationInfo          `json:"organization"`
+	Organizations             []OrganizationSummary      `json:"organizations"`
+	TOTPEnabled               bool                       `json:"totpEnabled"`
+	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
+}
+
+// MembershipRequestSummary is the compact form returned on /auth/me and
+// /auth/membership-requests for the requester to render their queue.
+type MembershipRequestSummary struct {
+	UID            string                         `json:"uid"`
+	Organization   OrganizationRef                `json:"organization"`
+	Status         models.MembershipRequestStatus `json:"status"`
+	Message        string                         `json:"message,omitempty"`
+	DecisionReason string                         `json:"decisionReason,omitempty"`
+	CreatedAt      time.Time                      `json:"createdAt"`
+	DecidedAt      *time.Time                     `json:"decidedAt,omitempty"`
+}
+
+// OrganizationRef is a slug+name handle to an org.
+type OrganizationRef struct {
+	UID  string `json:"uid"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 // UpdateProfileRequest contains the fields that can be updated on the user profile.
@@ -1023,6 +1043,11 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		return nil, err
 	}
 
+	pending, err := s.listPendingMembershipRequests(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MeResponse{
 		User: &UserInfo{
 			UID:       user.UID,
@@ -1036,8 +1061,9 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			Slug: org.Slug,
 			Name: org.Name,
 		},
-		Organizations: orgs,
-		TOTPEnabled:   user.TOTPEnabled,
+		Organizations:             orgs,
+		TOTPEnabled:               user.TOTPEnabled,
+		PendingMembershipRequests: pending,
 	}, nil
 }
 

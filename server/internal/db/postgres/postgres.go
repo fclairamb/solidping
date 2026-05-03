@@ -3748,16 +3748,16 @@ func (s *Service) ListMembershipRequests(
 		Model(&requests).
 		Relation("Organization").
 		Relation("User").
-		Order("created_at DESC")
+		Order("membership_request.created_at DESC")
 
 	if filter.OrganizationUID != "" {
-		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+		query = query.Where("membership_request.organization_uid = ?", filter.OrganizationUID)
 	}
 	if filter.UserUID != "" {
-		query = query.Where("user_uid = ?", filter.UserUID)
+		query = query.Where("membership_request.user_uid = ?", filter.UserUID)
 	}
 	if filter.Status != "" {
-		query = query.Where("status = ?", filter.Status)
+		query = query.Where("membership_request.status = ?", filter.Status)
 	}
 	if filter.Limit > 0 {
 		query = query.Limit(filter.Limit)

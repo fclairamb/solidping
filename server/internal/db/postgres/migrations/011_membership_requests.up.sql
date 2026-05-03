@@ -7,7 +7,7 @@ CREATE TABLE membership_requests (
   organization_uid uuid NOT NULL REFERENCES organizations(uid) ON DELETE CASCADE,
   user_uid         uuid NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
   message          text,
-  status           text NOT NULL CHECK (status IN ('pending','approved','rejected','cancelled')),
+  status           text NOT NULL CHECK (status IN ('pending','approved','rejected','canceled')),
   decision_reason  text,
   decided_at       timestamptz,
   decided_by_uid   uuid REFERENCES users(uid) ON DELETE SET NULL,
