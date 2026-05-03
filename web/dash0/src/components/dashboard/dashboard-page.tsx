@@ -10,6 +10,7 @@ import {
   ArrowRight,
   CheckCircle,
   Clock,
+  LayoutDashboard,
   ListChecks,
   Plus,
   RefreshCw,
@@ -106,6 +107,7 @@ function weightedAvailability(results: OrgResult[]): number | null {
 
 export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t } = useTranslation("dashboard");
+  const { t: tNav } = useTranslation("nav");
   const { organizations } = useAuth();
   const orgName = organizations.find((o) => o.slug === org)?.name || org;
 
@@ -196,8 +198,15 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{orgName}</h1>
-          <p className="text-muted-foreground">{t("subtitle")}</p>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <LayoutDashboard className="h-7 w-7 text-muted-foreground" />
+            {tNav("dashboard")}
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            <span className="font-medium text-foreground">{orgName}</span>
+            {" — "}
+            {t("subtitle")}
+          </p>
         </div>
         <div className="flex items-center gap-3 text-sm text-muted-foreground">
           {updatedLabel ? <span>{updatedLabel}</span> : null}
