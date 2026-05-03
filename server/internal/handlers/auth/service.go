@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -21,9 +22,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
+
+// emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
+// duplicate it here to avoid an import cycle (auth → jobtypes →
+// notifications → slack → auth). Keep the JSON tags in sync with the
+// receiver struct in jobs/jobtypes/job_email.go.
+type emailJobConfig struct {
+	To           []string `json:"to"`
+	Subject      string   `json:"subject"`
+	Template     string   `json:"template,omitempty"`
+	TemplateData any      `json:"templateData,omitempty"`
+}
 
 // Internal property/key constants used in JSONMap fields and OAuth flows.
 const (
@@ -67,13 +80,12 @@ var (
 
 // Service provides authentication business logic.
 type Service struct {
-	db             db.Service
-	cfg            config.AuthConfig
-	fullCfg        *config.Config
-	emailSender    email.Sender
-	emailFormatter email.Formatter
-	patCache       map[string]*cachedPATClaims
-	cacheMux       sync.RWMutex
+	db       db.Service
+	cfg      config.AuthConfig
+	fullCfg  *config.Config
+	jobsSvc  jobsvc.Service
+	patCache map[string]*cachedPATClaims
+	cacheMux sync.RWMutex
 }
 
 type cachedPATClaims struct {
@@ -251,15 +263,44 @@ type CreateTokenResponse struct {
 // NewService creates a new authentication service.
 func NewService(
 	dbService db.Service, cfg config.AuthConfig, fullCfg *config.Config,
-	emailSender email.Sender, emailFormatter email.Formatter,
+	jobsSvc jobsvc.Service,
 ) *Service {
 	return &Service{
-		db:             dbService,
-		cfg:            cfg,
-		fullCfg:        fullCfg,
-		emailSender:    emailSender,
-		emailFormatter: emailFormatter,
-		patCache:       make(map[string]*cachedPATClaims),
+		db:       dbService,
+		cfg:      cfg,
+		fullCfg:  fullCfg,
+		jobsSvc:  jobsSvc,
+		patCache: make(map[string]*cachedPATClaims),
+	}
+}
+
+// enqueueEmail builds an email job and pushes it onto the job queue.
+// Errors are logged but never bubbled to the caller — transactional emails
+// must not block registration, password reset, or invitation flows.
+func (s *Service) enqueueEmail(
+	ctx context.Context, orgUID, recipient, subject, template string, data any,
+) {
+	if s.jobsSvc == nil || recipient == "" {
+		return
+	}
+
+	cfg := emailJobConfig{
+		To:           []string{recipient},
+		Subject:      subject,
+		Template:     template,
+		TemplateData: data,
+	}
+
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to marshal email job config",
+			"template", template, "error", err)
+		return
+	}
+
+	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeEmail), raw, nil); err != nil {
+		slog.ErrorContext(ctx, "Failed to enqueue email job",
+			"template", template, "error", err)
 	}
 }
 
@@ -1487,28 +1528,14 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 		return nil, fmt.Errorf("failed to store registration: %w", err)
 	}
 
-	// Send confirmation email
-	if s.emailSender != nil && s.emailFormatter != nil {
-		baseURL := s.fullCfg.Server.BaseURL
-		confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s", baseURL, token)
-
-		htmlBody, textBody, fmtErr := s.emailFormatter.Format("registration.html", map[string]any{
-			"ConfirmURL": confirmURL,
-		})
-		if fmtErr != nil {
-			slog.ErrorContext(ctx, "Failed to format registration email", "error", fmtErr)
-		} else {
-			msg := &email.Message{
-				Recipients: email.Recipients{To: []string{req.Email}},
-				Subject:    "[SolidPing] Confirm your account",
-				HTML:       htmlBody,
-				Text:       textBody,
-			}
-			if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-				slog.ErrorContext(ctx, "Failed to send registration email", "error", sendErr)
-			}
-		}
-	}
+	// Send confirmation email asynchronously via the email job
+	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
+		s.fullCfg.Server.BaseURL, token)
+	s.enqueueEmail(ctx, "", req.Email,
+		"[SolidPing] Confirm your account",
+		"registration.html",
+		map[string]any{"ConfirmURL": confirmURL},
+	)
 
 	return &RegisterResponse{Message: "Check your email to confirm your account"}, nil
 }
@@ -1750,28 +1777,14 @@ func (s *Service) RequestPasswordReset(
 		return nil, fmt.Errorf("failed to store password reset: %w", err)
 	}
 
-	// Send reset email
-	if s.emailSender != nil && s.emailFormatter != nil {
-		baseURL := s.fullCfg.Server.BaseURL
-		resetURL := fmt.Sprintf("%s/dash0/reset-password/%s", baseURL, token)
-
-		htmlBody, textBody, fmtErr := s.emailFormatter.Format("password-reset.html", map[string]any{
-			"ResetURL": resetURL,
-		})
-		if fmtErr != nil {
-			slog.ErrorContext(ctx, "Failed to format password reset email", "error", fmtErr)
-		} else {
-			msg := &email.Message{
-				Recipients: email.Recipients{To: []string{req.Email}},
-				Subject:    "[SolidPing] Reset your password",
-				HTML:       htmlBody,
-				Text:       textBody,
-			}
-			if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-				slog.ErrorContext(ctx, "Failed to send password reset email", "error", sendErr)
-			}
-		}
-	}
+	// Send reset email asynchronously via the email job
+	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
+		s.fullCfg.Server.BaseURL, token)
+	s.enqueueEmail(ctx, "", req.Email,
+		"[SolidPing] Reset your password",
+		"password-reset.html",
+		map[string]any{"ResetURL": resetURL},
+	)
 
 	return successMsg, nil
 }
@@ -2027,7 +2040,7 @@ func (s *Service) CreateInvitation(
 	expiresAt := time.Now().Add(ttl)
 
 	// Send invitation email
-	s.sendInvitationEmail(ctx, req.Email, inviterUID, org.Name, req.Role, inviteURL)
+	s.sendInvitationEmail(ctx, org.UID, req.Email, inviterUID, org.Name, req.Role, inviteURL)
 
 	return &InviteResponse{
 		UID:       entry.UID,
@@ -2356,36 +2369,24 @@ func maskEmail(email string) string {
 }
 
 func (s *Service) sendInvitationEmail(
-	ctx context.Context, recipientEmail, inviterUID, orgName, role, inviteURL string,
+	ctx context.Context, orgUID, recipientEmail, inviterUID, orgName, role, inviteURL string,
 ) {
-	if recipientEmail == "" || s.emailSender == nil || s.emailFormatter == nil {
+	if recipientEmail == "" {
 		return
 	}
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	htmlBody, textBody, fmtErr := s.emailFormatter.Format("invitation.html", map[string]any{
-		"OrgName":     orgName,
-		"Role":        role,
-		"InviterName": inviterName,
-		"InviteURL":   inviteURL,
-	})
-	if fmtErr != nil {
-		slog.ErrorContext(ctx, "Failed to format invitation email", "error", fmtErr)
-
-		return
-	}
-
-	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{recipientEmail}},
-		Subject:    "[SolidPing] You're invited to " + orgName,
-		HTML:       htmlBody,
-		Text:       textBody,
-	}
-
-	if _, sendErr := s.emailSender.Send(ctx, msg); sendErr != nil {
-		slog.ErrorContext(ctx, "Failed to send invitation email", "error", sendErr)
-	}
+	s.enqueueEmail(ctx, orgUID, recipientEmail,
+		"[SolidPing] You're invited to "+orgName,
+		"invitation.html",
+		map[string]any{
+			"OrgName":     orgName,
+			"Role":        role,
+			"InviterName": inviterName,
+			"InviteURL":   inviteURL,
+		},
+	)
 }
 
 func (s *Service) getInviterName(ctx context.Context, inviterUID string) string {
