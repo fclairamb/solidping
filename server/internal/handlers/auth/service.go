@@ -89,6 +89,20 @@ var (
 	// ErrRateLimited is returned when a client exceeds the per-endpoint
 	// rate limit. The handler maps this to HTTP 429.
 	ErrRateLimited = errors.New("rate limit exceeded")
+	// ErrInvalidAutoJoinRegex is returned when an admin tries to set a
+	// dangerously broad registration email pattern.
+	ErrInvalidAutoJoinRegex = errors.New("invalid auto-join regex pattern")
+	// ErrAlreadyAMember is returned when a user tries to request membership
+	// in an org they already belong to.
+	ErrAlreadyAMember = errors.New("already a member of this organization")
+	// ErrRequestPending is returned when a user re-requests membership
+	// while a previous request is still pending.
+	ErrRequestPending = errors.New("a membership request is already pending")
+	// ErrRequestNotFound is returned when a membership request lookup fails.
+	ErrRequestNotFound = errors.New("membership request not found")
+	// ErrRequestCooldownActive is returned when a user re-requests
+	// membership during the rejection cooldown window.
+	ErrRequestCooldownActive = errors.New("membership request cooldown active")
 )
 
 // Service provides authentication business logic.
@@ -230,10 +244,30 @@ type Disable2FARequest struct {
 
 // MeResponse contains the current user's information.
 type MeResponse struct {
-	User          *UserInfo             `json:"user"`
-	Organization  *OrganizationInfo     `json:"organization"`
-	Organizations []OrganizationSummary `json:"organizations"`
-	TOTPEnabled   bool                  `json:"totpEnabled"`
+	User                      *UserInfo                  `json:"user"`
+	Organization              *OrganizationInfo          `json:"organization"`
+	Organizations             []OrganizationSummary      `json:"organizations"`
+	TOTPEnabled               bool                       `json:"totpEnabled"`
+	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
+}
+
+// MembershipRequestSummary is the compact form returned on /auth/me and
+// /auth/membership-requests for the requester to render their queue.
+type MembershipRequestSummary struct {
+	UID            string                         `json:"uid"`
+	Organization   OrganizationRef                `json:"organization"`
+	Status         models.MembershipRequestStatus `json:"status"`
+	Message        string                         `json:"message,omitempty"`
+	DecisionReason string                         `json:"decisionReason,omitempty"`
+	CreatedAt      time.Time                      `json:"createdAt"`
+	DecidedAt      *time.Time                     `json:"decidedAt,omitempty"`
+}
+
+// OrganizationRef is a slug+name handle to an org.
+type OrganizationRef struct {
+	UID  string `json:"uid"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 // UpdateProfileRequest contains the fields that can be updated on the user profile.
@@ -1009,6 +1043,11 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		return nil, err
 	}
 
+	pending, err := s.listPendingMembershipRequests(ctx, claims.UserUID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &MeResponse{
 		User: &UserInfo{
 			UID:       user.UID,
@@ -1022,8 +1061,9 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 			Slug: org.Slug,
 			Name: org.Name,
 		},
-		Organizations: orgs,
-		TOTPEnabled:   user.TOTPEnabled,
+		Organizations:             orgs,
+		TOTPEnabled:               user.TOTPEnabled,
+		PendingMembershipRequests: pending,
 	}, nil
 }
 
@@ -1741,6 +1781,18 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 
 		patternVal, ok := param.Value["value"].(string)
 		if !ok || patternVal == "" {
+			continue
+		}
+
+		// Defensive: leftover unsafe patterns (set before validation existed)
+		// must be skipped so they cannot adopt every signup. Log and move on
+		// rather than blowing up the registration confirmation path.
+		if err := validateAutoJoinRegex(patternVal); err != nil {
+			slog.WarnContext(
+				ctx, "skipping unsafe auto-join regex",
+				"orgUID", *param.OrganizationUID, "error", err,
+			)
+
 			continue
 		}
 
@@ -2497,8 +2549,8 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 		return s.db.DeleteOrgParameter(ctx, orgUID, "registration.email_pattern")
 	}
 
-	if _, compileErr := regexp.Compile(pattern); compileErr != nil {
-		return fmt.Errorf("%w: invalid regex pattern", ErrInvalidCredentials)
+	if err := validateAutoJoinRegex(pattern); err != nil {
+		return err
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)

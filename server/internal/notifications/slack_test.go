@@ -931,6 +931,42 @@ func (m *mockDBService) DeleteFile(_ context.Context, _, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetMembershipRequest(
+	_ context.Context, _ string,
+) (*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetMembershipRequestByOrgAndUser(
+	_ context.Context, _, _ string,
+) (*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListMembershipRequests(
+	_ context.Context, _ models.ListMembershipRequestsFilter,
+) ([]*models.MembershipRequest, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ApproveMembershipRequest(
+	_ context.Context, _ *models.MembershipRequest, _ *models.OrganizationMember,
+) error {
+	panic("not implemented")
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

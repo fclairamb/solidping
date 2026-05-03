@@ -3678,3 +3678,119 @@ func (s *Service) DeleteFile(ctx context.Context, orgUID, uid string) error {
 
 	return nil
 }
+
+// CreateMembershipRequest inserts a new pending request.
+func (s *Service) CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error {
+	_, err := s.db.NewInsert().Model(request).Exec(ctx)
+
+	return err
+}
+
+// UpdateMembershipRequest persists status / decision changes.
+func (s *Service) UpdateMembershipRequest(
+	ctx context.Context, request *models.MembershipRequest,
+) error {
+	request.UpdatedAt = time.Now()
+
+	_, err := s.db.NewUpdate().
+		Model(request).
+		WherePK().
+		Exec(ctx)
+
+	return err
+}
+
+// GetMembershipRequest fetches a request by UID with relations.
+func (s *Service) GetMembershipRequest(
+	ctx context.Context, uid string,
+) (*models.MembershipRequest, error) {
+	request := new(models.MembershipRequest)
+
+	err := s.db.NewSelect().
+		Model(request).
+		Relation("Organization").
+		Relation("User").
+		Where("mr.uid = ?", uid).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
+// GetMembershipRequestByOrgAndUser returns the (org,user) row if any.
+func (s *Service) GetMembershipRequestByOrgAndUser(
+	ctx context.Context, orgUID, userUID string,
+) (*models.MembershipRequest, error) {
+	request := new(models.MembershipRequest)
+
+	err := s.db.NewSelect().
+		Model(request).
+		Where("organization_uid = ?", orgUID).
+		Where("user_uid = ?", userUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return request, nil
+}
+
+// ListMembershipRequests returns requests matching the filter, ordered by
+// most recently created first.
+func (s *Service) ListMembershipRequests(
+	ctx context.Context, filter models.ListMembershipRequestsFilter,
+) ([]*models.MembershipRequest, error) {
+	var requests []*models.MembershipRequest
+
+	query := s.db.NewSelect().
+		Model(&requests).
+		Relation("Organization").
+		Relation("User").
+		Order("membership_request.created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("membership_request.organization_uid = ?", filter.OrganizationUID)
+	}
+	if filter.UserUID != "" {
+		query = query.Where("membership_request.user_uid = ?", filter.UserUID)
+	}
+	if filter.Status != "" {
+		query = query.Where("membership_request.status = ?", filter.Status)
+	}
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return requests, nil
+}
+
+// ApproveMembershipRequest commits the request status change AND the new
+// membership row in a single transaction.
+func (s *Service) ApproveMembershipRequest(
+	ctx context.Context,
+	request *models.MembershipRequest,
+	member *models.OrganizationMember,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		request.UpdatedAt = time.Now()
+
+		if _, err := tx.NewUpdate().Model(request).WherePK().Exec(ctx); err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(member).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
