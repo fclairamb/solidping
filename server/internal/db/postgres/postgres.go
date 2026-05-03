@@ -2227,17 +2227,47 @@ func (s *Service) GetStateEntry(ctx context.Context, orgUID *string, key string)
 }
 
 // SetStateEntry creates or updates a state entry.
+//
+// PostgreSQL (and SQLite) treat NULL values as distinct in UNIQUE
+// constraints by default, so INSERT … ON CONFLICT(organization_uid, key)
+// does not fire when organization_uid is NULL — duplicate global rows
+// would silently accumulate. To keep callers' upsert intent honest we
+// run an explicit UPDATE first when orgUID is nil; if no row matches we
+// fall through to INSERT.
 func (s *Service) SetStateEntry(
 	ctx context.Context, orgUID *string, key string, value *models.JSONMap, ttl *time.Duration,
 ) error {
 	now := time.Now()
+
+	var expiresAt *time.Time
+	if ttl != nil {
+		ts := now.Add(*ttl)
+		expiresAt = &ts
+	}
+
+	if orgUID == nil {
+		res, err := s.db.NewUpdate().
+			Model((*models.StateEntry)(nil)).
+			Where("organization_uid IS NULL").
+			Where("key = ?", key).
+			Set("value = ?", value).
+			Set("expires_at = ?", expiresAt).
+			Set("updated_at = ?", now).
+			Set("deleted_at = NULL").
+			Exec(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update state entry: %w", err)
+		}
+
+		rows, _ := res.RowsAffected()
+		if rows > 0 {
+			return nil
+		}
+	}
+
 	entry := models.NewStateEntry(orgUID, key)
 	entry.Value = value
-
-	if ttl != nil {
-		expiresAt := now.Add(*ttl)
-		entry.ExpiresAt = &expiresAt
-	}
+	entry.ExpiresAt = expiresAt
 
 	_, err := s.db.NewInsert().
 		Model(entry).

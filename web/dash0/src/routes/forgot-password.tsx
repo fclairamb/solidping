@@ -2,10 +2,12 @@ import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Activity, CheckCircle2, Loader2 } from "lucide-react";
+import { Activity, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { ApiError } from "@/api/client";
 import { useRequestPasswordReset } from "@/api/hooks";
 
 export const Route = createFileRoute("/forgot-password")({
@@ -16,16 +18,24 @@ function ForgotPasswordPage() {
   const { t } = useTranslation("auth");
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const requestReset = useRequestPasswordReset();
 
+  // Anti-enumeration is the *server's* job — it returns 200 for both valid
+  // and invalid emails. Real network / 429 / 500 failures must surface so
+  // the user knows to retry; swallowing them as success is misleading.
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     try {
       await requestReset.mutateAsync({ email });
       setSubmitted(true);
-    } catch {
-      // Still show success (anti-enumeration — server always returns success)
-      setSubmitted(true);
+    } catch (err) {
+      if (err instanceof ApiError) {
+        setError(err.message || t("resetSendFailed"));
+      } else {
+        setError(t("resetSendFailed"));
+      }
     }
   };
 
@@ -57,6 +67,12 @@ function ForgotPasswordPage() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="email">{t("email", { ns: "common" })}</Label>
                 <Input

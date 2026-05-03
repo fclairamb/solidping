@@ -4,6 +4,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +26,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
+)
+
+// State entry value keys shared between producers and consumers of
+// password-reset and counter entries; centralized so a typo can't drift
+// the wire format silently.
+const (
+	stateValueKeyUserUID = "userUid"
+	stateValueKeyCount   = "count"
 )
 
 // emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
@@ -77,6 +86,9 @@ var (
 	ErrInvalidRecoveryCode     = errors.New("invalid recovery code")
 	ErrTwoFAAlreadyEnabled     = errors.New("2FA is already enabled")
 	ErrTwoFANotEnabled         = errors.New("2FA is not enabled")
+	// ErrRateLimited is returned when a client exceeds the per-endpoint
+	// rate limit. The handler maps this to HTTP 429.
+	ErrRateLimited = errors.New("rate limit exceeded")
 )
 
 // Service provides authentication business logic.
@@ -288,8 +300,12 @@ func NewService(
 // enqueueEmail builds an email job and pushes it onto the job queue.
 // Errors are logged but never bubbled to the caller — transactional emails
 // must not block registration, password reset, or invitation flows.
+//
+// The subject is left blank: every template defines its own
+// {{define "subject"}} block, so duplicating the subject at the call
+// site only invites drift.
 func (s *Service) enqueueEmail(
-	ctx context.Context, orgUID, recipient, subject, template string, data any,
+	ctx context.Context, orgUID, recipient, template string, data any,
 ) {
 	if s.jobsSvc == nil || recipient == "" {
 		return
@@ -297,7 +313,6 @@ func (s *Service) enqueueEmail(
 
 	cfg := emailJobConfig{
 		To:           []string{recipient},
-		Subject:      subject,
 		Template:     template,
 		TemplateData: data,
 	}
@@ -1480,14 +1495,28 @@ type RegisterResponse struct {
 }
 
 const (
-	registrationKeyPrefix  = "email_registration:"
-	registrationTTL        = 3 * 24 * time.Hour
-	inviteKeyPrefix        = "invite:"
-	passwordResetKeyPrefix = "password_reset:"
-	passwordResetTTL       = 1 * time.Hour
-	minPasswordLength      = 8
-	registrationTokenSize  = 32
+	registrationKeyPrefix       = "email_registration:"
+	registrationTTL             = 3 * 24 * time.Hour
+	inviteKeyPrefix             = "invite:"
+	passwordResetKeyPrefix      = "password_reset:"
+	passwordResetCountKeyPrefix = "password_reset_count:"
+	passwordResetIPKeyPrefix    = "pwd_reset_rl:"
+	passwordResetTTL            = 1 * time.Hour
+	passwordResetIPWindow       = time.Minute
+	passwordResetMaxPerUser     = 3
+	passwordResetMaxPerIP       = 5
+	minPasswordLength           = 8
+	registrationTokenSize       = 32
 )
+
+// hashResetToken derives the storage key suffix for a plaintext reset
+// token. Inputs are 32 random bytes hex-encoded (256 bits), so plain
+// SHA-256 is sufficient — no salt or stretching needed.
+func hashResetToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+
+	return hex.EncodeToString(sum[:])
+}
 
 // Register creates a pending registration entry and sends a confirmation email.
 func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterResponse, error) {
@@ -1552,7 +1581,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email, "", "registration.html",
+	s.enqueueEmail(ctx, "", req.Email, "registration.html",
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -1763,17 +1792,44 @@ type ResetPasswordResponse struct {
 }
 
 // RequestPasswordReset creates a password reset token and sends a reset email.
-// Always returns success to prevent email enumeration.
+// Always returns success to the caller (anti-enumeration); the only error
+// path the handler must surface is ErrRateLimited so it can map to 429.
+//
+// remoteAddr is the request's client IP (best-effort — passed through from
+// the handler). Used solely for the per-IP rate limit; an empty string
+// disables that check.
 func (s *Service) RequestPasswordReset(
-	ctx context.Context, req RequestPasswordResetRequest,
+	ctx context.Context, req RequestPasswordResetRequest, remoteAddr string,
 ) (*RequestPasswordResetResponse, error) {
 	successMsg := &RequestPasswordResetResponse{
 		Message: "If an account exists with that email, a reset link has been sent.",
 	}
 
+	// Per-IP rate limit. We always check this first so abusers paying no
+	// attention to the success-shaped response also can't drive load on
+	// the user lookup or state-entry write.
+	if remoteAddr != "" {
+		exceeded, err := s.bumpResetIPCounter(ctx, remoteAddr)
+		if err != nil {
+			slog.WarnContext(ctx, "Failed to track password-reset IP counter", "error", err)
+		} else if exceeded {
+			return nil, ErrRateLimited
+		}
+	}
+
 	// Look up user by email — return success even if not found (anti-enumeration)
 	user, _ := s.db.GetUserByEmail(ctx, req.Email)
 	if user == nil || user.PasswordHash == nil || *user.PasswordHash == "" {
+		return successMsg, nil
+	}
+
+	// Per-user cap: drop silently above the limit. Returning success keeps
+	// the response shape uniform with the unknown-email path so abusers
+	// can't tell the difference.
+	overCap, err := s.bumpResetUserCounter(ctx, user.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "Failed to track password-reset user counter", "error", err, "userUID", user.UID)
+	} else if overCap {
 		return successMsg, nil
 	}
 
@@ -1784,89 +1840,178 @@ func (s *Service) RequestPasswordReset(
 	}
 
 	token := hex.EncodeToString(tokenBytes)
+	tokenHash := hashResetToken(token)
 
-	// Store in state entries (upsert — replaces any existing reset for this email)
-	stateValue := &models.JSONMap{
-		keyToken: token,
-		keyEmail: req.Email,
-	}
+	// Store at password_reset:<sha256(token)> with userUid only. The
+	// plaintext token never lands on disk; a leaked DB snapshot has no
+	// way to mint a valid reset URL.
+	stateValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
 	ttl := passwordResetTTL
 
-	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+req.Email, stateValue, &ttl); err != nil {
+	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
 		return nil, fmt.Errorf("failed to store password reset: %w", err)
 	}
 
 	// Send reset email asynchronously via the email job
 	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email, "", "password-reset.html",
+	s.enqueueEmail(ctx, "", req.Email, "password-reset.html",
 		map[string]any{"ResetURL": resetURL},
 	)
 
 	return successMsg, nil
 }
 
-// ResetPassword validates a reset token and sets a new password.
-func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (*ResetPasswordResponse, error) {
-	// Search state entries for matching token
-	entries, err := s.db.ListStateEntries(ctx, nil, passwordResetKeyPrefix)
+// counterValue extracts the integer value from a state entry that holds
+// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
+// accept both shapes; anything else is treated as zero.
+func counterValue(entry *models.StateEntry) int {
+	if entry == nil || entry.Value == nil {
+		return 0
+	}
+
+	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
+	case float64:
+		return int(raw)
+	case int:
+		return raw
+	case int64:
+		return int(raw)
+	default:
+		return 0
+	}
+}
+
+// bumpCounter loads / increments / persists a counter at the given state
+// key, scoped to the supplied TTL. Reports whether the count was already
+// at or above the limit (in which case no bump happens).
+func (s *Service) bumpCounter(
+	ctx context.Context, key string, limit int, ttl time.Duration,
+) (bool, error) {
+	current, err := s.db.GetStateEntry(ctx, nil, key)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list password reset entries: %w", err)
+		return false, err
 	}
 
-	var matchedEntry *models.StateEntry
+	count := counterValue(current)
 
-	for _, entry := range entries {
-		if entry.Value == nil {
-			continue
-		}
-
-		val := *entry.Value
-		if tokenVal, ok := val["token"].(string); ok && tokenVal == req.Token {
-			matchedEntry = entry
-
-			break
-		}
+	if count >= limit {
+		return true, nil
 	}
 
-	if matchedEntry == nil {
-		return nil, ErrPasswordResetExpired
+	count++
+	value := &models.JSONMap{stateValueKeyCount: count}
+	scopedTTL := ttl
+	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
+		return false, err
 	}
 
-	// Extract email from key
-	resetEmail := strings.TrimPrefix(matchedEntry.Key, passwordResetKeyPrefix)
+	return false, nil
+}
 
-	// Look up user
-	user, err := s.db.GetUserByEmail(ctx, resetEmail)
-	if err != nil || user == nil {
-		return nil, ErrPasswordResetExpired
-	}
+// bumpResetUserCounter increments (or seeds) the per-user reset counter
+// and reports whether the new value exceeds the configured cap. The
+// counter shares the reset TTL so it ages out with the entries it bounds.
+func (s *Service) bumpResetUserCounter(ctx context.Context, userUID string) (bool, error) {
+	return s.bumpCounter(ctx,
+		passwordResetCountKeyPrefix+userUID, passwordResetMaxPerUser, passwordResetTTL)
+}
 
-	// Validate new password
+// bumpResetIPCounter increments (or seeds) the per-IP reset counter on a
+// 1-minute window and reports whether the new value exceeds the cap.
+func (s *Service) bumpResetIPCounter(ctx context.Context, remoteAddr string) (bool, error) {
+	return s.bumpCounter(ctx,
+		passwordResetIPKeyPrefix+remoteAddr, passwordResetMaxPerIP, passwordResetIPWindow)
+}
+
+// ResetPassword validates a reset token and sets a new password.
+//
+// Validation order matters for the regression guarantees in this spec:
+// password length is checked *before* the state entry is touched so a
+// rejected weak password doesn't burn the user's reset opportunity.
+func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (*ResetPasswordResponse, error) {
 	if len(req.Password) < minPasswordLength {
 		return nil, fmt.Errorf("%w: password must be at least %d characters",
 			ErrInvalidCredentials, minPasswordLength)
 	}
 
-	// Hash new password
+	tokenHash := hashResetToken(req.Token)
+
+	entry, err := s.db.GetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load password reset entry: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
+		return nil, ErrPasswordResetExpired
+	}
+
+	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
+	if !ok || userUID == "" {
+		return nil, ErrPasswordResetExpired
+	}
+
+	user, err := s.db.GetUser(ctx, userUID)
+	if err != nil || user == nil {
+		return nil, ErrPasswordResetExpired
+	}
+
 	hash, err := passwords.Hash(req.Password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	// Update user's password
 	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &hash}); err != nil {
 		return nil, fmt.Errorf("failed to update password: %w", err)
 	}
 
-	// Delete the state entry
-	if err := s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key); err != nil {
+	// Best-effort cleanup. We log but never fail the reset on these:
+	// the password is already rotated and the entry is single-use, so
+	// stale state is the worst outcome and it ages out at the TTL.
+	if err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err)
 	}
+
+	if err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
+		slog.DebugContext(ctx, "Failed to delete password reset counter", "error", err)
+	}
+
+	// Revoke active refresh tokens so an attacker who triggered the reset
+	// from a compromised session can't keep using the old session. PATs
+	// (TokenTypePAT) are intentionally preserved — they're separately
+	// managed credentials the user controls from the tokens UI.
+	s.revokeRefreshTokensForUser(ctx, user.UID)
+
+	// Confirmation email so the legitimate user sees a record of the
+	// change even if the attacker controls the password-reset link.
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
+		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
+	)
 
 	return &ResetPasswordResponse{
 		Message: "Your password has been reset. You can now log in.",
 	}, nil
+}
+
+// revokeRefreshTokensForUser deletes every refresh token attached to the
+// user. PATs are deliberately untouched. Errors are logged, never fatal —
+// stateless access tokens (JWTs) can't be revoked synchronously anyway,
+// so the goal here is best-effort hygiene, not a security boundary.
+func (s *Service) revokeRefreshTokensForUser(ctx context.Context, userUID string) {
+	tokens, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list refresh tokens for revocation",
+			"error", err, "userUID", userUID)
+
+		return
+	}
+
+	for _, token := range tokens {
+		if delErr := s.db.DeleteUserToken(ctx, token.UID); delErr != nil {
+			slog.ErrorContext(ctx, "Failed to delete refresh token",
+				"error", delErr, "tokenUID", token.UID)
+		}
+	}
 }
 
 // CreateOrgRequest contains the request data for creating an organization.
@@ -2420,7 +2565,7 @@ func (s *Service) sendInvitationEmail(
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	s.enqueueEmail(ctx, orgUID, recipientEmail, "", "invitation.html",
+	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
 			"OrgName":     orgName,
 			"Role":        role,
