@@ -15,17 +15,17 @@ func TestS3FS_ParseURI(t *testing.T) {
 
 	r := require.New(t)
 
-	b := s3fs.New("bucket", "prefix", nil)
+	backend := s3fs.New("bucket", "prefix", nil)
 	orgUID := uuid.New()
 	fileID := uuid.New().String()
 	uri := "s3://" + orgUID.String() + "/reports/" + fileID
 
-	gotOrg, gotGroup, gotFile, err := b.ParseURI(uri)
+	gotOrg, gotGroup, gotFile, err := backend.ParseURI(uri)
 	r.NoError(err)
 	r.Equal(orgUID, gotOrg)
 	r.Equal(filestorage.GroupTypeReports, gotGroup)
 	r.Equal(fileID, gotFile)
 
-	_, _, _, err = b.ParseURI("file://" + orgUID.String() + "/reports/" + fileID)
+	_, _, _, err = backend.ParseURI("file://" + orgUID.String() + "/reports/" + fileID) //nolint:dogsled // 4 returns
 	r.ErrorIs(err, filestorage.ErrInvalidURI)
 }

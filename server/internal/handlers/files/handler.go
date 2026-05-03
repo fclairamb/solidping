@@ -42,23 +42,23 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 // List handles GET /api/v1/orgs/:org/files.
 func (h *Handler) List(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
-	q := req.URL.Query()
+	query := req.URL.Query()
 
 	limit := 50
-	if v := q.Get("limit"); v != "" {
+	if v := query.Get("limit"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 && parsed <= 200 {
 			limit = parsed
 		}
 	}
 
 	offset := 0
-	if v := q.Get("offset"); v != "" {
+	if v := query.Get("offset"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed >= 0 {
 			offset = parsed
 		}
 	}
 
-	resp, err := h.svc.ListFiles(req.Context(), orgSlug, q.Get("q"), offset, limit)
+	resp, err := h.svc.ListFiles(req.Context(), orgSlug, query.Get("q"), offset, limit)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -78,14 +78,14 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 
 // GetContent handles GET /api/v1/orgs/:org/files/:uid/content (auth, org-scoped).
 func (h *Handler) GetContent(writer http.ResponseWriter, req bunrouter.Request) error {
-	file, rc, err := h.svc.GetFileContent(req.Context(), req.Param("org"), req.Param("uid"))
+	file, body, err := h.svc.GetFileContent(req.Context(), req.Param("org"), req.Param("uid"))
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	defer func() { _ = rc.Close() }()
+	defer func() { _ = body.Close() }()
 
-	return writeFileContent(writer, file.MimeType, file.Name, rc)
+	return writeFileContent(writer, file.MimeType, file.Name, body)
 }
 
 // Delete handles DELETE /api/v1/orgs/:org/files/:uid.
@@ -108,22 +108,23 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteError(writer, http.StatusNotFound, errCodeFileNotFound, "File not found")
 	}
 
-	q := req.URL.Query()
+	query := req.URL.Query()
 
-	exp, err := strconv.ParseInt(q.Get("exp"), 10, 64)
+	exp, err := strconv.ParseInt(query.Get("exp"), 10, 64)
 	if err != nil {
 		return h.WriteError(writer, http.StatusForbidden, errCodeBadSignature, "Invalid signature")
 	}
 
-	sig := q.Get("sig")
+	sig := query.Get("sig")
 
-	switch err := signedurl.Verify([]byte(h.cfg.Auth.JWTSecret), fileUID, exp, sig, time.Now()); {
-	case errors.Is(err, signedurl.ErrSignedURLBadSignature):
+	verifyErr := signedurl.Verify([]byte(h.cfg.Auth.JWTSecret), fileUID, exp, sig, time.Now())
+	switch {
+	case errors.Is(verifyErr, signedurl.ErrSignedURLBadSignature):
 		return h.WriteError(writer, http.StatusForbidden, errCodeBadSignature, "Invalid signature")
-	case errors.Is(err, signedurl.ErrSignedURLExpired):
+	case errors.Is(verifyErr, signedurl.ErrSignedURLExpired):
 		return h.WriteError(writer, http.StatusGone, errCodeURLExpired, "Signed URL has expired")
-	case err != nil:
-		return h.WriteInternalError(writer, err)
+	case verifyErr != nil:
+		return h.WriteInternalError(writer, verifyErr)
 	}
 
 	file, err := h.svc.GetFileByUID(req.Context(), uid)
@@ -135,17 +136,17 @@ func (h *Handler) PublicGet(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteInternalError(writer, err)
 	}
 
-	rc, err := h.svc.OpenContent(req.Context(), file)
+	body, err := h.svc.OpenContent(req.Context(), file)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}
 
-	defer func() { _ = rc.Close() }()
+	defer func() { _ = body.Close() }()
 
-	return writeFileContent(writer, file.MimeType, file.Name, rc)
+	return writeFileContent(writer, file.MimeType, file.Name, body)
 }
 
-func writeFileContent(writer http.ResponseWriter, mimeType, name string, rc io.Reader) error {
+func writeFileContent(writer http.ResponseWriter, mimeType, name string, body io.Reader) error {
 	if mimeType == "" {
 		mimeType = "application/octet-stream"
 	}
@@ -154,7 +155,7 @@ func writeFileContent(writer http.ResponseWriter, mimeType, name string, rc io.R
 	writer.Header().Set("Content-Disposition", `inline; filename="`+name+`"`)
 	writer.WriteHeader(http.StatusOK)
 
-	_, err := io.Copy(writer, rc)
+	_, err := io.Copy(writer, body)
 
 	return err
 }

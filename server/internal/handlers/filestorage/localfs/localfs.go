@@ -33,7 +33,7 @@ func New(root string) *Backend {
 // Register installs the local FS factory under the "file://" scheme. Called
 // from server bootstrap.
 func Register() {
-	filestorage.RegisterStorageFactory(scheme, func(cfg filestorage.Config) (filestorage.FileStorage, error) {
+	filestorage.RegisterStorageFactory(scheme, func(cfg *filestorage.Config) (filestorage.FileStorage, error) {
 		root := cfg.LocalRoot
 		if root == "" {
 			root = "./data/files"
@@ -43,11 +43,11 @@ func Register() {
 	})
 }
 
-// WriteFile writes r's bytes to Root/orgUID/group/fileID and returns a
-// "file://orgUID/group/fileID" URI.
+// WriteFile writes the reader's bytes to Root/orgUID/group/fileID and returns
+// a "file://orgUID/group/fileID" URI.
 func (b *Backend) WriteFile(
 	_ context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
-	r io.Reader, _ filestorage.FileMetadata,
+	reader io.Reader, _ filestorage.FileMetadata,
 ) (string, error) {
 	rel := filestorage.BuildPath(orgUID, group, fileID)
 	full := filepath.Join(b.Root, rel)
@@ -56,14 +56,14 @@ func (b *Backend) WriteFile(
 		return "", fmt.Errorf("create dir: %w", err)
 	}
 
-	f, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	file, err := os.OpenFile(full, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", fmt.Errorf("open file: %w", err)
 	}
 
-	defer func() { _ = f.Close() }()
+	defer func() { _ = file.Close() }()
 
-	if _, err := io.Copy(f, r); err != nil {
+	if _, err := io.Copy(file, reader); err != nil {
 		return "", fmt.Errorf("write file: %w", err)
 	}
 
@@ -78,7 +78,7 @@ func (b *Backend) ReadFile(
 	rel := filestorage.BuildPath(orgUID, group, fileID)
 	full := filepath.Join(b.Root, rel)
 
-	f, err := os.Open(full) //nolint:gosec // path is composed from validated UUIDs/group constants
+	file, err := os.Open(full)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, filestorage.ErrFileNotFound
@@ -87,9 +87,9 @@ func (b *Backend) ReadFile(
 		return nil, nil, fmt.Errorf("open file: %w", err)
 	}
 
-	stat, err := f.Stat()
+	stat, err := file.Stat()
 	if err != nil {
-		_ = f.Close()
+		_ = file.Close()
 
 		return nil, nil, fmt.Errorf("stat file: %w", err)
 	}
@@ -99,7 +99,7 @@ func (b *Backend) ReadFile(
 		Size:     stat.Size(),
 	}
 
-	return f, meta, nil
+	return file, meta, nil
 }
 
 // ParseURI splits "file://orgUID/group/fileID" back into its parts.

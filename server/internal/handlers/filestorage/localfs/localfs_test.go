@@ -20,27 +20,42 @@ func TestLocalFS_WriteRead(t *testing.T) {
 	r := require.New(t)
 
 	root := t.TempDir()
-	b := localfs.New(root)
+	backend := localfs.New(root)
 
 	orgUID := uuid.New()
 	fileID := uuid.New().String()
 	payload := []byte("hello world")
-	meta := filestorage.FileMetadata{Filename: "hello.txt", MimeType: "text/plain", Size: int64(len(payload))}
+	meta := filestorage.FileMetadata{
+		Filename: "hello.txt",
+		MimeType: "text/plain",
+		Size:     int64(len(payload)),
+	}
 
-	uri, err := b.WriteFile(context.Background(), orgUID, filestorage.GroupTypeReports, fileID, bytes.NewReader(payload), meta)
+	uri, err := backend.WriteFile(
+		context.Background(),
+		orgUID,
+		filestorage.GroupTypeReports,
+		fileID,
+		bytes.NewReader(payload),
+		meta,
+	)
 	r.NoError(err)
 	r.Contains(uri, "file://"+orgUID.String())
 
-	rc, _, err := b.ReadFile(context.Background(), orgUID, filestorage.GroupTypeReports, fileID)
+	body, _, err := backend.ReadFile(
+		context.Background(),
+		orgUID,
+		filestorage.GroupTypeReports,
+		fileID,
+	)
 	r.NoError(err)
 
-	defer rc.Close()
+	defer func() { _ = body.Close() }()
 
-	got, err := io.ReadAll(rc)
+	got, err := io.ReadAll(body)
 	r.NoError(err)
 	r.Equal(payload, got)
 
-	// File lives where BuildPath says it should
 	r.FileExists(filepath.Join(root, orgUID.String(), "reports", fileID))
 }
 
@@ -49,21 +64,21 @@ func TestLocalFS_ParseURI(t *testing.T) {
 
 	r := require.New(t)
 
-	b := localfs.New(t.TempDir())
+	backend := localfs.New(t.TempDir())
 	orgUID := uuid.New()
 	fileID := uuid.New().String()
 	uri := "file://" + orgUID.String() + "/reports/" + fileID
 
-	gotOrg, gotGroup, gotFile, err := b.ParseURI(uri)
+	gotOrg, gotGroup, gotFile, err := backend.ParseURI(uri)
 	r.NoError(err)
 	r.Equal(orgUID, gotOrg)
 	r.Equal(filestorage.GroupTypeReports, gotGroup)
 	r.Equal(fileID, gotFile)
 
-	_, _, _, err = b.ParseURI("garbage")
+	_, _, _, err = backend.ParseURI("garbage") //nolint:dogsled // signature has 4 returns
 	r.Error(err)
 
-	_, _, _, err = b.ParseURI("s3://something")
+	_, _, _, err = backend.ParseURI("s3://something") //nolint:dogsled // signature has 4 returns
 	r.Error(err)
 }
 
@@ -72,7 +87,12 @@ func TestLocalFS_ReadMissing(t *testing.T) {
 
 	r := require.New(t)
 
-	b := localfs.New(t.TempDir())
-	_, _, err := b.ReadFile(context.Background(), uuid.New(), filestorage.GroupTypeReports, "missing")
+	backend := localfs.New(t.TempDir())
+	_, _, err := backend.ReadFile(
+		context.Background(),
+		uuid.New(),
+		filestorage.GroupTypeReports,
+		"missing",
+	)
 	r.ErrorIs(err, filestorage.ErrFileNotFound)
 }

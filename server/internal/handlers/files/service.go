@@ -61,15 +61,15 @@ type ListResponse struct {
 }
 
 // toResponse maps a model to the JSON response shape (drops storage URI).
-func toResponse(f *models.File) FileResponse {
+func toResponse(file *models.File) FileResponse {
 	return FileResponse{
-		UID:             f.UID,
-		OrganizationUID: f.OrganizationUID,
-		Name:            f.Name,
-		MimeType:        f.MimeType,
-		Size:            f.Size,
-		CreatedBy:       f.CreatedBy,
-		CreatedAt:       f.CreatedAt,
+		UID:             file.UID,
+		OrganizationUID: file.OrganizationUID,
+		Name:            file.Name,
+		MimeType:        file.MimeType,
+		Size:            file.Size,
+		CreatedBy:       file.CreatedBy,
+		CreatedAt:       file.CreatedAt,
 	}
 }
 
@@ -96,8 +96,8 @@ func (s *Service) ListFiles(
 	}
 
 	resp := &ListResponse{Total: total, Data: make([]FileResponse, 0, len(files))}
-	for _, f := range files {
-		resp.Data = append(resp.Data, toResponse(f))
+	for _, file := range files {
+		resp.Data = append(resp.Data, toResponse(file))
 	}
 
 	return resp, nil
@@ -252,8 +252,8 @@ func (s *Service) lookup(ctx context.Context, orgSlug, fileUID string) (*models.
 	return file, nil
 }
 
-func (s *Service) storageConfig() filestorage.Config {
-	return filestorage.Config{
+func (s *Service) storageConfig() *filestorage.Config {
+	return &filestorage.Config{
 		Type:      s.cfg.FileStorage.Type,
 		LocalRoot: s.cfg.FileStorage.LocalRoot,
 		S3Bucket:  s.cfg.FileStorage.S3Bucket,

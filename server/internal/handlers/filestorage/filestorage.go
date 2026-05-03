@@ -56,7 +56,7 @@ var (
 )
 
 // BuildPath returns the conventional "<orgUID>/<group>/<fileID>" key used by
-// the local FS and S3 backends. Centralised so the two backends agree.
+// the local FS and S3 backends. Centralized so the two backends agree.
 func BuildPath(orgUID uuid.UUID, group GroupType, fileID string) string {
 	return fmt.Sprintf("%s/%s/%s", orgUID.String(), string(group), fileID)
 }
@@ -70,7 +70,7 @@ func ParsePath(rest string) (uuid.UUID, GroupType, string, error) {
 
 	orgUID, err := uuid.Parse(parts[0])
 	if err != nil {
-		return uuid.Nil, "", "", fmt.Errorf("%w: %s", ErrInvalidURI, err)
+		return uuid.Nil, "", "", fmt.Errorf("%w: %w", ErrInvalidURI, err)
 	}
 
 	return orgUID, GroupType(parts[1]), parts[2], nil
@@ -89,14 +89,17 @@ func SchemeFromURI(uri string) (string, string, error) {
 
 // factoryRegistry holds the backend factories keyed by URI scheme prefix
 // (e.g. "file://"). It is package-level so backends can register from their
-// own init().
+// own init() — this is the registration pattern used by the standard library
+// (image, sql) and is deliberate.
+//
+//nolint:gochecknoglobals // factory registry must be package-level for self-registration
 var (
 	factoryMu sync.RWMutex
 	factories = map[string]StorageFactory{}
 )
 
 // StorageFactory builds a backend instance from configuration.
-type StorageFactory func(cfg Config) (FileStorage, error)
+type StorageFactory func(cfg *Config) (FileStorage, error)
 
 // Config is the subset of *config.Config that the storage factories need.
 // We pass it as a struct (not the full *config.Config) to keep this package
@@ -122,7 +125,7 @@ func RegisterStorageFactory(prefix string, factory StorageFactory) {
 // GetStorageForURI resolves the right backend to read a previously written
 // URI. Each call constructs a fresh backend from cfg — backends are tiny
 // stateless adapters, no connection pooling here.
-func GetStorageForURI(uri string, cfg Config) (FileStorage, error) {
+func GetStorageForURI(uri string, cfg *Config) (FileStorage, error) {
 	prefix, _, err := SchemeFromURI(uri)
 	if err != nil {
 		return nil, err
@@ -141,7 +144,7 @@ func GetStorageForURI(uri string, cfg Config) (FileStorage, error) {
 
 // NewFileStorage returns the backend selected by cfg.Type. Used to resolve
 // the "current" backend for new writes.
-func NewFileStorage(cfg Config) (FileStorage, error) {
+func NewFileStorage(cfg *Config) (FileStorage, error) {
 	prefix, ok := schemeForType(cfg.Type)
 	if !ok {
 		return nil, fmt.Errorf("%w: %q", ErrUnsupportedBackend, cfg.Type)
@@ -159,7 +162,7 @@ func NewFileStorage(cfg Config) (FileStorage, error) {
 }
 
 // schemeForType maps cfg.Type ("local", "s3") to its URI scheme prefix.
-// Centralised so adding a new type means changing exactly two lines.
+// Centralized so adding a new type means changing exactly two lines.
 func schemeForType(typ string) (string, bool) {
 	switch typ {
 	case "local", "":

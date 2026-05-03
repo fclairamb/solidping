@@ -34,13 +34,16 @@ func New(bucket, prefix string, client *s3.Client) *Backend {
 	return &Backend{Bucket: bucket, Prefix: prefix, Client: client}
 }
 
+// ErrBucketRequired is returned when the S3 backend is selected but no bucket is configured.
+var ErrBucketRequired = errors.New("s3fs: S3Bucket is required")
+
 // Register installs the S3 factory under the "s3://" scheme. Bootstrap calls
 // this once at startup; the factory then resolves a client from the standard
 // AWS configuration each time it's invoked (cheap — only on writes).
 func Register() {
-	filestorage.RegisterStorageFactory(scheme, func(cfg filestorage.Config) (filestorage.FileStorage, error) {
+	filestorage.RegisterStorageFactory(scheme, func(cfg *filestorage.Config) (filestorage.FileStorage, error) {
 		if cfg.S3Bucket == "" {
-			return nil, errors.New("s3fs: S3Bucket is required")
+			return nil, ErrBucketRequired
 		}
 
 		awsCfg, err := awsconfig.LoadDefaultConfig(
@@ -70,14 +73,14 @@ func (b *Backend) objectKey(rel string) string {
 // preserved so a later GET serves the right type without re-checking.
 func (b *Backend) WriteFile(
 	ctx context.Context, orgUID uuid.UUID, group filestorage.GroupType, fileID string,
-	r io.Reader, meta filestorage.FileMetadata,
+	reader io.Reader, meta filestorage.FileMetadata,
 ) (string, error) {
 	rel := filestorage.BuildPath(orgUID, group, fileID)
 	key := b.objectKey(rel)
 
 	// PutObject expects an io.ReadSeeker for accurate Content-Length /
 	// retry; buffer in memory since uploads are small (screenshots).
-	body, err := io.ReadAll(r)
+	body, err := io.ReadAll(reader)
 	if err != nil {
 		return "", fmt.Errorf("read body: %w", err)
 	}
