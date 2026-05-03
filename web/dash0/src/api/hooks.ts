@@ -1193,6 +1193,56 @@ export function useRevokeInvitation(org: string) {
   });
 }
 
+// Member hooks
+export type MemberRole = "admin" | "user" | "viewer";
+
+export interface MemberResponse {
+  uid: string;
+  userUid: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+  role: MemberRole;
+  joinedAt?: string;
+  createdAt: string;
+}
+
+export function useMembers(org: string) {
+  return useQuery({
+    queryKey: ["members", org],
+    queryFn: () =>
+      apiFetch<{ data: MemberResponse[] }>(`/api/v1/orgs/${org}/members`),
+    enabled: !!org,
+  });
+}
+
+export function useUpdateMember(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, role }: { uid: string; role: MemberRole }) =>
+      apiFetch<MemberResponse>(`/api/v1/orgs/${org}/members/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify({ role }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
+export function useRemoveMember(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/members/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["members", org] });
+    },
+  });
+}
+
 export interface InviteInfo {
   orgName: string;
   orgSlug: string;
