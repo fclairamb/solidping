@@ -1,0 +1,53 @@
+{
+  "subtitle": "Was gerade kaputt ist, was sich geändert hat und wohin man springen kann",
+  "updatedAgo": "Aktualisiert vor {{time}}",
+  "justUpdated": "Gerade aktualisiert",
+  "refresh": "Aktualisieren",
+  "welcome": {
+    "title": "Willkommen bei SolidPing",
+    "subtitle": "Erstellen Sie Ihre erste Prüfung, um die Überwachung zu starten.",
+    "cta": "Erste Prüfung erstellen"
+  },
+  "banner": {
+    "allGreen": "Alle Systeme betriebsbereit",
+    "allGreenSub_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "allGreenSub_other": "{{count}} Prüfungen überwacht, {{availability}}% Verfügbarkeit über 24 Std.",
+    "issues": "Probleme erkannt",
+    "issuesSub_zero": "Keine aktiven Vorfälle",
+    "issuesSub_one": "{{down}} Prüfung ausgefallen, {{incidents}} aktive Vorfälle",
+    "issuesSub_other": "{{down}} Prüfungen ausgefallen, {{incidents}} aktive Vorfälle",
+    "warning": "Einige Prüfungen beeinträchtigt",
+    "warningSub": "Zeitüberschreitungen bei {{count}} Prüfungen erkannt"
+  },
+  "kpi": {
+    "monitored": "Überwachte Prüfungen",
+    "monitoredDisabled": "{{count}} deaktiviert",
+    "down": "Derzeit ausgefallen",
+    "downSubNone": "Alle aktiv",
+    "incidents": "Aktive Vorfälle",
+    "incidentsSubNone": "Keine aktiv",
+    "availability": "Verfügbarkeit 24 Std.",
+    "availabilityNoData": "Noch keine Daten"
+  },
+  "needsAttention": {
+    "title": "Erfordert Aufmerksamkeit",
+    "footer": "Alle Prüfungen anzeigen →",
+    "empty": "Alles läuft",
+    "since": "seit {{time}}"
+  },
+  "activeIncidents": {
+    "title": "Aktive Vorfälle",
+    "footer": "Alle Vorfälle anzeigen →",
+    "empty": "Keine aktiven Vorfälle",
+    "untitled": "Vorfall ohne Titel"
+  },
+  "recentActivity": {
+    "title": "Letzte Aktivitäten",
+    "footer": "Alle Ereignisse anzeigen →",
+    "empty": "Keine letzten Aktivitäten"
+  },
+  "errors": {
+    "section": "Laden fehlgeschlagen.",
+    "retry": "Erneut versuchen"
+  }
+}

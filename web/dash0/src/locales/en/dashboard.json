@@ -1,0 +1,53 @@
+{
+  "subtitle": "What's broken right now, what changed, and where to jump",
+  "updatedAgo": "Updated {{time}} ago",
+  "justUpdated": "Just updated",
+  "refresh": "Refresh",
+  "welcome": {
+    "title": "Welcome to SolidPing",
+    "subtitle": "Create your first check to start monitoring.",
+    "cta": "Create your first check"
+  },
+  "banner": {
+    "allGreen": "All systems operational",
+    "allGreenSub_one": "{{count}} check monitored, {{availability}}% uptime over 24h",
+    "allGreenSub_other": "{{count}} checks monitored, {{availability}}% uptime over 24h",
+    "issues": "Issues detected",
+    "issuesSub_zero": "No active incidents",
+    "issuesSub_one": "{{down}} check down, {{incidents}} active incidents",
+    "issuesSub_other": "{{down}} checks down, {{incidents}} active incidents",
+    "warning": "Some checks degraded",
+    "warningSub": "Timeouts detected on {{count}} checks"
+  },
+  "kpi": {
+    "monitored": "Monitored checks",
+    "monitoredDisabled": "{{count}} disabled",
+    "down": "Currently down",
+    "downSubNone": "All up",
+    "incidents": "Active incidents",
+    "incidentsSubNone": "None active",
+    "availability": "24h availability",
+    "availabilityNoData": "No data yet"
+  },
+  "needsAttention": {
+    "title": "Needs attention",
+    "footer": "View all checks →",
+    "empty": "Everything is up",
+    "since": "since {{time}}"
+  },
+  "activeIncidents": {
+    "title": "Active incidents",
+    "footer": "View all incidents →",
+    "empty": "No active incidents",
+    "untitled": "Untitled incident"
+  },
+  "recentActivity": {
+    "title": "Recent activity",
+    "footer": "View all events →",
+    "empty": "No recent activity"
+  },
+  "errors": {
+    "section": "Failed to load.",
+    "retry": "Retry"
+  }
+}

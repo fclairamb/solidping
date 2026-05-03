@@ -1,0 +1,53 @@
+{
+  "subtitle": "Qué está roto ahora, qué cambió y a dónde ir",
+  "updatedAgo": "Actualizado hace {{time}}",
+  "justUpdated": "Recién actualizado",
+  "refresh": "Actualizar",
+  "welcome": {
+    "title": "Bienvenido a SolidPing",
+    "subtitle": "Cree su primera comprobación para comenzar a monitorear.",
+    "cta": "Crear primera comprobación"
+  },
+  "banner": {
+    "allGreen": "Todos los sistemas operativos",
+    "allGreenSub_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 24h",
+    "allGreenSub_other": "{{count}} comprobaciones monitoreadas, {{availability}}% de disponibilidad en 24h",
+    "issues": "Problemas detectados",
+    "issuesSub_zero": "Sin incidentes activos",
+    "issuesSub_one": "{{down}} comprobación caída, {{incidents}} incidentes activos",
+    "issuesSub_other": "{{down}} comprobaciones caídas, {{incidents}} incidentes activos",
+    "warning": "Algunas comprobaciones degradadas",
+    "warningSub": "Tiempos de espera detectados en {{count}} comprobaciones"
+  },
+  "kpi": {
+    "monitored": "Comprobaciones monitoreadas",
+    "monitoredDisabled": "{{count}} deshabilitadas",
+    "down": "Caídas actualmente",
+    "downSubNone": "Todas activas",
+    "incidents": "Incidentes activos",
+    "incidentsSubNone": "Ninguno activo",
+    "availability": "Disponibilidad 24h",
+    "availabilityNoData": "Aún sin datos"
+  },
+  "needsAttention": {
+    "title": "Necesita atención",
+    "footer": "Ver todas las comprobaciones →",
+    "empty": "Todo está activo",
+    "since": "desde hace {{time}}"
+  },
+  "activeIncidents": {
+    "title": "Incidentes activos",
+    "footer": "Ver todos los incidentes →",
+    "empty": "Sin incidentes activos",
+    "untitled": "Incidente sin título"
+  },
+  "recentActivity": {
+    "title": "Actividad reciente",
+    "footer": "Ver todos los eventos →",
+    "empty": "Sin actividad reciente"
+  },
+  "errors": {
+    "section": "Error al cargar.",
+    "retry": "Reintentar"
+  }
+}
