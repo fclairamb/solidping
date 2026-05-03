@@ -27,7 +27,10 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCheck, useIncident, useStatusPage } from "@/api/hooks";
+import { useCheck, useFeatures, useIncident, useStatusPage } from "@/api/hooks";
+import { FeedbackButton } from "@/components/feedback/FeedbackButton";
+import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
+import { useFeedback } from "@/components/feedback/useFeedback";
 import { useTranslation } from "react-i18next";
 
 function hasOAuthTokenInURL(): boolean {
@@ -272,6 +275,8 @@ function OrgLayout() {
   const isLoginPage = location.pathname.endsWith("/login") || location.pathname.endsWith("/register");
   const [oauthProcessing, setOauthProcessing] = useState(false);
   const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const { data: features } = useFeatures();
+  const feedback = useFeedback({ enabled: features?.bugReport === true, org });
 
   // Handle OAuth callback tokens in URL
   useEffect(() => {
@@ -330,9 +335,21 @@ function OrgLayout() {
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumbs org={org} />
           <div className="ml-auto flex items-center gap-1">
+            {features?.bugReport && (
+              <FeedbackButton onClick={() => void feedback.open()} isCapturing={feedback.isCapturing} />
+            )}
             <CommandMenuTrigger onOpen={() => setCommandMenuOpen(true)} />
           </div>
         </header>
+        {features?.bugReport && (
+          <FeedbackDialog
+            open={feedback.isOpen}
+            onOpenChange={(next) => (next ? null : feedback.close())}
+            screenshot={feedback.screenshot}
+            isCapturing={feedback.isCapturing}
+            onSubmit={feedback.submit}
+          />
+        )}
         <div className="flex-1 overflow-auto p-3 sm:p-4">
           <Outlet />
         </div>
