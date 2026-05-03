@@ -89,6 +89,20 @@ var (
 	// ErrRateLimited is returned when a client exceeds the per-endpoint
 	// rate limit. The handler maps this to HTTP 429.
 	ErrRateLimited = errors.New("rate limit exceeded")
+	// ErrInvalidAutoJoinRegex is returned when an admin tries to set a
+	// dangerously broad registration email pattern.
+	ErrInvalidAutoJoinRegex = errors.New("invalid auto-join regex pattern")
+	// ErrAlreadyAMember is returned when a user tries to request membership
+	// in an org they already belong to.
+	ErrAlreadyAMember = errors.New("already a member of this organization")
+	// ErrRequestPending is returned when a user re-requests membership
+	// while a previous request is still pending.
+	ErrRequestPending = errors.New("a membership request is already pending")
+	// ErrRequestNotFound is returned when a membership request lookup fails.
+	ErrRequestNotFound = errors.New("membership request not found")
+	// ErrRequestCooldownActive is returned when a user re-requests
+	// membership during the rejection cooldown window.
+	ErrRequestCooldownActive = errors.New("membership request cooldown active")
 )
 
 // Service provides authentication business logic.
@@ -1744,6 +1758,18 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 			continue
 		}
 
+		// Defensive: leftover unsafe patterns (set before validation existed)
+		// must be skipped so they cannot adopt every signup. Log and move on
+		// rather than blowing up the registration confirmation path.
+		if err := validateAutoJoinRegex(patternVal); err != nil {
+			slog.WarnContext(
+				ctx, "skipping unsafe auto-join regex",
+				"orgUID", *param.OrganizationUID, "error", err,
+			)
+
+			continue
+		}
+
 		re, err := regexp.Compile(patternVal)
 		if err != nil {
 			continue
@@ -2497,8 +2523,8 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 		return s.db.DeleteOrgParameter(ctx, orgUID, "registration.email_pattern")
 	}
 
-	if _, compileErr := regexp.Compile(pattern); compileErr != nil {
-		return fmt.Errorf("%w: invalid regex pattern", ErrInvalidCredentials)
+	if err := validateAutoJoinRegex(pattern); err != nil {
+		return err
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)

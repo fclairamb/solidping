@@ -811,6 +811,22 @@ func (h *Handler) UpdateOrgSettings(writer http.ResponseWriter, req bunrouter.Re
 
 	resp, err := h.svc.UpdateOrgSettings(req.Context(), orgSlug, updateReq)
 	if err != nil {
+		if errors.Is(err, ErrInvalidAutoJoinRegex) {
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest,
+				base.ErrorCodeInvalidAutoJoinRegex,
+				err.Error(), err,
+			)
+		}
+
+		if errors.Is(err, ErrOrganizationNotFound) {
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound,
+				base.ErrorCodeOrganizationNotFound,
+				"Organization not found", err,
+			)
+		}
+
 		return h.WriteInternalError(writer, err)
 	}
 

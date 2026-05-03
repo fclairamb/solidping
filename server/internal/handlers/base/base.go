@@ -55,6 +55,11 @@ const (
 	ErrorCodeEmailInboxNotAvailable    ErrorCode = "EMAIL_INBOX_NOT_AVAILABLE"
 	ErrorCodeResultNotFound            ErrorCode = "RESULT_NOT_FOUND"
 	ErrorCodeRateLimited               ErrorCode = "RATE_LIMITED"
+	ErrorCodeInvalidAutoJoinRegex      ErrorCode = "INVALID_AUTO_JOIN_REGEX"
+	ErrorCodeAlreadyAMember            ErrorCode = "ALREADY_A_MEMBER"
+	ErrorCodeRequestPending            ErrorCode = "REQUEST_PENDING"
+	ErrorCodeRequestNotFound           ErrorCode = "REQUEST_NOT_FOUND"
+	ErrorCodeRequestCooldownActive     ErrorCode = "REQUEST_COOLDOWN_ACTIVE"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.
