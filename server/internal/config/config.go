@@ -122,6 +122,7 @@ type Config struct {
 	Checkers    CheckersConfig       `koanf:"checkers"`
 	Aggregation AggregationConfig    `koanf:"aggregation"`
 	FileStorage FileStorageConfig    `koanf:"filestorage"`
+	App         AppConfig            `koanf:"app"`
 	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -178,6 +179,23 @@ type FileStorageConfig struct {
 	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
 	S3Region  string `koanf:"s3_region"`  // S3 backend region
 	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
+}
+
+// AppConfig contains application-level integration settings: in-app bug
+// reports, feature flags computed at startup. Persisted state lives here
+// (env / parameters), not in normal user-facing tables.
+type AppConfig struct {
+	// EnableBugReport is computed (App.GitHub.IssuesToken != "" && App.GitHub.Repo != "").
+	// Never read directly from config — call ComputeBugReportEnabled.
+	EnableBugReport bool            `koanf:"-"`
+	GitHub          AppGitHubConfig `koanf:"github"`
+}
+
+// AppGitHubConfig holds the GitHub credentials used for in-app feature integrations
+// (bug reports today). Token comes from env / system parameters; never from a user-facing API.
+type AppGitHubConfig struct {
+	IssuesToken string `koanf:"issues_token"` // fine-grained PAT, issues:write only
+	Repo        string `koanf:"repo"`         // "owner/name"
 }
 
 // AggregationConfig controls how aggressively raw/hour/day result data is compacted.
@@ -290,6 +308,11 @@ func Load() (*Config, error) {
 			Type:      "local",
 			LocalRoot: "./data/files",
 		},
+		App: AppConfig{
+			GitHub: AppGitHubConfig{
+				Repo: "fclairamb/solidping",
+			},
+		},
 		Google:    GoogleOAuthConfig{Enabled: false},
 		GitHub:    GitHubOAuthConfig{Enabled: false},
 		GitLab:    GitLabOAuthConfig{Enabled: false},
@@ -391,7 +414,28 @@ func Load() (*Config, error) {
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
 
+	// App / GitHub: SP_APP_GITHUB_ISSUES_TOKEN takes precedence over the
+	// bare GITHUB_ISSUES_TOKEN — keeps SP_*-prefixed conventions while
+	// allowing CI to reuse the standard token name when SP_* isn't set.
+	if v := os.Getenv("SP_APP_GITHUB_ISSUES_TOKEN"); v != "" {
+		cfg.App.GitHub.IssuesToken = v
+	} else if v := os.Getenv("GITHUB_ISSUES_TOKEN"); v != "" {
+		cfg.App.GitHub.IssuesToken = v
+	}
+
+	if v := os.Getenv("SP_APP_GITHUB_REPO"); v != "" {
+		cfg.App.GitHub.Repo = v
+	}
+
+	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
+
 	return &cfg, nil
+}
+
+// ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
+// Used at startup and after a system-parameter reload of app.github.* keys.
+func ComputeBugReportEnabled(gh *AppGitHubConfig) bool {
+	return gh.IssuesToken != "" && gh.Repo != ""
 }
 
 // Validate checks that the configuration is valid and returns an error if not.
