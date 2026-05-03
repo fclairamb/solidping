@@ -529,8 +529,13 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter
 		})
 	}
 
-	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq)
+	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, extractRemoteAddress(req))
 	if err != nil {
+		if errors.Is(err, ErrRateLimited) {
+			return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
+				"Too many password reset requests, please try again later")
+		}
+
 		return h.WriteInternalError(writer, err)
 	}
 
