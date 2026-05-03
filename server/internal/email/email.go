@@ -31,6 +31,12 @@ type Sender interface {
 type Formatter interface {
 	// Format renders a template with the given data and returns the rendered
 	// subject (from a {{define "subject"}} block, or "" when the template
-	// has none), the HTML body with inlined CSS, and a plain-text fallback.
-	Format(templateName string, data any) (subject string, html string, text string, err error)
+	// has none) and the HTML body with inlined CSS.
+	//
+	// No plaintext fallback is produced — the auto-generated lynx-style
+	// rendering of our wrapper tables is unreadable in real clients, and
+	// HTML-only is sufficient for transactional mail. Callers that have a
+	// hand-written plaintext alternative can supply it via Message.Text
+	// directly.
+	Format(templateName string, data any) (subject string, html string, err error)
 }

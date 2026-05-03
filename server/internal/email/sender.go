@@ -124,18 +124,23 @@ func (s *SMTPSender) setRecipients(mailMsg *mail.Msg, recipients *Recipients) er
 	return nil
 }
 
-// setBody sets the HTML and/or plain text body on the message.
+// setBody sets the plaintext and/or HTML body on the message.
+//
+// Per RFC 2046 §5.1.4, multipart/alternative parts must be ordered from
+// least to most preferred (preferred last). Spec-compliant readers
+// (Gmail, Apple Mail) pick the LAST part they can render, so plaintext
+// goes first and HTML goes last — otherwise Gmail renders our auto-text
+// (which lynx-renders the wrapper tables in base.html) instead of our
+// styled HTML.
 func (s *SMTPSender) setBody(mailMsg *mail.Msg, msg *Message) {
-	if msg.HTML != "" {
+	switch {
+	case msg.HTML != "" && msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
+		mailMsg.AddAlternativeString(mail.TypeTextHTML, msg.HTML)
+	case msg.HTML != "":
 		mailMsg.SetBodyString(mail.TypeTextHTML, msg.HTML)
-	}
-
-	if msg.Text != "" {
-		if msg.HTML != "" {
-			mailMsg.AddAlternativeString(mail.TypeTextPlain, msg.Text)
-		} else {
-			mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
-		}
+	case msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
 	}
 }
 

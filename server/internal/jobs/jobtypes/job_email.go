@@ -170,14 +170,13 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 			return nil, ErrEmailFormatterMissing
 		}
 
-		subject, html, text, err := jctx.Services.EmailFormatter.Format(
+		subject, html, err := jctx.Services.EmailFormatter.Format(
 			r.config.Template, r.config.TemplateData)
 		if err != nil {
 			return nil, fmt.Errorf("formatting template %s: %w", r.config.Template, err)
 		}
 
 		msg.HTML = html
-		msg.Text = text
 		// Caller-supplied subject overrides the template's; otherwise use
 		// what the template defined.
 		if msg.Subject == "" {
