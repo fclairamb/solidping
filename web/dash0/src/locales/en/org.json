@@ -52,7 +52,7 @@
       "user": "User",
       "viewer": "Viewer"
     },
-    "empty": "No members yet. Invite someone from the Invitations tab.",
+    "empty": "No members yet — invite your first teammate.",
     "cannotEditSelf": "Use your profile settings to change your own membership.",
     "remove": "Remove",
     "removeConfirm": {

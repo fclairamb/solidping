@@ -51,6 +51,7 @@ import {
   useRemoveMember,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { CreateInvitationDialog } from "@/components/shared/create-invitation-dialog";
 
 export const Route = createFileRoute("/orgs/$org/organization/members")({
   component: MembersPage,
@@ -137,6 +138,9 @@ function MembersPage() {
 
   return (
     <TooltipProvider>
+      <div className="flex items-center justify-end mb-6">
+        <CreateInvitationDialog org={org} />
+      </div>
       <Card>
         <CardHeader>
           <CardTitle>{t("members.title")}</CardTitle>

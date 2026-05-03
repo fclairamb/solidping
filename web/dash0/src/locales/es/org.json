@@ -52,7 +52,7 @@
       "user": "Usuario",
       "viewer": "Lector"
     },
-    "empty": "Aún no hay miembros. Invite a alguien desde la pestaña Invitaciones.",
+    "empty": "Aún no hay miembros — invite a su primer compañero.",
     "cannotEditSelf": "Use los ajustes de su perfil para cambiar su propia membresía.",
     "remove": "Eliminar",
     "removeConfirm": {

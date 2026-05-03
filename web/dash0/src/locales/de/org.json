@@ -52,7 +52,7 @@
       "user": "Benutzer",
       "viewer": "Betrachter"
     },
-    "empty": "Noch keine Mitglieder. Laden Sie jemanden über den Reiter Einladungen ein.",
+    "empty": "Noch keine Mitglieder — laden Sie Ihr erstes Teammitglied ein.",
     "cannotEditSelf": "Verwenden Sie Ihre Profileinstellungen, um Ihre eigene Mitgliedschaft zu ändern.",
     "remove": "Entfernen",
     "removeConfirm": {

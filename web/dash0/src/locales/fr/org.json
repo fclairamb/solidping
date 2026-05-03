@@ -52,7 +52,7 @@
       "user": "Utilisateur",
       "viewer": "Lecteur"
     },
-    "empty": "Aucun membre pour le moment. Invitez quelqu'un depuis l'onglet Invitations.",
+    "empty": "Aucun membre pour le moment — invitez votre premier coéquipier.",
     "cannotEditSelf": "Utilisez vos paramètres de profil pour modifier votre propre adhésion.",
     "remove": "Retirer",
     "removeConfirm": {
