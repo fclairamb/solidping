@@ -91,6 +91,8 @@ previous binary running; check the dev log for the compiler error.
 ### API Endpoints (key routes, see `docs/api-specification.md` for full list)
 - GET /api/mgmt/version - Version info
 - GET /api/mgmt/health - Health check
+- POST /api/mgmt/report - In-app bug report (multipart, public)
+- GET /api/v1/features - Frontend feature flags (auth)
 - POST /api/v1/auth/login - Login (org optional in body)
 - POST /api/v1/auth/logout - Logout
 - POST /api/v1/auth/refresh - Refresh token
