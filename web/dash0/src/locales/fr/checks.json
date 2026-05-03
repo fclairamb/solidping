@@ -198,6 +198,7 @@
   },
   "detail": {
     "checkDetails": "Détails du contrôle",
+    "pendingFirstRun": "Première exécution en cours…",
     "configuration": "Configuration",
     "configurationDescription": "Paramètres et options du contrôle",
     "results": "Résultats",

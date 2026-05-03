@@ -198,6 +198,7 @@
   },
   "detail": {
     "checkDetails": "Check Details",
+    "pendingFirstRun": "Pending first run…",
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
     "results": "Results",

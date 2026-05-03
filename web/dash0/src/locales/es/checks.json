@@ -198,6 +198,7 @@
   },
   "detail": {
     "checkDetails": "Detalles de la comprobación",
+    "pendingFirstRun": "Primera ejecución en curso…",
     "configuration": "Configuración",
     "configurationDescription": "Ajustes y parámetros de la comprobación",
     "results": "Resultados",

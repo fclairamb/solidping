@@ -272,10 +272,26 @@ function CheckDetailPage() {
     isRefetching,
   } = useCheck(org, checkUid, { with: "last_result,last_status_change" });
 
-  const refetchInterval = useMemo(
+  const periodMs = useMemo(
     () => parsePeriodMs(check?.period),
     [check?.period]
   );
+
+  // While the very first result is still the "created" placeholder, poll
+  // fast enough that a freshly-created check shows its first real status
+  // without making the user wait for a full check period. Cap the fast
+  // phase so a stuck worker can't trigger runaway polling at 1.5 s.
+  const fastPollMs = 1500;
+  const fastPollWindowMs = 30_000;
+  const isPendingFirstRun = check?.lastResult?.status === "created";
+  const [withinFastWindow, setWithinFastWindow] = useState(true);
+  useEffect(() => {
+    const id = setTimeout(() => setWithinFastWindow(false), fastPollWindowMs);
+    return () => clearTimeout(id);
+  }, []);
+
+  const refetchInterval =
+    isPendingFirstRun && withinFastWindow ? fastPollMs : periodMs;
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {
@@ -470,6 +486,16 @@ function CheckDetailPage() {
               )}
             </div>
             <Badge variant="outline">{check.type}</Badge>
+            {isPendingFirstRun && (
+              <Badge
+                variant="outline"
+                className="gap-1 text-muted-foreground"
+                aria-live="polite"
+              >
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t("checks:detail.pendingFirstRun")}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
