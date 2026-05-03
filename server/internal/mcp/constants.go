@@ -24,4 +24,5 @@ const (
 	propLimit         = "limit"
 	propCursor        = "cursor"
 	propIdentifier    = "identifier"
+	propUID           = "uid"
 )

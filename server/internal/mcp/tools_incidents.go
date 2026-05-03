@@ -77,14 +77,14 @@ func getIncidentDef() ToolDefinition {
 		Name:        "get_incident",
 		Description: "Get a single incident by UID.",
 		InputSchema: objectSchema(map[string]any{
-			"uid": stringProp("Incident UID"),
+			propUID: stringProp("Incident UID"),
 			propWith: stringProp(
 				"Comma-separated extra fields. \"check\" includes the underlying " +
 					"check; \"events\" includes up to 50 most-recent timeline events " +
 					"(status transitions, notifications, manual notes). " +
 					"Example: \"check,events\".",
 			),
-		}, []string{"uid"}),
+		}, []string{propUID}),
 	}
 }
 
