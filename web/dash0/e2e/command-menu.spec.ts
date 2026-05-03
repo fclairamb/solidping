@@ -21,6 +21,7 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Incidents" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Events" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Status Pages" })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "Badges" })).toBeVisible();
 
     // Verify Account group
     await expect(page.getByText("Account", { exact: true })).toBeVisible();
@@ -29,6 +30,7 @@ test.describe("Command Menu (Cmd+K)", () => {
 
     // Verify Organization group
     await expect(page.getByText("Organization", { exact: true })).toBeVisible();
+    await expect(page.locator('[cmdk-item]').filter({ hasText: "Members" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Invitations" })).toBeVisible();
     await expect(page.locator('[cmdk-item]').filter({ hasText: "Settings" })).toBeVisible();
 
@@ -81,6 +83,40 @@ test.describe("Command Menu (Cmd+K)", () => {
     // Should navigate to incidents page
     await page.waitForURL(/\/incidents/, { timeout: 5000 });
     expect(page.url()).toContain("/incidents");
+  });
+
+  test("should navigate to members via keyboard (type + Enter)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    await input.pressSequentially("members", { delay: 50 });
+    await page.keyboard.press("Enter");
+
+    await page.waitForURL(/\/organization\/members/, { timeout: 5000 });
+    expect(page.url()).toContain("/organization/members");
+    await expect(input).not.toBeVisible();
+  });
+
+  test("should close on Enter when no items match", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    await input.pressSequentially("zzznomatchzz", { delay: 30 });
+    await page.keyboard.press("Enter");
+
+    await expect(input).not.toBeVisible();
   });
 
   test("should close on Escape", async ({ authenticatedPage }) => {

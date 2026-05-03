@@ -70,10 +70,20 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(
+// Reuse the React root across HMR reloads. Without this, every time Vite
+// re-executes main.tsx (e.g. after editing imports here) a *new* createRoot
+// is attached to #root while the old root and its component tree stay alive,
+// producing duplicate listeners and duplicate dialogs (e.g. two CommandMenu
+// instances responding to a single Cmd+K).
+const container = document.getElementById("root")!;
+type Root = ReturnType<typeof createRoot>;
+const w = window as unknown as { __reactRoot__?: Root };
+const root: Root = w.__reactRoot__ ?? createRoot(container);
+w.__reactRoot__ = root;
+root.render(
   <StrictMode>
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
-  </StrictMode>
+  </StrictMode>,
 );
