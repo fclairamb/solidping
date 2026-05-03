@@ -6,7 +6,7 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { apiFetch, setToken, clearToken, getToken } from "@/api/client";
+import { ApiError, apiFetch, setToken, clearToken, getToken } from "@/api/client";
 
 interface User {
   email: string;
@@ -122,12 +122,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setOrg(data.organization.slug);
       }
       setOrganizations(data.organizations || []);
-    } catch {
-      clearToken();
-      clearStoredOrg();
-      setUser(null);
-      setOrg(null);
-      setOrganizations([]);
+    } catch (e) {
+      // Only clear auth state on auth-failure responses (401/403). Transient
+      // errors — network aborts from navigation, 5xx, etc. — must not wipe a
+      // freshly-issued OAuth token, or the next page load redirects to login.
+      const isAuthFailure = e instanceof ApiError && (e.status === 401 || e.status === 403);
+      if (isAuthFailure) {
+        clearToken();
+        clearStoredOrg();
+        setUser(null);
+        setOrg(null);
+        setOrganizations([]);
+      }
     } finally {
       setIsLoading(false);
     }
