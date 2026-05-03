@@ -45,7 +45,7 @@ func getStatusPageDef() ToolDefinition {
 		Name:        "get_status_page",
 		Description: "Get a single status page by UID or slug.",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier: stringProp("Status page UID or slug"),
+			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 			propWith:       stringProp("\"sections\" to include nested sections and their resources"),
 		}, []string{propIdentifier}),
 	}
@@ -69,18 +69,21 @@ func (h *Handler) toolGetStatusPage(ctx context.Context, orgSlug string, args ma
 
 func createStatusPageDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_status_page",
-		Description: "Create a new status page.",
+		Name: "create_status_page",
+		Description: "Create a new status page for the organization. A status page is the " +
+			"public-facing dashboard that displays the current health of selected checks.",
 		InputSchema: objectSchema(map[string]any{
-			schemaKeyName:        stringProp("Status page name (required)"),
-			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org)"),
-			schemaKeyDescription: stringProp("Optional description"),
-			propVisibility:       stringProp("\"public\" or \"private\" (default depends on system config)"),
-			propIsDefault:        boolProp("Whether this is the org's default status page"),
-			propShowAvailability: boolProp("Display availability percentage on the public page"),
-			propShowResponseTime: boolProp("Display response-time charts on the public page"),
-			propHistoryDays:      intProp("Days of history to show (default 90)"),
-			propLanguage:         stringProp("Language code (e.g., \"en\", \"fr\")"),
+			schemaKeyName:        stringProp("Status page display name (required), e.g. \"Public status\"."),
+			schemaKeySlug:        stringProp("URL-friendly slug (required, unique per org), e.g. \"public\"."),
+			schemaKeyDescription: stringProp("Optional free-text description shown in the UI."),
+			propVisibility: stringProp(
+				"Visibility setting. Allowed: \"public\", \"private\". Default depends on system config.",
+			),
+			propIsDefault:        boolProp("Whether this is the org's default status page (only one allowed)."),
+			propShowAvailability: boolProp("Display availability percentage on the public page."),
+			propShowResponseTime: boolProp("Display response-time charts on the public page."),
+			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
+			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
 		}, []string{schemaKeyName, schemaKeySlug}),
 	}
 }
@@ -123,17 +126,17 @@ func updateStatusPageDef() ToolDefinition {
 		Name:        "update_status_page",
 		Description: "Update an existing status page (PATCH semantics — only provided fields change).",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier:       stringProp("Status page UID or slug (required)"),
-			schemaKeyName:        stringProp("New name"),
-			schemaKeySlug:        stringProp("New slug"),
-			schemaKeyDescription: stringProp("New description"),
-			propVisibility:       stringProp("\"public\" or \"private\""),
-			propIsDefault:        boolProp("Mark as the org's default page"),
-			schemaKeyEnabled:     boolProp("Enable / disable the page"),
-			propShowAvailability: boolProp("Toggle availability display"),
-			propShowResponseTime: boolProp("Toggle response-time display"),
-			propHistoryDays:      intProp("Days of history to show"),
-			propLanguage:         stringProp("Language code"),
+			propIdentifier:       stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			schemaKeyName:        stringProp("New display name, e.g. \"Public status page\"."),
+			schemaKeySlug:        stringProp("New URL-friendly slug, e.g. \"public\"."),
+			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
+			propVisibility:       stringProp("Visibility setting. Allowed: \"public\", \"private\"."),
+			propIsDefault:        boolProp("Mark as the org's default page (only one allowed)."),
+			schemaKeyEnabled:     boolProp("Enable or disable the public-facing page."),
+			propShowAvailability: boolProp("Toggle availability percentage on the public page."),
+			propShowResponseTime: boolProp("Toggle response-time charts on the public page."),
+			propHistoryDays:      intProp("Days of history to show on the page (default 90)."),
+			propLanguage:         stringProp("Language code, e.g. \"en\" or \"fr\"."),
 		}, []string{propIdentifier}),
 	}
 }
@@ -184,7 +187,7 @@ func deleteStatusPageDef() ToolDefinition {
 		Name:        "delete_status_page",
 		Description: "Soft-delete a status page by UID or slug.",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier: stringProp("Status page UID or slug"),
+			propIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 		}, []string{propIdentifier}),
 	}
 }
@@ -204,10 +207,11 @@ func (h *Handler) toolDeleteStatusPage(ctx context.Context, orgSlug string, args
 
 func listStatusPageSectionsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_status_page_sections",
-		Description: "List sections within a status page.",
+		Name: "list_status_page_sections",
+		Description: "List sections within a status page. Sections group resources " +
+			"(pinned checks) on the public-facing page.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier: stringProp("Status page UID or slug"),
+			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
 		}, []string{propPageIdentifier}),
 	}
 }
@@ -231,10 +235,10 @@ func createStatusPageSectionDef() ToolDefinition {
 		Name:        "create_status_page_section",
 		Description: "Create a new section within a status page.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier: stringProp("Status page UID or slug"),
-			schemaKeyName:      stringProp("Section name (required)"),
-			schemaKeySlug:      stringProp("URL-friendly slug (required, unique within the page)"),
-			propPosition:       intProp("Display position (smaller renders earlier)"),
+			propPageIdentifier: stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			schemaKeyName:      stringProp("Section display name (required), e.g. \"API services\"."),
+			schemaKeySlug:      stringProp("URL-friendly slug (required, unique within the page), e.g. \"api\"."),
+			propPosition:       intProp("Display position within the page (smaller renders earlier)."),
 		}, []string{propPageIdentifier, schemaKeyName, schemaKeySlug}),
 	}
 }
@@ -262,14 +266,15 @@ func (h *Handler) toolCreateStatusPageSection(
 
 func updateStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "update_status_page_section",
-		Description: "Update a section within a status page.",
+		Name: "update_status_page_section",
+		Description: "Update a section within a status page (PATCH semantics — only " +
+			"provided fields change).",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
-			schemaKeyName:         stringProp("New name"),
-			schemaKeySlug:         stringProp("New slug"),
-			propPosition:          intProp("New display position"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
+			schemaKeyName:         stringProp("New section display name, e.g. \"API services\"."),
+			schemaKeySlug:         stringProp("New URL-friendly slug, e.g. \"api\"."),
+			propPosition:          intProp("New display position within the page (smaller renders earlier)."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
 	}
 }
@@ -302,11 +307,12 @@ func (h *Handler) toolUpdateStatusPageSection(
 
 func deleteStatusPageSectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "delete_status_page_section",
-		Description: "Delete a section from a status page.",
+		Name: "delete_status_page_section",
+		Description: "Delete a section from a status page. Resources in the section are " +
+			"removed too.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
 	}
 }
@@ -332,8 +338,8 @@ func listStatusPageResourcesDef() ToolDefinition {
 		Name:        "list_status_page_resources",
 		Description: "List resources (checks pinned to a section) within a status page section.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 		}, []string{propPageIdentifier, propSectionIdentifier}),
 	}
 }
@@ -358,8 +364,8 @@ func createStatusPageResourceDef() ToolDefinition {
 		Name:        "create_status_page_resource",
 		Description: "Pin a check to a status-page section as a publicly-displayed resource.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
 			propCheckUID:          stringProp("Check UID or slug to pin (required)"),
 			propPublicName:        stringProp("Display name for the public page (defaults to the check name)"),
 			propExplanation:       stringProp("Short explanation rendered under the resource"),
@@ -400,12 +406,12 @@ func updateStatusPageResourceDef() ToolDefinition {
 		Name:        "update_status_page_resource",
 		Description: "Update a status page resource (display name, explanation, position).",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
-			propResourceUID:       stringProp("Resource UID"),
-			propPublicName:        stringProp("New display name"),
-			propExplanation:       stringProp("New explanation"),
-			propPosition:          intProp("New display position"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
+			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
+			propPublicName:        stringProp("New display name shown on the public page."),
+			propExplanation:       stringProp("New short explanation rendered under the resource."),
+			propPosition:          intProp("New display position within the section (smaller renders earlier)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
 	}
 }
@@ -442,9 +448,9 @@ func deleteStatusPageResourceDef() ToolDefinition {
 		Name:        "delete_status_page_resource",
 		Description: "Remove a resource (pinned check) from a status-page section.",
 		InputSchema: objectSchema(map[string]any{
-			propPageIdentifier:    stringProp("Status page UID or slug"),
-			propSectionIdentifier: stringProp("Section UID or slug"),
-			propResourceUID:       stringProp("Resource UID"),
+			propPageIdentifier:    stringProp("Status page UID or URL-friendly slug, e.g. \"public\"."),
+			propSectionIdentifier: stringProp("Status page section UID or URL-friendly slug, e.g. \"api\"."),
+			propResourceUID:       stringProp("Status page resource UID (returned by list/create_status_page_resource)."),
 		}, []string{propPageIdentifier, propSectionIdentifier, propResourceUID}),
 	}
 }

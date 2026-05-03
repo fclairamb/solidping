@@ -53,10 +53,11 @@ func (h *Handler) toolListMaintenanceWindows(
 
 func getMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "get_maintenance_window",
-		Description: "Get a single maintenance window by UID.",
+		Name: "get_maintenance_window",
+		Description: "Get a single maintenance window by UID, including title, schedule, " +
+			"and recurrence rule.",
 		InputSchema: objectSchema(map[string]any{
-			propUID: stringProp("Maintenance window UID."),
+			propUID: stringProp("Maintenance window UID returned by list_maintenance_windows."),
 		}, []string{propUID}),
 	}
 }
@@ -184,10 +185,10 @@ func updateMaintenanceWindowDef() ToolDefinition {
 		Description: "Update a maintenance window (PATCH semantics — only provided fields change).",
 		InputSchema: objectSchema(map[string]any{
 			propUID:              stringProp("Maintenance window UID (required)."),
-			propTitle:            stringProp("New title."),
+			propTitle:            stringProp("New title for the maintenance window."),
 			propStartAt:          stringProp("New start (RFC3339, e.g. \"2026-05-03T22:00:00Z\")."),
 			propEndAt:            stringProp("New end (RFC3339, must be later than startAt)."),
-			schemaKeyDescription: stringProp("New description."),
+			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
 			propRecurrence: stringProp(
 				"New iCalendar RRULE (e.g. \"FREQ=WEEKLY;BYDAY=MO\"). Pass empty string to clear.",
 			),

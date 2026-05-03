@@ -13,16 +13,31 @@ const incidentEventsCap = 50
 
 func listIncidentsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_incidents",
-		Description: "List incidents with filtering.",
+		Name: "list_incidents",
+		Description: "List incidents (past or active) for the org, optionally filtered by check, " +
+			"state, or time range. For triaging a specific check's incidents in one call, " +
+			"prefer diagnose_check.",
 		InputSchema: objectSchema(map[string]any{
-			"checkUid": stringProp("Comma-separated check UIDs"),
-			"state":    stringProp("Comma-separated: active, resolved"),
-			"since":    stringProp("RFC3339 timestamp (started after)"),
-			"until":    stringProp("RFC3339 timestamp (started before)"),
-			propWith:   stringProp("\"check\" to include check details"),
-			"size":     intProp("Max results (1-100, default 20)"),
-			propCursor: stringProp("Pagination cursor"),
+			"checkUid": stringProp(
+				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
+			),
+			"state": stringProp(
+				"Comma-separated incident states. Allowed: active, resolved. " +
+					"Example: \"active\" or \"active,resolved\".",
+			),
+			"since": stringProp(
+				"Lower bound on incident start time (RFC3339), e.g. \"2026-05-03T00:00:00Z\".",
+			),
+			"until": stringProp(
+				"Upper bound on incident start time (RFC3339), e.g. \"2026-05-04T00:00:00Z\".",
+			),
+			propWith: stringProp(
+				"Comma-separated extra fields:\n" +
+					"  check — include the underlying check (slug, type, config)\n" +
+					"Example: \"check\".",
+			),
+			"size":     intProp(descLimit),
+			propCursor: stringProp(descCursor),
 		}, nil),
 	}
 }
@@ -74,10 +89,11 @@ func (h *Handler) toolListIncidents(ctx context.Context, orgSlug string, args ma
 
 func getIncidentDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "get_incident",
-		Description: "Get a single incident by UID.",
+		Name: "get_incident",
+		Description: "Get a single incident by UID. Pass with=\"events\" to also include the " +
+			"timeline of state transitions and notifications.",
 		InputSchema: objectSchema(map[string]any{
-			propUID: stringProp("Incident UID"),
+			propUID: stringProp("Incident UID returned by list_incidents or diagnose_check."),
 			propWith: stringProp(
 				"Comma-separated extra fields. \"check\" includes the underlying " +
 					"check; \"events\" includes up to 50 most-recent timeline events " +
