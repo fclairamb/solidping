@@ -139,10 +139,15 @@ func (r *EmailJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	}
 
 	// Store send result in job output
-	jctx.Job.Output = models.JSONMap{
+	output := models.JSONMap{
 		"sent":    result.Sent,
 		"message": result.Message,
 	}
+	if result.MessageID != "" {
+		output["messageId"] = result.MessageID
+	}
+
+	jctx.Job.Output = output
 
 	log.InfoContext(ctx, "Email sent successfully",
 		"to", r.config.To,

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wneessen/go-mail"
 
@@ -39,6 +40,9 @@ func NewSender(cfg *config.EmailConfig, logger *slog.Logger) *SMTPSender {
 type SendResult struct {
 	Sent    bool   `json:"sent"`
 	Message string `json:"message"`
+	// MessageID is the RFC 5322 Message-ID auto-stamped by go-mail (or set by
+	// the caller). Brackets are stripped so the JSON value is a plain id.
+	MessageID string `json:"messageId,omitempty"`
 }
 
 // Send delivers an email. Returns nil immediately if email is disabled (no-op).
@@ -209,10 +213,17 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		return nil, fmt.Errorf("sending email: %w", err)
 	}
 
+	messageID := strings.Trim(mailMsg.GetMessageID(), "<>")
+
 	s.logger.InfoContext(ctx, "email sent successfully",
 		"to", msg.Recipients.To,
 		"subject", msg.Subject,
+		"messageId", messageID,
 	)
 
-	return &SendResult{Sent: true, Message: "email sent successfully"}, nil
+	return &SendResult{
+		Sent:      true,
+		Message:   "email sent successfully",
+		MessageID: messageID,
+	}, nil
 }
