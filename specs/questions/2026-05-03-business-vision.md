@@ -4,90 +4,125 @@ This document records the business posture of SolidPing — what we charge for, 
 
 ## The four principles
 
-### 1. Core product is fully featured for everyone — no artificial degradation
-We do not gate SSO, RBAC, audit logs, retention windows, integration count, status pages, or any other product capability behind a paid tier *for the purpose of pushing people to pay*. If a feature exists, every user gets it. Where limits exist (e.g., a free SaaS tier check frequency), they reflect honest operational cost, not coercion.
+### 1. The product is fully featured for everyone — with two narrow, named exceptions
+We do not gate features behind a paid tier *for the purpose of pushing people to pay*. Self-hosters and free SaaS users get the same checks, the same alerting, the same status pages, the same retention, the same integrations, the same dashboards.
 
-This is the Sentry stance ("we are not an open-core company") and it is deliberate. Most peer products gate SSO/RBAC/audit specifically to extract enterprise dollars. We don't.
+The only exceptions, named and bounded:
 
-### 2. Heavy self-hosting use should be paid use
-SolidPing is free to run for personal projects, side businesses, internal tools, and any use that doesn't represent a serious commercial dependency. Once an organization runs SolidPing as load-bearing commercial infrastructure — high check rates, large team counts, mission-critical alerting — it is expected to acquire a Self-Hosted Commercial License.
+- **SSO (SAML / OIDC / SCIM) is SaaS-only and paid-only.** Self-hosters get local accounts and OAuth-via-provider login; identity-federation features are reserved for paying SaaS customers. Reason: SSO is the universal enterprise checkbox; it is the cleanest, most-recognised conversion lever, and decoupling it from self-hosting keeps the rest of the product simple and uncompromised.
+- **Quotas are SaaS-only.** Rate limits, retention windows, member counts, status-page counts are tier-driven on the SaaS. Self-hosted SolidPing has no quotas: users dimension their own infrastructure.
 
-The license does **not** unlock additional features (see Principle 1). It is a legal grant for heavy commercial use, in the spirit of n8n's Sustainable Use License or BSL-style non-compete grants.
+Everything else lives in the open codebase, available to everyone, with no flags or feature gates whose purpose is to push payment.
+
+### 2. Self-hosting is free, unrestricted, and strategic
+Anyone may run SolidPing on their own infrastructure, at any scale, indefinitely, with no usage caps, no commercial-license trigger, and no "heavy use must pay" clause. Self-hosting is not a degraded entry point we tolerate — it is a deliberate distribution channel.
+
+The strategy: an engineer self-hosts SolidPing for their team, finds it useful, recommends it to peers, the tool spreads inside the company, and over time the company adopts the SaaS for the operational reasons in Principle 3 (and, for some companies, for SSO from Principle 1). Free self-hosting is the on-ramp; SaaS is the destination for organisations that grow into it.
+
+This explicitly drops the earlier idea of a "Self-Hosted Commercial License" for heavy users. We don't want that conversation; we want the user to keep using the tool.
 
 ### 3. SaaS hosting is paid, and recommended
-We charge for SolidPing.io. We also actively recommend it over self-hosting, because **monitoring should not run on the same infrastructure it monitors**. If your application's database goes down and your Postgres-backed monitor goes down with it, the monitor failed at its only job. Externalising monitoring to a service with independent failure domains is operations hygiene, not a sales pitch.
+We charge for SolidPing.io. We also actively recommend it over self-hosting, on architectural grounds: **monitoring should not run on the same infrastructure it monitors**.
+
+The pitch (Principle 5 below sharpens this further):
+
+- **If your app and your monitor share an outage, your monitor failed at its only job.** That single sentence is the most honest version of why monitoring SaaS exists.
+- **Multi-region probing**, hard to recreate with self-hosted workers in one DC.
+- **Status pages that stay up when your stack goes down.** A status page on the same infrastructure as the thing it reports is the most-mocked outage trope in our industry.
+- **Zero ops.** No Postgres to manage, no migrations, no version upgrades, no on-call rotation for the thing that's supposed to wake you up.
+- **Meta-monitoring** (TLS expiry, certificate transparency, DNS reachability) — annoying to do for yourself, trivial for us.
 
 Pricing tiers are defined in `2026-01-03-saas-pricing.md` and calibrated to make SaaS the easy default for most customers.
 
 ### 4. Nobody else may charge to host SolidPing as a SaaS
 The license forbids third-party hosted "SolidPing-as-a-Service" offerings. AWS-style arbitrage — "we host your open-source product cheaper than you" — is the failure mode that pushed Mongo, Elastic, Redis, HashiCorp, and Sentry off OSI-approved licenses. We adopt the same posture from day one.
 
-This means SolidPing is **not OSI Open Source**. It is *fair-code* / source-available with a non-compete clause.
+This means SolidPing is **not OSI Open Source**. It is *fair-code* / source-available with a non-compete clause. We accept the community-perception cost of that label.
 
-## What this implies for the license
+## License recommendation
 
-The four principles converge on a fair-code license with a SaaS non-compete clause, with most code time-converting to permissive OSS after a delay. Two viable choices:
+Given the revised principles — no usage-based licensing, free self-hosting forever, anti-cloud-arbitrage clause, narrow `saas/` carve-out for SSO and quotas — the cleanest license shape is:
 
-- **FSL-1.1-Apache-2.0** (Sentry, Liquibase). Source-available, 2-year non-compete on competing offerings, then auto-converts to Apache 2.0. Single license, predictable, well-understood.
-- **n8n-style Sustainable Use License**. Fair-code license with explicit non-compete on hosting. Less relevant to file-level splitting for us *because* Principle 1 means there are no EE-locked features to put in an `ee/` directory.
+**Primary recommendation: FSL-1.1-Apache-2.0 for the core, proprietary license for the `server/saas/` package.**
 
-The "heavy commercial use must be paid" clause from Principle 2 has to be added on top of either, since no off-the-shelf license cleanly combines all four principles. Practical wording: "free for use by any individual or organization for non-production / low-volume / non-mission-critical use; production use over [thresholds] requires a Self-Hosted Commercial License."
+Why FSL:
+- Single license for the core, predictable, well-understood.
+- The 2-year non-compete clause directly enforces Principle 4 in license language. After 2 years, any given commit auto-converts to Apache 2.0.
+- Sentry uses it, which is meaningful social proof in a still-young licensing space.
+- Aligns naturally with the "fair-code" framing.
+
+Trade-offs:
+- Not OSI-approved during the 2-year non-compete window. Excluded from Debian main, Fedora, and parts of the OSS-purist community. This is the same cost Sentry, n8n, Mongo, Elastic, HashiCorp, and Redis paid; community pushback is loudest for ~6 months and then fades.
+- During the non-compete window, you cannot offer "a competing product" — wording matters; FSL gives a clearer definition of "competing" than BSL's per-vendor variability.
+
+Alternatives considered:
+
+- **AGPLv3 for the core** (OSI-approved). Insufficient on its own for Principle 4: AGPL only obliges resellers to share modifications, not their hosting infrastructure. AWS could legally run unmodified SolidPing-as-a-Service. Would need to be combined with Commons Clause or a custom non-compete addendum, which gives up the OSI benefit anyway.
+- **n8n-style Sustainable Use License**. Equivalent in spirit to FSL but less standardised. Would work; FSL is just the cleaner of two near-equivalents.
+- **SSPL** (Mongo). Strongest anti-cloud-arbitrage stance but more controversial than FSL and broader than what we need.
+- **BSL** (HashiCorp pre-fork, MariaDB). Older, longer non-compete (default 4 years), per-vendor variability via "Additional Use Grant." FSL is the deliberate simplification of BSL.
+
+The `server/saas/` package (containing SSO, quotas, billing) carries a separate proprietary license and is excluded from the public OSS distribution. It runs only on solidping.io.
 
 ## What this implies for self-hosting
 
-- Self-hosters get **the same binary** as the SaaS, fully featured.
-- Soft enforcement only: the binary may emit telemetry indicating volume and may surface a polite "you're now in Pro/Team/Enterprise territory, please buy a license" UI banner. No hard block. An opt-out env var must exist for paranoid environments.
-- Hard enforcement is reserved for the license clause itself, enforceable in court against organizations that care about license compliance — which is the segment we want to convert anyway. Enforcement against pirates and freeloaders is not a goal.
-- The Self-Hosted Commercial License is a contract, not a feature flag. There is no license-key file that unlocks anything because there is nothing to unlock.
+- Self-hosters get **the same binary** as the SaaS, full featured, except SSO is not present and no quota-enforcement code runs.
+- No license keys. No paid features for self-host. No commercial-use clauses to worry about.
+- Optional, opt-out telemetry for product analytics — anonymous version, OS, rough volume bucket. Documented clearly with a single env var to disable. The point is to learn what users do, not to gate.
+- Upgrade path to SSO is "use the SaaS." For organisations with strict on-premise constraints that block SaaS use, SSO is genuinely unavailable. We accept that this excludes some enterprise segments (defence, certain healthcare, high-regulation finance). They are not our target.
 
 ## What this implies for SaaS
 
-- SaaS pricing has to be defensible against entrenched competition (UptimeRobot's free tier, Better Stack, Hyperping, Pingdom, Datadog Synthetics).
-- The pitch is **not** "more features than self-hosted" — that contradicts Principle 1. The pitch is:
-  - **Independent failure domain.** SolidPing.io stays up when your stack goes down.
-  - **Multi-region probing** that is hard to recreate with self-hosted workers in one DC.
-  - **Zero ops.** No Postgres to manage, no migrations, no version upgrades, no on-call rotation for the thing that's supposed to wake you up.
-  - **Meta-monitoring** (TLS expiry, certificate transparency, DNS reachability) that's annoying to do for yourself.
-- AI / LLM features (e.g. anomaly summarization, log correlation) are an explicit exception to Principle 1: SaaS-only when the cost structure (per-token inference) makes "free for everyone" actually impossible. This carve-out is honest and customers understand it.
+The pitch is **not** "more features than self-hosted" — that's almost untrue (only SSO and operational quotas differ). The pitch is *operational and architectural*:
+
+1. **Independent failure domain** is the headline. Lead with it. The status page that stays up when your stack goes down is a concrete, memorable proof of the abstract principle.
+2. **Multi-region probes from machines you don't run.** Geographic diversity, latency views, uptime SLOs that mean something globally.
+3. **Zero ops, zero on-call for the monitor itself.** The monitor must outlive the things it watches; that means *someone else* must operate it.
+4. **Meta-monitoring** that's tedious to wire up by hand: TLS/certificate expiry, DNS reachability, certificate transparency log changes.
+5. **SSO and identity federation**, for organisations whose operations require it.
+6. **Cheaper than the people-time to maintain a self-hosted monitor at scale.** Past trivial volume the engineering hours to maintain Postgres, workers, runbooks, and upgrades exceed the SaaS subscription cost. State this with numbers.
+
+AI / LLM features (anomaly summarisation, log correlation, runbook suggestions) join the named exceptions in Principle 1 *if and when we ship them*: SaaS-only because per-token inference cost makes "free for everyone" impossible. Adding such features requires updating this document.
 
 ## What this implies for the codebase
 
-If Principle 1 holds strictly:
-- There are no `ee/` directories with locked product features. Existing `server/` and `web/dash0/src/` carry everything.
-- A `server/saas/` package can exist for billing, quota enforcement, spike protection, and SaaS-only AI features — Sentry-style overlay subscribing to domain events emitted by `server/`.
-- Build tag `//go:build saas` controls inclusion of `server/saas/`. The default `make build` target produces the OSS binary; `make build-saas` produces the binary that runs on solidping.io.
-- Zero feature flags exist whose purpose is "OSS user can't do this." Feature flags are reserved for genuine A/B tests or rollout staging.
+- Two compilation targets:
+  - `make build` — OSS binary. Excludes `server/saas/`. Default for self-hosters and the public Docker image.
+  - `make build-saas` — SaaS binary, with `//go:build saas` enabling `server/saas/`. Runs on solidping.io only.
+- `server/saas/` contains, and only contains:
+  - SSO (SAML, OIDC, SCIM) integration.
+  - Quota enforcement (rate limits per plan, retention caps, member caps, status-page caps).
+  - Billing, plan management, invoicing, spike protection.
+  - Multi-tenancy plumbing not shared with self-hosters.
+- `server/saas/` subscribes to domain events emitted by `server/`. The OSS code never knows pricing or quotas exist; it just emits "check executed", "user logged in", and the SaaS overlay reacts.
+- Frontend mirrors the split: `web/dash0/src/saas/` is the small SSO + plan-management UI surface, included only in SaaS builds.
+- No feature flags whose purpose is "OSS user can't do this." Feature flags are for genuine A/B tests or rollout staging. The two carve-outs are *build-time excluded* from the OSS binary, not runtime-toggled.
 
-If we ever soften Principle 1 — for example, deciding that some compliance feature is genuinely worth gating — that is a Vision-level change requiring an update to this document.
+## Honest opinion: tensions and risks (revised)
 
-## Honest opinion: tensions and risks
+The revised model is much cleaner than the original. Dropping the "heavy self-hosters must pay" clause removed the fuzziest, least-enforceable principle. Restricting carve-outs to SSO and quotas is the smallest, most-defensible open-core gate possible. That said, real tensions remain.
 
-The four principles are coherent and unusual. Most peer products break Principle 1 *specifically* to make Principle 2 enforceable: feature-gating is the easiest way to get heavy users to pay, because they self-select by needing SSO. Choosing not to do that has real costs.
+1. **Revenue depends entirely on SaaS conversion.** With self-hosting being free forever and only SSO + SaaS hosting being paid, every dollar of revenue must come from someone choosing the SaaS. There is no enterprise self-host tier as a fallback. That is a *clean* bet, but a *single* bet — if SaaS conversion is weaker than projected, there is nowhere else to extract revenue without violating the principles. Validate SaaS conversion early.
 
-1. **Conversion is harder.** When an enterprise hits "we need SSO," every peer product converts them by charging for SSO. Our equivalent is "we need a Self-Hosted Commercial License because we're now load-bearing." That's a procurement conversation, not a checkout button. Expect a longer, more relationship-driven enterprise sales motion than feature-gated competitors.
+2. **SSO-only-on-SaaS excludes a real segment.** Hardcore on-premise enterprise customers — defence, certain healthcare, regulated finance — cannot legally or compliance-ly use SaaS, and so cannot have SSO from us. The trade-off is acceptable *only if* those segments aren't our target. Be explicit internally that we're not pursuing them; otherwise the pressure to add a self-hosted SSO key will appear within the first year.
 
-2. **"Heavy use" is a fuzzy line.** Where exactly does free use end and the Self-Hosted Commercial License begin? Pick concrete thresholds in the license (e.g. >100 endpoints OR >10 team members OR mission-critical use defined as triggering paging) and accept that the line will be argued. Vague clauses produce free riders; over-strict clauses scare away the SMBs we want as community.
+3. **The viral / bottom-up adoption bet is real but slower for monitoring than for collaboration tools.** Slack, Notion, Figma spread bottom-up because every additional user multiplies the value. Monitoring spreads more slowly: an engineer adds a check for their service, but the check doesn't gain value when their colleague also adds one — the network effect is weaker. Bottom-up still works for monitoring (PagerDuty, Datadog, New Relic all have stories) but the timeline is "quarters" not "weeks." Plan funding accordingly.
 
-3. **No-OSI cost is real but manageable.** "Not OSI Open Source" excludes us from some communities (Debian main, Fedora, parts of the OSS purity discourse). Sentry, n8n, MongoDB, Elastic, HashiCorp, Redis all survived this transition. Community pushback is loudest in the first 6 months and then fades.
+4. **Principle 4 needs detection, not just licensing.** A non-compete clause is necessary but not sufficient. We will not realistically sue a small reseller. The mitigation is brand and ergonomics: solidping.io is the canonical option, we ship faster than any reseller could, we own the docs, the integrations, and the community.
 
-4. **Principle 4 needs detection, not just licensing.** A clause forbidding AWS-style hosting is necessary but not sufficient. We will not realistically sue a small reseller. The mitigation is brand and ergonomics: make solidping.io obviously the canonical option, ship faster than any reseller can, own the docs and integrations.
+5. **Exception creep is the new Principle 1 risk.** The original "no exceptions ever" rule was unsustainable; the revised "two named exceptions" rule is sustainable but requires discipline. Every quarter someone will propose adding audit logs, RBAC, or compliance reports to the SaaS-only list. The discipline: each addition requires updating *this document*. If we end up with eight exceptions, we are an open-core company in denial.
 
-5. **The SaaS pitch needs sharpening.** "Externalize your monitoring" is correct but generic. The strongest authentic version: *"if your app and your monitor share an outage, your monitor failed."* This is a real architectural argument, not marketing. Lead with it.
+6. **The free-forever self-host means we lose product signals unless telemetry exists.** If we can't see how features are used, we'll over-prioritise what SaaS users do (a non-representative sample). Build optional telemetry from day one, with a clear opt-out, and use it to drive roadmap rather than billing.
 
-6. **Principle 1 is the hardest to keep.** Every quarter, someone will propose gating a feature for revenue. Every quarter, this document should be the answer to why we don't. If we revisit it, we revisit it explicitly — not by accident through six small product decisions.
-
-7. **The honest restatement of Principle 2:** "we trust enterprises with procurement teams and budget cycles to comply; we don't expect to extract money from solo devs or pirates." That's a defensible business *if* an enterprise segment for SolidPing actually exists. Validating that — that uptime monitoring with our specific differentiators has real enterprise pull — is a separate question this document does not answer.
-
-8. **Cannibalization risk.** A simple, easy-to-self-host Go binary with SQLite is a low-friction self-host story. Compare to Sentry, where self-hosting is a 16 GB RAM Docker stack — friction itself converts users. If SolidPing self-hosts in 30 seconds, our SaaS pitch leans entirely on the failure-domain argument, not on operational pain.
+7. **"Cannibalisation" is now strategy, not risk.** Easy self-hosting is the funnel. The risk is not that self-hosters cannibalise SaaS revenue — it's that they *never* convert. Mitigate by making the operational argument (Principle 3) and SSO (Principle 1 carve-out) genuinely compelling. If both are weak, conversion stalls.
 
 ## Open questions
 
-- What are the exact thresholds in the Self-Hosted Commercial License clause? "Heavy use" needs concrete numbers.
-- Do we ship telemetry by default? If yes, what does it report and how do we make the opt-out trivially discoverable?
-- What is the canonical phrasing of Principle 4 in the license file? Borrow from FSL, n8n SUL, or BSL?
-- Do AI/LLM features get their own document, or do we inherit Principle 1 with a SaaS-only carve-out?
-- Where does compliance reporting (SOC 2 attestations, audit-log streaming destinations) sit — included for everyone, or carved out alongside AI as a SaaS-cost feature?
-- Does SaaS get a permanent free tier, or is the free path "self-host the binary"? The pricing doc currently implies a SaaS Free tier — keeping it makes the funnel work but adds operational cost.
+- Should SSO be available *only* on SaaS, or also as a paid add-on for self-hosters who happen to be in our SaaS-incompatible segments? Saying "SSO requires SaaS" is the simplest message; "SSO requires payment, deployment is your choice" is more accommodating but reintroduces the licence-key complexity we just simplified away. Recommend: stay strict on SaaS-only for now; revisit if a real customer asks loudly.
+- Do we ship telemetry on by default? Recommend: yes, anonymous, version + rough volume bucket + feature-use counters, opt-out via a single env var, documented prominently in the README.
+- How does the SaaS free tier interact with self-hosting? Today the pricing doc lists a SaaS Free tier (30 endpoints, 10 checks/min). If self-hosting is genuinely friction-free, the SaaS Free tier exists mostly as a try-before-buy funnel — should we keep it, or push everyone to either self-host or pay? Recommend: keep it; it is the friction-free way to evaluate the SaaS pitch (multi-region, zero-ops) without commitment.
+- Where does compliance reporting (SOC 2 attestations, audit-log streaming destinations) sit? It is a feature of the SaaS by virtue of where the data lives, but the *code* should remain in the open core. Self-hosters can stream audit logs anywhere they like.
+- AI / LLM features: when we ship the first one, this doc must be updated to add it as a named exception under Principle 1.
 
 ## Related
 - `2026-01-03-saas-pricing.md` — current pricing tiers.
