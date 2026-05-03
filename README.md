@@ -8,22 +8,24 @@ SolidPing is a multi-tenant monitoring system that enables organizations to moni
 
 ### Key Features
 
-- **30 check types**: HTTP, TCP, UDP, ICMP, DNS, SSL/Domain, SSH, FTP/SFTP, SMTP/POP3/IMAP, WebSocket, gRPC, 6 databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, SNMP, game server, headless browser, custom JS, heartbeat
+- **32 check types**: HTTP, TCP, UDP, ICMP, DNS, SSL/Domain, SSH, FTP/SFTP, SMTP/POP3/IMAP, Email (JMAP passive inbox), WebSocket, gRPC, 6 databases (Postgres, MySQL, MSSQL, Oracle, MongoDB, Redis), 3 message queues (Kafka, RabbitMQ, MQTT), Docker, SNMP, game server (Source/A2S, Minecraft), headless browser, custom JS, heartbeat
 - **Distributed workers**: Multi-region check execution with lease-based scheduling
-- **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP)
+- **Multi-tenant**: Organization-scoped data isolation, RBAC, 2FA (TOTP), labels with autocomplete
 - **Low footprint**: Single binary; SQLite, embedded Postgres, or external Postgres
 - **Fast checks**: Sub-minute frequencies supported
-- **Notifications (9 native)**: Slack (OAuth + threads), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
-- **Status pages**: Sections, resources, public availability metrics
+- **Notifications (9 native)**: Slack (OAuth + threads + Marketplace install), Discord (OAuth + webhook), Email, Webhooks, Google Chat, Mattermost, Ntfy, Opsgenie, Pushover
+- **Incidents**: Adaptive resolution with cooldown, group-incident correlation (one alert per outage, not per check), acknowledgment, snooze, manual resolve
+- **On-call & escalation**: Rotation schedules with overrides, multi-step escalation policies (user / schedule / connection / all-admins targets, repeats)
+- **Credentials encryption at rest**: Envelope encryption with out-of-band master key; secrets never echoed back to the dashboard
+- **Status pages**: Sections, resources, public availability metrics, locale-aware date formatting
 - **Maintenance windows**: Recurring suppression of alerts
-- **Adaptive incident resolution**: Smart thresholds with cooldown and escalation
 - **JavaScript scripting**: Sandboxed custom monitoring logic
 - **Browser monitoring**: Headless Chrome via Rod
 - **MCP server**: AI/LLM tool access via Model Context Protocol
-- **OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord SSO
+- **OAuth**: Google, GitHub, GitLab, Microsoft, Slack, Discord SSO (per-provider enable toggle)
 - **Observability**: Prometheus `/metrics`, Sentry integration, OpenTelemetry
 - **CLI client**: Manage checks and results from the terminal
-- **i18n**: Multi-language dashboard
+- **i18n**: Multi-language dashboard (English, French)
 
 ## Quick Start
 
@@ -87,6 +89,7 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | SMTP | Server connectivity, STARTTLS, AUTH |
 | POP3 | Server availability |
 | IMAP | Server availability |
+| Email (JMAP) | Passive inbox monitoring — receive a known message via JMAP and assert delivery |
 
 ### Databases
 | Protocol | Description |
@@ -116,7 +119,8 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 | Docker | Container health |
 | SNMP | Device monitoring |
 | gRPC | Service health |
-| Game server | Source/Minecraft/etc query protocols |
+| A2S | Source / Steam game server query (Valve A2S) |
+| Minecraft | Minecraft server query |
 
 ### Specialized
 | Type | Description |
