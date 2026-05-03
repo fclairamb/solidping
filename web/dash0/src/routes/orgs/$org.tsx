@@ -10,6 +10,8 @@ import {
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  BadgeCheck,
+  Bug,
   Building,
   Calendar,
   ChevronRight,
@@ -272,6 +274,26 @@ function Breadcrumbs({ org }: { org: string }) {
           </>
         )}
       </>
+    );
+  }
+
+  const isBadges = routeIds.has("/orgs/$org/badges");
+  if (isBadges) {
+    return (
+      <span className={activeClass}>
+        <BadgeCheck className={iconClass} />
+        {t("badges")}
+      </span>
+    );
+  }
+
+  const isTest = matches.some((m) => m.routeId.startsWith("/orgs/$org/test"));
+  if (isTest) {
+    return (
+      <span className={activeClass}>
+        <Bug className={iconClass} />
+        {t("testTools")}
+      </span>
     );
   }
 

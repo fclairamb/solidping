@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { Plus, Search, RefreshCw, MoreVertical, Trash2, Star } from "lucide-react";
+import {
+  Plus,
+  Search,
+  RefreshCw,
+  MoreVertical,
+  Trash2,
+  Star,
+  Globe,
+} from "lucide-react";
 import { toast } from "sonner";
 import { useStatusPages, useDeleteStatusPage, type StatusPage } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -152,7 +160,10 @@ function StatusPagesIndexPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">{t("statusPages:title")}</h1>
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Globe className="h-7 w-7 text-muted-foreground" />
+            {t("statusPages:title")}
+          </h1>
           <p className="text-muted-foreground">{t("statusPages:subtitle")}</p>
         </div>
         <Link to="/orgs/$org/status-pages/new" params={{ org }}>
