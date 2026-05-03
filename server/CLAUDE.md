@@ -91,6 +91,8 @@ The Go backend follows a clean architecture pattern with strict separation of co
 - `value` (jsonb) - Configuration value
 - `secret` (boolean) - Whether value is sensitive
 
+**Parameter key convention.** Param keys mirror the config struct path: dots for hierarchy (`email.host`, `auth.google.client_id`), snake_case within a segment for word breaks (`email.from_name`, `aggregation.retention_raw`). New keys must follow this — never add a top-level snake_case key.
+
 **users** - Organization members with authentication and role-based access
 - `uid` (uuid) - Primary key
 - `organization_uid` - Foreign key to organizations
