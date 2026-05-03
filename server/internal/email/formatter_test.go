@@ -31,7 +31,7 @@ func TestFormatter_FormatIncident(t *testing.T) {
 		"DashboardURL": "https://example.com/dashboard/checks/prod-api",
 	}
 
-	subject, html, text, err := formatter.Format("incident.html", data)
+	subject, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	// incident.html does not yet define a subject block — should be empty.
@@ -46,11 +46,6 @@ func TestFormatter_FormatIncident(t *testing.T) {
 
 	// Check CSS is inlined (style attribute should be present)
 	r.Contains(html, "style=")
-
-	// Check plain text content
-	r.NotEmpty(text)
-	r.Contains(text, "Production API")
-	r.Contains(text, "DOWN")
 }
 
 func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
@@ -67,7 +62,7 @@ func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
 		"Message":   "The check is now back online.",
 	}
 
-	_, html, text, err := formatter.Format("incident.html", data)
+	_, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	// Check HTML content
@@ -76,9 +71,6 @@ func TestFormatter_FormatIncidentWithoutDashboardURL(t *testing.T) {
 	r.Contains(html, "The check is now back online.")
 	// Should not contain the button since DashboardURL is not set
 	r.NotContains(html, "View Dashboard")
-
-	// Check plain text content
-	r.NotEmpty(text)
 }
 
 func TestFormatter_InvalidTemplate(t *testing.T) {
@@ -89,10 +81,9 @@ func TestFormatter_InvalidTemplate(t *testing.T) {
 	formatter, err := NewFormatter()
 	r.NoError(err)
 
-	_, html, text, err := formatter.Format("nonexistent.html", nil)
+	_, html, err := formatter.Format("nonexistent.html", nil)
 	r.Error(err)
 	r.Empty(html)
-	r.Empty(text)
 	r.Contains(err.Error(), "parsing template")
 }
 
@@ -111,7 +102,7 @@ func TestFormatter_CSSInlining(t *testing.T) {
 		"DashboardURL": "https://example.com",
 	}
 
-	_, html, _, err := formatter.Format("incident.html", data)
+	_, html, err := formatter.Format("incident.html", data)
 	r.NoError(err)
 
 	// CSS should be inlined into a style attribute on at least one element.
@@ -128,7 +119,6 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 		data        map[string]any
 		wantSubject string
 		wantHTML    []string
-		wantText    []string
 	}{
 		{
 			name:     "invitation",
@@ -147,12 +137,6 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 				"https://solidping.example/i/abc",
 				"expires in 7 days",
 			},
-			// premailer's text fallback word-wraps inside table cells, so
-			// human prose can split across lines. Verify the URL only —
-			// it's unbreakable and is the most important fallback content.
-			wantText: []string{
-				"https://solidping.example/i/abc",
-			},
 		},
 		{
 			name:     "registration",
@@ -166,7 +150,6 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 				"Confirm",
 				"3 days",
 			},
-			wantText: []string{"https://solidping.example/c/xyz"},
 		},
 		{
 			name:     "password reset",
@@ -179,9 +162,6 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 				"https://solidping.example/r/zzz",
 				"1 hour",
 			},
-			wantText: []string{
-				"https://solidping.example/r/zzz",
-			},
 		},
 		{
 			name:     "welcome",
@@ -191,9 +171,6 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 			},
 			wantSubject: "Welcome to SolidPing",
 			wantHTML: []string{
-				"https://solidping.example/dash",
-			},
-			wantText: []string{
 				"https://solidping.example/dash",
 			},
 		},
@@ -208,15 +185,12 @@ func TestFormatter_TransactionalTemplates(t *testing.T) {
 			formatter, err := NewFormatter()
 			r.NoError(err)
 
-			subject, html, text, err := formatter.Format(tc.template, tc.data)
+			subject, html, err := formatter.Format(tc.template, tc.data)
 			r.NoError(err)
 			r.Equal(tc.wantSubject, subject)
 
 			for _, want := range tc.wantHTML {
 				r.Contains(html, want)
-			}
-			for _, want := range tc.wantText {
-				r.Contains(text, want)
 			}
 		})
 	}

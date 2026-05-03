@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/wneessen/go-mail"
 
@@ -39,6 +40,9 @@ func NewSender(cfg *config.EmailConfig, logger *slog.Logger) *SMTPSender {
 type SendResult struct {
 	Sent    bool   `json:"sent"`
 	Message string `json:"message"`
+	// MessageID is the RFC 5322 Message-ID auto-stamped by go-mail (or set by
+	// the caller). Brackets are stripped so the JSON value is a plain id.
+	MessageID string `json:"messageId,omitempty"`
 }
 
 // Send delivers an email. Returns nil immediately if email is disabled (no-op).
@@ -124,18 +128,23 @@ func (s *SMTPSender) setRecipients(mailMsg *mail.Msg, recipients *Recipients) er
 	return nil
 }
 
-// setBody sets the HTML and/or plain text body on the message.
+// setBody sets the plaintext and/or HTML body on the message.
+//
+// Per RFC 2046 §5.1.4, multipart/alternative parts must be ordered from
+// least to most preferred (preferred last). Spec-compliant readers
+// (Gmail, Apple Mail) pick the LAST part they can render, so plaintext
+// goes first and HTML goes last — otherwise Gmail renders our auto-text
+// (which lynx-renders the wrapper tables in base.html) instead of our
+// styled HTML.
 func (s *SMTPSender) setBody(mailMsg *mail.Msg, msg *Message) {
-	if msg.HTML != "" {
+	switch {
+	case msg.HTML != "" && msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
+		mailMsg.AddAlternativeString(mail.TypeTextHTML, msg.HTML)
+	case msg.HTML != "":
 		mailMsg.SetBodyString(mail.TypeTextHTML, msg.HTML)
-	}
-
-	if msg.Text != "" {
-		if msg.HTML != "" {
-			mailMsg.AddAlternativeString(mail.TypeTextPlain, msg.Text)
-		} else {
-			mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
-		}
+	case msg.Text != "":
+		mailMsg.SetBodyString(mail.TypeTextPlain, msg.Text)
 	}
 }
 
@@ -204,10 +213,17 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 		return nil, fmt.Errorf("sending email: %w", err)
 	}
 
+	messageID := strings.Trim(mailMsg.GetMessageID(), "<>")
+
 	s.logger.InfoContext(ctx, "email sent successfully",
 		"to", msg.Recipients.To,
 		"subject", msg.Subject,
+		"messageId", messageID,
 	)
 
-	return &SendResult{Sent: true, Message: "email sent successfully"}, nil
+	return &SendResult{
+		Sent:      true,
+		Message:   "email sent successfully",
+		MessageID: messageID,
+	}, nil
 }

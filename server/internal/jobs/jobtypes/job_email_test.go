@@ -249,15 +249,15 @@ func (m *mockSender) Send(ctx context.Context, msg *email.Message) (*email.SendR
 
 // mockFormatter is a test double for email.Formatter.
 type mockFormatter struct {
-	formatFunc func(templateName string, data any) (string, string, string, error)
+	formatFunc func(templateName string, data any) (string, string, error)
 }
 
-func (m *mockFormatter) Format(templateName string, data any) (string, string, string, error) {
+func (m *mockFormatter) Format(templateName string, data any) (string, string, error) {
 	if m.formatFunc != nil {
 		return m.formatFunc(templateName, data)
 	}
 
-	return "", "<html>formatted</html>", "plain text", nil
+	return "", "<html>formatted</html>", nil
 }
 
 func TestEmailJobRun_Run(t *testing.T) {
@@ -310,7 +310,9 @@ func TestEmailJobRun_Run(t *testing.T) {
 				require.Len(t, sender.calls, 1)
 				msg := sender.calls[0]
 				assert.Equal(t, "<html>formatted</html>", msg.HTML)
-				assert.Equal(t, "plain text", msg.Text)
+				// Templated mail no longer carries a plaintext alternative
+				// (auto-text dropped in the Gmail rendering fix).
+				assert.Empty(t, msg.Text)
 			},
 		},
 		{
@@ -354,8 +356,8 @@ func TestEmailJobRun_Run(t *testing.T) {
 			},
 			sender: &mockSender{},
 			formatter: &mockFormatter{
-				formatFunc: func(_ string, _ any) (string, string, string, error) {
-					return "", "", "", errTemplateNotFound
+				formatFunc: func(_ string, _ any) (string, string, error) {
+					return "", "", errTemplateNotFound
 				},
 			},
 			wantErr: true,
@@ -399,6 +401,84 @@ func TestEmailJobRun_Run(t *testing.T) {
 
 			if tt.checkCalls != nil {
 				tt.checkCalls(t, tt.sender)
+			}
+		})
+	}
+}
+
+// TestEmailJobRun_Run_PersistsMessageID verifies that when the sender
+// returns a non-empty MessageID, it is recorded in Job.Output["messageId"].
+// When the sender does not return one (e.g. SMTP disabled), the field is
+// absent rather than empty.
+func TestEmailJobRun_Run_PersistsMessageID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		sendResult     *email.SendResult
+		wantMessageID  string
+		wantOutputHasK bool
+	}{
+		{
+			name: "messageId populated when sender returns one",
+			sendResult: &email.SendResult{
+				Sent:      true,
+				Message:   "ok",
+				MessageID: "abc123@example.com",
+			},
+			wantMessageID:  "abc123@example.com",
+			wantOutputHasK: true,
+		},
+		{
+			name: "messageId omitted when sender returns empty",
+			sendResult: &email.SendResult{
+				Sent:    true,
+				Message: "ok",
+			},
+			wantOutputHasK: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			run := &EmailJobRun{
+				config: EmailJobConfig{
+					To:      []string{"test@example.com"},
+					Subject: "Test",
+					HTML:    "<p>Hello</p>",
+				},
+			}
+
+			sender := &mockSender{
+				sendFunc: func(_ context.Context, _ *email.Message) (*email.SendResult, error) {
+					return tt.sendResult, nil
+				},
+			}
+
+			jctx := &jobdef.JobContext{
+				Job: &models.Job{
+					UID:    "test-job-uid",
+					Output: models.JSONMap{},
+				},
+				Services: &services.Registry{
+					EmailSender: sender,
+				},
+				Logger: slog.Default(),
+			}
+
+			err := run.Run(context.Background(), jctx)
+			r.NoError(err)
+
+			gotID, ok := jctx.Job.Output["messageId"]
+			if tt.wantOutputHasK {
+				r.True(ok, "expected messageId key in Job.Output")
+				r.Equal(tt.wantMessageID, gotID)
+			} else {
+				r.False(ok, "expected messageId key to be absent from Job.Output")
 			}
 		})
 	}
