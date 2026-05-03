@@ -99,3 +99,15 @@ Use `testify/require` and `t.Parallel()` per project conventions.
 - `server/internal/email/sender.go` — `buildMessage`, `setFrom`.
 - `server/internal/version/version.go` — `Version` package variable.
 - `server/internal/email/sender_test.go` — new file.
+
+## Implementation Plan
+
+1. In `server/internal/email/sender.go`:
+   - Add `mailMsg.SetGenHeader(mail.HeaderXMailer, "SolidPing/"+version.Version)` at the top of `buildMessage`.
+   - Simplify `setFrom` to default `name` to `"SolidPing"` when `s.config.FromName` is empty, then unconditionally call `mailMsg.FromFormat(name, s.config.From)`.
+   - Add the `version` package import.
+2. Create `server/internal/email/sender_test.go` with three table-driven test cases:
+   - Default config — assert X-Mailer matches `SolidPing/<version>` and From contains `SolidPing <`.
+   - Custom FromName "Acme Status" — assert From contains `Acme Status <`.
+   - Use `t.Parallel()` and `testify/require` per project conventions.
+3. Run `make fmt`, `make lint-back`, `make test`.
