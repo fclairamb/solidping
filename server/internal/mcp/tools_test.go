@@ -163,3 +163,42 @@ func TestRegisterTools(t *testing.T) {
 		r.True(exists, "tool %q registered in tools but not in toolMap", tool.Name)
 	}
 }
+
+// TestAllToolDescriptionsMeetMinimum enforces a soft bar so future tool
+// additions don't ship with one-word descriptions. Adjust the minimums only
+// if you have a legitimately short description (no current tools do).
+func TestAllToolDescriptionsMeetMinimum(t *testing.T) {
+	t.Parallel()
+
+	const minToolDescChars = 40
+	const minParamDescChars = 20
+
+	handler := newTestHandler()
+
+	for i := range handler.tools {
+		tool := handler.tools[i]
+		t.Run(tool.Name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			r.GreaterOrEqual(
+				len(tool.Description), minToolDescChars,
+				"tool %q description too short: %q", tool.Name, tool.Description,
+			)
+			schema, ok := tool.InputSchema.(map[string]any)
+			r.True(ok)
+			props, ok := schema["properties"].(map[string]any)
+			if !ok {
+				return
+			}
+			for name, p := range props {
+				propMap, ok := p.(map[string]any)
+				r.True(ok, "tool %q param %q schema malformed", tool.Name, name)
+				desc, _ := propMap[schemaKeyDescription].(string)
+				r.GreaterOrEqual(
+					len(desc), minParamDescChars,
+					"tool %q param %q description too short: %q", tool.Name, name, desc,
+				)
+			}
+		})
+	}
+}

@@ -10,15 +10,25 @@ import (
 
 func listChecksDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_checks",
-		Description: "List monitoring checks for the organization.",
+		Name: "list_checks",
+		Description: "List monitoring checks for the organization, optionally filtered by " +
+			"name/slug substring, labels, or check group. Use this for browsing or " +
+			"filtering a fleet of checks. To investigate a single check's current " +
+			"health, use diagnose_check instead.",
 		InputSchema: objectSchema(map[string]any{
-			"q":               stringProp("Search query (name or slug substring)"),
-			propLabels:        stringProp("Label filter (key:value,key2:value2)"),
-			propCheckGroupUID: stringProp("Filter by check group UID or slug"),
-			propWith:          stringProp("Include extra fields: lastResult, lastStatusChange (comma-separated)"),
-			propLimit:         intProp("Max results (1-100, default 20)"),
-			propCursor:        stringProp("Pagination cursor from previous response"),
+			"q": stringProp(
+				"Case-insensitive substring match on check name or slug, e.g. \"api\".",
+			),
+			propLabels:        stringProp(descLabelFilter),
+			propCheckGroupUID: stringProp("Filter to checks in this group (UID or slug), e.g. \"core-services\"."),
+			propWith: stringProp(
+				"Comma-separated extra fields:\n" +
+					"  lastResult       — most recent result for each check\n" +
+					"  lastStatusChange — when each check last changed status\n" +
+					"Example: \"lastResult,lastStatusChange\".",
+			),
+			propLimit:  intProp(descLimit),
+			propCursor: stringProp(descCursor),
 		}, nil),
 	}
 }
@@ -72,11 +82,18 @@ func (h *Handler) toolListChecks(ctx context.Context, orgSlug string, args map[s
 
 func getCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "get_check",
-		Description: "Get a single check by UID or slug.",
+		Name: "get_check",
+		Description: "Get a single check's metadata by UID or slug. For a full triage " +
+			"briefing (current status + recent results + active incidents), prefer " +
+			"diagnose_check instead.",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier: stringProp("Check UID or slug"),
-			propWith:       stringProp("Include extra fields: lastResult, lastStatusChange"),
+			propIdentifier: stringProp(descIdentifier),
+			propWith: stringProp(
+				"Comma-separated extra fields:\n" +
+					"  lastResult       — most recent result\n" +
+					"  lastStatusChange — when status last changed\n" +
+					"Example: \"lastResult,lastStatusChange\".",
+			),
 		}, []string{propIdentifier}),
 	}
 }
@@ -109,21 +126,44 @@ func (h *Handler) toolGetCheck(ctx context.Context, orgSlug string, args map[str
 
 func createCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_check",
-		Description: "Create a new monitoring check.",
+		Name: "create_check",
+		Description: "Create a new monitoring check. If you don't know what config shape a " +
+			"given type expects, call get_check_type_samples first to fetch a working " +
+			"starting config, then use validate_check to dry-run before creating.",
 		InputSchema: objectSchema(map[string]any{
-			schemaKeyName: stringProp("Human-readable name (auto-generated from URL if omitted)"),
-			schemaKeySlug: stringProp("URL-friendly identifier (auto-generated if omitted)"),
-			schemaKeyType: stringProp(
-				"Check type: http, tcp, icmp, dns, ssl, heartbeat, domain (inferred if omitted)",
+			schemaKeyName: stringProp(
+				"Human-readable name, e.g. \"API production\". Auto-generated from URL if omitted.",
 			),
-			schemaKeyConfig:      objectProp("Check-specific config (e.g., {\"url\": \"https://example.com\"})"),
-			"regions":            arrayOfStringsProp("Region slugs (e.g., [\"eu-west-1\", \"us-east-1\"])"),
-			schemaKeyEnabled:     boolProp("Default true"),
-			"period":             stringProp("Check interval (e.g., \"00:00:30\" for 30s, default \"00:01:00\")"),
-			propLabels:           objectProp("Key-value labels (e.g., {\"env\": \"production\"})"),
-			schemaKeyDescription: stringProp("Free-text description"),
-			propCheckGroupUID:    stringProp("Assign to a check group"),
+			schemaKeySlug: stringProp(
+				"URL-friendly slug (3-20 lowercase letters/digits/hyphens), e.g. \"api-prod\". " +
+					"Auto-generated if omitted.",
+			),
+			schemaKeyType: stringProp(
+				"Check type. Allowed: http, tcp, icmp, dns, ssl, heartbeat, domain. " +
+					"Inferred from config if omitted.",
+			),
+			schemaKeyConfig: objectProp(
+				"Check-specific config. Shape depends on type. Example for http: " +
+					"{\"url\": \"https://example.com\", \"method\": \"GET\"}. " +
+					"Use get_check_type_samples to discover the shape for other types.",
+			),
+			"regions": arrayOfStringsProp(
+				"Region slugs to run the check from, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
+					"Defaults to all org regions when omitted.",
+			),
+			schemaKeyEnabled: boolProp("Whether the check should run. Default true."),
+			"period": stringProp(
+				"Check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds, " +
+					"\"00:01:00\" for 1 minute (default).",
+			),
+			propLabels: objectProp(
+				"Key-value labels for organization and filtering, " +
+					"e.g. {\"env\":\"production\",\"team\":\"api\"}.",
+			),
+			schemaKeyDescription: stringProp("Free-text description shown in the UI."),
+			propCheckGroupUID: stringProp(
+				"Assign the check to a check group (UID or slug), e.g. \"core-services\".",
+			),
 		}, []string{schemaKeyConfig}),
 	}
 }
@@ -163,19 +203,30 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 
 func updateCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "update_check",
-		Description: "Update an existing check by UID or slug. Only provided fields are modified (PATCH semantics).",
+		Name: "update_check",
+		Description: "Update an existing check by UID or slug. PATCH semantics — only the " +
+			"fields you pass are modified, others stay as-is.",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier:       stringProp("Check UID or slug"),
-			schemaKeyName:        stringProp("New name"),
-			schemaKeySlug:        stringProp("New slug"),
-			schemaKeyConfig:      objectProp("Updated config"),
-			"regions":            arrayOfStringsProp("Updated regions"),
-			schemaKeyEnabled:     boolProp("Enable/disable"),
-			"period":             stringProp("New check interval"),
-			propLabels:           objectProp("Replace labels (empty object clears)"),
-			schemaKeyDescription: stringProp("Updated description"),
-			propCheckGroupUID:    stringProp("Move to different group (empty string to ungroup)"),
+			propIdentifier:  stringProp(descIdentifier),
+			schemaKeyName:   stringProp("New human-readable name, e.g. \"API production\"."),
+			schemaKeySlug:   stringProp("New URL-friendly slug, e.g. \"api-prod\"."),
+			schemaKeyConfig: objectProp("Replace check-specific config (full object — not merged)."),
+			"regions": arrayOfStringsProp(
+				"Replace region list, e.g. [\"eu-west-1\",\"us-east-1\"]. " +
+					"Pass an empty array to run from no regions (effectively pauses execution).",
+			),
+			schemaKeyEnabled: boolProp("Toggle whether the check runs."),
+			"period": stringProp(
+				"New check interval as HH:MM:SS, e.g. \"00:00:30\" for 30 seconds.",
+			),
+			propLabels: objectProp(
+				"Replace labels object (empty object clears all). " +
+					"Example: {\"env\":\"staging\"}.",
+			),
+			schemaKeyDescription: stringProp("Updated free-text description shown in the UI."),
+			propCheckGroupUID: stringProp(
+				"Move to a different group (UID or slug). Pass an empty string to ungroup.",
+			),
 		}, []string{propIdentifier}),
 	}
 }
@@ -225,10 +276,11 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 
 func deleteCheckDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "delete_check",
-		Description: "Delete a check by UID or slug (soft delete).",
+		Name: "delete_check",
+		Description: "Soft-delete a monitoring check by UID or slug. The check stops running " +
+			"immediately; historical results are kept.",
 		InputSchema: objectSchema(map[string]any{
-			propIdentifier: stringProp("Check UID or slug"),
+			propIdentifier: stringProp(descIdentifier),
 		}, []string{propIdentifier}),
 	}
 }

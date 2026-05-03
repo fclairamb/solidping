@@ -10,22 +10,45 @@ import (
 
 func listResultsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_results",
-		Description: "Query monitoring results with flexible filtering.",
+		Name: "list_results",
+		Description: "Query monitoring results (raw or aggregated) with filtering by check, " +
+			"type, status, region, period type, and time range. Use this for trend " +
+			"analysis or to inspect a specific window. For investigating a single " +
+			"check's current state, use diagnose_check instead.",
 		InputSchema: objectSchema(map[string]any{
-			"checkUid":         stringProp("Comma-separated check UIDs or slugs"),
-			"checkType":        stringProp("Comma-separated types: http, dns, icmp, etc."),
-			"status":           stringProp("Comma-separated: up, down, unknown"),
-			"region":           stringProp("Comma-separated region slugs"),
-			"periodType":       stringProp("Comma-separated: raw, hour, day, month"),
-			"periodStartAfter": stringProp("RFC3339 timestamp (inclusive lower bound)"),
-			"periodEndBefore":  stringProp("RFC3339 timestamp (exclusive upper bound)"),
-			propWith: stringProp(
-				"Extra fields: durationMs, durationMinMs, durationMaxMs, " +
-					"region, metrics, output, availabilityPct, checkSlug, checkName",
+			"checkUid": stringProp(
+				"Comma-separated check UIDs or slugs to filter by, e.g. \"api-prod,db-prod\".",
 			),
-			"size":     intProp("Max results (1-100, default 20)"),
-			propCursor: stringProp("Pagination cursor"),
+			"checkType": stringProp(
+				"Comma-separated check types. Allowed: http, tcp, icmp, dns, ssl, heartbeat, domain. " +
+					"Example: \"http,dns\".",
+			),
+			"status": stringProp(
+				"Comma-separated check statuses. Allowed: up, down, unknown. " +
+					"Example: \"down\" or \"down,unknown\".",
+			),
+			"region": stringProp(descRegionsFilter),
+			"periodType": stringProp(
+				"Comma-separated period types. Allowed: raw (single executions), " +
+					"hour, day, month (rollups). Example: \"raw\".",
+			),
+			"periodStartAfter": stringProp(descRFC3339Lower),
+			"periodEndBefore":  stringProp(descRFC3339Upper),
+			propWith: stringProp(
+				"Comma-separated extra fields:\n" +
+					"  durationMs       — response time in ms\n" +
+					"  durationMinMs    — min response time in the bucket (aggregated rows only)\n" +
+					"  durationMaxMs    — max response time in the bucket (aggregated rows only)\n" +
+					"  region           — region the check ran in\n" +
+					"  metrics          — per-execution metrics\n" +
+					"  output           — full check output incl. error messages\n" +
+					"  availabilityPct  — uptime % (aggregated rows only)\n" +
+					"  checkSlug        — slug of the check\n" +
+					"  checkName        — human name of the check\n" +
+					"Example: \"durationMs,output\".",
+			),
+			"size":     intProp(descLimit),
+			propCursor: stringProp(descCursor),
 		}, nil),
 	}
 }

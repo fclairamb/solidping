@@ -8,10 +8,15 @@ import (
 
 func listConnectionsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_connections",
-		Description: "List notification connections (Slack, webhook, email).",
+		Name: "list_connections",
+		Description: "List notification connections (Slack, webhook, email) configured for the " +
+			"organization. Use this to discover what notification channels are available " +
+			"before attaching them to a check.",
 		InputSchema: objectSchema(map[string]any{
-			schemaKeyType: stringProp("Filter by type: slack, webhook, email"),
+			schemaKeyType: stringProp(
+				"Filter by connection type. Allowed: slack, webhook, email. " +
+					"Example: \"slack\".",
+			),
 		}, nil),
 	}
 }
@@ -32,14 +37,23 @@ func (h *Handler) toolListConnections(ctx context.Context, orgSlug string, args 
 
 func createConnectionDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "create_connection",
-		Description: "Create a new notification connection.",
+		Name: "create_connection",
+		Description: "Create a new notification connection (Slack, webhook, or email) that can " +
+			"be attached to checks for incident notifications.",
 		InputSchema: objectSchema(map[string]any{
-			schemaKeyType:    stringProp("Connection type: slack, webhook, email"),
-			schemaKeyName:    stringProp("Display name"),
-			schemaKeyEnabled: boolProp("Default true"),
-			"isDefault":      boolProp("Auto-attach to new checks"),
-			"settings":       objectProp("Type-specific settings (e.g., {\"webhookUrl\": \"...\"} for webhook)"),
+			schemaKeyType: stringProp(
+				"Connection type. Allowed: slack, webhook, email. Example: \"webhook\".",
+			),
+			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
+			schemaKeyEnabled: boolProp("Whether the connection is active. Default true."),
+			"isDefault": boolProp(
+				"If true, the connection is auto-attached to newly-created checks.",
+			),
+			"settings": objectProp(
+				"Type-specific settings. For webhook: {\"webhookUrl\":\"https://...\"}. " +
+					"For slack: {\"channel\":\"#alerts\",\"webhookUrl\":\"https://hooks.slack.com/...\"}. " +
+					"For email: {\"to\":\"oncall@example.com\"}.",
+			),
 		}, []string{schemaKeyType, schemaKeyName}),
 	}
 }
