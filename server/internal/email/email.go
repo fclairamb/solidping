@@ -29,7 +29,8 @@ type Sender interface {
 
 // Formatter renders email templates.
 type Formatter interface {
-	// Format renders a template with the given data.
-	// Returns both HTML (with inlined CSS) and plain text versions.
-	Format(templateName string, data any) (html string, text string, err error)
+	// Format renders a template with the given data and returns the rendered
+	// subject (from a {{define "subject"}} block, or "" when the template
+	// has none), the HTML body with inlined CSS, and a plain-text fallback.
+	Format(templateName string, data any) (subject string, html string, text string, err error)
 }

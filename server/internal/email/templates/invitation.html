@@ -1,10 +1,11 @@
+{{define "subject"}}You're invited to join {{.OrgName}} on SolidPing{{end}}
 {{template "base.html" .}}
 {{define "content"}}
-<div class="content">
-    <h2>You're Invited!</h2>
-    <p>You've been invited to join <strong>{{.OrgName}}</strong> on SolidPing as a <strong>{{.Role}}</strong>.</p>
-    {{if .InviterName}}<p>Invited by: {{.InviterName}}</p>{{end}}
-    <p><a href="{{.InviteURL}}" class="button button-success">Accept Invitation</a></p>
-    <p style="color: #666; font-size: 14px;">This invitation will expire in 7 days.</p>
-</div>
+    <h1>You're invited to {{.OrgName}}</h1>
+    <p>Hi,</p>
+    <p>{{if .InviterName}}{{.InviterName}} has invited you{{else}}You've been invited{{end}} to join <strong>{{.OrgName}}</strong> on SolidPing as <strong>{{.Role}}</strong>.</p>
+    <p class="cta-wrap"><a href="{{.InviteURL}}" class="cta cta-success">Accept invitation</a></p>
+    <p>Or paste this link into your browser:</p>
+    <p class="fallback">{{.InviteURL}}</p>
+    <p class="meta">This invitation expires in 7 days. If you weren't expecting this, you can safely ignore this email.</p>
 {{end}}

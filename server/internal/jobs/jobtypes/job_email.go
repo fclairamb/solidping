@@ -70,10 +70,6 @@ func validateEmailConfig(cfg *EmailJobConfig) error {
 		return ErrEmailNoRecipients
 	}
 
-	if cfg.Subject == "" {
-		return ErrEmailNoSubject
-	}
-
 	hasContent := cfg.HTML != "" || cfg.Text != ""
 	hasTemplate := cfg.Template != ""
 
@@ -83,6 +79,14 @@ func validateEmailConfig(cfg *EmailJobConfig) error {
 
 	if hasContent && hasTemplate {
 		return ErrEmailContentConflict
+	}
+
+	// Subject is required when sending raw content. With a template, the
+	// template may define its own subject via {{define "subject"}}, so we
+	// can't require Subject here without parsing the template — defer that
+	// check to runtime if neither is supplied.
+	if hasContent && cfg.Subject == "" {
+		return ErrEmailNoSubject
 	}
 
 	return nil
@@ -166,13 +170,19 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 			return nil, ErrEmailFormatterMissing
 		}
 
-		html, text, err := jctx.Services.EmailFormatter.Format(r.config.Template, r.config.TemplateData)
+		subject, html, text, err := jctx.Services.EmailFormatter.Format(
+			r.config.Template, r.config.TemplateData)
 		if err != nil {
 			return nil, fmt.Errorf("formatting template %s: %w", r.config.Template, err)
 		}
 
 		msg.HTML = html
 		msg.Text = text
+		// Caller-supplied subject overrides the template's; otherwise use
+		// what the template defined.
+		if msg.Subject == "" {
+			msg.Subject = subject
+		}
 	} else {
 		// Use raw content
 		msg.HTML = r.config.HTML
