@@ -1334,6 +1334,18 @@ export function useVersion() {
   });
 }
 
+export interface FeaturesResponse {
+  bugReport: boolean;
+}
+
+export function useFeatures() {
+  return useQuery({
+    queryKey: ["features"],
+    queryFn: () => apiFetch<FeaturesResponse>("/api/v1/features"),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 // Bulk test checks hooks
 export interface BulkCreateChecksParams {
   org: string;

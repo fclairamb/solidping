@@ -1,0 +1,13 @@
+{
+  "trigger_title": "Report a bug",
+  "dialog_title": "Report a bug",
+  "comment_label": "What happened?",
+  "comment_placeholder": "Describe what went wrong…",
+  "no_screenshot": "No screenshot available",
+  "capturing": "Capturing screen…",
+  "cancel": "Cancel",
+  "submit": "Send",
+  "sending": "Sending…",
+  "success": "Thanks! Your report was sent.",
+  "error": "Something went wrong. Please try again."
+}

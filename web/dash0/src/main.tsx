@@ -7,8 +7,11 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { ApiError, NetworkError } from "@/api/client";
+import { installErrorCollector } from "@/components/feedback/errorCollector";
 import "./i18n";
 import "./index.css";
+
+installErrorCollector();
 
 // Get base URL from Vite config (empty string means root "/")
 const basepath = import.meta.env.VITE_BASE_URL || "";

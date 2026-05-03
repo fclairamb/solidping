@@ -1,0 +1,13 @@
+{
+  "trigger_title": "Reportar un error",
+  "dialog_title": "Reportar un error",
+  "comment_label": "¿Qué pasó?",
+  "comment_placeholder": "Describa qué salió mal…",
+  "no_screenshot": "No hay captura disponible",
+  "capturing": "Capturando pantalla…",
+  "cancel": "Cancelar",
+  "submit": "Enviar",
+  "sending": "Enviando…",
+  "success": "¡Gracias! Tu reporte fue enviado.",
+  "error": "Algo salió mal. Por favor inténtalo de nuevo."
+}
