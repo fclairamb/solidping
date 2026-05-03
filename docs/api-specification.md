@@ -20,6 +20,12 @@ All API routes are prefixed with `/api/v1` unless otherwise noted. Organization-
 ### GET /api/mgmt/health
 Health check. Auth: public
 
+### POST /api/mgmt/report
+Submit an in-app bug report (multipart/form-data). Public endpoint, optional bearer token for user attribution. Body fields: `url` (required), `comment`, `org`, `annotations`, `context` (JSON), `screenshot` (file). Returns `{ uid }`. The screenshot is stored as a `File` (group `reports`) and a GitHub issue is created asynchronously when `app.github.*` is configured.
+
+### GET /api/v1/features
+Return the active feature flags for the frontend (e.g. `{ "bugReport": true }`). Auth required.
+
 ### GET /api/mgmt/version
 Returns server version, build hash, and build date. Auth: public
 

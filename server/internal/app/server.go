@@ -41,6 +41,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
+	"github.com/fclairamb/solidping/server/internal/handlers/features"
+	"github.com/fclairamb/solidping/server/internal/handlers/feedback"
 	"github.com/fclairamb/solidping/server/internal/handlers/files"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
@@ -515,6 +517,12 @@ func (s *Server) setupRoutes() {
 	pubFiles := mainGroup.NewGroup("/pub/files")
 	pubFiles.GET("/:uid", filesHandler.PublicGet)
 
+	// Bug report (public POST under /api/mgmt) and features endpoint (auth)
+	feedbackService := feedback.NewService(s.dbService, filesService, s.config, nil)
+	feedbackHandler := feedback.NewHandler(feedbackService, s.authService, s.config)
+	featuresHandler := features.NewHandler(s.config)
+	api.NewGroup("/features").Use(authMiddleware.RequireAuth).GET("", featuresHandler.GetFeatures)
+
 	// Members routes (authentication required)
 	membersService := members.NewService(s.dbService)
 	membersHandler := members.NewHandler(membersService, s.config)
@@ -628,6 +636,7 @@ func (s *Server) setupRoutes() {
 	mgmt := mainGroup.NewGroup("/api/mgmt")
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
+	mgmt.POST("/report", feedbackHandler.SubmitReport)
 
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {
