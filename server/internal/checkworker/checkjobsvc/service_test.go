@@ -275,6 +275,98 @@ func TestClaimJobs(t *testing.T) {
 }
 
 //nolint:paralleltest // Test shares database state
+func TestClaimJobsForCheck(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+
+	t.Run("ClaimsTargetedJob", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		target := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+		other := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+
+		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, target.CheckUID)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1, "should claim only the targeted check's job")
+		assert.Equal(t, target.UID, jobs[0].UID)
+		assert.Equal(t, worker.UID, *jobs[0].LeaseWorkerUID)
+
+		// The other job is untouched
+		var otherDB models.CheckJob
+		err = dbSvc.DB().NewSelect().Model(&otherDB).Where("uid = ?", other.UID).Scan(ctx)
+		require.NoError(t, err)
+		assert.Nil(t, otherDB.LeaseWorkerUID, "non-targeted job should not be claimed")
+	})
+
+	t.Run("RegionMismatchReturnsNothing", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		now := time.Now()
+		euRegion := "eu-west-1"
+		usRegion := "us-east-1"
+
+		// US-region check; EU worker should not claim it.
+		usJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), &usRegion)
+		euWorker := createTestWorker(t, ctx, dbSvc, &euRegion)
+
+		jobs, err := svc.ClaimJobsForCheck(ctx, euWorker.UID, &euRegion, usJob.CheckUID)
+		require.NoError(t, err)
+		assert.Empty(t, jobs, "EU worker should not claim US check")
+	})
+
+	t.Run("AlreadyClaimedReturnsNothing", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		other := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+		// Pre-claim by another worker with a future lease.
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", other.UID).
+			Set("lease_expires_at = ?", now.Add(60*time.Second)).
+			Where("uid = ?", job.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, job.CheckUID)
+		require.NoError(t, err)
+		assert.Empty(t, jobs, "should not claim a job leased by another worker")
+	})
+
+	t.Run("ReclaimsOnExpiredLease", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		other := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-30*time.Second), nil)
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", other.UID).
+			Set("lease_expires_at = ?", now.Add(-10*time.Second)).
+			Set("lease_starts = ?", 1).
+			Where("uid = ?", job.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, job.CheckUID)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1, "should re-claim a job whose lease expired")
+		assert.Equal(t, worker.UID, *jobs[0].LeaseWorkerUID)
+		assert.Equal(t, 2, jobs[0].LeaseStarts)
+	})
+
+	t.Run("UnknownCheckReturnsNothing", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, uuid.NewString())
+		require.NoError(t, err)
+		assert.Empty(t, jobs)
+	})
+}
+
+//nolint:paralleltest // Test shares database state
 func TestReleaseLease(t *testing.T) {
 	dbSvc, ctx := setupTestDB(t)
 	defer func() { _ = dbSvc.Close() }()

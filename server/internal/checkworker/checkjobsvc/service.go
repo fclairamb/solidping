@@ -30,6 +30,18 @@ type Service interface {
 		maxAhead time.Duration,
 	) ([]*models.CheckJob, error)
 
+	// ClaimJobsForCheck atomically claims any due check_jobs rows for the
+	// given checkUID. Used by the express runner that wakes up on
+	// check.created events and bypasses the regular runner pool so a
+	// freshly-created check produces its first real result without
+	// queueing behind in-flight long-running checks.
+	ClaimJobsForCheck(
+		ctx context.Context,
+		workerUID string,
+		region *string,
+		checkUID string,
+	) ([]*models.CheckJob, error)
+
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 }
@@ -82,6 +94,98 @@ func (s *serviceImpl) ClaimJobs(
 	}
 
 	return jobs, nil
+}
+
+// expressClaimLimit caps how many rows the express path may claim per
+// check.created event. A check has at most one job per region; 4 leaves
+// headroom for multi-region checks without unbounded scope.
+const expressClaimLimit = 4
+
+// ClaimJobsForCheck claims any due check_jobs rows for a specific check
+// without consulting the rest of the queue. Reuses the same select +
+// lease-update plumbing as ClaimJobs so lease semantics, lease_starts
+// counting and SKIP LOCKED behaviour are identical.
+func (s *serviceImpl) ClaimJobsForCheck(
+	ctx context.Context,
+	workerUID string,
+	region *string,
+	checkUID string,
+) ([]*models.CheckJob, error) {
+	var jobs []*models.CheckJob
+	now := time.Now()
+
+	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
+
+	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		if err := s.selectAvailableJobsForCheck(
+			ctx, tx, &jobs, region, checkUID, now, isPostgres,
+		); err != nil {
+			return err
+		}
+
+		if len(jobs) == 0 {
+			return nil
+		}
+
+		return s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres)
+	})
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return jobs, nil
+}
+
+// selectAvailableJobsForCheck mirrors selectAvailableJobs but pins the
+// query to a single check_uid and ignores the maxAhead window — express
+// claims only fire for events about a check that is, by definition,
+// already due.
+func (s *serviceImpl) selectAvailableJobsForCheck(
+	ctx context.Context,
+	tx bun.Tx,
+	jobs *[]*models.CheckJob,
+	region *string,
+	checkUID string,
+	now time.Time,
+	isPostgres bool,
+) error {
+	query := tx.NewSelect().
+		Model(jobs).
+		Where("check_uid = ?", checkUID).
+		Where("scheduled_at <= ?", now).
+		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("lease_expires_at IS NULL").
+				WhereOr("lease_expires_at < ?", now)
+		}).
+		Order("scheduled_at ASC").
+		Limit(expressClaimLimit)
+
+	if region != nil {
+		query = query.WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.
+				WhereOr("region IS NULL").
+				WhereOr("? LIKE region || '%'", *region)
+		})
+	}
+
+	if isPostgres {
+		query = query.For("UPDATE SKIP LOCKED")
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 // selectAvailableJobs builds and executes the query to select available jobs.
