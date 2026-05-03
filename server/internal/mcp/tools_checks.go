@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
@@ -19,7 +20,11 @@ func listChecksDef() ToolDefinition {
 			"q": stringProp(
 				"Case-insensitive substring match on check name or slug, e.g. \"api\".",
 			),
-			propLabels:        stringProp(descLabelFilter),
+			propLabels: objectProp(
+				"Label filter as a JSON object. Returns checks that have ALL of the " +
+					"given labels with matching values (AND semantics). " +
+					"Example: {\"env\": \"production\", \"team\": \"api\"}.",
+			),
 			propCheckGroupUID: stringProp("Filter to checks in this group (UID or slug), e.g. \"core-services\"."),
 			propWith: stringProp(
 				"Comma-separated extra fields:\n" +
@@ -47,14 +52,12 @@ func (h *Handler) toolListChecks(ctx context.Context, orgSlug string, args map[s
 		opts.Limit = 100
 	}
 
-	if labelsParam := getStringArg(args, "labels"); labelsParam != "" {
-		opts.Labels = make(map[string]string)
-		for _, pair := range strings.Split(labelsParam, ",") {
-			kv := strings.SplitN(pair, ":", 2)
-			if len(kv) == 2 {
-				opts.Labels[strings.TrimSpace(kv[0])] = strings.TrimSpace(kv[1])
-			}
+	if v, ok := args[propLabels]; ok && v != nil {
+		labels, errMsg := parseLabelsArg(v)
+		if errMsg != "" {
+			return errorResult(errMsg)
 		}
+		opts.Labels = labels
 	}
 
 	if checkGroupUID := getStringArg(args, "checkGroupUid"); checkGroupUID != "" {
@@ -78,6 +81,25 @@ func (h *Handler) toolListChecks(ctx context.Context, orgSlug string, args map[s
 	}
 
 	return marshalResult(result)
+}
+
+// parseLabelsArg validates and converts the typed-any labels arg into the
+// service-layer map[string]string. Returns explicit error messages so the
+// LLM gets actionable feedback instead of silently-skipped malformed pairs.
+func parseLabelsArg(raw any) (map[string]string, string) {
+	labelsMap, isMap := raw.(map[string]any)
+	if !isMap {
+		return nil, "labels must be a JSON object, e.g. {\"env\":\"production\"}"
+	}
+	out := make(map[string]string, len(labelsMap))
+	for k, val := range labelsMap {
+		strVal, isStr := val.(string)
+		if !isStr {
+			return nil, fmt.Sprintf("labels.%s must be a string", k)
+		}
+		out[k] = strVal
+	}
+	return out, ""
 }
 
 func getCheckDef() ToolDefinition {
