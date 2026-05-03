@@ -109,18 +109,75 @@ func TestMarshalResult(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	t.Run("valid struct", func(t *testing.T) {
+	t.Run("valid struct populates both content and structuredContent", func(t *testing.T) {
 		t.Parallel()
-		result := marshalResult(map[string]string{"name": "test"})
+		input := map[string]string{"name": "test"}
+		result := marshalResult(input)
+
 		r.False(result.IsError)
+		r.Len(result.Content, 1)
+		r.Equal("text", result.Content[0].Type)
 		r.Contains(result.Content[0].Text, `"name":"test"`)
+
+		structured, ok := result.StructuredContent.(map[string]string)
+		r.True(ok, "StructuredContent should be the original typed value")
+		r.Equal("test", structured["name"])
 	})
 
-	t.Run("unmarshalable value", func(t *testing.T) {
+	t.Run("unmarshalable value yields error result with empty StructuredContent", func(t *testing.T) {
 		t.Parallel()
-		// Channels cannot be marshaled to JSON
 		result := marshalResult(make(chan int))
 		r.True(result.IsError)
 		r.Contains(result.Content[0].Text, "Failed to marshal")
+		r.Nil(result.StructuredContent)
 	})
+}
+
+func TestToolCallResult_JSONIncludesBothFieldsWhenStructured(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := marshalResult(map[string]string{"name": "test"})
+	data, err := json.Marshal(result)
+	r.NoError(err)
+
+	var parsed map[string]any
+	r.NoError(json.Unmarshal(data, &parsed))
+	r.Contains(parsed, "content")
+	r.Contains(parsed, "structuredContent")
+
+	structured, ok := parsed["structuredContent"].(map[string]any)
+	r.True(ok, "structuredContent should marshal as a real object, not a string")
+	r.Equal("test", structured["name"])
+}
+
+func TestToolCallResult_JSONOmitsStructuredContentForTextResult(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// textResult is used by confirmation paths (e.g. delete_check) that
+	// don't need a structured form; structuredContent must stay omitted.
+	result := textResult("Deleted successfully.")
+	data, err := json.Marshal(result)
+	r.NoError(err)
+
+	var parsed map[string]any
+	r.NoError(json.Unmarshal(data, &parsed))
+	r.Contains(parsed, "content")
+	_, has := parsed["structuredContent"]
+	r.False(has, "structuredContent should be omitted when not set")
+}
+
+func TestToolCallResult_JSONOmitsStructuredContentForErrorResult(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	result := errorResult("nope")
+	data, err := json.Marshal(result)
+	r.NoError(err)
+
+	var parsed map[string]any
+	r.NoError(json.Unmarshal(data, &parsed))
+	_, has := parsed["structuredContent"]
+	r.False(has, "structuredContent should be omitted on error results too")
 }
