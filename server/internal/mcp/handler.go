@@ -31,8 +31,33 @@ import (
 const (
 	sessionTTL      = time.Hour
 	cleanupInterval = 5 * time.Minute
-	mcpProtocolVer  = "2025-03-26"
 )
+
+// protocolVersion2025_03_26 is the MCP protocol version published in March
+// 2025. Add newer entries to supportedProtocolVersions as they ship.
+const protocolVersion2025_03_26 = "2025-03-26"
+
+// negotiateProtocolVersion returns the version we should advertise to a
+// client that requested clientVersion. Per the MCP spec: if we support the
+// requested version, return it; otherwise return our latest. The client
+// is responsible for disconnecting if it cannot speak what we returned.
+func negotiateProtocolVersion(clientVersion string) string {
+	supported := []string{
+		protocolVersion2025_03_26,
+		// Add new versions to the front as we adopt them, e.g.
+		// "2025-06-18" once structuredContent / outputSchema are wired.
+	}
+
+	if clientVersion != "" {
+		for _, v := range supported {
+			if v == clientVersion {
+				return v
+			}
+		}
+	}
+
+	return supported[0]
+}
 
 type session struct {
 	id              string
@@ -152,7 +177,7 @@ func (h *Handler) dispatch(
 ) (*Response, int) {
 	switch req.Method {
 	case methodInitialize:
-		return h.handleInitialize(req, orgSlug, writer)
+		return h.handleInitialize(ctx, req, orgSlug, writer)
 	case methodInitialized:
 		writer.WriteHeader(http.StatusAccepted)
 		return nil, 0
@@ -178,7 +203,7 @@ func (h *Handler) dispatch(
 }
 
 func (h *Handler) handleInitialize(
-	req *Request, orgSlug string, writer http.ResponseWriter,
+	ctx context.Context, req *Request, orgSlug string, writer http.ResponseWriter,
 ) (*Response, int) {
 	var params InitializeParams
 	if req.Params != nil {
@@ -188,11 +213,18 @@ func (h *Handler) handleInitialize(
 		}
 	}
 
+	negotiated := negotiateProtocolVersion(params.ProtocolVersion)
+	if params.ProtocolVersion != "" && negotiated != params.ProtocolVersion {
+		slog.InfoContext(ctx, "MCP version negotiation fallback",
+			"clientRequested", params.ProtocolVersion,
+			"serverReturned", negotiated)
+	}
+
 	sessionID := uuid.New().String()
 	now := time.Now()
 	h.sessions.Store(sessionID, &session{
 		id:              sessionID,
-		protocolVersion: params.ProtocolVersion,
+		protocolVersion: negotiated,
 		clientInfo:      params.ClientInfo,
 		orgSlug:         orgSlug,
 		createdAt:       now,
@@ -202,7 +234,7 @@ func (h *Handler) handleInitialize(
 	writer.Header().Set("Mcp-Session-Id", sessionID)
 
 	resp := successResponse(req.ID, InitializeResult{
-		ProtocolVersion: mcpProtocolVer,
+		ProtocolVersion: negotiated,
 		Capabilities: ServerCaps{
 			Tools:     &ToolsCap{},
 			Resources: &ResourcesCap{},
