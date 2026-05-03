@@ -16,6 +16,10 @@ function OrganizationLayout() {
   const tabs = [
     { label: t("nav:members"), path: "/orgs/$org/organization/members" },
     { label: t("nav:invitations"), path: "/orgs/$org/organization/invitations" },
+    {
+      label: t("nav:requests", "Requests"),
+      path: "/orgs/$org/organization/requests",
+    },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 

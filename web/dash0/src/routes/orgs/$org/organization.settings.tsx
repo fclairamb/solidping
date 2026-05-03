@@ -29,7 +29,9 @@ function SettingsPage() {
 
   const [emailPattern, setEmailPattern] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [testEmail, setTestEmail] = useState("");
 
   useEffect(() => {
     if (settings) {
@@ -40,6 +42,7 @@ function SettingsPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setFieldError(null);
     setSaved(false);
 
     try {
@@ -50,12 +53,25 @@ function SettingsPage() {
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       if (err instanceof ApiError) {
-        setError(err.message);
+        if (err.code === "INVALID_AUTO_JOIN_REGEX") {
+          setFieldError(err.message);
+        } else {
+          setError(err.message);
+        }
       } else {
         setError(t("settings.unexpectedError"));
       }
     }
   };
+
+  let testResult: "match" | "no-match" | null = null;
+  if (emailPattern && testEmail) {
+    try {
+      testResult = new RegExp(emailPattern).test(testEmail) ? "match" : "no-match";
+    } catch {
+      testResult = "no-match";
+    }
+  }
 
   if (isLoading) {
     return (
@@ -96,12 +112,45 @@ function SettingsPage() {
               type="text"
               placeholder={t("settings.emailPlaceholder")}
               value={emailPattern}
-              onChange={(e) => setEmailPattern(e.target.value)}
+              onChange={(e) => {
+                setEmailPattern(e.target.value);
+                setFieldError(null);
+              }}
               disabled={updateSettings.isPending}
+              aria-invalid={fieldError != null}
             />
+            {fieldError && (
+              <p className="text-xs text-destructive">{fieldError}</p>
+            )}
             <p className="text-xs text-muted-foreground"
               dangerouslySetInnerHTML={{ __html: t("settings.autoJoinHelp") }}
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="testEmail">
+              {t("settings.testAgainstEmail", "Test against email")}
+            </Label>
+            <Input
+              id="testEmail"
+              type="email"
+              value={testEmail}
+              onChange={(e) => setTestEmail(e.target.value)}
+              placeholder="user@example.com"
+            />
+            {testResult && (
+              <p
+                className={`text-xs ${
+                  testResult === "match"
+                    ? "text-green-600"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {testResult === "match"
+                  ? t("settings.testMatch", "✓ matches the pattern")
+                  : t("settings.testNoMatch", "✗ does not match the pattern")}
+              </p>
+            )}
           </div>
 
           <Button
