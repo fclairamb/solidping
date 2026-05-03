@@ -397,16 +397,16 @@ export function ResponseTimeChart({
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
         <CardTitle>Response Times</CardTitle>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <Switch
               checked={fullRange}
               onCheckedChange={updateFullRange}
               className="scale-75"
             />
-            Full range
+            <span className="hidden sm:inline">Full range</span>
           </label>
           <div className="flex items-center gap-1">
             {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
@@ -415,9 +415,10 @@ export function ResponseTimeChart({
                 variant={timeRange === range ? "default" : "outline"}
                 size="sm"
                 onClick={() => updateTimeRange(range)}
-                className="capitalize"
+                className="px-2 text-xs sm:px-3 sm:text-sm"
               >
-                {range}
+                <span className="sm:hidden">{range[0].toUpperCase()}</span>
+                <span className="hidden sm:inline capitalize">{range}</span>
               </Button>
             ))}
           </div>
