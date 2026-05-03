@@ -36,7 +36,7 @@ func listIncidentsDef() ToolDefinition {
 					"  check — include the underlying check (slug, type, config)\n" +
 					"Example: \"check\".",
 			),
-			"size":     intProp(descLimit),
+			propSize:   intProp(descLimit),
 			propCursor: stringProp(descCursor),
 		}, nil),
 	}
