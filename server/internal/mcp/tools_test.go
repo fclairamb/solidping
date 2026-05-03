@@ -107,6 +107,7 @@ func TestToolDefinitions(t *testing.T) {
 		createConnectionDef(),
 		listCheckGroupsDef(),
 		listRegionsDef(),
+		diagnoseCheckDef(),
 	}
 
 	for _, def := range defs {
@@ -131,8 +132,8 @@ func TestRegisterTools(t *testing.T) {
 
 	handler := newTestHandler()
 
-	r.Len(handler.tools, 12)
-	r.Len(handler.toolMap, 12)
+	r.Len(handler.tools, 13)
+	r.Len(handler.toolMap, 13)
 
 	// Every tool definition should have a corresponding function in the map
 	for _, tool := range handler.tools {
