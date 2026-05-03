@@ -436,9 +436,11 @@ func TestRefreshUserInfo(t *testing.T) {
 	r.Equal("Refresh Org", refreshResp.Organization.Name)
 }
 
-// passwordResetUser is a small helper that wires up an org + a user with a
-// real password hash, so reset tests can exercise the happy path without
+// passwordResetUser is a small helper that wires up a user with a real
+// password hash so reset tests can exercise the happy path without
 // duplicating a dozen lines per case.
+//
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
 func passwordResetUser(t *testing.T, ctx context.Context, dbSvc db.Service, email string) *models.User {
 	t.Helper()
 	r := require.New(t)
@@ -453,6 +455,7 @@ func passwordResetUser(t *testing.T, ctx context.Context, dbSvc db.Service, emai
 	return user
 }
 
+//nolint:revive // ctx-second is fine in test helpers; matches existing helpers in this file
 func extractResetTokenFromState(t *testing.T, ctx context.Context, dbSvc db.Service) string {
 	t.Helper()
 	r := require.New(t)
@@ -657,7 +660,7 @@ func TestResetPassword(t *testing.T) {
 		updated, err := dbSvc.GetUser(ctx, user.UID)
 		r.NoError(err)
 		r.NotNil(updated.PasswordHash)
-		r.NotEqual("", *updated.PasswordHash)
+		r.NotEmpty(*updated.PasswordHash)
 		// Old password no longer matches.
 		r.False(passwords.Verify("oldpassword", *updated.PasswordHash))
 		r.True(passwords.Verify("newpassword", *updated.PasswordHash))

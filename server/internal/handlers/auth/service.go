@@ -28,6 +28,14 @@ import (
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
+// State entry value keys shared between producers and consumers of
+// password-reset and counter entries; centralized so a typo can't drift
+// the wire format silently.
+const (
+	stateValueKeyUserUID = "userUid"
+	stateValueKeyCount   = "count"
+)
+
 // emailJobConfig mirrors the JSON shape of jobtypes.EmailJobConfig. We
 // duplicate it here to avoid an import cycle (auth → jobtypes →
 // notifications → slack → auth). Keep the JSON tags in sync with the
@@ -292,8 +300,12 @@ func NewService(
 // enqueueEmail builds an email job and pushes it onto the job queue.
 // Errors are logged but never bubbled to the caller — transactional emails
 // must not block registration, password reset, or invitation flows.
+//
+// The subject is left blank: every template defines its own
+// {{define "subject"}} block, so duplicating the subject at the call
+// site only invites drift.
 func (s *Service) enqueueEmail(
-	ctx context.Context, orgUID, recipient, subject, template string, data any,
+	ctx context.Context, orgUID, recipient, template string, data any,
 ) {
 	if s.jobsSvc == nil || recipient == "" {
 		return
@@ -301,7 +313,6 @@ func (s *Service) enqueueEmail(
 
 	cfg := emailJobConfig{
 		To:           []string{recipient},
-		Subject:      subject,
 		Template:     template,
 		TemplateData: data,
 	}
@@ -1570,7 +1581,7 @@ func (s *Service) Register(ctx context.Context, req RegisterRequest) (*RegisterR
 	// Send confirmation email asynchronously via the email job
 	confirmURL := fmt.Sprintf("%s/dash0/confirm-registration/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email, "", "registration.html",
+	s.enqueueEmail(ctx, "", req.Email, "registration.html",
 		map[string]any{"ConfirmURL": confirmURL},
 	)
 
@@ -1834,7 +1845,7 @@ func (s *Service) RequestPasswordReset(
 	// Store at password_reset:<sha256(token)> with userUid only. The
 	// plaintext token never lands on disk; a leaked DB snapshot has no
 	// way to mint a valid reset URL.
-	stateValue := &models.JSONMap{"userUid": user.UID}
+	stateValue := &models.JSONMap{stateValueKeyUserUID: user.UID}
 	ttl := passwordResetTTL
 
 	if err := s.db.SetStateEntry(ctx, nil, passwordResetKeyPrefix+tokenHash, stateValue, &ttl); err != nil {
@@ -1844,7 +1855,7 @@ func (s *Service) RequestPasswordReset(
 	// Send reset email asynchronously via the email job
 	resetURL := fmt.Sprintf("%s/dash0/reset-password/%s",
 		s.fullCfg.Server.BaseURL, token)
-	s.enqueueEmail(ctx, "", req.Email, "", "password-reset.html",
+	s.enqueueEmail(ctx, "", req.Email, "password-reset.html",
 		map[string]any{"ResetURL": resetURL},
 	)
 
@@ -1852,20 +1863,20 @@ func (s *Service) RequestPasswordReset(
 }
 
 // counterValue extracts the integer value from a state entry that holds
-// a {"count": N} payload. JSON marshalling promotes ints to float64 so we
+// a {"count": N} payload. JSON marshaling promotes ints to float64 so we
 // accept both shapes; anything else is treated as zero.
 func counterValue(entry *models.StateEntry) int {
 	if entry == nil || entry.Value == nil {
 		return 0
 	}
 
-	switch v := (*entry.Value)["count"].(type) {
+	switch raw := (*entry.Value)[stateValueKeyCount].(type) {
 	case float64:
-		return int(v)
+		return int(raw)
 	case int:
-		return v
+		return raw
 	case int64:
-		return int(v)
+		return int(raw)
 	default:
 		return 0
 	}
@@ -1873,9 +1884,9 @@ func counterValue(entry *models.StateEntry) int {
 
 // bumpCounter loads / increments / persists a counter at the given state
 // key, scoped to the supplied TTL. Reports whether the count was already
-// at or above the cap (in which case no bump happens).
+// at or above the limit (in which case no bump happens).
 func (s *Service) bumpCounter(
-	ctx context.Context, key string, cap int, ttl time.Duration,
+	ctx context.Context, key string, limit int, ttl time.Duration,
 ) (bool, error) {
 	current, err := s.db.GetStateEntry(ctx, nil, key)
 	if err != nil {
@@ -1884,12 +1895,12 @@ func (s *Service) bumpCounter(
 
 	count := counterValue(current)
 
-	if count >= cap {
+	if count >= limit {
 		return true, nil
 	}
 
 	count++
-	value := &models.JSONMap{"count": count}
+	value := &models.JSONMap{stateValueKeyCount: count}
 	scopedTTL := ttl
 	if err := s.db.SetStateEntry(ctx, nil, key, value, &scopedTTL); err != nil {
 		return false, err
@@ -1935,7 +1946,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 		return nil, ErrPasswordResetExpired
 	}
 
-	userUID, ok := (*entry.Value)["userUid"].(string)
+	userUID, ok := (*entry.Value)[stateValueKeyUserUID].(string)
 	if !ok || userUID == "" {
 		return nil, ErrPasswordResetExpired
 	}
@@ -1973,7 +1984,7 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 
 	// Confirmation email so the legitimate user sees a record of the
 	// change even if the attacker controls the password-reset link.
-	s.enqueueEmail(ctx, "", user.Email, "", "password-changed.html",
+	s.enqueueEmail(ctx, "", user.Email, "password-changed.html",
 		map[string]any{"ChangedAt": time.Now().UTC().Format(time.RFC1123)},
 	)
 
@@ -2554,7 +2565,7 @@ func (s *Service) sendInvitationEmail(
 
 	inviterName := s.getInviterName(ctx, inviterUID)
 
-	s.enqueueEmail(ctx, orgUID, recipientEmail, "", "invitation.html",
+	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
 			"OrgName":     orgName,
 			"Role":        role,
