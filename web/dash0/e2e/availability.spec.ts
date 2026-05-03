@@ -49,8 +49,9 @@ test.describe("Availability Table", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
-    // Verify availability table shows the mocked percentage
-    await expect(page.getByText("99.9700%").first()).toBeVisible({ timeout: 10000 });
+    // Verify availability table shows the mocked percentage. formatAvailability
+    // emits 2 decimals between 99 and 100 inclusive (was 4 before spec #47).
+    await expect(page.getByText("99.97%").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("should show 0s for downtime when availability is 100%", async ({
@@ -157,8 +158,9 @@ test.describe("Availability Table", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
-    // Should show 50% computed from raw results
-    await expect(page.getByText("50.0000%").first()).toBeVisible({ timeout: 10000 });
+    // Should show 50% computed from raw results. formatAvailability emits 1
+    // decimal below 99 (was 4 before spec #47).
+    await expect(page.getByText("50.0%").first()).toBeVisible({ timeout: 10000 });
   });
 
   test("should show dash when no data at all", async ({

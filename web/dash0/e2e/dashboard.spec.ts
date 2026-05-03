@@ -1,7 +1,7 @@
 import { test, expect } from "./fixtures";
 
 test.describe("Dashboard", () => {
-  test("should redirect to checks page after login", async ({
+  test("should land on org dashboard after login", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -15,12 +15,12 @@ test.describe("Dashboard", () => {
       fullPage: true,
     });
 
-    // Verify we're on the checks page (org root redirects to checks)
+    // Spec #46 lands login on /orgs/$org — the operator welcome page — not /checks.
     expect(page.url()).not.toContain("/login");
-    expect(page.url()).toContain("orgs/test");
+    expect(page.url()).toMatch(/\/orgs\/test\/?$/);
 
-    // Check for checks page content
-    await expect(page.getByRole("heading", { name: "Checks", exact: true })).toBeVisible({ timeout: 10000 });
+    // Sidebar is the cheapest way to confirm we rendered an authenticated page.
+    await expect(page.getByTestId("app-sidebar")).toBeVisible({ timeout: 10000 });
   });
 
   test("should display sidebar navigation", async ({ authenticatedPage }) => {
