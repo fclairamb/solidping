@@ -278,21 +278,15 @@ function OrgLayout() {
     auth
       .loginWithOAuth(accessToken, oauthOrg)
       .then(() => {
-        // Clean the URL by removing OAuth params
-        const cleanPath = window.location.pathname;
-        window.history.replaceState({}, "", cleanPath);
-        navigate({ to: "/orgs/$org", params: { org: oauthOrg }, replace: true });
+        // Hard navigation: forces a clean reload so URL/org context is in sync
+        // before any child routes fire org-scoped API calls.
+        const basepath = import.meta.env.VITE_BASE_URL || "";
+        window.location.replace(`${basepath}/orgs/${oauthOrg}`);
       })
       .catch(() => {
-        // On failure, redirect to login with error
-        navigate({
-          to: "/orgs/$org/login",
-          params: { org: oauthOrg },
-          search: { session_expired: false, returnTo: undefined },
-          replace: true,
-        });
-      })
-      .finally(() => setOauthProcessing(false));
+        const basepath = import.meta.env.VITE_BASE_URL || "";
+        window.location.replace(`${basepath}/orgs/${oauthOrg}/login?session_expired=false`);
+      });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Login page should render without sidebar
