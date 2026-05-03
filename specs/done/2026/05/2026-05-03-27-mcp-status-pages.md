@@ -14,7 +14,7 @@ Three design questions worth being explicit about:
 
 2. **Publish workflow.** The "post a status update" use case really wants two things: (a) create/update a status page section narrative, (b) confirm it's visible publicly. Visibility is determined by `enabled` flags on the page. We don't need a special "publish" tool — `update_status_page_section` with the right body covers it. Keep it simple.
 
-3. **Don't add a "draft narrative" prompt here.** That's the job of the prompts spec (`2026-05-03-22-mcp-prompts.md`). This spec is just the data-access plumbing.
+3. **Don't add a "draft narrative" prompt here.** That's the job of the prompts spec (`2026-05-03-34-mcp-prompts.md`). This spec is just the data-access plumbing.
 
 ## Scope
 
@@ -93,7 +93,7 @@ statusPagesSvc: statuspages.NewService(dbService),
 - one `xxxDef()` function per tool returning a `ToolDefinition`
 - one `(h *Handler) toolXxx()` method per tool delegating to `h.statusPagesSvc.*`
 - argument extraction via the existing `getStringArg` / `getMapArg` / `getBoolArg` / etc. helpers (`handler.go:249-333`)
-- response via `marshalResult()` (or `structuredContent` once spec `2026-05-03-21-mcp-structured-content-output.md` lands).
+- response via `marshalResult()` (or `structuredContent` once spec `2026-05-03-33-mcp-structured-content-output.md` lands).
 
 ### Registration
 

@@ -6,7 +6,7 @@ The original ask was: "make air only kill and reload the server *after* it has b
 
 Effect today: every save triggers a 1–5 second window where the dev server is dead while `go build` runs. That window costs more than it sounds — frontend dev (`web/dash0`, `web/status0`) running concurrently makes blind requests during the gap, dev tooling (Playwright, MCP, manual curl) gets connection refused, and the dev cycle described in `CLAUDE.md` ("apply code changes, wait 5s for it to build and then test") is precisely that downtime.
 
-The companion spec `2026-05-02-air-keep-server-on-build-failure.md` shrinks the *failure* path. This spec eliminates the *success* path downtime by replacing air for the backend with a small watcher that does build-then-swap.
+The companion spec `2026-05-02-13-air-keep-server-on-build-failure.md` shrinks the *failure* path. This spec eliminates the *success* path downtime by replacing air for the backend with a small watcher that does build-then-swap.
 
 ## Approach
 

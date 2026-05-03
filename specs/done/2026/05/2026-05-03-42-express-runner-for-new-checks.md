@@ -32,7 +32,7 @@ There is no double-execution risk: lease claim is atomic via `SELECT FOR UPDATE 
 **Out:**
 - Bumping the default `CheckWorker.Nb` (still a sensible knob, but orthogonal — the express path makes this less urgent for first-run UX specifically).
 - Adding `ORDER BY (lease_starts = 0) DESC` to the regular path (subsumed by the express path for first-run; nice-to-have for bulk-create scenarios but not in scope here).
-- Frontend changes — see spec `2026-05-03-31-check-detail-first-run-polling.md`.
+- Frontend changes — see spec `2026-05-03-43-check-detail-first-run-polling.md`.
 
 ## Implementation
 

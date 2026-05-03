@@ -2,7 +2,7 @@
 
 ## Context
 
-Companion to `2026-05-02-result-detail-page-frontend.md` (which adds the result detail page) and its backend twin. Once the detail page exists, the natural follow-on is making every visual on the check detail page (`web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`) drill into one specific result.
+Companion to `2026-05-02-07-result-detail-page-frontend.md` (which adds the result detail page) and its backend twin. Once the detail page exists, the natural follow-on is making every visual on the check detail page (`web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`) drill into one specific result.
 
 A correction worth noting up front: I initially suggested making the **AvailabilityTable cells** clickable, but a re-read of `web/dash0/src/components/checks/availability-table.tsx` shows that table is **summary rows** (Today / Last 7 days / Last 30 days / Last 365 days), where each row's "Availability" cell is the *average* of many aggregation rows computed client-side. There's no 1:1 mapping from a cell to a single result UID — making cells link to a result detail would be either misleading or arbitrary.
 

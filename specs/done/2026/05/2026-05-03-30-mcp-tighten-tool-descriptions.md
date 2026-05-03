@@ -28,7 +28,7 @@ I'd resist the urge to also add JSON Schema `examples` arrays — the spec suppo
 - One small test (`tools_test.go`) that asserts every parameter has a description >= 20 chars (catches future regressions).
 
 **Out:**
-- Schema structural changes (e.g. moving from string to object for labels — that's spec `2026-05-03-20-mcp-labels-structured-object.md`).
+- Schema structural changes (e.g. moving from string to object for labels — that's spec `2026-05-03-32-mcp-labels-structured-object.md`).
 - New tools or new parameters.
 - i18n / translation of descriptions. English-only for now.
 - Auto-generated descriptions from Go doc comments. Manual is fine for ~12 tools.

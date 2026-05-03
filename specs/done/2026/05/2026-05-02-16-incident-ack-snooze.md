@@ -21,7 +21,7 @@ What's missing is everything *around* it:
 - Pending notification jobs (queued per
   `service.go:920 queueNotifications`) keep firing on ongoing incidents even
   after a human has ack'd. Once escalation policies land
-  (`2026-05-02-escalation-policies.md`), this becomes critical — but even today
+  (`2026-05-02-19-escalation-policies.md`), this becomes critical — but even today
   it produces redundant pings.
 
 This spec is the foundation for the on-call/escalation work. Ship it first
@@ -40,8 +40,8 @@ In scope:
   pages.
 
 Out of scope (own specs):
-- On-call schedules (`2026-05-02-on-call-schedules.md`).
-- Escalation policies (`2026-05-02-escalation-policies.md`). This spec adds
+- On-call schedules (`2026-05-02-17-on-call-schedules.md`).
+- Escalation policies (`2026-05-02-19-escalation-policies.md`). This spec adds
   *hooks* the escalation worker will use — but no escalation logic itself.
 - Mobile push notifications and "ack from your phone" — when those land, they
   call the same endpoints described here.

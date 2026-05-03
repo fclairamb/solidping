@@ -19,7 +19,7 @@ Only the date and time formatting calls in two component files:
 - `web/status0/src/components/shared/availability-bar.tsx` — 1 call
 - `web/status0/src/components/shared/response-time-chart.tsx` — 4 calls (2 in `formatTick`, 2 in `CustomTooltip`)
 
-A sibling spec (`2026-05-02-status0-translate-availability-bar-and-chart.md`) adds the missing translation keys and `t()` calls in the same files. The two specs touch overlapping lines; whoever lands second should rebase trivially.
+A sibling spec (`2026-05-02-09-status0-translate-availability-bar-and-chart.md`) adds the missing translation keys and `t()` calls in the same files. The two specs touch overlapping lines; whoever lands second should rebase trivially.
 
 Out of scope:
 - The number formatting `toFixed(2)` / `toFixed(3)` for percentages. French uses `,` as the decimal separator and would render `100,000 %`; German/Spanish similar. This is a real but separate concern — doing it correctly means switching to `Intl.NumberFormat(i18n.language, { … })` and possibly tweaking the surrounding layout. Defer to a later spec; today's status pages from competitors (Statuspage, Hund, BetterStack) don't all localize numbers either, so it's not a clear regression.

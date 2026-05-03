@@ -11,7 +11,7 @@ The backend has a list endpoint (`GET /api/v1/orgs/:org/results`, in `server/int
 - `Status`, `Duration`, `Metrics`, `Output` (raw rows)
 - `TotalChecks`, `SuccessfulChecks`, `AvailabilityPct`, `DurationMin`, `DurationMax`, `DurationP95` (aggregated rows)
 
-An aggregation job (`server/internal/jobs/jobtypes/job_aggregation.go:34`) periodically rolls `raw → hour → day → month` and **deletes the source rows** once they're rolled up. So a UID written into a URL today is not guaranteed to exist tomorrow: a raw result older than the configurable raw-retention window (~24h, see `2026-05-02-configurable-aggregation-retention.md`) becomes part of the hourly aggregation for the same check + region, and the raw row's UID is gone.
+An aggregation job (`server/internal/jobs/jobtypes/job_aggregation.go:34`) periodically rolls `raw → hour → day → month` and **deletes the source rows** once they're rolled up. So a UID written into a URL today is not guaranteed to exist tomorrow: a raw result older than the configurable raw-retention window (~24h, see `2026-05-02-04-configurable-aggregation-retention.md`) becomes part of the hourly aggregation for the same check + region, and the raw row's UID is gone.
 
 Bookmarked or shared result URLs would die silently. We need a "find the aggregation that covers this UID" fallback so links survive rollups, while still telling the viewer that the original raw result is no longer available.
 
@@ -24,7 +24,7 @@ In scope:
 - One line in `docs/api-specification.md`.
 
 Out of scope:
-- The frontend page that consumes this — see `2026-05-02-result-detail-page-frontend.md`.
+- The frontend page that consumes this — see `2026-05-02-07-result-detail-page-frontend.md`.
 - A flat `GET /api/v1/orgs/:org/results/:uid` endpoint without check scoping. The nested form is enough for dash0 and avoids a `WHERE uid = ?` scan across an org's whole results table.
 - Modifying the existing list endpoint.
 

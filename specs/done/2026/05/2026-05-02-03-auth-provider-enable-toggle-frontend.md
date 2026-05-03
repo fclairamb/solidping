@@ -4,7 +4,7 @@
 
 The server admin auth page at `web/dash0/src/routes/orgs/$org/server.auth.tsx` lets an admin enter OAuth credentials (Client ID, Client Secret, plus Slack-specific App ID / Signing Secret) for six providers: Google, GitHub, GitLab, Microsoft, Slack — and Discord is currently missing entirely. Whether a provider is shown on the public login page is implicitly tied to whether credentials are filled in (`server/internal/handlers/auth/providers_available.go`).
 
-A sibling spec (`2026-05-02-auth-provider-enable-toggle-backend.md`) adds an explicit `auth.<provider>.enabled` system parameter (default `true`) and gates `/api/v1/auth/providers` and OAuth route registration on that flag. **This spec depends on that one shipping first** — the backend must accept and honor the new param keys before the UI can persist them meaningfully.
+A sibling spec (`2026-05-02-02-auth-provider-enable-toggle-backend.md`) adds an explicit `auth.<provider>.enabled` system parameter (default `true`) and gates `/api/v1/auth/providers` and OAuth route registration on that flag. **This spec depends on that one shipping first** — the backend must accept and honor the new param keys before the UI can persist them meaningfully.
 
 This spec adds the user-facing toggle: a Switch on each provider card, persisted through the existing `/api/v1/system/parameters` endpoint, with appropriate UX for the configured-vs-enabled distinction.
 

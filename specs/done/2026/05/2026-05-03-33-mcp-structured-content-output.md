@@ -49,7 +49,7 @@ If you only have time to do half: `marshalResult` becomes a one-line shim that s
 - Per-tool `outputSchema` registration. Defer; that's a separate spec if/when needed.
 - Behavior changes to any individual tool.
 - Dropping the text-form `Content`. Keep both for client-compat for at least one release cycle.
-- Bumping `mcpProtocolVer` to `2025-06-18`. That's spec `2026-05-03-24-mcp-protocol-version-negotiation.md`. The `structuredContent` field works on `2025-03-26` clients that opt into it; don't conflate.
+- Bumping `mcpProtocolVer` to `2025-06-18`. That's spec `2026-05-03-39-mcp-protocol-version-negotiation.md`. The `structuredContent` field works on `2025-03-26` clients that opt into it; don't conflate.
 
 ## Implementation
 

@@ -11,7 +11,7 @@ The user wants to separate two concerns:
 
 Today these are conflated. This spec adds an explicit `enabled` flag per OAuth provider and threads it through config loading, system-parameter overrides, the public providers endpoint, and the OAuth login/callback handlers.
 
-A sibling spec (`2026-05-02-auth-provider-enable-toggle-frontend.md`) adds the toggle UI in the server admin page. That spec depends on this one shipping first because it persists `auth.<provider>.enabled` system parameters and expects the backend to honor them.
+A sibling spec (`2026-05-02-03-auth-provider-enable-toggle-frontend.md`) adds the toggle UI in the server admin page. That spec depends on this one shipping first because it persists `auth.<provider>.enabled` system parameters and expects the backend to honor them.
 
 ## Scope
 

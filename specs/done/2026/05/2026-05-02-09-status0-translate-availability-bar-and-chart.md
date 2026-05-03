@@ -22,7 +22,7 @@ Two more leak through tooltips that aren't visible in the screenshot but are equ
 
 ## Scope
 
-This spec covers **only** the hardcoded English strings. A sibling spec (`2026-05-02-status0-locale-aware-date-formatting.md`) handles the related issue that `toLocaleDateString(undefined, …)` calls in the same two files render dates in the browser locale instead of the i18n-active language. The two specs touch the same files but solve independent problems and can be implemented in either order.
+This spec covers **only** the hardcoded English strings. A sibling spec (`2026-05-02-08-status0-locale-aware-date-formatting.md`) handles the related issue that `toLocaleDateString(undefined, …)` calls in the same two files render dates in the browser locale instead of the i18n-active language. The two specs touch the same files but solve independent problems and can be implemented in either order.
 
 Out of scope:
 - The `udp`/`http`/`tcp` etc. protocol badge under each resource name (line ~113 of `status-page-view.tsx`). Those are protocol identifiers, not English words — leave untranslated.

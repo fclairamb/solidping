@@ -2,7 +2,7 @@
 
 ## Context
 
-The check detail page (`web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`) polls `useResults` and `useCheck` at the check's period (`refetchInterval = parsePeriodMs(check?.period)` at line 275). For a default 60 s check, the page may not refetch for up to one minute after the backend has produced the first real result — even if the backend is fast (and even faster once the express runner spec `2026-05-03-30-express-runner-for-new-checks.md` lands).
+The check detail page (`web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`) polls `useResults` and `useCheck` at the check's period (`refetchInterval = parsePeriodMs(check?.period)` at line 275). For a default 60 s check, the page may not refetch for up to one minute after the backend has produced the first real result — even if the backend is fast (and even faster once the express runner spec `2026-05-03-42-express-runner-for-new-checks.md` lands).
 
 Symptom: a user creates a check, lands on the detail page, sees the "Created" placeholder result, and sits there for up to a minute waiting for the first real status to appear.
 

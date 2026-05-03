@@ -2,7 +2,7 @@
 
 ## Context
 
-Companion spec to `2026-05-02-result-detail-endpoint-backend.md`. Once the backend exposes `GET /api/v1/orgs/:org/checks/:check/results/:uid` (with covering-aggregation fallback), dash0 needs a page to consume it and rows from the existing "Recent results" table need to link to it.
+Companion spec to `2026-05-02-06-result-detail-endpoint-backend.md`. Once the backend exposes `GET /api/v1/orgs/:org/checks/:check/results/:uid` (with covering-aggregation fallback), dash0 needs a page to consume it and rows from the existing "Recent results" table need to link to it.
 
 Today, on `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx:756`, the recent-results table renders `<TableRow>` per result with no click handler. The `OrgResult` type at `web/dash0/src/api/hooks.ts:101` has all the fields we need to render except the new `fallback` envelope.
 
@@ -143,7 +143,7 @@ Add keys under `web/dash0/src/locales/{en,fr,de,es}/checks.json` (or wherever th
 }
 ```
 
-Follow whatever the project's locale-update convention is (grep one of the recent specs `2026-05-02-status0-translate-availability-bar-and-chart.md` for the exact format if needed). All four languages must land together — partial translations break the locale fallback chain.
+Follow whatever the project's locale-update convention is (grep one of the recent specs `2026-05-02-09-status0-translate-availability-bar-and-chart.md` for the exact format if needed). All four languages must land together — partial translations break the locale fallback chain.
 
 ## Verification
 

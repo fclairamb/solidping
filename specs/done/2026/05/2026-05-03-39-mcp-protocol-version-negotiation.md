@@ -21,7 +21,7 @@ Negotiation isn't complicated. Maintain a small ordered list of supported versio
 
 Don't over-engineer with a registry of per-version capability differences. The MCP protocol versions to date are mostly additive. We negotiate the version string; capability *flags* (already in `ServerCaps`) handle the per-feature fine print. One tiny function, one constant slice.
 
-I'd ship this *before* spec `2026-05-03-21-mcp-structured-content-output.md` if possible, since `structuredContent` is officially `2025-06-18`-only — having proper negotiation lets us advertise the newer version when supported.
+I'd ship this *before* spec `2026-05-03-33-mcp-structured-content-output.md` if possible, since `structuredContent` is officially `2025-06-18`-only — having proper negotiation lets us advertise the newer version when supported.
 
 ## Scope
 

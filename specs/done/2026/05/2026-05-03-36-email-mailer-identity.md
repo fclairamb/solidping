@@ -26,8 +26,8 @@ I considered using `mail.WithUserAgent(...)` at the client level instead of per-
 - Unit test confirming the rendered EML carries the expected `X-Mailer` and `From` headers.
 
 **Out:**
-- Routing changes (covered in `2026-05-03-23-email-job-refactor.md`).
-- Template content (covered in `2026-05-03-25-email-templates-polish.md`).
+- Routing changes (covered in `2026-05-03-35-email-job-refactor.md`).
+- Template content (covered in `2026-05-03-37-email-templates-polish.md`).
 - Changing the actual `From` address (still operator-controlled via `email.from`).
 - DKIM / SPF / DMARC — orthogonal concern, operator's responsibility on the SMTP relay.
 

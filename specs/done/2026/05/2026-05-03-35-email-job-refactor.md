@@ -40,8 +40,8 @@ One real risk: routing password-reset through the worker means a worker outage =
 - Update tests in `server/internal/handlers/auth/service_test.go` to assert that a job was enqueued (mock `jobsvc.Service.CreateJob`) instead of asserting an email was sent.
 
 **Out:**
-- Any change to the templates themselves (covered in `2026-05-03-25-email-templates-polish.md`).
-- Any change to the X-Mailer / From headers (covered in `2026-05-03-24-email-mailer-identity.md`).
+- Any change to the templates themselves (covered in `2026-05-03-37-email-templates-polish.md`).
+- Any change to the X-Mailer / From headers (covered in `2026-05-03-36-email-mailer-identity.md`).
 - Touching `server/internal/notifications/email.go` — that already runs inside a job.
 - Touching `server/internal/handlers/system/service.go:198` (admin "send test email" endpoint) — that one should stay synchronous because the operator needs the round-trip result inline.
 

@@ -7,7 +7,7 @@ Today, when an LLM connected via MCP gets the question *"check `api-prod` is red
 1. `get_check` to confirm the check exists and grab basic metadata (`tools_checks.go:73-108`).
 2. `list_results` with a hand-invented `periodStartAfter` and `checkUid` filter (`tools_results.go:11-81`).
 3. `list_incidents` filtered by `checkUid` and `state=active` (`tools_incidents.go:11-70`).
-4. `get_incident` for the most recent one (`tools_incidents.go:72-104`) — and even then, the timeline of incident events is *not* exposed today (see spec `2026-05-03-14-mcp-incident-events.md`).
+4. `get_incident` for the most recent one (`tools_incidents.go:72-104`) — and even then, the timeline of incident events is *not* exposed today (see spec `2026-05-03-26-mcp-incident-events.md`).
 
 That's 4+ round-trips, each time-window and filter is LLM-invented (often wrong on the first try), and a meaningful chunk of the LLM's context is spent on plumbing instead of reasoning. For the MCP surface to actually be useful in incident triage — the #1 use case — we need one purpose-built tool that returns the bundle the LLM needs in a single call.
 
@@ -29,7 +29,7 @@ I'm deliberately *not* generalizing this into "diagnose_org" or letting the call
 - "Diagnose all red checks" / multi-check variant. Add later if asked.
 - Calling the LLM internally to summarize. The tool returns structured data; summarization is the LLM client's job.
 - Result-aggregation across regions (returning per-region summaries). Single-region-aware payload is enough for v1.
-- Incident events inclusion — handled by spec `2026-05-03-14-mcp-incident-events.md`. Once that lands, this tool will fold the events in via the same `with` flag.
+- Incident events inclusion — handled by spec `2026-05-03-26-mcp-incident-events.md`. Once that lands, this tool will fold the events in via the same `with` flag.
 
 ## Tool definition
 
@@ -58,7 +58,7 @@ inputSchema:
 
 ## Response shape
 
-Structured JSON returned via the existing `marshalResult()` path (or `structuredContent` once spec `2026-05-03-21-mcp-structured-content-output.md` lands).
+Structured JSON returned via the existing `marshalResult()` path (or `structuredContent` once spec `2026-05-03-33-mcp-structured-content-output.md` lands).
 
 ```json
 {

@@ -12,8 +12,8 @@ There is no:
 
 Existing notification channels (email, Slack, Discord, Webhooks, Google Chat,
 Mattermost, Ntfy, Opsgenie, Pushover) and the new ack/snooze surface
-(`2026-05-02-incident-ack-snooze.md`) and on-call schedules
-(`2026-05-02-on-call-schedules.md`) are the building blocks. This spec is the
+(`2026-05-02-16-incident-ack-snooze.md`) and on-call schedules
+(`2026-05-02-17-on-call-schedules.md`) are the building blocks. This spec is the
 orchestration layer that ties them together.
 
 This is the feature that makes SolidPing a tool teams *rely on* for

@@ -50,7 +50,7 @@ Tool/param descriptions must include working examples or LLMs will fumble:
 - `startsAt` / `endsAt`: `"RFC3339 timestamp, e.g. '2026-05-03T22:00:00Z'. Both required and endsAt must be after startsAt."`
 - `checkUids`: `"Array of check UIDs to apply maintenance to. Example: ['uid1','uid2']. Pass empty array to maintain a window with no associated checks."`
 
-This is a recurring lesson: the LLM picks the right tool based on description quality. Spec `2026-05-03-18-mcp-tighten-tool-descriptions.md` formalizes this across all tools, but apply it from the start here.
+This is a recurring lesson: the LLM picks the right tool based on description quality. Spec `2026-05-03-30-mcp-tighten-tool-descriptions.md` formalizes this across all tools, but apply it from the start here.
 
 ## Implementation
 

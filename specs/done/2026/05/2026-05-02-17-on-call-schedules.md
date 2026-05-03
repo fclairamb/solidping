@@ -11,7 +11,7 @@ week — not a serious option for production use.
 This spec adds first-class on-call schedules. They are *resolvers*: a schedule
 plus a point in time resolves to one user (the "currently on call"). They are
 *not* notification channels themselves — the way schedules drive paging is via
-escalation policies (see `2026-05-02-escalation-policies.md`), which can target
+escalation policies (see `2026-05-02-19-escalation-policies.md`), which can target
 a schedule and at evaluation time resolve it to the current on-call user.
 
 This separation matters: schedules are about *who*, escalation policies are

@@ -10,7 +10,7 @@
 
 Because `go build -o ./tmp/solidping .` only writes the output on success, the file at `tmp/solidping` after a failed build is still the *previous good* binary. With `stop_on_error = true`, air refuses to relaunch it, so the dev server stays dead until the developer's next successful build. With `stop_on_error = false`, air relaunches the existing on-disk binary, so the API stays up running the last good code.
 
-This spec is about that one-line change. It is **not** about zero-downtime reload — air always kills before building, and that gap (a few seconds while `go build` runs) remains. See the companion spec `2026-05-02-zero-downtime-dev-reload.md` for the full fix.
+This spec is about that one-line change. It is **not** about zero-downtime reload — air always kills before building, and that gap (a few seconds while `go build` runs) remains. See the companion spec `2026-05-02-14-zero-downtime-dev-reload.md` for the full fix.
 
 ## File to change
 
