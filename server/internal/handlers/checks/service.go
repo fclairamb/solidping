@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -34,6 +35,11 @@ type ValidateCheckResponse struct {
 	Valid  bool                        `json:"valid"`
 	Fields []base.ValidationErrorField `json:"fields,omitempty"`
 }
+
+// eventPayloadCheckUIDKey is the JSON key used in check.* event payloads
+// for the check UID. Centralized so producers and consumers (notably the
+// express runner) cannot drift out of sync.
+const eventPayloadCheckUIDKey = "check_uid"
 
 // slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
 // Total length: 3-20 characters.
@@ -946,7 +952,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 	event := models.NewEvent(org.UID, models.EventTypeCheckDeleted, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":              check.UID,
+		eventPayloadCheckUIDKey:  check.UID,
 		"check_slug":             check.Slug,
 		"check_name":             check.Name,
 		"check_type":             check.Type,
@@ -1221,19 +1227,27 @@ func (s *Service) emitEvent(
 	event := models.NewEvent(orgUID, eventType, models.ActorTypeUser)
 	event.CheckUID = &check.UID
 	event.Payload = models.JSONMap{
-		"check_uid":  check.UID,
-		"check_slug": check.Slug,
-		"check_name": check.Name,
-		"check_type": check.Type,
+		eventPayloadCheckUIDKey: check.UID,
+		"check_slug":            check.Slug,
+		"check_name":            check.Name,
+		"check_type":            check.Type,
 	}
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
 		return fmt.Errorf("failed to create event: %w", err)
 	}
 
-	// Notify workers to pick up the new check immediately
+	// Notify workers to pick up the new check immediately. The express
+	// runner subscribes to check.created and pulls the check_uid out of
+	// the payload so it can claim the new job without going through the
+	// regular fetcher pool.
 	if s.eventNotifier != nil {
-		if err := s.eventNotifier.Notify(ctx, string(eventType), "{}"); err != nil {
+		payload := "{}"
+		if encoded, err := json.Marshal(map[string]string{eventPayloadCheckUIDKey: check.UID}); err == nil {
+			payload = string(encoded)
+		}
+
+		if err := s.eventNotifier.Notify(ctx, string(eventType), payload); err != nil {
 			slog.WarnContext(ctx, "failed to send real-time notification",
 				"event_type", eventType,
 				"error", err,

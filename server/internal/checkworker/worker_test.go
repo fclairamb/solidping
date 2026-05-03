@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -248,6 +249,78 @@ func TestReleaseLease(t *testing.T) {
 
 		// Verify lease was released (worker UID should be nil)
 		assert.Nil(t, updatedJob.LeaseWorkerUID)
+	})
+}
+
+//nolint:paralleltest // Test uses shared database state
+func TestExpressHandleEvent(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.worker = worker
+
+	logger := runner.logger.With("test", "express")
+
+	// Create a heartbeat check; it routes through executePassiveJob so the
+	// express path can complete without making any outbound network calls.
+	check := models.NewCheck(org.UID, "express-test-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+	check.Config = models.JSONMap{"token": "express-test-token"}
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	// CheckCreate already inserts a check_job; pull it out to confirm the express
+	// path claims the right row.
+	job := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+	require.Nil(t, job.LeaseWorkerUID, "freshly-created job has no lease yet")
+
+	t.Run("EmptyPayloadIsNoOp", func(t *testing.T) {
+		runner.handleExpressEvent(ctx, logger, "{}")
+
+		var refreshed models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&refreshed).Where("uid = ?", job.UID).Scan(ctx))
+		assert.Nil(t, refreshed.LeaseWorkerUID, "empty payload must not claim anything")
+	})
+
+	t.Run("UnknownCheckUIDIsNoOp", func(t *testing.T) {
+		payload := `{"check_uid":"` + uuid.NewString() + `"}`
+		runner.handleExpressEvent(ctx, logger, payload)
+
+		var refreshed models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&refreshed).Where("uid = ?", job.UID).Scan(ctx))
+		assert.Nil(t, refreshed.LeaseWorkerUID, "unknown check_uid must not claim our job")
+	})
+
+	t.Run("ClaimsAndExecutesTargetedCheck", func(t *testing.T) {
+		// Count existing real (non-Created) results before triggering.
+		countResults := func() int {
+			var n int
+			err := dbSvc.DB().NewSelect().
+				Model((*models.Result)(nil)).
+				ColumnExpr("count(*)").
+				Where("check_uid = ?", check.UID).
+				Where("status != ?", int(models.ResultStatusCreated)).
+				Scan(ctx, &n)
+			require.NoError(t, err)
+			return n
+		}
+		before := countResults()
+
+		payload := `{"check_uid":"` + check.UID + `"}`
+		runner.handleExpressEvent(ctx, logger, payload)
+
+		assert.Greater(t, countResults(), before, "express path should produce at least one result row")
+
+		// Lease should be released after executePassiveJob completes.
+		var refreshed models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&refreshed).Where("uid = ?", job.UID).Scan(ctx))
+		assert.Nil(t, refreshed.LeaseWorkerUID, "lease should be released after execution")
+		assert.Equal(t, 0, refreshed.LeaseStarts, "lease_starts reset after release")
 	})
 }
 
