@@ -82,6 +82,7 @@ import { LabelInput } from "@/components/shared/label-input";
 import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface ChecksIndexSearch {
   labels?: string;
@@ -585,6 +586,7 @@ function ChecksIndexPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
+  const { user } = useAuth();
   const [search, setSearch] = useState("");
   const [internalFilter, setInternalFilter] = useState<string>("false");
   const [deleteCheckUid, setDeleteCheckUid] = useState<string | null>(null);
@@ -744,11 +746,21 @@ function ChecksIndexPage() {
           <p className="text-muted-foreground">{t("subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleExport} data-testid="export-button">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            data-testid="export-button"
+            className="hidden sm:inline-flex"
+          >
             <Download className="mr-2 h-4 w-4" />
             {t("export")}
           </Button>
-          <Button variant="outline" onClick={() => fileInputRef.current?.click()} data-testid="import-button">
+          <Button
+            variant="outline"
+            onClick={() => fileInputRef.current?.click()}
+            data-testid="import-button"
+            className="hidden sm:inline-flex"
+          >
             <Upload className="mr-2 h-4 w-4" />
             {t("import")}
           </Button>
@@ -760,13 +772,13 @@ function ChecksIndexPage() {
             onChange={handleImportFile}
           />
           <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
-            <FolderPlus className="mr-2 h-4 w-4" />
-            {t("newGroup")}
+            <FolderPlus className="sm:mr-2 h-4 w-4" />
+            <span className="hidden sm:inline">{t("newGroup")}</span>
           </Button>
           <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined }}>
             <Button data-testid="new-check-button">
-              <Plus className="mr-2 h-4 w-4" />
-              {t("newCheck")}
+              <Plus className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t("newCheck")}</span>
             </Button>
           </Link>
         </div>
@@ -782,16 +794,18 @@ function ChecksIndexPage() {
             className="pl-9"
           />
         </div>
-        <Select value={internalFilter} onValueChange={setInternalFilter}>
-          <SelectTrigger className="w-[160px]">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="false">{t("userChecks")}</SelectItem>
-            <SelectItem value="true">{t("internalOnly")}</SelectItem>
-            <SelectItem value="all">{t("allChecks")}</SelectItem>
-          </SelectContent>
-        </Select>
+        {user?.isSuperAdmin && (
+          <Select value={internalFilter} onValueChange={setInternalFilter}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="false">{t("userChecks")}</SelectItem>
+              <SelectItem value="true">{t("internalOnly")}</SelectItem>
+              <SelectItem value="all">{t("allChecks")}</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
         <Button
           variant="outline"
           size="icon"
