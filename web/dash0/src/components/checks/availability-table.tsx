@@ -183,9 +183,16 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
         const t = new Date(r.periodStart);
         return t >= start && t <= end;
       });
-      if (inWindow.length === 0) return null;
-      const successCount = inWindow.filter((r) => r.status === "up").length;
-      return (successCount * 100) / inWindow.length;
+      // Lifecycle and transient rows are not measurements; mirror the backend
+      // filter (badges/service.go and job_aggregation.go) so a fresh check
+      // doesn't appear at ~75% while its only "created" row is still in the
+      // raw window.
+      const measured = inWindow.filter(
+        (r) => r.status !== "created" && r.status !== "running"
+      );
+      if (measured.length === 0) return null;
+      const successCount = measured.filter((r) => r.status === "up").length;
+      return (successCount * 100) / measured.length;
     }
 
     // Filter daily results for 7-day window
