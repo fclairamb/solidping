@@ -98,3 +98,10 @@ func TestStatusPage_PastDays_UseStoredAggregate(t *testing.T) {
 2. Manually: cause a brief outage on a status-page-listed check, refresh the public page within a minute, observe today's bar updates.
 3. `select * from results where period_type='day' and period_start='today'` shows the (now-stale) stored row is unchanged — it's the rendering that's live, not the aggregate.
 4. Past days are still the cheap stored aggregates (no perf regression on the 89 historical bars).
+
+## Implementation Plan
+
+1. **Service logic** — In `enrichWithAvailability` (`server/internal/handlers/statuspages/service.go`), drop the `hasDailyToday` short-circuit. Instead: when synthesizing today's row from hourly data, first strip any stored daily row whose `PeriodStart` falls on today (UTC) from `resultsByCheck[checkUID]`, then append the synthesized row.
+2. **Refactor for funlen/cyclop** — Extract the today-synthesis loop into a small helper `synthesizeTodayAvailability(hourlyByCheck, resultsByCheck, checkUIDs, todayStart)` that mutates `resultsByCheck`. Keeps `enrichWithAvailability` from blowing the linter caps after the new replace logic is added.
+3. **Tests** — Add to `server/internal/handlers/statuspages/service_test.go` (or create one if missing): a test that verifies today's synthesized row replaces a stale stored daily row, and a test verifying past days are not re-synthesized.
+4. **QA** — `make build-backend lint-back test`.

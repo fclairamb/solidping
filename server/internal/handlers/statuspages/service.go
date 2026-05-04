@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -715,7 +716,7 @@ func (s *Service) ViewDefaultStatusPage(
 
 // --- Availability enrichment ---
 
-//nolint:gocognit,nestif,cyclop,funlen // Availability enrichment has inherent conditional complexity
+//nolint:cyclop,funlen // Availability enrichment has inherent conditional complexity
 func (s *Service) enrichWithAvailability(
 	ctx context.Context, orgUID string, page *models.StatusPage, sections []StatusPageSectionResponse,
 ) {
@@ -766,65 +767,12 @@ func (s *Service) enrichWithAvailability(
 
 	hourlyResp, err := s.db.ListResults(ctx, hourlyFilter)
 	if err == nil && hourlyResp != nil {
-		// Synthesize today's daily result from hourly data for each check
 		hourlyByCheck := make(map[string][]*models.Result)
 		for _, r := range hourlyResp.Results {
 			hourlyByCheck[r.CheckUID] = append(hourlyByCheck[r.CheckUID], r)
 		}
 
-		for _, checkUID := range checkUIDs {
-			// Skip if we already have a daily result for today
-			hasDailyToday := false
-			todayStr := todayStart.Format("2006-01-02")
-			for _, r := range resultsByCheck[checkUID] {
-				if r.PeriodStart.Format("2006-01-02") == todayStr {
-					hasDailyToday = true
-
-					break
-				}
-			}
-
-			if hasDailyToday {
-				continue
-			}
-
-			// Aggregate hourly results for this check
-			var totalAvail float64
-
-			var count int
-
-			var totalDuration, totalDurationP95 float64
-
-			for _, hourlyResult := range hourlyByCheck[checkUID] {
-				if hourlyResult.AvailabilityPct != nil {
-					totalAvail += *hourlyResult.AvailabilityPct
-					count++
-				}
-
-				if hourlyResult.Duration != nil {
-					totalDuration += float64(*hourlyResult.Duration)
-				}
-
-				if hourlyResult.DurationP95 != nil {
-					totalDurationP95 += float64(*hourlyResult.DurationP95)
-				}
-			}
-
-			if count > 0 {
-				avgAvail := totalAvail / float64(count)
-				avgDuration := float32(totalDuration / float64(count))
-				avgP95 := float32(totalDurationP95 / float64(count))
-				synthResult := &models.Result{
-					CheckUID:        checkUID,
-					PeriodStart:     todayStart,
-					AvailabilityPct: &avgAvail,
-					Duration:        &avgDuration,
-					DurationP95:     &avgP95,
-					TotalChecks:     &count,
-				}
-				resultsByCheck[checkUID] = append(resultsByCheck[checkUID], synthResult)
-			}
-		}
+		synthesizeTodayAvailability(resultsByCheck, hourlyByCheck, checkUIDs, todayStart)
 	}
 
 	// Fetch the last 100 results per check (any period type) for the response time chart
@@ -860,6 +808,70 @@ func (s *Service) enrichWithAvailability(
 			)
 			sections[i].Resources[j].Availability = availData
 		}
+	}
+}
+
+// synthesizeTodayAvailability replaces today's stored daily row (if any) with a fresh
+// synthesis built from today's hourly results. This keeps today's availability bar live
+// even after the daily aggregator has computed today's row.
+func synthesizeTodayAvailability(
+	resultsByCheck, hourlyByCheck map[string][]*models.Result,
+	checkUIDs []string,
+	todayStart time.Time,
+) {
+	todayStr := todayStart.Format("2006-01-02")
+
+	for _, checkUID := range checkUIDs {
+		synth := buildTodaySynth(checkUID, hourlyByCheck[checkUID], todayStart)
+		if synth == nil {
+			continue
+		}
+
+		filtered := resultsByCheck[checkUID][:0]
+		for _, r := range resultsByCheck[checkUID] {
+			if r.PeriodStart.Format("2006-01-02") != todayStr {
+				filtered = append(filtered, r)
+			}
+		}
+		resultsByCheck[checkUID] = append(filtered, synth)
+	}
+}
+
+func buildTodaySynth(checkUID string, hourlyResults []*models.Result, todayStart time.Time) *models.Result {
+	var totalAvail, totalDuration, totalDurationP95 float64
+
+	var count int
+
+	for _, hourlyResult := range hourlyResults {
+		if hourlyResult.AvailabilityPct != nil {
+			totalAvail += *hourlyResult.AvailabilityPct
+			count++
+		}
+
+		if hourlyResult.Duration != nil {
+			totalDuration += float64(*hourlyResult.Duration)
+		}
+
+		if hourlyResult.DurationP95 != nil {
+			totalDurationP95 += float64(*hourlyResult.DurationP95)
+		}
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	avgAvail := totalAvail / float64(count)
+	avgDuration := float32(totalDuration / float64(count))
+	avgP95 := float32(totalDurationP95 / float64(count))
+
+	return &models.Result{
+		CheckUID:        checkUID,
+		PeriodStart:     todayStart,
+		AvailabilityPct: &avgAvail,
+		Duration:        &avgDuration,
+		DurationP95:     &avgP95,
+		TotalChecks:     &count,
 	}
 }
 
@@ -938,7 +950,7 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 
 		var statusStr string
 		if recentResult.Status != nil {
-			statusStr = models.StatusToString(*recentResult.Status)
+			statusStr = strings.ToLower(models.StatusToString(*recentResult.Status))
 		}
 
 		rtData = append(rtData, ResponseTimePoint{
