@@ -314,6 +314,21 @@ export function useLabelSuggestions(
   });
 }
 
+export function useCloneCheck(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (sourceUid: string) =>
+      apiFetch<Check>(`/api/v1/orgs/${org}/checks/${sourceUid}/clone`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
+  });
+}
+
 export function useDeleteCheck(org: string) {
   const queryClient = useQueryClient();
 

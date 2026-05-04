@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import {
   useCheck,
+  useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
   useResults,
@@ -320,6 +321,7 @@ function CheckDetailPage() {
 
   const { data: regionsData } = useRegions(org);
   const deleteCheck = useDeleteCheck(org);
+  const cloneCheck = useCloneCheck(org);
   const updateCheck = useUpdateCheck(org, checkUid);
 
   const startEditingSlug = () => {
@@ -517,6 +519,26 @@ function CheckDetailPage() {
               <Pencil className="h-4 w-4" />
             </Button>
           </Link>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={cloneCheck.isPending}
+            title={t("checks:detail.clone") ?? "Clone"}
+            onClick={async () => {
+              try {
+                const newCheck = await cloneCheck.mutateAsync(checkUid);
+                toast.success(t("checks:detail.cloned") ?? "Check cloned");
+                navigate({
+                  to: "/orgs/$org/checks/$checkUid/edit",
+                  params: { org, checkUid: newCheck.uid! },
+                });
+              } catch {
+                toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
+              }
+            }}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"
