@@ -34,10 +34,13 @@ type Info struct {
 	RunMode string `json:"runMode,omitempty"`
 }
 
-// Get returns all version information as a struct.
+// Get returns all version information as a struct. The leading "v" sometimes
+// produced by `git describe` is stripped here so the wire format is uniform
+// across build paths (Makefile vs. Dockerfile) and the frontend can prepend
+// its literal "v" without doubling up.
 func Get() Info {
 	return Info{
-		Version: Version,
+		Version: strings.TrimPrefix(Version, "v"),
 		Commit:  Commit,
 		GitTime: GitTime,
 	}
