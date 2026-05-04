@@ -34,6 +34,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
@@ -426,6 +427,16 @@ func (s *Server) setupRoutes() {
 	orgCheckGroups.GET("/:uid", checkGroupsHandler.GetCheckGroup)
 	orgCheckGroups.PATCH("/:uid", checkGroupsHandler.UpdateCheckGroup)
 	orgCheckGroups.DELETE("/:uid", checkGroupsHandler.DeleteCheckGroup)
+
+	// Check dependency routes (authentication required)
+	depsService := checkdependencies.NewService(s.dbService)
+	depsHandler := checkdependencies.NewHandler(depsService, s.config)
+	orgChecks.GET("/:check/dependencies", depsHandler.ListForCheck)
+	orgChecks.POST("/:check/dependencies", depsHandler.Create)
+	orgChecks.PATCH("/:check/dependencies/:uid", depsHandler.Update)
+	orgChecks.DELETE("/:check/dependencies/:uid", depsHandler.Delete)
+	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
+	orgDeps.GET("", depsHandler.Graph)
 
 	// Check-connection routes (authentication required)
 	checkConnectionsService := checkconnections.NewService(s.dbService)

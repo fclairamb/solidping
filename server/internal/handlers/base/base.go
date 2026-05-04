@@ -60,6 +60,12 @@ const (
 	ErrorCodeRequestPending            ErrorCode = "REQUEST_PENDING"
 	ErrorCodeRequestNotFound           ErrorCode = "REQUEST_NOT_FOUND"
 	ErrorCodeRequestCooldownActive     ErrorCode = "REQUEST_COOLDOWN_ACTIVE"
+	ErrorCodeDependencyCycle           ErrorCode = "DEPENDENCY_CYCLE"
+	ErrorCodeDependencySelf            ErrorCode = "DEPENDENCY_SELF"
+	ErrorCodeDependencyCrossOrg        ErrorCode = "DEPENDENCY_CROSS_ORG"
+	ErrorCodeDependencyNotFound        ErrorCode = "DEPENDENCY_NOT_FOUND"
+	ErrorCodeDependencyDuplicate       ErrorCode = "DEPENDENCY_DUPLICATE"
+	ErrorCodeDependencyInvalidKind     ErrorCode = "DEPENDENCY_INVALID_KIND"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

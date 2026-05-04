@@ -106,6 +106,15 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 		opts.Size = size
 	}
 
+	applyListIncidentsExtras(query, opts)
+
+	return opts, nil
+}
+
+// applyListIncidentsExtras handles the secondary query parameters (with,
+// hideSuppressed, causedByIncidentUid). Split off so the parser stays under
+// the cyclop limit.
+func applyListIncidentsExtras(query url.Values, opts *ListIncidentsOptions) {
 	if v := query.Get("with"); v != "" {
 		for _, w := range strings.Split(v, ",") {
 			if w == "check" {
@@ -114,7 +123,13 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 		}
 	}
 
-	return opts, nil
+	if v := query.Get("hideSuppressed"); v == "true" || v == "1" {
+		opts.HideSuppressed = true
+	}
+
+	if v := query.Get("causedByIncidentUid"); v != "" {
+		opts.CausedByUID = v
+	}
 }
 
 // GetIncident handles GET /api/v1/orgs/:org/incidents/:uid.

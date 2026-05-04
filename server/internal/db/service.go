@@ -330,6 +330,20 @@ type Service interface {
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
 
+	// CheckDependency operations
+	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error
+	GetCheckDependency(ctx context.Context, orgUID, depUID string) (*models.CheckDependency, error)
+	ListCheckDependenciesByOrg(ctx context.Context, orgUID string) ([]*models.CheckDependency, error)
+	ListCheckDependencyParents(ctx context.Context, childCheckUID string) ([]*models.CheckDependency, error)
+	ListCheckDependencyChildren(ctx context.Context, parentCheckUID string) ([]*models.CheckDependency, error)
+	FindCheckDependencyEdge(ctx context.Context, parentUID, childUID string) (*models.CheckDependency, error)
+	UpdateCheckDependency(ctx context.Context, depUID string, update *models.CheckDependencyUpdate) error
+	DeleteCheckDependency(ctx context.Context, depUID string) error
+	ListSuppressedChildIncidents(ctx context.Context, parentIncidentUID string) ([]*models.Incident, error)
+	FindActiveIncidentsForChecksInWindow(
+		ctx context.Context, checkUIDs []string, since, until time.Time,
+	) ([]*models.Incident, error)
+
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
 	UpdateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
