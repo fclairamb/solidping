@@ -97,3 +97,12 @@ Frontend (Playwright in `web/status0/e2e/` if present, or a unit test):
 2. `make dev`, on a check with at least one recent down result, visit the status0 page and confirm the strip below the chart shows red for that interval.
 3. Hover the red strip — tooltip says "Down" (or "Hors-service" in fr).
 4. Translation toggle works.
+
+## Implementation Plan
+
+1. **Wire format (backend)** — Add `Status string` to `ResponseTimePoint` in `server/internal/handlers/statuspages/service.go`, populating it via `models.StatusToString(*recentResult.Status)` (handling nil pointer). Extract response-time data construction into a `buildResponseTimeData` helper to keep `buildAvailabilityData` under the funlen cap.
+2. **Wire format (frontend)** — Add `status?: "up" | "down" | "timeout" | "error" | "created" | "running" | string` to `ResponseTimePoint` in `web/status0/src/api/hooks.ts`.
+3. **Tooltip** — Update `CustomTooltip` in `web/status0/src/components/shared/response-time-chart.tsx` to render a colored status label when `data.status` is non-up, using a `statusColor` helper and `t(\`status.${data.status}\`)`.
+4. **Status strip** — Below `<ResponsiveContainer>`, render a flex strip aligned to the chart's plot area (matching the YAxis 50px left offset). One full-width cell per data point, colored by status (transparent for up, red/yellow/orange for down/timeout/error). Only render the strip if there is at least one non-up point.
+5. **i18n** — Add nested `status: { up, down, timeout, error, created, running }` keys to `web/status0/src/locales/{en,fr,de,es}/status.json`.
+6. **QA** — Run `make build-backend`, `make lint-back`, `make test`, and `bun run build` in `web/status0`. Update the integration test that asserts auto-slug ≤ 20 chars (now ≤ 50, since spec 2026-05-04-03 widened it).
