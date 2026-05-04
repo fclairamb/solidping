@@ -4,6 +4,7 @@ package checks
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -15,8 +16,39 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
+
+// errInvalidStatus is returned when an unknown status token appears in ?status=.
+var errInvalidStatus = errors.New("invalid status filter token")
+
+// parseStatusFilter accepts a comma-separated list of status tokens
+// (up/down/created/degraded) and returns the matching CheckStatus values.
+func parseStatusFilter(s string) ([]models.CheckStatus, error) {
+	parts := strings.Split(s, ",")
+	out := make([]models.CheckStatus, 0, len(parts))
+
+	for _, raw := range parts {
+		token := strings.TrimSpace(strings.ToLower(raw))
+		switch token {
+		case "":
+			continue
+		case "created":
+			out = append(out, models.CheckStatusCreated)
+		case "up":
+			out = append(out, models.CheckStatusUp)
+		case "down":
+			out = append(out, models.CheckStatusDown)
+		case "degraded":
+			out = append(out, models.CheckStatusDegraded)
+		default:
+			return nil, fmt.Errorf("%w: %s", errInvalidStatus, token)
+		}
+	}
+
+	return out, nil
+}
 
 const (
 	fieldType          = "type"
@@ -62,7 +94,7 @@ func (h *Handler) ValidateCheck(
 
 // ListChecks handles listing all checks for an organization.
 //
-//nolint:funlen // List handler has many query parameter extractions
+//nolint:funlen,cyclop // List handler has many query parameter extractions
 func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	query := req.URL.Query()
@@ -129,6 +161,16 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 	// Parse internal filter
 	if internalParam := query.Get("internal"); internalParam != "" {
 		opts.Internal = &internalParam
+	}
+
+	// Parse status filter (comma-separated: up,down,error,timeout,created)
+	if statusParam := query.Get("status"); statusParam != "" {
+		statuses, err := parseStatusFilter(statusParam)
+		if err != nil {
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+		opts.Statuses = statuses
 	}
 
 	response, err := h.svc.ListChecks(req.Context(), orgSlug, opts)
