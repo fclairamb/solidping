@@ -967,6 +967,62 @@ func (m *mockDBService) ApproveMembershipRequest(
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateCheckDependency(_ context.Context, _ *models.CheckDependency) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckDependency(
+	_ context.Context, _, _ string,
+) (*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependenciesByOrg(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependencyParents(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependencyChildren(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindCheckDependencyEdge(
+	_ context.Context, _, _ string,
+) (*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateCheckDependency(
+	_ context.Context, _ string, _ *models.CheckDependencyUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteCheckDependency(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSuppressedChildIncidents(
+	_ context.Context, _ string,
+) ([]*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindActiveIncidentsForChecksInWindow(
+	_ context.Context, _ []string, _, _ time.Time,
+) ([]*models.Incident, error) {
+	panic("not implemented")
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

@@ -69,4 +69,48 @@ func TestMigrationCreatesIncidentColumns(t *testing.T) {
 
 	assert.Contains(t, colNames, "relapse_count", "relapse_count column must exist after migration")
 	assert.Contains(t, colNames, "last_reopened_at", "last_reopened_at column must exist after migration")
+	assert.Contains(t, colNames, "caused_by_incident_uid",
+		"caused_by_incident_uid column must exist after migration")
+	assert.Contains(t, colNames, "paging_suppressed",
+		"paging_suppressed column must exist after migration")
+}
+
+// TestMigrationCreatesCheckDependencies verifies the check_dependencies table.
+func TestMigrationCreatesCheckDependencies(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	svc, err := New(ctx, Config{InMemory: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	err = svc.Initialize(ctx)
+	require.NoError(t, err, "Initialize must succeed")
+
+	type tableInfo struct {
+		Name string `bun:"name"`
+	}
+	var tables []tableInfo
+	err = svc.db.NewRaw(
+		"SELECT name FROM sqlite_master WHERE type='table' AND name='check_dependencies'",
+	).Scan(ctx, &tables)
+	require.NoError(t, err)
+	require.Len(t, tables, 1, "check_dependencies table must exist")
+
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	err = svc.db.NewRaw("SELECT name FROM pragma_table_info('check_dependencies')").Scan(ctx, &columns)
+	require.NoError(t, err)
+
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+
+	for _, expected := range []string{"uid", "organization_uid", "parent_check_uid", "child_check_uid", "kind"} {
+		assert.Contains(t, colNames, expected, "%s column must exist", expected)
+	}
 }
