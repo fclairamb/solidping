@@ -65,6 +65,9 @@ function StatusPageEditPage() {
           visibility: data.visibility,
           isDefault: data.isDefault,
           enabled: data.enabled,
+          showAvailability: data.showAvailability,
+          showResponseTime: data.showResponseTime,
+          historyDays: data.historyDays,
         });
         toast.success(t("toast.updated"));
         navigate({
