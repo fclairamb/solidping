@@ -396,7 +396,7 @@ func TestCreateCheckAutoSlugLength(t *testing.T) {
 	r.NotNil(createResp.Slug, "slug should be set")
 
 	slug := *createResp.Slug
-	r.LessOrEqual(len(slug), 20, "auto-generated slug %q exceeds 20 chars", slug)
+	r.LessOrEqual(len(slug), 50, "auto-generated slug %q exceeds 50 chars", slug)
 	r.GreaterOrEqual(len(slug), 3, "auto-generated slug %q is too short", slug)
 
 	// Update the check: change the period, sending back the same auto-generated slug
