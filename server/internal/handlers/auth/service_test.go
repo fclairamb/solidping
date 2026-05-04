@@ -781,3 +781,52 @@ func TestStateEntryUpsertWithNullOrg(t *testing.T) {
 	r.NotNil(got.Value)
 	r.InEpsilon(2.0, (*got.Value)["count"], 0.0001)
 }
+
+func TestAcceptInviteReturnsOrganizations(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, ctx := setupAuthTestServiceWithConfig(t, "http://127.0.0.1:4000")
+
+	// Existing org user is already a member of (Org A).
+	orgA := models.NewOrganization("orga", "Org A")
+	r.NoError(dbSvc.CreateOrganization(ctx, orgA))
+
+	user := models.NewUser("invitee@example.com")
+	hash, err := passwords.Hash("solidpass1234")
+	r.NoError(err)
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+
+	memberA := models.NewOrganizationMember(orgA.UID, user.UID, models.MemberRoleUser)
+	r.NoError(dbSvc.CreateOrganizationMember(ctx, memberA))
+
+	// Org B is the org we're inviting them into.
+	orgB := models.NewOrganization("orgb", "Org B")
+	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
+
+	inviter := models.NewUser("inviter@example.com")
+	r.NoError(dbSvc.CreateUser(ctx, inviter))
+	memberB := models.NewOrganizationMember(orgB.UID, inviter.UID, models.MemberRoleAdmin)
+	r.NoError(dbSvc.CreateOrganizationMember(ctx, memberB))
+
+	resp, err := svc.CreateInvitation(ctx, "orgb", inviter.UID, InviteRequest{
+		Email:     "invitee@example.com",
+		Role:      "user",
+		ExpiresIn: "24h",
+		App:       "dash0",
+	})
+	r.NoError(err)
+
+	loginResp, err := svc.AcceptInvite(ctx, AcceptInviteRequest{Token: resp.Token})
+	r.NoError(err)
+	r.NotNil(loginResp)
+	r.NotEmpty(loginResp.AccessToken)
+	r.NotNil(loginResp.Organization)
+	r.Equal("orgb", loginResp.Organization.Slug)
+
+	r.Len(loginResp.Organizations, 2, "user should now be a member of both orgs")
+	slugs := []string{loginResp.Organizations[0].Slug, loginResp.Organizations[1].Slug}
+	r.Contains(slugs, "orga")
+	r.Contains(slugs, "orgb")
+}
