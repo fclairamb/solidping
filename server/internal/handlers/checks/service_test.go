@@ -2,6 +2,7 @@ package checks
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -118,6 +119,16 @@ func TestValidateSlug(t *testing.T) {
 			slug:      "abc",
 			shouldErr: false,
 		},
+		{
+			name:      "max-length valid slug (50 chars)",
+			slug:      "a" + strings.Repeat("b", 49),
+			shouldErr: false,
+		},
+		{
+			name:      "too long (51 chars)",
+			slug:      "a" + strings.Repeat("b", 50),
+			shouldErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -160,14 +171,14 @@ func TestSanitizeSlug(t *testing.T) {
 			expected: "webhooks-stonal-io",
 		},
 		{
-			name:     "long slug truncated to 20 chars",
-			input:    "this-is-a-very-long-slug-that-exceeds-twenty",
-			expected: "this-is-a-very-long",
+			name:     "long slug truncated to 50 chars",
+			input:    "this-is-a-very-long-slug-that-exceeds-fifty-characters-by-quite-a-bit",
+			expected: "this-is-a-very-long-slug-that-exceeds-fifty-charac",
 		},
 		{
 			name:     "trailing hyphen after truncation removed",
-			input:    "abcdefghijklmnopqrs-tuvwxyz",
-			expected: "abcdefghijklmnopqrs",
+			input:    "aaaaaaaaaa-bbbbbbbbbb-cccccccccc-dddddddddd-eeeeee-zzz",
+			expected: "aaaaaaaaaa-bbbbbbbbbb-cccccccccc-dddddddddd-eeeeee",
 		},
 		{
 			name:     "starts with digit gets x prefix",
@@ -181,7 +192,7 @@ func TestSanitizeSlug(t *testing.T) {
 			t.Parallel()
 			result := sanitizeSlug(tt.input)
 			r.Equal(tt.expected, result)
-			r.LessOrEqual(len(result), 20, "sanitized slug %q exceeds 20 chars", result)
+			r.LessOrEqual(len(result), 50, "sanitized slug %q exceeds 50 chars", result)
 		})
 	}
 }
