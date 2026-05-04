@@ -125,6 +125,9 @@ type DailyAvailabilityPoint struct {
 type ResponseTimePoint struct {
 	Time        string   `json:"time"`
 	DurationP95 *float32 `json:"durationP95,omitempty"`
+	// Status indicates the check's outcome at this point: "up", "down",
+	// "timeout", "error", or "" when not applicable.
+	Status string `json:"status,omitempty"`
 }
 
 // --- Request types ---
@@ -916,34 +919,40 @@ func buildAvailabilityData(
 	}
 
 	if showResponseTime {
-		// Use the last 100 results (any type: raw, hour, day) for the response time chart
-		rtData := make([]ResponseTimePoint, 0, len(recentResults))
-
-		for _, recentResult := range recentResults {
-			// For raw results, use Duration; for aggregated results, use DurationP95
-			var duration *float32
-			if recentResult.DurationP95 != nil {
-				duration = recentResult.DurationP95
-			} else if recentResult.Duration != nil {
-				duration = recentResult.Duration
-			}
-
-			point := ResponseTimePoint{
-				Time:        recentResult.PeriodStart.UTC().Format(time.RFC3339),
-				DurationP95: duration,
-			}
-			rtData = append(rtData, point)
-		}
-
-		// Results come in DESC order, reverse for chronological display
-		for i, j := 0, len(rtData)-1; i < j; i, j = i+1, j-1 {
-			rtData[i], rtData[j] = rtData[j], rtData[i]
-		}
-
-		data.ResponseTimeData = rtData
+		data.ResponseTimeData = buildResponseTimeData(recentResults)
 	}
 
 	return data
+}
+
+func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
+	rtData := make([]ResponseTimePoint, 0, len(recentResults))
+
+	for _, recentResult := range recentResults {
+		var duration *float32
+		if recentResult.DurationP95 != nil {
+			duration = recentResult.DurationP95
+		} else if recentResult.Duration != nil {
+			duration = recentResult.Duration
+		}
+
+		var statusStr string
+		if recentResult.Status != nil {
+			statusStr = models.StatusToString(*recentResult.Status)
+		}
+
+		rtData = append(rtData, ResponseTimePoint{
+			Time:        recentResult.PeriodStart.UTC().Format(time.RFC3339),
+			DurationP95: duration,
+			Status:      statusStr,
+		})
+	}
+
+	for i, j := 0, len(rtData)-1; i < j; i, j = i+1, j-1 {
+		rtData[i], rtData[j] = rtData[j], rtData[i]
+	}
+
+	return rtData
 }
 
 func availabilityToStatus(pct float64) string {
