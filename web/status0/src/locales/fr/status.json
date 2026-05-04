@@ -18,5 +18,13 @@
   "today": "Aujourd'hui",
   "uptime": "de disponibilité",
   "noData": "Aucune donnée",
-  "responseTime": "Temps de réponse"
+  "responseTime": "Temps de réponse",
+  "status": {
+    "up": "Disponible",
+    "down": "Hors service",
+    "timeout": "Délai dépassé",
+    "error": "Erreur",
+    "created": "Créé",
+    "running": "En cours"
+  }
 }
