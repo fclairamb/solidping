@@ -1038,6 +1038,24 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
   });
 }
 
+export function useUpdateResource(org: string, statusPageUid: string, sectionUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ resourceUid, request }: { resourceUid: string; request: UpdateResourceRequest }) =>
+      apiFetch<StatusPageResource>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
+        { method: "PATCH", body: JSON.stringify(request) }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+    },
+  });
+}
+
 export function useDeleteResource(org: string, statusPageUid: string, sectionUid: string) {
   const queryClient = useQueryClient();
 
