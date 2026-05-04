@@ -140,6 +140,8 @@ type ListIncidentsFilter struct {
 	States          []IncidentState // Optional: filter by states (active, resolved)
 	Since           *time.Time      // Optional: incidents started after this time
 	Until           *time.Time      // Optional: incidents started before this time
+	HideSuppressed  bool            // Optional: hide rolled-up (paging-suppressed) incidents
+	CausedByUID     string          // Optional: only incidents whose caused_by_incident_uid equals this
 
 	// Cursor-based pagination
 	CursorTimestamp *time.Time // Optional: incidents with started_at < this timestamp

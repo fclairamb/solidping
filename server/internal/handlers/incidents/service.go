@@ -410,6 +410,26 @@ func (s *Service) reopenIncident(
 		ClearAcknowledgedBy: true,
 	}
 
+	// Re-evaluate rollup on reopen — a hard parent could have started failing
+	// in the cooldown window between resolve and reopen.
+	tmp := *incident
+	tmp.StartedAt = result.PeriodStart
+	tmp.PagingSuppressed = false
+	tmp.CausedByIncidentUID = nil
+	s.applyRollup(ctx, check, &tmp)
+
+	suppressed := tmp.PagingSuppressed
+	update.PagingSuppressed = &suppressed
+
+	if tmp.CausedByIncidentUID != nil {
+		update.CausedByIncidentUID = tmp.CausedByIncidentUID
+	} else {
+		update.ClearCausedByIncidentUID = true
+	}
+
+	incident.PagingSuppressed = suppressed
+	incident.CausedByIncidentUID = tmp.CausedByIncidentUID
+
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
 	}
@@ -1004,6 +1024,8 @@ type ListIncidentsOptions struct {
 	Cursor         string
 	Size           int
 	WithCheck      bool // Include check details in response
+	HideSuppressed bool // Hide rolled-up (paging-suppressed) incidents
+	CausedByUID    string
 }
 
 // CheckResponse represents check details embedded in incident responses.
@@ -1015,24 +1037,26 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID            string                   `json:"uid"`
-	CheckUID       string                   `json:"checkUid"`
-	CheckSlug      *string                  `json:"checkSlug,omitempty"`
-	CheckName      *string                  `json:"checkName,omitempty"`
-	State          string                   `json:"state"`
-	StartedAt      time.Time                `json:"startedAt"`
-	ResolvedAt     *time.Time               `json:"resolvedAt,omitempty"`
-	EscalatedAt    *time.Time               `json:"escalatedAt,omitempty"`
-	AcknowledgedAt *time.Time               `json:"acknowledgedAt,omitempty"`
-	FailureCount   int                      `json:"failureCount"`
-	RelapseCount   int                      `json:"relapseCount"`
-	LastReopenedAt *time.Time               `json:"lastReopenedAt,omitempty"`
-	Title          *string                  `json:"title,omitempty"`
-	Description    *string                  `json:"description,omitempty"`
-	Check          *CheckResponse           `json:"check,omitempty"`
-	CheckGroupUID  *string                  `json:"checkGroupUid,omitempty"`
-	CheckGroupSlug *string                  `json:"checkGroupSlug,omitempty"`
-	Members        []IncidentMemberResponse `json:"members,omitempty"`
+	UID                 string                   `json:"uid"`
+	CheckUID            string                   `json:"checkUid"`
+	CheckSlug           *string                  `json:"checkSlug,omitempty"`
+	CheckName           *string                  `json:"checkName,omitempty"`
+	State               string                   `json:"state"`
+	StartedAt           time.Time                `json:"startedAt"`
+	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
+	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
+	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
+	FailureCount        int                      `json:"failureCount"`
+	RelapseCount        int                      `json:"relapseCount"`
+	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
+	Title               *string                  `json:"title,omitempty"`
+	Description         *string                  `json:"description,omitempty"`
+	Check               *CheckResponse           `json:"check,omitempty"`
+	CheckGroupUID       *string                  `json:"checkGroupUid,omitempty"`
+	CheckGroupSlug      *string                  `json:"checkGroupSlug,omitempty"`
+	Members             []IncidentMemberResponse `json:"members,omitempty"`
+	CausedByIncidentUID *string                  `json:"causedByIncidentUid,omitempty"`
+	PagingSuppressed    bool                     `json:"pagingSuppressed,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -1075,19 +1099,21 @@ func stateToString(state models.IncidentState) string {
 // incidentToResponse converts a model incident to an API response.
 func incidentToResponse(inc *models.Incident) IncidentResponse {
 	return IncidentResponse{
-		UID:            inc.UID,
-		CheckUID:       inc.CheckUID,
-		State:          stateToString(inc.State),
-		StartedAt:      inc.StartedAt,
-		ResolvedAt:     inc.ResolvedAt,
-		EscalatedAt:    inc.EscalatedAt,
-		AcknowledgedAt: inc.AcknowledgedAt,
-		FailureCount:   inc.FailureCount,
-		RelapseCount:   inc.RelapseCount,
-		LastReopenedAt: inc.LastReopenedAt,
-		Title:          inc.Title,
-		Description:    inc.Description,
-		CheckGroupUID:  inc.CheckGroupUID,
+		UID:                 inc.UID,
+		CheckUID:            inc.CheckUID,
+		State:               stateToString(inc.State),
+		StartedAt:           inc.StartedAt,
+		ResolvedAt:          inc.ResolvedAt,
+		EscalatedAt:         inc.EscalatedAt,
+		AcknowledgedAt:      inc.AcknowledgedAt,
+		FailureCount:        inc.FailureCount,
+		RelapseCount:        inc.RelapseCount,
+		LastReopenedAt:      inc.LastReopenedAt,
+		Title:               inc.Title,
+		Description:         inc.Description,
+		CheckGroupUID:       inc.CheckGroupUID,
+		CausedByIncidentUID: inc.CausedByIncidentUID,
+		PagingSuppressed:    inc.PagingSuppressed,
 	}
 }
 
@@ -1201,6 +1227,8 @@ func (s *Service) ListIncidents(
 		MemberCheckUID:  opts.MemberCheckUID,
 		Since:           opts.Since,
 		Until:           opts.Until,
+		HideSuppressed:  opts.HideSuppressed,
+		CausedByUID:     opts.CausedByUID,
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
 	}
 

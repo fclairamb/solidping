@@ -114,6 +114,14 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 		}
 	}
 
+	if v := query.Get("hideSuppressed"); v == "true" || v == "1" {
+		opts.HideSuppressed = true
+	}
+
+	if v := query.Get("causedByIncidentUid"); v != "" {
+		opts.CausedByUID = v
+	}
+
 	return opts, nil
 }
 

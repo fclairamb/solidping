@@ -2065,6 +2065,14 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Where("started_at < ?", *filter.Until)
 	}
 
+	if filter.HideSuppressed {
+		query = query.Where("paging_suppressed = ?", false)
+	}
+
+	if filter.CausedByUID != "" {
+		query = query.Where("caused_by_incident_uid = ?", filter.CausedByUID)
+	}
+
 	if filter.CursorTimestamp != nil {
 		if filter.CursorUID != nil {
 			query = query.Where("(started_at < ? OR (started_at = ? AND uid < ?))",
