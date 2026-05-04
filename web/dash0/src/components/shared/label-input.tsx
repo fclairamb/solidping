@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 
-const KEY_REGEX = /^[a-z][a-z0-9-]{3,50}$/;
+const KEY_REGEX = /^[a-z][a-z0-9-]{2,50}$/;
 const VALUE_MAX = 200;
 const SUGGESTION_DEBOUNCE_MS = 200;
 const SUGGESTION_LIMIT = 25;
@@ -112,7 +112,7 @@ export function LabelInput({ org, value, onChange, disabled, placeholder }: Labe
 
       {trimmedKey !== "" && !keyValid && (
         <p className="text-xs text-destructive" data-testid="label-key-error">
-          Use 4–51 lowercase letters, digits, or hyphens, starting with a letter.
+          Use 3–51 lowercase letters, digits, or hyphens, starting with a letter.
         </p>
       )}
       {keyValid && duplicate && (
