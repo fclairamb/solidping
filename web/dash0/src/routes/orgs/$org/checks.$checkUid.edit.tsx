@@ -77,6 +77,7 @@ function CheckEditPage() {
           regions: data.regions,
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
           maxAdaptiveIncrease: data.maxAdaptiveIncrease,
+          ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         toast.success(t("toast.updated"));
         navigate({
