@@ -67,5 +67,5 @@ func TestDerefString(t *testing.T) {
 	r := require.New(t)
 	s := "hello"
 	r.Equal("hello", derefString(&s))
-	r.Equal("", derefString(nil))
+	r.Empty(derefString(nil))
 }

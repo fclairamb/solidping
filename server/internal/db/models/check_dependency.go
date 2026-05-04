@@ -38,7 +38,11 @@ type CheckDependency struct {
 }
 
 // NewCheckDependency builds a fresh edge.
-func NewCheckDependency(orgUID, parentUID, childUID string, kind CheckDependencyKind, description *string) *CheckDependency {
+func NewCheckDependency(
+	orgUID, parentUID, childUID string,
+	kind CheckDependencyKind,
+	description *string,
+) *CheckDependency {
 	now := time.Now()
 
 	return &CheckDependency{

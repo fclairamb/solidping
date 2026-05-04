@@ -79,20 +79,20 @@ func NewIncident(orgUID, checkUID string, startedAt time.Time, title string) *In
 
 // IncidentUpdate represents fields that can be updated.
 type IncidentUpdate struct {
-	Region         *string
-	State          *IncidentState
-	ResolvedAt     *time.Time
-	ResolvedBy     *string
-	ResolutionType *string
-	EscalatedAt    *time.Time
-	AcknowledgedAt *time.Time
-	AcknowledgedBy *string
-	SnoozedUntil   *time.Time
-	SnoozedBy      *string
-	SnoozeReason   *string
-	FailureCount   *int
-	RelapseCount   *int
-	LastReopenedAt *time.Time
+	Region              *string
+	State               *IncidentState
+	ResolvedAt          *time.Time
+	ResolvedBy          *string
+	ResolutionType      *string
+	EscalatedAt         *time.Time
+	AcknowledgedAt      *time.Time
+	AcknowledgedBy      *string
+	SnoozedUntil        *time.Time
+	SnoozedBy           *string
+	SnoozeReason        *string
+	FailureCount        *int
+	RelapseCount        *int
+	LastReopenedAt      *time.Time
 	Title               *string
 	Description         *string
 	Details             *JSONMap

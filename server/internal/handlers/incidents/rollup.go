@@ -2,8 +2,6 @@ package incidents
 
 import (
 	"context"
-	"database/sql"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -54,8 +52,6 @@ func (s *Service) applyRollup(
 // paths. For every reached ancestor it queries open non-suppressed incidents
 // inside the correlation window. Returns the deepest such incident (oldest
 // startedAt as tiebreak) and its depth from the original child.
-//
-//nolint:cyclop // BFS with bookkeeping; splitting hurts readability.
 func (s *Service) findRollupRoot(
 	ctx context.Context, child *models.Check, childStartedAt time.Time,
 ) (*models.Incident, int) {
@@ -227,23 +223,4 @@ func derefSlug(s *string) string {
 	}
 
 	return *s
-}
-
-// applyRollupToCheck loads the check from the DB and runs applyRollup. Used
-// from paths that don't already have the check loaded.
-func (s *Service) applyRollupToCheck(
-	ctx context.Context, orgUID string, incident *models.Incident,
-) {
-	check, err := s.db.GetCheck(ctx, orgUID, incident.CheckUID)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return
-		}
-
-		slog.WarnContext(ctx, "Failed to load check for rollup", "error", err)
-
-		return
-	}
-
-	s.applyRollup(ctx, check, incident)
 }

@@ -205,7 +205,7 @@ func (s *Service) FindActiveIncidentsForChecksInWindow(
 
 	err := s.db.NewSelect().
 		Model(&incidents).
-		Where("check_uid IN (?)", bun.In(checkUIDs)).
+		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Where("state = ?", models.IncidentStateActive).
 		Where("paging_suppressed = ?", false).
 		Where("started_at >= ?", since).

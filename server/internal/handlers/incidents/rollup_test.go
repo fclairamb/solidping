@@ -30,5 +30,5 @@ func TestDerefSlug(t *testing.T) {
 	r := require.New(t)
 	s := "rabbit"
 	r.Equal("rabbit", derefSlug(&s))
-	r.Equal("", derefSlug(nil))
+	r.Empty(derefSlug(nil))
 }

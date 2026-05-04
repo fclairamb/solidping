@@ -363,8 +363,8 @@ func (s *Service) Update(
 		}
 	}
 
-	if err := s.db.UpdateCheckDependency(ctx, dep.UID, &update); err != nil {
-		return DependencyResponse{}, fmt.Errorf("update: %w", err)
+	if updateErr := s.db.UpdateCheckDependency(ctx, dep.UID, &update); updateErr != nil {
+		return DependencyResponse{}, fmt.Errorf("update: %w", updateErr)
 	}
 
 	updated, err := s.db.GetCheckDependency(ctx, orgUID, depUID)
@@ -436,8 +436,9 @@ func (s *Service) Graph(ctx context.Context, orgSlug string) (GraphResponse, err
 	}
 
 	nodes := make([]GraphNode, 0, len(checkMap))
-	for _, ref := range checkMap {
-		nodes = append(nodes, GraphNode{UID: ref.UID, Slug: ref.Slug, Name: ref.Name})
+	for uid := range checkMap {
+		ref := checkMap[uid]
+		nodes = append(nodes, GraphNode(ref))
 	}
 
 	return GraphResponse{Nodes: nodes, Edges: edges}, nil
