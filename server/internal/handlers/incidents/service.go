@@ -238,6 +238,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 
+	// Roll up under a hard parent if one is open within the correlation window.
+	s.applyRollup(ctx, check, incident)
+
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
 		return fmt.Errorf("failed to create incident: %w", err)
 	}
@@ -283,6 +286,12 @@ func (s *Service) resolveIncident(
 		keyTotalFailures:   incident.FailureCount,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
+	}
+
+	// Re-evaluate any rolled-up children: those still down need to page now.
+	if err := s.reEvaluateRollupChildren(ctx, incident); err != nil {
+		slog.WarnContext(ctx, "Failed to re-evaluate rollup children",
+			"parentIncidentUid", incident.UID, "error", err)
 	}
 
 	return nil
@@ -842,6 +851,12 @@ func (s *Service) emitEvent(
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
+		if incident.PagingSuppressed && eventType != models.EventTypeIncidentResolved {
+			// Rolled-up child: notifications are deferred until parent
+			// resolves. Resolve still notifies so timeline observers see closure.
+			return nil
+		}
+
 		if incident.CheckGroupUID != nil {
 			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
 
