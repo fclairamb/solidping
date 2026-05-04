@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import {
   AreaChart,
   Area,
@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 
 type TimeRange = "hour" | "day" | "week" | "month";
 
@@ -208,6 +209,21 @@ export function ResponseTimeChart({
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const dotPositions = useRef<Record<string, { cx: number; cy: number }>>({});
+  const chartWrapperRef = useRef<HTMLDivElement | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+
+  useEffect(() => {
+    if (!chartWrapperRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setChartWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(chartWrapperRef.current);
+    return () => observer.disconnect();
+  }, []);
 
   const updateTimeRange = (range: TimeRange) => {
     setTimeRange(range);
@@ -437,6 +453,11 @@ export function ResponseTimeChart({
             No data available
           </div>
         ) : (
+          <div
+            ref={chartWrapperRef}
+            className="relative"
+            onClick={() => setSelectedUid(null)}
+          >
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={chartData}>
               <defs>
@@ -494,6 +515,7 @@ export function ResponseTimeChart({
                   if (!active || !payload?.length) return null;
                   const data = payload[0].payload as ChartPoint;
                   if (data.durationMs == null) return null;
+                  if (data.uid && data.uid === selectedUid) return null;
                   return (
                     <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
                       <p className="text-muted-foreground">
@@ -556,31 +578,48 @@ export function ResponseTimeChart({
                   if (cx == null || cy == null || !payload?.uid) {
                     return <g key={reactKey} />;
                   }
+                  const uid = payload.uid;
+                  // Cache the dot's coordinates for the pinned-box anchor.
+                  // Mutating a ref outside the React commit phase is safe —
+                  // it doesn't trigger a re-render.
+                  dotPositions.current[uid] = { cx, cy };
                   const fill =
                     payload.status === "down" ||
                     payload.status === "unknown"
                       ? COLOR_DOWN
                       : COLOR_UP;
+                  const isSelected = selectedUid === uid;
                   return (
                     <circle
                       key={reactKey}
                       cx={cx}
                       cy={cy}
-                      r={3.5}
+                      r={isSelected ? 5 : 3.5}
                       fill={fill}
+                      stroke={isSelected ? "var(--primary)" : undefined}
+                      strokeWidth={isSelected ? 2 : 0}
                       style={{ cursor: "pointer" }}
-                      onClick={() =>
-                        navigate({
-                          to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-                          params: {
-                            org,
-                            checkUid,
-                            resultUid: payload.uid!,
-                          },
-                        })
-                      }
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (selectedUid === uid) {
+                          navigate({
+                            to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+                            params: {
+                              org,
+                              checkUid,
+                              resultUid: uid,
+                            },
+                          });
+                          return;
+                        }
+                        setSelectedUid(uid);
+                      }}
                     >
-                      <title>Click for details</title>
+                      <title>
+                        {isSelected
+                          ? "Click again to open full page"
+                          : "Click for details"}
+                      </title>
                     </circle>
                   );
                 }}
@@ -588,6 +627,17 @@ export function ResponseTimeChart({
               />
             </AreaChart>
           </ResponsiveContainer>
+          {selectedUid && (
+            <PinnedResultBox
+              org={org}
+              checkUid={checkUid}
+              resultUid={selectedUid}
+              anchor={dotPositions.current[selectedUid]}
+              width={chartWidth}
+              onClose={() => setSelectedUid(null)}
+            />
+          )}
+          </div>
         )}
       </CardContent>
     </Card>
