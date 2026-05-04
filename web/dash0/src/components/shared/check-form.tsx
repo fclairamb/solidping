@@ -296,6 +296,14 @@ export function CheckForm({
   const [keyword, setKeyword] = useState(getConfigField(initialData?.config, "keyword"));
   const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
   const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
+  const [thresholdDays, setThresholdDays] = useState(
+    getConfigField(initialData?.config, "thresholdDays") ||
+      getConfigField(initialData?.config, "threshold_days"),
+  );
+  const [serverName, setServerName] = useState(
+    getConfigField(initialData?.config, "serverName") ||
+      getConfigField(initialData?.config, "server_name"),
+  );
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
@@ -387,7 +395,6 @@ export function CheckForm({
     const cfg: Record<string, unknown> = {};
     switch (type) {
       case "http":
-      case "ssl":
       case "websocket":
         if (url) cfg.url = url;
         if (type === "http") {
@@ -397,6 +404,12 @@ export function CheckForm({
           if (username) cfg.username = username;
           if (password) cfg.password = password;
         }
+        break;
+      case "ssl":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (serverName) cfg.serverName = serverName;
+        if (thresholdDays) cfg.thresholdDays = parseInt(thresholdDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -549,7 +562,6 @@ export function CheckForm({
 
     switch (type) {
       case "http":
-      case "ssl":
       case "websocket":
         if (!url) { setError("URL is required"); return; }
         config.url = url;
@@ -560,6 +572,13 @@ export function CheckForm({
           if (username) config.username = username;
           if (password) config.password = password;
         }
+        break;
+      case "ssl":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (serverName) config.serverName = serverName;
+        if (thresholdDays) config.thresholdDays = parseInt(thresholdDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -812,12 +831,29 @@ export function CheckForm({
         );
       case "ssl":
         return (
-          <div className="space-y-2">
-            <Label htmlFor="url">URL</Label>
-            <Input id="url" type="url" placeholder="https://example.com" value={url} onChange={(e) => setUrl(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
-            {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
-          </div>
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="443" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="serverName">Server Name (SNI, optional)</Label>
+                <Input id="serverName" type="text" placeholder="defaults to host" value={serverName} onChange={(e) => setServerName(e.target.value)} data-testid="check-server-name-input" />
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="thresholdDays">Threshold (days)</Label>
+                <Input id="thresholdDays" type="number" placeholder="30" value={thresholdDays} onChange={(e) => setThresholdDays(e.target.value)} data-testid="check-threshold-days-input" />
+              </div>
+            </div>
+          </>
         );
       case "websocket":
         return (
