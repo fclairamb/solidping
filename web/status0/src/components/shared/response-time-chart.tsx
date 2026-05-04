@@ -30,6 +30,19 @@ function formatDuration(ms: number) {
   return `${Math.round(ms)}ms`;
 }
 
+function statusColor(status?: string) {
+  switch (status) {
+    case "down":
+      return "#ef4444";
+    case "timeout":
+      return "#facc15";
+    case "error":
+      return "#f97316";
+    default:
+      return "transparent";
+  }
+}
+
 function CustomTooltip({
   active,
   payload,
@@ -41,6 +54,10 @@ function CustomTooltip({
   if (!active || !payload?.length) return null;
   const data = payload[0].payload;
   const date = new Date(data.time);
+  const statusLabel =
+    data.status && data.status !== "up"
+      ? t(`status.${data.status}`, { defaultValue: data.status })
+      : null;
   return (
     <div className="rounded-md border bg-background px-3 py-2 text-sm shadow-md">
       <p className="font-medium">
@@ -59,6 +76,14 @@ function CustomTooltip({
         </p>
       ) : (
         <p className="text-xs text-muted-foreground">{t("noData")}</p>
+      )}
+      {statusLabel && (
+        <p
+          className="mt-1 text-xs font-medium"
+          style={{ color: statusColor(data.status) }}
+        >
+          {statusLabel}
+        </p>
       )}
     </div>
   );
@@ -81,6 +106,10 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
       ? new Date(last).getTime() - new Date(first).getTime() >
         24 * 60 * 60 * 1000
       : false;
+
+  const hasIncidents = data.some(
+    (d) => d.status === "down" || d.status === "timeout" || d.status === "error",
+  );
 
   return (
     <div className="mt-3">
@@ -119,6 +148,23 @@ export function ResponseTimeChart({ data }: ResponseTimeChartProps) {
           />
         </AreaChart>
       </ResponsiveContainer>
+      {hasIncidents && (
+        <div
+          className="ml-[50px] mr-[4px] mt-1 flex h-1.5 w-auto overflow-hidden rounded-sm"
+          aria-hidden="true"
+        >
+          {data.map((point, idx) => {
+            const color = statusColor(point.status);
+            return (
+              <div
+                key={`${point.time}-${idx}`}
+                className="flex-1"
+                style={{ backgroundColor: color }}
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
