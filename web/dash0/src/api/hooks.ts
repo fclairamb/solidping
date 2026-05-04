@@ -1428,6 +1428,13 @@ export function useInviteInfo(token: string) {
   });
 }
 
+export interface AcceptInviteResponse {
+  accessToken: string;
+  user: { email: string; name?: string; avatarUrl?: string; role: string };
+  organization: { uid: string; slug: string; name?: string };
+  organizations?: Array<{ slug: string; name?: string; role: string }>;
+}
+
 export function useAcceptInvite() {
   return useMutation({
     mutationFn: (data: {
@@ -1436,11 +1443,7 @@ export function useAcceptInvite() {
       email?: string;
       password?: string;
     }) =>
-      apiFetch<{
-        accessToken: string;
-        user: { email: string; name?: string; avatarUrl?: string; role: string };
-        organization: { uid: string; slug: string; name?: string };
-      }>("/api/v1/auth/accept-invite", {
+      apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
         skipAuth: true,
