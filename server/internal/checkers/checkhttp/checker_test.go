@@ -310,9 +310,9 @@ func TestHTTPConfig_GetConfig(t *testing.T) {
 				Body: `{"test": "data"}`,
 			},
 			expected: map[string]any{
-				"url":             "http://example.com",
-				"method":          "POST",
-				"expected_status": 201,
+				"url":            "http://example.com",
+				"method":         "POST",
+				"expectedStatus": 201,
 				"headers": map[string]string{
 					"Authorization": "Bearer token",
 				},
@@ -411,8 +411,8 @@ func TestHTTPConfig_RoundTrip(t *testing.T) {
 	if result["method"] != "POST" {
 		t.Errorf("method not preserved: got %v", result["method"])
 	}
-	if result["expected_status"] != 201 {
-		t.Errorf("expected_status not preserved: got %v", result["expected_status"])
+	if result["expectedStatus"] != 201 {
+		t.Errorf("expectedStatus not preserved: got %v", result["expectedStatus"])
 	}
 	if result["body"] != `{"test": "data"}` {
 		t.Errorf("body not preserved: got %v", result["body"])
@@ -1228,12 +1228,12 @@ func TestHTTPConfig_ExpectedStatusCodes_GetConfig(t *testing.T) {
 	}
 
 	result := cfg.GetConfig()
-	codes, ok := result["expected_status_codes"].([]string)
+	codes, ok := result["expectedStatusCodes"].([]string)
 	if !ok {
-		t.Fatalf("expected_status_codes type = %T, want []string", result["expected_status_codes"])
+		t.Fatalf("expectedStatusCodes type = %T, want []string", result["expectedStatusCodes"])
 	}
 	if len(codes) != 2 || codes[0] != "2XX" || codes[1] != "3XX" {
-		t.Errorf("expected_status_codes = %v, want [2XX 3XX]", codes)
+		t.Errorf("expectedStatusCodes = %v, want [2XX 3XX]", codes)
 	}
 }
 

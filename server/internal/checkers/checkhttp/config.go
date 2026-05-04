@@ -68,6 +68,19 @@ type HTTPConfig struct {
 	headersPatternRegex    map[string]*regexp.Regexp `json:"-"`
 }
 
+// resolveKey returns the value of the first matching key. The frontend writes
+// camelCase by convention; the legacy snake_case keys are kept as a read
+// fallback so previously stored configs keep working until the data fixer runs.
+func resolveKey(configMap map[string]any, keys ...string) (any, string, bool) {
+	for _, key := range keys {
+		if v, ok := configMap[key]; ok && v != nil {
+			return v, key, true
+		}
+	}
+
+	return nil, "", false
+}
+
 // FromMap populates the configuration from a map.
 //
 //nolint:gocognit,cyclop,funlen // Config parsing requires handling many optional fields
@@ -86,31 +99,36 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("method", "must be a string")
 	}
 
-	// Extract ExpectedStatus (optional, deprecated in favor of expected_status_codes)
-	if expectedStatus, ok := configMap["expected_status"].(int); ok {
-		c.ExpectedStatus = expectedStatus
-	} else if expectedStatusFloat, ok := configMap["expected_status"].(float64); ok {
-		// Handle JSON numbers which unmarshal as float64
-		c.ExpectedStatus = int(expectedStatusFloat)
-	} else if configMap["expected_status"] != nil {
-		return checkerdef.NewConfigError("expected_status", "must be a number")
+	// Extract ExpectedStatus (optional). Accept camelCase (canonical) and
+	// snake_case (legacy / stored configs).
+	if v, key, ok := resolveKey(configMap, "expectedStatus", "expected_status"); ok {
+		switch typed := v.(type) {
+		case int:
+			c.ExpectedStatus = typed
+		case float64:
+			c.ExpectedStatus = int(typed)
+		default:
+			return checkerdef.NewConfigError(key, "must be a number")
+		}
 	}
 
-	// Extract ExpectedStatusCodes (optional)
-	if statusCodes, ok := configMap["expected_status_codes"].([]string); ok {
-		c.ExpectedStatusCodes = statusCodes
-	} else if statusCodesAny, ok := configMap["expected_status_codes"].([]any); ok {
-		// Handle []any from JSON unmarshaling
-		c.ExpectedStatusCodes = make([]string, 0, len(statusCodesAny))
-		for i, v := range statusCodesAny {
-			if strVal, ok := v.(string); ok {
-				c.ExpectedStatusCodes = append(c.ExpectedStatusCodes, strVal)
-			} else {
-				return checkerdef.NewConfigErrorf("expected_status_codes", "element %d must be a string", i)
+	// Extract ExpectedStatusCodes (optional). Same camel/snake fallback.
+	if v, key, ok := resolveKey(configMap, "expectedStatusCodes", "expected_status_codes"); ok {
+		switch typed := v.(type) {
+		case []string:
+			c.ExpectedStatusCodes = typed
+		case []any:
+			c.ExpectedStatusCodes = make([]string, 0, len(typed))
+			for i, item := range typed {
+				if strVal, ok := item.(string); ok {
+					c.ExpectedStatusCodes = append(c.ExpectedStatusCodes, strVal)
+				} else {
+					return checkerdef.NewConfigErrorf(key, "element %d must be a string", i)
+				}
 			}
+		default:
+			return checkerdef.NewConfigError(key, "must be a string array")
 		}
-	} else if configMap["expected_status_codes"] != nil {
-		return checkerdef.NewConfigError("expected_status_codes", "must be a string array")
 	}
 
 	// Extract Headers (optional)
@@ -138,48 +156,58 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 	}
 
 	// Extract BodyExpect (optional)
-	if bodyExpect, ok := configMap["body_expect"].(string); ok {
-		c.BodyExpect = bodyExpect
-	} else if configMap["body_expect"] != nil {
-		return checkerdef.NewConfigError("body_expect", "must be a string")
+	if v, key, ok := resolveKey(configMap, "bodyExpect", "body_expect"); ok {
+		if s, ok := v.(string); ok {
+			c.BodyExpect = s
+		} else {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
 	}
 
 	// Extract BodyReject (optional)
-	if bodyReject, ok := configMap["body_reject"].(string); ok {
-		c.BodyReject = bodyReject
-	} else if configMap["body_reject"] != nil {
-		return checkerdef.NewConfigError("body_reject", "must be a string")
+	if v, key, ok := resolveKey(configMap, "bodyReject", "body_reject"); ok {
+		if s, ok := v.(string); ok {
+			c.BodyReject = s
+		} else {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
 	}
 
 	// Extract BodyPattern (optional)
-	if bodyPattern, ok := configMap["body_pattern"].(string); ok {
-		c.BodyPattern = bodyPattern
-	} else if configMap["body_pattern"] != nil {
-		return checkerdef.NewConfigError("body_pattern", "must be a string")
+	if v, key, ok := resolveKey(configMap, "bodyPattern", "body_pattern"); ok {
+		if s, ok := v.(string); ok {
+			c.BodyPattern = s
+		} else {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
 	}
 
 	// Extract BodyPatternReject (optional)
-	if bodyPatternReject, ok := configMap["body_pattern_reject"].(string); ok {
-		c.BodyPatternReject = bodyPatternReject
-	} else if configMap["body_pattern_reject"] != nil {
-		return checkerdef.NewConfigError("body_pattern_reject", "must be a string")
+	if v, key, ok := resolveKey(configMap, "bodyPatternReject", "body_pattern_reject"); ok {
+		if s, ok := v.(string); ok {
+			c.BodyPatternReject = s
+		} else {
+			return checkerdef.NewConfigError(key, "must be a string")
+		}
 	}
 
 	// Extract HeadersPattern (optional)
-	if headersPattern, ok := configMap["headers_pattern"].(map[string]string); ok {
-		c.HeadersPattern = headersPattern
-	} else if headersPatternAny, ok := configMap["headers_pattern"].(map[string]any); ok {
-		// Handle map[string]any and convert to map[string]string
-		c.HeadersPattern = make(map[string]string, len(headersPatternAny))
-		for k, v := range headersPatternAny {
-			if strVal, ok := v.(string); ok {
-				c.HeadersPattern[k] = strVal
-			} else {
-				return checkerdef.NewConfigErrorf("headers_pattern", "%s must be a string", k)
+	if v, key, ok := resolveKey(configMap, "headersPattern", "headers_pattern"); ok {
+		switch typed := v.(type) {
+		case map[string]string:
+			c.HeadersPattern = typed
+		case map[string]any:
+			c.HeadersPattern = make(map[string]string, len(typed))
+			for k, item := range typed {
+				if strVal, ok := item.(string); ok {
+					c.HeadersPattern[k] = strVal
+				} else {
+					return checkerdef.NewConfigErrorf(key, "%s must be a string", k)
+				}
 			}
+		default:
+			return checkerdef.NewConfigError(key, "must be a map[string]string")
 		}
-	} else if configMap["headers_pattern"] != nil {
-		return checkerdef.NewConfigError("headers_pattern", "must be a map[string]string")
 	}
 
 	// Extract Username (optional)
@@ -197,10 +225,10 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 	}
 
 	// Extract JSONPathAssertions (optional)
-	if assertions, ok := configMap["json_path_assertions"]; ok && assertions != nil {
-		node, err := parseAssertionNode(assertions)
+	if v, key, ok := resolveKey(configMap, "jsonPathAssertions", "json_path_assertions"); ok {
+		node, err := parseAssertionNode(v)
 		if err != nil {
-			return checkerdef.NewConfigError("json_path_assertions", err.Error())
+			return checkerdef.NewConfigError(key, err.Error())
 		}
 		c.JSONPathAssertions = node
 	}
@@ -265,11 +293,11 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 	}
 
 	if c.ExpectedStatus != 0 {
-		cfg["expected_status"] = c.ExpectedStatus
+		cfg["expectedStatus"] = c.ExpectedStatus
 	}
 
 	if len(c.ExpectedStatusCodes) > 0 {
-		cfg["expected_status_codes"] = c.ExpectedStatusCodes
+		cfg["expectedStatusCodes"] = c.ExpectedStatusCodes
 	}
 
 	if len(c.Headers) > 0 {
@@ -281,23 +309,23 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 	}
 
 	if c.BodyExpect != "" {
-		cfg["body_expect"] = c.BodyExpect
+		cfg["bodyExpect"] = c.BodyExpect
 	}
 
 	if c.BodyReject != "" {
-		cfg["body_reject"] = c.BodyReject
+		cfg["bodyReject"] = c.BodyReject
 	}
 
 	if c.BodyPattern != "" {
-		cfg["body_pattern"] = c.BodyPattern
+		cfg["bodyPattern"] = c.BodyPattern
 	}
 
 	if c.BodyPatternReject != "" {
-		cfg["body_pattern_reject"] = c.BodyPatternReject
+		cfg["bodyPatternReject"] = c.BodyPatternReject
 	}
 
 	if len(c.HeadersPattern) > 0 {
-		cfg["headers_pattern"] = c.HeadersPattern
+		cfg["headersPattern"] = c.HeadersPattern
 	}
 
 	if c.Username != "" {
@@ -309,7 +337,7 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 	}
 
 	if c.JSONPathAssertions != nil {
-		cfg["json_path_assertions"] = c.JSONPathAssertions
+		cfg["jsonPathAssertions"] = c.JSONPathAssertions
 	}
 
 	return cfg
