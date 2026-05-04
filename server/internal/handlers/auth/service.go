@@ -2475,6 +2475,11 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
+	orgSummaries, errOrgs := s.getOrganizationsForUser(ctx, user.UID)
+	if errOrgs != nil {
+		return nil, fmt.Errorf("failed to list user organizations: %w", errOrgs)
+	}
+
 	return &LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
@@ -2491,6 +2496,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			Slug: matchedOrg.Slug,
 			Name: matchedOrg.Name,
 		},
+		Organizations: orgSummaries,
 	}, nil
 }
 

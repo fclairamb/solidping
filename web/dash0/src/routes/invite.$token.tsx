@@ -12,8 +12,9 @@ import {
   Loader2,
   Mail,
 } from "lucide-react";
-import { ApiError, getToken, setToken } from "@/api/client";
+import { ApiError, getToken } from "@/api/client";
 import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/invite/$token")({
   component: AcceptInvitePage,
@@ -25,6 +26,7 @@ function AcceptInvitePage() {
   const navigate = useNavigate();
   const { data: inviteInfo, isLoading: infoLoading, error: infoError } = useInviteInfo(token);
   const acceptInvite = useAcceptInvite();
+  const { acceptInviteSession } = useAuth();
 
   const isAuthenticated = !!getToken();
 
@@ -38,7 +40,7 @@ function AcceptInvitePage() {
     setError(null);
     try {
       const result = await acceptInvite.mutateAsync({ token });
-      setToken(result.accessToken);
+      acceptInviteSession(result);
       navigate({
         to: "/orgs/$org",
         params: { org: result.organization.slug },
@@ -73,7 +75,7 @@ function AcceptInvitePage() {
         email,
         password,
       });
-      setToken(result.accessToken);
+      acceptInviteSession(result);
       navigate({
         to: "/orgs/$org",
         params: { org: result.organization.slug },

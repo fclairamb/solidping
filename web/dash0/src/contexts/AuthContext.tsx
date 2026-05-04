@@ -37,6 +37,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (org: string, email: string, password: string) => Promise<LoginResult>;
   loginWithOAuth: (accessToken: string, orgSlug: string) => Promise<void>;
+  acceptInviteSession: (response: AuthResponse) => void;
   logout: () => Promise<void>;
   switchOrg: (orgSlug: string) => Promise<void>;
   refreshUser: () => Promise<void>;
@@ -189,6 +190,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { loginAction, organizations: orgs, resolvedOrg };
   };
 
+  const acceptInviteSession = (data: AuthResponse) => {
+    setToken(data.accessToken);
+    if (data.organization?.slug) {
+      setStoredOrg(data.organization.slug);
+      setOrg(data.organization.slug);
+    }
+    setUser({
+      email: data.user.email,
+      name: data.user.name,
+      avatarUrl: data.user.avatarUrl,
+      roles: [data.user.role],
+      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isSuperAdmin: data.user.role === "superadmin",
+    });
+    setOrganizations(data.organizations || []);
+  };
+
   const loginWithOAuth = async (accessToken: string, orgSlug: string) => {
     setToken(accessToken);
     setStoredOrg(orgSlug);
@@ -279,6 +297,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         loginWithOAuth,
+        acceptInviteSession,
         logout,
         switchOrg,
         refreshUser,
