@@ -10,6 +10,8 @@ import {
   Trash2,
   Star,
   GripVertical,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -19,6 +21,7 @@ import {
   useDeleteSection,
   useCreateResource,
   useDeleteResource,
+  useUpdateResource,
   type StatusPageSection,
   type StatusPageResource,
   type Check,
@@ -319,11 +322,17 @@ function AddResourceDialog({
 
 function ResourceRow({
   resource,
+  index,
+  total,
+  neighbors,
   org,
   statusPageUid,
   sectionUid,
 }: {
   resource: StatusPageResource;
+  index: number;
+  total: number;
+  neighbors: StatusPageResource[];
   org: string;
   statusPageUid: string;
   sectionUid: string;
@@ -331,6 +340,7 @@ function ResourceRow({
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteResource = useDeleteResource(org, statusPageUid, sectionUid);
+  const updateResource = useUpdateResource(org, statusPageUid, sectionUid);
 
   const handleDelete = async () => {
     try {
@@ -341,9 +351,54 @@ function ResourceRow({
     }
   };
 
+  // Swap positions with the adjacent neighbor. Two PATCHes keep the
+  // backend's existing semantics intact (no renumbering helper needed).
+  const move = async (delta: -1 | 1) => {
+    const target = index + delta;
+    if (target < 0 || target >= total) return;
+    const neighbor = neighbors[target];
+    if (!neighbor) return;
+    try {
+      await Promise.all([
+        updateResource.mutateAsync({
+          resourceUid: resource.uid,
+          request: { position: neighbor.position },
+        }),
+        updateResource.mutateAsync({
+          resourceUid: neighbor.uid,
+          request: { position: resource.position },
+        }),
+      ]);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+    }
+  };
+
   return (
     <div className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50">
       <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+      <div className="flex flex-col -space-y-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 p-0"
+          disabled={index === 0 || updateResource.isPending}
+          onClick={() => move(-1)}
+          aria-label="Move up"
+        >
+          <ChevronUp className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 p-0"
+          disabled={index === total - 1 || updateResource.isPending}
+          onClick={() => move(1)}
+          aria-label="Move down"
+        >
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </div>
       <StatusDot status={resource.check?.status} />
       <span className="flex-1 text-sm">
         {resource.publicName || resource.check?.name || resource.checkUid.slice(0, 8)}
@@ -481,10 +536,13 @@ function SectionCard({
       <CardContent>
         {section.resources && section.resources.length > 0 ? (
           <div className="space-y-1">
-            {section.resources.map((resource) => (
+            {section.resources.map((resource, idx) => (
               <ResourceRow
                 key={resource.uid}
                 resource={resource}
+                index={idx}
+                total={section.resources?.length ?? 0}
+                neighbors={section.resources ?? []}
                 org={org}
                 statusPageUid={statusPageUid}
                 sectionUid={section.uid}
