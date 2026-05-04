@@ -43,7 +43,7 @@ const eventPayloadCheckUIDKey = "check_uid"
 
 // slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
 // Total length: 3-20 characters.
-var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,19}$`)
+var slugRegex = regexp.MustCompile(`^[a-z][a-z0-9-]{2,49}$`)
 
 // slugInvalidCharsRegex matches characters that are not valid in a slug.
 var slugInvalidCharsRegex = regexp.MustCompile(`[^a-z0-9-]`)
@@ -76,8 +76,8 @@ func isUUID(s string) bool {
 }
 
 // validateSlug validates that a slug has a valid format.
-// Valid slugs: start with lowercase letter, followed by 2-19 lowercase letters, digits, or hyphens.
-// Total length: 3-20 characters. Must not look like a UUID.
+// Valid slugs: start with lowercase letter, followed by 2-49 lowercase letters, digits, or hyphens.
+// Total length: 3-50 characters. Must not look like a UUID.
 func validateSlug(slug string) error {
 	if slug == "" {
 		return nil // Empty slug is allowed (will be auto-generated)
@@ -95,9 +95,9 @@ func validateSlug(slug string) error {
 }
 
 // sanitizeSlug cleans a slug by removing invalid characters, ensuring it starts with a letter,
-// and truncating to the max slug length (20 chars). This is used for auto-generated slugs.
+// and truncating to the max slug length (50 chars). This is used for auto-generated slugs.
 func sanitizeSlug(slug string) string {
-	const maxSlugLen = 20
+	const maxSlugLen = 50
 
 	// Convert to lowercase
 	slug = strings.ToLower(slug)
@@ -970,7 +970,7 @@ func (s *Service) DeleteCheck(ctx context.Context, orgSlug, identifier string) e
 // If userProvided is false and slug exists, it appends a number to make it unique.
 // If userProvided is true and slug exists, it returns ErrSlugConflict.
 func (s *Service) ensureUniqueSlug(ctx context.Context, orgUID, slug string, userProvided bool) (string, error) {
-	const maxSlugLength = 20
+	const maxSlugLength = 50
 	const minSlugLength = 3
 
 	// Sanitize auto-generated slugs to remove invalid characters
