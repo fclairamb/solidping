@@ -49,10 +49,14 @@ type Incident struct {
 	Description     *string       `bun:"description"`
 	Details         JSONMap       `bun:"details,type:jsonb,nullzero"`
 	// CheckGroupUID is set on group incidents — NULL keeps the existing per-check semantics.
-	CheckGroupUID *string    `bun:"check_group_uid"`
-	CreatedAt     time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt     time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt     *time.Time `bun:"deleted_at"`
+	CheckGroupUID *string `bun:"check_group_uid"`
+	// CausedByIncidentUID points to the root-cause incident this one was rolled up under.
+	CausedByIncidentUID *string `bun:"caused_by_incident_uid"`
+	// PagingSuppressed gates notifications and escalation: TRUE = skip.
+	PagingSuppressed bool       `bun:"paging_suppressed,notnull,default:false"`
+	CreatedAt        time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt        time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt        *time.Time `bun:"deleted_at"`
 }
 
 // NewIncident creates a new incident with generated UID.
@@ -89,19 +93,22 @@ type IncidentUpdate struct {
 	FailureCount   *int
 	RelapseCount   *int
 	LastReopenedAt *time.Time
-	Title          *string
-	Description    *string
-	Details        *JSONMap
+	Title               *string
+	Description         *string
+	Details             *JSONMap
+	CausedByIncidentUID *string
+	PagingSuppressed    *bool
 
 	// Clear* fields set columns to NULL on reopen
-	ClearResolvedAt     bool
-	ClearResolvedBy     bool
-	ClearResolutionType bool
-	ClearAcknowledgedAt bool
-	ClearAcknowledgedBy bool
-	ClearSnoozedUntil   bool
-	ClearSnoozedBy      bool
-	ClearSnoozeReason   bool
+	ClearResolvedAt          bool
+	ClearResolvedBy          bool
+	ClearResolutionType      bool
+	ClearAcknowledgedAt      bool
+	ClearAcknowledgedBy      bool
+	ClearSnoozedUntil        bool
+	ClearSnoozedBy           bool
+	ClearSnoozeReason        bool
+	ClearCausedByIncidentUID bool
 }
 
 // IncidentMemberCheck tracks a single check's state inside a group incident.

@@ -1743,6 +1743,8 @@ func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdat
 		{"title", update.Title},
 		{"description", update.Description},
 		{"details", update.Details},
+		{"caused_by_incident_uid", update.CausedByIncidentUID},
+		{"paging_suppressed", update.PagingSuppressed},
 	}
 
 	for i := range setters {
@@ -1776,6 +1778,10 @@ func applyIncidentSet(query *bun.UpdateQuery, column string, value any) *bun.Upd
 		if typed != nil {
 			return query.Set(column+" = ?", *typed)
 		}
+	case *bool:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
 	}
 
 	return query
@@ -1806,6 +1812,9 @@ func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bu
 	}
 	if update.ClearSnoozeReason {
 		query = query.Set("snooze_reason = NULL")
+	}
+	if update.ClearCausedByIncidentUID {
+		query = query.Set("caused_by_incident_uid = NULL")
 	}
 	return query
 }
