@@ -13,8 +13,8 @@ require (
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/fsnotify/fsnotify v1.10.0
-	github.com/getsentry/sentry-go v0.46.1
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
