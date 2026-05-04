@@ -652,6 +652,20 @@ func (s *Service) createGroupIncident(
 	incident.CheckGroupUID = check.CheckGroupUID
 
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
+		// Race: another concurrent failure beat us to it. Re-fetch the existing
+		// active group incident and attach this check as a member.
+		if isUniqueConstraintError(err) {
+			existing, lookupErr := s.db.FindActiveIncidentByGroupUID(ctx, *check.CheckGroupUID)
+			if lookupErr != nil {
+				return fmt.Errorf("group incident race: lookup after unique violation: %w", lookupErr)
+			}
+
+			slog.WarnContext(ctx, "group incident race resolved, joined existing",
+				"incidentUid", existing.UID, "checkUid", check.UID)
+
+			return s.updateGroupMemberOnFailure(ctx, check, result, existing)
+		}
+
 		return fmt.Errorf("failed to create group incident: %w", err)
 	}
 
