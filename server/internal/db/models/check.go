@@ -176,6 +176,7 @@ type ListChecksFilter struct {
 	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
 	Query           string            // search term for name/slug (case-insensitive substring)
 	Internal        *string           // "true", "false", or "all" — filter by internal status
+	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
 	Limit           int               // max results to return (0 = no limit)
 	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
 	CursorUID       *string           // cursor: uid of last item from previous page

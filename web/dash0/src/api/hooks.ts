@@ -184,6 +184,7 @@ function buildChecksUrl(
     q?: string;
     checkGroupUid?: string;
     internal?: string;
+    status?: string;
     limit?: number;
     cursor?: string;
   }
@@ -194,6 +195,7 @@ function buildChecksUrl(
   if (options?.q) params.set("q", options.q);
   if (options?.checkGroupUid) params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
+  if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
   const query = params.toString();
@@ -218,7 +220,15 @@ export function useChecks(
 
 export function useInfiniteChecks(
   org: string,
-  options?: { labels?: string; with?: string; q?: string; checkGroupUid?: string; internal?: string; limit?: number }
+  options?: {
+    labels?: string;
+    with?: string;
+    q?: string;
+    checkGroupUid?: string;
+    internal?: string;
+    status?: string;
+    limit?: number;
+  }
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],

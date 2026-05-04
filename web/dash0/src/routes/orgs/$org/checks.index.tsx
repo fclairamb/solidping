@@ -87,12 +87,14 @@ import { useAuth } from "@/contexts/AuthContext";
 
 interface ChecksIndexSearch {
   labels?: string;
+  status?: string;
 }
 
 export const Route = createFileRoute("/orgs/$org/checks/")({
   component: ChecksIndexPage,
   validateSearch: (search: Record<string, unknown>): ChecksIndexSearch => ({
     labels: typeof search.labels === "string" && search.labels ? search.labels : undefined,
+    status: typeof search.status === "string" && search.status ? search.status : undefined,
   }),
 });
 
@@ -309,6 +311,7 @@ function CheckGroupSection({
   search,
   internalFilter,
   labelsFilter,
+  statusFilter,
   isFirst,
   isLast,
   onDelete,
@@ -324,6 +327,7 @@ function CheckGroupSection({
   search: string;
   internalFilter?: string;
   labelsFilter?: string;
+  statusFilter?: string;
   isFirst: boolean;
   isLast: boolean;
   onDelete: () => void;
@@ -351,6 +355,7 @@ function CheckGroupSection({
     q: search || undefined,
     internal: internalFilter,
     labels: labelsFilter,
+    status: statusFilter,
     limit: 20,
   });
 
@@ -479,6 +484,7 @@ function UngroupedChecksSection({
   search,
   internalFilter,
   labelsFilter,
+  statusFilter,
   onDeleteCheck,
   onChangeGroup,
   groups,
@@ -487,6 +493,7 @@ function UngroupedChecksSection({
   search: string;
   internalFilter?: string;
   labelsFilter?: string;
+  statusFilter?: string;
   onDeleteCheck: (uid: string) => void;
   onChangeGroup: (check: Check) => void;
   groups: CheckGroup[];
@@ -507,6 +514,7 @@ function UngroupedChecksSection({
     q: search || undefined,
     internal: internalFilter,
     labels: labelsFilter,
+    status: statusFilter,
     limit: 20,
   });
 
@@ -583,7 +591,7 @@ function ChecksIndexPage() {
   const { t } = useTranslation("checks");
   const { t: tc } = useTranslation("common");
   const { org } = Route.useParams();
-  const { labels: labelsParam } = Route.useSearch();
+  const { labels: labelsParam, status: statusParam } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
   const labelFilters = parseLabelsParam(labelsParam);
   const queryClient = useQueryClient();
@@ -810,6 +818,28 @@ function ChecksIndexPage() {
             </SelectContent>
           </Select>
         )}
+        <Select
+          value={statusParam ?? "all"}
+          onValueChange={(value) =>
+            void navigate({
+              search: (prev) => ({
+                ...prev,
+                status: value === "all" ? undefined : value,
+              }),
+              replace: true,
+            })
+          }
+        >
+          <SelectTrigger className="w-[140px]" data-testid="status-filter">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="up">Up</SelectItem>
+            <SelectItem value="down">Down</SelectItem>
+            <SelectItem value="created">Pending</SelectItem>
+          </SelectContent>
+        </Select>
         <Button
           variant="outline"
           size="icon"
@@ -872,6 +902,7 @@ function ChecksIndexPage() {
               search={debouncedSearch}
               internalFilter={internalFilter}
               labelsFilter={labelsParam}
+              statusFilter={statusParam}
               isFirst={idx === 0}
               isLast={idx === (groups?.length ?? 0) - 1}
               onDelete={() => setDeleteGroupUid(group.uid)}
@@ -892,6 +923,7 @@ function ChecksIndexPage() {
             search={debouncedSearch}
             internalFilter={internalFilter}
             labelsFilter={labelsParam}
+            statusFilter={statusParam}
             onDeleteCheck={setDeleteCheckUid}
             onChangeGroup={setChangeGroupCheck}
             groups={groups || []}

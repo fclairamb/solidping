@@ -261,6 +261,7 @@ type ListChecksOptions struct {
 	CheckGroupUID           *string
 	Query                   string
 	Internal                *string
+	Statuses                []models.CheckStatus
 	Cursor                  string
 	Limit                   int
 }
@@ -286,7 +287,7 @@ type GetCheckOptions struct {
 
 // ListChecks retrieves checks for an organization with pagination and filtering.
 //
-//nolint:cyclop,gocognit,funlen // Complex due to optional field handling and label filtering
+//nolint:cyclop,gocognit,funlen,gocritic // Complex due to optional field handling and label filtering
 func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListChecksOptions) (*ListChecksResponse, error) {
 	// Get organization by slug
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -300,6 +301,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 		CheckGroupUID: opts.CheckGroupUID,
 		Query:         opts.Query,
 		Internal:      opts.Internal,
+		Statuses:      opts.Statuses,
 		Limit:         opts.Limit,
 	}
 
@@ -1306,7 +1308,7 @@ type ImportError struct {
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
-//nolint:cyclop,funlen // Complex due to group resolution and label handling
+//nolint:cyclop,funlen,gocritic // Complex due to group resolution and label handling
 func (s *Service) ExportChecks(
 	ctx context.Context, orgSlug string, opts ListChecksOptions,
 ) (*ExportDocument, error) {

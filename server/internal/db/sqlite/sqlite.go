@@ -1025,6 +1025,7 @@ func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*mode
 	return check, nil
 }
 
+//nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
 ) ([]*models.Check, int64, error) {
@@ -1087,6 +1088,12 @@ func (s *Service) ListChecks(
 			// Default: hide internal checks
 			query = query.Where("internal = FALSE")
 			countQuery = countQuery.Where("internal = FALSE")
+		}
+
+		// Apply current-status filter
+		if len(filter.Statuses) > 0 {
+			query = query.Where("status IN (?)", bun.List(filter.Statuses))
+			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
 		}
 
 		// Apply cursor
