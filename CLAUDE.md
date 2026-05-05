@@ -114,6 +114,10 @@ previous binary running; check the dev log for the compiler error.
 - GET/PATCH /api/v1/orgs/$org/settings - Org settings
 - GET/POST /api/v1/orgs/$org/tokens - Org tokens
 - GET/POST/DELETE /api/v1/orgs/$org/invitations - Invitations
+- POST/GET /api/v1/auth/membership-requests - Self request to join an org by slug
+- DELETE /api/v1/auth/membership-requests/$uid - Cancel own request
+- GET /api/v1/orgs/$org/membership-requests - Admin: list incoming requests
+- POST /api/v1/orgs/$org/membership-requests/$uid/approve|reject - Admin: decide
 - CRUD /api/v1/orgs/$org/members - Members
 - CRUD /api/v1/orgs/$org/checks - Checks
 - POST /api/v1/orgs/$org/checks/validate - Validate check config
@@ -162,6 +166,8 @@ All errors should return:
 - `ORGANIZATION_NOT_FOUND` / `USER_NOT_FOUND` / `CHECK_NOT_FOUND` / `CONNECTION_NOT_FOUND` - Resource not found
 - `STATUS_PAGE_NOT_FOUND` / `STATUS_PAGE_SECTION_NOT_FOUND` / `CHECK_GROUP_NOT_FOUND` - Resource not found
 - `MAINTENANCE_WINDOW_NOT_FOUND` / `TOKEN_NOT_FOUND` - Resource not found
+- `INVALID_AUTO_JOIN_REGEX` - Auto-join email pattern is missing or too permissive
+- `ALREADY_A_MEMBER` / `REQUEST_PENDING` / `REQUEST_NOT_FOUND` / `REQUEST_COOLDOWN_ACTIVE` - Membership request errors
 
 ### API Testing
 ```bash

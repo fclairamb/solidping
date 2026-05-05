@@ -159,6 +159,44 @@ Revoke a pending invitation. Auth: required (admin)
 
 ---
 
+## Membership Requests
+
+A confirmed user with no membership in an org can ask to join by slug.
+Org admins can approve or reject. Each (org, user) pair has at most one
+row; subsequent requests update it in place per the state machine
+(pending → approved | rejected | cancelled, with re-request after
+cooldown for rejected and immediate re-request for cancelled).
+
+### POST /api/v1/auth/membership-requests
+Open or re-open a request. Auth: required.
+Body: `{"orgSlug":"<slug>","message":"<optional>"}`.
+Errors: `ORGANIZATION_NOT_FOUND`, `ALREADY_A_MEMBER`,
+`REQUEST_PENDING`, `REQUEST_COOLDOWN_ACTIVE`.
+
+### GET /api/v1/auth/membership-requests
+List the caller's own request history. Auth: required.
+
+### DELETE /api/v1/auth/membership-requests/:uid
+Cancel the caller's own request. Auth: required (owner). Admins must
+use the reject endpoint instead.
+
+### GET /api/v1/orgs/:org/membership-requests
+List incoming requests for the org. Auth: required (admin).
+Query parameters: `status` (optional, e.g. `pending`).
+
+### POST /api/v1/orgs/:org/membership-requests/:uid/approve
+Approve a request and create the membership in one transaction.
+Auth: required (admin). Body: `{"role":"user|admin|viewer"}` (default
+`user`). Sends a decision email to the requester.
+
+### POST /api/v1/orgs/:org/membership-requests/:uid/reject
+Reject a request. Auth: required (admin). Body:
+`{"reason":"<optional>"}`. Sends a decision email to the requester. The
+requester can re-submit only after the cooldown
+(`membership_requests.cooldown_days`, default 7).
+
+---
+
 ## Members
 
 ### GET /api/v1/orgs/:org/members
