@@ -58,6 +58,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
+import { DependenciesCard } from "@/components/checks/dependencies-card";
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -826,6 +827,8 @@ function CheckDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      <DependenciesCard org={org} checkUid={checkUid} />
 
       <Card>
         <CardHeader>
