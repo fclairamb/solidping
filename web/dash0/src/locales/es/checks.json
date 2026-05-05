@@ -197,6 +197,16 @@
     "notFound": "Resultado no encontrado — puede que se haya eliminado durante la agregación automática y no hemos encontrado ninguna agregación que cubra su marca de tiempo."
   },
   "detail": {
+    "summary": {
+      "currentlyUp": "En línea desde hace",
+      "currentlyDown": "Fuera de línea desde hace",
+      "statusFallback": "Estado",
+      "unknown": "Desconocido",
+      "lastChecked": "Última comprobación",
+      "ago": "hace {{duration}}",
+      "never": "Nunca",
+      "incidents": "Incidentes"
+    },
     "checkDetails": "Detalles de la comprobación",
     "pendingFirstRun": "Primera ejecución en curso…",
     "configuration": "Configuración",

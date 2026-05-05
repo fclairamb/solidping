@@ -197,6 +197,16 @@
     "notFound": "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp."
   },
   "detail": {
+    "summary": {
+      "currentlyUp": "Currently up for",
+      "currentlyDown": "Currently down for",
+      "statusFallback": "Status",
+      "unknown": "Unknown",
+      "lastChecked": "Last checked",
+      "ago": "{{duration}} ago",
+      "never": "Never",
+      "incidents": "Incidents"
+    },
     "checkDetails": "Check Details",
     "pendingFirstRun": "Pending first run…",
     "configuration": "Configuration",
