@@ -74,5 +74,17 @@
     "hoursAgo": "{{count}}h ago",
     "minutesAgo": "{{count}}m ago",
     "justNow": "just now"
+  },
+  "rollup": {
+    "causedByActive": "Rolled up under <1>{{parent}}</1> incident — paging is suppressed while the root cause is open.",
+    "causedByActiveLoading": "Rolled up under a root-cause incident — paging is suppressed while the root cause is open.",
+    "causedByPast": "This incident was rolled up under {{parent}} until {{resolvedAt}}. Paging fired then.",
+    "blastRadiusTitle": "Blast radius ({{count}} affected)",
+    "blastRadiusFooter": "Paging will fire on any child still down when this incident resolves.",
+    "blastRadiusEmpty": "No child incidents currently rolled up under this one.",
+    "rolledUpBadge": "rolled up",
+    "showRolledUp": "Show rolled-up incidents",
+    "pagingSuppressed": "paging suppressed",
+    "rolledUpInactive": "rolled up"
   }
 }

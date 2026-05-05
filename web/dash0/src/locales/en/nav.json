@@ -2,6 +2,7 @@
   "dashboard": "Dashboard",
   "checks": "Checks",
   "incidents": "Incidents",
+  "dependencies": "Dependencies",
   "events": "Events",
   "statusPages": "Status Pages",
   "badges": "Badges",
