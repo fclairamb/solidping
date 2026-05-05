@@ -119,6 +119,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     state: "active",
     size: 5,
     with: "check",
+    hideSuppressed: true,
     refetchInterval: INCIDENT_POLL_MS,
   });
   const since24h = useMemo(
@@ -645,7 +646,7 @@ function ActiveIncidentsList({
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ state: "active" }}
+          search={{ state: "active" as const, showSuppressed: undefined }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
         >
           {t("activeIncidents.footer")}

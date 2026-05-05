@@ -6,6 +6,7 @@ import { useIncidents, type IncidentDetail } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -124,7 +125,7 @@ function IncidentsIndexPage() {
           onValueChange={(v) =>
             navigate({
               to: ".",
-              search: { state: v as StateFilter },
+              search: { state: v as StateFilter, showSuppressed },
               replace: true,
             })
           }
@@ -138,6 +139,23 @@ function IncidentsIndexPage() {
             <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <Switch
+            checked={!!showSuppressed}
+            onCheckedChange={(checked) =>
+              navigate({
+                to: ".",
+                search: {
+                  state: stateFilter,
+                  showSuppressed: checked ? true : undefined,
+                },
+                replace: true,
+              })
+            }
+            data-testid="incidents-show-suppressed-toggle"
+          />
+          <span>{t("rollup.showRolledUp")}</span>
+        </label>
         <Button
           variant="outline"
           size="icon"
@@ -186,6 +204,11 @@ function IncidentsIndexPage() {
                       {(incident.relapseCount ?? 0) > 0 && (
                         <Badge variant="outline" className="text-xs">
                           {t("relapse", { count: incident.relapseCount })}
+                        </Badge>
+                      )}
+                      {incident.pagingSuppressed && (
+                        <Badge variant="outline" className="text-xs">
+                          {t("rollup.rolledUpBadge")}
                         </Badge>
                       )}
                     </div>

@@ -926,15 +926,22 @@ function CheckDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          incident.state === "active"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {incident.state}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge
+                          variant={
+                            incident.state === "active"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {incident.state}
+                        </Badge>
+                        {incident.pagingSuppressed && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("incidents:rollup.rolledUpBadge")}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       <IncidentDuration incident={incident} />
