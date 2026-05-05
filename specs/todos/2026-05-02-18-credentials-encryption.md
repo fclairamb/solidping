@@ -420,3 +420,28 @@ test too.
 
 ### Step 13 — QA + audit
 `make build-backend lint-back test`. Independent audit. Address any gaps.
+
+### Closing note (2026-05-05)
+
+Auth-provider (`organization_providers`) write-path encryption is
+intentionally deferred — there is no current code path that stores
+secrets in `OrganizationProvider.Metadata`. OAuth `client_secret` values
+live in `AppConfig` (env/yaml), not per-org. The `metadata_private` /
+`metadata_private_keys` columns and the `ProviderSecretFields()`
+registry are in place so the seam is ready when a future spec adds
+per-org OAuth provider configuration.
+
+Fully shipped on this branch:
+
+- Crypto primitive + KEK/DEK/envelope (`server/internal/crypto/credentials/`)
+- Schema migrations (postgres + sqlite) with `*_private` + `*_private_keys` columns on `checks`, `check_jobs`, `integration_connections`, `organization_providers`
+- `SecretFields()` on every credential-bearing checker config (HTTP, SSH, SFTP, FTP, SMTP, IMAP, POP3, MySQL, PostgreSQL, MSSQL, Oracle, MongoDB, RabbitMQ, MQTT, Kafka, SNMP, Email, Heartbeat, Redis)
+- Connection + provider secret-key registry (`crypto/credentials/conn_secrets.go`)
+- Write/read paths for **checks** (with PATCH-merge rule) and **connections** (with PATCH-merge rule)
+- Worker dispatch decrypts + merges + strips envelope before sending plaintext to workers
+- Notification job decrypts `connection.SettingsPrivate` before passing to senders
+- One-shot `./solidping encrypt-credentials [--dry-run]` CLI + auto-migrate at startup (controlled by `SP_ENCRYPTION_AUTO_MIGRATE`, default true)
+- Export endpoint strips secret keys and flags `_secretsStripped: true`
+- Headline test: PATCH without re-sending a secret key preserves it; PATCH with empty value clears it
+- Startup WARN when (a) encryption is disabled, or (b) encrypted rows exist but no key configured
+- CLAUDE.md docs (root + server) with threat-model caveat
