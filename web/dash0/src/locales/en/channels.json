@@ -1,0 +1,87 @@
+{
+  "title": "Channels",
+  "subtitle": "Slack, webhooks, email, and more — wire how SolidPing reaches you.",
+  "new": "New channel",
+  "newTitle": "Add a notification channel",
+  "newSubtitle": "Pick the channel type to configure.",
+  "newFormSubtitle": "Configure the channel and save.",
+  "editTitle": "Edit channel",
+  "editSubtitle": "Secret values are stored encrypted; updating them replaces the stored value.",
+  "searchPlaceholder": "Search by name or type…",
+  "create": "Create channel",
+  "creating": "Creating…",
+  "save": "Save changes",
+  "saving": "Saving…",
+  "saved": "Channel updated",
+  "saveFailed": "Failed to update channel",
+  "created": "Channel created",
+  "createFailed": "Failed to create channel",
+  "deleted": "Channel deleted",
+  "deleteFailed": "Delete failed",
+  "delete": "Delete channel",
+  "cancel": "Cancel",
+  "changeType": "Change type",
+  "backToList": "Back to channels",
+  "dangerZone": "Danger zone",
+  "default": "Default",
+  "defaultUpdated": "Default updated",
+  "enabled": "Channel enabled",
+  "disabled": "Channel disabled",
+  "col": {
+    "name": "Name",
+    "type": "Type",
+    "status": "Status",
+    "usedBy": "Used by",
+    "updated": "Updated"
+  },
+  "status": {
+    "enabled": "Enabled",
+    "disabled": "Disabled"
+  },
+  "actions": {
+    "edit": "Edit",
+    "enable": "Enable",
+    "disable": "Disable",
+    "setDefault": "Set as default",
+    "unsetDefault": "Unset default",
+    "delete": "Delete"
+  },
+  "deleteConfirm": {
+    "title": "Delete this channel?",
+    "body": "Bound checks lose this notification target. The action cannot be undone."
+  },
+  "empty": {
+    "title": "No channels yet",
+    "body": "Add a channel to start receiving notifications. Pick one to get going:"
+  },
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "On-call alerts",
+    "enabled": "Enabled",
+    "enabledHelp": "Disabled channels never send notifications.",
+    "default": "Default for new checks",
+    "defaultHelp": "Pre-checked when creating a new check. Existing checks are unaffected.",
+    "webhookUrl": "Webhook URL",
+    "fromAddress": "From address",
+    "recipients": "Recipients (one per line)",
+    "ntfyServer": "Server URL",
+    "ntfyTopic": "Topic",
+    "ntfyPriority": "Priority (1-5, default 3)",
+    "pushoverUser": "User key",
+    "pushoverToken": "App token",
+    "opsgenieKey": "API key",
+    "opsgenieTeam": "Team (optional)",
+    "slackOauthHint": "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion."
+  },
+  "hint": {
+    "slack": "Connect a Slack workspace via OAuth",
+    "discord": "Send to a Discord webhook URL",
+    "webhook": "Generic JSON webhook to any HTTP endpoint",
+    "email": "Send notifications to one or more email addresses",
+    "googlechat": "Post to a Google Chat space via incoming webhook",
+    "mattermost": "Post to a Mattermost channel via incoming webhook",
+    "ntfy": "Push notifications via ntfy.sh",
+    "opsgenie": "Page on-call engineers via Opsgenie",
+    "pushover": "Mobile push notifications via Pushover"
+  }
+}

@@ -6,6 +6,7 @@
   "onCall": "Guardia",
   "escalationPolicies": "Políticas de escalada",
   "events": "Eventos",
+  "channels": "Canales",
   "statusPages": "Páginas de estado",
   "badges": "Insignias",
   "testTools": "Herramientas de prueba",

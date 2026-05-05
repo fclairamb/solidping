@@ -17,6 +17,7 @@ import enFeedback from "./locales/en/feedback.json";
 import enDependencies from "./locales/en/dependencies.json";
 import enOncall from "./locales/en/oncall.json";
 import enEscalation from "./locales/en/escalation.json";
+import enChannels from "./locales/en/channels.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -33,6 +34,7 @@ import frFeedback from "./locales/fr/feedback.json";
 import frDependencies from "./locales/fr/dependencies.json";
 import frOncall from "./locales/fr/oncall.json";
 import frEscalation from "./locales/fr/escalation.json";
+import frChannels from "./locales/fr/channels.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -49,6 +51,7 @@ import deFeedback from "./locales/de/feedback.json";
 import deDependencies from "./locales/de/dependencies.json";
 import deOncall from "./locales/de/oncall.json";
 import deEscalation from "./locales/de/escalation.json";
+import deChannels from "./locales/de/channels.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -65,6 +68,7 @@ import esFeedback from "./locales/es/feedback.json";
 import esDependencies from "./locales/es/dependencies.json";
 import esOncall from "./locales/es/oncall.json";
 import esEscalation from "./locales/es/escalation.json";
+import esChannels from "./locales/es/channels.json";
 
 i18n
   .use(LanguageDetector)
@@ -88,6 +92,7 @@ i18n
         dependencies: enDependencies,
         oncall: enOncall,
         escalation: enEscalation,
+        channels: enChannels,
       },
       fr: {
         common: frCommon,
@@ -106,6 +111,7 @@ i18n
         dependencies: frDependencies,
         oncall: frOncall,
         escalation: frEscalation,
+        channels: frChannels,
       },
       de: {
         common: deCommon,
@@ -124,6 +130,7 @@ i18n
         dependencies: deDependencies,
         oncall: deOncall,
         escalation: deEscalation,
+        channels: deChannels,
       },
       es: {
         common: esCommon,
@@ -142,6 +149,7 @@ i18n
         dependencies: esDependencies,
         oncall: esOncall,
         escalation: esEscalation,
+        channels: esChannels,
       },
     },
     defaultNS: "common",
