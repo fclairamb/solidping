@@ -254,3 +254,22 @@ Each step lands as a green commit:
 8. **QA per the verification checklist**. `make build lint test` clean.
 
 If review pressure hits: ship steps 1–4 first (the load-bearing API change). Steps 5–7 can be a follow-up; the dedicated CRUD API and the on-detail-page card already cover the operator UX.
+
+## Status — 2026-05-05
+
+**Phase 1 shipped on `feat/dependencies-in-check-config`** (steps 1–4 + lint clean):
+
+- ✅ Step 1: `ExportedDependency` type + `ExportCheck.DependsOn`, `ExportChecks` populates it (sorted by parent slug, omitempty preserved). Commit `7c7e073e`.
+- ✅ Step 2: `ImportChecks` two-pass — pass 1 unchanged; pass 2 resolves slugs → UIDs and applies the additive merge with per-row error reporting (unknown parent / cycle / self-edge / invalid kind). Skipped silently for any check whose pass-1 upsert failed, with an explicit `skipped dependsOn: pass-1 upsert failed for this check` error. Commit `abfbf844`.
+- ✅ Step 3: `UpsertCheck` (PUT-by-slug) accepts `dependsOn *[]ExportedDependency` (pointer-typed for absent vs empty distinction), runs all validators upfront (parent existence, self, cross-org, kind, duplicate, cycle simulation), then applies destructive sync (delete missing, create new, update changed kind/desc). Caveat: not yet wrapped in a transaction with the check upsert — a failed dep apply leaves the check itself updated. Commit `69385bf0`.
+- ✅ Step 4: `POST /api/v1/orgs/$org/checks/validate` accepts `dependsOn` plus optional `slug`, runs the same validators without writing, returns per-row field errors. Commit `2c91759f`.
+
+**Phase 2 deferred** to a follow-up spec (`2026-05-05-07-dependencies-in-check-config-cli-frontend.md`, to be created):
+
+- ⏳ Step 5: CLI verbs (`sp checks deps {list,add,remove,set}` + `--with-deps` on export/import).
+- ⏳ Step 6: Frontend Dependencies section on the check create/edit form.
+- ⏳ Step 7: Docs (`docs/api-specification.md` mentions for `dependsOn`).
+
+**Atomicity follow-up**: PUT-by-slug should wrap the check upsert + dep diff in a single transaction so a cycle error doesn't leave the check itself updated. Tracked separately because the existing `UpdateCheck` flow doesn't currently expose a transaction handle.
+
+**Tests follow-up**: integration tests for the export-with-deps snapshot, import idempotency / pass-2 errors, PUT-by-slug diff cases, and validate-cycle paths are not in this PR. Existing tests still pass; new test coverage for the new code paths is owed.
