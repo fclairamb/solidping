@@ -1515,8 +1515,23 @@ type AcknowledgeIncidentRequest struct {
 	Via                 string // "slack", "web", "email", etc.
 }
 
-// AcknowledgeIncident marks an incident as acknowledged.
+// AcknowledgeIncident marks an incident as acknowledged. Accepts the org
+// slug (as the HTTP layer always has) and resolves it to a UID internally.
 func (s *Service) AcknowledgeIncident(
+	ctx context.Context, orgSlug string, req *AcknowledgeIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.acknowledgeIncidentByOrgUID(ctx, org.UID, req)
+}
+
+// acknowledgeIncidentByOrgUID is the org-UID variant used by internal callers
+// (Slack handler, sweeper) that already hold a UID — they skip the slug
+// lookup that the public method performs.
+func (s *Service) acknowledgeIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *AcknowledgeIncidentRequest,
 ) (*models.Incident, error) {
 	// Get the incident
@@ -1624,7 +1639,7 @@ func (s *Service) GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*
 func (s *Service) AcknowledgeIncidentFromSlack(
 	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername string,
 ) (*models.Incident, error) {
-	return s.AcknowledgeIncident(ctx, orgUID, &AcknowledgeIncidentRequest{
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
 		IncidentUID:   incidentUID,
 		SlackUserID:   slackUserID,
 		SlackUsername: slackUsername,
@@ -1633,8 +1648,19 @@ func (s *Service) AcknowledgeIncidentFromSlack(
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
-// ack'd by mistake, want escalation to resume.
+// ack'd by mistake, want escalation to resume. Accepts the org slug.
 func (s *Service) UnacknowledgeIncident(
+	ctx context.Context, orgSlug, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.unacknowledgeIncidentByOrgUID(ctx, org.UID, incidentUID, actorUID, via)
+}
+
+func (s *Service) unacknowledgeIncidentByOrgUID(
 	ctx context.Context, orgUID, incidentUID, actorUID, via string,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
@@ -1691,8 +1717,19 @@ type SnoozeIncidentRequest struct {
 
 // SnoozeIncident silences an incident until a future time. Snooze implies
 // acknowledgment — silencing an unack'd incident is the worst-of-both-worlds
-// state, so the ack is set if missing.
+// state, so the ack is set if missing. Accepts the org slug.
 func (s *Service) SnoozeIncident(
+	ctx context.Context, orgSlug string, req *SnoozeIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.snoozeIncidentByOrgUID(ctx, org.UID, req)
+}
+
+func (s *Service) snoozeIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *SnoozeIncidentRequest,
 ) (*models.Incident, error) {
 	until, err := s.resolveSnoozeUntil(req)
@@ -1788,8 +1825,19 @@ func (s *Service) resolveSnoozeUntil(req *SnoozeIncidentRequest) (time.Time, err
 }
 
 // UnsnoozeIncident clears the snooze on an incident. via is "manual" or
-// "auto" (the auto sweeper uses "auto").
+// "auto" (the auto sweeper uses "auto"). Accepts the org slug.
 func (s *Service) UnsnoozeIncident(
+	ctx context.Context, orgSlug, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.unsnoozeIncidentByOrgUID(ctx, org.UID, incidentUID, actorUID, via)
+}
+
+func (s *Service) unsnoozeIncidentByOrgUID(
 	ctx context.Context, orgUID, incidentUID, actorUID, via string,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
@@ -1849,8 +1897,19 @@ type ResolveIncidentRequest struct {
 // ResolveIncident closes an incident manually. Idempotent: returns the
 // existing incident if already resolved. If a new failure rolls in after a
 // manual resolve, the existing incident-creation logic opens a fresh
-// incident — manual resolutions are never reopened.
+// incident — manual resolutions are never reopened. Accepts the org slug.
 func (s *Service) ResolveIncident(
+	ctx context.Context, orgSlug string, req *ResolveIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.resolveIncidentByOrgUID(ctx, org.UID, req)
+}
+
+func (s *Service) resolveIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *ResolveIncidentRequest,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, req.IncidentUID)
@@ -1923,7 +1982,7 @@ func (s *Service) SweepUnsnooze(ctx context.Context) (int, error) {
 	count := 0
 
 	for _, inc := range incidents {
-		if _, err := s.UnsnoozeIncident(ctx, inc.OrganizationUID, inc.UID, "", "auto"); err != nil {
+		if _, err := s.unsnoozeIncidentByOrgUID(ctx, inc.OrganizationUID, inc.UID, "", "auto"); err != nil {
 			slog.WarnContext(ctx, "Failed to auto-unsnooze incident",
 				"incident_uid", inc.UID, "error", err)
 

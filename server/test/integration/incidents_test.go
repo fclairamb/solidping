@@ -1,9 +1,15 @@
 package integration
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
+	"net/http"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/pkg/client"
@@ -328,4 +334,127 @@ func TestListIncidents_NoFilter_ReturnsAll(t *testing.T) {
 	if len(*resp.JSON200.Data) < 3 {
 		t.Errorf("expected at least 3 incidents, got %d", len(*resp.JSON200.Data))
 	}
+}
+
+// loginForToken logs in and returns the bearer token. Mutation endpoints are
+// not yet exposed via the generated OpenAPI client, so the dashboard click
+// flow is exercised with raw HTTP using the returned token.
+func loginForToken(ctx context.Context, t *testing.T, ts *TestServer) string {
+	t.Helper()
+
+	apiClient := ts.NewClient()
+
+	resp, err := apiClient.Login(ctx, TestOrgSlug, TestUserEmail, TestUserPassword)
+	require.NoError(t, err)
+	require.NotNil(t, resp.AccessToken)
+
+	return *resp.AccessToken
+}
+
+// doIncidentAction POSTs to one of the incident mutation endpoints and
+// returns the status code plus the decoded body.
+func doIncidentAction(
+	ctx context.Context, t *testing.T, ts *TestServer, token, orgSlug, incidentUID, action string, body any,
+) (int, map[string]any) {
+	t.Helper()
+
+	var bodyReader io.Reader
+
+	if body != nil {
+		raw, err := json.Marshal(body)
+		require.NoError(t, err)
+
+		bodyReader = bytes.NewReader(raw)
+	}
+
+	url := ts.HTTPServer.URL + "/api/v1/orgs/" + orgSlug + "/incidents/" + incidentUID + "/" + action
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	require.NoError(t, err)
+	defer resp.Body.Close() //nolint:errcheck // best-effort
+
+	respBytes, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+
+	out := map[string]any{}
+	if len(respBytes) > 0 {
+		_ = json.Unmarshal(respBytes, &out)
+	}
+
+	return resp.StatusCode, out
+}
+
+func TestIncidentDashboardClickFlow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupIncidentsTestData(ctx, t, testServer)
+	token := loginForToken(ctx, t, testServer)
+
+	// Acknowledge — was returning 404 before the fix.
+	status, body := doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID1, "ack", map[string]string{
+		"note": "checked",
+	})
+	r.Equal(http.StatusOK, status, "ack should succeed; got body=%v", body)
+
+	// Snooze with a 1h duration.
+	status, body = doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID1, "snooze", map[string]string{
+		"duration": "1h",
+		"reason":   "scheduled maintenance",
+	})
+	r.Equal(http.StatusOK, status, "snooze should succeed; got body=%v", body)
+
+	// Unsnooze.
+	status, body = doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID1, "unsnooze", nil)
+	r.Equal(http.StatusOK, status, "unsnooze should succeed; got body=%v", body)
+
+	// Unack.
+	status, body = doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID1, "unack", nil)
+	r.Equal(http.StatusOK, status, "unack should succeed; got body=%v", body)
+
+	// Resolve.
+	status, body = doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID1, "resolve", map[string]string{
+		"note": "all clear",
+	})
+	r.Equal(http.StatusOK, status, "resolve should succeed; got body=%v", body)
+
+	// Unknown org returns 404 (exercises the org-resolution branch).
+	status, _ = doIncidentAction(ctx, t, testServer, token, "no-such-org", testIncidentUID1, "ack", nil)
+	r.Equal(http.StatusNotFound, status, "ack on unknown org should be 404")
+
+	// Unknown incident returns 404 (exercises the GetIncident branch).
+	status, _ = doIncidentAction(ctx, t, testServer, token, TestOrgSlug,
+		"30000000-0000-0000-0000-0000000099ff", "ack", nil)
+	r.Equal(http.StatusNotFound, status, "ack on unknown incident should be 404")
+}
+
+func TestIncidentSnoozeValidation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupIncidentsTestData(ctx, t, testServer)
+	token := loginForToken(ctx, t, testServer)
+
+	// Use the third (active) incident so prior tests can't pollute its state.
+	status, _ := doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID3, "snooze", map[string]string{
+		"duration": "garbage",
+	})
+	r.Equal(http.StatusBadRequest, status, "invalid duration should be 400")
+
+	pastTime := time.Now().Add(-1 * time.Hour).Format(time.RFC3339)
+	status, _ = doIncidentAction(ctx, t, testServer, token, TestOrgSlug, testIncidentUID3, "snooze", map[string]string{
+		"until": pastTime,
+	})
+	r.Equal(http.StatusBadRequest, status, "until in the past should be 400")
 }
