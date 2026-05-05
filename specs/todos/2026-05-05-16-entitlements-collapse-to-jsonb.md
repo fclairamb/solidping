@@ -365,3 +365,110 @@ explicit, easy to extend.
   a single JSONB blob" rationale is updated (in this spec's history
   section, not by editing the done spec) — column form was the right
   default, but the access pattern doesn't justify it.
+
+## Implementation Plan
+
+Concrete steps for the refactor. Each numbered item maps to one or two
+commits.
+
+### 1. Define `EntitlementsPayload` in the models package
+
+New file: `server/internal/db/models/entitlements_payload.go`
+
+- Define `EntitlementLimits`, `EntitlementFeatures`, and
+  `EntitlementsPayload` structs with the same JSON tags currently on
+  `entitlements.Limits` / `entitlements.Features` — i.e.
+  `maxChecks`, `maxMembers`, `sso`, `mcp`, … Wire format is preserved.
+- `EntitlementsPayload` carries: `Version int` (= `1`), `Limits`,
+  `Features`, `AllowedCheckTypes []string`, `DisplayName *string`.
+- Implement `driver.Valuer` and `sql.Scanner` for `EntitlementsPayload`
+  (mirrors `JSONMap` pattern in `models/common.go`) so bun can read/write
+  it as JSON in both postgres `jsonb` and sqlite `text`.
+- Add a custom `UnmarshalJSON` that probes the `version` field first and
+  branches per-version (only v1 today; the structure is in place for
+  future migrations).
+
+### 2. Reshape `models.OrgEntitlements`
+
+Edit `server/internal/db/models/org_entitlements.go`:
+
+- Drop the per-limit / per-feature / `AllowedCheckTypes` / `DisplayName`
+  fields.
+- Add `Payload EntitlementsPayload` with `bun:"payload,type:jsonb,notnull"`.
+- Keep `Metadata JSONMap`, `Source`, `ExternalRef`, `ExpiresAt`,
+  `LastSyncedAt`, `CreatedAt`, `UpdatedAt`, `UID`, `OrganizationUID` as
+  before.
+- Update `NewOrgEntitlements` to initialize `Payload.Version = 1`.
+
+### 3. Re-alias `entitlements.Limits` / `Features` to the models types
+
+Edit `server/internal/entitlements/defaults.go`:
+
+- Replace the existing `Limits` and `Features` struct definitions with
+  `type Limits = models.EntitlementLimits` and
+  `type Features = models.EntitlementFeatures`. This keeps every
+  external caller (handlers, tests) compiling without churn — the
+  field set is identical and JSON tags match.
+- `entitlements.Entitlements` keeps its current shape but its `Limits`
+  and `Features` fields now reference the model types via the aliases.
+- `DefaultEntitlements` initialization stays valid (struct literal of
+  the aliased type).
+
+### 4. Rewrite migrations in place
+
+- Postgres `server/internal/db/postgres/migrations/017_org_entitlements.up.sql`
+- SQLite `server/internal/db/sqlite/migrations/016_org_entitlements.up.sql`
+
+Drop all per-limit/per-feature columns; add `payload`. Keep the audit
+table CREATE intact in the same file. The `.down.sql` files already
+just drop both tables — no edit needed.
+
+### 5. Update DB driver upsert SQL
+
+Edit both `server/internal/db/postgres/postgres.go` and
+`server/internal/db/sqlite/sqlite.go` — `UpsertOrgEntitlements`:
+
+- Drop the 19-column SET chain.
+- Replace with: `payload`, `source`, `external_ref`, `expires_at`,
+  `last_synced_at`, `metadata`, `updated_at`.
+
+### 6. Collapse `merge()` and `toModel()` in the entitlements service
+
+Edit `server/internal/entitlements/service.go`:
+
+- `merge`: copy `row.Payload.Limits`/`Features` per-field with
+  `if !nil` guards (still reads cleanly; same shape as before, just
+  reading from the struct instead of from sibling row fields).
+- `toModel`: assemble `models.OrgEntitlements{ Payload: …, Source: …,
+  ExternalRef: …, ExpiresAt: …, LastSyncedAt: …, Metadata: … }`.
+- `modelToJSON` (used for audit snapshots) still works — it
+  `json.Marshal`s the row, which now naturally serializes the embedded
+  payload as a nested object. Audit shape changes from "flat keys" to
+  "payload-nested keys" — acceptable since audits are read by humans
+  inspecting JSON, not by code.
+- `defaultFeatureFlag` is unchanged (it reads from `Features`, which
+  is now an alias — same fields).
+
+### 7. Update tests
+
+- `server/internal/entitlements/service_test.go`: existing tests should
+  compile unchanged since they reference `entitlements.Limits` /
+  `entitlements.Features` (now aliases) by field name.
+- Add `TestPayloadRoundTrip`: write a row with non-default limits and
+  features, read it back via `Resolve`, assert struct equality.
+- `make test` should run unchanged.
+
+### 8. QA
+
+- `make build-backend lint-back test` — fix anything that breaks.
+
+### 9. Manual smoke
+
+- `./solidping serve`, log in, hit `GET /api/v1/orgs/default/entitlements`,
+  PUT a partial update, GET again. Confirm the response shape matches
+  what `dash0` already consumes.
+
+### 10. Audit + archive
+
+- Independent subagent audit per the loop.
+- Once clean, `git mv` the spec to `specs/done/2026/05/`.
