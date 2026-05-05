@@ -16,6 +16,7 @@ import enDashboard from "./locales/en/dashboard.json";
 import enFeedback from "./locales/en/feedback.json";
 import enDependencies from "./locales/en/dependencies.json";
 import enOncall from "./locales/en/oncall.json";
+import enEscalation from "./locales/en/escalation.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -31,6 +32,7 @@ import frDashboard from "./locales/fr/dashboard.json";
 import frFeedback from "./locales/fr/feedback.json";
 import frDependencies from "./locales/fr/dependencies.json";
 import frOncall from "./locales/fr/oncall.json";
+import frEscalation from "./locales/fr/escalation.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -46,6 +48,7 @@ import deDashboard from "./locales/de/dashboard.json";
 import deFeedback from "./locales/de/feedback.json";
 import deDependencies from "./locales/de/dependencies.json";
 import deOncall from "./locales/de/oncall.json";
+import deEscalation from "./locales/de/escalation.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -61,6 +64,7 @@ import esDashboard from "./locales/es/dashboard.json";
 import esFeedback from "./locales/es/feedback.json";
 import esDependencies from "./locales/es/dependencies.json";
 import esOncall from "./locales/es/oncall.json";
+import esEscalation from "./locales/es/escalation.json";
 
 i18n
   .use(LanguageDetector)
@@ -83,6 +87,7 @@ i18n
         feedback: enFeedback,
         dependencies: enDependencies,
         oncall: enOncall,
+        escalation: enEscalation,
       },
       fr: {
         common: frCommon,
@@ -100,6 +105,7 @@ i18n
         feedback: frFeedback,
         dependencies: frDependencies,
         oncall: frOncall,
+        escalation: frEscalation,
       },
       de: {
         common: deCommon,
@@ -117,6 +123,7 @@ i18n
         feedback: deFeedback,
         dependencies: deDependencies,
         oncall: deOncall,
+        escalation: deEscalation,
       },
       es: {
         common: esCommon,
@@ -134,6 +141,7 @@ i18n
         feedback: esFeedback,
         dependencies: esDependencies,
         oncall: esOncall,
+        escalation: esEscalation,
       },
     },
     defaultNS: "common",

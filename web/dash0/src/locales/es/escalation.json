@@ -1,0 +1,41 @@
+{
+  "list": {
+    "title": "Políticas de escalada",
+    "subtitle": "Orquestación reutilizable de pasos de notificación con retrasos y cancelación al confirmar, posponer o resolver.",
+    "create": "Nueva política",
+    "empty": "No hay políticas de escalada todavía. Crea una para empezar a notificar incidentes.",
+    "repeats": "Se repite {{count}}× cada {{minutes}} minutos",
+    "editToSeeSteps": "Abrir para ver los pasos."
+  },
+  "new": {
+    "title": "Nueva política de escalada"
+  },
+  "editor": {
+    "basics": "Información básica",
+    "slug": "Identificador",
+    "name": "Nombre",
+    "description": "Descripción",
+    "steps": "Pasos",
+    "step": "Paso",
+    "delayMinutes": "Retraso (min)",
+    "addStep": "Añadir paso",
+    "repeat": "Repetición",
+    "repeatMax": "Máx. repeticiones (0 = sin repetir)",
+    "repeatAfterMinutes": "Repetir después de (min)",
+    "create": "Crear política",
+    "deleteConfirm": "¿Eliminar esta política de escalada? Se comprobarán antes los incidentes abiertos que la referencien.",
+    "targetUidPlaceholder": "UID del destino"
+  },
+  "targets": {
+    "user": "Usuario",
+    "schedule": "Calendario de guardia",
+    "connection": "Conexión de notificación",
+    "all_admins": "Todos los administradores"
+  },
+  "timeline": {
+    "title": "Cronología de la escalada",
+    "fired": "Disparada",
+    "pending": "Pendiente",
+    "failed": "Escalada fallida"
+  }
+}

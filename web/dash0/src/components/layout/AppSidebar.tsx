@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity,
+  ArrowUpRight,
   Bug,
   LayoutDashboard,
   ListChecks,
@@ -68,6 +69,11 @@ const navItems = [
     titleKey: "onCall",
     path: "/orgs/$org/on-call" as const,
     icon: CalendarClock,
+  },
+  {
+    titleKey: "escalationPolicies",
+    path: "/orgs/$org/escalation-policies" as const,
+    icon: ArrowUpRight,
   },
   {
     titleKey: "events",

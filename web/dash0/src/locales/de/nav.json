@@ -4,6 +4,7 @@
   "incidents": "Vorfälle",
   "dependencies": "Abhängigkeiten",
   "onCall": "Bereitschaft",
+  "escalationPolicies": "Eskalationsrichtlinien",
   "events": "Ereignisse",
   "statusPages": "Statusseiten",
   "badges": "Abzeichen",

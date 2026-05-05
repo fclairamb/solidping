@@ -1,0 +1,41 @@
+{
+  "list": {
+    "title": "Escalation policies",
+    "subtitle": "Reusable orchestration of paging steps with delays and cancellation on ack/snooze/resolve.",
+    "create": "New policy",
+    "empty": "No escalation policies yet. Create one to start paging on incidents.",
+    "repeats": "Repeats {{count}}× every {{minutes}} minutes",
+    "editToSeeSteps": "Open to see the steps."
+  },
+  "new": {
+    "title": "New escalation policy"
+  },
+  "editor": {
+    "basics": "Basics",
+    "slug": "Slug",
+    "name": "Name",
+    "description": "Description",
+    "steps": "Steps",
+    "step": "Step",
+    "delayMinutes": "Delay (min)",
+    "addStep": "Add step",
+    "repeat": "Repeat",
+    "repeatMax": "Max repeats (0 = no repeat)",
+    "repeatAfterMinutes": "Repeat after (min)",
+    "create": "Create policy",
+    "deleteConfirm": "Delete this escalation policy? Open incidents that reference it will be checked first.",
+    "targetUidPlaceholder": "Target UID"
+  },
+  "targets": {
+    "user": "User",
+    "schedule": "On-call schedule",
+    "connection": "Notification connection",
+    "all_admins": "All admins"
+  },
+  "timeline": {
+    "title": "Escalation timeline",
+    "fired": "Fired",
+    "pending": "Pending",
+    "failed": "Escalation failed"
+  }
+}
