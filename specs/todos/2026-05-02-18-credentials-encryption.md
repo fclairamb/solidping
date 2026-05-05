@@ -346,3 +346,77 @@ Run automatically once at startup if `SP_ENCRYPTION_MASTER_KEY` is set and we de
 12. **Tests + lint** — unit tests at every layer, integration tests against both Postgres and SQLite via testcontainers, focus on the PATCH-preserves-secret case. `make lint test` clean.
 
 13. **Changelog + docs** — update `CLAUDE.md` (root + server) with the new env vars and the threat-model caveat from the "Honest opinion" section.
+
+## Implementation Plan — completion pass (2026-05-05)
+
+The first pass landed the crypto primitive (`server/internal/crypto/credentials/`),
+the `EncryptionConfig` struct, and `SecretFields()` declarations on 18 of 32
+checker configs. Then it archived the spec without wiring any of it into
+the read/write paths. This pass picks up where that left off.
+
+### Step 1 — Schema + models
+Add `005_credentials_encryption` migration to both postgres and sqlite,
+adding `config_private TEXT` + `config_private_keys TEXT` to `checks` and
+`check_jobs`, and `settings_private` + `settings_private_keys` to
+`integration_connections`, and `config_private` + `config_private_keys` to
+`auth_providers`. Update Bun models with the matching `*string` fields.
+
+### Step 2 — Fill in the missing SecretFields
+Add `secret_fields.go` files for the credential-bearing checkers that don't
+have one yet (HTTP, IMAP, POP3, SSH, SMTP, MySQL, MSSQL, Oracle, MongoDB,
+Email, Heartbeat, RabbitMQ, MQTT, Kafka, SNMP).
+
+### Step 3 — Connection + AuthProvider secret registry
+A small `server/internal/crypto/credentials/connsecrets.go` mapping
+`ConnectionType` → secret keys, and `AuthProviderType` → secret keys.
+
+### Step 4 — DEK store
+Implement `credentials.DEKStore` against the existing `parameters` table
+(secret rows). Wire the credentials service into the services registry so
+handlers/workers can inject it.
+
+### Step 5 — Write path: checks
+On POST and PATCH, call `SplitConfig` → encrypt the private side → persist
+into `config_private` + `config_private_keys`. PATCH-merge rule: secret
+keys absent from the incoming `config` are preserved from the existing
+`config_private`; explicitly-supplied keys (including null/empty-string)
+overwrite. When encryption is disabled, fall back to plaintext (logged at
+startup).
+
+### Step 6 — Read path: checks
+`convertCheckToResponse` (and list endpoints) returns `config` (public
+only) plus `configPrivateKeys` (the list of key names, not the values).
+Never returns `configPrivate` to API callers.
+
+### Step 7 — Write/read paths: connections + auth providers
+Same pattern as checks but using the connection-type-keyed secret list
+instead of `SecretFields()`.
+
+### Step 8 — Worker dispatch
+In the `claim-jobs` handler, decrypt + merge per job before sending to
+the worker, clear `ConfigPrivate`/`Encrypted` on the outbound payload.
+On decrypt failure or missing master key, skip the job and log.
+
+### Step 9 — Job creation path
+When the scheduler writes a `check_jobs` row, copy `config_private` +
+`config_private_keys` from the source `Check`, set `Encrypted = true`. No
+re-encryption needed.
+
+### Step 10 — One-shot migration command
+`solidping encrypt-credentials [--dry-run]` walks every secret-bearing
+row whose private column is NULL but whose public field has secret keys,
+splits and encrypts. Idempotent. Auto-runs at startup unless
+`SP_ENCRYPTION_AUTO_MIGRATE=false`.
+
+### Step 11 — Export/import
+Strip secret keys from `GET .../checks/export`. Add `_secretsStripped:
+true`. Import accepts the stripped shape unchanged.
+
+### Step 12 — Tests
+Unit tests for the credentials service (round-trip, tampering, wrong-org,
+disabled fallback). Service tests for the PATCH-preserves-secret rule.
+SplitConfig/MergeConfig already covered indirectly; add a focused unit
+test too.
+
+### Step 13 — QA + audit
+`make build-backend lint-back test`. Independent audit. Address any gaps.
