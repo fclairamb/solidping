@@ -511,7 +511,10 @@ export interface GraphResponse {
 }
 
 // Check Dependency hooks
-export function useCheckDependencies(org: string, checkUid: string) {
+export function useCheckDependencies(
+  org: string,
+  checkUid: string | undefined,
+) {
   return useQuery({
     queryKey: ["dependencies", org, checkUid],
     queryFn: async () => {

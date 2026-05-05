@@ -513,6 +513,133 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/orgs/{org}/checks/{check}/dependencies:
+    get:
+      tags: [Checks]
+      summary: List dependencies for a check
+      description: Returns the dependsOn (parents) and dependedOnBy (children) edges of the given check.
+      operationId: listCheckDependencies
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check uid or slug
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Per-check dependencies
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PerCheckDependenciesResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      tags: [Checks]
+      summary: Add a dependency edge to a check
+      operationId: createCheckDependency
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Child check uid or slug
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDependencyRequest"
+      responses:
+        "201":
+          description: Dependency created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dependency"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Dependency already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/checks/{check}/dependencies/{uid}:
+    patch:
+      tags: [Checks]
+      summary: Update a dependency edge
+      operationId: updateCheckDependency
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Child check uid or slug
+          schema:
+            type: string
+        - name: uid
+          in: path
+          required: true
+          description: Dependency edge uid
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateDependencyRequest"
+      responses:
+        "200":
+          description: Dependency updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Dependency"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      tags: [Checks]
+      summary: Remove a dependency edge
+      operationId: deleteCheckDependency
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Child check uid or slug
+          schema:
+            type: string
+        - name: uid
+          in: path
+          required: true
+          description: Dependency edge uid
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: Dependency removed
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/v1/orgs/{org}/checks/{checkUid}/events:
     get:
       tags: [Events]
@@ -1552,6 +1679,93 @@ components:
           example:
             env: prod
             app: api
+        dependsOn:
+          type: array
+          description: |
+            Replaces the full dependsOn set when present. Omit to leave deps
+            unchanged; pass `[]` to clear.
+          items:
+            $ref: "#/components/schemas/ExportedDependency"
+
+    ExportedDependency:
+      type: object
+      required: [parentSlug]
+      properties:
+        parentSlug:
+          type: string
+          description: Slug of the parent check this check depends on
+        kind:
+          type: string
+          enum: [hard, soft]
+          default: hard
+        description:
+          type: string
+
+    Dependency:
+      type: object
+      required: [uid, parentCheck, childCheck, kind]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        parentCheck:
+          $ref: "#/components/schemas/CheckRef"
+        childCheck:
+          $ref: "#/components/schemas/CheckRef"
+        kind:
+          type: string
+          enum: [hard, soft]
+        description:
+          type: string
+
+    CheckRef:
+      type: object
+      required: [uid, slug, name]
+      properties:
+        uid:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+
+    PerCheckDependenciesResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            dependsOn:
+              type: array
+              items:
+                $ref: "#/components/schemas/Dependency"
+            dependedOnBy:
+              type: array
+              items:
+                $ref: "#/components/schemas/Dependency"
+
+    CreateDependencyRequest:
+      type: object
+      required: [parentCheckUid, kind]
+      properties:
+        parentCheckUid:
+          type: string
+          description: UID or slug of the parent check
+        kind:
+          type: string
+          enum: [hard, soft]
+        description:
+          type: string
+
+    UpdateDependencyRequest:
+      type: object
+      properties:
+        kind:
+          type: string
+          enum: [hard, soft]
+        description:
+          type: string
 
     # Result schemas
     OrgResultListResponse:
