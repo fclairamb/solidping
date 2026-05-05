@@ -172,10 +172,10 @@ func (s *Service) Defaults() Entitlements {
 }
 
 // merge produces a Resolved by filling nulls from defaults. If stale is
-// true, the entire row is dropped in favor of defaults (caller still
-// surfaces row.Source and DisplayName so the UI can label the stale
-// state). Straight-line per-field overlay; a loop would obscure the
-// type-level mapping.
+// true, the entire payload is dropped in favor of defaults (caller still
+// surfaces source/display name so the UI can label the stale state).
+// Straight-line per-field overlay; a loop would obscure the type-level
+// mapping.
 //
 //nolint:cyclop,funlen
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
@@ -189,67 +189,68 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 		return out
 	}
 
-	out.Source = row.Source
-	out.DisplayName = row.DisplayName
+	out.Source = row.Payload.Source
+	out.DisplayName = row.Payload.DisplayName
 	out.ExpiresAt = row.ExpiresAt
 	out.LastSyncedAt = row.LastSyncedAt
 
-	if row.MaxChecks != nil {
-		out.Limits.MaxChecks = row.MaxChecks
+	limits := row.Payload.Limits
+	if limits.MaxChecks != nil {
+		out.Limits.MaxChecks = limits.MaxChecks
 	}
-	if row.MaxMembers != nil {
-		out.Limits.MaxMembers = row.MaxMembers
+	if limits.MaxMembers != nil {
+		out.Limits.MaxMembers = limits.MaxMembers
 	}
-	if row.MaxStatusPages != nil {
-		out.Limits.MaxStatusPages = row.MaxStatusPages
+	if limits.MaxStatusPages != nil {
+		out.Limits.MaxStatusPages = limits.MaxStatusPages
 	}
-	if row.MaxCheckGroups != nil {
-		out.Limits.MaxCheckGroups = row.MaxCheckGroups
+	if limits.MaxCheckGroups != nil {
+		out.Limits.MaxCheckGroups = limits.MaxCheckGroups
 	}
-	if row.MaxMaintenanceWindows != nil {
-		out.Limits.MaxMaintenanceWindows = row.MaxMaintenanceWindows
+	if limits.MaxMaintenanceWindows != nil {
+		out.Limits.MaxMaintenanceWindows = limits.MaxMaintenanceWindows
 	}
-	if row.MaxConnections != nil {
-		out.Limits.MaxConnections = row.MaxConnections
+	if limits.MaxConnections != nil {
+		out.Limits.MaxConnections = limits.MaxConnections
 	}
-	if row.MaxWorkers != nil {
-		out.Limits.MaxWorkers = row.MaxWorkers
+	if limits.MaxWorkers != nil {
+		out.Limits.MaxWorkers = limits.MaxWorkers
 	}
-	if row.MaxAPITokens != nil {
-		out.Limits.MaxAPITokens = row.MaxAPITokens
+	if limits.MaxAPITokens != nil {
+		out.Limits.MaxAPITokens = limits.MaxAPITokens
 	}
-	if row.RetentionDaysRaw != nil {
-		out.Limits.RetentionDaysRaw = row.RetentionDaysRaw
+	if limits.RetentionDaysRaw != nil {
+		out.Limits.RetentionDaysRaw = limits.RetentionDaysRaw
 	}
-	if row.RetentionDaysAggregated != nil {
-		out.Limits.RetentionDaysAggregated = row.RetentionDaysAggregated
+	if limits.RetentionDaysAggregated != nil {
+		out.Limits.RetentionDaysAggregated = limits.RetentionDaysAggregated
 	}
-	if row.MinCheckPeriodSeconds != nil {
-		out.Limits.MinCheckPeriodSeconds = row.MinCheckPeriodSeconds
+	if limits.MinCheckPeriodSeconds != nil {
+		out.Limits.MinCheckPeriodSeconds = limits.MinCheckPeriodSeconds
 	}
-	if row.FeatureSSO != nil {
-		out.Features.SSO = row.FeatureSSO
+
+	features := row.Payload.Features
+	if features.SSO != nil {
+		out.Features.SSO = features.SSO
 	}
-	if row.FeatureMCP != nil {
-		out.Features.MCP = row.FeatureMCP
+	if features.MCP != nil {
+		out.Features.MCP = features.MCP
 	}
-	if row.FeatureCustomBranding != nil {
-		out.Features.CustomBranding = row.FeatureCustomBranding
+	if features.CustomBranding != nil {
+		out.Features.CustomBranding = features.CustomBranding
 	}
-	if row.FeaturePrioritySupport != nil {
-		out.Features.PrioritySupport = row.FeaturePrioritySupport
+	if features.PrioritySupport != nil {
+		out.Features.PrioritySupport = features.PrioritySupport
 	}
-	if row.FeatureMultiRegion != nil {
-		out.Features.MultiRegion = row.FeatureMultiRegion
+	if features.MultiRegion != nil {
+		out.Features.MultiRegion = features.MultiRegion
 	}
-	if row.FeatureAdvancedAlerts != nil {
-		out.Features.AdvancedAlerts = row.FeatureAdvancedAlerts
+	if features.AdvancedAlerts != nil {
+		out.Features.AdvancedAlerts = features.AdvancedAlerts
 	}
-	if row.AllowedCheckTypes != nil && *row.AllowedCheckTypes != "" {
-		var types []string
-		if err := json.Unmarshal([]byte(*row.AllowedCheckTypes), &types); err == nil {
-			out.AllowedCheckTypes = types
-		}
+
+	if len(row.Payload.AllowedCheckTypes) > 0 {
+		out.AllowedCheckTypes = row.Payload.AllowedCheckTypes
 	}
 
 	return out
@@ -264,7 +265,7 @@ func (s *Service) isStale(row *models.OrgEntitlements) bool {
 	if s.staleAfter <= 0 {
 		return false
 	}
-	if row.Source != models.EntitlementSourceBilling {
+	if row.Payload.Source != models.EntitlementSourceBilling {
 		return false
 	}
 	if row.LastSyncedAt == nil {
@@ -322,34 +323,15 @@ func toModel(
 		row.CreatedAt = previous.CreatedAt
 	}
 
-	row.MaxChecks = input.Limits.MaxChecks
-	row.MaxMembers = input.Limits.MaxMembers
-	row.MaxStatusPages = input.Limits.MaxStatusPages
-	row.MaxCheckGroups = input.Limits.MaxCheckGroups
-	row.MaxMaintenanceWindows = input.Limits.MaxMaintenanceWindows
-	row.MaxConnections = input.Limits.MaxConnections
-	row.MaxWorkers = input.Limits.MaxWorkers
-	row.MaxAPITokens = input.Limits.MaxAPITokens
-	row.RetentionDaysRaw = input.Limits.RetentionDaysRaw
-	row.RetentionDaysAggregated = input.Limits.RetentionDaysAggregated
-	row.MinCheckPeriodSeconds = input.Limits.MinCheckPeriodSeconds
-
-	row.FeatureSSO = input.Features.SSO
-	row.FeatureMCP = input.Features.MCP
-	row.FeatureCustomBranding = input.Features.CustomBranding
-	row.FeaturePrioritySupport = input.Features.PrioritySupport
-	row.FeatureMultiRegion = input.Features.MultiRegion
-	row.FeatureAdvancedAlerts = input.Features.AdvancedAlerts
-
-	if len(input.AllowedCheckTypes) > 0 {
-		raw, err := json.Marshal(input.AllowedCheckTypes)
-		if err == nil {
-			s := string(raw)
-			row.AllowedCheckTypes = &s
-		}
+	row.Payload = models.EntitlementsPayload{
+		Version:           models.EntitlementsPayloadVersion,
+		Source:            input.Source,
+		Limits:            input.Limits,
+		Features:          input.Features,
+		AllowedCheckTypes: input.AllowedCheckTypes,
+		DisplayName:       input.DisplayName,
 	}
 
-	row.DisplayName = input.DisplayName
 	row.ExternalRef = input.ExternalRef
 	if input.Metadata != nil {
 		row.Metadata = models.JSONMap(input.Metadata)

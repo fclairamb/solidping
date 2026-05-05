@@ -24,11 +24,13 @@ the codebase today (verified with grep — only org-scoped reads on
 `allowed_check_types` is *already* JSON-encoded text in SQLite for cross-DB
 portability — the typed-column purity is half-fictional.
 
-This spec collapses the limits/features/allowed-types surface into a single
-`payload jsonb` column whose shape is owned by the
+This spec collapses the limits/features/allowed-types/source surface into a
+single `payload jsonb` column whose shape is owned by the
 `entitlements.Entitlements` Go struct, and keeps as columns only the fields
-we actually query, index, or constrain (`source`, `external_ref`,
-`expires_at`, `last_synced_at`, plus identity/lifecycle).
+we actually index or filter on (`external_ref`, `expires_at`,
+`last_synced_at`, plus identity/lifecycle). `source` moves into the payload
+— losing the SQL CHECK constraint is fine since validation already lives in
+the `EntitlementSource` constants in code.
 
 ## Goals
 
@@ -106,8 +108,6 @@ CREATE TABLE org_entitlements (
 
   payload           jsonb NOT NULL DEFAULT '{}'::jsonb,
 
-  source            text NOT NULL CHECK (source IN
-                       ('default','self-hosted','admin','billing-service')),
   external_ref      text,
   expires_at        timestamptz,
   last_synced_at    timestamptz,
@@ -121,6 +121,8 @@ CREATE INDEX org_entitlements_external_ref_idx
   ON org_entitlements (external_ref) WHERE external_ref IS NOT NULL;
 
 -- org_entitlement_audits is unchanged — keep its CREATE TABLE intact.
+-- (The audit table's `source` column stays — it denormalizes who wrote
+-- a given audit row, separate from the entitlement row's own source.)
 ```
 
 ### SQLite `016_org_entitlements.up.sql` (rewritten in place)
@@ -132,8 +134,6 @@ CREATE TABLE org_entitlements (
 
   payload           text NOT NULL DEFAULT '{}',
 
-  source            text NOT NULL CHECK (source IN
-                       ('default','self-hosted','admin','billing-service')),
   external_ref      text,
   expires_at        text,
   last_synced_at    text,

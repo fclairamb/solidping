@@ -17,22 +17,21 @@ const (
 	EntitlementSourceBilling    EntitlementSource = "billing-service"
 )
 
-// OrgEntitlements is one row per org. Limits and features live inside
-// Payload; absence inside the payload means "use the in-code default"
-// (resolution happens in the entitlements service, never stored).
-// Source / ExternalRef / ExpiresAt / LastSyncedAt are kept as columns
-// because they are queried, indexed, or constrained at the SQL level.
+// OrgEntitlements is one row per org. Limits, features, and source live
+// inside Payload; absence inside the payload means "use the in-code
+// default" (resolution happens in the entitlements service, never
+// stored). ExternalRef / ExpiresAt / LastSyncedAt are kept as columns
+// because they are queried or indexed at the SQL level.
 type OrgEntitlements struct {
 	UID             string `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string `bun:"organization_uid,notnull,unique"`
 
 	Payload EntitlementsPayload `bun:"payload,type:jsonb,notnull"`
 
-	Source       EntitlementSource `bun:"source,notnull"`
-	ExternalRef  *string           `bun:"external_ref"`
-	ExpiresAt    *time.Time        `bun:"expires_at"`
-	LastSyncedAt *time.Time        `bun:"last_synced_at"`
-	Metadata     JSONMap           `bun:"metadata,type:jsonb,nullzero"`
+	ExternalRef  *string    `bun:"external_ref"`
+	ExpiresAt    *time.Time `bun:"expires_at"`
+	LastSyncedAt *time.Time `bun:"last_synced_at"`
+	Metadata     JSONMap    `bun:"metadata,type:jsonb,nullzero"`
 
 	CreatedAt time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt time.Time `bun:"updated_at,notnull,default:current_timestamp"`
@@ -47,11 +46,13 @@ func NewOrgEntitlements(orgUID string, source EntitlementSource) *OrgEntitlement
 	return &OrgEntitlements{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
-		Payload:         EntitlementsPayload{Version: EntitlementsPayloadVersion},
-		Source:          source,
-		Metadata:        make(JSONMap),
-		CreatedAt:       now,
-		UpdatedAt:       now,
+		Payload: EntitlementsPayload{
+			Version: EntitlementsPayloadVersion,
+			Source:  source,
+		},
+		Metadata:  make(JSONMap),
+		CreatedAt: now,
+		UpdatedAt: now,
 	}
 }
 

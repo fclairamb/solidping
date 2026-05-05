@@ -44,6 +44,7 @@ type EntitlementFeatures struct {
 // field gates shape-migrations at unmarshal time.
 type EntitlementsPayload struct {
 	Version           int                 `json:"version"`
+	Source            EntitlementSource   `json:"source,omitempty"`
 	Limits            EntitlementLimits   `json:"limits"`
 	Features          EntitlementFeatures `json:"features"`
 	AllowedCheckTypes []string            `json:"allowedCheckTypes,omitempty"`
