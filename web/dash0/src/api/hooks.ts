@@ -148,6 +148,8 @@ export interface IncidentDetail {
   failureCount?: number;
   relapseCount?: number;
   lastReopenedAt?: string;
+  causedByIncidentUid?: string;
+  pagingSuppressed?: boolean;
 }
 
 export interface Event {
@@ -468,6 +470,130 @@ export function useDeleteCheckGroup(org: string) {
   });
 }
 
+// Check Dependency types
+export type DependencyKind = "hard" | "soft";
+export interface CheckRef {
+  uid: string;
+  slug: string;
+  name: string;
+}
+export interface DependencyEdge {
+  uid: string;
+  parentCheck: CheckRef;
+  childCheck: CheckRef;
+  kind: DependencyKind;
+  description?: string;
+}
+export interface PerCheckDependencies {
+  dependsOn: DependencyEdge[];
+  dependedOnBy: DependencyEdge[];
+}
+export interface GraphNode {
+  uid: string;
+  slug: string;
+  name: string;
+}
+export interface GraphEdge {
+  uid: string;
+  parentCheckUid: string;
+  childCheckUid: string;
+  kind: DependencyKind;
+}
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Check Dependency hooks
+export function useCheckDependencies(org: string, checkUid: string) {
+  return useQuery({
+    queryKey: ["dependencies", org, checkUid],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: PerCheckDependencies }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies`,
+      );
+      return r.data;
+    },
+    enabled: !!org && !!checkUid,
+  });
+}
+
+export function useCreateCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      parentCheckUid: string;
+      kind: DependencyKind;
+      description?: string;
+    }) =>
+      apiFetch<DependencyEdge>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useUpdateCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      uid: string;
+      kind?: DependencyKind;
+      description?: string;
+    }) =>
+      apiFetch<DependencyEdge>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies/${vars.uid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            kind: vars.kind,
+            description: vars.description,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useDeleteCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies/${uid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useDependencyGraph(
+  org: string,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["dependencyGraph", org],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: GraphResponse }>(
+        `/api/v1/orgs/${org}/dependencies`,
+      );
+      return r.data;
+    },
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: 30_000,
+  });
+}
+
 // Results hooks
 export function useResults(
   org: string,
@@ -583,6 +709,8 @@ export function useIncidents(
     cursor?: string;
     size?: number;
     with?: string;
+    hideSuppressed?: boolean;
+    causedByIncidentUid?: string;
     refetchInterval?: number;
   }
 ) {
@@ -599,6 +727,8 @@ export function useIncidents(
       if (options?.cursor) params.set("cursor", options.cursor);
       if (options?.size) params.set("size", options.size.toString());
       if (options?.with) params.set("with", options.with);
+      if (options?.hideSuppressed) params.set("hideSuppressed", "true");
+      if (options?.causedByIncidentUid) params.set("causedByIncidentUid", options.causedByIncidentUid);
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/incidents${query ? `?${query}` : ""}`;
       const response = await apiFetch<{

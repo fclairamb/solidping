@@ -74,5 +74,17 @@
     "hoursAgo": "vor {{count}} Std",
     "minutesAgo": "vor {{count}} Min",
     "justNow": "gerade eben"
+  },
+  "rollup": {
+    "causedByActive": "Zusammengefasst unter dem Vorfall <strong>{{parent}}</strong> — Benachrichtigungen sind unterdrückt, während die Ursache offen ist.",
+    "parentLoading": "der Ursachen-Vorfall",
+    "causedByPast": "Dieser Vorfall war bis {{resolvedAt}} unter {{parent}} zusammengefasst. Die Benachrichtigung erfolgte dann.",
+    "blastRadiusTitle": "Auswirkung ({{count}} betroffen)",
+    "blastRadiusFooter": "Benachrichtigungen werden für jedes Kind ausgelöst, das beim Auflösen dieses Vorfalls noch ausgefallen ist.",
+    "blastRadiusEmpty": "Aktuell sind keine Kind-Vorfälle unter diesem zusammengefasst.",
+    "rolledUpBadge": "zusammengefasst",
+    "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
+    "pagingSuppressed": "Benachrichtigung unterdrückt",
+    "rolledUpInactive": "zusammengefasst"
   }
 }

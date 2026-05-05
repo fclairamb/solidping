@@ -2,6 +2,7 @@
   "dashboard": "Dashboard",
   "checks": "Prüfungen",
   "incidents": "Vorfälle",
+  "dependencies": "Abhängigkeiten",
   "events": "Ereignisse",
   "statusPages": "Statusseiten",
   "badges": "Abzeichen",

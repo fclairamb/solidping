@@ -2,6 +2,7 @@
   "dashboard": "Panel",
   "checks": "Comprobaciones",
   "incidents": "Incidentes",
+  "dependencies": "Dependencias",
   "events": "Eventos",
   "statusPages": "Páginas de estado",
   "badges": "Insignias",

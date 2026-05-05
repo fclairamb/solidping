@@ -1,0 +1,43 @@
+{
+  "title": "Dépendances",
+  "dependsOn": "Dépend de",
+  "dependsOnHelp": "Ce contrôle échoue quand ces contrôles échouent",
+  "dependedOnBy": "Dépendances inverses",
+  "dependedOnByHelp": "Ces contrôles échouent quand celui-ci échoue",
+  "addDependency": "Ajouter une dépendance",
+  "saveDependency": "Enregistrer",
+  "cancel": "Annuler",
+  "kind": "Type",
+  "kindHard": "Forte",
+  "kindSoft": "Souple",
+  "kindHardTooltip": "Une panne du parent supprime les notifications de ce contrôle",
+  "kindSoftTooltip": "Informatif — les notifications continuent",
+  "description": "Description",
+  "descriptionPlaceholder": "Facultatif — quelle est la relation ?",
+  "noDependencies": "Aucune dépendance configurée. Ajoutez un parent ci-dessus pour activer le regroupement d'incidents.",
+  "noDependents": "Aucun contrôle ne dépend encore de celui-ci.",
+  "remove": "Supprimer la dépendance",
+  "removeConfirmTitle": "Supprimer la dépendance vers {{parent}} ?",
+  "removeConfirmBody": "Cela arrête le regroupement d'incidents pour ce lien.",
+  "removeConfirmAction": "Supprimer",
+  "errors": {
+    "cycle": "Cela créerait un cycle : {{path}}",
+    "duplicate": "Déjà parent.",
+    "notFound": "Contrôle introuvable.",
+    "self": "Un contrôle ne peut pas dépendre de lui-même.",
+    "generic": "Échec de l'ajout de la dépendance."
+  },
+  "pickCheck": "Choisir un contrôle…",
+  "searchChecks": "Rechercher un contrôle…",
+  "noMatches": "Aucun résultat.",
+  "list": {
+    "title": "Graphe de dépendances",
+    "subtitle": "Toutes les dépendances dirigées entre les contrôles de cette organisation.",
+    "empty": "Aucune dépendance dans cette organisation pour le moment.",
+    "filter": "Filtrer par nom de contrôle",
+    "parent": "Parent",
+    "child": "Enfant",
+    "kind": "Type",
+    "description": "Description"
+  }
+}

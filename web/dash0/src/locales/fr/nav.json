@@ -2,6 +2,7 @@
   "dashboard": "Tableau de bord",
   "checks": "Contrôles",
   "incidents": "Incidents",
+  "dependencies": "Dépendances",
   "events": "Événements",
   "statusPages": "Pages de statut",
   "badges": "Badges",

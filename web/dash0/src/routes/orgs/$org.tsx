@@ -153,7 +153,7 @@ function Breadcrumbs({ org }: { org: string }) {
     return (
       <>
         {incidentUid ? (
-          <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }} className={linkClass}><AlertTriangle className={iconClass} />{t("incidents")}</Link>
+          <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }} className={linkClass}><AlertTriangle className={iconClass} />{t("incidents")}</Link>
         ) : (
           <span className={activeClass}><AlertTriangle className={iconClass} />{t("incidents")}</span>
         )}

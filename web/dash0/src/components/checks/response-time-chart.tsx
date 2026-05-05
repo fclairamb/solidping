@@ -235,6 +235,17 @@ export function ResponseTimeChart({
     onSettingsChange?.(timeRange, full);
   };
 
+  const handleDotClick = (uid: string) => {
+    if (selectedUid === uid) {
+      navigate({
+        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+        params: { org, checkUid, resultUid: uid },
+      });
+      return;
+    }
+    setSelectedUid(uid);
+  };
+
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
   // Each timestamp lives in exactly one tier (the aggregator deletes source rows
@@ -601,18 +612,7 @@ export function ResponseTimeChart({
                       style={{ cursor: "pointer" }}
                       onClick={(e) => {
                         e.stopPropagation();
-                        if (selectedUid === uid) {
-                          navigate({
-                            to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-                            params: {
-                              org,
-                              checkUid,
-                              resultUid: uid,
-                            },
-                          });
-                          return;
-                        }
-                        setSelectedUid(uid);
+                        handleDotClick(uid);
                       }}
                     >
                       <title>
@@ -623,7 +623,40 @@ export function ResponseTimeChart({
                     </circle>
                   );
                 }}
-                activeDot={{ r: 5, style: { cursor: "pointer" } }}
+                activeDot={(props) => {
+                  const dotProps = props as {
+                    cx?: number;
+                    cy?: number;
+                    payload?: ChartPoint;
+                    key?: React.Key | null;
+                  };
+                  const { cx, cy, payload, key } = dotProps;
+                  const reactKey =
+                    key == null ? undefined : (key as React.Key);
+                  if (cx == null || cy == null || !payload?.uid) {
+                    return <g key={reactKey} />;
+                  }
+                  const uid = payload.uid;
+                  const fill =
+                    payload.status === "down" ||
+                    payload.status === "unknown"
+                      ? COLOR_DOWN
+                      : COLOR_UP;
+                  return (
+                    <circle
+                      key={reactKey}
+                      cx={cx}
+                      cy={cy}
+                      r={5}
+                      fill={fill}
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDotClick(uid);
+                      }}
+                    />
+                  );
+                }}
               />
             </AreaChart>
           </ResponsiveContainer>

@@ -14,10 +14,14 @@ import {
 import { toast } from "sonner";
 import {
   useIncident,
+  useIncidents,
   useAcknowledgeIncident,
   useResolveIncident,
   useEvents,
+  type IncidentDetail,
 } from "@/api/hooks";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -170,7 +174,7 @@ function IncidentDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground mb-4">{t("incidentNotFound")}</p>
-        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }}>
+        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }}>
           <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
       </div>
@@ -182,13 +186,14 @@ function IncidentDetailPage() {
 
   return (
     <div className="space-y-6">
+      <CausedByBanner org={org} incident={incident} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             size="icon"
             onClick={() =>
-              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const } })
+              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
             }
           >
             <ArrowLeft className="h-4 w-4" />
@@ -364,6 +369,8 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
+      <BlastRadiusCard org={org} incident={incident} />
+
       {events?.data && events.data.length > 0 && (
         <Card>
           <CardHeader>
@@ -403,5 +410,132 @@ function IncidentDetailPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+function CausedByBanner({
+  org,
+  incident,
+}: {
+  org: string;
+  incident: IncidentDetail;
+}) {
+  const { t } = useTranslation("incidents");
+  const { data: parent } = useIncident(org, incident.causedByIncidentUid ?? "");
+
+  if (!incident.causedByIncidentUid) return null;
+
+  const parentName =
+    parent?.checkName || parent?.checkSlug || t("rollup.parentLoading");
+
+  if (incident.pagingSuppressed) {
+    return (
+      <Alert className="border-yellow-500/50 bg-yellow-500/10 text-yellow-900 dark:text-yellow-100">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          <Trans
+            t={t}
+            i18nKey="rollup.causedByActive"
+            values={{ parent: parentName }}
+            components={{
+              strong: (
+                <Link
+                  to="/orgs/$org/incidents/$incidentUid"
+                  params={{ org, incidentUid: incident.causedByIncidentUid }}
+                  className="font-semibold underline"
+                />
+              ),
+            }}
+          />
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert className="border-green-500/50 bg-green-500/10 text-green-900 dark:text-green-100">
+      <CheckCircle className="h-4 w-4" />
+      <AlertDescription>
+        {t("rollup.causedByPast", {
+          parent: parentName,
+          resolvedAt: parent?.resolvedAt
+            ? new Date(parent.resolvedAt).toLocaleString()
+            : "",
+        })}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function BlastRadiusCard({
+  org,
+  incident,
+}: {
+  org: string;
+  incident: IncidentDetail;
+}) {
+  const { t } = useTranslation("incidents");
+  const { data: children } = useIncidents(org, {
+    causedByIncidentUid: incident.uid,
+    size: 50,
+    refetchInterval: incident.state === "active" ? 30_000 : undefined,
+  });
+
+  const items = children?.data ?? [];
+  if (items.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {t("rollup.blastRadiusTitle", { count: items.length })}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("detail.checkLabel")}</TableHead>
+              <TableHead>{t("detail.state", { defaultValue: "State" })}</TableHead>
+              <TableHead>{t("rollup.rolledUpBadge")}</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((child) => (
+              <TableRow key={child.uid}>
+                <TableCell>
+                  {child.checkName || child.checkSlug || child.checkUid}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={child.state === "active" ? "destructive" : "secondary"}>
+                    {child.state === "active" ? t("active") : t("resolved")}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {child.pagingSuppressed && (
+                    <Badge variant="outline">{t("rollup.rolledUpBadge")}</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {child.uid && (
+                    <Link
+                      to="/orgs/$org/incidents/$incidentUid"
+                      params={{ org, incidentUid: child.uid }}
+                      className="text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {t("rollup.blastRadiusFooter")}
+        </p>
+      </CardContent>
+    </Card>
   );
 }

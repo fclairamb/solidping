@@ -74,5 +74,17 @@
     "hoursAgo": "il y a {{count}}h",
     "minutesAgo": "il y a {{count}}min",
     "justNow": "à l'instant"
+  },
+  "rollup": {
+    "causedByActive": "Regroupé sous l'incident <strong>{{parent}}</strong> — les notifications sont suspendues tant que la cause racine est ouverte.",
+    "parentLoading": "l'incident racine",
+    "causedByPast": "Cet incident a été regroupé sous {{parent}} jusqu'à {{resolvedAt}}. Les notifications ont été émises alors.",
+    "blastRadiusTitle": "Portée ({{count}} affecté(s))",
+    "blastRadiusFooter": "Les notifications seront émises pour tout enfant encore en panne à la résolution de cet incident.",
+    "blastRadiusEmpty": "Aucun incident enfant n'est actuellement regroupé sous celui-ci.",
+    "rolledUpBadge": "regroupé",
+    "showRolledUp": "Afficher les incidents regroupés",
+    "pagingSuppressed": "notifications suspendues",
+    "rolledUpInactive": "regroupé"
   }
 }

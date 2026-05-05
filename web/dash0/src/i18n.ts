@@ -14,6 +14,7 @@ import enStatusPages from "./locales/en/statusPages.json";
 import enBadges from "./locales/en/badges.json";
 import enDashboard from "./locales/en/dashboard.json";
 import enFeedback from "./locales/en/feedback.json";
+import enDependencies from "./locales/en/dependencies.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -27,6 +28,7 @@ import frStatusPages from "./locales/fr/statusPages.json";
 import frBadges from "./locales/fr/badges.json";
 import frDashboard from "./locales/fr/dashboard.json";
 import frFeedback from "./locales/fr/feedback.json";
+import frDependencies from "./locales/fr/dependencies.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -40,6 +42,7 @@ import deStatusPages from "./locales/de/statusPages.json";
 import deBadges from "./locales/de/badges.json";
 import deDashboard from "./locales/de/dashboard.json";
 import deFeedback from "./locales/de/feedback.json";
+import deDependencies from "./locales/de/dependencies.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -53,6 +56,7 @@ import esStatusPages from "./locales/es/statusPages.json";
 import esBadges from "./locales/es/badges.json";
 import esDashboard from "./locales/es/dashboard.json";
 import esFeedback from "./locales/es/feedback.json";
+import esDependencies from "./locales/es/dependencies.json";
 
 i18n
   .use(LanguageDetector)
@@ -73,6 +77,7 @@ i18n
         badges: enBadges,
         dashboard: enDashboard,
         feedback: enFeedback,
+        dependencies: enDependencies,
       },
       fr: {
         common: frCommon,
@@ -88,6 +93,7 @@ i18n
         badges: frBadges,
         dashboard: frDashboard,
         feedback: frFeedback,
+        dependencies: frDependencies,
       },
       de: {
         common: deCommon,
@@ -103,6 +109,7 @@ i18n
         badges: deBadges,
         dashboard: deDashboard,
         feedback: deFeedback,
+        dependencies: deDependencies,
       },
       es: {
         common: esCommon,
@@ -118,6 +125,7 @@ i18n
         badges: esBadges,
         dashboard: esDashboard,
         feedback: esFeedback,
+        dependencies: esDependencies,
       },
     },
     defaultNS: "common",

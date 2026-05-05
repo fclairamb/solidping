@@ -1,0 +1,43 @@
+{
+  "title": "Dependencias",
+  "dependsOn": "Depende de",
+  "dependsOnHelp": "Esta verificación falla cuando estas fallan",
+  "dependedOnBy": "Dependientes",
+  "dependedOnByHelp": "Estas fallan cuando esta falla",
+  "addDependency": "Añadir dependencia",
+  "saveDependency": "Guardar",
+  "cancel": "Cancelar",
+  "kind": "Tipo",
+  "kindHard": "Fuerte",
+  "kindSoft": "Suave",
+  "kindHardTooltip": "Un fallo de este padre suprime las notificaciones de esta verificación",
+  "kindSoftTooltip": "Informativo — las notificaciones se siguen enviando",
+  "description": "Descripción",
+  "descriptionPlaceholder": "Opcional — ¿cuál es la relación?",
+  "noDependencies": "No hay dependencias configuradas. Añade un padre arriba para iniciar la agrupación de incidentes.",
+  "noDependents": "Nada depende todavía de esta verificación.",
+  "remove": "Eliminar dependencia",
+  "removeConfirmTitle": "¿Eliminar la dependencia de {{parent}}?",
+  "removeConfirmBody": "Esto detiene la agrupación de incidentes para esta arista.",
+  "removeConfirmAction": "Eliminar",
+  "errors": {
+    "cycle": "Esto crearía un ciclo: {{path}}",
+    "duplicate": "Ya es un padre.",
+    "notFound": "Verificación no encontrada.",
+    "self": "Una verificación no puede depender de sí misma.",
+    "generic": "No se pudo añadir la dependencia."
+  },
+  "pickCheck": "Elegir una verificación…",
+  "searchChecks": "Buscar verificaciones…",
+  "noMatches": "Sin coincidencias.",
+  "list": {
+    "title": "Grafo de dependencias",
+    "subtitle": "Todas las dependencias dirigidas entre verificaciones de esta organización.",
+    "empty": "Aún no hay dependencias en esta organización.",
+    "filter": "Filtrar por nombre de verificación",
+    "parent": "Padre",
+    "child": "Hijo",
+    "kind": "Tipo",
+    "description": "Descripción"
+  }
+}

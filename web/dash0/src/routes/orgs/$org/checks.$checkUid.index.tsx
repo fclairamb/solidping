@@ -58,6 +58,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
+import { DependenciesCard } from "@/components/checks/dependencies-card";
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -827,6 +828,8 @@ function CheckDetailPage() {
         </Card>
       </div>
 
+      <DependenciesCard org={org} checkUid={checkUid} />
+
       <Card>
         <CardHeader>
           <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
@@ -923,15 +926,22 @@ function CheckDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          incident.state === "active"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {incident.state}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge
+                          variant={
+                            incident.state === "active"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {incident.state}
+                        </Badge>
+                        {incident.pagingSuppressed && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("incidents:rollup.rolledUpBadge")}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       <IncidentDuration incident={incident} />
