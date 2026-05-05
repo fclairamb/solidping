@@ -78,6 +78,12 @@ type EncryptionConfig struct {
 	// SP_ENCRYPTION_MASTER_KEY_FILE. Wins over MasterKey when both set —
 	// matches the Kubernetes secret-mount pattern.
 	MasterKeyFile string `koanf:"master_key_file"`
+	// AutoMigrate runs the encrypt-credentials sweep at startup when a
+	// master key is configured. Defaults to true; set
+	// SP_ENCRYPTION_AUTO_MIGRATE=false to opt out and run the CLI command
+	// manually instead. Idempotent either way — only rows still in
+	// plaintext are touched.
+	AutoMigrate bool `koanf:"auto_migrate"`
 }
 
 // PrometheusConfig contains Prometheus metrics endpoint configuration.
@@ -330,6 +336,9 @@ func Load() (*Config, error) {
 		Prometheus: PrometheusConfig{
 			Enabled: true,
 			Path:    "/metrics",
+		},
+		Encryption: EncryptionConfig{
+			AutoMigrate: true,
 		},
 	}
 

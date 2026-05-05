@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 )
@@ -25,6 +27,9 @@ var (
 	ErrMissingIncidentUID = errors.New("incidentUid is required")
 	// ErrMissingEventType is returned when eventType is not provided.
 	ErrMissingEventType = errors.New("eventType is required")
+	// ErrEncryptionDisabled is returned when a connection has encrypted
+	// settings but the credentials service is not available (no master key).
+	ErrEncryptionDisabled = errors.New("connection has encrypted settings but encryption is disabled")
 )
 
 // NotificationJobConfig configures notification parameters.
@@ -77,6 +82,25 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	connection, err := jctx.DBService.GetIntegrationConnection(ctx, r.config.ConnectionUID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrConnectionNotFound, err)
+	}
+
+	// Decrypt and merge any encrypted settings (slack tokens, webhook
+	// URLs, opsgenie keys, etc.) before passing them down to the sender.
+	// On decrypt failure we don't ship a half-credential — fail the job.
+	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
+		if jctx.Services.Credentials == nil || !jctx.Services.Credentials.Enabled() {
+			return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
+		}
+
+		private, decErr := jctx.Services.Credentials.DecryptForOrg(
+			ctx, connection.OrganizationUID, *connection.SettingsPrivate,
+		)
+		if decErr != nil {
+			return fmt.Errorf("decrypt connection settings: %w", decErr)
+		}
+
+		merged := credentials.MergeConfig(connection.Settings, private)
+		connection.Settings = models.JSONMap(merged)
 	}
 
 	// 2. Load incident

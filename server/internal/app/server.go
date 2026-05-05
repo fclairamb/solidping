@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -27,7 +28,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/credmigrate"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -215,6 +219,24 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EmailFormatter = emailFormatter
 
+	// Credentials encryption service. The master key comes from env (or a
+	// file mount) — never persisted server-side. With no key configured,
+	// .Enabled() is false and write paths fall back to plaintext storage.
+	credSvc, err := BuildCredentialsService(cfg, dbService)
+	if err != nil {
+		return nil, fmt.Errorf("init credentials service: %w", err)
+	}
+	svcList.Credentials = credSvc
+
+	if !credSvc.Enabled() {
+		// Plaintext-fallback warning at startup so an unconfigured prod
+		// install can be spotted in logs.
+		//
+		//nolint:sloglint // startup-only, no request context
+		slog.Warn("credentials encryption disabled — secrets stored in plaintext",
+			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
+	}
+
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
 		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
@@ -375,7 +397,9 @@ func (s *Server) setupRoutes() {
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)
-	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService)
+	s.mcpHandler = mcp.NewHandler(
+		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService, s.services.Credentials,
+	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
@@ -391,7 +415,7 @@ func (s *Server) setupRoutes() {
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
-	checksService := checks.NewService(s.dbService, s.services.EventNotifier)
+	checksService := checks.NewService(s.dbService, s.services.EventNotifier, s.services.Credentials)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -464,6 +488,7 @@ func (s *Server) setupRoutes() {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc),
+		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
 	workerAPI := api.NewGroup("/workers")
@@ -600,7 +625,7 @@ func (s *Server) setupRoutes() {
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 
 	// Integration connections routes (authentication required)
-	connectionsService := connections.NewService(s.dbService)
+	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
 	connectionsHandler := connections.NewHandler(connectionsService, s.config)
 	orgConnections := api.NewGroup("/orgs/:org/connections").Use(authMiddleware.RequireAuth)
 	orgConnections.GET("", connectionsHandler.ListConnections)
@@ -1416,6 +1441,76 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	return nil
 }
 
+// MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the
+// encrypted columns when a master key is configured and AutoMigrate is on
+// (default). Idempotent — only rows still in plaintext are touched. Logs
+// a summary; errors propagate so the operator notices at startup.
+//
+// When credentials are *disabled* and the DB already holds encrypted rows
+// (operator removed the master key), we log a loud WARN — those rows
+// can't be decrypted at run time and workers will skip them.
+func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
+	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
+		s.warnIfEncryptedRowsExist(ctx)
+
+		return nil
+	}
+
+	if !s.config.Encryption.AutoMigrate {
+		slog.InfoContext(ctx, "encrypt-credentials auto-migrate disabled by config")
+
+		return nil
+	}
+
+	stats, err := credmigrate.Run(ctx, s.dbService, s.services.Credentials, credmigrate.Options{
+		Logger: slog.Default(),
+	})
+	if err != nil {
+		return fmt.Errorf("auto-migrate credentials: %w", err)
+	}
+
+	if stats.ChecksMigrated > 0 || stats.ConnectionsMigrated > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext credentials at startup",
+			"checksMigrated", stats.ChecksMigrated,
+			"connectionsMigrated", stats.ConnectionsMigrated)
+	}
+
+	return nil
+}
+
+// warnIfEncryptedRowsExist scans the secret-bearing tables for non-NULL
+// private columns when encryption is disabled and emits a single WARN
+// per startup. The query is a counting scan, not a row fetch — cheap
+// enough to run unconditionally.
+func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
+	if s.dbService == nil {
+		return
+	}
+
+	bun := s.dbService.DB()
+
+	checkCount, err := bun.NewSelect().Model((*models.Check)(nil)).
+		Where("config_private IS NOT NULL AND config_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	connCount, err := bun.NewSelect().Model((*models.IntegrationConnection)(nil)).
+		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	if checkCount == 0 && connCount == 0 {
+		return
+	}
+
+	//nolint:sloglint // startup-only; no request context
+	slog.Warn("encrypted rows present but credentials encryption is disabled — these rows are unreadable",
+		"checks", checkCount, "connections", connCount,
+		"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE) to the original key")
+}
+
 // InitializeTestData creates test data for test mode.
 // This should be called after Initialize and before Start.
 func (s *Server) InitializeTestData(ctx context.Context) error {
@@ -1433,4 +1528,76 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// BuildCredentialsService loads the KEK (env or file), constructs the
+// credentials service, and wires the per-org DEK store against the
+// existing parameters table. Returns a disabled service (no error) when
+// no master key is configured — that is the documented fallback.
+//
+// Exported so the encrypt-credentials CLI command can build the same
+// service the server uses, without duplicating the wiring.
+func BuildCredentialsService(cfg *config.Config, dbService db.Service) (credentials.Service, error) {
+	kek, err := loadEncryptionMasterKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	store := credentials.ParamStore{
+		Load: func(ctx context.Context, orgUID, key string) (json.RawMessage, bool, error) {
+			param, getErr := dbService.GetOrgParameter(ctx, orgUID, key)
+			if getErr != nil {
+				return nil, false, getErr
+			}
+			if param == nil {
+				return nil, false, nil
+			}
+			raw, mErr := json.Marshal(param.Value)
+			if mErr != nil {
+				return nil, false, mErr
+			}
+			return raw, true, nil
+		},
+		Save: func(ctx context.Context, orgUID, key string, value any, secret bool) error {
+			return dbService.SetOrgParameter(ctx, orgUID, key, value, secret)
+		},
+	}
+
+	return credentials.NewService(kek, store)
+}
+
+// loadEncryptionMasterKey returns the raw KEK bytes from the env-derived
+// config. Returns nil (with no error) when no key is configured — that
+// disables encryption. Both base64 and base64-without-padding are
+// accepted, matching what kubectl create secret typically emits.
+func loadEncryptionMasterKey(cfg *config.Config) ([]byte, error) {
+	source := cfg.Encryption.MasterKey
+	if cfg.Encryption.MasterKeyFile != "" {
+		// File path wins when both are set — matches the spec contract.
+		// Read lazily here so a missing file fails loudly at startup
+		// rather than silently disabling encryption.
+		bytes, err := readMasterKeyFile(cfg.Encryption.MasterKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read master key file: %w", err)
+		}
+		source = bytes
+	}
+
+	if source == "" {
+		return nil, nil
+	}
+
+	return credentials.DecodeMasterKey(source)
+}
+
+// readMasterKeyFile slurps the file at path and returns its trimmed
+// contents. Trim is important — env-mounted secrets often have a trailing
+// newline. The contents are still treated as a base64 string by the
+// caller, so any other whitespace would break decoding anyway.
+func readMasterKeyFile(path string) (string, error) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bytes)), nil
 }

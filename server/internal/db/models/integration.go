@@ -32,9 +32,14 @@ type IntegrationConnection struct {
 	Enabled         bool           `bun:"enabled,notnull,default:true"`
 	IsDefault       bool           `bun:"is_default,notnull,default:false"`
 	Settings        JSONMap        `bun:"settings,type:jsonb,notnull"`
-	CreatedAt       time.Time      `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time      `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time     `bun:"deleted_at"`
+	// SettingsPrivate / SettingsPrivateKeys mirror the credential-encryption
+	// shape used on Check.Config. Tokens, webhook URLs, API keys live here
+	// as an AES-GCM envelope at rest.
+	SettingsPrivate     *string    `bun:"settings_private,type:text,nullzero"`
+	SettingsPrivateKeys *string    `bun:"settings_private_keys,type:text,nullzero"`
+	CreatedAt           time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt           time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt           *time.Time `bun:"deleted_at"`
 
 	// Relations
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
@@ -59,10 +64,13 @@ func NewIntegrationConnection(orgUID string, connType ConnectionType, name strin
 
 // IntegrationConnectionUpdate represents fields that can be updated.
 type IntegrationConnectionUpdate struct {
-	Name      *string
-	Enabled   *bool
-	IsDefault *bool
-	Settings  *JSONMap
+	Name                 *string
+	Enabled              *bool
+	IsDefault            *bool
+	Settings             *JSONMap
+	SettingsPrivate      *string
+	SettingsPrivateKeys  *string
+	ClearSettingsPrivate bool
 }
 
 // ListIntegrationConnectionsFilter represents filter options for listing connections.

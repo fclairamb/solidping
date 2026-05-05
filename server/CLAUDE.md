@@ -159,6 +159,9 @@ Aggregated-only fields (period_type ∈ 'hour', 'day', 'month'):
 
 - `created_at` - Insertion timestamp (set by DB default)
 
+### Credential Encryption
+Secret-bearing fields in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column (queryable JSONB) and an AES-256-GCM-encrypted private column (`*_private` TEXT envelope) when `SP_ENCRYPTION_MASTER_KEY` (or `SP_ENCRYPTION_MASTER_KEY_FILE`) is set. Per-org DEKs wrapped by the master KEK live in `parameters` (`secret=true`). When unset, secrets fall back to plaintext (intentional V1 fallback for self-hosted, logged at startup). PATCH semantics: secret keys absent from the request preserve the encrypted value; explicit empty/null clears. Workers receive the merged plaintext over TLS — server-side decrypt happens in `ClaimJobs`. The dashboard never sees secrets — `GET` returns the public side plus `configPrivateKeys: [...]` for placeholder rendering. See `internal/crypto/credentials/` and `internal/credmigrate/`. Threat model: protects against DB theft only — not against process compromise, malicious admins, or worker log leakage.
+
 ### Monitoring System Features
 - **Multi-tenancy**: All resources scoped to organizations via `organization_uid`
 - **Soft deletes**: Most tables support `deleted_at` for recovery
