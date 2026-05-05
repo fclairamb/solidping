@@ -9,5 +9,10 @@
   "submit": "Envoyer",
   "sending": "Envoi…",
   "success": "Merci ! Votre rapport a été envoyé.",
-  "error": "Une erreur est survenue. Veuillez réessayer."
+  "error": "Une erreur est survenue. Veuillez réessayer.",
+  "tool_select": "Sélection",
+  "tool_rect": "Cadre",
+  "tool_arrow": "Flèche",
+  "tool_text": "Texte",
+  "undo": "Annuler"
 }
