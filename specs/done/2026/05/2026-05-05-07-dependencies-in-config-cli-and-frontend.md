@@ -82,3 +82,27 @@ Inherits the Phase 1 verification checklist (curl smoke tests for export/import/
 - **CLI `set` from YAML**: pulls in a yaml dep. If the codebase doesn't already have one, JSON-only is fine for V1 — flag it during impl.
 - **Frontend create path is two trips** (POST check, then per-edge POST). Mid-flight failures (check created, edges not) leave a check with no parents — surface a clear retry CTA rather than rolling back the create. A future "POST /checks with dependsOn" would close this.
 - **Atomicity refactor radius**: passing `*bun.Tx` through `UpdateCheck` may touch a lot of callers. If radius blows the timebox, ship CLI + frontend + tests first and put atomicity in its own PR — the visible bug (check updated despite cycle error) is rare and recoverable by re-saving.
+
+## Implementation status (carry-overs)
+
+The following items did not ship in this PR and remain follow-ups:
+
+- **`sp checks export` / `sp checks import` CLI commands.** These do not exist
+  yet — the spec wrongly assumed they did (only the server-side endpoints
+  exist). Adding the CLI commands plus the `--with-deps[=true]` opt-out belong
+  in a separate spec.
+- **OpenAPI client regeneration.** The dependency endpoints are documented in
+  `openapi.yaml` and the `dependsOn` field is exposed on `UpsertCheckRequest`,
+  but `cd server/pkg/client && make generate` currently fails on a pre-existing
+  `vmware-labs/yaml-jsonpath` ↔ `gopkg.in/yaml.v3` API mismatch. The CLI talks
+  to the new endpoints via hand-written raw-HTTP wrappers in `client/client.go`
+  in the meantime; once the toolchain is bumped, those wrappers can be replaced
+  by the generated methods.
+- **Atomicity fix on PUT-by-slug.** Skipped for blast-radius reasons (the spec
+  itself authorizes this if the refactor blows the timebox). The visible bug —
+  check updated despite a cycle error in `dependsOn` — is rare and recoverable
+  by re-saving without the cycle. Tracked separately.
+- **Integration tests for the Phase 1 server work.** Phase 1's existing tests
+  cover the load-bearing paths; a dedicated golden-file export snapshot and the
+  full PUT-by-slug semantics matrix (absent / `[]` / non-empty) remain a
+  follow-up.
