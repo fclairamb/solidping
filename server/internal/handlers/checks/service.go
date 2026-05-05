@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -1273,22 +1274,31 @@ type ExportDocument struct {
 
 // ExportCheck represents a single check in the export format.
 type ExportCheck struct {
-	Name                     string            `json:"name"`
-	Slug                     string            `json:"slug"`
-	Description              string            `json:"description,omitempty"`
-	Type                     string            `json:"type"`
-	Config                   map[string]any    `json:"config"`
-	Regions                  []string          `json:"regions,omitempty"`
-	Labels                   map[string]string `json:"labels,omitempty"`
-	Enabled                  bool              `json:"enabled"`
-	Internal                 bool              `json:"internal,omitempty"`
-	Period                   string            `json:"period,omitempty"`
-	Group                    string            `json:"group,omitempty"`
-	IncidentThreshold        int               `json:"incidentThreshold,omitempty"`
-	EscalationThreshold      int               `json:"escalationThreshold,omitempty"`
-	RecoveryThreshold        int               `json:"recoveryThreshold,omitempty"`
-	ReopenCooldownMultiplier *int              `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int              `json:"maxAdaptiveIncrease,omitempty"`
+	Name                     string               `json:"name"`
+	Slug                     string               `json:"slug"`
+	Description              string               `json:"description,omitempty"`
+	Type                     string               `json:"type"`
+	Config                   map[string]any       `json:"config"`
+	Regions                  []string             `json:"regions,omitempty"`
+	Labels                   map[string]string    `json:"labels,omitempty"`
+	Enabled                  bool                 `json:"enabled"`
+	Internal                 bool                 `json:"internal,omitempty"`
+	Period                   string               `json:"period,omitempty"`
+	Group                    string               `json:"group,omitempty"`
+	IncidentThreshold        int                  `json:"incidentThreshold,omitempty"`
+	EscalationThreshold      int                  `json:"escalationThreshold,omitempty"`
+	RecoveryThreshold        int                  `json:"recoveryThreshold,omitempty"`
+	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
+	MaxAdaptiveIncrease      *int                 `json:"maxAdaptiveIncrease,omitempty"`
+	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
+}
+
+// ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
+// export documents are portable across instances where UIDs differ.
+type ExportedDependency struct {
+	ParentSlug  string `json:"parentSlug"`
+	Kind        string `json:"kind"`
+	Description string `json:"description,omitempty"`
 }
 
 // ImportResult represents the result of an import operation.
@@ -1351,6 +1361,44 @@ func (s *Service) ExportChecks(
 		groupMap[g.UID] = g.Name
 	}
 
+	// Fetch all dependencies in this org and group by child UID. Slug-keyed
+	// at write time below so the export doc is portable.
+	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, org.UID)
+	if err != nil {
+		return nil, err
+	}
+
+	slugByUID := make(map[string]string, len(checks))
+	for _, c := range checks {
+		if c.Slug != nil {
+			slugByUID[c.UID] = *c.Slug
+		}
+	}
+
+	depsByChild := make(map[string][]ExportedDependency, len(checks))
+	for _, dep := range allDeps {
+		parentSlug, ok := slugByUID[dep.ParentCheckUID]
+		// Skip edges whose parent isn't in the exported set (filtered out by
+		// the caller's labels/group filter, or otherwise unreachable). The
+		// dep is left intact in the DB; the export simply can't represent it.
+		if !ok || parentSlug == "" {
+			continue
+		}
+
+		entry := ExportedDependency{ParentSlug: parentSlug, Kind: string(dep.Kind)}
+		if dep.Description != nil {
+			entry.Description = *dep.Description
+		}
+
+		depsByChild[dep.ChildCheckUID] = append(depsByChild[dep.ChildCheckUID], entry)
+	}
+
+	for childUID := range depsByChild {
+		sort.Slice(depsByChild[childUID], func(i, j int) bool {
+			return depsByChild[childUID][i].ParentSlug < depsByChild[childUID][j].ParentSlug
+		})
+	}
+
 	// Build export checks
 	exportChecks := make([]ExportCheck, 0, len(checks))
 	for _, check := range checks {
@@ -1394,6 +1442,10 @@ func (s *Service) ExportChecks(
 			for _, label := range labels {
 				exported.Labels[label.Key] = label.Value
 			}
+		}
+
+		if deps := depsByChild[check.UID]; len(deps) > 0 {
+			exported.DependsOn = deps
 		}
 
 		exportChecks = append(exportChecks, exported)
