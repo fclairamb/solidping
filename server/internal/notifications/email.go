@@ -4,10 +4,44 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
+
+// ackTokenTTL mirrors the spec for magic-link tokens — valid for 7 days from
+// incident start. Kept short enough to limit the impact of a leaked email.
+const ackTokenTTL = 7 * 24 * time.Hour
+
+// canAckEvent reports whether the event type produces an actionable incident
+// in the dashboard — only those events get a magic-link "acknowledge" button
+// in the email body. A resolved incident has nothing to ack.
+func canAckEvent(eventType string) bool {
+	switch eventType {
+	case eventTypeIncidentCreated, eventTypeIncidentEscalated, eventTypeIncidentReopened:
+		return true
+	default:
+		return false
+	}
+}
+
+// buildAckURL composes the magic-link URL for a recipient. Returns "" when
+// any of the inputs needed to make a usable URL are missing — the caller
+// then falls back to the unpersonalized email body.
+func buildAckURL(baseURL, orgSlug, incidentUID, recipientEmail string, secret []byte, exp time.Time) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" || orgSlug == "" || incidentUID == "" || recipientEmail == "" || len(secret) == 0 {
+		return ""
+	}
+
+	token := incidentlinks.Sign(secret, incidentUID, recipientEmail, exp)
+
+	return fmt.Sprintf("%s/api/v1/orgs/%s/incidents/%s/ack?token=%s",
+		baseURL, orgSlug, incidentUID, token)
+}
 
 // Event type constants.
 const (
@@ -52,14 +86,22 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return ErrNoValidRecipients
 	}
 
-	content := s.buildEmailContent(payload)
+	prefix, _ := payload.Connection.Settings["subject_prefix"].(string)
 
-	// Add subject prefix if configured
-	if prefix, ok := payload.Connection.Settings["subject_prefix"].(string); ok && prefix != "" {
+	// For events that produce an actionable incident (created/escalated/
+	// reopened), send one personalized email per recipient so each can carry
+	// its own one-click ack link. Resolved goes out as a single broadcast —
+	// there's nothing to ack.
+	if canAckEvent(payload.EventType) {
+		return s.sendPerRecipient(ctx, jctx, payload, emailAddresses, prefix)
+	}
+
+	content := s.buildEmailContent(payload, "")
+
+	if prefix != "" {
 		content.subject = prefix + " " + content.subject
 	}
 
-	// Build and send email message
 	msg := &email.Message{
 		Recipients: email.Recipients{To: emailAddresses},
 		Subject:    content.subject,
@@ -68,7 +110,46 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	_, err := jctx.Services.EmailSender.Send(ctx, msg)
+
 	return err
+}
+
+// sendPerRecipient sends one email per recipient with a personalized magic-
+// link ack URL. The first send error short-circuits — the job runner will
+// retry the whole batch, which is fine because email delivery itself is
+// idempotent at the recipient level (worst case: a duplicate notification).
+func (s *EmailSender) sendPerRecipient(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	payload *Payload,
+	recipients []string,
+	prefix string,
+) error {
+	exp := payload.Incident.StartedAt.Add(ackTokenTTL)
+	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
+	baseURL := jctx.AppConfig.Server.BaseURL
+
+	for _, recipient := range recipients {
+		ackURL := buildAckURL(baseURL, payload.OrgSlug, payload.Incident.UID, recipient, secret, exp)
+		content := s.buildEmailContent(payload, ackURL)
+
+		if prefix != "" {
+			content.subject = prefix + " " + content.subject
+		}
+
+		msg := &email.Message{
+			Recipients: email.Recipients{To: []string{recipient}},
+			Subject:    content.subject,
+			HTML:       content.htmlBody,
+			Text:       content.textBody,
+		}
+
+		if _, err := jctx.Services.EmailSender.Send(ctx, msg); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 type emailContent struct {
@@ -77,7 +158,7 @@ type emailContent struct {
 	textBody string
 }
 
-func (s *EmailSender) buildEmailContent(payload *Payload) emailContent {
+func (s *EmailSender) buildEmailContent(payload *Payload, ackURL string) emailContent {
 	checkName := "Unknown check"
 	if payload.Check.Name != nil {
 		checkName = *payload.Check.Name
@@ -89,8 +170,8 @@ func (s *EmailSender) buildEmailContent(payload *Payload) emailContent {
 	case eventTypeIncidentCreated:
 		return emailContent{
 			fmt.Sprintf("[DOWN] %s is down", checkName),
-			s.buildIncidentCreatedHTML(checkName, payload),
-			s.buildIncidentCreatedText(checkName, payload),
+			s.buildIncidentCreatedHTML(checkName, payload) + ackHTMLBlock(ackURL),
+			s.buildIncidentCreatedText(checkName, payload) + ackTextBlock(ackURL),
 		}
 	case eventTypeIncidentResolved:
 		return emailContent{
@@ -101,14 +182,14 @@ func (s *EmailSender) buildEmailContent(payload *Payload) emailContent {
 	case eventTypeIncidentEscalated:
 		return emailContent{
 			fmt.Sprintf("[ESCALATED] %s incident escalated", checkName),
-			s.buildIncidentEscalatedHTML(checkName, payload),
-			s.buildIncidentEscalatedText(checkName, payload),
+			s.buildIncidentEscalatedHTML(checkName, payload) + ackHTMLBlock(ackURL),
+			s.buildIncidentEscalatedText(checkName, payload) + ackTextBlock(ackURL),
 		}
 	case eventTypeIncidentReopened:
 		return emailContent{
 			fmt.Sprintf("[REOPENED] %s incident reopened (relapse #%d)", checkName, payload.Incident.RelapseCount),
-			s.buildIncidentReopenedHTML(checkName, payload),
-			s.buildIncidentReopenedText(checkName, payload),
+			s.buildIncidentReopenedHTML(checkName, payload) + ackHTMLBlock(ackURL),
+			s.buildIncidentReopenedText(checkName, payload) + ackTextBlock(ackURL),
 		}
 	default:
 		return emailContent{
@@ -117,6 +198,33 @@ func (s *EmailSender) buildEmailContent(payload *Payload) emailContent {
 			fmt.Sprintf("Incident update for %s: %s", checkName, payload.EventType),
 		}
 	}
+}
+
+// ackHTMLBlock returns the inline HTML for the magic-link ack button.
+// Returns "" when ackURL is empty so the body looks identical to before for
+// notifications without a link (resolved events, missing config, etc.).
+func ackHTMLBlock(ackURL string) string {
+	if ackURL == "" {
+		return ""
+	}
+
+	return fmt.Sprintf(
+		`<p><a href="%s" style="background:#1976d2;color:#fff;padding:10px 16px;`+
+			`border-radius:4px;text-decoration:none;display:inline-block;">`+
+			`Acknowledge incident</a></p>`+
+			`<p style="color:#999;font-size:12px;">This link is valid for 7 days. `+
+			`Following it confirms you have seen the incident.</p>`,
+		ackURL,
+	)
+}
+
+// ackTextBlock mirrors ackHTMLBlock for the plain-text body.
+func ackTextBlock(ackURL string) string {
+	if ackURL == "" {
+		return ""
+	}
+
+	return "\nAcknowledge this incident:\n" + ackURL + "\n(link valid for 7 days)\n"
 }
 
 func (s *EmailSender) buildIncidentCreatedHTML(checkName string, payload *Payload) string {
