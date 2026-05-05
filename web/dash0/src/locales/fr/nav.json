@@ -6,6 +6,7 @@
   "onCall": "Astreintes",
   "escalationPolicies": "Politiques d'escalade",
   "events": "Événements",
+  "channels": "Canaux",
   "statusPages": "Pages de statut",
   "badges": "Badges",
   "testTools": "Outils de test",

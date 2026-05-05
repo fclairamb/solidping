@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCreateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import { apiFetch } from "@/api/client";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
 
@@ -91,6 +92,12 @@ function CheckNewPage() {
           config: data.config ?? {},
           regions: data.regions,
         });
+        if (data.connectionUids && data.connectionUids.length > 0) {
+          await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/connections`, {
+            method: "PUT",
+            body: JSON.stringify({ connectionUids: data.connectionUids }),
+          });
+        }
         toast.success(t("toast.created"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",

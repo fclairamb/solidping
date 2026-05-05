@@ -2288,3 +2288,150 @@ export function useDeleteEscalationPolicy(org: string) {
     },
   });
 }
+
+// Notification channels (integration_connections). The settings shape
+// is per-type and intentionally narrow — we hand-write the per-type
+// types rather than a single anything-goes blob.
+export type ConnectionType =
+  | "slack"
+  | "discord"
+  | "webhook"
+  | "email"
+  | "googlechat"
+  | "mattermost"
+  | "ntfy"
+  | "opsgenie"
+  | "pushover";
+
+export interface Connection {
+  uid: string;
+  type: ConnectionType;
+  name: string;
+  enabled: boolean;
+  isDefault: boolean;
+  settings?: Record<string, unknown>;
+  settingsPrivateKeys?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateConnectionRequest {
+  type: ConnectionType;
+  name: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export interface UpdateConnectionRequest {
+  name?: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export function useConnections(org: string) {
+  return useQuery({
+    queryKey: ["connections", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: Connection[] }>(
+        `/api/v1/orgs/${org}/connections`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useConnection(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["connection", org, uid],
+    queryFn: () => apiFetch<Connection>(`/api/v1/orgs/${org}/connections/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateConnection(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateConnectionRequest) =>
+      apiFetch<Connection>(`/api/v1/orgs/${org}/connections`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+    },
+  });
+}
+
+export function useUpdateConnection(org: string, uid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateConnectionRequest) =>
+      apiFetch<Connection>(`/api/v1/orgs/${org}/connections/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+      queryClient.invalidateQueries({ queryKey: ["connection", org, uid] });
+    },
+  });
+}
+
+export function useDeleteConnection(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/connections/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+    },
+  });
+}
+
+// CheckConnection is what GET /checks/$check/connections returns — a
+// flattened view of the bound connection (uid is the underlying
+// connection UID), not the join row.
+export interface CheckConnection {
+  uid: string;
+  type: ConnectionType;
+  name: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+export function useCheckConnections(org: string, checkUid: string | undefined) {
+  return useQuery({
+    queryKey: ["checkConnections", org, checkUid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: CheckConnection[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!checkUid,
+  });
+}
+
+export function useSetCheckConnections(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionUids: string[]) =>
+      apiFetch<{ data?: CheckConnection[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ connectionUids }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["checkConnections", org, checkUid],
+      });
+    },
+  });
+}

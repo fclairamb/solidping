@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-route
 import {
   Activity,
   ArrowUpRight,
+  Bell,
   Bug,
   LayoutDashboard,
   ListChecks,
@@ -79,6 +80,11 @@ const navItems = [
     titleKey: "events",
     path: "/orgs/$org/events" as const,
     icon: Calendar,
+  },
+  {
+    titleKey: "channels",
+    path: "/orgs/$org/channels" as const,
+    icon: Bell,
   },
   {
     titleKey: "statusPages",

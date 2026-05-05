@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { useCheck, useUpdateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import { useCheck, useUpdateCheck, useCheckGroups, useRegions, useSetCheckConnections } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
@@ -16,6 +16,7 @@ function CheckEditPage() {
   const { org, checkUid } = Route.useParams();
   const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
   const updateCheck = useUpdateCheck(org, checkUid);
+  const setConnections = useSetCheckConnections(org, checkUid);
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
 
@@ -79,6 +80,9 @@ function CheckEditPage() {
           maxAdaptiveIncrease: data.maxAdaptiveIncrease,
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
+        if (data.connectionUids !== undefined) {
+          await setConnections.mutateAsync(data.connectionUids);
+        }
         toast.success(t("toast.updated"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",

@@ -178,6 +178,47 @@ Out of scope (deferred follow-ups):
       → unbind → delete channel.
 - [ ] `bun run lint` and `make lint-back` clean.
 
+## Implementation Plan
+
+This spec ships in one PR but with two clear deferred items so the
+load-bearing UX lands without scope creep:
+
+1. **API hooks + types** in `web/dash0/src/api/hooks.ts`. Seven hooks
+   per the scope plus a `Connection` / `ConnectionType` type and the
+   per-type settings shapes. Hand-written; the connection JSON shape is
+   stable.
+2. **Sidebar entry** in `AppSidebar.tsx` — "Channels" peer to "Status
+   pages".
+3. **Channels list page** at `/orgs/$org/channels` — table with name,
+   type, status, default star, updated. Search filter. Quick-pick
+   buttons in the empty state.
+4. **New channel page** at `/orgs/$org/channels/new` — type picker
+   then the per-type form panel.
+5. **Channel detail/edit page** at `/orgs/$org/channels/$connectionUid`
+   — edit form, enable/default toggles, delete dialog. Secrets masked
+   on the read-only summary.
+6. **Per-type form panels** under
+   `web/dash0/src/components/channels/per-type/` — webhook (covers
+   webhook/discord/googlechat/mattermost via reuse), email, ntfy,
+   pushover, opsgenie. Slack ships with a placeholder pointing at
+   the existing OAuth path (the OAuth-only flow is a follow-up; the
+   button is wired but the install handoff lives in a separate spec).
+7. **i18n** keys in `channels.json` for en/fr/de/es.
+8. **Per-check binding ("Notify via")** on the check edit form.
+
+Deferred to follow-up specs:
+
+- **"Used by" count** column on the list — needs a backend
+  `?withChecks=count` aggregator. List page renders the column header
+  but leaves the cell empty for V1.
+- **Slack OAuth-only flow**. The Slack form panel renders a "Connect
+  via Slack OAuth" hint pointing at the existing bot install URL; the
+  full callback wiring lands once the existing Slack install path is
+  exposed end-to-end.
+- **Send-test-notification button**, **last-delivery status**, and
+  **per-check setting overrides UI** — already in the spec's "Out of
+  scope".
+
 ## Files touched (estimate)
 
 New:

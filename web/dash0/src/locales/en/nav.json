@@ -6,6 +6,7 @@
   "onCall": "On-call",
   "escalationPolicies": "Escalation policies",
   "events": "Events",
+  "channels": "Channels",
   "statusPages": "Status Pages",
   "badges": "Badges",
   "testTools": "Test Tools",
