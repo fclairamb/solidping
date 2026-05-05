@@ -4,8 +4,8 @@
 -- table clean when a user is hard-deleted.
 
 CREATE TABLE user_passkeys (
-    uid                text PRIMARY KEY,
-    user_uid           text NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
+    uid                uuid PRIMARY KEY,
+    user_uid           uuid NOT NULL REFERENCES users(uid) ON DELETE CASCADE,
     name               text NOT NULL,
     credential_id      bytea NOT NULL,
     public_key         bytea NOT NULL,

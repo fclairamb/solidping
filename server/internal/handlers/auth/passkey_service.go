@@ -78,7 +78,7 @@ func NewPasskeyService(authSvc *Service, dbSvc db.Service) *PasskeyService {
 		displayName = "SolidPing"
 	}
 
-	w, err := webauthn.New(&webauthn.Config{
+	relyingParty, err := webauthn.New(&webauthn.Config{
 		RPID:          rpID,
 		RPDisplayName: displayName,
 		RPOrigins:     origins,
@@ -96,7 +96,7 @@ func NewPasskeyService(authSvc *Service, dbSvc db.Service) *PasskeyService {
 	return &PasskeyService{
 		dbSvc:    dbSvc,
 		authSvc:  authSvc,
-		webAuthn: w,
+		webAuthn: relyingParty,
 		enabled:  true,
 	}
 }
@@ -157,18 +157,18 @@ type PasskeyInfo struct {
 }
 
 // passkeyInfoFromModel projects a stored row into the API shape.
-func passkeyInfoFromModel(p *models.UserPasskey) PasskeyInfo {
+func passkeyInfoFromModel(passkey *models.UserPasskey) PasskeyInfo {
 	info := PasskeyInfo{
-		UID:         p.UID,
-		Name:        p.Name,
-		Transports:  p.Transports,
-		BackupState: p.BackupState,
-		CreatedAt:   p.CreatedAt,
-		LastUsedAt:  p.LastUsedAt,
+		UID:         passkey.UID,
+		Name:        passkey.Name,
+		Transports:  passkey.Transports,
+		BackupState: passkey.BackupState,
+		CreatedAt:   passkey.CreatedAt,
+		LastUsedAt:  passkey.LastUsedAt,
 	}
 
-	if p.AAGUID != nil {
-		info.AAGUIDLabel = aaguidLabel(*p.AAGUID)
+	if passkey.AAGUID != nil {
+		info.AAGUIDLabel = aaguidLabel(*passkey.AAGUID)
 	}
 
 	return info
@@ -206,18 +206,18 @@ func (s *PasskeyService) BeginRegistration(
 		return nil, fmt.Errorf("list existing passkeys: %w", err)
 	}
 
-	wu := &passkeyUser{user: user, passkeys: existing}
+	rpUser := &passkeyUser{user: user, passkeys: existing}
 
 	excludeList := make([]protocol.CredentialDescriptor, 0, len(existing))
-	for _, p := range existing {
+	for _, passkey := range existing {
 		excludeList = append(excludeList, protocol.CredentialDescriptor{
 			Type:         protocol.PublicKeyCredentialType,
-			CredentialID: p.CredentialID,
+			CredentialID: passkey.CredentialID,
 		})
 	}
 
 	options, sessionData, err := s.webAuthn.BeginRegistration(
-		wu,
+		rpUser,
 		webauthn.WithExclusions(excludeList),
 	)
 	if err != nil {
@@ -261,33 +261,62 @@ func (s *PasskeyService) FinishRegistration(
 		return nil, fmt.Errorf("%w: parse: %w", ErrPasskeyVerificationFailed, err)
 	}
 
-	wu := &passkeyUser{user: user}
+	rpUser := &passkeyUser{user: user}
 
-	credential, err := s.webAuthn.CreateCredential(wu, *sessionData, parsed)
+	credential, err := s.webAuthn.CreateCredential(rpUser, *sessionData, parsed)
 	if err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrPasskeyVerificationFailed, err)
 	}
 
-	// Reject if this credential ID already exists for any user — a
-	// duplicate is either a replay or a misbehaving authenticator.
-	if existing, lookupErr := s.dbSvc.GetUserPasskeyByCredentialID(ctx, credential.ID); lookupErr == nil && existing != nil {
-		return nil, fmt.Errorf("%w: credential already registered", ErrPasskeyVerificationFailed)
-	} else if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
-		return nil, fmt.Errorf("lookup duplicate: %w", lookupErr)
+	if err := s.assertCredentialUnique(ctx, credential.ID); err != nil {
+		return nil, err
 	}
 
+	row := buildPasskeyRow(user.UID, credential, name)
+
+	if err := s.dbSvc.CreateUserPasskey(ctx, row); err != nil {
+		return nil, fmt.Errorf("store passkey: %w", err)
+	}
+
+	info := passkeyInfoFromModel(row)
+
+	return &info, nil
+}
+
+// assertCredentialUnique rejects re-registration of a credential ID
+// already on file. Surfaced as PASSKEY_VERIFICATION_FAILED — a
+// duplicate is either a replay or a misbehaving authenticator.
+func (s *PasskeyService) assertCredentialUnique(ctx context.Context, credentialID []byte) error {
+	existing, lookupErr := s.dbSvc.GetUserPasskeyByCredentialID(ctx, credentialID)
+	if lookupErr != nil {
+		if errors.Is(lookupErr, sql.ErrNoRows) {
+			return nil
+		}
+
+		return fmt.Errorf("lookup duplicate: %w", lookupErr)
+	}
+
+	if existing != nil {
+		return fmt.Errorf("%w: credential already registered", ErrPasskeyVerificationFailed)
+	}
+
+	return nil
+}
+
+// buildPasskeyRow turns a webauthn.Credential into the bun row, picking
+// a default display name when the caller didn't supply one.
+func buildPasskeyRow(userUID string, credential *webauthn.Credential, name string) *models.UserPasskey {
 	displayName := strings.TrimSpace(name)
 	aaguid := authenticatorAAGUID(credential)
 
 	if displayName == "" {
+		displayName = AAGUIDLabelSecurityKey
 		if aaguid != "" {
 			displayName = aaguidLabel(aaguid)
-		} else {
-			displayName = "Security key"
 		}
 	}
 
-	row := models.NewUserPasskey(user.UID, displayName, credential.ID, credential.PublicKey)
+	row := models.NewUserPasskey(userUID, displayName, credential.ID, credential.PublicKey)
 	row.SignCount = credential.Authenticator.SignCount
 	row.UserVerified = credential.Flags.UserVerified
 	row.BackupEligible = credential.Flags.BackupEligible
@@ -298,25 +327,19 @@ func (s *PasskeyService) FinishRegistration(
 	}
 
 	if credential.AttestationFormat != "" {
-		f := credential.AttestationFormat
-		row.AttestationFormat = &f
+		format := credential.AttestationFormat
+		row.AttestationFormat = &format
 	}
 
 	if len(credential.Transport) > 0 {
 		transports := make([]string, 0, len(credential.Transport))
-		for _, t := range credential.Transport {
-			transports = append(transports, string(t))
+		for _, transport := range credential.Transport {
+			transports = append(transports, string(transport))
 		}
 		row.Transports = transports
 	}
 
-	if err := s.dbSvc.CreateUserPasskey(ctx, row); err != nil {
-		return nil, fmt.Errorf("store passkey: %w", err)
-	}
-
-	info := passkeyInfoFromModel(row)
-
-	return &info, nil
+	return row
 }
 
 // BeginLogin starts the assertion ceremony. When email is empty the
@@ -333,33 +356,7 @@ func (s *PasskeyService) BeginLogin(
 		return nil, ErrWebAuthnNotConfigured
 	}
 
-	var (
-		options     *protocol.CredentialAssertion
-		sessionData *webauthn.SessionData
-		err         error
-		userUID     string
-	)
-
-	email = strings.TrimSpace(strings.ToLower(email))
-	if email == "" {
-		options, sessionData, err = s.webAuthn.BeginDiscoverableLogin()
-	} else {
-		user, lookupErr := s.dbSvc.GetUserByEmail(ctx, email)
-		if lookupErr != nil || user == nil {
-			// Fall back to discoverable to avoid email enumeration.
-			options, sessionData, err = s.webAuthn.BeginDiscoverableLogin()
-		} else {
-			passkeys, _ := s.dbSvc.ListUserPasskeysByUser(ctx, user.UID)
-			if len(passkeys) == 0 {
-				options, sessionData, err = s.webAuthn.BeginDiscoverableLogin()
-			} else {
-				wu := &passkeyUser{user: user, passkeys: passkeys}
-				options, sessionData, err = s.webAuthn.BeginLogin(wu)
-				userUID = user.UID
-			}
-		}
-	}
-
+	options, sessionData, userUID, err := s.beginLoginCeremony(ctx, email)
 	if err != nil {
 		return nil, fmt.Errorf("begin login: %w", err)
 	}
@@ -372,12 +369,43 @@ func (s *PasskeyService) BeginLogin(
 	return &LoginBeginResponse{Options: options, Session: sealed}, nil
 }
 
+// beginLoginCeremony picks the targeted vs discoverable branch. We fall
+// back to discoverable on any user-lookup failure so the response shape
+// is indistinguishable to a caller probing for valid emails.
+func (s *PasskeyService) beginLoginCeremony(
+	ctx context.Context, email string,
+) (*protocol.CredentialAssertion, *webauthn.SessionData, string, error) {
+	email = strings.TrimSpace(strings.ToLower(email))
+	if email == "" {
+		options, session, err := s.webAuthn.BeginDiscoverableLogin()
+
+		return options, session, "", err
+	}
+
+	user, lookupErr := s.dbSvc.GetUserByEmail(ctx, email)
+	if lookupErr != nil || user == nil {
+		options, session, err := s.webAuthn.BeginDiscoverableLogin()
+
+		return options, session, "", err
+	}
+
+	passkeys, _ := s.dbSvc.ListUserPasskeysByUser(ctx, user.UID)
+	if len(passkeys) == 0 {
+		options, session, err := s.webAuthn.BeginDiscoverableLogin()
+
+		return options, session, "", err
+	}
+
+	rpUser := &passkeyUser{user: user, passkeys: passkeys}
+	options, session, err := s.webAuthn.BeginLogin(rpUser)
+
+	return options, session, user.UID, err
+}
+
 // FinishLogin verifies the assertion, updates sign_count + last_used_at,
 // resolves the user's organization preference, and delegates to
 // completeLogin so the issued tokens match the password / OAuth paths.
 // Skips TOTP per D2 — a passkey is already MFA-equivalent.
-//
-//nolint:gocritic // authContext is a small struct; value semantics intentional.
 func (s *PasskeyService) FinishLogin(
 	ctx context.Context, sessionToken string, credentialJSON []byte,
 	orgPreference string, authContext Context,
@@ -451,9 +479,9 @@ func (s *PasskeyService) resolveAndVerifyAssertion(
 			return nil, nil, fmt.Errorf("%w: list passkeys: %w", ErrPasskeyVerificationFailed, err)
 		}
 
-		wu := &passkeyUser{user: user, passkeys: passkeys}
+		rpUser := &passkeyUser{user: user, passkeys: passkeys}
 
-		credential, err := s.webAuthn.ValidateLogin(wu, *session, parsed)
+		credential, err := s.webAuthn.ValidateLogin(rpUser, *session, parsed)
 		if err != nil {
 			return nil, nil, fmt.Errorf("%w: %w", ErrPasskeyVerificationFailed, err)
 		}

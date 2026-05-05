@@ -321,6 +321,8 @@ type CreateTokenResponse struct {
 }
 
 // NewService creates a new authentication service.
+//
+//nolint:gocritic // cfg embeds the WebAuthn block (~112 bytes) — value semantics keep call sites simple.
 func NewService(
 	dbService db.Service, cfg config.AuthConfig, fullCfg *config.Config,
 	jobsSvc jobsvc.Service,
@@ -370,8 +372,6 @@ func (s *Service) enqueueEmail(
 // Login authenticates a user and returns access and refresh tokens.
 // orgSlug is treated as a preference — the system will try to honor it but will
 // gracefully fall back to available organizations if the user is not a member.
-//
-//nolint:funlen,cyclop
 func (s *Service) Login(
 	ctx context.Context, orgSlug, email, password string, authContext Context,
 ) (*LoginResponse, error) {
@@ -441,7 +441,7 @@ func (s *Service) Login(
 // (one of "password", "passkey", "oauth") which lands in the token's
 // Properties.created_with.method field.
 //
-//nolint:gocritic // authContext is a small struct; value semantics intentional.
+//nolint:funlen
 func (s *Service) completeLogin(
 	ctx context.Context,
 	user *models.User,

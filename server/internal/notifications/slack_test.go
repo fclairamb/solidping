@@ -618,6 +618,30 @@ func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateUserPasskey(_ context.Context, _ *models.UserPasskey) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetUserPasskey(_ context.Context, _ string) (*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetUserPasskeyByCredentialID(_ context.Context, _ []byte) (*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListUserPasskeysByUser(_ context.Context, _ string) ([]*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateUserPasskey(_ context.Context, _ string, _ models.UserPasskeyUpdate) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteUserPasskey(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetWorkerBySlug(_ context.Context, _ string) (*models.Worker, error) {
 	panic("not implemented")
 }

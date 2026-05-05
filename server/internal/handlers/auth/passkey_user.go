@@ -44,29 +44,29 @@ func (u *passkeyUser) WebAuthnDisplayName() string {
 func (u *passkeyUser) WebAuthnCredentials() []webauthn.Credential {
 	out := make([]webauthn.Credential, 0, len(u.passkeys))
 
-	for _, p := range u.passkeys {
-		transports := make([]protocol.AuthenticatorTransport, 0, len(p.Transports))
-		for _, t := range p.Transports {
-			transports = append(transports, protocol.AuthenticatorTransport(t))
+	for _, passkey := range u.passkeys {
+		transports := make([]protocol.AuthenticatorTransport, 0, len(passkey.Transports))
+		for _, transport := range passkey.Transports {
+			transports = append(transports, protocol.AuthenticatorTransport(transport))
 		}
 
 		cred := webauthn.Credential{
-			ID:        p.CredentialID,
-			PublicKey: p.PublicKey,
+			ID:        passkey.CredentialID,
+			PublicKey: passkey.PublicKey,
 			Transport: transports,
 			Flags: webauthn.CredentialFlags{
 				UserPresent:    true,
-				UserVerified:   p.UserVerified,
-				BackupEligible: p.BackupEligible,
-				BackupState:    p.BackupState,
+				UserVerified:   passkey.UserVerified,
+				BackupEligible: passkey.BackupEligible,
+				BackupState:    passkey.BackupState,
 			},
 			Authenticator: webauthn.Authenticator{
-				SignCount: p.SignCount,
+				SignCount: passkey.SignCount,
 			},
 		}
 
-		if p.AttestationFormat != nil {
-			cred.AttestationFormat = *p.AttestationFormat
+		if passkey.AttestationFormat != nil {
+			cred.AttestationFormat = *passkey.AttestationFormat
 		}
 
 		out = append(out, cred)
