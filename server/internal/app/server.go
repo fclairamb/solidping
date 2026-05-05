@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -27,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -214,6 +216,19 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create email formatter: %w", err)
 	}
 	svcList.EmailFormatter = emailFormatter
+
+	// Credentials encryption service. The master key comes from env (or a
+	// file mount) — never persisted server-side. With no key configured,
+	// .Enabled() is false and write paths fall back to plaintext storage.
+	credSvc, err := buildCredentialsService(cfg, dbService)
+	if err != nil {
+		return nil, fmt.Errorf("init credentials service: %w", err)
+	}
+	svcList.Credentials = credSvc
+
+	if !credSvc.Enabled() {
+		slog.Warn("credentials encryption disabled — set SP_ENCRYPTION_MASTER_KEY to encrypt secrets at rest")
+	}
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
@@ -1433,4 +1448,73 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// buildCredentialsService loads the KEK (env or file), constructs the
+// credentials service, and wires the per-org DEK store against the
+// existing parameters table. Returns a disabled service (no error) when
+// no master key is configured — that is the documented fallback.
+func buildCredentialsService(cfg *config.Config, dbService db.Service) (credentials.Service, error) {
+	kek, err := loadEncryptionMasterKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	store := credentials.ParamStore{
+		Load: func(ctx context.Context, orgUID, key string) (json.RawMessage, bool, error) {
+			param, getErr := dbService.GetOrgParameter(ctx, orgUID, key)
+			if getErr != nil {
+				return nil, false, getErr
+			}
+			if param == nil {
+				return nil, false, nil
+			}
+			raw, mErr := json.Marshal(param.Value)
+			if mErr != nil {
+				return nil, false, mErr
+			}
+			return raw, true, nil
+		},
+		Save: func(ctx context.Context, orgUID, key string, value any, secret bool) error {
+			return dbService.SetOrgParameter(ctx, orgUID, key, value, secret)
+		},
+	}
+
+	return credentials.NewService(kek, store)
+}
+
+// loadEncryptionMasterKey returns the raw KEK bytes from the env-derived
+// config. Returns nil (with no error) when no key is configured — that
+// disables encryption. Both base64 and base64-without-padding are
+// accepted, matching what kubectl create secret typically emits.
+func loadEncryptionMasterKey(cfg *config.Config) ([]byte, error) {
+	source := cfg.Encryption.MasterKey
+	if cfg.Encryption.MasterKeyFile != "" {
+		// File path wins when both are set — matches the spec contract.
+		// Read lazily here so a missing file fails loudly at startup
+		// rather than silently disabling encryption.
+		bytes, err := readMasterKeyFile(cfg.Encryption.MasterKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read master key file: %w", err)
+		}
+		source = bytes
+	}
+
+	if source == "" {
+		return nil, nil
+	}
+
+	return credentials.DecodeMasterKey(source)
+}
+
+// readMasterKeyFile slurps the file at path and returns its trimmed
+// contents. Trim is important — env-mounted secrets often have a trailing
+// newline. The contents are still treated as a base64 string by the
+// caller, so any other whitespace would break decoding anyway.
+func readMasterKeyFile(path string) (string, error) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bytes)), nil
 }
