@@ -111,41 +111,29 @@ function PerTypePanel({ type, settings, onChange }: PerTypePanelProps) {
       );
     case "email":
       return (
-        <div className="space-y-3">
-          <div className="space-y-2">
-            <Label htmlFor="ch-from">{t("form.fromAddress", "From address")}</Label>
-            <Input
-              id="ch-from"
-              type="email"
-              value={(settings.from as string) || ""}
-              onChange={(e) => update("from", e.target.value)}
-              placeholder="alerts@example.com"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="ch-to">
-              {t("form.recipients", "Recipients (one per line)")}
-            </Label>
-            <Textarea
-              id="ch-to"
-              rows={3}
-              value={
-                Array.isArray(settings.to)
-                  ? (settings.to as string[]).join("\n")
-                  : ""
-              }
-              onChange={(e) =>
-                update(
-                  "to",
-                  e.target.value
-                    .split("\n")
-                    .map((s) => s.trim())
-                    .filter(Boolean),
-                )
-              }
-              placeholder="ops@example.com&#10;oncall@example.com"
-            />
-          </div>
+        <div className="space-y-2">
+          <Label htmlFor="ch-to">
+            {t("form.recipients", "Recipients (one per line)")}
+          </Label>
+          <Textarea
+            id="ch-to"
+            rows={3}
+            value={
+              Array.isArray(settings.to)
+                ? (settings.to as string[]).join("\n")
+                : ""
+            }
+            onChange={(e) =>
+              update(
+                "to",
+                e.target.value
+                  .split("\n")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              )
+            }
+            placeholder="ops@example.com&#10;oncall@example.com"
+          />
         </div>
       );
     case "ntfy":

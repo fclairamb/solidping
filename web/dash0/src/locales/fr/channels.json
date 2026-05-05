@@ -62,7 +62,6 @@
     "default": "Par défaut pour les nouveaux contrôles",
     "defaultHelp": "Pré-coché à la création d'un contrôle. Les contrôles existants ne sont pas affectés.",
     "webhookUrl": "URL du webhook",
-    "fromAddress": "Adresse expéditeur",
     "recipients": "Destinataires (un par ligne)",
     "ntfyServer": "URL du serveur",
     "ntfyTopic": "Sujet",

@@ -62,7 +62,6 @@
     "default": "Default for new checks",
     "defaultHelp": "Pre-checked when creating a new check. Existing checks are unaffected.",
     "webhookUrl": "Webhook URL",
-    "fromAddress": "From address",
     "recipients": "Recipients (one per line)",
     "ntfyServer": "Server URL",
     "ntfyTopic": "Topic",
