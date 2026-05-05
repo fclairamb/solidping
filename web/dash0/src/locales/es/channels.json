@@ -62,7 +62,6 @@
     "default": "Predeterminado para nuevas comprobaciones",
     "defaultHelp": "Preseleccionado al crear una comprobación. Las existentes no se ven afectadas.",
     "webhookUrl": "URL del webhook",
-    "fromAddress": "Dirección del remitente",
     "recipients": "Destinatarios (uno por línea)",
     "ntfyServer": "URL del servidor",
     "ntfyTopic": "Tema",

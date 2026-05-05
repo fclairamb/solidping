@@ -62,7 +62,6 @@
     "default": "Standard für neue Prüfungen",
     "defaultHelp": "Vorausgewählt bei neuen Prüfungen. Bestehende Prüfungen bleiben unverändert.",
     "webhookUrl": "Webhook-URL",
-    "fromAddress": "Absenderadresse",
     "recipients": "Empfänger (eine pro Zeile)",
     "ntfyServer": "Server-URL",
     "ntfyTopic": "Thema",
