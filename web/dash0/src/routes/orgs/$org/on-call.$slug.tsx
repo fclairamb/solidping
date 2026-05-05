@@ -185,6 +185,28 @@ function OnCallDetailPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>{t("oncall:detail.users")}</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!schedule.userUids || schedule.userUids.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {t("oncall:detail.noUsers")}
+            </p>
+          ) : (
+            <ol className="space-y-1">
+              {schedule.userUids.map((uid, idx) => (
+                <li key={uid} className="flex items-center gap-2 text-sm">
+                  <span className="text-muted-foreground w-6 text-right">{idx + 1}.</span>
+                  <span>{userByUID.get(uid) ?? uid}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>{t("oncall:detail.overrides")}</CardTitle>
           <CardDescription>{t("oncall:detail.overrides")}</CardDescription>
         </CardHeader>

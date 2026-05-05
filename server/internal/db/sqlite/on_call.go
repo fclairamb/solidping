@@ -22,19 +22,25 @@ func (s *Service) CreateOnCallSchedule(ctx context.Context, schedule *models.OnC
 	return nil
 }
 
-// GetOnCallSchedule fetches a schedule by UID, scoped to its organization.
+// GetOnCallSchedule fetches a schedule by UID, scoped to its organization
+// when orgUID is non-empty. The resolver passes orgUID="" so it can answer
+// questions like "who is on call for schedule X" without needing the org
+// context — the schedule UID is globally unique.
 func (s *Service) GetOnCallSchedule(
 	ctx context.Context, orgUID, scheduleUID string,
 ) (*models.OnCallSchedule, error) {
 	var schedule models.OnCallSchedule
 
-	err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		Model(&schedule).
 		Where("uid = ?", scheduleUID).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
+		Where("deleted_at IS NULL")
+
+	if orgUID != "" {
+		query = query.Where("organization_uid = ?", orgUID)
+	}
+
+	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("get on-call schedule: %w", err)
 	}
 
