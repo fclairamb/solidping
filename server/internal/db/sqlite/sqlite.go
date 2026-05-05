@@ -940,6 +940,9 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
+		checkJob.ConfigPrivate = check.ConfigPrivate
+		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.ScheduledAt = &now
 		if _, err := tx.NewInsert().Model(checkJob).Exec(ctx); err != nil {
 			return err
@@ -959,6 +962,9 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
+		checkJob.ConfigPrivate = check.ConfigPrivate
+		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.Region = &regionCopy
 		checkJob.ScheduledAt = &scheduledAt
 
@@ -1120,6 +1126,7 @@ func (s *Service) ListChecks(
 	return checks, int64(total), err
 }
 
+//nolint:cyclop // long but flat: one branch per optional column
 func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
@@ -1153,6 +1160,18 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 
 	if update.Config != nil {
 		query = query.Set("config = ?", *update.Config)
+	}
+
+	if update.ConfigPrivate != nil {
+		query = query.Set("config_private = ?", *update.ConfigPrivate)
+	} else if update.ClearConfigPrivate {
+		query = query.Set("config_private = NULL")
+	}
+
+	if update.ConfigPrivateKeys != nil {
+		query = query.Set("config_private_keys = ?", *update.ConfigPrivateKeys)
+	} else if update.ClearConfigPrivate {
+		query = query.Set("config_private_keys = NULL")
 	}
 
 	if update.Enabled != nil {

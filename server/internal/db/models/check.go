@@ -24,14 +24,14 @@ const (
 
 // Check represents a monitoring configuration.
 type Check struct {
-	UID             string             `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID string             `bun:"organization_uid,notnull"`
-	CheckGroupUID   *string            `bun:"check_group_uid"`
-	Name            *string            `bun:"name"`
-	Slug            *string            `bun:"slug"`
-	Description     *string            `bun:"description"`
-	Type            string             `bun:"type,notnull"`
-	Config          JSONMap            `bun:"config,type:jsonb,nullzero"`
+	UID             string  `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID string  `bun:"organization_uid,notnull"`
+	CheckGroupUID   *string `bun:"check_group_uid"`
+	Name            *string `bun:"name"`
+	Slug            *string `bun:"slug"`
+	Description     *string `bun:"description"`
+	Type            string  `bun:"type,notnull"`
+	Config          JSONMap `bun:"config,type:jsonb,nullzero"`
 	// ConfigPrivate holds the AES-GCM envelope (JSON) for the secret keys
 	// split out of Config at write time. NULL when no encrypted secrets exist
 	// on this row — distinct from "encryption disabled at the server".
@@ -39,11 +39,11 @@ type Check struct {
 	// ConfigPrivateKeys is a JSON array of the key names (e.g. `["password"]`)
 	// whose values live in ConfigPrivate. Non-secret by construction; surfaced
 	// to the dashboard so it can render placeholder hints without decrypting.
-	ConfigPrivateKeys *string  `bun:"config_private_keys,type:text,nullzero"`
-	Regions           []string `bun:"regions,type:text[],array"`
-	Enabled         bool               `bun:"enabled,notnull"`
-	Internal        bool               `bun:"internal,notnull,default:false"`
-	Period          timeutils.Duration `bun:"period,notnull"`
+	ConfigPrivateKeys *string            `bun:"config_private_keys,type:text,nullzero"`
+	Regions           []string           `bun:"regions,type:text[],array"`
+	Enabled           bool               `bun:"enabled,notnull"`
+	Internal          bool               `bun:"internal,notnull,default:false"`
+	Period            timeutils.Duration `bun:"period,notnull"`
 
 	// Incident tracking thresholds
 	IncidentThreshold   int `bun:"incident_threshold,notnull,default:1"`
@@ -97,19 +97,19 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 
 // CheckUpdate represents fields that can be updated.
 type CheckUpdate struct {
-	CheckGroupUID *string
-	Name          *string
-	Slug          *string
-	Description   *string
-	Type              *string
-	Config            *JSONMap
-	ConfigPrivate     *string
-	ConfigPrivateKeys *string
+	CheckGroupUID      *string
+	Name               *string
+	Slug               *string
+	Description        *string
+	Type               *string
+	Config             *JSONMap
+	ConfigPrivate      *string
+	ConfigPrivateKeys  *string
 	ClearConfigPrivate bool
-	Regions       *[]string
-	Enabled       *bool
-	Internal      *bool
-	Period        *timeutils.Duration
+	Regions            *[]string
+	Enabled            *bool
+	Internal           *bool
+	Period             *timeutils.Duration
 
 	// Incident tracking thresholds
 	IncidentThreshold   *int

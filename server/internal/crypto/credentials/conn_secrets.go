@@ -9,15 +9,26 @@ package credentials
 
 import "github.com/fclairamb/solidping/server/internal/db/models"
 
+// Common secret-key constants. Multiple connection / provider types use
+// the same key name (e.g., "webhook_url" for Discord/Mattermost/GoogleChat),
+// so we factor them here to satisfy the goconst linter and keep the
+// registry tables tidy.
+const (
+	connKeyWebhookURL       = "webhook_url"
+	providerKeyClientSecret = "client_secret"
+)
+
 // connectionSecretFields enumerates the secret JSON keys for each
 // IntegrationConnection.Settings shape.
+//
+//nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeSlack:      {"access_token"},
-	models.ConnectionTypeDiscord:    {"webhook_url"},
+	models.ConnectionTypeDiscord:    {connKeyWebhookURL},
 	models.ConnectionTypeWebhook:    {"url", "auth_token"},
 	models.ConnectionTypeEmail:      {"smtp_password"},
-	models.ConnectionTypeGoogleChat: {"webhook_url"},
-	models.ConnectionTypeMattermost: {"webhook_url"},
+	models.ConnectionTypeGoogleChat: {connKeyWebhookURL},
+	models.ConnectionTypeMattermost: {connKeyWebhookURL},
 	models.ConnectionTypeNtfy:       {"auth_token"},
 	models.ConnectionTypeOpsgenie:   {"api_key"},
 	models.ConnectionTypePushover:   {"user_key", "api_token"},
@@ -41,12 +52,14 @@ func ConnectionSecretFields(connType models.ConnectionType) []string {
 // providerSecretFields enumerates the secret keys for each
 // OrganizationProvider.Metadata shape. OAuth client secrets dominate this
 // list — once stored, the dashboard never echoes them back.
+//
+//nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var providerSecretFields = map[models.ProviderType][]string{
-	models.ProviderTypeGoogle:    {"client_secret"},
-	models.ProviderTypeGitHub:    {"client_secret"},
-	models.ProviderTypeGitLab:    {"client_secret"},
-	models.ProviderTypeMicrosoft: {"client_secret"},
-	models.ProviderTypeOIDC:      {"client_secret"},
+	models.ProviderTypeGoogle:    {providerKeyClientSecret},
+	models.ProviderTypeGitHub:    {providerKeyClientSecret},
+	models.ProviderTypeGitLab:    {providerKeyClientSecret},
+	models.ProviderTypeMicrosoft: {providerKeyClientSecret},
+	models.ProviderTypeOIDC:      {providerKeyClientSecret},
 }
 
 // ProviderSecretFields returns the secret keys for a provider type. Same

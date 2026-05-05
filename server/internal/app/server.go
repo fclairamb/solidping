@@ -227,7 +227,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.Credentials = credSvc
 
 	if !credSvc.Enabled() {
-		slog.Warn("credentials encryption disabled — set SP_ENCRYPTION_MASTER_KEY to encrypt secrets at rest")
+		// Plaintext-fallback warning at startup so an unconfigured prod
+		// install can be spotted in logs.
+		//
+		//nolint:sloglint // startup-only, no request context
+		slog.Warn("credentials encryption disabled — secrets stored in plaintext",
+			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
 	}
 
 	// Initialize Sentry error tracking
@@ -390,7 +395,9 @@ func (s *Server) setupRoutes() {
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)
-	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService)
+	s.mcpHandler = mcp.NewHandler(
+		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService, s.services.Credentials,
+	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
@@ -406,7 +413,7 @@ func (s *Server) setupRoutes() {
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
-	checksService := checks.NewService(s.dbService, s.services.EventNotifier)
+	checksService := checks.NewService(s.dbService, s.services.EventNotifier, s.services.Credentials)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -479,6 +486,7 @@ func (s *Server) setupRoutes() {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc),
+		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
 	workerAPI := api.NewGroup("/workers")

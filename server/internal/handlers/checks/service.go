@@ -17,6 +17,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
@@ -187,14 +188,20 @@ type Service struct {
 	db            db.Service
 	eventNotifier notifier.EventNotifier
 	regions       *regions.Service
+	// creds is always non-nil — its .Enabled() reports whether a master
+	// key is configured. When disabled, write paths fall back to plaintext.
+	creds credentials.Service
 }
 
 // NewService creates a new checks service.
-func NewService(dbService db.Service, eventNotifier notifier.EventNotifier) *Service {
+func NewService(
+	dbService db.Service, eventNotifier notifier.EventNotifier, creds credentials.Service,
+) *Service {
 	return &Service{
 		db:            dbService,
 		eventNotifier: eventNotifier,
 		regions:       regions.NewService(dbService),
+		creds:         creds,
 	}
 }
 
@@ -444,21 +451,26 @@ func (s *Service) formatValidateError(err error) ValidateCheckResponse {
 
 // CheckResponse represents a check in API responses.
 type CheckResponse struct {
-	UID              string                    `json:"uid"`
-	Name             *string                   `json:"name,omitempty"`
-	Slug             *string                   `json:"slug,omitempty"`
-	Description      *string                   `json:"description,omitempty"`
-	CheckGroupUID    *string                   `json:"checkGroupUid,omitempty"`
-	Type             *string                   `json:"type,omitempty"`
-	Config           map[string]any            `json:"config,omitempty"`
-	Regions          []string                  `json:"regions,omitempty"`
-	Enabled          *bool                     `json:"enabled,omitempty"`
-	Internal         *bool                     `json:"internal,omitempty"`
-	Period           *string                   `json:"period,omitempty"`
-	Labels           map[string]string         `json:"labels,omitempty"`
-	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
-	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
-	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
+	UID           string         `json:"uid"`
+	Name          *string        `json:"name,omitempty"`
+	Slug          *string        `json:"slug,omitempty"`
+	Description   *string        `json:"description,omitempty"`
+	CheckGroupUID *string        `json:"checkGroupUid,omitempty"`
+	Type          *string        `json:"type,omitempty"`
+	Config        map[string]any `json:"config,omitempty"`
+	// ConfigPrivateKeys lists the keys whose values are encrypted at rest
+	// for this check. The dashboard uses it to render placeholder hints
+	// (●●●●●●●●) for fields it can't display. Non-secret by construction
+	// — these are key names, not values.
+	ConfigPrivateKeys []string                  `json:"configPrivateKeys,omitempty"`
+	Regions           []string                  `json:"regions,omitempty"`
+	Enabled           *bool                     `json:"enabled,omitempty"`
+	Internal          *bool                     `json:"internal,omitempty"`
+	Period            *string                   `json:"period,omitempty"`
+	Labels            map[string]string         `json:"labels,omitempty"`
+	LastResult        *LastResultResponse       `json:"lastResult,omitempty"`
+	LastStatusChange  *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
+	CreatedAt         *time.Time                `json:"createdAt,omitempty"`
 
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -778,9 +790,12 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		check.Description = &req.Description
 	}
 
-	// Set config
+	// Set config — split secrets out and encrypt them under the org DEK
+	// before persisting. Plaintext fallback when no master key.
 	if req.Config != nil {
-		check.Config = req.Config
+		if encErr := s.applyEncryption(ctx, check, req.Config); encErr != nil {
+			return CheckResponse{}, encErr
+		}
 	}
 
 	// Set enabled (default is true from NewCheck)
@@ -996,8 +1011,24 @@ func (s *Service) UpdateCheck(
 		update.Description = req.Description
 	}
 	if req.Config != nil {
-		configMap := models.JSONMap(*req.Config)
+		// PATCH-merge rule: read the existing effective config (decrypting
+		// the private side) and apply the spec's preserve-absent-secrets
+		// behavior. A naive replace here would silently wipe encrypted
+		// secrets the user can't see in their dashboard.
+		merged, mergeErr := s.applyConfigPatch(ctx, check, *req.Config)
+		if mergeErr != nil {
+			return CheckResponse{}, mergeErr
+		}
+		if encErr := s.applyEncryption(ctx, check, merged); encErr != nil {
+			return CheckResponse{}, encErr
+		}
+		configMap := check.Config
 		update.Config = &configMap
+		update.ConfigPrivate = check.ConfigPrivate
+		update.ConfigPrivateKeys = check.ConfigPrivateKeys
+		if check.ConfigPrivate == nil {
+			update.ClearConfigPrivate = true
+		}
 	}
 	if req.Enabled != nil {
 		update.Enabled = req.Enabled
@@ -1632,10 +1663,18 @@ func configEqual(configA, configB models.JSONMap) bool {
 }
 
 // convertCheckToResponse converts a database Check model to a CheckResponse.
+// Returns the public config plus the list of encrypted-key names — secret
+// values are never echoed back to the client. The dashboard uses
+// configPrivateKeys to render placeholder dots.
 func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 	// Convert Period to database string format (HH:MM:SS)
 	periodValue, _ := check.Period.Value()
 	periodStr, _ := periodValue.(string)
+
+	var privateKeys []string
+	if check.ConfigPrivateKeys != nil {
+		_ = json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys)
+	}
 
 	return CheckResponse{
 		UID:                      check.UID,
@@ -1645,6 +1684,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		CheckGroupUID:            check.CheckGroupUID,
 		Type:                     &check.Type,
 		Config:                   check.Config,
+		ConfigPrivateKeys:        privateKeys,
 		Regions:                  check.Regions,
 		Enabled:                  &check.Enabled,
 		Internal:                 &check.Internal,
@@ -2464,4 +2504,169 @@ func (s *Service) cloneCopyConnections(ctx context.Context, sourceUID, cloneUID,
 	}
 
 	return nil
+}
+
+// applyEncryption splits the effective config into public/private using the
+// checker's declared SecretFields, encrypts the private side under the org
+// DEK, and writes the resulting columns onto the check.
+//
+// When encryption is disabled at the server (no master key) the full config
+// stays plaintext on `Config` and `ConfigPrivate*` are NULL. That fallback
+// is intentional — the spec calls it out — and is logged once at startup.
+func (s *Service) applyEncryption(ctx context.Context, check *models.Check, effective map[string]any) error {
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	if !ok {
+		// Unknown checker — keep the existing behavior: store the map as
+		// plaintext and let validation fail elsewhere. Don't silently lose
+		// data on the encryption seam.
+		check.Config = effective
+		check.ConfigPrivate = nil
+		check.ConfigPrivateKeys = nil
+		return nil
+	}
+
+	secrets := credentials.SecretFieldsFor(cfg)
+	public, private := credentials.SplitConfig(effective, secrets)
+	check.Config = public
+
+	if !s.creds.Enabled() || len(private) == 0 {
+		check.ConfigPrivate = nil
+		check.ConfigPrivateKeys = nil
+		// Plaintext fallback: when no master key is configured the secrets
+		// must still be persisted so the check actually works. Put them
+		// back on Config and document the gap.
+		if !s.creds.Enabled() {
+			for k, v := range private {
+				check.Config[k] = v
+			}
+		}
+		return nil
+	}
+
+	envelope, err := s.creds.EncryptForOrg(ctx, check.OrganizationUID, private)
+	if err != nil {
+		return fmt.Errorf("encrypt check config: %w", err)
+	}
+
+	check.ConfigPrivate = &envelope
+	keysJSON, err := json.Marshal(sortedKeys(private))
+	if err != nil {
+		return fmt.Errorf("marshal config private keys: %w", err)
+	}
+	keysStr := string(keysJSON)
+	check.ConfigPrivateKeys = &keysStr
+
+	return nil
+}
+
+// loadDecryptedConfig returns the merged plaintext effective config of a
+// check. Used by the PATCH path so the secret-preservation rule has the
+// existing values to merge into. Returns the public config unchanged when
+// the row has no private payload (legacy or unencrypted checks).
+func (s *Service) loadDecryptedConfig(ctx context.Context, check *models.Check) (map[string]any, error) {
+	if check.ConfigPrivate == nil || *check.ConfigPrivate == "" {
+		// Defensive copy so callers can mutate freely.
+		out := make(map[string]any, len(check.Config))
+		for k, v := range check.Config {
+			out[k] = v
+		}
+		return out, nil
+	}
+
+	if !s.creds.Enabled() {
+		return nil, fmt.Errorf("decrypt check %s: %w", check.UID, credentials.ErrDisabled)
+	}
+
+	private, err := s.creds.DecryptForOrg(ctx, check.OrganizationUID, *check.ConfigPrivate)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt check %s: %w", check.UID, err)
+	}
+
+	out := make(map[string]any, len(check.Config)+len(private))
+	for k, v := range check.Config {
+		out[k] = v
+	}
+	for k, v := range private {
+		out[k] = v
+	}
+	return out, nil
+}
+
+// mergePatchConfig applies the PATCH-merge rule: existing secret values
+// are preserved unless the request explicitly sends them. Sending a key
+// with null or empty-string clears it.
+func mergePatchConfig(existing, patch map[string]any, secretFields []string) map[string]any {
+	merged := make(map[string]any, len(existing)+len(patch))
+
+	// Keep all of existing as the base.
+	for k, v := range existing {
+		merged[k] = v
+	}
+
+	// Layer the patch — but for *non-secret* keys the patch wins fully
+	// (replace semantics). For secret keys, an absent key preserves
+	// existing; an explicit null/empty clears.
+	secretSet := map[string]struct{}{}
+	for _, k := range secretFields {
+		secretSet[k] = struct{}{}
+	}
+
+	for key, val := range patch {
+		if _, isSecret := secretSet[key]; isSecret {
+			if val == nil || val == "" {
+				delete(merged, key)
+				continue
+			}
+		}
+		merged[key] = val
+	}
+
+	// Non-secret keys absent from patch should also be removed (PATCH
+	// semantics on the public side: replace wholesale). But the existing
+	// PATCH contract for checks already replaces the whole config map, so
+	// we honor that — public keys absent from patch are dropped.
+	for k := range merged {
+		if _, isSecret := secretSet[k]; isSecret {
+			continue
+		}
+		if _, present := patch[k]; !present {
+			delete(merged, k)
+		}
+	}
+
+	return merged
+}
+
+// sortedKeys returns the keys of m in lexicographic order. Stable output
+// matters for ConfigPrivateKeys so the dashboard placeholder list doesn't
+// flicker between renders.
+func sortedKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// applyConfigPatch implements the PATCH-merge rule from the spec: secret
+// keys absent from the incoming config are preserved from the existing
+// config_private; explicitly-supplied keys (including null/empty)
+// overwrite/clear. Non-secret keys follow the existing replace-wholesale
+// PATCH semantics.
+func (s *Service) applyConfigPatch(
+	ctx context.Context, check *models.Check, patch map[string]any,
+) (map[string]any, error) {
+	existing, err := s.loadDecryptedConfig(ctx, check)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type))
+	if !ok {
+		// Unknown checker — fall back to plain replace.
+		return patch, nil
+	}
+
+	return mergePatchConfig(existing, patch, credentials.SecretFieldsFor(cfg)), nil
 }
