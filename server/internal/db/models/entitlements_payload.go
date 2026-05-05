@@ -1,0 +1,132 @@
+package models
+
+import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
+)
+
+// EntitlementsPayloadVersion is the current schema version for the
+// payload column. Future shape-breaking changes bump this and add a
+// branch in EntitlementsPayload.UnmarshalJSON.
+const EntitlementsPayloadVersion = 1
+
+// EntitlementLimits is the quantitative half of an entitlement set.
+// nil = unlimited. JSON tags are the wire format consumed by the API.
+type EntitlementLimits struct {
+	MaxChecks               *int `json:"maxChecks,omitempty"`
+	MaxMembers              *int `json:"maxMembers,omitempty"`
+	MaxStatusPages          *int `json:"maxStatusPages,omitempty"`
+	MaxCheckGroups          *int `json:"maxCheckGroups,omitempty"`
+	MaxMaintenanceWindows   *int `json:"maxMaintenanceWindows,omitempty"`
+	MaxConnections          *int `json:"maxConnections,omitempty"`
+	MaxWorkers              *int `json:"maxWorkers,omitempty"`
+	MaxAPITokens            *int `json:"maxApiTokens,omitempty"`
+	RetentionDaysRaw        *int `json:"retentionDaysRaw,omitempty"`
+	RetentionDaysAggregated *int `json:"retentionDaysAggregated,omitempty"`
+	MinCheckPeriodSeconds   *int `json:"minCheckPeriodSeconds,omitempty"`
+}
+
+// EntitlementFeatures is the boolean half. nil = use default.
+type EntitlementFeatures struct {
+	SSO             *bool `json:"sso,omitempty"`
+	MCP             *bool `json:"mcp,omitempty"`
+	CustomBranding  *bool `json:"customBranding,omitempty"`
+	PrioritySupport *bool `json:"prioritySupport,omitempty"`
+	MultiRegion     *bool `json:"multiRegion,omitempty"`
+	AdvancedAlerts  *bool `json:"advancedAlerts,omitempty"`
+}
+
+// EntitlementsPayload is the structured-by-OSS portion of an
+// org_entitlements row, stored as JSON in the `payload` column. The
+// struct itself is the schema; absent keys mean "use default" and
+// extra keys are silently ignored for forward-compat. The Version
+// field gates shape-migrations at unmarshal time.
+type EntitlementsPayload struct {
+	Version           int                 `json:"version"`
+	Limits            EntitlementLimits   `json:"limits"`
+	Features          EntitlementFeatures `json:"features"`
+	AllowedCheckTypes []string            `json:"allowedCheckTypes,omitempty"`
+	DisplayName       *string             `json:"displayName,omitempty"`
+}
+
+// Value implements driver.Valuer so bun can write the payload as JSON
+// (postgres jsonb / sqlite text) without an explicit hook.
+func (p EntitlementsPayload) Value() (driver.Value, error) {
+	if p.Version == 0 {
+		p.Version = EntitlementsPayloadVersion
+	}
+
+	data, err := json.Marshal(payloadV1(p))
+	if err != nil {
+		return nil, fmt.Errorf("marshal entitlements payload: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// Scan implements sql.Scanner. Empty / NULL values yield a zero-valued
+// payload with the current version stamped in — the resolver will fall
+// back to defaults for absent fields.
+func (p *EntitlementsPayload) Scan(value any) error {
+	if value == nil {
+		*p = EntitlementsPayload{Version: EntitlementsPayloadVersion}
+
+		return nil
+	}
+
+	var data []byte
+
+	switch v := value.(type) {
+	case []byte:
+		data = v
+	case string:
+		data = []byte(v)
+	default:
+		*p = EntitlementsPayload{Version: EntitlementsPayloadVersion}
+
+		return nil
+	}
+
+	if len(data) == 0 || string(data) == "{}" {
+		*p = EntitlementsPayload{Version: EntitlementsPayloadVersion}
+
+		return nil
+	}
+
+	return p.UnmarshalJSON(data)
+}
+
+// UnmarshalJSON probes the version discriminator first and dispatches
+// to the matching shape-migration. v0 (rows written before the version
+// field landed) is treated as v1.
+func (p *EntitlementsPayload) UnmarshalJSON(data []byte) error {
+	var probe struct {
+		Version int `json:"version"`
+	}
+	_ = json.Unmarshal(data, &probe)
+
+	switch probe.Version {
+	case 0, EntitlementsPayloadVersion:
+		return p.unmarshalV1(data)
+	default:
+		return fmt.Errorf("unknown entitlements payload version %d", probe.Version)
+	}
+}
+
+// payloadV1 is the on-disk shape for version 1. Keeping this as a
+// distinct type lets UnmarshalJSON dispatch by version without the
+// outer struct's UnmarshalJSON recursing on itself.
+type payloadV1 EntitlementsPayload
+
+func (p *EntitlementsPayload) unmarshalV1(data []byte) error {
+	var raw payloadV1
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshal entitlements payload v1: %w", err)
+	}
+
+	raw.Version = EntitlementsPayloadVersion
+	*p = EntitlementsPayload(raw)
+
+	return nil
+}
