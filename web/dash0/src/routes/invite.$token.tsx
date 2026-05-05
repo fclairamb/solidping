@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -32,7 +33,6 @@ function AcceptInvitePage() {
 
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleAcceptAuthenticated = async () => {
@@ -56,11 +56,6 @@ function AcceptInvitePage() {
   const handleAcceptNewUser = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError(t("auth:passwordsDoNotMatch"));
-      return;
-    }
 
     if (password.length < 8) {
       setError(t("auth:passwordTooShort"));
@@ -183,23 +178,11 @@ function AcceptInvitePage() {
 
               <div className="space-y-2">
                 <Label htmlFor="password">{t("common:password")}</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={acceptInvite.isPending}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">{t("auth:confirmPassword")}</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={acceptInvite.isPending}
                 />
