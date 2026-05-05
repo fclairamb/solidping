@@ -97,12 +97,25 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %s", ErrSenderNotFound, connection.Type)
 	}
 
+	// Look up the org slug so the email sender can build user-facing URLs
+	// (magic-link ack endpoint). A missing org is logged but does not fail
+	// the notification — recipients still get the email, just without a
+	// one-click ack link.
+	var orgSlug string
+	if org, orgErr := jctx.DBService.GetOrganization(ctx, connection.OrganizationUID); orgErr == nil {
+		orgSlug = org.Slug
+	} else {
+		log.WarnContext(ctx, "Failed to load org slug for notification URLs",
+			"orgUid", connection.OrganizationUID, "error", orgErr)
+	}
+
 	// 5. Build notification payload
 	payload := &notifications.Payload{
 		EventType:  r.config.EventType,
 		Incident:   incident,
 		Check:      check,
 		Connection: connection,
+		OrgSlug:    orgSlug,
 	}
 
 	// 6. Send notification

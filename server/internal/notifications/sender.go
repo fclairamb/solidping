@@ -19,6 +19,9 @@ type Payload struct {
 	Check                   *models.Check                 // The check
 	Connection              *models.IntegrationConnection // The connection to send via
 	CheckConnectionSettings *models.JSONMap               // Optional check-level override settings
+	// OrgSlug is the organization slug used to build user-facing URLs (e.g.
+	// magic-link ack URLs). Populated by the notification job runner.
+	OrgSlug string
 }
 
 // Sender is the interface for sending notifications via different channels.

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeft,
+  BellOff,
   CheckCircle,
   Clock,
   ExternalLink,
@@ -16,10 +17,14 @@ import {
   useIncident,
   useIncidents,
   useAcknowledgeIncident,
+  useUnacknowledgeIncident,
+  useSnoozeIncident,
+  useUnsnoozeIncident,
   useResolveIncident,
   useEvents,
   type IncidentDetail,
 } from "@/api/hooks";
+import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
@@ -123,7 +128,11 @@ function IncidentDetailPage() {
   const { data: events } = useEvents(org, { incidentUid, size: 20 });
 
   const acknowledgeIncident = useAcknowledgeIncident(org);
+  const unacknowledgeIncident = useUnacknowledgeIncident(org);
+  const snoozeIncident = useSnoozeIncident(org);
+  const unsnoozeIncident = useUnsnoozeIncident(org);
   const resolveIncident = useResolveIncident(org);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
 
   const handleAcknowledge = async () => {
     try {
@@ -132,6 +141,39 @@ function IncidentDetailPage() {
       refetch();
     } catch {
       toast.error(t("actions.acknowledgeFailed"));
+    }
+  };
+
+  const handleUnacknowledge = async () => {
+    try {
+      await unacknowledgeIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.unacknowledged"));
+      refetch();
+    } catch {
+      toast.error(t("actions.unacknowledgeFailed"));
+    }
+  };
+
+  const handleSnooze = async (
+    payload: { duration?: string; until?: string; reason?: string },
+  ) => {
+    try {
+      await snoozeIncident.mutateAsync({ uid: incidentUid, body: payload });
+      toast.success(t("actions.snoozed"));
+      setSnoozeOpen(false);
+      refetch();
+    } catch {
+      toast.error(t("actions.snoozeFailed"));
+    }
+  };
+
+  const handleUnsnooze = async () => {
+    try {
+      await unsnoozeIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.unsnoozed"));
+      refetch();
+    } catch {
+      toast.error(t("actions.unsnoozeFailed"));
     }
   };
 
@@ -182,6 +224,8 @@ function IncidentDetailPage() {
   }
 
   const isActive = incident.state === "active";
+  const isSnoozed =
+    !!incident.snoozedUntil && new Date(incident.snoozedUntil).getTime() > Date.now();
   const relapseCount = incident.relapseCount ?? 0;
 
   return (
@@ -213,6 +257,16 @@ function IncidentDetailPage() {
             <Badge variant={isActive ? "destructive" : "secondary"}>
               {isActive ? t("active") : t("resolved")}
             </Badge>
+            {isActive && isSnoozed && incident.snoozedUntil && (
+              <Badge variant="outline">
+                {t("stateBadges.snoozedUntil", {
+                  time: new Date(incident.snoozedUntil).toLocaleString(),
+                })}
+              </Badge>
+            )}
+            {isActive && !isSnoozed && incident.acknowledgedAt && (
+              <Badge variant="outline">{t("stateBadges.acked")}</Badge>
+            )}
             {relapseCount > 0 && (
               <Badge variant="outline">
                 {t("reopenedTimes", {
@@ -235,7 +289,7 @@ function IncidentDetailPage() {
               className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
             />
           </Button>
-          {isActive && !incident.acknowledgedAt && (
+          {isActive && !incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
               onClick={handleAcknowledge}
@@ -245,6 +299,44 @@ function IncidentDetailPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               {t("actions.acknowledge")}
+            </Button>
+          )}
+          {isActive && incident.acknowledgedAt && !isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={handleUnacknowledge}
+              disabled={unacknowledgeIncident.isPending}
+            >
+              {unacknowledgeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("actions.unacknowledge")}
+            </Button>
+          )}
+          {isActive && !isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={() => setSnoozeOpen(true)}
+              disabled={snoozeIncident.isPending}
+            >
+              {snoozeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <BellOff className="mr-2 h-4 w-4" />
+              )}
+              {t("actions.snooze")}
+            </Button>
+          )}
+          {isActive && isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={handleUnsnooze}
+              disabled={unsnoozeIncident.isPending}
+            >
+              {unsnoozeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("actions.wakeUp")}
             </Button>
           )}
           {isActive && (
@@ -409,6 +501,13 @@ function IncidentDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <SnoozeDialog
+        open={snoozeOpen}
+        onOpenChange={setSnoozeOpen}
+        isPending={snoozeIncident.isPending}
+        onSubmit={handleSnooze}
+      />
     </div>
   );
 }

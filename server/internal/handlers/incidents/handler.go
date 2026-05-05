@@ -21,6 +21,10 @@ import (
 type Handler struct {
 	base.HandlerBase
 	svc *Service
+	// jwtSecret is captured at construction so the magic-link ack handler
+	// can sign and verify tokens without going through HandlerBase's
+	// unexported cfg field.
+	jwtSecret []byte
 }
 
 // NewHandler creates a new incidents handler.
@@ -28,6 +32,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	return &Handler{
 		HandlerBase: base.NewHandlerBase(cfg),
 		svc:         service,
+		jwtSecret:   []byte(cfg.Auth.JWTSecret),
 	}
 }
 
@@ -192,6 +197,52 @@ func (h *Handler) actorUID(req bunrouter.Request) string {
 	}
 
 	return ""
+}
+
+// AcknowledgeIncidentByLink handles GET /api/v1/orgs/:org/incidents/:uid/ack?token=…
+// — the magic-link path used from email notifications. Returns text/html so
+// it renders nicely when opened from a mail client (the link is opened via a
+// browser navigation, not a fetch call). Token verification both authenticates
+// and identifies the recipient.
+func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	incidentUID := req.Param("uid")
+	token := req.URL.Query().Get("token")
+
+	if token == "" {
+		writeAckHTML(writer, http.StatusBadRequest, ackHTMLMissingToken)
+
+		return nil
+	}
+
+	payload, err := VerifyAckToken(h.jwtSecret, incidentUID, token)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrAckTokenExpired):
+			writeAckHTML(writer, http.StatusGone, ackHTMLExpired)
+		case errors.Is(err, ErrAckTokenSignature),
+			errors.Is(err, ErrAckTokenIncidentMismatch),
+			errors.Is(err, ErrAckTokenMalformed):
+			writeAckHTML(writer, http.StatusBadRequest, ackHTMLInvalid)
+		default:
+			writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError)
+		}
+
+		return nil
+	}
+
+	// Look up the user by email so the audit trail records a UID when
+	// possible. Unknown emails are still allowed — the recipient_email goes
+	// into the event payload either way.
+	ackedBy := h.svc.lookupUserUIDByEmail(req.Context(), payload.RecipientEmail)
+
+	if h.svc.tryEmailAck(req.Context(), orgSlug, incidentUID, ackedBy, payload.RecipientEmail) {
+		writeAckHTML(writer, http.StatusOK, ackHTMLSuccess)
+	} else {
+		writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError)
+	}
+
+	return nil
 }
 
 // AcknowledgeIncident handles POST /api/v1/orgs/:org/incidents/:uid/ack.

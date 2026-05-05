@@ -143,8 +143,14 @@ export interface IncidentDetail {
   description?: string;
   startedAt?: string;
   acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  snoozedUntil?: string;
+  snoozedBy?: string;
+  snoozeReason?: string;
   escalatedAt?: string;
   resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionType?: "auto" | "manual" | "expired";
   failureCount?: number;
   relapseCount?: number;
   lastReopenedAt?: string;
@@ -702,7 +708,9 @@ export function useAllResults(
 export function useIncidents(
   org: string,
   options?: {
-    state?: "active" | "resolved";
+    // "acked" / "snoozed" are derived states the backend translates to
+    // active + filter; the frontend just passes the literal through.
+    state?: "active" | "resolved" | "acked" | "snoozed";
     checkUid?: string;
     since?: string;
     until?: string;

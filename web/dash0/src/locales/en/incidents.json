@@ -31,11 +31,44 @@
   "fallbackTitle": "Incident",
   "actions": {
     "acknowledge": "Acknowledge",
+    "unacknowledge": "Unacknowledge",
+    "snooze": "Snooze…",
+    "wakeUp": "Wake up",
     "resolve": "Resolve",
     "acknowledged": "Incident acknowledged",
+    "unacknowledged": "Acknowledgment cleared",
+    "snoozed": "Incident snoozed",
+    "unsnoozed": "Snooze cleared",
     "resolved": "Incident resolved",
     "acknowledgeFailed": "Failed to acknowledge incident",
+    "unacknowledgeFailed": "Failed to clear acknowledgment",
+    "snoozeFailed": "Failed to snooze incident",
+    "unsnoozeFailed": "Failed to wake incident",
     "resolveFailed": "Failed to resolve incident"
+  },
+  "snoozeDialog": {
+    "title": "Snooze incident",
+    "description": "Silence notifications until the chosen time. Snoozing also acknowledges the incident.",
+    "duration": "Duration",
+    "reason": "Reason (optional)",
+    "reasonPlaceholder": "e.g., deploying fix",
+    "quickSelect": "Quick select",
+    "until15m": "15 minutes",
+    "until1h": "1 hour",
+    "until4h": "4 hours",
+    "untilTomorrow9am": "Tomorrow at 9am",
+    "customDuration": "Custom (e.g., 2h, 30m)",
+    "submit": "Snooze",
+    "cancel": "Cancel"
+  },
+  "stateBadges": {
+    "acked": "Acked",
+    "snoozed": "Snoozed",
+    "snoozedUntil": "Snoozed until {{time}}"
+  },
+  "stateFilter": {
+    "ackedOnly": "Acknowledged",
+    "snoozedOnly": "Snoozed"
   },
   "detail": {
     "incidentDetail": "Incident Detail",

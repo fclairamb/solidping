@@ -1058,8 +1058,14 @@ type IncidentResponse struct {
 	State               string                   `json:"state"`
 	StartedAt           time.Time                `json:"startedAt"`
 	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
+	ResolvedBy          *string                  `json:"resolvedBy,omitempty"`
+	ResolutionType      *string                  `json:"resolutionType,omitempty"`
 	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
 	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
+	AcknowledgedBy      *string                  `json:"acknowledgedBy,omitempty"`
+	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
+	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
+	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
 	FailureCount        int                      `json:"failureCount"`
 	RelapseCount        int                      `json:"relapseCount"`
 	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
@@ -1118,8 +1124,14 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,
 		ResolvedAt:          inc.ResolvedAt,
+		ResolvedBy:          inc.ResolvedBy,
+		ResolutionType:      inc.ResolutionType,
 		EscalatedAt:         inc.EscalatedAt,
 		AcknowledgedAt:      inc.AcknowledgedAt,
+		AcknowledgedBy:      inc.AcknowledgedBy,
+		SnoozedUntil:        inc.SnoozedUntil,
+		SnoozedBy:           inc.SnoozedBy,
+		SnoozeReason:        inc.SnoozeReason,
 		FailureCount:        inc.FailureCount,
 		RelapseCount:        inc.RelapseCount,
 		LastReopenedAt:      inc.LastReopenedAt,
@@ -1246,10 +1258,22 @@ func (s *Service) ListIncidents(
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
 	}
 
-	// Convert state strings to state values
+	// Convert state strings to state values. "acked" / "snoozed" are derived
+	// states (active + acknowledged_at | snoozed_until) — they imply
+	// state=active so the SQL stays consistent (an acked-and-resolved
+	// incident shouldn't appear under "acked").
 	for _, stateStr := range opts.States {
-		if state, ok := stringToState(stateStr); ok {
-			filter.States = append(filter.States, state)
+		switch stateStr {
+		case "acked":
+			filter.AckedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		case "snoozed":
+			filter.SnoozedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		default:
+			if state, ok := stringToState(stateStr); ok {
+				filter.States = append(filter.States, state)
+			}
 		}
 	}
 
@@ -1355,14 +1379,53 @@ func (s *Service) GetIncidentByUID(ctx context.Context, orgUID, incidentUID stri
 	return incident, nil
 }
 
+// tryEmailAck performs an email-channel ack and returns whether it
+// succeeded. Folds the (incident, error) result the magic-link handler
+// doesn't need into a single bool so the caller can keep its return type
+// simple (nil error after rendering an HTML error page would otherwise trip
+// the nilerr lint).
+func (s *Service) tryEmailAck(
+	ctx context.Context, orgSlug, incidentUID, ackedBy, recipientEmail string,
+) bool {
+	_, err := s.AcknowledgeIncident(ctx, orgSlug, &AcknowledgeIncidentRequest{
+		IncidentUID:         incidentUID,
+		AcknowledgedBy:      ackedBy,
+		AcknowledgedByEmail: recipientEmail,
+		Note:                "",
+		Via:                 "email",
+	})
+
+	return err == nil
+}
+
+// lookupUserUIDByEmail returns the User UID for the given email, or "" if no
+// user is found. Used by the magic-link ack path where the recipient may or
+// may not be a known platform user.
+func (s *Service) lookupUserUIDByEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	user, err := s.db.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return ""
+	}
+
+	return user.UID
+}
+
 // AcknowledgeIncidentRequest contains the data needed to acknowledge an incident.
 type AcknowledgeIncidentRequest struct {
 	IncidentUID    string
 	AcknowledgedBy string // User UID or identifier
-	SlackUserID    string // Slack user ID if acknowledged via Slack
-	SlackUsername  string // Slack username for display
-	Note           string // Optional free-text note
-	Via            string // "slack", "web", "email", etc.
+	// AcknowledgedByEmail is the recipient email for magic-link acks where
+	// AcknowledgedBy may be empty (recipient is not a known user). Goes into
+	// the event payload so the audit trail is complete.
+	AcknowledgedByEmail string
+	SlackUserID         string // Slack user ID if acknowledged via Slack
+	SlackUsername       string // Slack username for display
+	Note                string // Optional free-text note
+	Via                 string // "slack", "web", "email", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged.
@@ -1412,6 +1475,12 @@ func (s *Service) AcknowledgeIncident(
 		"slack_user_id":  req.SlackUserID,
 		"slack_username": req.SlackUsername,
 		"note":           req.Note,
+	}
+	// Magic-link acks come in with the recipient email even when the
+	// recipient is not a known platform user — record it on the payload so
+	// the audit trail names the acker even when actor_uid is NULL.
+	if req.AcknowledgedByEmail != "" {
+		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
 	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
