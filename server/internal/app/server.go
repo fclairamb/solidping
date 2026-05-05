@@ -633,6 +633,7 @@ func (s *Server) setupRoutes() {
 	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
+	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
 
 	// Integration connections routes (authentication required)
 	connectionsService := connections.NewService(s.dbService, s.services.Credentials)

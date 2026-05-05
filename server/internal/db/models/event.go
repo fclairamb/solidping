@@ -37,6 +37,22 @@ const (
 	EventTypeIncidentSnoozed EventType = "incident.snoozed"
 	// EventTypeIncidentUnsnoozed indicates an incident's snooze was cleared.
 	EventTypeIncidentUnsnoozed EventType = "incident.unsnoozed"
+
+	// EventTypeOrgActivationSignupCompleted fires once per org when its
+	// initial member is created (the user who provisioned the org).
+	EventTypeOrgActivationSignupCompleted EventType = "org.activation.signup_completed"
+	// EventTypeOrgActivationFirstCheckCreated fires once per org the first
+	// time a check is created for it.
+	EventTypeOrgActivationFirstCheckCreated EventType = "org.activation.first_check_created"
+	// EventTypeOrgActivationFirstResultReceived fires once per org the first
+	// time a check result is recorded for it.
+	EventTypeOrgActivationFirstResultReceived EventType = "org.activation.first_result_received"
+	// EventTypeOrgActivationFirstNotificationConfigured fires once per org
+	// the first time an integration connection is created for it.
+	EventTypeOrgActivationFirstNotificationConfigured EventType = "org.activation.first_notification_configured"
+	// EventTypeOrgActivationFirstIncidentPaged fires once per org the first
+	// time an incident notification is dispatched for it.
+	EventTypeOrgActivationFirstIncidentPaged EventType = "org.activation.first_incident_paged"
 )
 
 // ActorType represents who triggered an event.

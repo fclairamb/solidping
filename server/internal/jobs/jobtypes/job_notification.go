@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -159,5 +160,12 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	log.InfoContext(ctx, "Notification sent successfully")
+
+	// Activation funnel: idempotent — fires once on the first successful
+	// incident notification dispatch for this org.
+	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
+		models.EventTypeOrgActivationFirstIncidentPaged,
+		activation.SourceSystem, "")
+
 	return nil
 }

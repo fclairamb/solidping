@@ -6,7 +6,29 @@
   "welcome": {
     "title": "Bienvenido a SolidPing",
     "subtitle": "Cree su primera comprobación para comenzar a monitorear.",
-    "cta": "Crear primera comprobación"
+    "firstCheckSubtitle": "Elige un tipo de comprobación e indica el objetivo.",
+    "cta": "Crear primera comprobación",
+    "create": "Crear comprobación",
+    "creating": "Creando...",
+    "advancedHint": "¿Más control?",
+    "advancedLink": "Abrir el editor completo",
+    "unexpectedError": "Se ha producido un error inesperado.",
+    "quick": {
+      "http": "HTTP",
+      "icmp": "Ping",
+      "ssl": "SSL"
+    },
+    "quickLabel": {
+      "http": "URL a monitorear",
+      "icmp": "Host para hacer ping",
+      "ssl": "Dominio para SSL"
+    }
+  },
+  "celebration": {
+    "title": "¡Llegó el primer resultado!",
+    "body": "Acabamos de comprobar {{name}}. Configura las notificaciones para enterarte si alguna vez falla.",
+    "cta": "Ver la comprobación",
+    "dismiss": "Cerrar"
   },
   "banner": {
     "allGreen": "Todos los sistemas operativos",

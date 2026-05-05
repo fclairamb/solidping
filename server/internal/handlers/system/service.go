@@ -71,6 +71,93 @@ type SetParameterRequest struct {
 	Secret *bool `json:"secret,omitempty"`
 }
 
+// ActivationFunnelRow lists per-org timestamps for each activation
+// milestone. Missing milestones leave the corresponding field nil.
+type ActivationFunnelRow struct {
+	OrganizationUID string     `json:"organizationUid"`
+	Slug            string     `json:"slug"`
+	Name            string     `json:"name"`
+	SignupAt        *time.Time `json:"signupAt,omitempty"`
+	FirstCheckAt    *time.Time `json:"firstCheckAt,omitempty"`
+	FirstResultAt   *time.Time `json:"firstResultAt,omitempty"`
+	FirstNotifierAt *time.Time `json:"firstNotifierAt,omitempty"`
+	FirstIncidentAt *time.Time `json:"firstIncidentAt,omitempty"`
+	OrgCreatedAt    time.Time  `json:"orgCreatedAt"`
+}
+
+// ActivationFunnelResponse wraps the funnel rows.
+type ActivationFunnelResponse struct {
+	Data []*ActivationFunnelRow `json:"data"`
+}
+
+// ListActivationFunnel returns one row per organization with the timestamps
+// for each activation milestone. Used by the super-admin /admin/activation
+// view to spot stalled funnels at a glance.
+func (s *Service) ListActivationFunnel(ctx context.Context) (*ActivationFunnelResponse, error) {
+	orgs, err := s.db.ListOrganizations(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("list organizations: %w", err)
+	}
+
+	rows := make([]*ActivationFunnelRow, 0, len(orgs))
+	for _, org := range orgs {
+		row := &ActivationFunnelRow{
+			OrganizationUID: org.UID,
+			Slug:            org.Slug,
+			Name:            org.Name,
+			OrgCreatedAt:    org.CreatedAt,
+		}
+
+		events, err := s.db.ListEvents(ctx, &models.ListEventsFilter{
+			OrganizationUID: org.UID,
+			EventTypes: []models.EventType{
+				models.EventTypeOrgActivationSignupCompleted,
+				models.EventTypeOrgActivationFirstCheckCreated,
+				models.EventTypeOrgActivationFirstResultReceived,
+				models.EventTypeOrgActivationFirstNotificationConfigured,
+				models.EventTypeOrgActivationFirstIncidentPaged,
+			},
+		})
+		if err != nil {
+			slog.WarnContext(ctx, "activation funnel: list events failed",
+				"orgUID", org.UID, "error", err)
+
+			rows = append(rows, row)
+
+			continue
+		}
+
+		for _, event := range events {
+			occurredAt := event.CreatedAt
+			switch event.EventType {
+			case models.EventTypeOrgActivationSignupCompleted:
+				row.SignupAt = &occurredAt
+			case models.EventTypeOrgActivationFirstCheckCreated:
+				row.FirstCheckAt = &occurredAt
+			case models.EventTypeOrgActivationFirstResultReceived:
+				row.FirstResultAt = &occurredAt
+			case models.EventTypeOrgActivationFirstNotificationConfigured:
+				row.FirstNotifierAt = &occurredAt
+			case models.EventTypeOrgActivationFirstIncidentPaged:
+				row.FirstIncidentAt = &occurredAt
+			case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
+				models.EventTypeCheckDeleted,
+				models.EventTypeIncidentCreated, models.EventTypeIncidentResolved,
+				models.EventTypeIncidentEscalated, models.EventTypeIncidentReopened,
+				models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
+				models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
+				models.EventTypeIncidentEscalationFailed:
+				// Filter only requested activation events; these branches
+				// are unreachable but exhaustive lint requires them.
+			}
+		}
+
+		rows = append(rows, row)
+	}
+
+	return &ActivationFunnelResponse{Data: rows}, nil
+}
+
 // ListParameters returns all system parameters with secrets masked.
 func (s *Service) ListParameters(ctx context.Context) (*ListParametersResponse, error) {
 	params, err := s.db.ListSystemParameters(ctx)

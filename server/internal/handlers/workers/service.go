@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -288,6 +289,10 @@ func (s *Service) SubmitResult(
 	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
 		return nil, fmt.Errorf("failed to save result: %w", saveErr)
 	}
+
+	activation.Emit(ctx, s.db, job.OrganizationUID,
+		models.EventTypeOrgActivationFirstResultReceived,
+		activation.SourceSystem, "")
 
 	// 4. Process incidents (best-effort).
 	check, checkErr := s.db.GetCheck(
