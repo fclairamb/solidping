@@ -409,3 +409,48 @@ forward. Pure rename, no behavior change.
 
 ### Step 11 — QA + audit
 `make build lint-back test`. Independent audit. Address any gaps.
+
+### Closing note (2026-05-05)
+
+Shipped on this branch:
+
+- `JobTypeEscalationStep` job runner with target dispatch (connection →
+  notification job; user/admin/schedule → direct email via the email
+  service).
+- Schedule cycle 0 of the resolved policy when an incident opens, with
+  the same `incidentUid` config key the existing cancel sweep uses, so
+  ack/snooze/resolve cancellation requires no extra wiring.
+- Repeat cycles: when the last step fires and `repeat_max > 0`, the
+  next cycle is scheduled at `now() + repeat_after_minutes`.
+- On-call resolver wired via a closure (`SetOnCallResolver`) to avoid
+  an import cycle between jobtypes and oncallschedules.
+- Hard-delete protection on policies referenced by open incidents
+  (returns 409 `ESCALATION_POLICY_IN_USE`).
+- Frontend: list / new / edit routes, sidebar entry, en/fr/de/es i18n
+  for the `escalation` namespace.
+- Check-level policy assignment: `escalationPolicyUid` on
+  `CreateCheckRequest`, `UpdateCheckRequest`, and `CheckResponse`,
+  wired through `CheckUpdate` into both postgres and sqlite.
+- Incident detail page: `EscalationTimelineCard` showing fired vs.
+  failed steps separately from the generic event log.
+
+Two deferred items, called out in the risks section of the original
+spec:
+
+1. **Vocabulary cleanup** — `keyEscalationThreshold` (adaptive
+   incident resolution) was not renamed to `keyPromotionThreshold`.
+   The rename touches the DB column too, which is a wider blast radius
+   than this spec budgeted. Tracked for a follow-up alongside any
+   future adaptive-resolution work.
+
+2. **Group-level UI assignment** — `EscalationPolicyUID` is on the
+   `CheckGroup` model and the runtime resolver respects it (check's
+   policy wins, then group's), but the check-group create/update
+   handlers don't yet expose the field on their request DTOs. The
+   runtime fallback works; only the UI wiring is missing. Tracked as
+   a small follow-up.
+
+V1 frontend uses a flat form-based editor rather than the spec's
+ambitious draggable-timeline visual. The data model and APIs back the
+richer UI; visual polish lands as a follow-up once the shape
+stabilizes in real use.
