@@ -130,7 +130,11 @@ function NewChannelPage() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-5">
-          <ChannelForm type={type} onChange={setForm} />
+          <ChannelForm
+            type={type}
+            initialName={channelLabel(type)}
+            onChange={setForm}
+          />
           <div className="flex justify-end gap-2">
             <Button
               type="button"

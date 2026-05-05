@@ -16,6 +16,7 @@ export interface ChannelFormState {
 interface ChannelFormProps {
   type: ConnectionType;
   initial?: Connection | null;
+  initialName?: string;
   onChange: (state: ChannelFormState) => void;
 }
 
@@ -23,9 +24,9 @@ interface ChannelFormProps {
 // once; a per-type panel slots in below for the channel-specific
 // settings. Each panel keeps its own narrow shape — no anything-goes
 // JSON editor.
-export function ChannelForm({ type, initial, onChange }: ChannelFormProps) {
+export function ChannelForm({ type, initial, initialName, onChange }: ChannelFormProps) {
   const { t } = useTranslation("channels");
-  const [name, setName] = useState(initial?.name || "");
+  const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
   const [settings, setSettings] = useState<Record<string, unknown>>(
