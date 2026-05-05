@@ -3785,7 +3785,7 @@ func (s *Service) GetMembershipRequest(
 		Model(request).
 		Relation("Organization").
 		Relation("User").
-		Where("mr.uid = ?", uid).
+		Where("membership_request.uid = ?", uid).
 		Scan(ctx)
 	if err != nil {
 		return nil, err
