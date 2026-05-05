@@ -1,0 +1,16 @@
+{{define "subject"}}New membership request from {{.RequesterName}} on {{.OrgName}}{{end}}
+{{template "base.html" .}}
+{{define "content"}}
+    <h1>New membership request</h1>
+    <p>Hi,</p>
+    <p><strong>{{.RequesterName}}</strong> ({{.RequesterEmail}}) has asked to join <strong>{{.OrgName}}</strong> on SolidPing.</p>
+    {{if .Message}}
+    <p class="fallback">{{.Message}}</p>
+    {{end}}
+    {{if .RequestsURL}}
+    <p class="cta-wrap"><a href="{{.RequestsURL}}" class="cta">Review pending requests</a></p>
+    <p>Or paste this link into your browser:</p>
+    <p class="fallback">{{.RequestsURL}}</p>
+    {{end}}
+    <p class="meta">You're receiving this because you're an admin of {{.OrgName}}.</p>
+{{end}}

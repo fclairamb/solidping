@@ -2625,10 +2625,10 @@ func (s *Service) sendInvitationEmail(
 
 	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
-			"OrgName":     orgName,
-			"Role":        role,
-			"InviterName": inviterName,
-			"InviteURL":   inviteURL,
+			emailKeyOrgName: orgName,
+			"Role":          role,
+			"InviterName":   inviterName,
+			"InviteURL":     inviteURL,
 		},
 	)
 }
