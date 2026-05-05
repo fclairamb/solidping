@@ -197,6 +197,16 @@
     "notFound": "Résultat introuvable — il a peut-être été supprimé lors de l'agrégation automatique, et aucune agrégation couvrant son horodatage n'a été trouvée."
   },
   "detail": {
+    "summary": {
+      "currentlyUp": "En ligne depuis",
+      "currentlyDown": "Hors ligne depuis",
+      "statusFallback": "Statut",
+      "unknown": "Inconnu",
+      "lastChecked": "Dernière vérification",
+      "ago": "il y a {{duration}}",
+      "never": "Jamais",
+      "incidents": "Incidents"
+    },
     "checkDetails": "Détails du contrôle",
     "pendingFirstRun": "Première exécution en cours…",
     "configuration": "Configuration",

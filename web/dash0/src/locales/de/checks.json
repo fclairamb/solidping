@@ -197,6 +197,16 @@
     "notFound": "Ergebnis nicht gefunden — es wurde möglicherweise im Rahmen der automatischen Aggregation gelöscht, und es gibt keine Aggregation, die seinen Zeitstempel abdeckt."
   },
   "detail": {
+    "summary": {
+      "currentlyUp": "Aktuell online seit",
+      "currentlyDown": "Aktuell offline seit",
+      "statusFallback": "Status",
+      "unknown": "Unbekannt",
+      "lastChecked": "Zuletzt geprüft",
+      "ago": "vor {{duration}}",
+      "never": "Nie",
+      "incidents": "Vorfälle"
+    },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
     "configuration": "Konfiguration",
