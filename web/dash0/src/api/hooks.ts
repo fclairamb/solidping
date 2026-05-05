@@ -2404,7 +2404,7 @@ export interface CheckConnection {
   isDefault: boolean;
 }
 
-export function useCheckConnections(org: string, checkUid: string) {
+export function useCheckConnections(org: string, checkUid: string | undefined) {
   return useQuery({
     queryKey: ["checkConnections", org, checkUid],
     queryFn: async () => {
