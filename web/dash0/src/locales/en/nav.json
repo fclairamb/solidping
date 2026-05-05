@@ -3,6 +3,7 @@
   "checks": "Checks",
   "incidents": "Incidents",
   "dependencies": "Dependencies",
+  "onCall": "On-call",
   "events": "Events",
   "statusPages": "Status Pages",
   "badges": "Badges",

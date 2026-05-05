@@ -23,6 +23,7 @@ import { Route as OrgsOrgStatusPagesRouteImport } from './routes/orgs/$org/statu
 import { Route as OrgsOrgServerRouteImport } from './routes/orgs/$org/server'
 import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register'
 import { Route as OrgsOrgOrganizationRouteImport } from './routes/orgs/$org/organization'
+import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgIncidentsRouteImport } from './routes/orgs/$org/incidents'
 import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
@@ -34,6 +35,7 @@ import { Route as OrgsOrgTestIndexRouteImport } from './routes/orgs/$org/test.in
 import { Route as OrgsOrgStatusPagesIndexRouteImport } from './routes/orgs/$org/status-pages.index'
 import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/server.index'
 import { Route as OrgsOrgOrganizationIndexRouteImport } from './routes/orgs/$org/organization.index'
+import { Route as OrgsOrgOnCallIndexRouteImport } from './routes/orgs/$org/on-call.index'
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
 import { Route as OrgsOrgDependenciesIndexRouteImport } from './routes/orgs/$org/dependencies.index'
 import { Route as OrgsOrgChecksIndexRouteImport } from './routes/orgs/$org/checks.index'
@@ -53,6 +55,8 @@ import { Route as OrgsOrgOrganizationSettingsRouteImport } from './routes/orgs/$
 import { Route as OrgsOrgOrganizationRequestsRouteImport } from './routes/orgs/$org/organization.requests'
 import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$org/organization.members'
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
+import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
+import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
@@ -135,6 +139,11 @@ const OrgsOrgOrganizationRoute = OrgsOrgOrganizationRouteImport.update({
   path: '/organization',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
+const OrgsOrgOnCallRoute = OrgsOrgOnCallRouteImport.update({
+  id: '/on-call',
+  path: '/on-call',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
 const OrgsOrgLoginRoute = OrgsOrgLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -191,6 +200,11 @@ const OrgsOrgOrganizationIndexRoute =
     path: '/',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOnCallIndexRoute = OrgsOrgOnCallIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgsOrgOnCallRoute,
+} as any)
 const OrgsOrgIncidentsIndexRoute = OrgsOrgIncidentsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -293,6 +307,16 @@ const OrgsOrgOrganizationInvitationsRoute =
     path: '/invitations',
     getParentRoute: () => OrgsOrgOrganizationRoute,
   } as any)
+const OrgsOrgOnCallNewRoute = OrgsOrgOnCallNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => OrgsOrgOnCallRoute,
+} as any)
+const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
+  id: '/$slug',
+  path: '/$slug',
+  getParentRoute: () => OrgsOrgOnCallRoute,
+} as any)
 const OrgsOrgIncidentsIncidentUidRoute =
   OrgsOrgIncidentsIncidentUidRouteImport.update({
     id: '/$incidentUid',
@@ -366,6 +390,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
@@ -377,6 +402,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -396,6 +423,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
+  '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
@@ -424,6 +452,8 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -442,6 +472,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/checks': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
+  '/orgs/$org/on-call': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server': typeof OrgsOrgServerIndexRoute
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesIndexRoute
@@ -469,6 +500,7 @@ export interface FileRoutesById {
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
@@ -480,6 +512,8 @@ export interface FileRoutesById {
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
   '/orgs/$org/organization/requests': typeof OrgsOrgOrganizationRequestsRoute
@@ -499,6 +533,7 @@ export interface FileRoutesById {
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
+  '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
@@ -527,6 +562,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
+    | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/register'
     | '/orgs/$org/server'
@@ -538,6 +574,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/requests'
@@ -557,6 +595,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
     | '/orgs/$org/incidents/'
+    | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
     | '/orgs/$org/status-pages/'
@@ -585,6 +624,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/requests'
@@ -603,6 +644,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks'
     | '/orgs/$org/dependencies'
     | '/orgs/$org/incidents'
+    | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/server'
     | '/orgs/$org/status-pages'
@@ -629,6 +671,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
+    | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/register'
     | '/orgs/$org/server'
@@ -640,6 +683,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/on-call/$slug'
+    | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
     | '/orgs/$org/organization/requests'
@@ -659,6 +704,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
     | '/orgs/$org/incidents/'
+    | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
     | '/orgs/$org/status-pages/'
@@ -782,6 +828,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOrganizationRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/orgs/$org/on-call': {
+      id: '/orgs/$org/on-call'
+      path: '/on-call'
+      fullPath: '/orgs/$org/on-call'
+      preLoaderRoute: typeof OrgsOrgOnCallRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
     '/orgs/$org/login': {
       id: '/orgs/$org/login'
       path: '/login'
@@ -858,6 +911,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/organization/'
       preLoaderRoute: typeof OrgsOrgOrganizationIndexRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/on-call/': {
+      id: '/orgs/$org/on-call/'
+      path: '/'
+      fullPath: '/orgs/$org/on-call/'
+      preLoaderRoute: typeof OrgsOrgOnCallIndexRouteImport
+      parentRoute: typeof OrgsOrgOnCallRoute
     }
     '/orgs/$org/incidents/': {
       id: '/orgs/$org/incidents/'
@@ -991,6 +1051,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/organization/invitations'
       preLoaderRoute: typeof OrgsOrgOrganizationInvitationsRouteImport
       parentRoute: typeof OrgsOrgOrganizationRoute
+    }
+    '/orgs/$org/on-call/new': {
+      id: '/orgs/$org/on-call/new'
+      path: '/new'
+      fullPath: '/orgs/$org/on-call/new'
+      preLoaderRoute: typeof OrgsOrgOnCallNewRouteImport
+      parentRoute: typeof OrgsOrgOnCallRoute
+    }
+    '/orgs/$org/on-call/$slug': {
+      id: '/orgs/$org/on-call/$slug'
+      path: '/$slug'
+      fullPath: '/orgs/$org/on-call/$slug'
+      preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
+      parentRoute: typeof OrgsOrgOnCallRoute
     }
     '/orgs/$org/incidents/$incidentUid': {
       id: '/orgs/$org/incidents/$incidentUid'
@@ -1128,6 +1202,22 @@ const OrgsOrgIncidentsRouteChildren: OrgsOrgIncidentsRouteChildren = {
 const OrgsOrgIncidentsRouteWithChildren =
   OrgsOrgIncidentsRoute._addFileChildren(OrgsOrgIncidentsRouteChildren)
 
+interface OrgsOrgOnCallRouteChildren {
+  OrgsOrgOnCallSlugRoute: typeof OrgsOrgOnCallSlugRoute
+  OrgsOrgOnCallNewRoute: typeof OrgsOrgOnCallNewRoute
+  OrgsOrgOnCallIndexRoute: typeof OrgsOrgOnCallIndexRoute
+}
+
+const OrgsOrgOnCallRouteChildren: OrgsOrgOnCallRouteChildren = {
+  OrgsOrgOnCallSlugRoute: OrgsOrgOnCallSlugRoute,
+  OrgsOrgOnCallNewRoute: OrgsOrgOnCallNewRoute,
+  OrgsOrgOnCallIndexRoute: OrgsOrgOnCallIndexRoute,
+}
+
+const OrgsOrgOnCallRouteWithChildren = OrgsOrgOnCallRoute._addFileChildren(
+  OrgsOrgOnCallRouteChildren,
+)
+
 interface OrgsOrgOrganizationRouteChildren {
   OrgsOrgOrganizationInvitationsRoute: typeof OrgsOrgOrganizationInvitationsRoute
   OrgsOrgOrganizationMembersRoute: typeof OrgsOrgOrganizationMembersRoute
@@ -1230,6 +1320,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgEventsRoute: typeof OrgsOrgEventsRoute
   OrgsOrgIncidentsRoute: typeof OrgsOrgIncidentsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
+  OrgsOrgOnCallRoute: typeof OrgsOrgOnCallRouteWithChildren
   OrgsOrgOrganizationRoute: typeof OrgsOrgOrganizationRouteWithChildren
   OrgsOrgRegisterRoute: typeof OrgsOrgRegisterRoute
   OrgsOrgServerRoute: typeof OrgsOrgServerRouteWithChildren
@@ -1246,6 +1337,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgEventsRoute: OrgsOrgEventsRoute,
   OrgsOrgIncidentsRoute: OrgsOrgIncidentsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,
+  OrgsOrgOnCallRoute: OrgsOrgOnCallRouteWithChildren,
   OrgsOrgOrganizationRoute: OrgsOrgOrganizationRouteWithChildren,
   OrgsOrgRegisterRoute: OrgsOrgRegisterRoute,
   OrgsOrgServerRoute: OrgsOrgServerRouteWithChildren,

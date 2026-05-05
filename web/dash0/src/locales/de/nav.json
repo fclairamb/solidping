@@ -3,6 +3,7 @@
   "checks": "Prüfungen",
   "incidents": "Vorfälle",
   "dependencies": "Abhängigkeiten",
+  "onCall": "Bereitschaft",
   "events": "Ereignisse",
   "statusPages": "Statusseiten",
   "badges": "Abzeichen",

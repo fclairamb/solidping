@@ -1906,3 +1906,265 @@ export function useSampleConfigs(checkType: string) {
   });
 }
 
+// ============================================================================
+// On-call schedules
+// ============================================================================
+
+export type OnCallRotationType = "daily" | "weekly";
+
+export interface OnCallUserRef {
+  uid: string;
+  name: string;
+  email: string;
+}
+
+export interface OnCallSchedule {
+  uid: string;
+  slug: string;
+  name: string;
+  description?: string;
+  timezone: string;
+  rotationType: OnCallRotationType;
+  handoffTime: string;
+  handoffWeekday?: number;
+  startAt: string;
+  icalEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userUids?: string[];
+  currentlyOnCall?: OnCallUserRef;
+}
+
+export interface OnCallPreviewSlot {
+  userUid: string;
+  from: string;
+  to: string;
+}
+
+export interface OnCallOverride {
+  uid: string;
+  scheduleUid: string;
+  userUid: string;
+  startAt: string;
+  endAt: string;
+  reason?: string;
+  createdByUid?: string;
+  createdAt: string;
+}
+
+export interface CreateOnCallScheduleRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  timezone: string;
+  rotationType: OnCallRotationType;
+  handoffTime: string;
+  handoffWeekday?: number;
+  startAt: string;
+  userUids: string[];
+}
+
+export interface UpdateOnCallScheduleRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  timezone?: string;
+  rotationType?: OnCallRotationType;
+  handoffTime?: string;
+  handoffWeekday?: number;
+  startAt?: string;
+  userUids?: string[];
+}
+
+export interface CreateOnCallOverrideRequest {
+  userUid: string;
+  startAt: string;
+  endAt: string;
+  reason?: string;
+}
+
+export function useOnCallSchedules(org: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallSchedule[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useOnCallSchedule(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug],
+    queryFn: () =>
+      apiFetch<OnCallSchedule>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+      ),
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useOnCallSchedulePreview(
+  org: string,
+  slug: string,
+  days = 14,
+) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug, "preview", days],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallPreviewSlot[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/preview?days=${days}`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useOnCallScheduleOverrides(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug, "overrides"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallOverride[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useCreateOnCallSchedule(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateOnCallScheduleRequest) =>
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useUpdateOnCallSchedule(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateOnCallScheduleRequest) =>
+      apiFetch<OnCallSchedule>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useDeleteOnCallSchedule(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/on-call-schedules/${slug}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useCreateOnCallOverride(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateOnCallOverrideRequest) =>
+      apiFetch<OnCallOverride>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "overrides"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "preview"],
+      });
+    },
+  });
+}
+
+export function useDeleteOnCallOverride(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (overrideUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides/${overrideUid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "overrides"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "preview"],
+      });
+    },
+  });
+}
+
+export interface OnCallICalFeedResponse {
+  secret: string;
+  url: string;
+}
+
+export function useEnableOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OnCallICalFeedResponse>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/enable`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
+
+export function useDisableOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/disable`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
+
+export function useRotateOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OnCallICalFeedResponse>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/rotate`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
