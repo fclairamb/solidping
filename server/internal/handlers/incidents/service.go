@@ -916,9 +916,14 @@ func (s *Service) emitEvent(
 		models.EventTypeCheckDeleted,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
-		models.EventTypeIncidentEscalationFailed:
-		// No notifications for these event types — operator actions or
-		// soft escalation failures, not lifecycle changes.
+		models.EventTypeIncidentEscalationFailed,
+		models.EventTypeOrgActivationSignupCompleted,
+		models.EventTypeOrgActivationFirstCheckCreated,
+		models.EventTypeOrgActivationFirstResultReceived,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		models.EventTypeOrgActivationFirstIncidentPaged:
+		// No notifications for these event types — operator actions, soft
+		// escalation failures, or activation milestones.
 	}
 
 	return nil
