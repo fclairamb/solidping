@@ -47,15 +47,15 @@ type OrgEntitlements struct {
 	// nil/empty string = all check types allowed.
 	AllowedCheckTypes *string `bun:"allowed_check_types"`
 
-	Source       EntitlementSource `bun:"source,notnull"`
-	DisplayName  *string           `bun:"display_name"`
-	ExternalRef  *string           `bun:"external_ref"`
-	Metadata     JSONMap           `bun:"metadata,type:jsonb,nullzero"`
+	Source      EntitlementSource `bun:"source,notnull"`
+	DisplayName *string           `bun:"display_name"`
+	ExternalRef *string           `bun:"external_ref"`
+	Metadata    JSONMap           `bun:"metadata,type:jsonb,nullzero"`
 
-	ExpiresAt     *time.Time `bun:"expires_at"`
-	LastSyncedAt  *time.Time `bun:"last_synced_at"`
-	CreatedAt     time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt     time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	ExpiresAt    *time.Time `bun:"expires_at"`
+	LastSyncedAt *time.Time `bun:"last_synced_at"`
+	CreatedAt    time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt    time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
 // NewOrgEntitlements builds a fresh row with the given source. All

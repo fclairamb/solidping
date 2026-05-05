@@ -35,6 +35,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
+	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
@@ -44,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/features"
@@ -634,6 +636,24 @@ func (s *Server) setupRoutes() {
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
+
+	// Org entitlements routes. The handler does its own auth gating
+	// (service token preferred for SaaS billing service; admin user
+	// fallback gated by entitlements.admin_writes_enabled). The plain
+	// GET endpoint is open to any authenticated org member, so we wrap
+	// the group with RequireAuth + RequireOrgAccess; the handler then
+	// applies a stricter check on writes.
+	entitlementsService := entitlementsapi.NewService(
+		s.dbService, entitlementsapi.DefaultEntitlements, 0,
+	)
+	entitlementsHandler := entitlements.NewHandler(entitlementsService, s.dbService, s.config)
+	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
+		Use(authMiddleware.RequireAuth).
+		Use(authMiddleware.RequireOrgAccess)
+	orgEntitlements.GET("", entitlementsHandler.Get)
+	orgEntitlements.PUT("", entitlementsHandler.Put)
+	orgEntitlements.PATCH("", entitlementsHandler.Patch)
+	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
 
 	// Integration connections routes (authentication required)
 	connectionsService := connections.NewService(s.dbService, s.services.Credentials)

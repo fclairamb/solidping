@@ -76,11 +76,11 @@ type Resolved struct {
 // Usage counts non-deleted resources for the org. Computed live by the
 // resolver; not stored.
 type Usage struct {
-	Checks       int `json:"checks"`
-	Members      int `json:"members"`
-	StatusPages  int `json:"statusPages"`
-	CheckGroups  int `json:"checkGroups"`
-	Connections  int `json:"connections"`
+	Checks      int `json:"checks"`
+	Members     int `json:"members"`
+	StatusPages int `json:"statusPages"`
+	CheckGroups int `json:"checkGroups"`
+	Connections int `json:"connections"`
 }
 
 // Bool is a tiny helper for default-defining boolean pointers.

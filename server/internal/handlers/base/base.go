@@ -66,6 +66,9 @@ const (
 	ErrorCodeDependencyNotFound        ErrorCode = "DEPENDENCY_NOT_FOUND"
 	ErrorCodeDependencyDuplicate       ErrorCode = "DEPENDENCY_DUPLICATE"
 	ErrorCodeDependencyInvalidKind     ErrorCode = "DEPENDENCY_INVALID_KIND"
+	ErrorCodeEntitlementExceeded       ErrorCode = "ENTITLEMENT_EXCEEDED"
+	ErrorCodeFeatureNotEntitled        ErrorCode = "FEATURE_NOT_ENTITLED"
+	ErrorCodeEntitlementsStale         ErrorCode = "ENTITLEMENTS_STALE"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

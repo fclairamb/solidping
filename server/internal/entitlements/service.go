@@ -24,7 +24,7 @@ var (
 	// the service doesn't know how to count.
 	ErrUnknownResource = errors.New("unknown resource for entitlement check")
 	// ErrUnknownFeature is returned when FeatureEnabled gets a name it
-	// doesn't recognise.
+	// doesn't recognize.
 	ErrUnknownFeature = errors.New("unknown feature")
 )
 
@@ -51,15 +51,22 @@ func (e *QuotaError) Unwrap() error { return ErrEntitlementExceeded }
 // In PR 1, CanCreate / FeatureEnabled are stubs that always allow — the
 // enforcement-batch PRs wire them into actual handlers.
 type Service struct {
-	db              db.Service
-	defaults        Entitlements
-	staleAfter      time.Duration
-	now             func() time.Time
+	db         db.Service
+	defaults   Entitlements
+	staleAfter time.Duration
+	now        func() time.Time
 }
 
 // NewService builds an entitlements service with the given defaults.
 // staleAfter of zero disables stale fallback (self-hosted default).
-func NewService(dbService db.Service, defaults Entitlements, staleAfter time.Duration) *Service {
+//
+// defaults is held by value for the service's lifetime; passing by
+// pointer would invite mutation.
+//
+//nolint:gocritic
+func NewService(
+	dbService db.Service, defaults Entitlements, staleAfter time.Duration,
+) *Service {
 	return &Service{
 		db:         dbService,
 		defaults:   defaults,
@@ -94,15 +101,17 @@ func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) 
 
 // Set replaces the entitlement row and writes an audit entry in the same
 // transaction. Pass empty actor for unattended writes.
+//
+//nolint:gocritic // in is the request payload, intentional value semantics
 func (s *Service) Set(
-	ctx context.Context, orgUID string, in Entitlements, actor, reason string,
+	ctx context.Context, orgUID string, input Entitlements, actor, reason string,
 ) error {
 	previous, err := s.db.GetOrgEntitlements(ctx, orgUID)
 	if err != nil {
 		return fmt.Errorf("load previous entitlements: %w", err)
 	}
 
-	row := toModel(orgUID, in, previous)
+	row := toModel(orgUID, input, previous)
 
 	var beforeJSON models.JSONMap
 	if previous != nil {
@@ -124,7 +133,7 @@ func (s *Service) Set(
 	}
 
 	audit := models.NewOrgEntitlementAudit(
-		orgUID, string(in.Source), actor, beforeJSON, afterJSON, reasonPtr,
+		orgUID, string(input.Source), actor, beforeJSON, afterJSON, reasonPtr,
 	)
 
 	if err := s.db.UpsertOrgEntitlements(ctx, row, audit); err != nil {
@@ -132,7 +141,7 @@ func (s *Service) Set(
 	}
 
 	slog.InfoContext(ctx, "entitlements written",
-		"orgUID", orgUID, "source", in.Source, "actor", actor)
+		"orgUID", orgUID, "source", input.Source, "actor", actor)
 
 	return nil
 }
@@ -165,7 +174,10 @@ func (s *Service) Defaults() Entitlements {
 // merge produces a Resolved by filling nulls from defaults. If stale is
 // true, the entire row is dropped in favor of defaults (caller still
 // surfaces row.Source and DisplayName so the UI can label the stale
-// state).
+// state). Straight-line per-field overlay; a loop would obscure the
+// type-level mapping.
+//
+//nolint:cyclop,funlen
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out := Resolved{
 		Limits:   s.defaults.Limits,
@@ -299,53 +311,59 @@ func (s *Service) computeUsage(ctx context.Context, orgUID string) (Usage, error
 // toModel maps an Entitlements (input) onto an OrgEntitlements row. If
 // previous is non-nil the existing UID is preserved; otherwise a fresh
 // one is generated.
+//
+//nolint:gocritic // input is the inbound payload — value semantics intentional
 func toModel(
-	orgUID string, in Entitlements, previous *models.OrgEntitlements,
+	orgUID string, input Entitlements, previous *models.OrgEntitlements,
 ) *models.OrgEntitlements {
-	row := models.NewOrgEntitlements(orgUID, in.Source)
+	row := models.NewOrgEntitlements(orgUID, input.Source)
 	if previous != nil {
 		row.UID = previous.UID
 		row.CreatedAt = previous.CreatedAt
 	}
 
-	row.MaxChecks = in.Limits.MaxChecks
-	row.MaxMembers = in.Limits.MaxMembers
-	row.MaxStatusPages = in.Limits.MaxStatusPages
-	row.MaxCheckGroups = in.Limits.MaxCheckGroups
-	row.MaxMaintenanceWindows = in.Limits.MaxMaintenanceWindows
-	row.MaxConnections = in.Limits.MaxConnections
-	row.MaxWorkers = in.Limits.MaxWorkers
-	row.MaxAPITokens = in.Limits.MaxAPITokens
-	row.RetentionDaysRaw = in.Limits.RetentionDaysRaw
-	row.RetentionDaysAggregated = in.Limits.RetentionDaysAggregated
-	row.MinCheckPeriodSeconds = in.Limits.MinCheckPeriodSeconds
+	row.MaxChecks = input.Limits.MaxChecks
+	row.MaxMembers = input.Limits.MaxMembers
+	row.MaxStatusPages = input.Limits.MaxStatusPages
+	row.MaxCheckGroups = input.Limits.MaxCheckGroups
+	row.MaxMaintenanceWindows = input.Limits.MaxMaintenanceWindows
+	row.MaxConnections = input.Limits.MaxConnections
+	row.MaxWorkers = input.Limits.MaxWorkers
+	row.MaxAPITokens = input.Limits.MaxAPITokens
+	row.RetentionDaysRaw = input.Limits.RetentionDaysRaw
+	row.RetentionDaysAggregated = input.Limits.RetentionDaysAggregated
+	row.MinCheckPeriodSeconds = input.Limits.MinCheckPeriodSeconds
 
-	row.FeatureSSO = in.Features.SSO
-	row.FeatureMCP = in.Features.MCP
-	row.FeatureCustomBranding = in.Features.CustomBranding
-	row.FeaturePrioritySupport = in.Features.PrioritySupport
-	row.FeatureMultiRegion = in.Features.MultiRegion
-	row.FeatureAdvancedAlerts = in.Features.AdvancedAlerts
+	row.FeatureSSO = input.Features.SSO
+	row.FeatureMCP = input.Features.MCP
+	row.FeatureCustomBranding = input.Features.CustomBranding
+	row.FeaturePrioritySupport = input.Features.PrioritySupport
+	row.FeatureMultiRegion = input.Features.MultiRegion
+	row.FeatureAdvancedAlerts = input.Features.AdvancedAlerts
 
-	if len(in.AllowedCheckTypes) > 0 {
-		raw, _ := json.Marshal(in.AllowedCheckTypes)
-		s := string(raw)
-		row.AllowedCheckTypes = &s
+	if len(input.AllowedCheckTypes) > 0 {
+		raw, err := json.Marshal(input.AllowedCheckTypes)
+		if err == nil {
+			s := string(raw)
+			row.AllowedCheckTypes = &s
+		}
 	}
 
-	row.DisplayName = in.DisplayName
-	row.ExternalRef = in.ExternalRef
-	if in.Metadata != nil {
-		row.Metadata = models.JSONMap(in.Metadata)
+	row.DisplayName = input.DisplayName
+	row.ExternalRef = input.ExternalRef
+	if input.Metadata != nil {
+		row.Metadata = models.JSONMap(input.Metadata)
 	}
-	row.ExpiresAt = in.ExpiresAt
-	row.LastSyncedAt = in.LastSyncedAt
+	row.ExpiresAt = input.ExpiresAt
+	row.LastSyncedAt = input.LastSyncedAt
 
 	return row
 }
 
-// modelToJSON serialises an OrgEntitlements into a JSON snapshot for the
+// modelToJSON serializes an OrgEntitlements into a JSON snapshot for the
 // audit log.
+//
+//nolint:musttag // OrgEntitlements is bun-tagged; default JSON encoding is acceptable for the audit blob
 func modelToJSON(row *models.OrgEntitlements) (models.JSONMap, error) {
 	raw, err := json.Marshal(row)
 	if err != nil {
