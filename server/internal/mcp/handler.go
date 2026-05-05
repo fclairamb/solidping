@@ -108,7 +108,7 @@ func NewHandler(
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
-		connectionsSvc: connections.NewService(dbService),
+		connectionsSvc: connections.NewService(dbService, creds),
 		checkGroupsSvc: checkgroups.NewService(dbService),
 		regionsSvc:     regionshandler.NewService(dbService),
 		dbService:      dbService,

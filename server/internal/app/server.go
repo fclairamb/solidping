@@ -623,7 +623,7 @@ func (s *Server) setupRoutes() {
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 
 	// Integration connections routes (authentication required)
-	connectionsService := connections.NewService(s.dbService)
+	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
 	connectionsHandler := connections.NewHandler(connectionsService, s.config)
 	orgConnections := api.NewGroup("/orgs/:org/connections").Use(authMiddleware.RequireAuth)
 	orgConnections.GET("", connectionsHandler.ListConnections)

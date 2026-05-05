@@ -4,9 +4,12 @@ package connections
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -23,12 +26,16 @@ var (
 // Service provides business logic for connection management.
 type Service struct {
 	db db.Service
+	// creds is always non-nil — its .Enabled() reports whether a master
+	// key is configured. Used to encrypt secret fields in Settings.
+	creds credentials.Service
 }
 
 // NewService creates a new connections service.
-func NewService(dbService db.Service) *Service {
+func NewService(dbService db.Service, creds credentials.Service) *Service {
 	return &Service{
-		db: dbService,
+		db:    dbService,
+		creds: creds,
 	}
 }
 
@@ -40,8 +47,13 @@ type ConnectionResponse struct {
 	Enabled   bool           `json:"enabled"`
 	IsDefault bool           `json:"isDefault"`
 	Settings  map[string]any `json:"settings,omitempty"`
-	CreatedAt time.Time      `json:"createdAt"`
-	UpdatedAt time.Time      `json:"updatedAt"`
+	// SettingsPrivateKeys lists which top-level Settings keys are stored
+	// encrypted (and therefore stripped from the Settings map in the
+	// response). Lets the dashboard render placeholder pills like
+	// "•••• access_token" without echoing the secret value.
+	SettingsPrivateKeys []string  `json:"settingsPrivateKeys,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
 }
 
 // ListConnectionsResponse represents the response for listing connections.
@@ -66,7 +78,10 @@ type UpdateConnectionRequest struct {
 	Settings  map[string]any `json:"settings,omitempty"`
 }
 
-// toResponse converts a model to a response.
+// toResponse converts a model to a response. The Settings map is the
+// already-public side: secret keys live in SettingsPrivate (encrypted) and
+// are exposed only as names via SettingsPrivateKeys so the dashboard can
+// show placeholder pills.
 func toResponse(conn *models.IntegrationConnection, includeSettings bool) *ConnectionResponse {
 	resp := &ConnectionResponse{
 		UID:       conn.UID,
@@ -78,15 +93,27 @@ func toResponse(conn *models.IntegrationConnection, includeSettings bool) *Conne
 		UpdatedAt: conn.UpdatedAt,
 	}
 
+	secretSet := map[string]struct{}{}
+	for _, k := range credentials.ConnectionSecretFields(conn.Type) {
+		secretSet[k] = struct{}{}
+	}
+
 	if includeSettings && conn.Settings != nil {
-		// Filter out sensitive fields
-		settings := make(map[string]any)
+		settings := make(map[string]any, len(conn.Settings))
 		for k, v := range conn.Settings {
-			if k != "access_token" {
-				settings[k] = v
+			if _, isSecret := secretSet[k]; isSecret {
+				continue
 			}
+			settings[k] = v
 		}
 		resp.Settings = settings
+	}
+
+	if conn.SettingsPrivateKeys != nil && *conn.SettingsPrivateKeys != "" {
+		var keys []string
+		if err := json.Unmarshal([]byte(*conn.SettingsPrivateKeys), &keys); err == nil {
+			resp.SettingsPrivateKeys = keys
+		}
 	}
 
 	return resp
@@ -196,8 +223,8 @@ func (s *Service) CreateConnection(
 		conn.IsDefault = *req.IsDefault
 	}
 
-	if req.Settings != nil {
-		conn.Settings = models.JSONMap(req.Settings)
+	if err := s.applySettingsEncryption(ctx, conn, req.Settings); err != nil {
+		return nil, err
 	}
 
 	if err := s.db.CreateIntegrationConnection(ctx, conn); err != nil {
@@ -241,8 +268,26 @@ func (s *Service) UpdateConnection(
 	}
 
 	if req.Settings != nil {
-		settings := models.JSONMap(req.Settings)
+		// PATCH-merge: secret keys absent from the incoming map are
+		// preserved from the existing config_private; explicit null/empty
+		// clears them. Non-secret keys follow replace-wholesale semantics.
+		existing, decErr := s.loadDecryptedSettings(ctx, conn)
+		if decErr != nil {
+			return nil, decErr
+		}
+
+		secrets := credentials.ConnectionSecretFields(conn.Type)
+		merged := credentials.MergePatch(existing, req.Settings, secrets)
+
+		if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
+			return nil, encErr
+		}
+
+		settings := conn.Settings
 		update.Settings = &settings
+		update.SettingsPrivate = conn.SettingsPrivate
+		update.SettingsPrivateKeys = conn.SettingsPrivateKeys
+		update.ClearSettingsPrivate = conn.SettingsPrivate == nil
 	}
 
 	if updateErr := s.db.UpdateIntegrationConnection(ctx, connectionUID, update); updateErr != nil {
@@ -256,6 +301,90 @@ func (s *Service) UpdateConnection(
 	}
 
 	return toResponse(conn, true), nil
+}
+
+// applySettingsEncryption splits Settings into public/private using the
+// connection-type's declared secret keys, encrypts the private side, and
+// writes Settings + SettingsPrivate + SettingsPrivateKeys onto the
+// connection. When encryption is disabled at the server, secrets stay
+// plaintext on Settings (logged-once startup warning covers the gap).
+func (s *Service) applySettingsEncryption(
+	ctx context.Context, conn *models.IntegrationConnection, effective map[string]any,
+) error {
+	if effective == nil {
+		effective = map[string]any{}
+	}
+
+	secrets := credentials.ConnectionSecretFields(conn.Type)
+	public, private := credentials.SplitConfig(effective, secrets)
+	conn.Settings = models.JSONMap(public)
+
+	if !s.creds.Enabled() || len(private) == 0 {
+		conn.SettingsPrivate = nil
+		conn.SettingsPrivateKeys = nil
+		// Plaintext fallback: secrets must still be persisted so the
+		// integration actually works.
+		if !s.creds.Enabled() {
+			for k, v := range private {
+				conn.Settings[k] = v
+			}
+		}
+
+		return nil
+	}
+
+	envelope, err := s.creds.EncryptForOrg(ctx, conn.OrganizationUID, private)
+	if err != nil {
+		return fmt.Errorf("encrypt connection settings: %w", err)
+	}
+
+	conn.SettingsPrivate = &envelope
+
+	keysJSON, err := json.Marshal(credentials.SortedKeys(private))
+	if err != nil {
+		return fmt.Errorf("marshal settings private keys: %w", err)
+	}
+
+	keysStr := string(keysJSON)
+	conn.SettingsPrivateKeys = &keysStr
+
+	return nil
+}
+
+// loadDecryptedSettings returns the merged plaintext effective Settings
+// of a connection. Used by the PATCH path so secret-preservation has the
+// existing values to merge into.
+func (s *Service) loadDecryptedSettings(
+	ctx context.Context, conn *models.IntegrationConnection,
+) (map[string]any, error) {
+	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
+		out := make(map[string]any, len(conn.Settings))
+		for k, v := range conn.Settings {
+			out[k] = v
+		}
+
+		return out, nil
+	}
+
+	if !s.creds.Enabled() {
+		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, credentials.ErrDisabled)
+	}
+
+	private, err := s.creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, err)
+	}
+
+	out := make(map[string]any, len(conn.Settings)+len(private))
+	for k, v := range conn.Settings {
+		out[k] = v
+	}
+
+	for k, v := range private {
+		out[k] = v
+	}
+
+	return out, nil
 }
 
 // DeleteConnection deletes a connection.

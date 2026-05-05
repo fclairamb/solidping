@@ -2773,6 +2773,17 @@ func (s *Service) UpdateIntegrationConnection(
 		query = query.Set("settings = ?", *update.Settings)
 	}
 
+	switch {
+	case update.ClearSettingsPrivate:
+		query = query.Set("settings_private = NULL").
+			Set("settings_private_keys = NULL")
+	case update.SettingsPrivate != nil:
+		query = query.Set("settings_private = ?", *update.SettingsPrivate)
+		if update.SettingsPrivateKeys != nil {
+			query = query.Set("settings_private_keys = ?", *update.SettingsPrivateKeys)
+		}
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err

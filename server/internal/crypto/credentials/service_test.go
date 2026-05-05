@@ -111,7 +111,8 @@ func TestServiceRejectsTampering(t *testing.T) {
 	ctBytes := []byte(ct)
 	ctBytes[0] ^= 0x01
 	env["ct"] = string(ctBytes)
-	tampered, _ := json.Marshal(env)
+	tampered, mErr := json.Marshal(env)
+	r.NoError(mErr)
 
 	_, err = svc.DecryptForOrg(t.Context(), "org-1", string(tampered))
 	r.Error(err, "GCM auth tag must reject tampered ciphertext")

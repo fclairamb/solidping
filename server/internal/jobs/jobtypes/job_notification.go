@@ -27,6 +27,9 @@ var (
 	ErrMissingIncidentUID = errors.New("incidentUid is required")
 	// ErrMissingEventType is returned when eventType is not provided.
 	ErrMissingEventType = errors.New("eventType is required")
+	// ErrEncryptionDisabled is returned when a connection has encrypted
+	// settings but the credentials service is not available (no master key).
+	ErrEncryptionDisabled = errors.New("connection has encrypted settings but encryption is disabled")
 )
 
 // NotificationJobConfig configures notification parameters.
@@ -86,7 +89,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	// On decrypt failure we don't ship a half-credential — fail the job.
 	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
 		if jctx.Services.Credentials == nil || !jctx.Services.Credentials.Enabled() {
-			return fmt.Errorf("connection %s has encrypted settings but encryption is disabled", connection.UID)
+			return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
 		}
 
 		private, decErr := jctx.Services.Credentials.DecryptForOrg(
