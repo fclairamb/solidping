@@ -192,3 +192,65 @@ func TestCanCreateStubAlwaysAllows(t *testing.T) {
 	r.NoError(svc.CanCreate(t.Context(), org.UID, "checks"))
 	r.NoError(svc.CanCreate(t.Context(), org.UID, "anything-goes"))
 }
+
+// TestPayloadRoundTrip ensures every field that lives inside the payload
+// JSONB column survives a write/read cycle. Catches missing UPDATE columns
+// in the upsert chain, JSON-tag drift between the model and the API, and
+// any silent-drop unmarshal bugs.
+func TestPayloadRoundTrip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, org, _ := setup(t)
+
+	displayName := "Acme Inc."
+	expires := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+	synced := time.Now().Add(-1 * time.Hour).UTC().Truncate(time.Second)
+	externalRef := "cus_123"
+
+	in := entitlements.Entitlements{
+		Limits: entitlements.Limits{
+			MaxChecks:               entitlements.Int(10),
+			MaxMembers:              entitlements.Int(5),
+			MaxStatusPages:          entitlements.Int(2),
+			MaxCheckGroups:          entitlements.Int(3),
+			MaxMaintenanceWindows:   entitlements.Int(4),
+			MaxConnections:          entitlements.Int(6),
+			MaxWorkers:              entitlements.Int(7),
+			MaxAPITokens:            entitlements.Int(8),
+			RetentionDaysRaw:        entitlements.Int(15),
+			RetentionDaysAggregated: entitlements.Int(180),
+			MinCheckPeriodSeconds:   entitlements.Int(60),
+		},
+		Features: entitlements.Features{
+			SSO:             entitlements.Bool(true),
+			MCP:             entitlements.Bool(false),
+			CustomBranding:  entitlements.Bool(true),
+			PrioritySupport: entitlements.Bool(false),
+			MultiRegion:     entitlements.Bool(true),
+			AdvancedAlerts:  entitlements.Bool(false),
+		},
+		AllowedCheckTypes: []string{"http", "tcp"},
+		Source:            models.EntitlementSourceBilling,
+		DisplayName:       &displayName,
+		ExternalRef:       &externalRef,
+		Metadata:          map[string]any{"plan": "pro"},
+		ExpiresAt:         &expires,
+		LastSyncedAt:      &synced,
+	}
+
+	r.NoError(svc.Set(t.Context(), org.UID, in, "service:entitlements", "round-trip"))
+
+	resolved, err := svc.Resolve(t.Context(), org.UID)
+	r.NoError(err)
+
+	r.Equal(in.Source, resolved.Source)
+	r.Equal(in.DisplayName, resolved.DisplayName)
+	r.NotNil(resolved.ExpiresAt)
+	r.Equal(expires, resolved.ExpiresAt.UTC().Truncate(time.Second))
+	r.NotNil(resolved.LastSyncedAt)
+	r.Equal(synced, resolved.LastSyncedAt.UTC().Truncate(time.Second))
+	r.Equal(in.AllowedCheckTypes, resolved.AllowedCheckTypes)
+
+	r.Equal(in.Limits, resolved.Limits)
+	r.Equal(in.Features, resolved.Features)
+}
