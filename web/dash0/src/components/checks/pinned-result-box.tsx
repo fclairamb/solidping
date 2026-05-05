@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { format } from "date-fns";
 import { X } from "lucide-react";
 import { useResult } from "@/api/hooks";
@@ -11,11 +12,15 @@ interface PinnedResultBoxProps {
   resultUid: string;
   anchor?: { cx: number; cy: number };
   width: number;
+  height: number;
   onClose: () => void;
 }
 
 const BOX_WIDTH = 240;
 const MARGIN = 8;
+// Vertical distance between the anchor dot and the box edge, so the box
+// never sits directly on top of the data point.
+const DOT_GAP = 12;
 
 function formatMs(ms?: number) {
   if (ms == null) return "—";
@@ -34,22 +39,45 @@ export function PinnedResultBox({
   resultUid,
   anchor,
   width,
+  height,
   onClose,
 }: PinnedResultBoxProps) {
   const { data, isLoading, error } = useResult(org, checkUid, resultUid);
 
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  const [boxHeight, setBoxHeight] = useState(140);
+  useLayoutEffect(() => {
+    if (boxRef.current) setBoxHeight(boxRef.current.offsetHeight);
+  }, [data, isLoading, error]);
+
   let leftPx = MARGIN;
   let topPx = MARGIN;
   if (anchor) {
+    // Horizontal: center on the dot, but never let the upper bound fall
+    // below MARGIN (which would happen when `width` hasn't been measured
+    // yet and the naive clamp would push the box off-screen).
     const half = BOX_WIDTH / 2;
-    leftPx = Math.min(Math.max(anchor.cx - half, MARGIN), width - BOX_WIDTH - MARGIN);
-    topPx = Math.max(anchor.cy - 8 - 140, MARGIN);
+    const upperLeft = Math.max(width - BOX_WIDTH - MARGIN, MARGIN);
+    leftPx = Math.max(MARGIN, Math.min(anchor.cx - half, upperLeft));
+
+    // Vertical: prefer above the dot; flip below if no room. Falls back to
+    // the top margin if neither side fits (very small chart).
+    const above = anchor.cy - DOT_GAP - boxHeight;
+    const below = anchor.cy + DOT_GAP;
+    if (above >= MARGIN) {
+      topPx = above;
+    } else if (height === 0 || below + boxHeight <= height - MARGIN) {
+      topPx = below;
+    } else {
+      topPx = MARGIN;
+    }
   }
 
   const ts = data?.periodStart ? new Date(data.periodStart) : null;
 
   return (
     <div
+      ref={boxRef}
       className="absolute z-10 rounded-md border bg-popover p-3 text-sm shadow-md"
       style={{ left: leftPx, top: topPx, width: BOX_WIDTH }}
       onClick={(e) => e.stopPropagation()}
