@@ -1058,8 +1058,14 @@ type IncidentResponse struct {
 	State               string                   `json:"state"`
 	StartedAt           time.Time                `json:"startedAt"`
 	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
+	ResolvedBy          *string                  `json:"resolvedBy,omitempty"`
+	ResolutionType      *string                  `json:"resolutionType,omitempty"`
 	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
 	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
+	AcknowledgedBy      *string                  `json:"acknowledgedBy,omitempty"`
+	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
+	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
+	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
 	FailureCount        int                      `json:"failureCount"`
 	RelapseCount        int                      `json:"relapseCount"`
 	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
@@ -1118,8 +1124,14 @@ func incidentToResponse(inc *models.Incident) IncidentResponse {
 		State:               stateToString(inc.State),
 		StartedAt:           inc.StartedAt,
 		ResolvedAt:          inc.ResolvedAt,
+		ResolvedBy:          inc.ResolvedBy,
+		ResolutionType:      inc.ResolutionType,
 		EscalatedAt:         inc.EscalatedAt,
 		AcknowledgedAt:      inc.AcknowledgedAt,
+		AcknowledgedBy:      inc.AcknowledgedBy,
+		SnoozedUntil:        inc.SnoozedUntil,
+		SnoozedBy:           inc.SnoozedBy,
+		SnoozeReason:        inc.SnoozeReason,
 		FailureCount:        inc.FailureCount,
 		RelapseCount:        inc.RelapseCount,
 		LastReopenedAt:      inc.LastReopenedAt,
