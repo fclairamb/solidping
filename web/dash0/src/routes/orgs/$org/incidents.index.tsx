@@ -30,6 +30,7 @@ export const Route = createFileRoute("/orgs/$org/incidents/")({
     state: (["all", "active", "resolved"].includes(search.state as string)
       ? search.state
       : "all") as StateFilter,
+    showSuppressed: search.showSuppressed === "true" ? true : undefined,
   }),
   component: IncidentsIndexPage,
 });
@@ -87,7 +88,7 @@ function formatRelativeTime(dateStr: string): string {
 function IncidentsIndexPage() {
   const { t } = useTranslation("incidents");
   const { org } = Route.useParams();
-  const { state: stateFilter } = Route.useSearch();
+  const { state: stateFilter, showSuppressed } = Route.useSearch();
   const navigate = useNavigate();
 
   const {
@@ -100,6 +101,7 @@ function IncidentsIndexPage() {
     state: stateFilter === "all" ? undefined : stateFilter,
     size: 50,
     with: "check",
+    hideSuppressed: !showSuppressed,
   });
 
   return (

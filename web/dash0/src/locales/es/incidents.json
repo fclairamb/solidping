@@ -76,8 +76,8 @@
     "justNow": "ahora mismo"
   },
   "rollup": {
-    "causedByActive": "Agrupado bajo el incidente <1>{{parent}}</1> — las notificaciones están suprimidas mientras la causa raíz esté abierta.",
-    "causedByActiveLoading": "Agrupado bajo un incidente de causa raíz — las notificaciones están suprimidas mientras la causa raíz esté abierta.",
+    "causedByActive": "Agrupado bajo el incidente <strong>{{parent}}</strong> — las notificaciones están suprimidas mientras la causa raíz esté abierta.",
+    "parentLoading": "el incidente de causa raíz",
     "causedByPast": "Este incidente estuvo agrupado bajo {{parent}} hasta {{resolvedAt}}. Entonces se enviaron las notificaciones.",
     "blastRadiusTitle": "Alcance ({{count}} afectados)",
     "blastRadiusFooter": "Se enviarán notificaciones para cualquier hijo que siga caído cuando este incidente se resuelva.",

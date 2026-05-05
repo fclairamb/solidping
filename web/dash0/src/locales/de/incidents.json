@@ -76,8 +76,8 @@
     "justNow": "gerade eben"
   },
   "rollup": {
-    "causedByActive": "Zusammengefasst unter dem Vorfall <1>{{parent}}</1> — Benachrichtigungen sind unterdrückt, während die Ursache offen ist.",
-    "causedByActiveLoading": "Zusammengefasst unter einem Ursachen-Vorfall — Benachrichtigungen sind unterdrückt, während die Ursache offen ist.",
+    "causedByActive": "Zusammengefasst unter dem Vorfall <strong>{{parent}}</strong> — Benachrichtigungen sind unterdrückt, während die Ursache offen ist.",
+    "parentLoading": "der Ursachen-Vorfall",
     "causedByPast": "Dieser Vorfall war bis {{resolvedAt}} unter {{parent}} zusammengefasst. Die Benachrichtigung erfolgte dann.",
     "blastRadiusTitle": "Auswirkung ({{count}} betroffen)",
     "blastRadiusFooter": "Benachrichtigungen werden für jedes Kind ausgelöst, das beim Auflösen dieses Vorfalls noch ausgefallen ist.",
