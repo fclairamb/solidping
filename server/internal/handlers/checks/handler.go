@@ -76,6 +76,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) ValidateCheck(
 	writer http.ResponseWriter, req bunrouter.Request,
 ) error {
+	orgSlug := req.Param("org")
+
 	var validateReq ValidateCheckRequest
 	if err := json.NewDecoder(req.Body).Decode(&validateReq); err != nil {
 		return h.WriteValidationError(
@@ -84,7 +86,7 @@ func (h *Handler) ValidateCheck(
 			})
 	}
 
-	resp, err := h.svc.ValidateCheck(req.Context(), validateReq)
+	resp, err := h.svc.ValidateCheck(req.Context(), orgSlug, validateReq)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}

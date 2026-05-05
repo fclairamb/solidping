@@ -26,9 +26,17 @@ import (
 )
 
 // ValidateCheckRequest is the request body for the validate check endpoint.
+//
+// Slug and DependsOn are optional. When DependsOn is supplied, validation
+// resolves parent slugs against the org's existing checks and runs the same
+// cycle/self/cross-org/kind validators that PUT-by-slug runs — without
+// writing anything. The frontend uses this for inline cycle errors on the
+// create form before the user clicks save.
 type ValidateCheckRequest struct {
-	Type   string         `json:"type"`
-	Config map[string]any `json:"config"`
+	Type      string               `json:"type"`
+	Slug      string               `json:"slug,omitempty"`
+	Config    map[string]any       `json:"config"`
+	DependsOn []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ValidateCheckResponse is the response body for the validate check endpoint.
@@ -41,6 +49,14 @@ type ValidateCheckResponse struct {
 // for the check UID. Centralized so producers and consumers (notably the
 // express runner) cannot drift out of sync.
 const eventPayloadCheckUIDKey = "check_uid"
+
+// dependsOnFieldName is the JSON/validation field name for the dependency
+// payload — extracted to a constant because it appears in multiple per-row
+// validation messages.
+const dependsOnFieldName = "dependsOn"
+
+// configFieldName is the JSON/validation field name for the config payload.
+const configFieldName = "config"
 
 // slugRegex validates slug format: lowercase letter, then 2-19 lowercase letters/digits/hyphens.
 // Total length: 3-20 characters.
@@ -68,6 +84,21 @@ var (
 	ErrUnsupportedExportVersion = errors.New("unsupported export version")
 	// ErrEmptyChecksArray is returned when the import document has no checks.
 	ErrEmptyChecksArray = errors.New("checks array must not be empty")
+
+	// Dependency-related sentinel errors used by the import / PUT-by-slug
+	// dependency apply paths. Each is wrapped with %w plus context (the
+	// offending parent slug, etc.) so callers can both errors.Is for the
+	// shape and read the message for diagnostics.
+	errDepEmptyParentSlug   = errors.New("dependsOn: empty parentSlug")
+	errDepUnknownParent     = errors.New("dependsOn: unknown parent slug")
+	errDepCrossOrg          = errors.New("dependsOn: cross-org parent not allowed")
+	errDepSelfEdge          = errors.New("dependsOn: self-edge not allowed")
+	errDepInvalidKind       = errors.New("dependsOn: invalid kind")
+	errDepDuplicateParent   = errors.New("dependsOn: duplicate parent")
+	errDepCycleDetected     = errors.New("dependsOn: cycle detected")
+	errDepCycleSimpleEdge   = errors.New("cycle detected")
+	errDepInvalidImportKind = errors.New("invalid kind")
+	errDepImportSelfEdge    = errors.New("self-edge not allowed")
 )
 
 // isUUID checks if a string is a valid UUID.
@@ -167,9 +198,11 @@ func NewService(dbService db.Service, eventNotifier notifier.EventNotifier) *Ser
 	}
 }
 
-// ValidateCheck validates a check configuration without persisting it.
+// ValidateCheck validates a check configuration without persisting it. orgSlug
+// is required when req.DependsOn is non-empty so parent slugs can be resolved
+// against the org's checks; for plain config validation it can be empty.
 func (s *Service) ValidateCheck(
-	_ context.Context, req ValidateCheckRequest,
+	ctx context.Context, orgSlug string, req ValidateCheckRequest,
 ) (ValidateCheckResponse, error) {
 	checkType := checkerdef.CheckType(req.Type)
 
@@ -187,25 +220,226 @@ func (s *Service) ValidateCheck(
 		Config: req.Config,
 	}
 
-	err := checker.Validate(spec)
-	if err == nil {
-		return ValidateCheckResponse{Valid: true}, nil
+	if cfgErr := checker.Validate(spec); cfgErr != nil {
+		// Mirror legacy behavior — surface the first config error.
+		return s.formatValidateError(cfgErr), nil
 	}
 
-	configErr := checkerdef.IsConfigError(err)
-	if configErr == nil {
-		return ValidateCheckResponse{}, err
+	if depFields, depErr := s.validateDependsOn(ctx, orgSlug, req.Slug, req.DependsOn); depErr != nil {
+		return ValidateCheckResponse{}, depErr
+	} else if len(depFields) > 0 {
+		return ValidateCheckResponse{Valid: false, Fields: depFields}, nil
 	}
 
-	return ValidateCheckResponse{
-		Valid: false,
-		Fields: []base.ValidationErrorField{
-			{
-				Name:    configErr.Parameter,
-				Message: configErr.Message,
-			},
-		},
-	}, nil
+	return ValidateCheckResponse{Valid: true}, nil
+}
+
+// validateDependsOn runs the same edge validators (parent existence, self,
+// cross-org, kind, cycle) that the PUT-by-slug path uses, but without
+// touching the DB beyond reads. Returns per-field validation errors when
+// caller-supplied input is bad; returns a server error only on DB failures.
+func (s *Service) validateDependsOn(
+	ctx context.Context, orgSlug, childSlug string, deps []ExportedDependency,
+) ([]base.ValidationErrorField, error) {
+	if len(deps) == 0 {
+		return nil, nil
+	}
+
+	if orgSlug == "" {
+		return []base.ValidationErrorField{
+			{Name: dependsOnFieldName, Message: "org context required to validate dependsOn"},
+		}, nil
+	}
+
+	// Translate a DB miss on org lookup into a user-facing field error
+	// rather than surfacing a 500 — caller is asking us to validate the
+	// payload, not to commit.
+	org := s.lookupOrgForValidate(ctx, orgSlug)
+	if org == nil {
+		return []base.ValidationErrorField{
+			{Name: dependsOnFieldName, Message: "organization not found"},
+		}, nil
+	}
+
+	childUID, childExists := s.lookupChildForValidate(ctx, org.UID, childSlug)
+
+	resolvedParents, resolvedDescs, fields := s.resolveDeclaredDeps(ctx, org.UID, childUID, childExists, deps)
+
+	if len(fields) > 0 {
+		return fields, nil
+	}
+
+	return s.cycleCheckProposedDeps(ctx, org.UID, childUID, childExists, resolvedParents, resolvedDescs)
+}
+
+// lookupOrgForValidate returns the org by slug, or nil if not found. Folds
+// the (org, error) result into a single nilable pointer so the validate
+// surface can translate "missing org" into a user-facing field error
+// without tripping the nilerr lint.
+func (s *Service) lookupOrgForValidate(ctx context.Context, orgSlug string) *models.Organization {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil
+	}
+
+	return org
+}
+
+// lookupChildForValidate resolves the child check by slug for the validate
+// path. Missing is fine — for create flows the slug isn't in the DB yet.
+// Returns (uid, true) when found, ("", false) otherwise.
+func (s *Service) lookupChildForValidate(
+	ctx context.Context, orgUID, childSlug string,
+) (string, bool) {
+	if childSlug == "" {
+		return "", false
+	}
+
+	existing, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, childSlug)
+	if err != nil || existing == nil {
+		return "", false
+	}
+
+	return existing.UID, true
+}
+
+// resolveDeclaredDeps walks the declared deps and per-row reports validation
+// errors (parent existence, self, cross-org, kind, duplicate). Returns the
+// resolved parent map, per-parent description map, and any per-row field
+// errors collected along the way.
+func (s *Service) resolveDeclaredDeps(
+	ctx context.Context, orgUID, childUID string, childExists bool, deps []ExportedDependency,
+) (
+	map[string]models.CheckDependencyKind,
+	map[string]*string,
+	[]base.ValidationErrorField,
+) {
+	resolvedParents := make(map[string]models.CheckDependencyKind, len(deps))
+	resolvedDescs := make(map[string]*string, len(deps))
+	fields := make([]base.ValidationErrorField, 0)
+
+	for i := range deps {
+		dep := &deps[i]
+		fieldName := fmt.Sprintf("dependsOn[%d]", i)
+
+		if dep.ParentSlug == "" {
+			fields = append(fields, base.ValidationErrorField{Name: fieldName, Message: "parentSlug is required"})
+
+			continue
+		}
+
+		parent, getErr := s.db.GetCheckByUidOrSlug(ctx, orgUID, dep.ParentSlug)
+		if getErr != nil || parent == nil {
+			fields = append(fields, base.ValidationErrorField{
+				Name:    fieldName,
+				Message: "unknown parent slug: " + dep.ParentSlug,
+			})
+
+			continue
+		}
+
+		if parent.OrganizationUID != orgUID {
+			fields = append(fields, base.ValidationErrorField{Name: fieldName, Message: "cross-org parent not allowed"})
+
+			continue
+		}
+
+		if childExists && parent.UID == childUID {
+			fields = append(fields, base.ValidationErrorField{Name: fieldName, Message: "self-edge not allowed"})
+
+			continue
+		}
+
+		kind := models.CheckDependencyKind(dep.Kind)
+		if !kind.IsValid() {
+			fields = append(fields, base.ValidationErrorField{Name: fieldName, Message: "invalid kind: " + dep.Kind})
+
+			continue
+		}
+
+		if _, dup := resolvedParents[parent.UID]; dup {
+			fields = append(fields, base.ValidationErrorField{Name: fieldName, Message: "duplicate parent: " + dep.ParentSlug})
+
+			continue
+		}
+
+		resolvedParents[parent.UID] = kind
+
+		if dep.Description != "" {
+			desc := dep.Description
+			resolvedDescs[parent.UID] = &desc
+		}
+	}
+
+	return resolvedParents, resolvedDescs, fields
+}
+
+// cycleCheckProposedDeps runs the cycle DFS against the proposed post-state.
+// childExists==false means a create flow where there are no existing edges
+// to swap out; we simulate as if the child has only the declared parents.
+func (s *Service) cycleCheckProposedDeps(
+	ctx context.Context, orgUID, childUID string, childExists bool,
+	resolvedParents map[string]models.CheckDependencyKind,
+	_ map[string]*string,
+) ([]base.ValidationErrorField, error) {
+	if !childExists {
+		if msg := s.cycleMsg(ctx, orgUID, childUID, nil, resolvedParents); msg != "" {
+			return []base.ValidationErrorField{{Name: dependsOnFieldName, Message: msg}}, nil
+		}
+
+		return nil, nil
+	}
+
+	existing, listErr := s.db.ListCheckDependencyParents(ctx, childUID)
+	if listErr != nil {
+		return nil, fmt.Errorf("list parents: %w", listErr)
+	}
+
+	existingByParent := make(map[string]*models.CheckDependency, len(existing))
+	for _, edge := range existing {
+		existingByParent[edge.ParentCheckUID] = edge
+	}
+
+	if msg := s.cycleMsg(ctx, orgUID, childUID, existingByParent, resolvedParents); msg != "" {
+		return []base.ValidationErrorField{{Name: dependsOnFieldName, Message: msg}}, nil
+	}
+
+	return nil, nil
+}
+
+// cycleMsg returns the cycle-detection error message as a plain string, or
+// empty when the proposed graph is acyclic. Folds the error away so the
+// validate surface can convert it to a field-level message without nilerr.
+func (s *Service) cycleMsg(
+	ctx context.Context, orgUID, childUID string,
+	existingByParent map[string]*models.CheckDependency,
+	resolvedParents map[string]models.CheckDependencyKind,
+) string {
+	if err := s.assertProposedNoCycle(ctx, orgUID, childUID, existingByParent, resolvedParents); err != nil {
+		return err.Error()
+	}
+
+	return ""
+}
+
+// formatValidateError converts a checker.Validate error into a
+// ValidateCheckResponse with one field-level entry. Unknown error shapes
+// fall back to a single generic message under the "config" field rather
+// than propagating a server-side error.
+func (s *Service) formatValidateError(err error) ValidateCheckResponse {
+	resp := ValidateCheckResponse{Valid: false}
+
+	if configErr := checkerdef.IsConfigError(err); configErr != nil {
+		resp.Fields = []base.ValidationErrorField{
+			{Name: configErr.Parameter, Message: configErr.Message},
+		}
+
+		return resp
+	}
+
+	resp.Fields = []base.ValidationErrorField{{Name: configFieldName, Message: err.Error()}}
+
+	return resp
 }
 
 // CheckResponse represents a check in API responses.
@@ -926,7 +1160,7 @@ func (s *Service) UpsertCheck(
 // names this as a known limitation pending a transaction wrapper around the
 // whole upsert path.
 //
-//nolint:cyclop,funlen // resolve, validate-all, apply diff
+//nolint:cyclop,funlen,gocognit // resolve, validate-all, apply diff
 func (s *Service) applyUpsertDeps(
 	ctx context.Context, orgUID, childUID string, declared *[]ExportedDependency,
 ) error {
@@ -939,31 +1173,32 @@ func (s *Service) applyUpsertDeps(
 	resolvedParents := make(map[string]models.CheckDependencyKind, len(desired))
 	resolvedDescs := make(map[string]*string, len(desired))
 
-	for _, dep := range desired {
+	for i := range desired {
+		dep := &desired[i]
 		if dep.ParentSlug == "" {
-			return errors.New("dependsOn: empty parentSlug")
+			return errDepEmptyParentSlug
 		}
 
 		parent, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, dep.ParentSlug)
 		if err != nil || parent == nil {
-			return errors.New("dependsOn: unknown parent slug: " + dep.ParentSlug)
+			return fmt.Errorf("%w: %s", errDepUnknownParent, dep.ParentSlug)
 		}
 
 		if parent.OrganizationUID != orgUID {
-			return errors.New("dependsOn: cross-org parent not allowed: " + dep.ParentSlug)
+			return fmt.Errorf("%w: %s", errDepCrossOrg, dep.ParentSlug)
 		}
 
 		if parent.UID == childUID {
-			return errors.New("dependsOn: self-edge not allowed")
+			return errDepSelfEdge
 		}
 
 		kind := models.CheckDependencyKind(dep.Kind)
 		if !kind.IsValid() {
-			return errors.New("dependsOn: invalid kind: " + dep.Kind)
+			return fmt.Errorf("%w: %s", errDepInvalidKind, dep.Kind)
 		}
 
 		if _, dup := resolvedParents[parent.UID]; dup {
-			return errors.New("dependsOn: duplicate parent: " + dep.ParentSlug)
+			return fmt.Errorf("%w: %s", errDepDuplicateParent, dep.ParentSlug)
 		}
 
 		resolvedParents[parent.UID] = kind
@@ -1001,38 +1236,55 @@ func (s *Service) applyUpsertDeps(
 
 	for parentUID, kind := range resolvedParents {
 		desc := resolvedDescs[parentUID]
-		if existing, ok := existingByParent[parentUID]; ok {
-			update := models.CheckDependencyUpdate{}
-			needs := false
-
-			if existing.Kind != kind {
-				update.Kind = &kind
-				needs = true
-			}
-
-			if !sameDesc(existing.Description, desc) {
-				if desc == nil {
-					update.ClearDescription = true
-				} else {
-					update.Description = desc
-				}
-
-				needs = true
-			}
-
-			if needs {
-				if uErr := s.db.UpdateCheckDependency(ctx, existing.UID, &update); uErr != nil {
-					return fmt.Errorf("update edge: %w", uErr)
-				}
+		existing, ok := existingByParent[parentUID]
+		if !ok {
+			newEdge := models.NewCheckDependency(orgUID, parentUID, childUID, kind, desc)
+			if cErr := s.db.CreateCheckDependency(ctx, newEdge); cErr != nil {
+				return fmt.Errorf("create edge: %w", cErr)
 			}
 
 			continue
 		}
 
-		newEdge := models.NewCheckDependency(orgUID, parentUID, childUID, kind, desc)
-		if cErr := s.db.CreateCheckDependency(ctx, newEdge); cErr != nil {
-			return fmt.Errorf("create edge: %w", cErr)
+		if uErr := s.maybeUpdateEdge(ctx, existing, kind, desc); uErr != nil {
+			return uErr
 		}
+	}
+
+	return nil
+}
+
+// maybeUpdateEdge issues an UpdateCheckDependency only if the kind or
+// description differs from `existing`. Centralized so applyUpsertDeps doesn't
+// nest the diff-vs-noop branch.
+func (s *Service) maybeUpdateEdge(
+	ctx context.Context, existing *models.CheckDependency,
+	kind models.CheckDependencyKind, desc *string,
+) error {
+	update := models.CheckDependencyUpdate{}
+	needs := false
+
+	if existing.Kind != kind {
+		update.Kind = &kind
+		needs = true
+	}
+
+	if !sameDesc(existing.Description, desc) {
+		if desc == nil {
+			update.ClearDescription = true
+		} else {
+			update.Description = desc
+		}
+
+		needs = true
+	}
+
+	if !needs {
+		return nil
+	}
+
+	if err := s.db.UpdateCheckDependency(ctx, existing.UID, &update); err != nil {
+		return fmt.Errorf("update edge: %w", err)
 	}
 
 	return nil
@@ -1091,7 +1343,7 @@ func (s *Service) assertProposedNoCycle(
 
 			for child := range adjacency[next] {
 				if child == parentUID {
-					return errors.New("dependsOn: cycle detected via parent " + parentUID)
+					return fmt.Errorf("%w via parent %s", errDepCycleDetected, parentUID)
 				}
 
 				if _, seen := visited[child]; seen {
@@ -1534,7 +1786,7 @@ type ImportError struct {
 
 // ExportChecks exports checks for an organization in the portable JSON format.
 //
-//nolint:cyclop,funlen,gocritic // Complex due to group resolution and label handling
+//nolint:cyclop,funlen,gocritic,gocognit // group/label/dep resolution in one pass
 func (s *Service) ExportChecks(
 	ctx context.Context, orgSlug string, opts ListChecksOptions,
 ) (*ExportDocument, error) {
@@ -1739,8 +1991,6 @@ func (s *Service) ImportChecks(
 // Skipped silently for any check whose pass-1 upsert failed; otherwise
 // resolves slugs, runs validators, and writes/updates edges. Errors land in
 // result.Errors with the same shape as pass-1 errors.
-//
-//nolint:cyclop,funlen,gocognit // edge resolution and per-row validation
 func (s *Service) importDependencies(
 	ctx context.Context,
 	orgUID string,
@@ -1802,7 +2052,8 @@ func (s *Service) importDependencies(
 			continue
 		}
 
-		for _, dep := range entry.DependsOn {
+		for j := range entry.DependsOn {
+			dep := &entry.DependsOn[j]
 			parentUID, ok := uidBySlug[dep.ParentSlug]
 			if !ok {
 				result.Errors = append(result.Errors, ImportError{
@@ -1828,15 +2079,15 @@ func (s *Service) importDependencies(
 // no-ops; differing kind/desc triggers update; absent edges are created after
 // a cycle check.
 func (s *Service) applyImportEdge(
-	ctx context.Context, orgUID, parentUID, childUID string, dep ExportedDependency,
+	ctx context.Context, orgUID, parentUID, childUID string, dep *ExportedDependency,
 ) error {
 	if parentUID == childUID {
-		return errors.New("self-edge not allowed")
+		return errDepImportSelfEdge
 	}
 
 	kind := models.CheckDependencyKind(dep.Kind)
 	if !kind.IsValid() {
-		return errors.New("invalid kind: " + dep.Kind)
+		return fmt.Errorf("%w: %s", errDepInvalidImportKind, dep.Kind)
 	}
 
 	existing, err := s.db.FindCheckDependencyEdge(ctx, parentUID, childUID)
@@ -1851,29 +2102,7 @@ func (s *Service) applyImportEdge(
 	}
 
 	if existing != nil {
-		needsUpdate := false
-		update := models.CheckDependencyUpdate{}
-
-		if existing.Kind != kind {
-			update.Kind = &kind
-			needsUpdate = true
-		}
-
-		if !sameDesc(existing.Description, descPtr) {
-			if descPtr == nil {
-				update.ClearDescription = true
-			} else {
-				update.Description = descPtr
-			}
-
-			needsUpdate = true
-		}
-
-		if !needsUpdate {
-			return nil
-		}
-
-		return s.db.UpdateCheckDependency(ctx, existing.UID, &update)
+		return s.maybeUpdateEdge(ctx, existing, kind, descPtr)
 	}
 
 	if cycleErr := s.assertEdgeNoCycle(ctx, orgUID, parentUID, childUID); cycleErr != nil {
@@ -1886,16 +2115,16 @@ func (s *Service) applyImportEdge(
 }
 
 // sameDesc reports whether two optional descriptions carry the same value.
-func sameDesc(a, b *string) bool {
-	if a == nil && b == nil {
+func sameDesc(left, right *string) bool {
+	if left == nil && right == nil {
 		return true
 	}
 
-	if a == nil || b == nil {
+	if left == nil || right == nil {
 		return false
 	}
 
-	return *a == *b
+	return *left == *right
 }
 
 // assertEdgeNoCycle is the package-local mirror of
@@ -1925,7 +2154,7 @@ func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, chil
 
 		for _, child := range adjacency[next] {
 			if child == parentUID {
-				return errors.New("cycle detected")
+				return errDepCycleSimpleEdge
 			}
 
 			if _, ok := visited[child]; ok {
