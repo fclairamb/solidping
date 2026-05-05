@@ -424,7 +424,32 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	// Update last active timestamp
+	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "password", authContext)
+}
+
+// completeLogin is the shared post-authentication path used by Login,
+// the OAuth callback, and the passkey FinishLogin. It updates last-active,
+// issues access + refresh tokens (or just access for the no-org case),
+// and writes the refresh-token row tagged with the authentication method
+// for forensics. Callers must have already validated the user's identity
+// and resolved the organization preference (resolvedOrg may be nil for
+// users with no membership).
+//
+// Token issuance is identical across paths; the only knob is `method`
+// (one of "password", "passkey", "oauth") which lands in the token's
+// Properties.created_with.method field.
+//
+//nolint:gocritic // authContext is a small struct; value semantics intentional.
+func (s *Service) completeLogin(
+	ctx context.Context,
+	user *models.User,
+	resolvedOrg *models.Organization,
+	role string,
+	loginAction LoginAction,
+	orgSummaries []OrganizationSummary,
+	method string,
+	authContext Context,
+) (*LoginResponse, error) {
 	now := time.Now()
 
 	if updateErr := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{LastActiveAt: &now}); updateErr != nil {
@@ -439,7 +464,6 @@ func (s *Service) Login(
 		Role:      role,
 	}
 
-	// No org case: issue token with empty org, skip refresh token
 	if resolvedOrg == nil {
 		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role)
 		if tokenErr != nil {
@@ -456,25 +480,28 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	// Generate access token
 	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
 		return nil, err
 	}
 
-	// Store refresh token in database
 	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
 	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
+
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
+	}
+	createdWith[keyMethod] = method
 	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: authContext.ToMap(),
+		keyCreatedWith: createdWith,
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
