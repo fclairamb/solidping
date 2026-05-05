@@ -2076,6 +2076,18 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 		query = query.Where("paging_suppressed = ?", false)
 	}
 
+	if filter.AckedOnly {
+		// Acked = active with non-NULL acknowledged_at. Snoozed-but-not-yet
+		// expired counts as snoozed, not just acked, so exclude it here.
+		query = query.
+			Where("acknowledged_at IS NOT NULL").
+			Where("(snoozed_until IS NULL OR snoozed_until <= ?)", time.Now())
+	}
+
+	if filter.SnoozedOnly {
+		query = query.Where("snoozed_until > ?", time.Now())
+	}
+
 	if filter.CausedByUID != "" {
 		query = query.Where("caused_by_incident_uid = ?", filter.CausedByUID)
 	}

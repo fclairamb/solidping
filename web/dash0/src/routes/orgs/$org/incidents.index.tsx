@@ -24,11 +24,19 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 
-type StateFilter = "all" | "active" | "resolved";
+type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
+
+const STATE_FILTER_VALUES: StateFilter[] = [
+  "all",
+  "active",
+  "acked",
+  "snoozed",
+  "resolved",
+];
 
 export const Route = createFileRoute("/orgs/$org/incidents/")({
   validateSearch: (search: Record<string, unknown>) => ({
-    state: (["all", "active", "resolved"].includes(search.state as string)
+    state: (STATE_FILTER_VALUES.includes(search.state as StateFilter)
       ? search.state
       : "all") as StateFilter,
     showSuppressed: search.showSuppressed === "true" ? true : undefined,
@@ -136,6 +144,8 @@ function IncidentsIndexPage() {
           <SelectContent>
             <SelectItem value="all">{t("allIncidents")}</SelectItem>
             <SelectItem value="active">{t("activeOnly")}</SelectItem>
+            <SelectItem value="acked">{t("stateFilter.ackedOnly")}</SelectItem>
+            <SelectItem value="snoozed">{t("stateFilter.snoozedOnly")}</SelectItem>
             <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
           </SelectContent>
         </Select>
@@ -201,6 +211,21 @@ function IncidentsIndexPage() {
                       >
                         {incident.title || incident.checkName || incident.checkSlug}
                       </Link>
+                      {incident.state === "active" &&
+                        incident.snoozedUntil &&
+                        new Date(incident.snoozedUntil).getTime() > Date.now() && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("stateBadges.snoozed")}
+                          </Badge>
+                        )}
+                      {incident.state === "active" &&
+                        incident.acknowledgedAt &&
+                        (!incident.snoozedUntil ||
+                          new Date(incident.snoozedUntil).getTime() <= Date.now()) && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("stateBadges.acked")}
+                          </Badge>
+                        )}
                       {(incident.relapseCount ?? 0) > 0 && (
                         <Badge variant="outline" className="text-xs">
                           {t("relapse", { count: incident.relapseCount })}

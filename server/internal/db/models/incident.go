@@ -142,6 +142,13 @@ type ListIncidentsFilter struct {
 	Until           *time.Time      // Optional: incidents started before this time
 	HideSuppressed  bool            // Optional: hide rolled-up (paging-suppressed) incidents
 	CausedByUID     string          // Optional: only incidents whose caused_by_incident_uid equals this
+	// AckedOnly returns only incidents with non-NULL acknowledged_at (and
+	// expired snoozes, since snoozed-but-expired is just acked again). Set by
+	// the handler when ?state=acked is requested.
+	AckedOnly bool
+	// SnoozedOnly returns only incidents currently snoozed (snoozed_until in
+	// the future). Set by the handler when ?state=snoozed is requested.
+	SnoozedOnly bool
 
 	// Cursor-based pagination
 	CursorTimestamp *time.Time // Optional: incidents with started_at < this timestamp

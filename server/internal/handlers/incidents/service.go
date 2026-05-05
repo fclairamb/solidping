@@ -1258,10 +1258,22 @@ func (s *Service) ListIncidents(
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
 	}
 
-	// Convert state strings to state values
+	// Convert state strings to state values. "acked" / "snoozed" are derived
+	// states (active + acknowledged_at | snoozed_until) — they imply
+	// state=active so the SQL stays consistent (an acked-and-resolved
+	// incident shouldn't appear under "acked").
 	for _, stateStr := range opts.States {
-		if state, ok := stringToState(stateStr); ok {
-			filter.States = append(filter.States, state)
+		switch stateStr {
+		case "acked":
+			filter.AckedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		case "snoozed":
+			filter.SnoozedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		default:
+			if state, ok := stringToState(stateStr); ok {
+				filter.States = append(filter.States, state)
+			}
 		}
 	}
 
