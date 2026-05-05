@@ -649,8 +649,6 @@ export function ResponseTimeChart({
                       cy={cy}
                       r={5}
                       fill={fill}
-                      stroke="var(--background)"
-                      strokeWidth={2}
                       style={{ cursor: "pointer" }}
                       onClick={(e) => {
                         e.stopPropagation();

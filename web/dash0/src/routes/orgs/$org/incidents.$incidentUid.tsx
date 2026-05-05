@@ -174,7 +174,7 @@ function IncidentDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground mb-4">{t("incidentNotFound")}</p>
-        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }}>
+        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }}>
           <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
       </div>
@@ -193,7 +193,7 @@ function IncidentDetailPage() {
             variant="ghost"
             size="icon"
             onClick={() =>
-              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const } })
+              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
             }
           >
             <ArrowLeft className="h-4 w-4" />

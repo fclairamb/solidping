@@ -35,6 +35,7 @@ import { Route as OrgsOrgStatusPagesIndexRouteImport } from './routes/orgs/$org/
 import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/server.index'
 import { Route as OrgsOrgOrganizationIndexRouteImport } from './routes/orgs/$org/organization.index'
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
+import { Route as OrgsOrgDependenciesIndexRouteImport } from './routes/orgs/$org/dependencies.index'
 import { Route as OrgsOrgChecksIndexRouteImport } from './routes/orgs/$org/checks.index'
 import { Route as OrgsOrgAccountIndexRouteImport } from './routes/orgs/$org/account.index'
 import { Route as OrgsOrgTestTemplatesRouteImport } from './routes/orgs/$org/test.templates'
@@ -195,6 +196,12 @@ const OrgsOrgIncidentsIndexRoute = OrgsOrgIncidentsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgIncidentsRoute,
 } as any)
+const OrgsOrgDependenciesIndexRoute =
+  OrgsOrgDependenciesIndexRouteImport.update({
+    id: '/dependencies/',
+    path: '/dependencies/',
+    getParentRoute: () => OrgsOrgRoute,
+  } as any)
 const OrgsOrgChecksIndexRoute = OrgsOrgChecksIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -387,6 +394,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
+  '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
@@ -432,6 +440,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksIndexRoute
+  '/orgs/$org/dependencies': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/organization': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server': typeof OrgsOrgServerIndexRoute
@@ -488,6 +497,7 @@ export interface FileRoutesById {
   '/orgs/$org/test/templates': typeof OrgsOrgTestTemplatesRoute
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
+  '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
@@ -545,6 +555,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
+    | '/orgs/$org/dependencies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
@@ -590,6 +601,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account'
     | '/orgs/$org/checks'
+    | '/orgs/$org/dependencies'
     | '/orgs/$org/incidents'
     | '/orgs/$org/organization'
     | '/orgs/$org/server'
@@ -645,6 +657,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/templates'
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
+    | '/orgs/$org/dependencies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
@@ -852,6 +865,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/incidents/'
       preLoaderRoute: typeof OrgsOrgIncidentsIndexRouteImport
       parentRoute: typeof OrgsOrgIncidentsRoute
+    }
+    '/orgs/$org/dependencies/': {
+      id: '/orgs/$org/dependencies/'
+      path: '/dependencies'
+      fullPath: '/orgs/$org/dependencies/'
+      preLoaderRoute: typeof OrgsOrgDependenciesIndexRouteImport
+      parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/checks/': {
       id: '/orgs/$org/checks/'
@@ -1216,6 +1236,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgStatusPagesRoute: typeof OrgsOrgStatusPagesRouteWithChildren
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
+  OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
 }
 
 const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
@@ -1231,6 +1252,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgStatusPagesRoute: OrgsOrgStatusPagesRouteWithChildren,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
+  OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,
 }
 
 const OrgsOrgRouteWithChildren =
