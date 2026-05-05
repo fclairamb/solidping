@@ -323,6 +323,31 @@ func (s *Service) DisableICalFeed(ctx context.Context, orgUID, scheduleUID strin
 	})
 }
 
+// RotateICalFeed replaces the secret with a fresh one. The previous URL
+// stops working; clients must re-subscribe with the returned new URL.
+func (s *Service) RotateICalFeed(ctx context.Context, orgUID, scheduleUID string) (string, error) {
+	// Same shape as Enable — the only semantic difference is "this overwrites
+	// any existing secret". Caller decides whether that's what was intended.
+	return s.EnableICalFeed(ctx, orgUID, scheduleUID)
+}
+
+// LookupScheduleByICalSecret resolves the public feed URL secret to a
+// schedule. Used only by the unauthenticated feed handler. Returns
+// ErrScheduleNotFound when the secret is empty, unknown, or the schedule
+// has been soft-deleted.
+func (s *Service) LookupScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error) {
+	schedule, err := s.db.GetOnCallScheduleByICalSecret(ctx, secret)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrScheduleNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return schedule, nil
+}
+
 func generateICalSecret() (string, error) {
 	buf := make([]byte, 24)
 	if _, err := rand.Read(buf); err != nil {

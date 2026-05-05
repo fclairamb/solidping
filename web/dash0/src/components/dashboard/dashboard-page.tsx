@@ -40,6 +40,7 @@ import {
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
+import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -303,6 +304,8 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             onRetry={() => eventsQuery.refetch()}
             tickNow={tickNow}
           />
+
+          <MyOnCallWidget org={org} />
         </>
       )}
     </div>

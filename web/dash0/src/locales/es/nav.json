@@ -3,6 +3,7 @@
   "checks": "Comprobaciones",
   "incidents": "Incidentes",
   "dependencies": "Dependencias",
+  "onCall": "Guardia",
   "events": "Eventos",
   "statusPages": "Páginas de estado",
   "badges": "Insignias",

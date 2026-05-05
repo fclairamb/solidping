@@ -6,6 +6,7 @@ import {
   ListChecks,
   AlertTriangle,
   Calendar,
+  CalendarClock,
   GitBranch,
   Globe,
   BadgeCheck,
@@ -62,6 +63,11 @@ const navItems = [
     titleKey: "dependencies",
     path: "/orgs/$org/dependencies" as const,
     icon: GitBranch,
+  },
+  {
+    titleKey: "onCall",
+    path: "/orgs/$org/on-call" as const,
+    icon: CalendarClock,
   },
   {
     titleKey: "events",
