@@ -32,7 +32,15 @@ type Check struct {
 	Description     *string            `bun:"description"`
 	Type            string             `bun:"type,notnull"`
 	Config          JSONMap            `bun:"config,type:jsonb,nullzero"`
-	Regions         []string           `bun:"regions,type:text[],array"`
+	// ConfigPrivate holds the AES-GCM envelope (JSON) for the secret keys
+	// split out of Config at write time. NULL when no encrypted secrets exist
+	// on this row — distinct from "encryption disabled at the server".
+	ConfigPrivate *string `bun:"config_private,type:text,nullzero"`
+	// ConfigPrivateKeys is a JSON array of the key names (e.g. `["password"]`)
+	// whose values live in ConfigPrivate. Non-secret by construction; surfaced
+	// to the dashboard so it can render placeholder hints without decrypting.
+	ConfigPrivateKeys *string  `bun:"config_private_keys,type:text,nullzero"`
+	Regions           []string `bun:"regions,type:text[],array"`
 	Enabled         bool               `bun:"enabled,notnull"`
 	Internal        bool               `bun:"internal,notnull,default:false"`
 	Period          timeutils.Duration `bun:"period,notnull"`
@@ -93,8 +101,11 @@ type CheckUpdate struct {
 	Name          *string
 	Slug          *string
 	Description   *string
-	Type          *string
-	Config        *JSONMap
+	Type              *string
+	Config            *JSONMap
+	ConfigPrivate     *string
+	ConfigPrivateKeys *string
+	ClearConfigPrivate bool
 	Regions       *[]string
 	Enabled       *bool
 	Internal      *bool

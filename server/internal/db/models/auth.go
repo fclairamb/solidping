@@ -15,7 +15,12 @@ type OrganizationProvider struct {
 	ProviderID      string       `bun:"provider_id,notnull"` // e.g., Slack Team ID T0123456789
 	ProviderName    string       `bun:"provider_name"`       // e.g., "Acme Corp Slack Workspace"
 	Metadata        JSONMap      `bun:"metadata,type:jsonb,nullzero"`
-	CreatedAt       time.Time    `bun:"created_at,notnull,default:current_timestamp"`
+	// MetadataPrivate / MetadataPrivateKeys mirror the credential-encryption
+	// shape used on Check.Config — OAuth client secrets and similar live
+	// here as an AES-GCM envelope at rest.
+	MetadataPrivate     *string   `bun:"metadata_private,type:text,nullzero"`
+	MetadataPrivateKeys *string   `bun:"metadata_private_keys,type:text,nullzero"`
+	CreatedAt           time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt       time.Time    `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt       *time.Time   `bun:"deleted_at"`
 
@@ -40,8 +45,11 @@ func NewOrganizationProvider(orgUID string, providerType ProviderType, providerI
 
 // OrganizationProviderUpdate represents fields that can be updated.
 type OrganizationProviderUpdate struct {
-	ProviderName *string
-	Metadata     *JSONMap
+	ProviderName        *string
+	Metadata            *JSONMap
+	MetadataPrivate     *string
+	MetadataPrivateKeys *string
+	ClearMetadataPrivate bool
 }
 
 // User represents a global user account.

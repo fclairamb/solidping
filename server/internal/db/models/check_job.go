@@ -16,7 +16,12 @@ type CheckJob struct {
 	Region          *string            `bun:"region"`
 	Type            string             `bun:"type"`
 	Config          JSONMap            `bun:"config,type:jsonb,nullzero"`
-	Encrypted       bool               `bun:"encrypted,notnull,default:false"`
+	// ConfigPrivate / ConfigPrivateKeys mirror the columns on Check — the
+	// scheduler copies them when materialising a job so workers never see
+	// plaintext secrets in the row at rest.
+	ConfigPrivate     *string `bun:"config_private,type:text,nullzero"`
+	ConfigPrivateKeys *string `bun:"config_private_keys,type:text,nullzero"`
+	Encrypted         bool    `bun:"encrypted,notnull,default:false"`
 	Period          timeutils.Duration `bun:"period,notnull"`
 	ScheduledAt     *time.Time         `bun:"scheduled_at"`
 	LeaseWorkerUID  *string            `bun:"lease_worker_uid"`
@@ -42,9 +47,11 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 
 // CheckJobUpdate represents fields that can be updated.
 type CheckJobUpdate struct {
-	Region         *string
-	Config         *JSONMap
-	Encrypted      *bool
+	Region            *string
+	Config            *JSONMap
+	ConfigPrivate     *string
+	ConfigPrivateKeys *string
+	Encrypted         *bool
 	Period         *timeutils.Duration
 	ScheduledAt    *time.Time
 	LeaseWorkerUID *string
