@@ -10,11 +10,15 @@ import {
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ArrowUpRight,
   BadgeCheck,
+  Bell,
   Bug,
   Building,
   Calendar,
+  CalendarClock,
   ChevronRight,
+  GitBranch,
   Globe,
   LayoutDashboard,
   ListChecks,
@@ -30,7 +34,16 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCheck, useFeatures, useIncident, useResult, useStatusPage } from "@/api/hooks";
+import {
+  useCheck,
+  useConnection,
+  useEscalationPolicy,
+  useFeatures,
+  useIncident,
+  useOnCallSchedule,
+  useResult,
+  useStatusPage,
+} from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
@@ -88,6 +101,10 @@ function Breadcrumbs({ org }: { org: string }) {
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
+  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
+  const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
+  const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
+  const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -100,6 +117,22 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: incident } = useIncident(org, params.incidentUid ?? "");
   // Status pages section
   const { data: statusPage } = useStatusPage(org, params.statusPageUid ?? "");
+  // Channels / on-call / escalation-policies sections — short-circuit on
+  // empty/wrong-section param so each hook only fetches when its branch is
+  // active. on-call and escalation share the param name `slug`, so dispatch
+  // by section flag here too.
+  const { data: connection } = useConnection(
+    org,
+    isChannels ? (params.connectionUid ?? "") : "",
+  );
+  const { data: onCallSchedule } = useOnCallSchedule(
+    org,
+    isOnCall ? (params.slug ?? "") : "",
+  );
+  const { data: escalationPolicy } = useEscalationPolicy(
+    org,
+    isEscalation ? (params.slug ?? "") : "",
+  );
 
   if (isDashboard) {
     return (
@@ -311,6 +344,99 @@ function Breadcrumbs({ org }: { org: string }) {
       <span className={activeClass}>
         <Bug className={iconClass} />
         {t("testTools")}
+      </span>
+    );
+  }
+
+  if (isChannels) {
+    const connectionUid = params.connectionUid;
+    const isNew = routeIds.has("/orgs/$org/channels/new");
+    const channelName = connection?.name || connectionUid?.slice(0, 8);
+
+    return (
+      <>
+        {connectionUid || isNew ? (
+          <Link to="/orgs/$org/channels" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("channels")}</Link>
+        ) : (
+          <span className={activeClass}><Bell className={iconClass} />{t("channels")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {connectionUid && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{channelName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isOnCall) {
+    const slug = params.slug;
+    const isNew = routeIds.has("/orgs/$org/on-call/new");
+    const scheduleName = onCallSchedule?.name || slug;
+
+    return (
+      <>
+        {slug || isNew ? (
+          <Link to="/orgs/$org/on-call" params={{ org }} className={linkClass}><CalendarClock className={iconClass} />{t("onCall")}</Link>
+        ) : (
+          <span className={activeClass}><CalendarClock className={iconClass} />{t("onCall")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {slug && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{scheduleName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isEscalation) {
+    const slug = params.slug;
+    const isNew = routeIds.has("/orgs/$org/escalation-policies/new");
+    const policyName = escalationPolicy?.name || slug;
+
+    return (
+      <>
+        {slug || isNew ? (
+          <Link to="/orgs/$org/escalation-policies" params={{ org }} className={linkClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</Link>
+        ) : (
+          <span className={activeClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {slug && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{policyName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isDependencies) {
+    return (
+      <span className={activeClass}>
+        <GitBranch className={iconClass} />
+        {t("dependencies")}
       </span>
     );
   }
