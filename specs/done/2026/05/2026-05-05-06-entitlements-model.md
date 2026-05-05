@@ -462,6 +462,58 @@ writes a tightening row.
 - [ ] Manual: in self-hosted defaults, the entire UI looks identical to
       pre-entitlements behavior (no upgrade link, no quota warnings).
 
+## Implementation Plan
+
+The spec explicitly lays out four PRs ("Roughly four PRs, each
+independently shippable"). This implementation lands **PR 1 (Foundation)**
+in this spec, and descopes PRs 2–4 (frontend exposure, enforcement batch
+1, enforcement batch 2) to follow-up specs since the spec itself
+authorizes the split.
+
+PR 1 ships with no behavior change for the OSS — entitlements default to
+unlimited everywhere — and gives the billing service the privileged write
+endpoint it needs in SaaS.
+
+Steps for PR 1:
+
+1. **Migrations**: `org_entitlements` and `org_entitlement_audits` tables
+   in postgres + sqlite migration directories.
+2. **Models**: `models.OrgEntitlements` and `models.OrgEntitlementAudit`
+   with bun tags. Helper for resolving null-as-unlimited in code.
+3. **Defaults**: `server/internal/entitlements/defaults.go` with the in-
+   memory `DefaultEntitlements` struct. System-parameter overlay applied
+   at startup so SaaS can tighten defaults via env without code change.
+4. **Service**: `server/internal/entitlements/service.go` exposing
+   `Resolve(ctx, orgUID)`, `Set(ctx, orgUID, in, actor, reason)`, and
+   shells for `CanCreate` and `FeatureEnabled` (the latter return nil/true
+   in PR 1 because no enforcement is wired yet).
+5. **Repository methods**: `db.Service` gains `GetOrgEntitlements`,
+   `UpsertOrgEntitlements`, `ListOrgEntitlementAudits`, and
+   `CreateOrgEntitlementAudit` on both postgres and sqlite.
+6. **Service-token middleware**: a new middleware that recognises
+   `Authorization: Bearer <token>` matching the
+   `entitlements.service_token` system parameter and grants a synthetic
+   `service:entitlements` principal. Logs the principal name (never the
+   token) and refuses on routes outside `/entitlements`.
+7. **HTTP handlers**: `GET`, `PUT`, `PATCH /api/v1/orgs/$org/entitlements`
+   and `GET /api/v1/orgs/$org/entitlements/audits`. Auth gating respects
+   `entitlements.admin_writes_enabled` system parameter.
+8. **Error codes**: `ENTITLEMENT_EXCEEDED`, `FEATURE_NOT_ENTITLED`,
+   `ENTITLEMENTS_STALE` in `internal/handlers/base/`.
+9. **Tests**: Unit for Resolve (default merge, null = unlimited, stale
+   fallback). Integration for the HTTP layer (PUT with service token vs
+   user JWT, PATCH semantics, audit row written in same tx).
+10. **Documentation**: API spec entry and CLAUDE.md route list updated.
+
+Out of this spec (descoped — covered by follow-up specs once PR 1
+lands):
+- PR 2: `/api/v1/features` extension + `useEntitlements()` frontend hook
+  + read-only "X / Y used" indicators.
+- PR 3: `CanCreate` enforcement in checks/members/status_pages/check_groups
+  handlers; `FeatureEnabled` gate on MCP and SSO.
+- PR 4: remaining resources, allowed-check-types filter, soft-over-limit
+  banner UI, audits page in admin UI.
+
 ## Why this shape
 
 A simpler design would have been: one `parameters`-table key per org

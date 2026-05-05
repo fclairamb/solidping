@@ -1029,6 +1029,38 @@ func (m *mockDBService) FindActiveIncidentsForChecksInWindow(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetOrgEntitlements(_ context.Context, _ string) (*models.OrgEntitlements, error) {
+	return nil, nil //nolint:nilnil // mock
+}
+
+func (m *mockDBService) UpsertOrgEntitlements(
+	_ context.Context, _ *models.OrgEntitlements, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrgEntitlementAudits(
+	_ context.Context, _ models.ListOrgEntitlementAuditsFilter,
+) ([]*models.OrgEntitlementAudit, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountChecksForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountStatusPagesForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountCheckGroupsForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountConnectionsForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

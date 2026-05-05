@@ -118,6 +118,8 @@ previous binary running; check the dev log for the compiler error.
 - DELETE /api/v1/auth/membership-requests/$uid - Cancel own request
 - GET /api/v1/orgs/$org/membership-requests - Admin: list incoming requests
 - POST /api/v1/orgs/$org/membership-requests/$uid/approve|reject - Admin: decide
+- GET/PUT/PATCH /api/v1/orgs/$org/entitlements - Per-org limits + features (service-token or admin)
+- GET /api/v1/orgs/$org/entitlements/audits - Entitlement audit log (admin / service-token)
 - CRUD /api/v1/orgs/$org/members - Members
 - CRUD /api/v1/orgs/$org/checks - Checks
 - POST /api/v1/orgs/$org/checks/validate - Validate check config
@@ -168,6 +170,7 @@ All errors should return:
 - `MAINTENANCE_WINDOW_NOT_FOUND` / `TOKEN_NOT_FOUND` - Resource not found
 - `INVALID_AUTO_JOIN_REGEX` - Auto-join email pattern is missing or too permissive
 - `ALREADY_A_MEMBER` / `REQUEST_PENDING` / `REQUEST_NOT_FOUND` / `REQUEST_COOLDOWN_ACTIVE` - Membership request errors
+- `ENTITLEMENT_EXCEEDED` / `FEATURE_NOT_ENTITLED` / `ENTITLEMENTS_STALE` - Entitlements errors
 
 ### API Testing
 ```bash

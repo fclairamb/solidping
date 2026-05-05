@@ -3867,3 +3867,145 @@ func (s *Service) ApproveMembershipRequest(
 		return nil
 	})
 }
+
+// GetOrgEntitlements fetches the entitlement row for an org. Returns
+// (nil, nil) when no row exists — the resolver merges defaults instead
+// of erroring.
+func (s *Service) GetOrgEntitlements(
+	ctx context.Context, orgUID string,
+) (*models.OrgEntitlements, error) {
+	row := new(models.OrgEntitlements)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil // documented sentinel
+		}
+
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// UpsertOrgEntitlements writes the entitlement row + audit row in one tx.
+func (s *Service) UpsertOrgEntitlements(
+	ctx context.Context, ent *models.OrgEntitlements, audit *models.OrgEntitlementAudit,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		ent.UpdatedAt = time.Now()
+
+		_, err := tx.NewInsert().
+			Model(ent).
+			On("CONFLICT (organization_uid) DO UPDATE").
+			Set("max_checks = EXCLUDED.max_checks").
+			Set("max_members = EXCLUDED.max_members").
+			Set("max_status_pages = EXCLUDED.max_status_pages").
+			Set("max_check_groups = EXCLUDED.max_check_groups").
+			Set("max_maintenance_windows = EXCLUDED.max_maintenance_windows").
+			Set("max_connections = EXCLUDED.max_connections").
+			Set("max_workers = EXCLUDED.max_workers").
+			Set("max_api_tokens = EXCLUDED.max_api_tokens").
+			Set("retention_days_raw = EXCLUDED.retention_days_raw").
+			Set("retention_days_aggregated = EXCLUDED.retention_days_aggregated").
+			Set("min_check_period_seconds = EXCLUDED.min_check_period_seconds").
+			Set("feature_sso = EXCLUDED.feature_sso").
+			Set("feature_mcp = EXCLUDED.feature_mcp").
+			Set("feature_custom_branding = EXCLUDED.feature_custom_branding").
+			Set("feature_priority_support = EXCLUDED.feature_priority_support").
+			Set("feature_multi_region = EXCLUDED.feature_multi_region").
+			Set("feature_advanced_alerts = EXCLUDED.feature_advanced_alerts").
+			Set("allowed_check_types = EXCLUDED.allowed_check_types").
+			Set("source = EXCLUDED.source").
+			Set("display_name = EXCLUDED.display_name").
+			Set("external_ref = EXCLUDED.external_ref").
+			Set("metadata = EXCLUDED.metadata").
+			Set("expires_at = EXCLUDED.expires_at").
+			Set("last_synced_at = EXCLUDED.last_synced_at").
+			Set("updated_at = EXCLUDED.updated_at").
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(audit).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// ListOrgEntitlementAudits returns audit rows for an org, newest first.
+func (s *Service) ListOrgEntitlementAudits(
+	ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
+) ([]*models.OrgEntitlementAudit, error) {
+	var rows []*models.OrgEntitlementAudit
+
+	query := s.db.NewSelect().
+		Model(&rows).
+		Order("org_entitlement_audit.created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+	}
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
+// CountChecksForOrg counts non-deleted checks for the org.
+func (s *Service) CountChecksForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.Check)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountStatusPagesForOrg counts non-deleted status pages for the org.
+func (s *Service) CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.StatusPage)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountCheckGroupsForOrg counts non-deleted check groups for the org.
+func (s *Service) CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.CheckGroup)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountConnectionsForOrg counts non-deleted integration connections for the org.
+func (s *Service) CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.IntegrationConnection)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}

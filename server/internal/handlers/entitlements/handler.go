@@ -1,0 +1,458 @@
+// Package entitlements wraps the entitlements service with HTTP handlers
+// for GET / PUT / PATCH and the audit listing. The package owns its own
+// auth gating: a service-token check (for the billing service) plus a
+// fallback admin-user check (for self-hosted operators) gated by a
+// system parameter.
+package entitlements
+
+import (
+	"context"
+	"crypto/subtle"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net/http"
+	"strconv"
+
+	"github.com/uptrace/bunrouter"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/middleware"
+)
+
+// System parameter keys driving auth + behavior.
+const (
+	ParamServiceToken       = "entitlements.service_token"
+	ParamAdminWritesEnabled = "entitlements.admin_writes_enabled"
+	ParamUpgradeURLTemplate = "entitlements.upgrade_url_template"
+	ParamStaleAfterDays     = "entitlements.stale_after_days"
+	defaultAuditPageSize    = 50
+	maxAuditPageSize        = 200
+)
+
+// Handler exposes the entitlements API.
+type Handler struct {
+	base.HandlerBase
+	svc *entcore.Service
+	db  db.Service
+}
+
+// NewHandler builds the handler.
+func NewHandler(svc *entcore.Service, dbService db.Service, cfg *config.Config) *Handler {
+	return &Handler{
+		HandlerBase: base.NewHandlerBase(cfg),
+		svc:         svc,
+		db:          dbService,
+	}
+}
+
+// principal records who is making the call so the audit log can attribute it.
+type principal struct {
+	actor     string
+	isService bool
+	isAdmin   bool
+}
+
+// authorize accepts either a valid service token (preferred for SaaS) or
+// an admin user JWT (gated by entitlements.admin_writes_enabled, default
+// true in self-hosted, false in SaaS). Read-only endpoints accept any
+// authenticated org member.
+func (h *Handler) authorize(req bunrouter.Request, requireWrite bool) (*principal, error) {
+	authHeader := req.Header.Get("Authorization")
+	token := extractBearerToken(authHeader)
+
+	if token != "" {
+		expected, err := h.serviceToken(req.Context())
+		if err == nil && expected != "" && constantTimeMatch(token, expected) {
+			return &principal{actor: "service:entitlements", isService: true}, nil
+		}
+	}
+
+	user, ok := middleware.GetUserFromContext(req.Context())
+	if !ok {
+		return nil, errUnauthorized
+	}
+
+	claims, _ := middleware.GetClaimsFromContext(req.Context())
+	isAdmin := claims != nil && (claims.Role == "admin" || claims.Role == "superadmin")
+
+	if requireWrite {
+		writesEnabled, _ := h.adminWritesEnabled(req.Context())
+		if !writesEnabled {
+			return nil, errForbidden
+		}
+		if !isAdmin {
+			return nil, errForbidden
+		}
+	}
+
+	actor := "user:" + user.UID
+
+	return &principal{actor: actor, isAdmin: isAdmin}, nil
+}
+
+var (
+	errUnauthorized   = errors.New("authentication required")
+	errForbidden      = errors.New("forbidden")
+	errMissingOrgPath = errors.New("missing org path parameter")
+)
+
+// Get handles GET /api/v1/orgs/:org/entitlements.
+func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
+	if _, err := h.authorize(req, false); err != nil {
+		return h.writeAuthError(writer, err)
+	}
+
+	org, errResp := h.lookupOrg(req)
+	if errResp != nil {
+		return h.writeNotFound(writer)
+	}
+
+	resolved, err := h.svc.Resolve(req.Context(), org.UID)
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	upgradeURL, _ := h.upgradeURL(req.Context(), org.Slug)
+
+	return h.WriteJSON(writer, http.StatusOK, struct {
+		entcore.Resolved
+		UpgradeURL string `json:"upgradeUrl,omitempty"`
+	}{Resolved: resolved, UpgradeURL: upgradeURL})
+}
+
+// Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.
+func (h *Handler) Put(writer http.ResponseWriter, req bunrouter.Request) error {
+	return h.write(writer, req, false)
+}
+
+// Patch handles PATCH /api/v1/orgs/:org/entitlements — partial update.
+func (h *Handler) Patch(writer http.ResponseWriter, req bunrouter.Request) error {
+	return h.write(writer, req, true)
+}
+
+func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, partial bool) error {
+	prin, err := h.authorize(req, true)
+	if err != nil {
+		return h.writeAuthError(writer, err)
+	}
+
+	org, errResp := h.lookupOrg(req)
+	if errResp != nil {
+		return h.writeNotFound(writer)
+	}
+
+	var input entcore.Entitlements
+	if decErr := json.NewDecoder(req.Body).Decode(&input); decErr != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: "body", Message: "Invalid JSON format"},
+		})
+	}
+
+	if input.Source == "" {
+		if prin.isService {
+			input.Source = models.EntitlementSourceBilling
+		} else {
+			input.Source = models.EntitlementSourceAdmin
+		}
+	}
+
+	if partial {
+		input = h.mergePartial(req.Context(), org.UID, input)
+	}
+
+	reason := req.Header.Get("X-Entitlements-Reason")
+
+	if setErr := h.svc.Set(req.Context(), org.UID, input, prin.actor, reason); setErr != nil {
+		return h.WriteInternalError(writer, setErr)
+	}
+
+	resolved, err := h.svc.Resolve(req.Context(), org.UID)
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resolved)
+}
+
+// ListAudits handles GET /api/v1/orgs/:org/entitlements/audits.
+func (h *Handler) ListAudits(writer http.ResponseWriter, req bunrouter.Request) error {
+	prin, err := h.authorize(req, false)
+	if err != nil {
+		return h.writeAuthError(writer, err)
+	}
+	if !prin.isService && !prin.isAdmin {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin only")
+	}
+
+	org, errResp := h.lookupOrg(req)
+	if errResp != nil {
+		return h.writeNotFound(writer)
+	}
+
+	limit := defaultAuditPageSize
+	if v := req.URL.Query().Get("limit"); v != "" {
+		if parsed, parseErr := strconv.Atoi(v); parseErr == nil && parsed > 0 {
+			limit = parsed
+			if limit > maxAuditPageSize {
+				limit = maxAuditPageSize
+			}
+		}
+	}
+
+	rows, err := h.db.ListOrgEntitlementAudits(req.Context(), models.ListOrgEntitlementAuditsFilter{
+		OrganizationUID: org.UID,
+		Limit:           limit,
+	})
+	if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, struct {
+		Data []*models.OrgEntitlementAudit `json:"data"`
+	}{Data: rows})
+}
+
+// mergePartial loads the current row and overlays it with the input.
+//
+//nolint:gocritic // input is the request payload, intentional value semantics
+func (h *Handler) mergePartial(
+	ctx context.Context, orgUID string, input entcore.Entitlements,
+) entcore.Entitlements {
+	current, err := h.svc.Resolve(ctx, orgUID)
+	if err != nil {
+		slog.WarnContext(ctx, "patch merge: resolve failed; falling back to input as-is",
+			"orgUID", orgUID, "error", err)
+
+		return input
+	}
+
+	out := entcore.Entitlements{
+		Limits:            current.Limits,
+		Features:          current.Features,
+		AllowedCheckTypes: current.AllowedCheckTypes,
+		Source:            input.Source,
+		DisplayName:       current.DisplayName,
+		ExpiresAt:         current.ExpiresAt,
+		LastSyncedAt:      current.LastSyncedAt,
+	}
+
+	overlayLimits(&out.Limits, input.Limits)
+	overlayFeatures(&out.Features, input.Features)
+
+	if len(input.AllowedCheckTypes) > 0 {
+		out.AllowedCheckTypes = input.AllowedCheckTypes
+	}
+	if input.DisplayName != nil {
+		out.DisplayName = input.DisplayName
+	}
+	if input.ExternalRef != nil {
+		out.ExternalRef = input.ExternalRef
+	}
+	if input.Metadata != nil {
+		out.Metadata = input.Metadata
+	}
+	if input.ExpiresAt != nil {
+		out.ExpiresAt = input.ExpiresAt
+	}
+	if input.LastSyncedAt != nil {
+		out.LastSyncedAt = input.LastSyncedAt
+	}
+
+	return out
+}
+
+//nolint:gocritic // src holds 11 nullable pointers; value semantics make the per-field overlay straight-line
+func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
+	if src.MaxChecks != nil {
+		dst.MaxChecks = src.MaxChecks
+	}
+	if src.MaxMembers != nil {
+		dst.MaxMembers = src.MaxMembers
+	}
+	if src.MaxStatusPages != nil {
+		dst.MaxStatusPages = src.MaxStatusPages
+	}
+	if src.MaxCheckGroups != nil {
+		dst.MaxCheckGroups = src.MaxCheckGroups
+	}
+	if src.MaxMaintenanceWindows != nil {
+		dst.MaxMaintenanceWindows = src.MaxMaintenanceWindows
+	}
+	if src.MaxConnections != nil {
+		dst.MaxConnections = src.MaxConnections
+	}
+	if src.MaxWorkers != nil {
+		dst.MaxWorkers = src.MaxWorkers
+	}
+	if src.MaxAPITokens != nil {
+		dst.MaxAPITokens = src.MaxAPITokens
+	}
+	if src.RetentionDaysRaw != nil {
+		dst.RetentionDaysRaw = src.RetentionDaysRaw
+	}
+	if src.RetentionDaysAggregated != nil {
+		dst.RetentionDaysAggregated = src.RetentionDaysAggregated
+	}
+	if src.MinCheckPeriodSeconds != nil {
+		dst.MinCheckPeriodSeconds = src.MinCheckPeriodSeconds
+	}
+}
+
+func overlayFeatures(dst *entcore.Features, src entcore.Features) {
+	if src.SSO != nil {
+		dst.SSO = src.SSO
+	}
+	if src.MCP != nil {
+		dst.MCP = src.MCP
+	}
+	if src.CustomBranding != nil {
+		dst.CustomBranding = src.CustomBranding
+	}
+	if src.PrioritySupport != nil {
+		dst.PrioritySupport = src.PrioritySupport
+	}
+	if src.MultiRegion != nil {
+		dst.MultiRegion = src.MultiRegion
+	}
+	if src.AdvancedAlerts != nil {
+		dst.AdvancedAlerts = src.AdvancedAlerts
+	}
+}
+
+// lookupOrg resolves :org from the route into a model.
+func (h *Handler) lookupOrg(req bunrouter.Request) (*models.Organization, error) {
+	slug := req.Param("org")
+	if slug == "" {
+		return nil, errMissingOrgPath
+	}
+
+	return h.db.GetOrganizationBySlug(req.Context(), slug)
+}
+
+func (h *Handler) writeAuthError(writer http.ResponseWriter, err error) error {
+	if errors.Is(err, errForbidden) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
+	}
+
+	return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+}
+
+func (h *Handler) writeNotFound(writer http.ResponseWriter) error {
+	return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+}
+
+func (h *Handler) serviceToken(ctx context.Context) (string, error) {
+	param, err := h.db.GetSystemParameter(ctx, ParamServiceToken)
+	if err != nil || param == nil {
+		return "", err
+	}
+
+	if value, ok := param.Value["value"].(string); ok {
+		return value, nil
+	}
+
+	return "", nil
+}
+
+func (h *Handler) adminWritesEnabled(ctx context.Context) (bool, error) {
+	param, err := h.db.GetSystemParameter(ctx, ParamAdminWritesEnabled)
+	if err != nil || param == nil {
+		// Default true (self-hosted) when unset.
+		return true, err
+	}
+
+	if value, ok := param.Value["value"].(bool); ok {
+		return value, nil
+	}
+	if value, ok := param.Value["value"].(string); ok {
+		parsed, parseErr := strconv.ParseBool(value)
+		if parseErr != nil {
+			// Treat unparsable string as "default true" — better to allow
+			// admin writes than to silently lock them out.
+			return true, nil //nolint:nilerr // documented fallback
+		}
+		return parsed, nil
+	}
+
+	return true, nil
+}
+
+func (h *Handler) upgradeURL(ctx context.Context, orgSlug string) (string, error) {
+	param, err := h.db.GetSystemParameter(ctx, ParamUpgradeURLTemplate)
+	if err != nil || param == nil {
+		return "", err
+	}
+
+	template, ok := param.Value["value"].(string)
+	if !ok || template == "" {
+		return "", nil
+	}
+
+	return interpolateURL(template, orgSlug), nil
+}
+
+// interpolateURL replaces {org} with the slug. Lightweight by design — no
+// general templating needed for one variable.
+func interpolateURL(template, org string) string {
+	out := template
+	for {
+		idx := stringsIndex(out, "{org}")
+		if idx < 0 {
+			break
+		}
+		out = out[:idx] + org + out[idx+len("{org}"):]
+	}
+
+	return out
+}
+
+// stringsIndex avoids importing strings just for one Index call.
+func stringsIndex(s, substr string) int {
+	for i := 0; i+len(substr) <= len(s); i++ {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+
+	return -1
+}
+
+func extractBearerToken(authHeader string) string {
+	if authHeader == "" {
+		return ""
+	}
+
+	const prefix = "Bearer "
+	if len(authHeader) <= len(prefix) {
+		return ""
+	}
+	if authHeader[:len(prefix)] != prefix && authHeader[:len(prefix)] != "bearer " {
+		return ""
+	}
+
+	return authHeader[len(prefix):]
+}
+
+func constantTimeMatch(a, b string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}
+
+// FormatQuotaError translates an enforcement error into the JSON body the
+// frontend expects. Used by the future enforcement-PR handlers.
+func FormatQuotaError(err *entcore.QuotaError) map[string]any {
+	return map[string]any{
+		"limitName":    err.LimitName,
+		"limit":        err.Limit,
+		"currentUsage": err.CurrentUsage,
+		"detail":       err.LimitName + " limit reached",
+	}
+}
