@@ -215,10 +215,23 @@ type AggregationConfig struct {
 
 // AuthConfig contains authentication configuration.
 type AuthConfig struct {
-	JWTSecret                string        `koanf:"jwt_secret"`
-	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
-	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
-	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	JWTSecret                string         `koanf:"jwt_secret"`
+	AccessTokenExpiry        time.Duration  `koanf:"access_token_expiry"`
+	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
+	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
+	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
+}
+
+// WebAuthnConfig configures the passkey / WebAuthn relying party. RPID
+// must match the host the dashboard runs on (no scheme, no port). Origins
+// are full origin strings (https://app.example.com). When RPID is empty
+// it is derived from ServerConfig.BaseURL at startup; if the resolved
+// scheme is not https (and host is not localhost) passkeys are disabled.
+type WebAuthnConfig struct {
+	Enabled       bool     `koanf:"enabled"`
+	RPID          string   `koanf:"rp_id"`
+	RPDisplayName string   `koanf:"rp_display_name"`
+	Origins       []string `koanf:"origins"`
 }
 
 // SlackConfig contains Slack integration configuration.
@@ -299,6 +312,10 @@ func Load() (*Config, error) {
 			JWTSecret:          "change-me-in-production",
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
+			WebAuthn: WebAuthnConfig{
+				Enabled:       true,
+				RPDisplayName: "SolidPing",
+			},
 		},
 		Email: EmailConfig{
 			Port:     587,

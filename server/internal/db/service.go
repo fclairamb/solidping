@@ -76,6 +76,14 @@ type Service interface {
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
 	DeleteUserToken(ctx context.Context, uid string) error
 
+	// UserPasskey operations
+	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
+	GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error)
+	GetUserPasskeyByCredentialID(ctx context.Context, credentialID []byte) (*models.UserPasskey, error)
+	ListUserPasskeysByUser(ctx context.Context, userUID string) ([]*models.UserPasskey, error)
+	UpdateUserPasskey(ctx context.Context, uid string, update models.UserPasskeyUpdate) error
+	DeleteUserPasskey(ctx context.Context, uid string) error
+
 	// Worker operations
 	CreateWorker(ctx context.Context, worker *models.Worker) error
 	GetWorker(ctx context.Context, uid string) (*models.Worker, error)

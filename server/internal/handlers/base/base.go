@@ -69,6 +69,11 @@ const (
 	ErrorCodeEntitlementExceeded       ErrorCode = "ENTITLEMENT_EXCEEDED"
 	ErrorCodeFeatureNotEntitled        ErrorCode = "FEATURE_NOT_ENTITLED"
 	ErrorCodeEntitlementsStale         ErrorCode = "ENTITLEMENTS_STALE"
+	ErrorCodePasskeyNotFound           ErrorCode = "PASSKEY_NOT_FOUND"
+	ErrorCodePasskeyVerificationFailed ErrorCode = "PASSKEY_VERIFICATION_FAILED"
+	ErrorCodePasskeySessionExpired     ErrorCode = "PASSKEY_SESSION_EXPIRED"
+	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
+	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

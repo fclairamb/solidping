@@ -749,6 +749,110 @@ func (s *Service) DeleteUserToken(ctx context.Context, uid string) error {
 	return err
 }
 
+// UserPasskey operations
+
+// CreateUserPasskey inserts a new passkey row.
+func (s *Service) CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error {
+	_, err := s.db.NewInsert().Model(passkey).Exec(ctx)
+
+	return err
+}
+
+// GetUserPasskey returns a non-deleted passkey by uid.
+func (s *Service) GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error) {
+	row := new(models.UserPasskey)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// GetUserPasskeyByCredentialID looks a passkey up by its WebAuthn
+// credential ID. Used during the assertion-verification step.
+func (s *Service) GetUserPasskeyByCredentialID(
+	ctx context.Context, credentialID []byte,
+) (*models.UserPasskey, error) {
+	row := new(models.UserPasskey)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("credential_id = ?", credentialID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// ListUserPasskeysByUser returns all non-deleted passkeys for a user.
+func (s *Service) ListUserPasskeysByUser(
+	ctx context.Context, userUID string,
+) ([]*models.UserPasskey, error) {
+	var rows []*models.UserPasskey
+
+	err := s.db.NewSelect().
+		Model(&rows).
+		Where("user_uid = ?", userUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+
+	return rows, err
+}
+
+// UpdateUserPasskey applies a partial update. SignCount/LastUsedAt are
+// the hot path (called on every successful assertion); Name is the cold
+// path (rename UI).
+func (s *Service) UpdateUserPasskey(
+	ctx context.Context, uid string, update models.UserPasskeyUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.UserPasskey)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.SignCount != nil {
+		query = query.Set("sign_count = ?", *update.SignCount)
+	}
+
+	if update.LastUsedAt != nil {
+		query = query.Set("last_used_at = ?", *update.LastUsedAt)
+	}
+
+	if update.BackupState != nil {
+		query = query.Set("backup_state = ?", *update.BackupState)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteUserPasskey soft-deletes a passkey.
+func (s *Service) DeleteUserPasskey(ctx context.Context, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.UserPasskey)(nil)).
+		Where("uid = ?", uid).
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
 // Worker operations
 
 func (s *Service) CreateWorker(ctx context.Context, worker *models.Worker) error {
