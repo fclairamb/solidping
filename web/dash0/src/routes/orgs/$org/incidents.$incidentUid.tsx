@@ -22,6 +22,7 @@ import {
   useUnsnoozeIncident,
   useResolveIncident,
   useEvents,
+  type Event,
   type IncidentDetail,
 } from "@/api/hooks";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
@@ -463,6 +464,16 @@ function IncidentDetailPage() {
 
       <BlastRadiusCard org={org} incident={incident} />
 
+      {events?.data && (
+        <EscalationTimelineCard
+          events={events.data.filter(
+            (e) =>
+              e.eventType === "incident.escalated" ||
+              e.eventType === "incident.escalation_failed",
+          )}
+        />
+      )}
+
       {events?.data && events.data.length > 0 && (
         <Card>
           <CardHeader>
@@ -634,6 +645,71 @@ function BlastRadiusCard({
         <p className="mt-3 text-xs text-muted-foreground">
           {t("rollup.blastRadiusFooter")}
         </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface EscalationTimelineCardProps {
+  events: Event[];
+}
+
+function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
+  const { t } = useTranslation(["escalation"]);
+
+  if (!events || events.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("escalation:timeline.title")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {events.map((event) => {
+          const failed = event.eventType === "incident.escalation_failed";
+          const stepPos = event.payload?.step_position as
+            | number
+            | undefined;
+          const repeatIdx = event.payload?.repeat_index as
+            | number
+            | undefined;
+          return (
+            <div
+              key={event.uid}
+              className="flex items-center gap-3 text-sm py-1 border-b last:border-0"
+            >
+              <span
+                className={
+                  failed
+                    ? "text-red-500 font-medium"
+                    : "text-green-600 font-medium"
+                }
+              >
+                {failed
+                  ? t("escalation:timeline.failed")
+                  : t("escalation:timeline.fired")}
+              </span>
+              <span className="text-muted-foreground">
+                {event.createdAt
+                  ? new Date(event.createdAt).toLocaleString()
+                  : "-"}
+              </span>
+              {stepPos !== undefined && (
+                <span>· step {stepPos + 1}</span>
+              )}
+              {repeatIdx !== undefined && repeatIdx > 0 && (
+                <span>· cycle {repeatIdx + 1}</span>
+              )}
+              {failed && typeof event.payload?.reason === "string" && (
+                <span className="text-red-500">
+                  · {event.payload.reason}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </CardContent>
     </Card>
   );

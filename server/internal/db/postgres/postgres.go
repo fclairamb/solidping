@@ -1199,6 +1199,13 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
 	}
 
+	switch {
+	case update.ClearEscalationPolicyUID:
+		query = query.Set("escalation_policy_uid = NULL")
+	case update.EscalationPolicyUID != nil:
+		query = query.Set("escalation_policy_uid = ?", *update.EscalationPolicyUID)
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err

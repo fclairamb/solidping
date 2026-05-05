@@ -27,6 +27,7 @@ import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgIncidentsRouteImport } from './routes/orgs/$org/incidents'
 import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
+import { Route as OrgsOrgEscalationPoliciesRouteImport } from './routes/orgs/$org/escalation-policies'
 import { Route as OrgsOrgChecksRouteImport } from './routes/orgs/$org/checks'
 import { Route as OrgsOrgBadgesRouteImport } from './routes/orgs/$org/badges'
 import { Route as OrgsOrgAccountRouteImport } from './routes/orgs/$org/account'
@@ -37,6 +38,7 @@ import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/serve
 import { Route as OrgsOrgOrganizationIndexRouteImport } from './routes/orgs/$org/organization.index'
 import { Route as OrgsOrgOnCallIndexRouteImport } from './routes/orgs/$org/on-call.index'
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
+import { Route as OrgsOrgEscalationPoliciesIndexRouteImport } from './routes/orgs/$org/escalation-policies.index'
 import { Route as OrgsOrgDependenciesIndexRouteImport } from './routes/orgs/$org/dependencies.index'
 import { Route as OrgsOrgChecksIndexRouteImport } from './routes/orgs/$org/checks.index'
 import { Route as OrgsOrgAccountIndexRouteImport } from './routes/orgs/$org/account.index'
@@ -58,6 +60,8 @@ import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/org
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
+import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
+import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs/$org/escalation-policies.$slug'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
@@ -159,6 +163,12 @@ const OrgsOrgEventsRoute = OrgsOrgEventsRouteImport.update({
   path: '/events',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
+const OrgsOrgEscalationPoliciesRoute =
+  OrgsOrgEscalationPoliciesRouteImport.update({
+    id: '/escalation-policies',
+    path: '/escalation-policies',
+    getParentRoute: () => OrgsOrgRoute,
+  } as any)
 const OrgsOrgChecksRoute = OrgsOrgChecksRouteImport.update({
   id: '/checks',
   path: '/checks',
@@ -210,6 +220,12 @@ const OrgsOrgIncidentsIndexRoute = OrgsOrgIncidentsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgIncidentsRoute,
 } as any)
+const OrgsOrgEscalationPoliciesIndexRoute =
+  OrgsOrgEscalationPoliciesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
+  } as any)
 const OrgsOrgDependenciesIndexRoute =
   OrgsOrgDependenciesIndexRouteImport.update({
     id: '/dependencies/',
@@ -323,6 +339,18 @@ const OrgsOrgIncidentsIncidentUidRoute =
     path: '/$incidentUid',
     getParentRoute: () => OrgsOrgIncidentsRoute,
   } as any)
+const OrgsOrgEscalationPoliciesNewRoute =
+  OrgsOrgEscalationPoliciesNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
+  } as any)
+const OrgsOrgEscalationPoliciesSlugRoute =
+  OrgsOrgEscalationPoliciesSlugRouteImport.update({
+    id: '/$slug',
+    path: '/$slug',
+    getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
+  } as any)
 const OrgsOrgChecksNewRoute = OrgsOrgChecksNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -387,6 +415,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
+  '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
@@ -401,6 +430,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
@@ -422,6 +453,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
@@ -451,6 +483,8 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
@@ -471,6 +505,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization': typeof OrgsOrgOrganizationIndexRoute
@@ -497,6 +532,7 @@ export interface FileRoutesById {
   '/orgs/$org/account': typeof OrgsOrgAccountRouteWithChildren
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
+  '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
@@ -511,6 +547,8 @@ export interface FileRoutesById {
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
+  '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
@@ -532,6 +570,7 @@ export interface FileRoutesById {
   '/orgs/$org/account/': typeof OrgsOrgAccountIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
@@ -559,6 +598,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
+    | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
@@ -573,6 +613,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
@@ -594,6 +636,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
+    | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
@@ -623,6 +666,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
@@ -643,6 +688,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account'
     | '/orgs/$org/checks'
     | '/orgs/$org/dependencies'
+    | '/orgs/$org/escalation-policies'
     | '/orgs/$org/incidents'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -668,6 +714,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account'
     | '/orgs/$org/badges'
     | '/orgs/$org/checks'
+    | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
@@ -682,6 +729,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/escalation-policies/$slug'
+    | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
@@ -703,6 +752,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/'
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
+    | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
@@ -856,6 +906,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgEventsRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/orgs/$org/escalation-policies': {
+      id: '/orgs/$org/escalation-policies'
+      path: '/escalation-policies'
+      fullPath: '/orgs/$org/escalation-policies'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
     '/orgs/$org/checks': {
       id: '/orgs/$org/checks'
       path: '/checks'
@@ -925,6 +982,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/incidents/'
       preLoaderRoute: typeof OrgsOrgIncidentsIndexRouteImport
       parentRoute: typeof OrgsOrgIncidentsRoute
+    }
+    '/orgs/$org/escalation-policies/': {
+      id: '/orgs/$org/escalation-policies/'
+      path: '/'
+      fullPath: '/orgs/$org/escalation-policies/'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesIndexRouteImport
+      parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
     '/orgs/$org/dependencies/': {
       id: '/orgs/$org/dependencies/'
@@ -1073,6 +1137,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgIncidentsIncidentUidRouteImport
       parentRoute: typeof OrgsOrgIncidentsRoute
     }
+    '/orgs/$org/escalation-policies/new': {
+      id: '/orgs/$org/escalation-policies/new'
+      path: '/new'
+      fullPath: '/orgs/$org/escalation-policies/new'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesNewRouteImport
+      parentRoute: typeof OrgsOrgEscalationPoliciesRoute
+    }
+    '/orgs/$org/escalation-policies/$slug': {
+      id: '/orgs/$org/escalation-policies/$slug'
+      path: '/$slug'
+      fullPath: '/orgs/$org/escalation-policies/$slug'
+      preLoaderRoute: typeof OrgsOrgEscalationPoliciesSlugRouteImport
+      parentRoute: typeof OrgsOrgEscalationPoliciesRoute
+    }
     '/orgs/$org/checks/new': {
       id: '/orgs/$org/checks/new'
       path: '/new'
@@ -1188,6 +1266,24 @@ const OrgsOrgChecksRouteChildren: OrgsOrgChecksRouteChildren = {
 const OrgsOrgChecksRouteWithChildren = OrgsOrgChecksRoute._addFileChildren(
   OrgsOrgChecksRouteChildren,
 )
+
+interface OrgsOrgEscalationPoliciesRouteChildren {
+  OrgsOrgEscalationPoliciesSlugRoute: typeof OrgsOrgEscalationPoliciesSlugRoute
+  OrgsOrgEscalationPoliciesNewRoute: typeof OrgsOrgEscalationPoliciesNewRoute
+  OrgsOrgEscalationPoliciesIndexRoute: typeof OrgsOrgEscalationPoliciesIndexRoute
+}
+
+const OrgsOrgEscalationPoliciesRouteChildren: OrgsOrgEscalationPoliciesRouteChildren =
+  {
+    OrgsOrgEscalationPoliciesSlugRoute: OrgsOrgEscalationPoliciesSlugRoute,
+    OrgsOrgEscalationPoliciesNewRoute: OrgsOrgEscalationPoliciesNewRoute,
+    OrgsOrgEscalationPoliciesIndexRoute: OrgsOrgEscalationPoliciesIndexRoute,
+  }
+
+const OrgsOrgEscalationPoliciesRouteWithChildren =
+  OrgsOrgEscalationPoliciesRoute._addFileChildren(
+    OrgsOrgEscalationPoliciesRouteChildren,
+  )
 
 interface OrgsOrgIncidentsRouteChildren {
   OrgsOrgIncidentsIncidentUidRoute: typeof OrgsOrgIncidentsIncidentUidRoute
@@ -1317,6 +1413,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgAccountRoute: typeof OrgsOrgAccountRouteWithChildren
   OrgsOrgBadgesRoute: typeof OrgsOrgBadgesRoute
   OrgsOrgChecksRoute: typeof OrgsOrgChecksRouteWithChildren
+  OrgsOrgEscalationPoliciesRoute: typeof OrgsOrgEscalationPoliciesRouteWithChildren
   OrgsOrgEventsRoute: typeof OrgsOrgEventsRoute
   OrgsOrgIncidentsRoute: typeof OrgsOrgIncidentsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
@@ -1334,6 +1431,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgAccountRoute: OrgsOrgAccountRouteWithChildren,
   OrgsOrgBadgesRoute: OrgsOrgBadgesRoute,
   OrgsOrgChecksRoute: OrgsOrgChecksRouteWithChildren,
+  OrgsOrgEscalationPoliciesRoute: OrgsOrgEscalationPoliciesRouteWithChildren,
   OrgsOrgEventsRoute: OrgsOrgEventsRoute,
   OrgsOrgIncidentsRoute: OrgsOrgIncidentsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,

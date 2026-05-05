@@ -2168,3 +2168,123 @@ export function useRotateOnCallICalFeed(org: string, slug: string) {
     },
   });
 }
+
+// Escalation policies — orchestration that fires steps in order with
+// delays, with cancellation on ack/snooze/resolve. Distinct from
+// check_connections (per-check broadcast).
+export type EscalationTargetType =
+  | "user"
+  | "schedule"
+  | "connection"
+  | "all_admins";
+
+export interface EscalationPolicyTarget {
+  uid?: string;
+  type: EscalationTargetType;
+  targetUid?: string;
+  position?: number;
+}
+
+export interface EscalationPolicyStep {
+  uid?: string;
+  position: number;
+  delayMinutes: number;
+  targets: EscalationPolicyTarget[];
+}
+
+export interface EscalationPolicy {
+  uid: string;
+  slug: string;
+  name: string;
+  description?: string;
+  repeatMax: number;
+  repeatAfterMinutes?: number | null;
+  steps?: EscalationPolicyStep[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateEscalationPolicyRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  repeatMax: number;
+  repeatAfterMinutes?: number | null;
+  steps: EscalationPolicyStep[];
+}
+
+export interface UpdateEscalationPolicyRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  repeatMax?: number;
+  repeatAfterMinutes?: number | null;
+  steps?: EscalationPolicyStep[];
+}
+
+export function useEscalationPolicies(org: string) {
+  return useQuery({
+    queryKey: ["escalationPolicies", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: EscalationPolicy[] }>(
+        `/api/v1/orgs/${org}/escalation-policies`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useEscalationPolicy(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["escalationPolicies", org, slug],
+    queryFn: () =>
+      apiFetch<EscalationPolicy>(
+        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+      ),
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useCreateEscalationPolicy(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateEscalationPolicyRequest) =>
+      apiFetch<EscalationPolicy>(`/api/v1/orgs/${org}/escalation-policies`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
+    },
+  });
+}
+
+export function useUpdateEscalationPolicy(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateEscalationPolicyRequest) =>
+      apiFetch<EscalationPolicy>(
+        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["escalationPolicies", org],
+      });
+    },
+  });
+}
+
+export function useDeleteEscalationPolicy(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/escalation-policies/${slug}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
+    },
+  });
+}

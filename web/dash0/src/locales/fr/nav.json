@@ -4,6 +4,7 @@
   "incidents": "Incidents",
   "dependencies": "Dépendances",
   "onCall": "Astreintes",
+  "escalationPolicies": "Politiques d'escalade",
   "events": "Événements",
   "statusPages": "Pages de statut",
   "badges": "Badges",

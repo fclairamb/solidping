@@ -69,7 +69,7 @@ type EscalationPolicyStep struct {
 	UID          string    `bun:"uid,pk,type:varchar(36)"`
 	PolicyUID    string    `bun:"policy_uid,notnull"`
 	Position     int       `bun:"position,notnull"`
-	DelayMinutes int       `bun:"delay_minutes,notnull,default:0"`
+	DelayMinutes int       `bun:"delay_minutes,notnull"`
 	CreatedAt    time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt    time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }

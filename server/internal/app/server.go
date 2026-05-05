@@ -544,6 +544,16 @@ func (s *Server) setupRoutes() {
 	// middleware: clients are calendar apps that can't bear tokens.
 	api.GET("/on-call-schedules/:secret/feed.ics", onCallHandler.ServeICalFeed)
 
+	// Wire the on-call resolver into the escalation step job so
+	// schedule-target steps can find who is paged at fire time. The
+	// indirection avoids an import cycle between jobtypes and
+	// oncallschedules; jobtypes only knows the function shape.
+	jobtypes.SetOnCallResolver(func(
+		ctx context.Context, _ *jobdef.JobContext, scheduleUID string, at time.Time,
+	) (*models.User, error) {
+		return onCallService.Resolve(ctx, scheduleUID, at)
+	})
+
 	// Escalation policies (authentication required)
 	escalationService := escalationpolicies.NewService(s.dbService)
 	escalationHandler := escalationpolicies.NewHandler(escalationService, s.config)

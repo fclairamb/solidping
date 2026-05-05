@@ -178,6 +178,7 @@ type Service interface {
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
 
 	// Escalation policy steps (replace-all is the typical write path)
+	GetEscalationPolicyStep(ctx context.Context, stepUID string) (*models.EscalationPolicyStep, error)
 	ListEscalationPolicySteps(ctx context.Context, policyUID string) ([]*models.EscalationPolicyStep, error)
 	ReplaceEscalationPolicySteps(
 		ctx context.Context, policyUID string, steps []*models.EscalationPolicyStep,

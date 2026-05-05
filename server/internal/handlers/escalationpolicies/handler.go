@@ -34,6 +34,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrPolicyNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Escalation policy not found")
+	case errors.Is(err, ErrPolicyInUse):
+		return h.WriteError(writer, http.StatusConflict, "ESCALATION_POLICY_IN_USE",
+			"Escalation policy is referenced by an open incident — resolve the incident first")
 	case errors.Is(err, ErrInvalidTargetType),
 		errors.Is(err, ErrTargetUIDRequired),
 		errors.Is(err, ErrTargetUIDForbidden),
