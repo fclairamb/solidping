@@ -126,6 +126,32 @@ Out of scope:
 - `web/dash0/src/locales/{en,fr,de,es}/auth.json`
 - `web/dash0/e2e/<auth-related-specs>.ts`
 
+## Implementation Plan
+
+1. **New `<PasswordInput>` component** at `web/dash0/src/components/ui/password-input.tsx` — wraps `<Input type="password">` with a right-aligned eye/eye-off toggle button (Lucide `Eye`/`EyeOff`), `aria-pressed` + `aria-label` from i18n, re-mask on blur, autocomplete prop preserved. Forwards ref.
+
+2. **Replace confirm-password pairs in three auth routes**:
+   - `web/dash0/src/routes/invite.$token.tsx`: drop `confirmPassword` state + equality check, use `<PasswordInput>` for the remaining field.
+   - `web/dash0/src/routes/reset-password.$token.tsx`: same.
+   - `web/dash0/src/routes/orgs/$org/register.tsx`: same.
+
+3. **Adopt `<PasswordInput>` in single-password forms** for consistency with the spec's "every password input has an eye toggle" goal:
+   - `web/dash0/src/routes/orgs/$org/login.tsx`: switch to `<PasswordInput>` (autocomplete `current-password`).
+
+4. **i18n updates** in `web/dash0/src/locales/{en,fr,de,es}/auth.json`:
+   - Add `auth:showPassword` / `auth:hidePassword`.
+   - Remove `auth:confirmPassword`, `auth:confirmNewPassword`, `auth:passwordsDoNotMatch`.
+
+5. **e2e + lint pass**: search for any e2e specs that fill `confirmPassword` and remove that step; run `bun run lint` and `make build-client lint-back test`.
+
+6. **Audit + archive**.
+
+## Out-of-scope confirmations
+
+- `web/dash0/src/components/shared/check-form.tsx` has 10+ `type="password"` inputs for check-config credentials. The spec's explicit file list does not include them and the goal section frames the work around the confirm-password pattern, so they're left untouched in this PR. Follow-up if desired.
+- `web/dash0/src/routes/orgs/$org/account.profile.tsx` has no password change form today; nothing to do there.
+- `server.auth.tsx` / `server.web.tsx` / `server.email-inbox.tsx` / `server.mail.tsx` have config-style password inputs (some are read-only `******` placeholders) — same rationale as check-form.
+
 ## Coordination with sibling specs
 
 - `2026-05-05-02` (drop email field on invite) and `2026-05-05-04` (auth
