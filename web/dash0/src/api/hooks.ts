@@ -143,8 +143,14 @@ export interface IncidentDetail {
   description?: string;
   startedAt?: string;
   acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  snoozedUntil?: string;
+  snoozedBy?: string;
+  snoozeReason?: string;
   escalatedAt?: string;
   resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionType?: "auto" | "manual" | "expired";
   failureCount?: number;
   relapseCount?: number;
   lastReopenedAt?: string;
