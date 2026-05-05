@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AreaChart,
   Area,
@@ -206,6 +207,7 @@ export function ResponseTimeChart({
   initialFullRange,
   onSettingsChange,
 }: ResponseTimeChartProps) {
+  const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
@@ -435,7 +437,7 @@ export function ResponseTimeChart({
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
-        <CardTitle>Response Times</CardTitle>
+        <CardTitle>{t("detail.chart.title")}</CardTitle>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <Switch
@@ -443,7 +445,7 @@ export function ResponseTimeChart({
               onCheckedChange={updateFullRange}
               className="scale-75"
             />
-            <span className="hidden sm:inline">Full range</span>
+            <span className="hidden sm:inline">{t("detail.chart.fullRange")}</span>
           </label>
           <div className="flex items-center gap-1">
             {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
@@ -454,8 +456,12 @@ export function ResponseTimeChart({
                 onClick={() => updateTimeRange(range)}
                 className="px-2 text-xs sm:px-3 sm:text-sm"
               >
-                <span className="sm:hidden">{range[0].toUpperCase()}</span>
-                <span className="hidden sm:inline capitalize">{range}</span>
+                <span className="sm:hidden">
+                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}Short`)}
+                </span>
+                <span className="hidden sm:inline">
+                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}`)}
+                </span>
               </Button>
             ))}
           </div>
@@ -464,14 +470,14 @@ export function ResponseTimeChart({
       <CardContent>
         {regions.length > 1 && (
           <div className="text-xs text-muted-foreground mb-2">
-            Showing all regions ({regions.join(", ")})
+            {t("detail.chart.showingAllRegions", { regions: regions.join(", ") })}
           </div>
         )}
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : chartData.length === 0 ? (
           <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-            No data available
+            {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
           <div
@@ -552,7 +558,7 @@ export function ResponseTimeChart({
                       )}
                       {data.uid && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Click point for details
+                          {t("detail.chart.tooltipClickPoint")}
                         </p>
                       )}
                     </div>
@@ -569,7 +575,7 @@ export function ResponseTimeChart({
                   label={
                     gap.showLabel
                       ? {
-                          value: "No data",
+                          value: t("detail.chart.noData"),
                           position: "center",
                           fill: "var(--muted-foreground)",
                           fontSize: 11,
@@ -627,8 +633,8 @@ export function ResponseTimeChart({
                     >
                       <title>
                         {isSelected
-                          ? "Click again to open full page"
-                          : "Click for details"}
+                          ? t("detail.chart.dotClickAgain")
+                          : t("detail.chart.dotClickForDetails")}
                       </title>
                     </circle>
                   );

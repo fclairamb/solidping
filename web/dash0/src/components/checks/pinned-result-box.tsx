@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { X } from "lucide-react";
 import { useResult } from "@/api/hooks";
@@ -42,6 +43,7 @@ export function PinnedResultBox({
   height,
   onClose,
 }: PinnedResultBoxProps) {
+  const { t } = useTranslation("checks");
   const { data, isLoading, error } = useResult(org, checkUid, resultUid);
 
   const boxRef = useRef<HTMLDivElement | null>(null);
@@ -92,7 +94,7 @@ export function PinnedResultBox({
           size="sm"
           className="h-5 w-5 p-0"
           onClick={onClose}
-          aria-label="Close"
+          aria-label={t("detail.resultBox.close")}
         >
           <X className="h-3 w-3" />
         </Button>
@@ -107,18 +109,18 @@ export function PinnedResultBox({
       )}
 
       {error && (
-        <p className="text-xs text-destructive mt-2">Could not load details</p>
+        <p className="text-xs text-destructive mt-2">{t("detail.resultBox.couldNotLoad")}</p>
       )}
 
       {data && !isLoading && (
         <div className="space-y-1 mt-2">
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-xs text-muted-foreground">Duration</span>
+            <span className="text-xs text-muted-foreground">{t("detail.resultBox.duration")}</span>
             <span className="font-medium">{formatMs(data.durationMs)}</span>
           </div>
           {data.durationMinMs != null && data.durationMaxMs != null && (
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Min / Max</span>
+              <span className="text-xs text-muted-foreground">{t("detail.resultBox.minMax")}</span>
               <span className="text-xs">
                 {formatMs(data.durationMinMs)} / {formatMs(data.durationMaxMs)}
               </span>
@@ -126,19 +128,19 @@ export function PinnedResultBox({
           )}
           {data.availabilityPct != null && (
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Availability</span>
+              <span className="text-xs text-muted-foreground">{t("detail.resultBox.availability")}</span>
               <span className="text-xs">{formatPct(data.availabilityPct)}</span>
             </div>
           )}
           {data.region && (
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Region</span>
+              <span className="text-xs text-muted-foreground">{t("detail.resultBox.region")}</span>
               <span className="text-xs">{data.region}</span>
             </div>
           )}
           {data.status && (
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Status</span>
+              <span className="text-xs text-muted-foreground">{t("detail.resultBox.status")}</span>
               <Badge variant="outline" className="capitalize text-xs">
                 {data.status}
               </Badge>
@@ -146,7 +148,7 @@ export function PinnedResultBox({
           )}
           {data.periodType && data.periodType !== "raw" && (
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-xs text-muted-foreground">Period</span>
+              <span className="text-xs text-muted-foreground">{t("detail.resultBox.period")}</span>
               <Badge variant="outline" className="text-xs">
                 {data.periodType}
               </Badge>
@@ -156,7 +158,7 @@ export function PinnedResultBox({
       )}
 
       <p className="mt-2 text-xs text-muted-foreground">
-        Click again to open full page
+        {t("detail.resultBox.clickAgain")}
       </p>
     </div>
   );
