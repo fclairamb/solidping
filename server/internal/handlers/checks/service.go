@@ -703,16 +703,23 @@ type UpdateCheckRequest struct {
 }
 
 // UpsertCheckRequest represents a request to create or update a check by slug.
+//
+// DependsOn is a pointer-typed slice so the handler can distinguish three
+// states: absent (nil — leave existing edges alone), explicit empty
+// (`*req.DependsOn == nil` after decode is impossible; an explicit `[]` decodes
+// to a non-nil zero-length slice — wipe all edges for this check), and
+// non-empty (set the edges to exactly this list).
 type UpsertCheckRequest struct {
-	Name          string            `json:"name"`
-	Description   string            `json:"description"`
-	CheckGroupUID *string           `json:"checkGroupUid"`
-	Type          string            `json:"type"`
-	Config        map[string]any    `json:"config"`
-	Enabled       *bool             `json:"enabled"`
-	Internal      *bool             `json:"internal,omitempty"`
-	Period        *string           `json:"period"`
-	Labels        map[string]string `json:"labels"`
+	Name          string                `json:"name"`
+	Description   string                `json:"description"`
+	CheckGroupUID *string               `json:"checkGroupUid"`
+	Type          string                `json:"type"`
+	Config        map[string]any        `json:"config"`
+	Enabled       *bool                 `json:"enabled"`
+	Internal      *bool                 `json:"internal,omitempty"`
+	Period        *string               `json:"period"`
+	Labels        map[string]string     `json:"labels"`
+	DependsOn     *[]ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // UpdateCheck updates an existing check by UID or slug.
@@ -870,8 +877,17 @@ func (s *Service) UpsertCheck(
 			Period:        req.Period,
 			Labels:        &req.Labels,
 		}
+
 		updatedCheck, updateErr := s.UpdateCheck(ctx, orgSlug, slug, &updateReq)
-		return updatedCheck, false, updateErr // false = not created
+		if updateErr != nil {
+			return updatedCheck, false, updateErr
+		}
+
+		if depErr := s.applyUpsertDeps(ctx, org.UID, existingCheck.UID, req.DependsOn); depErr != nil {
+			return updatedCheck, false, depErr
+		}
+
+		return updatedCheck, false, nil
 	}
 
 	// Check doesn't exist - create it
@@ -887,8 +903,208 @@ func (s *Service) UpsertCheck(
 		Period:        req.Period,
 		Labels:        req.Labels,
 	}
+
 	check, err := s.CreateCheck(ctx, orgSlug, createReq)
-	return check, true, err // true = created
+	if err != nil {
+		return check, true, err
+	}
+
+	if depErr := s.applyUpsertDeps(ctx, org.UID, check.UID, req.DependsOn); depErr != nil {
+		return check, true, depErr
+	}
+
+	return check, true, nil
+}
+
+// applyUpsertDeps applies the destructive PUT-by-slug dependency sync. nil
+// pointer means "deps absent — leave alone." Non-nil (including zero-length)
+// means "set deps to exactly this list." Validates cycle/self/cross-org/kind
+// before any write — if any entry fails, no edges are mutated.
+//
+// Atomicity caveat: this runs after the check upsert outside any wrapping
+// transaction; a failed dep apply leaves the check itself updated. The spec
+// names this as a known limitation pending a transaction wrapper around the
+// whole upsert path.
+//
+//nolint:cyclop,funlen // resolve, validate-all, apply diff
+func (s *Service) applyUpsertDeps(
+	ctx context.Context, orgUID, childUID string, declared *[]ExportedDependency,
+) error {
+	if declared == nil {
+		return nil
+	}
+
+	desired := *declared
+
+	resolvedParents := make(map[string]models.CheckDependencyKind, len(desired))
+	resolvedDescs := make(map[string]*string, len(desired))
+
+	for _, dep := range desired {
+		if dep.ParentSlug == "" {
+			return errors.New("dependsOn: empty parentSlug")
+		}
+
+		parent, err := s.db.GetCheckByUidOrSlug(ctx, orgUID, dep.ParentSlug)
+		if err != nil || parent == nil {
+			return errors.New("dependsOn: unknown parent slug: " + dep.ParentSlug)
+		}
+
+		if parent.OrganizationUID != orgUID {
+			return errors.New("dependsOn: cross-org parent not allowed: " + dep.ParentSlug)
+		}
+
+		if parent.UID == childUID {
+			return errors.New("dependsOn: self-edge not allowed")
+		}
+
+		kind := models.CheckDependencyKind(dep.Kind)
+		if !kind.IsValid() {
+			return errors.New("dependsOn: invalid kind: " + dep.Kind)
+		}
+
+		if _, dup := resolvedParents[parent.UID]; dup {
+			return errors.New("dependsOn: duplicate parent: " + dep.ParentSlug)
+		}
+
+		resolvedParents[parent.UID] = kind
+
+		if dep.Description != "" {
+			desc := dep.Description
+			resolvedDescs[parent.UID] = &desc
+		}
+	}
+
+	existing, err := s.db.ListCheckDependencyParents(ctx, childUID)
+	if err != nil {
+		return fmt.Errorf("list existing parents: %w", err)
+	}
+
+	existingByParent := make(map[string]*models.CheckDependency, len(existing))
+	for _, edge := range existing {
+		existingByParent[edge.ParentCheckUID] = edge
+	}
+
+	// Cycle check: simulate the proposed graph (current org graph, minus this
+	// child's existing edges, plus the desired edges) and run a DFS. We do
+	// this before any mutation so failures keep the DB untouched.
+	if cycleErr := s.assertProposedNoCycle(ctx, orgUID, childUID, existingByParent, resolvedParents); cycleErr != nil {
+		return cycleErr
+	}
+
+	for parentUID, edge := range existingByParent {
+		if _, keep := resolvedParents[parentUID]; !keep {
+			if delErr := s.db.DeleteCheckDependency(ctx, edge.UID); delErr != nil {
+				return fmt.Errorf("delete edge: %w", delErr)
+			}
+		}
+	}
+
+	for parentUID, kind := range resolvedParents {
+		desc := resolvedDescs[parentUID]
+		if existing, ok := existingByParent[parentUID]; ok {
+			update := models.CheckDependencyUpdate{}
+			needs := false
+
+			if existing.Kind != kind {
+				update.Kind = &kind
+				needs = true
+			}
+
+			if !sameDesc(existing.Description, desc) {
+				if desc == nil {
+					update.ClearDescription = true
+				} else {
+					update.Description = desc
+				}
+
+				needs = true
+			}
+
+			if needs {
+				if uErr := s.db.UpdateCheckDependency(ctx, existing.UID, &update); uErr != nil {
+					return fmt.Errorf("update edge: %w", uErr)
+				}
+			}
+
+			continue
+		}
+
+		newEdge := models.NewCheckDependency(orgUID, parentUID, childUID, kind, desc)
+		if cErr := s.db.CreateCheckDependency(ctx, newEdge); cErr != nil {
+			return fmt.Errorf("create edge: %w", cErr)
+		}
+	}
+
+	return nil
+}
+
+// assertProposedNoCycle runs the cycle DFS on the post-state of a destructive
+// dep sync (existing graph minus child's current edges, plus desired edges).
+func (s *Service) assertProposedNoCycle(
+	ctx context.Context, orgUID, childUID string,
+	existingByParent map[string]*models.CheckDependency,
+	resolvedParents map[string]models.CheckDependencyKind,
+) error {
+	const depthCap = 32
+
+	allDeps, err := s.db.ListCheckDependenciesByOrg(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("list deps for cycle check: %w", err)
+	}
+
+	adjacency := make(map[string]map[string]struct{}, len(allDeps))
+	addEdge := func(parent, child string) {
+		if _, ok := adjacency[parent]; !ok {
+			adjacency[parent] = make(map[string]struct{})
+		}
+		adjacency[parent][child] = struct{}{}
+	}
+	removeEdge := func(parent, child string) {
+		if children, ok := adjacency[parent]; ok {
+			delete(children, child)
+		}
+	}
+
+	for _, dep := range allDeps {
+		addEdge(dep.ParentCheckUID, dep.ChildCheckUID)
+	}
+
+	for parentUID := range existingByParent {
+		removeEdge(parentUID, childUID)
+	}
+
+	for parentUID := range resolvedParents {
+		addEdge(parentUID, childUID)
+	}
+
+	for parentUID := range resolvedParents {
+		if existing, ok := existingByParent[parentUID]; ok && existing.Kind == resolvedParents[parentUID] {
+			continue
+		}
+
+		stack := []string{childUID}
+		visited := map[string]struct{}{childUID: {}}
+
+		for depth := 0; depth < depthCap && len(stack) > 0; depth++ {
+			next := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+
+			for child := range adjacency[next] {
+				if child == parentUID {
+					return errors.New("dependsOn: cycle detected via parent " + parentUID)
+				}
+
+				if _, seen := visited[child]; seen {
+					continue
+				}
+
+				visited[child] = struct{}{}
+				stack = append(stack, child)
+			}
+		}
+	}
+
+	return nil
 }
 
 // DeleteCheck deletes a check by UID or slug (soft delete).
