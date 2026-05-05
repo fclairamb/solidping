@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import {
   AreaChart,
   Area,
@@ -211,18 +211,28 @@ export function ResponseTimeChart({
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
   const dotPositions = useRef<Record<string, { cx: number; cy: number }>>({});
-  const chartWrapperRef = useRef<HTMLDivElement | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
+  const [chartHeight, setChartHeight] = useState(0);
 
-  useEffect(() => {
-    if (!chartWrapperRef.current) return;
+  // Callback ref so the observer attaches whenever the wrapper enters the
+  // DOM — including after the loading skeleton clears, which happens on a
+  // later render than the initial mount.
+  const chartWrapperRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setChartWidth(rect.width);
+    setChartHeight(rect.height);
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
         setChartWidth(entry.contentRect.width);
+        setChartHeight(entry.contentRect.height);
       }
     });
-    observer.observe(chartWrapperRef.current);
-    return () => observer.disconnect();
+    observer.observe(node);
+    observerRef.current = observer;
   }, []);
 
   const updateTimeRange = (range: TimeRange) => {
@@ -667,6 +677,7 @@ export function ResponseTimeChart({
               resultUid={selectedUid}
               anchor={dotPositions.current[selectedUid]}
               width={chartWidth}
+              height={chartHeight}
               onClose={() => setSelectedUid(null)}
             />
           )}
