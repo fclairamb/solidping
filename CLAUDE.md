@@ -70,6 +70,12 @@ previous binary running; check the dev log for the compiler error.
   - `make clean` - Remove built binaries and artifacts
   - `make clean-all` - Remove all generated files including node_modules
 
+## Credentials encryption at rest
+- `SP_ENCRYPTION_MASTER_KEY` — base64-encoded 32-byte KEK. When set, secret keys in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column and an AES-256-GCM-encrypted private column (`*_private`). The dashboard never echoes secret values back; it gets a `configPrivateKeys: [...]` hint instead.
+- `SP_ENCRYPTION_MASTER_KEY_FILE` — file path containing the base64 key. Wins over the env var when both are set (k8s secret-mount pattern).
+- `SP_ENCRYPTION_AUTO_MIGRATE` — defaults to `true`. Encrypts any pre-existing plaintext secrets on startup. Set `false` to opt out and run `./solidping encrypt-credentials [--dry-run]` manually.
+- **Threat model caveat:** encryption-at-rest only protects against database theft. It does not protect against a compromised server process, a malicious admin, a worker leaking credentials in its logs, or an over-permissive RBAC config. The fallback when no master key is set is plaintext (V1) — safe default for self-hosted, called out in startup logs.
+
 ## Default credentials
 - User: `admin@solidping.com`
 - Pass: `solidpass`
