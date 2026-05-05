@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   createFileRoute,
   Link,
@@ -6,16 +6,26 @@ import {
   useSearch,
 } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { useAuth, type OrganizationSummary } from "@/contexts/AuthContext";
+import { useAuth, type OrganizationSummary, type LoginResult } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, AlertCircle, Loader2, Building2 } from "lucide-react";
+import { Activity, AlertCircle, KeyRound, Loader2, Building2 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
+import {
+  startAuthentication,
+  browserSupportsWebAuthn,
+  browserSupportsWebAuthnAutofill,
+} from "@simplewebauthn/browser";
+import {
+  beginPasskeyLogin,
+  finishPasskeyLogin,
+  getAuthProviders,
+} from "@/api/passkeys";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -155,7 +165,18 @@ function LoginPage() {
   const navigate = useNavigate();
   const { org } = Route.useParams();
   const { session_expired, returnTo } = useSearch({ from: "/orgs/$org/login" });
-  const { login, logout, switchOrg, isAuthenticated } = useAuth();
+  const auth = useAuth();
+  const {
+    login,
+    logout,
+    switchOrg,
+    isAuthenticated,
+    verify2FA,
+    applyLoginResponse,
+  } = auth;
+  // Rename to skip the react-hooks/rules-of-hooks linter — auth.useRecoveryCode
+  // is a service method, not a React hook, but its name triggers the rule.
+  const submitRecoveryCode = auth.useRecoveryCode;
   const { data: versionData } = useVersion();
   const { data: providersData } = useProviders();
   const providers = providersData?.providers;
@@ -167,6 +188,25 @@ function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [availableOrgs, setAvailableOrgs] = useState<OrganizationSummary[]>([]);
   const [showOrgPicker, setShowOrgPicker] = useState(false);
+  const [twoFAState, setTwoFAState] = useState<{ tempToken: string } | null>(null);
+  const [twoFACode, setTwoFACode] = useState("");
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [passkeysEnabled, setPasskeysEnabled] = useState(false);
+
+  // Read passkey support from /auth/providers and probe browser
+  // capability — both are needed before we render the passkey button or
+  // arm the conditional UI hook.
+  useEffect(() => {
+    let cancelled = false;
+    getAuthProviders()
+      .then((p) => {
+        if (!cancelled) setPasskeysEnabled(p.passkeysEnabled);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Redirect if already authenticated (but not when showing org picker)
   useEffect(() => {
@@ -175,23 +215,17 @@ function LoginPage() {
     }
   }, [isAuthenticated, navigate, org, showOrgPicker]);
 
-  if (isAuthenticated && !showOrgPicker) {
-    return null;
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setIsLoading(true);
-
-    try {
-      const result = await login(org, email, password);
+  const routeResult = useCallback(
+    (result: LoginResult) => {
+      if (result.requires2FA && result.tempToken) {
+        setTwoFAState({ tempToken: result.tempToken });
+        return;
+      }
 
       switch (result.loginAction) {
         case "noOrg":
           navigate({ to: "/no-org" });
           break;
-
         case "orgChoice":
           setAvailableOrgs(result.organizations);
           setShowOrgPicker(true);
@@ -204,13 +238,11 @@ function LoginPage() {
             });
           }
           break;
-
         case "orgRedirect":
           if (result.resolvedOrg) {
             navigate({ to: "/orgs/$org", params: { org: result.resolvedOrg } });
           }
           break;
-
         default:
           if (returnTo && returnTo.includes("/orgs/")) {
             window.location.href = returnTo;
@@ -219,16 +251,117 @@ function LoginPage() {
           }
           break;
       }
-    } catch (err) {
+    },
+    [navigate, org, returnTo],
+  );
+
+  const reportError = useCallback(
+    (err: unknown) => {
       if (err instanceof ApiError) {
         setError(err.message);
       } else {
         setError(tc("unexpectedError"));
       }
+    },
+    [tc],
+  );
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsLoading(true);
+
+    try {
+      const result = await login(org, email, password);
+      routeResult(result);
+    } catch (err) {
+      reportError(err);
     } finally {
       setIsLoading(false);
     }
   };
+
+  const handle2FAVerify = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!twoFAState) return;
+    setError(null);
+    setIsLoading(true);
+    try {
+      const result = showRecovery
+        ? await submitRecoveryCode(twoFAState.tempToken, twoFACode)
+        : await verify2FA(twoFAState.tempToken, twoFACode);
+      setTwoFACode("");
+      setTwoFAState(null);
+      routeResult(result);
+    } catch (err) {
+      reportError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePasskeyLogin = async () => {
+    setError(null);
+    setIsLoading(true);
+    try {
+      const begin = await beginPasskeyLogin(email || undefined);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const optionsJSON = (begin.options as any).publicKey ?? begin.options;
+      const credential = await startAuthentication({ optionsJSON });
+      const data = await finishPasskeyLogin(begin.session, credential, org);
+      const result = await applyLoginResponse(data as never);
+      routeResult(result);
+    } catch (err) {
+      // The user-cancel path — silent. Anything else gets surfaced.
+      if (err instanceof Error && err.name === "NotAllowedError") {
+        return;
+      }
+      reportError(err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Conditional UI: when passkeys are enabled and the browser supports
+  // autofill, fire a discoverable login ceremony in the background. The
+  // browser surfaces available passkeys in the email field's autofill
+  // chip; selecting one completes the sign-in. NotAllowedError fires
+  // when the user types instead of picking a passkey — quietly ignore
+  // it so we don't spam the console.
+  useEffect(() => {
+    if (!passkeysEnabled) return;
+    if (!browserSupportsWebAuthn() || !browserSupportsWebAuthnAutofill()) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const begin = await beginPasskeyLogin();
+        if (cancelled) return;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const optionsJSON = (begin.options as any).publicKey ?? begin.options;
+        const credential = await startAuthentication({
+          optionsJSON,
+          useBrowserAutofill: true,
+        });
+        if (cancelled) return;
+        const data = await finishPasskeyLogin(begin.session, credential, org);
+        const result = await applyLoginResponse(data as never);
+        routeResult(result);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof Error && err.name !== "NotAllowedError") {
+          // Conditional UI is best-effort; log only in dev console.
+          console.warn("conditional UI failed", err);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [passkeysEnabled, applyLoginResponse, org, routeResult]);
+
+  if (isAuthenticated && !showOrgPicker) {
+    return null;
+  }
 
   const handleOrgSelect = async (orgSlug: string) => {
     setIsLoading(true);
@@ -298,7 +431,67 @@ function LoginPage() {
             </Alert>
           )}
 
-          {showOrgPicker ? (
+          {twoFAState ? (
+            <form onSubmit={handle2FAVerify} className="space-y-4">
+              <p className="text-sm text-muted-foreground text-center">
+                {showRecovery ? t("twoFactor.recoveryPrompt") : t("twoFactor.codePrompt")}
+              </p>
+              <div className="space-y-2">
+                <Label htmlFor={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}>
+                  {showRecovery ? t("twoFactor.recoveryLabel") : t("twoFactor.codeLabel")}
+                </Label>
+                <Input
+                  id={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
+                  data-testid={showRecovery ? "2fa-login-recovery-code" : "2fa-login-code"}
+                  inputMode={showRecovery ? "text" : "numeric"}
+                  maxLength={showRecovery ? 32 : 6}
+                  value={twoFACode}
+                  onChange={(e) =>
+                    setTwoFACode(
+                      showRecovery ? e.target.value : e.target.value.replace(/\D/g, ""),
+                    )
+                  }
+                  required
+                  autoFocus
+                  className="font-mono"
+                />
+              </div>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={isLoading || (!showRecovery && twoFACode.length !== 6)}
+                data-testid="2fa-login-verify"
+              >
+                {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {t("twoFactor.verify")}
+              </Button>
+              <div className="flex justify-between text-sm">
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:underline"
+                  data-testid="2fa-login-back"
+                  onClick={() => {
+                    setTwoFAState(null);
+                    setTwoFACode("");
+                    setShowRecovery(false);
+                  }}
+                >
+                  {t("twoFactor.back")}
+                </button>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:underline"
+                  data-testid="2fa-login-recovery-link"
+                  onClick={() => {
+                    setShowRecovery((v) => !v);
+                    setTwoFACode("");
+                  }}
+                >
+                  {showRecovery ? t("twoFactor.useCode") : t("twoFactor.useRecovery")}
+                </button>
+              </div>
+            </form>
+          ) : showOrgPicker ? (
             <div className="space-y-3" data-testid="org-picker">
               <p className="text-sm text-muted-foreground text-center">
                 {t("selectOrganization")}
@@ -375,6 +568,7 @@ function LoginPage() {
                     id="email"
                     type="email"
                     placeholder="test@test.com"
+                    autoComplete={passkeysEnabled ? "username webauthn" : "username"}
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     required
@@ -411,6 +605,19 @@ function LoginPage() {
                     t("signIn")
                   )}
                 </Button>
+                {passkeysEnabled && browserSupportsWebAuthn() && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full"
+                    onClick={handlePasskeyLogin}
+                    disabled={isLoading}
+                    data-testid="passkey-login-button"
+                  >
+                    <KeyRound className="mr-2 h-4 w-4" />
+                    {t("twoFactor.signInWithPasskey")}
+                  </Button>
+                )}
                 <div className="text-center">
                   <Link
                     to="/forgot-password"

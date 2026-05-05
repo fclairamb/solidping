@@ -70,6 +70,7 @@ import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/ch
 import { Route as OrgsOrgChannelsNewRouteImport } from './routes/orgs/$org/channels.new'
 import { Route as OrgsOrgChannelsConnectionUidRouteImport } from './routes/orgs/$org/channels.$connectionUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
+import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
@@ -397,6 +398,11 @@ const OrgsOrgAccountTokensRoute = OrgsOrgAccountTokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountSecurityRoute = OrgsOrgAccountSecurityRouteImport.update({
+  id: '/security',
+  path: '/security',
+  getParentRoute: () => OrgsOrgAccountRoute,
+} as any)
 const OrgsOrgAccountProfileRoute = OrgsOrgAccountProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -459,6 +465,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
+  '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
@@ -517,6 +524,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
+  '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
@@ -585,6 +593,7 @@ export interface FileRoutesById {
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
+  '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
@@ -656,6 +665,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test'
     | '/orgs/$org/'
     | '/orgs/$org/account/profile'
+    | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/channels/$connectionUid'
     | '/orgs/$org/channels/new'
@@ -714,6 +724,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/register'
     | '/orgs/$org'
     | '/orgs/$org/account/profile'
+    | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/channels/$connectionUid'
     | '/orgs/$org/channels/new'
@@ -781,6 +792,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/test'
     | '/orgs/$org/'
     | '/orgs/$org/account/profile'
+    | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/channels/$connectionUid'
     | '/orgs/$org/channels/new'
@@ -1266,6 +1278,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountTokensRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/security': {
+      id: '/orgs/$org/account/security'
+      path: '/security'
+      fullPath: '/orgs/$org/account/security'
+      preLoaderRoute: typeof OrgsOrgAccountSecurityRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/account/profile': {
       id: '/orgs/$org/account/profile'
       path: '/profile'
@@ -1313,12 +1332,14 @@ declare module '@tanstack/react-router' {
 
 interface OrgsOrgAccountRouteChildren {
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
+  OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
   OrgsOrgAccountTokensRoute: typeof OrgsOrgAccountTokensRoute
   OrgsOrgAccountIndexRoute: typeof OrgsOrgAccountIndexRoute
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
+  OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
   OrgsOrgAccountTokensRoute: OrgsOrgAccountTokensRoute,
   OrgsOrgAccountIndexRoute: OrgsOrgAccountIndexRoute,
 }

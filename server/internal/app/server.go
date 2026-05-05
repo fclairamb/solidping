@@ -38,6 +38,7 @@ import (
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
@@ -279,6 +280,8 @@ func (s *Server) setupRoutes() {
 
 	// Create auth handler and middleware
 	authHandler := auth.NewHandler(s.authService, s.config)
+	passkeyService := auth.NewPasskeyService(s.authService, s.dbService)
+	passkeyHandler := auth.NewPasskeyHandler(passkeyService, base.NewHandlerBase(s.config))
 	authMiddleware := middleware.NewAuthMiddleware(s.authService, s.dbService, s.config)
 
 	// Root-level auth routes (public, no authentication required)
@@ -293,6 +296,8 @@ func (s *Server) setupRoutes() {
 	rootAuth.POST("/accept-invite", authHandler.AcceptInvite)
 	rootAuth.POST("/2fa/verify", authHandler.Verify2FA)
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
+	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
+	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
 
 	// Root-level auth routes (protected, authentication required)
 	rootAuthProtected := rootAuth.Use(authMiddleware.RequireAuth)
@@ -305,6 +310,11 @@ func (s *Server) setupRoutes() {
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
+	rootAuthProtected.POST("/passkeys/register/begin", passkeyHandler.RegisterBegin)
+	rootAuthProtected.POST("/passkeys/register/finish", passkeyHandler.RegisterFinish)
+	rootAuthProtected.GET("/passkeys", passkeyHandler.List)
+	rootAuthProtected.PATCH("/passkeys/:uid", passkeyHandler.Rename)
+	rootAuthProtected.DELETE("/passkeys/:uid", passkeyHandler.Delete)
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
@@ -391,7 +401,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Auth providers endpoint (public)
-	providersHandler := auth.NewProvidersHandler(s.config)
+	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
 	// Check types service (constructed early so MCP can use it too)
