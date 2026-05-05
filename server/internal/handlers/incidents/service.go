@@ -1379,14 +1379,53 @@ func (s *Service) GetIncidentByUID(ctx context.Context, orgUID, incidentUID stri
 	return incident, nil
 }
 
+// tryEmailAck performs an email-channel ack and returns whether it
+// succeeded. Folds the (incident, error) result the magic-link handler
+// doesn't need into a single bool so the caller can keep its return type
+// simple (nil error after rendering an HTML error page would otherwise trip
+// the nilerr lint).
+func (s *Service) tryEmailAck(
+	ctx context.Context, orgSlug, incidentUID, ackedBy, recipientEmail string,
+) bool {
+	_, err := s.AcknowledgeIncident(ctx, orgSlug, &AcknowledgeIncidentRequest{
+		IncidentUID:         incidentUID,
+		AcknowledgedBy:      ackedBy,
+		AcknowledgedByEmail: recipientEmail,
+		Note:                "",
+		Via:                 "email",
+	})
+
+	return err == nil
+}
+
+// lookupUserUIDByEmail returns the User UID for the given email, or "" if no
+// user is found. Used by the magic-link ack path where the recipient may or
+// may not be a known platform user.
+func (s *Service) lookupUserUIDByEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	user, err := s.db.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return ""
+	}
+
+	return user.UID
+}
+
 // AcknowledgeIncidentRequest contains the data needed to acknowledge an incident.
 type AcknowledgeIncidentRequest struct {
 	IncidentUID    string
 	AcknowledgedBy string // User UID or identifier
-	SlackUserID    string // Slack user ID if acknowledged via Slack
-	SlackUsername  string // Slack username for display
-	Note           string // Optional free-text note
-	Via            string // "slack", "web", "email", etc.
+	// AcknowledgedByEmail is the recipient email for magic-link acks where
+	// AcknowledgedBy may be empty (recipient is not a known user). Goes into
+	// the event payload so the audit trail is complete.
+	AcknowledgedByEmail string
+	SlackUserID         string // Slack user ID if acknowledged via Slack
+	SlackUsername       string // Slack username for display
+	Note                string // Optional free-text note
+	Via                 string // "slack", "web", "email", etc.
 }
 
 // AcknowledgeIncident marks an incident as acknowledged.

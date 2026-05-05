@@ -494,6 +494,10 @@ func (s *Server) setupRoutes() {
 	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
 	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
 
+	// Magic-link ack — public route (the signed token authenticates).
+	// Returns text/html so it renders in a browser opened from a mail client.
+	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
 	onCallHandler := oncallschedules.NewHandler(onCallService, s.dbService, s.config)
