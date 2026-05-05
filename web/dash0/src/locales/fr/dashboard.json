@@ -6,7 +6,23 @@
   "welcome": {
     "title": "Bienvenue sur SolidPing",
     "subtitle": "Créez votre première sonde pour commencer la surveillance.",
-    "cta": "Créer votre première sonde"
+    "firstCheckSubtitle": "Choisissez un type de sonde et indiquez la cible à surveiller.",
+    "cta": "Créer votre première sonde",
+    "create": "Créer la sonde",
+    "creating": "Création...",
+    "advancedHint": "Plus de contrôle ?",
+    "advancedLink": "Ouvrir l'éditeur complet",
+    "unexpectedError": "Une erreur inattendue s'est produite.",
+    "quick": {
+      "http": "HTTP",
+      "icmp": "Ping",
+      "ssl": "SSL"
+    },
+    "quickLabel": {
+      "http": "URL à surveiller",
+      "icmp": "Hôte à pinger",
+      "ssl": "Domaine pour la vérification SSL"
+    }
   },
   "banner": {
     "allGreen": "Tous les systèmes opérationnels",

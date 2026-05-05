@@ -12,7 +12,6 @@ import {
   Clock,
   LayoutDashboard,
   ListChecks,
-  Plus,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -41,6 +40,7 @@ import {
   getEventLabel,
 } from "@/components/dashboard/event-display";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
+import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -227,7 +227,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
       {isInitialLoading ? (
         <DashboardSkeleton />
       ) : isEmptyOrg ? (
-        <EmptyOrgWelcome org={org} />
+        <EmptyStateOnboarding org={org} />
       ) : (
         <>
           <OverallStatusBanner
@@ -327,45 +327,6 @@ function DashboardSkeleton() {
       </div>
       <Skeleton className="h-72 rounded-xl" />
     </div>
-  );
-}
-
-function EmptyOrgWelcome({ org }: { org: string }) {
-  const { t } = useTranslation("dashboard");
-  return (
-    <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
-      <CardContent className="pt-6 flex flex-col items-center text-center gap-4 py-12">
-        <div className="rounded-full bg-blue-100 dark:bg-blue-900 p-4">
-          <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold">{t("welcome.title")}</h2>
-          <p className="text-muted-foreground mt-1">{t("welcome.subtitle")}</p>
-        </div>
-        <Button asChild size="lg">
-          <Link
-            to="/orgs/$org/checks/new"
-            params={{ org }}
-            search={{
-              checkType: undefined,
-              checkPeriod: undefined,
-              checkName: undefined,
-              checkSlug: undefined,
-              httpUrl: undefined,
-              httpMethod: undefined,
-              host: undefined,
-              port: undefined,
-              url: undefined,
-              domain: undefined,
-              username: undefined,
-              database: undefined,
-            }}
-          >
-            {t("welcome.cta")}
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 

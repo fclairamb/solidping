@@ -6,7 +6,23 @@
   "welcome": {
     "title": "Willkommen bei SolidPing",
     "subtitle": "Erstellen Sie Ihre erste Prüfung, um die Überwachung zu starten.",
-    "cta": "Erste Prüfung erstellen"
+    "firstCheckSubtitle": "Wählen Sie einen Prüftyp und geben Sie das Ziel an.",
+    "cta": "Erste Prüfung erstellen",
+    "create": "Prüfung erstellen",
+    "creating": "Erstellung...",
+    "advancedHint": "Mehr Kontrolle?",
+    "advancedLink": "Vollständigen Editor öffnen",
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten.",
+    "quick": {
+      "http": "HTTP",
+      "icmp": "Ping",
+      "ssl": "SSL"
+    },
+    "quickLabel": {
+      "http": "URL zur Überwachung",
+      "icmp": "Host für Ping",
+      "ssl": "Domain für SSL-Prüfung"
+    }
   },
   "banner": {
     "allGreen": "Alle Systeme betriebsbereit",
