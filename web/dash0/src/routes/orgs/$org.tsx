@@ -30,7 +30,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCheck, useFeatures, useIncident, useStatusPage } from "@/api/hooks";
+import { useCheck, useFeatures, useIncident, useResult, useStatusPage } from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
@@ -91,6 +91,11 @@ function Breadcrumbs({ org }: { org: string }) {
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
+  const { data: result } = useResult(
+    org,
+    params.checkUid ?? "",
+    params.resultUid ?? "",
+  );
   // Incidents section
   const { data: incident } = useIncident(org, params.incidentUid ?? "");
   // Status pages section
@@ -107,9 +112,16 @@ function Breadcrumbs({ org }: { org: string }) {
 
   if (isChecks) {
     const checkUid = params.checkUid;
+    const resultUid = params.resultUid;
     const isCheckEdit = routeIds.has("/orgs/$org/checks/$checkUid/edit");
+    const isCheckResult = routeIds.has(
+      "/orgs/$org/checks/$checkUid/results/$resultUid",
+    );
     const isNewCheck = routeIds.has("/orgs/$org/checks/new");
     const checkName = check?.name || check?.slug || checkUid?.slice(0, 8);
+    const resultLabel = result?.periodStart
+      ? new Date(result.periodStart).toLocaleString()
+      : (resultUid?.slice(0, 8) ?? "");
 
     return (
       <>
@@ -127,7 +139,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {checkUid && (
           <>
             <BreadcrumbSeparator />
-            {isCheckEdit ? (
+            {isCheckEdit || isCheckResult ? (
               <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined }} className={linkClass}>
                 {checkName}
               </Link>
@@ -140,6 +152,12 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("edit")}</span>
+          </>
+        )}
+        {isCheckResult && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{resultLabel}</span>
           </>
         )}
       </>
