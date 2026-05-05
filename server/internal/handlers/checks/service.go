@@ -1778,6 +1778,12 @@ type ExportDocument struct {
 	ExportedAt   string        `json:"exportedAt"`
 	Organization string        `json:"organization"`
 	Checks       []ExportCheck `json:"checks"`
+	// SecretsStripped is true to flag that secret-bearing keys (passwords,
+	// tokens, private keys, ...) were removed from every check's Config.
+	// Importers must accept the stripped shape and the operator will
+	// re-enter secrets after import. Underscore prefix is intentional —
+	// it marks the field as a meta hint distinct from check-config keys.
+	SecretsStripped bool `json:"_secretsStripped"` //nolint:tagliatelle // intentional underscore-prefixed meta field
 }
 
 // ExportCheck represents a single check in the export format.
@@ -1915,7 +1921,7 @@ func (s *Service) ExportChecks(
 
 		exported := ExportCheck{
 			Type:                     check.Type,
-			Config:                   check.Config,
+			Config:                   stripSecretKeysForExport(check),
 			Regions:                  check.Regions,
 			Enabled:                  check.Enabled,
 			Internal:                 check.Internal,
@@ -1960,11 +1966,47 @@ func (s *Service) ExportChecks(
 	}
 
 	return &ExportDocument{
-		Version:      1,
-		ExportedAt:   time.Now().UTC().Format(time.RFC3339),
-		Organization: orgSlug,
-		Checks:       exportChecks,
+		Version:         1,
+		ExportedAt:      time.Now().UTC().Format(time.RFC3339),
+		Organization:    orgSlug,
+		Checks:          exportChecks,
+		SecretsStripped: true,
 	}, nil
+}
+
+// stripSecretKeysForExport returns the check's Config with every key
+// declared as secret by the checker (and every key already in
+// ConfigPrivateKeys) removed. Exports are portable across instances and
+// re-encrypting under a different KEK is out of scope, so the safe
+// default is "operator re-enters secrets after import".
+func stripSecretKeysForExport(check *models.Check) map[string]any {
+	out := make(map[string]any, len(check.Config))
+	for k, v := range check.Config {
+		out[k] = v
+	}
+
+	secretSet := map[string]struct{}{}
+
+	if cfg, ok := registry.ParseConfig(checkerdef.CheckType(check.Type)); ok {
+		for _, k := range credentials.SecretFieldsFor(cfg) {
+			secretSet[k] = struct{}{}
+		}
+	}
+
+	if check.ConfigPrivateKeys != nil && *check.ConfigPrivateKeys != "" {
+		var privateKeys []string
+		if err := json.Unmarshal([]byte(*check.ConfigPrivateKeys), &privateKeys); err == nil {
+			for _, k := range privateKeys {
+				secretSet[k] = struct{}{}
+			}
+		}
+	}
+
+	for k := range secretSet {
+		delete(out, k)
+	}
+
+	return out
 }
 
 // ImportChecks imports checks from an export document.

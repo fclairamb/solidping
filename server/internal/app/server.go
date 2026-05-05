@@ -28,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
@@ -220,7 +221,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Credentials encryption service. The master key comes from env (or a
 	// file mount) — never persisted server-side. With no key configured,
 	// .Enabled() is false and write paths fall back to plaintext storage.
-	credSvc, err := buildCredentialsService(cfg, dbService)
+	credSvc, err := BuildCredentialsService(cfg, dbService)
 	if err != nil {
 		return nil, fmt.Errorf("init credentials service: %w", err)
 	}
@@ -1439,6 +1440,37 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	return nil
 }
 
+// MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the
+// encrypted columns when a master key is configured and AutoMigrate is on
+// (default). Idempotent — only rows still in plaintext are touched. Logs
+// a summary; errors propagate so the operator notices at startup.
+func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
+	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
+		return nil
+	}
+
+	if !s.config.Encryption.AutoMigrate {
+		slog.InfoContext(ctx, "encrypt-credentials auto-migrate disabled by config")
+
+		return nil
+	}
+
+	stats, err := credmigrate.Run(ctx, s.dbService, s.services.Credentials, credmigrate.Options{
+		Logger: slog.Default(),
+	})
+	if err != nil {
+		return fmt.Errorf("auto-migrate credentials: %w", err)
+	}
+
+	if stats.ChecksMigrated > 0 || stats.ConnectionsMigrated > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext credentials at startup",
+			"checksMigrated", stats.ChecksMigrated,
+			"connectionsMigrated", stats.ConnectionsMigrated)
+	}
+
+	return nil
+}
+
 // InitializeTestData creates test data for test mode.
 // This should be called after Initialize and before Start.
 func (s *Server) InitializeTestData(ctx context.Context) error {
@@ -1458,11 +1490,14 @@ func (s *Server) DBService() db.Service {
 	return s.dbService
 }
 
-// buildCredentialsService loads the KEK (env or file), constructs the
+// BuildCredentialsService loads the KEK (env or file), constructs the
 // credentials service, and wires the per-org DEK store against the
 // existing parameters table. Returns a disabled service (no error) when
 // no master key is configured — that is the documented fallback.
-func buildCredentialsService(cfg *config.Config, dbService db.Service) (credentials.Service, error) {
+//
+// Exported so the encrypt-credentials CLI command can build the same
+// service the server uses, without duplicating the wiring.
+func BuildCredentialsService(cfg *config.Config, dbService db.Service) (credentials.Service, error) {
 	kek, err := loadEncryptionMasterKey(cfg)
 	if err != nil {
 		return nil, err

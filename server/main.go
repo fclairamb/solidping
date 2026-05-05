@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -54,6 +56,17 @@ func main() {
 				Usage:    "Client commands for managing SolidPing remotely",
 				Flags:    spCli.GetGlobalFlags(),
 				Commands: spCli.GetCommands(),
+			},
+			{
+				Name:  "encrypt-credentials",
+				Usage: "Encrypt plaintext secret fields in checks and connections (idempotent)",
+				Flags: []cli.Flag{
+					&cli.BoolFlag{
+						Name:  "dry-run",
+						Usage: "Report what would be encrypted without writing",
+					},
+				},
+				Action: encryptCredentials,
 			},
 		},
 	}
@@ -158,6 +171,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return sysConfigErr
 	}
 
+	// Auto-encrypt any plaintext secrets so existing self-hosted installs
+	// pick up encryption transparently when the operator first sets the
+	// master key. No-op when encryption is disabled or AutoMigrate=false.
+	if migrateErr := server.MaybeAutoMigrateEncryption(ctx); migrateErr != nil {
+		slog.ErrorContext(ctx, "Failed to auto-migrate credentials", "error", migrateErr)
+		return migrateErr
+	}
+
 	// Initialize test data if in test mode
 	if testDataErr := server.InitializeTestData(ctx); testDataErr != nil {
 		slog.ErrorContext(ctx,
@@ -203,6 +224,83 @@ func migrate(ctx context.Context, _ *cli.Command) error {
 	}
 
 	return runMigrations(ctx, cfg)
+}
+
+func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
+	cfg, err := config.Load()
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to load configuration", "error", err)
+		return err
+	}
+
+	setupLogger(cfg.LogLevel)
+
+	if validationErr := cfg.Validate(); validationErr != nil {
+		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
+		return cli.Exit(validationErr.Error(), 1)
+	}
+
+	dbSvc, err := openDB(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if closeErr := dbSvc.Close(); closeErr != nil {
+			slog.ErrorContext(ctx, "Failed to close database service", "error", closeErr)
+		}
+	}()
+
+	if initErr := dbSvc.Initialize(ctx); initErr != nil {
+		return fmt.Errorf("init db: %w", initErr)
+	}
+
+	creds, err := app.BuildCredentialsService(cfg, dbSvc)
+	if err != nil {
+		return fmt.Errorf("build credentials service: %w", err)
+	}
+
+	if !creds.Enabled() {
+		return cli.Exit("encryption disabled — set SP_ENCRYPTION_MASTER_KEY first", 1)
+	}
+
+	dryRun := cmd.Bool("dry-run")
+
+	stats, err := credmigrate.Run(ctx, dbSvc, creds, credmigrate.Options{
+		DryRun: dryRun,
+		Logger: slog.Default(),
+	})
+	if err != nil {
+		return fmt.Errorf("encrypt-credentials failed: %w", err)
+	}
+
+	slog.InfoContext(ctx, "encrypt-credentials done",
+		"dryRun", dryRun,
+		"checksScanned", stats.ChecksScanned,
+		"checksMigrated", stats.ChecksMigrated,
+		"connectionsScanned", stats.ConnectionsScanned,
+		"connectionsMigrated", stats.ConnectionsMigrated)
+
+	return nil
+}
+
+func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
+	switch cfg.Database.Type {
+	case "postgres":
+		return postgres.New(ctx, postgres.Config{DSN: cfg.Database.URL, Embedded: false})
+	case "postgres-embedded":
+		return postgres.New(ctx, postgres.Config{
+			Embedded:    true,
+			EmbeddedDir: "/tmp/solidping-postgres-test",
+			Port:        embeddedPostgresPort,
+		})
+	case "sqlite":
+		return sqlite.New(ctx, sqlite.Config{DataDir: cfg.Database.Dir, InMemory: false})
+	case "sqlite-memory":
+		return sqlite.New(ctx, sqlite.Config{InMemory: true})
+	default:
+		return nil, cli.Exit("Unsupported database type: "+cfg.Database.Type, 1)
+	}
 }
 
 func runMigrations(ctx context.Context, cfg *config.Config) error {
