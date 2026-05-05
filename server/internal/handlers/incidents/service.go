@@ -1476,6 +1476,12 @@ func (s *Service) AcknowledgeIncident(
 		"slack_username": req.SlackUsername,
 		"note":           req.Note,
 	}
+	// Magic-link acks come in with the recipient email even when the
+	// recipient is not a known platform user — record it on the payload so
+	// the audit trail names the acker even when actor_uid is NULL.
+	if req.AcknowledgedByEmail != "" {
+		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
+	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
 	}
