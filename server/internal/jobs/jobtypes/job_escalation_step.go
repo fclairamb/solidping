@@ -22,6 +22,10 @@ var (
 	// ErrEscalationStepNotFound is returned when the step row no longer
 	// exists (policy was hard-deleted, edited, etc.).
 	ErrEscalationStepNotFound = errors.New("escalation step not found")
+	// ErrOnCallResolverNotWired is returned when an escalation step with
+	// a schedule target fires before the on-call resolver has been wired.
+	// In practice this only happens if the server boot order is broken.
+	ErrOnCallResolverNotWired = errors.New("on-call resolver not wired")
 )
 
 // EscalationStepJobConfig configures one fired step of an escalation
@@ -438,13 +442,21 @@ func ScheduleEscalationCycle(
 // service. Default implementation is wired in escalationruntime.
 //
 //nolint:gochecknoglobals // pluggable seam for cross-package wiring
-var resolveOnCallUser = func(_ context.Context, _ *jobdef.JobContext, _ string, _ time.Time) (*models.User, error) {
-	return nil, errors.New("on-call resolver not wired")
+var resolveOnCallUser OnCallResolverFn = func(
+	_ context.Context, _ *jobdef.JobContext, _ string, _ time.Time,
+) (*models.User, error) {
+	return nil, ErrOnCallResolverNotWired
 }
+
+// OnCallResolverFn is the signature the escalation runtime calls for
+// schedule-typed targets.
+type OnCallResolverFn func(
+	ctx context.Context, jctx *jobdef.JobContext, scheduleUID string, at time.Time,
+) (*models.User, error)
 
 // SetOnCallResolver overrides the on-call resolver used by escalation
 // step jobs. Called once at server startup with a closure that knows
 // how to reach oncallschedules.Service without an import cycle.
-func SetOnCallResolver(fn func(ctx context.Context, jctx *jobdef.JobContext, scheduleUID string, at time.Time) (*models.User, error)) {
+func SetOnCallResolver(fn OnCallResolverFn) {
 	resolveOnCallUser = fn
 }

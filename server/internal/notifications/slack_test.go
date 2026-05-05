@@ -464,6 +464,12 @@ func (m *mockDBService) DeleteEscalationPolicy(_ context.Context, _ string) erro
 	return nil
 }
 
+func (m *mockDBService) GetEscalationPolicyStep(
+	_ context.Context, _ string,
+) (*models.EscalationPolicyStep, error) {
+	return nil, errMockNotImplemented
+}
+
 func (m *mockDBService) ListEscalationPolicySteps(
 	_ context.Context, _ string,
 ) ([]*models.EscalationPolicyStep, error) {

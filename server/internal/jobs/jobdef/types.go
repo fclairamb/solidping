@@ -22,7 +22,7 @@ const (
 	// JobTypeSnoozeSweep auto-unsnoozes incidents whose snooze window has passed.
 	JobTypeSnoozeSweep JobType = "snooze_sweep"
 	// JobTypeEscalationStep fires one step of an escalation policy for an incident.
-	// Cancelled via the same incidentUid match the notification job uses, so
+	// Canceled via the same incidentUid match the notification job uses, so
 	// ack/snooze/resolve drops the rest of the policy without extra wiring.
 	JobTypeEscalationStep JobType = "escalation_step"
 )

@@ -904,11 +904,21 @@ func (s *Service) emitEvent(
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
+
+		// Escalation policy fan-out: only on initial open. Resolved /
+		// reopened don't start a new paging cycle (resolved is final;
+		// reopened is a relapse and the original cycle's pending steps
+		// were either fired or canceled).
+		if eventType == models.EventTypeIncidentCreated {
+			s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
+		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
-		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed:
-		// No notifications for these event types — operator actions, not lifecycle changes.
+		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
+		models.EventTypeIncidentEscalationFailed:
+		// No notifications for these event types — operator actions or
+		// soft escalation failures, not lifecycle changes.
 	}
 
 	return nil
@@ -1025,6 +1035,78 @@ func (s *Service) queueNotifications(
 			)
 		}
 	}
+}
+
+// scheduleEscalationPolicy resolves the policy that applies to this
+// check (check.escalation_policy_uid wins, then check_group's, then
+// nil) and schedules cycle 0 of its steps. Best-effort: failures are
+// logged but never block incident creation. The cancel sweep keyed on
+// `incidentUid` in job config will drop these jobs on ack/snooze/resolve
+// with no extra wiring.
+func (s *Service) scheduleEscalationPolicy(
+	ctx context.Context, orgUID, checkUID string, incident *models.Incident,
+) {
+	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load check", "checkUid", checkUID, "error", err)
+
+		return
+	}
+
+	policyUID := resolveEscalationPolicyUID(ctx, s.db, check)
+	if policyUID == "" {
+		return
+	}
+
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, policyUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load policy",
+			"policyUid", policyUID, "error", err)
+
+		return
+	}
+
+	steps, err := s.db.ListEscalationPolicySteps(ctx, policyUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load steps",
+			"policyUid", policyUID, "error", err)
+
+		return
+	}
+
+	if len(steps) == 0 {
+		return
+	}
+
+	if scheduleErr := jobtypes.ScheduleEscalationCycle(
+		ctx, s.jobsSvc, incident, policy, steps, incident.StartedAt, 0, slog.Default(),
+	); scheduleErr != nil {
+		slog.WarnContext(ctx, "escalation: failed to schedule cycle 0",
+			"policyUid", policyUID, "error", scheduleErr)
+	}
+}
+
+// resolveEscalationPolicyUID picks the right policy for a check: check's
+// own policy wins; otherwise the check group's; otherwise none.
+func resolveEscalationPolicyUID(ctx context.Context, dbSvc db.Service, check *models.Check) string {
+	if check.EscalationPolicyUID != nil && *check.EscalationPolicyUID != "" {
+		return *check.EscalationPolicyUID
+	}
+
+	if check.CheckGroupUID == nil || *check.CheckGroupUID == "" {
+		return ""
+	}
+
+	group, err := dbSvc.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
+	if err != nil || group == nil {
+		return ""
+	}
+
+	if group.EscalationPolicyUID != nil && *group.EscalationPolicyUID != "" {
+		return *group.EscalationPolicyUID
+	}
+
+	return ""
 }
 
 // ListIncidentsOptions contains options for listing incidents.

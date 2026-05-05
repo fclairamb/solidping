@@ -17,6 +17,7 @@ import (
 // Service errors.
 var (
 	ErrPolicyNotFound      = errors.New("escalation policy not found")
+	ErrPolicyInUse         = errors.New("escalation policy is referenced by an open incident")
 	ErrInvalidTargetType   = errors.New("target type must be one of user|schedule|connection|all_admins")
 	ErrTargetUIDRequired   = errors.New("target UID is required for user/schedule/connection targets")
 	ErrTargetUIDForbidden  = errors.New("target UID must be empty for all_admins targets")
@@ -197,7 +198,10 @@ func (s *Service) UpdatePolicy(
 	return s.loadDetail(ctx, refreshed)
 }
 
-// DeletePolicy soft-deletes the policy.
+// DeletePolicy soft-deletes the policy. Returns ErrPolicyInUse when an
+// open incident's check (or its group) still references this policy —
+// otherwise pending escalation jobs would dangle and the timeline would
+// reference a non-existent policy.
 func (s *Service) DeletePolicy(ctx context.Context, orgUID, slug string) error {
 	policy, err := s.db.GetEscalationPolicyBySlug(ctx, orgUID, slug)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -208,7 +212,55 @@ func (s *Service) DeletePolicy(ctx context.Context, orgUID, slug string) error {
 		return err
 	}
 
+	inUse, err := s.policyHasOpenIncidents(ctx, orgUID, policy.UID)
+	if err != nil {
+		return fmt.Errorf("check policy in-use: %w", err)
+	}
+
+	if inUse {
+		return ErrPolicyInUse
+	}
+
 	return s.db.DeleteEscalationPolicy(ctx, policy.UID)
+}
+
+// policyHasOpenIncidents returns true when at least one open (unresolved)
+// incident's check or check-group references this policy. Soft-deleted
+// incidents are excluded.
+func (s *Service) policyHasOpenIncidents(ctx context.Context, orgUID, policyUID string) (bool, error) {
+	incidents, err := s.db.ListIncidents(ctx, &models.ListIncidentsFilter{
+		OrganizationUID: orgUID,
+		States:          []models.IncidentState{models.IncidentStateActive},
+	})
+	if err != nil {
+		return false, err
+	}
+
+	for _, inc := range incidents {
+		check, err := s.db.GetCheck(ctx, orgUID, inc.CheckUID)
+		if err != nil {
+			continue
+		}
+
+		if check.EscalationPolicyUID != nil && *check.EscalationPolicyUID == policyUID {
+			return true, nil
+		}
+
+		if check.CheckGroupUID == nil {
+			continue
+		}
+
+		group, err := s.db.GetCheckGroup(ctx, orgUID, *check.CheckGroupUID)
+		if err != nil || group == nil {
+			continue
+		}
+
+		if group.EscalationPolicyUID != nil && *group.EscalationPolicyUID == policyUID {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // PolicyDetail is the expanded view returned by GET endpoints.
