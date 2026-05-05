@@ -345,6 +345,19 @@ type Service interface {
 		ctx context.Context, checkUIDs []string, since, until time.Time,
 	) ([]*models.Incident, error)
 
+	// Org entitlement operations
+	GetOrgEntitlements(ctx context.Context, orgUID string) (*models.OrgEntitlements, error)
+	UpsertOrgEntitlements(
+		ctx context.Context, ent *models.OrgEntitlements, audit *models.OrgEntitlementAudit,
+	) error
+	ListOrgEntitlementAudits(
+		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
+	) ([]*models.OrgEntitlementAudit, error)
+	CountChecksForOrg(ctx context.Context, orgUID string) (int, error)
+	CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error)
+	CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error)
+	CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error)
+
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
 	UpdateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
