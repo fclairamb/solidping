@@ -13,6 +13,8 @@ import (
 
 const (
 	defaultMembershipRequestCooldownDays = 7
+
+	emailKeyOrgName = "OrgName"
 )
 
 // MembershipRequestCreateRequest is the body of POST
@@ -391,7 +393,7 @@ func (s *Service) notifyAdminsOfMembershipRequest(
 
 		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html",
 			map[string]any{
-				"OrgName":        org.Name,
+				emailKeyOrgName:  org.Name,
 				"RequesterName":  requesterName,
 				"RequesterEmail": requester.Email,
 				"Message":        msg,
@@ -418,11 +420,11 @@ func (s *Service) notifyRequesterOfDecision(
 
 	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html",
 		map[string]any{
-			"OrgName":      org.Name,
-			"Decision":     decision,
-			"Role":         role,
-			"Reason":       reason,
-			"DashboardURL": dashboardURL,
+			emailKeyOrgName: org.Name,
+			"Decision":      decision,
+			"Role":          role,
+			"Reason":        reason,
+			"DashboardURL":  dashboardURL,
 		},
 	)
 }
