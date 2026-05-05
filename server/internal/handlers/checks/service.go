@@ -1491,10 +1491,13 @@ func (s *Service) ImportChecks(
 		Errors: []ImportError{},
 	}
 
+	pass1Failed := make(map[string]struct{}, 0)
+
 	for i := range doc.Checks {
 		created, importErr := s.importSingleCheck(ctx, org, orgSlug, &doc.Checks[i], i, dryRun, groupByName)
 		if importErr != nil {
 			result.Errors = append(result.Errors, *importErr)
+			pass1Failed[doc.Checks[i].Slug] = struct{}{}
 
 			continue
 		}
@@ -1506,7 +1509,219 @@ func (s *Service) ImportChecks(
 		}
 	}
 
+	// Pass 2: apply dependsOn after every check has been upserted, so a
+	// payload can declare both endpoints of an edge for the first time.
+	// Skipped on dry-run since pass 1 only simulated the upserts.
+	if !dryRun {
+		s.importDependencies(ctx, org.UID, doc.Checks, pass1Failed, result)
+	}
+
 	return result, nil
+}
+
+// importDependencies applies the additive dep merge for pass 2 of import.
+// Skipped silently for any check whose pass-1 upsert failed; otherwise
+// resolves slugs, runs validators, and writes/updates edges. Errors land in
+// result.Errors with the same shape as pass-1 errors.
+//
+//nolint:cyclop,funlen,gocognit // edge resolution and per-row validation
+func (s *Service) importDependencies(
+	ctx context.Context,
+	orgUID string,
+	checks []ExportCheck,
+	pass1Failed map[string]struct{},
+	result *ImportResult,
+) {
+	hasAnyDeps := false
+	for i := range checks {
+		if len(checks[i].DependsOn) > 0 {
+			hasAnyDeps = true
+
+			break
+		}
+	}
+
+	if !hasAnyDeps {
+		return
+	}
+
+	currentChecks, _, err := s.db.ListChecks(ctx, orgUID, &models.ListChecksFilter{})
+	if err != nil {
+		result.Errors = append(result.Errors, ImportError{
+			Index: -1, Slug: "", Error: "list checks for dep import: " + err.Error(),
+		})
+
+		return
+	}
+
+	uidBySlug := make(map[string]string, len(currentChecks))
+	for _, c := range currentChecks {
+		if c.Slug != nil {
+			uidBySlug[*c.Slug] = c.UID
+		}
+	}
+
+	for i := range checks {
+		entry := &checks[i]
+		if len(entry.DependsOn) == 0 {
+			continue
+		}
+
+		if _, failed := pass1Failed[entry.Slug]; failed {
+			result.Errors = append(result.Errors, ImportError{
+				Index: i, Slug: entry.Slug,
+				Error: "skipped dependsOn: pass-1 upsert failed for this check",
+			})
+
+			continue
+		}
+
+		childUID, ok := uidBySlug[entry.Slug]
+		if !ok {
+			result.Errors = append(result.Errors, ImportError{
+				Index: i, Slug: entry.Slug,
+				Error: "dependsOn: cannot resolve own slug after upsert",
+			})
+
+			continue
+		}
+
+		for _, dep := range entry.DependsOn {
+			parentUID, ok := uidBySlug[dep.ParentSlug]
+			if !ok {
+				result.Errors = append(result.Errors, ImportError{
+					Index: i, Slug: entry.Slug,
+					Error: "dependsOn: unknown parent slug: " + dep.ParentSlug,
+				})
+
+				continue
+			}
+
+			if applyErr := s.applyImportEdge(ctx, orgUID, parentUID, childUID, dep); applyErr != nil {
+				result.Errors = append(result.Errors, ImportError{
+					Index: i, Slug: entry.Slug,
+					Error: "dependsOn[" + dep.ParentSlug + "]: " + applyErr.Error(),
+				})
+			}
+		}
+	}
+}
+
+// applyImportEdge writes (or updates) one edge for pass-2 import. Returns the
+// validation error if any. Additive: existing edges with same kind+desc are
+// no-ops; differing kind/desc triggers update; absent edges are created after
+// a cycle check.
+func (s *Service) applyImportEdge(
+	ctx context.Context, orgUID, parentUID, childUID string, dep ExportedDependency,
+) error {
+	if parentUID == childUID {
+		return errors.New("self-edge not allowed")
+	}
+
+	kind := models.CheckDependencyKind(dep.Kind)
+	if !kind.IsValid() {
+		return errors.New("invalid kind: " + dep.Kind)
+	}
+
+	existing, err := s.db.FindCheckDependencyEdge(ctx, parentUID, childUID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("find edge: %w", err)
+	}
+
+	var descPtr *string
+	if dep.Description != "" {
+		desc := dep.Description
+		descPtr = &desc
+	}
+
+	if existing != nil {
+		needsUpdate := false
+		update := models.CheckDependencyUpdate{}
+
+		if existing.Kind != kind {
+			update.Kind = &kind
+			needsUpdate = true
+		}
+
+		if !sameDesc(existing.Description, descPtr) {
+			if descPtr == nil {
+				update.ClearDescription = true
+			} else {
+				update.Description = descPtr
+			}
+
+			needsUpdate = true
+		}
+
+		if !needsUpdate {
+			return nil
+		}
+
+		return s.db.UpdateCheckDependency(ctx, existing.UID, &update)
+	}
+
+	if cycleErr := s.assertEdgeNoCycle(ctx, orgUID, parentUID, childUID); cycleErr != nil {
+		return cycleErr
+	}
+
+	newEdge := models.NewCheckDependency(orgUID, parentUID, childUID, kind, descPtr)
+
+	return s.db.CreateCheckDependency(ctx, newEdge)
+}
+
+// sameDesc reports whether two optional descriptions carry the same value.
+func sameDesc(a, b *string) bool {
+	if a == nil && b == nil {
+		return true
+	}
+
+	if a == nil || b == nil {
+		return false
+	}
+
+	return *a == *b
+}
+
+// assertEdgeNoCycle is the package-local mirror of
+// checkdependencies.Service.assertNoCycle — kept inline to avoid coupling the
+// checks handler to the dependency handler. DFS over the existing org graph;
+// if `parent` is reachable from `child`, adding (parent → child) closes a
+// cycle.
+func (s *Service) assertEdgeNoCycle(ctx context.Context, orgUID, parentUID, childUID string) error {
+	const depthCap = 32
+
+	deps, err := s.db.ListCheckDependenciesByOrg(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("list deps for cycle check: %w", err)
+	}
+
+	adjacency := make(map[string][]string, len(deps))
+	for _, dep := range deps {
+		adjacency[dep.ParentCheckUID] = append(adjacency[dep.ParentCheckUID], dep.ChildCheckUID)
+	}
+
+	stack := []string{childUID}
+	visited := map[string]struct{}{childUID: {}}
+
+	for depth := 0; depth < depthCap && len(stack) > 0; depth++ {
+		next := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		for _, child := range adjacency[next] {
+			if child == parentUID {
+				return errors.New("cycle detected")
+			}
+
+			if _, ok := visited[child]; ok {
+				continue
+			}
+
+			visited[child] = struct{}{}
+			stack = append(stack, child)
+		}
+	}
+
+	return nil
 }
 
 // importSingleCheck handles importing a single check.
