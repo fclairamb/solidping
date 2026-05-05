@@ -249,6 +249,8 @@ type MeResponse struct {
 	Organization              *OrganizationInfo          `json:"organization"`
 	Organizations             []OrganizationSummary      `json:"organizations"`
 	TOTPEnabled               bool                       `json:"totpEnabled"`
+	PasskeyCount              int                        `json:"passkeyCount"`
+	HasPassword               bool                       `json:"hasPassword"`
 	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
 }
 
@@ -1076,6 +1078,9 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		return nil, err
 	}
 
+	passkeys, _ := s.db.ListUserPasskeysByUser(ctx, user.UID)
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
 	return &MeResponse{
 		User: &UserInfo{
 			UID:       user.UID,
@@ -1091,6 +1096,8 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		},
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
+		PasskeyCount:              len(passkeys),
+		HasPassword:               hasPassword,
 		PendingMembershipRequests: pending,
 	}, nil
 }
