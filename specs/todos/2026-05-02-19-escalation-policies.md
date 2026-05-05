@@ -317,3 +317,95 @@ saving.
   broadcast vs. "step 2 escalation paging"). But document it; some users
   will complain. If a deduper is added later, it should be opt-in and live
   at the channel level, not the policy level.
+
+---
+
+## Implementation Plan — runtime fan-out (2026-05-05)
+
+The first pass landed CRUD + data model + REST endpoints + the
+`escalation_policy_uid` column on checks/groups. This pass adds the
+runtime: scheduling steps when an incident opens, executing them as
+jobs, cancelling pending steps on ack/snooze/resolve, and surfacing the
+state on the frontend.
+
+### Step 1 — Audit what the foundation actually shipped
+Before writing new code, read `db/models/escalation_policy.go`,
+`db/{postgres,sqlite}/escalation.go`, and
+`handlers/escalationpolicies/{handler,service}.go` to confirm: tables,
+DB methods, REST CRUD. Note any naming choices (e.g., target_type
+values) so the runtime matches.
+
+### Step 2 — Job type for escalation steps
+Register a new `JobTypeEscalationStep` in `internal/jobs/jobdef`. Add
+`internal/jobs/jobtypes/job_escalation_step.go` mirroring the
+notification job pattern: factory parses `{incidentUid, stepUid,
+repeatIndex}`, run-time loads the incident, exits if acked/snoozed/
+resolved (belt-and-braces), resolves targets, fans out, emits
+`incident.escalated` event.
+
+### Step 3 — Scheduling on incident open
+In `handlers/incidents/service.go`, when a new incident is created,
+resolve the policy (check, then group, then nil). If non-nil, load
+steps in `position` order and schedule one job per step at
+`incident.started_at + cumulative_delay_minutes`. Tag each job with
+`cancel_check_incident_uid = incident.uid` so the cancel sweep added in
+the ack-snooze spec catches them.
+
+### Step 4 — Repeat behavior
+When the *last* step's job runs and `repeat_max > 0` and
+`repeat_index < repeat_max`, schedule the next cycle's steps starting
+at `now() + repeat_after_minutes`. Use the same incident UID and a
+bumped `repeat_index`. Do not pre-schedule all repeat cycles up front —
+only schedule the next cycle when the previous one completes.
+
+### Step 5 — Target resolution
+Add `internal/handlers/escalationpolicies/targetresolver.go`:
+- `user` → fan out to email + per-user Pushover/Ntfy (V1 reality
+  check: that's what the OAuth/integration code reliably exposes).
+- `schedule` → call the on-call resolver at `time.Now()`. On
+  `ErrScheduleHasNoUsers` / `ErrScheduleNotYetActive` → log warning,
+  emit `incident.escalation_failed`, fall through.
+- `connection` → fire that specific connection (re-uses the existing
+  notification job machinery).
+- `all_admins` → look up org admin members, treat each as `user`.
+
+### Step 6 — Cancellation
+Extend the existing ack-snooze cancel sweep to also match
+`kind = JobTypeEscalationStep`. One-line addition; verify the existing
+sweep is keyed only by `cancel_check_incident_uid` (it should be).
+
+### Step 7 — Hard-delete protection
+In `escalationpolicies.Service.DeleteEscalationPolicy`, count open
+incidents that reference this policy (via the check's policy column or
+the group's). If > 0, return CONFLICT with code
+`ESCALATION_POLICY_IN_USE`.
+
+### Step 8 — Frontend (dash0)
+- Route `/orgs/$org/escalation-policies` (list) and `/$slug` (editor).
+  Editor is a vertical timeline of steps with `+N min` markers and
+  draggable target chips. Repeat footer.
+- Live preview pane: pure local state, no API roundtrip — show the
+  resolved fire times for an incident opened "now".
+- Check edit form: dropdown to assign a policy (empty = none).
+- Check group edit form: same dropdown.
+- Incident detail page: "Escalation timeline" section listing fired
+  vs. pending steps; cancelled rows when ack happened.
+- i18n `escalation` namespace (en/fr/de/es).
+
+### Step 9 — Tests
+- Single-step user policy: schedules one job, fires, target notified.
+- Two-step policy with delay: ack between → second job cancelled.
+- Schedule with no users → `incident.escalation_failed` event,
+  subsequent steps still fire.
+- `repeat_max=2`, `repeat_after_minutes=30`: full cycle accounting.
+- Group + check both set: check wins.
+- Hard-delete with open incident → CONFLICT.
+
+### Step 10 — Vocabulary cleanup
+Rename `keyEscalationThreshold` → `keyPromotionThreshold` (and the
+adaptive-resolution-related "escalation" words in `incidents/service.go`
+comments / UI labels) so "escalation" is unambiguous in code going
+forward. Pure rename, no behavior change.
+
+### Step 11 — QA + audit
+`make build lint-back test`. Independent audit. Address any gaps.
