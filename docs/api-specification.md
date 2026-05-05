@@ -218,11 +218,31 @@ Response:
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
 
+Request body accepts the same shape as `POST /checks` plus optional
+`dependsOn` (slug-keyed) and `slug` (so cycle / self-edge / duplicate /
+cross-org / unknown-parent validators can run before the check exists).
+Returns `{"valid": true}` or `{"valid": false, "fields": [...]}` with one
+field-level entry per failing validator.
+
 ### GET /api/v1/orgs/:org/checks/export
 Export all checks as JSON. Auth: required
 
+Each `ExportCheck` carries an optional `dependsOn` array of
+`{parentSlug, kind, description?}` entries, sorted by `parentSlug` for
+deterministic diffs. The field is `omitempty` — exports for orgs with no
+dep edges stay byte-identical to the pre-dependsOn shape.
+
 ### POST /api/v1/orgs/:org/checks/import
 Import checks from JSON. Auth: required
+
+Two-pass when any entry carries `dependsOn`: pass 1 upserts every check
+unchanged, pass 2 resolves `parentSlug` → check UID against the now-current
+org state and applies an additive merge of edges (new edges created;
+existing edges with same kind+description are no-ops; differing edges are
+updated). Cycle / self-edge / unknown-parent failures are reported per row
+in the existing `errors` array. Pass 2 is skipped silently for any check
+whose pass-1 upsert failed, with an explicit
+`skipped dependsOn: pass-1 upsert failed for this check` error.
 
 ### GET /api/v1/orgs/:org/checks/:checkUid
 Get a single check by UID or slug. Auth: required
@@ -232,6 +252,20 @@ Query parameters:
 
 ### PUT /api/v1/orgs/:org/checks/:slug
 Upsert a check by slug (create if not exists, update if exists). Auth: required
+
+Request body optionally carries `dependsOn`, pointer-typed (`*[]…`) so the
+handler can distinguish three states:
+- **absent** (`null` / field missing) → existing dep edges untouched. This
+  is the back-compat default for tooling that doesn't know about deps —
+  partial PUT must not nuke deps.
+- **explicit empty array** (`[]`) → all dep edges for this check are
+  deleted.
+- **non-empty array** → set the dep edges to exactly this list (destructive
+  sync). All cycle / self-edge / cross-org / kind / duplicate validators
+  run before any write; any failure aborts the whole operation. Caveat: the
+  dep apply currently runs after the check upsert outside any wrapping
+  transaction — a failed dep apply leaves the check itself updated. A
+  follow-up will move the whole flow into a single transaction.
 
 ### PATCH /api/v1/orgs/:org/checks/:checkUid
 Update a check. Auth: required
