@@ -475,6 +475,11 @@ type CheckResponse struct {
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
+
+	// EscalationPolicyUID points to the escalation policy that fires when
+	// an incident on this check opens. Empty/nil = no policy on the check
+	// (the group's policy may still apply at run time).
+	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
 }
 
 // CheckStatus represents the current status of a check.
@@ -710,6 +715,10 @@ type CreateCheckRequest struct {
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
+
+	// EscalationPolicyUID points to the escalation policy that fires when
+	// an incident on this check opens.
+	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
 }
 
 // CreateCheck creates a new check for an organization.
@@ -827,6 +836,10 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// Set adaptive resolution settings
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	check.MaxAdaptiveIncrease = req.MaxAdaptiveIncrease
+
+	if req.EscalationPolicyUID != nil && *req.EscalationPolicyUID != "" {
+		check.EscalationPolicyUID = req.EscalationPolicyUID
+	}
 
 	// Create check in DB
 	if err := s.db.CreateCheck(ctx, check); err != nil { //nolint:govet
@@ -946,6 +959,11 @@ type UpdateCheckRequest struct {
 	Period        *string            `json:"period,omitempty"`
 	Labels        *map[string]string `json:"labels,omitempty"`
 
+	// EscalationPolicyUID points to the escalation policy that fires when
+	// an incident on this check opens. nil = no policy on the check
+	// itself (the group's policy may still apply); empty string = clear.
+	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
+
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
@@ -1009,6 +1027,13 @@ func (s *Service) UpdateCheck(
 	}
 	if req.Description != nil {
 		update.Description = req.Description
+	}
+	if req.EscalationPolicyUID != nil {
+		if *req.EscalationPolicyUID == "" {
+			update.ClearEscalationPolicyUID = true
+		} else {
+			update.EscalationPolicyUID = req.EscalationPolicyUID
+		}
 	}
 	if req.Config != nil {
 		// PATCH-merge rule: read the existing effective config (decrypting
@@ -1692,6 +1717,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		CreatedAt:                &check.CreatedAt,
 		ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
 		MaxAdaptiveIncrease:      check.MaxAdaptiveIncrease,
+		EscalationPolicyUID:      check.EscalationPolicyUID,
 	}
 }
 

@@ -1127,7 +1127,9 @@ func (s *Service) ListChecks(
 }
 
 //nolint:cyclop // long but flat: one branch per optional column
-func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error {
+func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optional fields
+	ctx context.Context, uid string, update *models.CheckUpdate,
+) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
 		Where("uid = ?", uid).
@@ -1200,6 +1202,13 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 
 	if update.MaxAdaptiveIncrease != nil {
 		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	}
+
+	switch {
+	case update.ClearEscalationPolicyUID:
+		query = query.Set("escalation_policy_uid = NULL")
+	case update.EscalationPolicyUID != nil:
+		query = query.Set("escalation_policy_uid = ?", *update.EscalationPolicyUID)
 	}
 
 	_, err := query.Exec(ctx)
