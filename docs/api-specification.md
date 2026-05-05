@@ -197,6 +197,50 @@ requester can re-submit only after the cooldown
 
 ---
 
+## Entitlements
+
+Per-org limits + boolean features. Owned by an external billing service
+in SaaS, by org admins in self-hosted. The OSS knows nothing about plan
+SKUs — only raw numbers and booleans. NULL on a limit means "unlimited";
+NULL on a feature means "use the in-code default".
+
+### GET /api/v1/orgs/:org/entitlements
+Returns the resolved entitlements (defaults merged with the stored row),
+plus live `usage` counts and a `stale` flag. Auth: any authenticated
+org member.
+
+### PUT /api/v1/orgs/:org/entitlements
+Replaces the entitlement row. Body: `{limits, features, allowedCheckTypes,
+displayName, externalRef, expiresAt, lastSyncedAt, metadata}`. Optional
+`X-Entitlements-Reason` header is recorded on the audit log. Auth: a
+valid `entitlements.service_token` (preferred for SaaS) OR an org admin
+JWT when `entitlements.admin_writes_enabled` is true (default in
+self-hosted). Returns the resolved entitlements.
+
+### PATCH /api/v1/orgs/:org/entitlements
+Same auth as PUT, but only updates the fields present in the body. Useful
+for incremental changes (e.g. extend a trial). Returns the resolved
+entitlements.
+
+### GET /api/v1/orgs/:org/entitlements/audits
+Returns the entitlement audit rows for the org, newest first. Optional
+`?limit=` query parameter (default 50, max 200). Auth: org admin or
+service token.
+
+System parameters:
+- `entitlements.service_token` — secret bearer token for the billing
+  service. Unset in self-hosted by default.
+- `entitlements.admin_writes_enabled` — boolean, default true in
+  self-hosted, set to false in SaaS to lock writes to the service token.
+- `entitlements.upgrade_url_template` — template URL with `{org}` placed
+  for the slug; surfaced on GET as `upgradeUrl` so the frontend can
+  render an upgrade affordance. Empty in self-hosted.
+- `entitlements.stale_after_days` — days before a billing-service row is
+  considered stale and the resolver falls back to defaults. Default 0
+  (no stale fallback) in self-hosted.
+
+---
+
 ## Members
 
 ### GET /api/v1/orgs/:org/members
