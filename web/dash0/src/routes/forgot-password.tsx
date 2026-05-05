@@ -11,12 +11,16 @@ import { ApiError } from "@/api/client";
 import { useRequestPasswordReset } from "@/api/hooks";
 
 export const Route = createFileRoute("/forgot-password")({
+  validateSearch: (search: Record<string, unknown>) => ({
+    email: typeof search.email === "string" ? search.email : undefined,
+  }),
   component: ForgotPasswordPage,
 });
 
 function ForgotPasswordPage() {
   const { t } = useTranslation("auth");
-  const [email, setEmail] = useState("");
+  const { email: emailParam } = Route.useSearch();
+  const [email, setEmail] = useState(emailParam ?? "");
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requestReset = useRequestPasswordReset();
