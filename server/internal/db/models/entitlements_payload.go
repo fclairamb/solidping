@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
@@ -10,6 +11,11 @@ import (
 // payload column. Future shape-breaking changes bump this and add a
 // branch in EntitlementsPayload.UnmarshalJSON.
 const EntitlementsPayloadVersion = 1
+
+// ErrUnknownEntitlementsPayloadVersion is returned when the payload
+// JSON's version discriminator does not match a known shape. Callers
+// can use errors.Is to detect it.
+var ErrUnknownEntitlementsPayloadVersion = errors.New("unknown entitlements payload version")
 
 // EntitlementLimits is the quantitative half of an entitlement set.
 // nil = unlimited. JSON tags are the wire format consumed by the API.
@@ -53,12 +59,13 @@ type EntitlementsPayload struct {
 
 // Value implements driver.Valuer so bun can write the payload as JSON
 // (postgres jsonb / sqlite text) without an explicit hook.
-func (p EntitlementsPayload) Value() (driver.Value, error) {
-	if p.Version == 0 {
-		p.Version = EntitlementsPayloadVersion
+func (p *EntitlementsPayload) Value() (driver.Value, error) {
+	v := *p
+	if v.Version == 0 {
+		v.Version = EntitlementsPayloadVersion
 	}
 
-	data, err := json.Marshal(payloadV1(p))
+	data, err := json.Marshal(payloadV1(v))
 	if err != nil {
 		return nil, fmt.Errorf("marshal entitlements payload: %w", err)
 	}
@@ -111,7 +118,7 @@ func (p *EntitlementsPayload) UnmarshalJSON(data []byte) error {
 	case 0, EntitlementsPayloadVersion:
 		return p.unmarshalV1(data)
 	default:
-		return fmt.Errorf("unknown entitlements payload version %d", probe.Version)
+		return fmt.Errorf("%w: %d", ErrUnknownEntitlementsPayloadVersion, probe.Version)
 	}
 }
 
