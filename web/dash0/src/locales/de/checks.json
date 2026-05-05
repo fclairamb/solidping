@@ -236,6 +236,20 @@
       "period": "Zeitraum",
       "clickAgain": "Erneut anklicken, um die vollständige Seite zu öffnen"
     },
+    "availability": {
+      "title": "Verfügbarkeit",
+      "today": "Heute",
+      "last7": "Letzte 7 Tage",
+      "last30": "Letzte 30 Tage",
+      "last365": "Letzte 365 Tage",
+      "timePeriod": "Zeitraum",
+      "availability": "Verfügbarkeit",
+      "downtime": "Ausfallzeit",
+      "incidents": "Vorfälle",
+      "longestIncident": "Längster Vorfall",
+      "avgIncident": "Durchschn. Vorfall",
+      "none": "keiner"
+    },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
     "configuration": "Konfiguration",

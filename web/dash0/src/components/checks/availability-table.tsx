@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { subDays, startOfDay, startOfMinute } from "date-fns";
 import { useAllResults, useIncidents } from "@/api/hooks";
 import type { IncidentDetail } from "@/api/hooks";
@@ -26,7 +27,7 @@ interface AvailabilityTableProps {
 
 interface PeriodConfig {
   id: PeriodId;
-  label: string;
+  labelKey: "today" | "last7" | "last30" | "last365";
   shortLabel: string;
   getStart: () => Date;
   durationMs: number;
@@ -35,28 +36,28 @@ interface PeriodConfig {
 const PERIODS: PeriodConfig[] = [
   {
     id: "today",
-    label: "Today",
+    labelKey: "today",
     shortLabel: "1d",
     getStart: () => startOfDay(new Date()),
     durationMs: Date.now() - startOfDay(new Date()).getTime(),
   },
   {
     id: "last7",
-    label: "Last 7 days",
+    labelKey: "last7",
     shortLabel: "7d",
     getStart: () => subDays(new Date(), 7),
     durationMs: 7 * 24 * 60 * 60 * 1000,
   },
   {
     id: "last30",
-    label: "Last 30 days",
+    labelKey: "last30",
     shortLabel: "30d",
     getStart: () => subDays(new Date(), 30),
     durationMs: 30 * 24 * 60 * 60 * 1000,
   },
   {
     id: "last365",
-    label: "Last 365 days",
+    labelKey: "last365",
     shortLabel: "1y",
     getStart: () => subDays(new Date(), 365),
     durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -123,6 +124,7 @@ function computeIncidentStats(
 }
 
 export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSelect }: AvailabilityTableProps) {
+  const { t } = useTranslation("checks");
   // Memoize timestamps to the current minute so query keys are stable across re-renders
   const yearAgo = useMemo(() => {
     const now = startOfMinute(new Date());
@@ -240,7 +242,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
 
       return {
         id: period.id,
-        label: period.label,
+        labelKey: period.labelKey,
         shortLabel: period.shortLabel,
         availability,
         downtime,
@@ -255,7 +257,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
     return (
       <Card>
         <CardHeader>
-          <CardTitle>Availability</CardTitle>
+          <CardTitle>{t("detail.availability.title")}</CardTitle>
         </CardHeader>
         <CardContent>
           <Skeleton className="h-48 w-full" />
@@ -267,18 +269,18 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Availability</CardTitle>
+        <CardTitle>{t("detail.availability.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Time period</TableHead>
-              <TableHead>Availability</TableHead>
-              <TableHead>Downtime</TableHead>
-              <TableHead>Incidents</TableHead>
-              <TableHead>Longest incident</TableHead>
-              <TableHead>Avg. incident</TableHead>
+              <TableHead>{t("detail.availability.timePeriod")}</TableHead>
+              <TableHead>{t("detail.availability.availability")}</TableHead>
+              <TableHead>{t("detail.availability.downtime")}</TableHead>
+              <TableHead>{t("detail.availability.incidents")}</TableHead>
+              <TableHead>{t("detail.availability.longestIncident")}</TableHead>
+              <TableHead>{t("detail.availability.avgIncident")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -295,7 +297,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
                 >
                   <TableCell className="font-medium">
                     <span className="sm:hidden">{row.shortLabel}</span>
-                    <span className="hidden sm:inline">{row.label}</span>
+                    <span className="hidden sm:inline">{t(`detail.availability.${row.labelKey}`)}</span>
                   </TableCell>
                   <TableCell>
                     {row.availability != null
@@ -307,10 +309,10 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
                   </TableCell>
                   <TableCell>{row.incidents}</TableCell>
                   <TableCell>
-                    {row.incidents > 0 ? formatDuration(row.longest) : "none"}
+                    {row.incidents > 0 ? formatDuration(row.longest) : t("detail.availability.none")}
                   </TableCell>
                   <TableCell>
-                    {row.incidents > 0 ? formatDuration(row.average) : "none"}
+                    {row.incidents > 0 ? formatDuration(row.average) : t("detail.availability.none")}
                   </TableCell>
                 </TableRow>
               );
