@@ -150,6 +150,60 @@ Out of scope:
 - `server/internal/handlers/orgs/` — emit activation events
 - `server/internal/jobs/` or scheduler — immediate-run path
 
+## Implementation Plan
+
+Order is foundational → user-visible → admin-visible. Each step ends in a
+commit so partial progress is shippable.
+
+1. **Activation event taxonomy (backend)** — extend `models/event.go` with the
+   five `org.activation.*` event types, add an `activation` package with an
+   idempotent `Emit(ctx, db, orgUID, milestone, source, userUID)` helper that
+   no-ops if a row already exists for that (org, milestone). Cheap unique
+   index on `(organization_uid, type)` for activation rows is enough — they
+   are monotonic.
+
+2. **Wire emission points (backend)**
+   - `signup_completed`: in the org-create handler, after the first member
+     row is committed.
+   - `first_check_created`: in `checks.Service.CreateCheck`, fire only when
+     `len(checks) == 1` post-insert.
+   - `first_result_received`: in the worker result-submission path, on
+     successful `submit-result` for an org with no prior result rows.
+   - `first_notification_configured`: in
+     `connections.Service.CreateConnection` when this is the org's first
+     connection.
+   - `first_incident_paged`: in the notification dispatch path when an
+     incident notification job completes for the org for the first time.
+
+3. **Empty-state hero on dashboard (frontend)** — new
+   `web/dash0/src/components/dashboard/empty-state-onboarding.tsx`. Replaces
+   the regular dashboard when `checks.length === 0`. Three quick-start
+   chips (HTTP / Ping / SSL) → single-input form → POST `/checks`. After
+   create, stay on dashboard.
+
+4. **First-run scheduling (backend)** — `checks.Service.CreateCheck` returns
+   an option flag (`runImmediately`) that the empty-state form passes; when
+   set, the handler nudges the scheduler to run the check on the next tick
+   without waiting for its period.
+
+5. **First-result celebration banner (frontend)** — dashboard polls already.
+   Show a transient banner the first render after a result lands for a
+   newly-created check. Persist a "celebrated" flag in localStorage scoped
+   to (org, checkUid) so it doesn't re-fire.
+
+6. **Integrations empty-state (frontend)** — three big cards (Slack /
+   Discord / Email) with one-click connect. Email defaults to the user's
+   own login address.
+
+7. **Super-admin activation funnel view** — `/admin/activation` table
+   listing per-org timestamps for each milestone. New endpoint
+   `GET /api/v1/system/activation` (super-admin) joins activation events
+   per org.
+
+8. **Tests + i18n** — tests for the idempotent Emit helper, the
+   first-check detection, e2e covering the empty-state quick-start, and
+   `onboarding.json` locale namespace in en/fr/de/es.
+
 ## Why this is worth more than the form-field cuts
 
 Removing form fields lifts signup completion by some small percentage points.
