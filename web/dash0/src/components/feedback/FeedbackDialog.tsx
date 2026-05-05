@@ -12,6 +12,15 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AnnotationCanvas,
+  renderAnnotations,
+} from "./AnnotationCanvas";
+import {
+  AnnotationToolbar,
+  type AnnotationTool,
+} from "./AnnotationToolbar";
+import type { Annotation } from "./types";
 import type { SubmitPayload } from "./useFeedback";
 
 interface FeedbackDialogProps {
@@ -32,11 +41,17 @@ export function FeedbackDialog({
   const { t } = useTranslation("feedback");
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [tool, setTool] = useState<AnnotationTool>("select");
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const previewURL = useRef<string | null>(null);
 
-  // Reset comment when the dialog opens fresh.
+  // Reset comment + annotations when the dialog opens fresh.
   useEffect(() => {
-    if (!open) setComment("");
+    if (!open) {
+      setComment("");
+      setAnnotations([]);
+      setTool("select");
+    }
   }, [open]);
 
   // Build (and revoke) an object URL for the screenshot preview.
@@ -59,7 +74,8 @@ export function FeedbackDialog({
   async function handleSubmit() {
     setSubmitting(true);
     try {
-      await onSubmit({ comment, screenshot });
+      const baked = await bakeAnnotations(screenshot, annotations);
+      await onSubmit({ comment, screenshot: baked });
       toast.success(t("success"));
       onOpenChange(false);
     } catch {
@@ -81,11 +97,18 @@ export function FeedbackDialog({
 
         <div className="space-y-4">
           {previewURL.current && (
-            <div className="hidden sm:block max-h-64 overflow-hidden rounded-md border">
-              <img
-                src={previewURL.current}
-                alt="Screenshot preview"
-                className="w-full object-contain"
+            <div className="hidden sm:block space-y-2">
+              <AnnotationToolbar
+                tool={tool}
+                onToolChange={setTool}
+                onUndo={() => setAnnotations((prev) => prev.slice(0, -1))}
+                canUndo={annotations.length > 0}
+              />
+              <AnnotationCanvas
+                imageURL={previewURL.current}
+                tool={tool}
+                annotations={annotations}
+                onAnnotationsChange={setAnnotations}
               />
             </div>
           )}
@@ -125,4 +148,32 @@ export function FeedbackDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+// bakeAnnotations rasterizes the annotation overlay onto a copy of the
+// captured screenshot and returns a fresh PNG blob. Returns the original
+// blob unchanged when there are no annotations or no screenshot.
+async function bakeAnnotations(
+  screenshot: Blob | null,
+  annotations: Annotation[],
+): Promise<Blob | null> {
+  if (!screenshot || annotations.length === 0) return screenshot;
+
+  const bitmap = await createImageBitmap(screenshot);
+  const canvas = document.createElement("canvas");
+  canvas.width = bitmap.width;
+  canvas.height = bitmap.height;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return screenshot;
+
+  ctx.drawImage(bitmap, 0, 0);
+  renderAnnotations(ctx, annotations, {
+    width: bitmap.width,
+    height: bitmap.height,
+  });
+
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob || screenshot), "image/png");
+  });
 }

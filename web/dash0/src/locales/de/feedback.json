@@ -9,5 +9,10 @@
   "submit": "Senden",
   "sending": "Wird gesendet…",
   "success": "Danke! Ihr Bericht wurde gesendet.",
-  "error": "Etwas ist schiefgegangen. Bitte erneut versuchen."
+  "error": "Etwas ist schiefgegangen. Bitte erneut versuchen.",
+  "tool_select": "Auswählen",
+  "tool_rect": "Rechteck",
+  "tool_arrow": "Pfeil",
+  "tool_text": "Text",
+  "undo": "Rückgängig"
 }
