@@ -17,34 +17,18 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// Limits is the quantitative half of an entitlement set. nil = unlimited.
-type Limits struct {
-	MaxChecks               *int `json:"maxChecks,omitempty"`
-	MaxMembers              *int `json:"maxMembers,omitempty"`
-	MaxStatusPages          *int `json:"maxStatusPages,omitempty"`
-	MaxCheckGroups          *int `json:"maxCheckGroups,omitempty"`
-	MaxMaintenanceWindows   *int `json:"maxMaintenanceWindows,omitempty"`
-	MaxConnections          *int `json:"maxConnections,omitempty"`
-	MaxWorkers              *int `json:"maxWorkers,omitempty"`
-	MaxAPITokens            *int `json:"maxApiTokens,omitempty"`
-	RetentionDaysRaw        *int `json:"retentionDaysRaw,omitempty"`
-	RetentionDaysAggregated *int `json:"retentionDaysAggregated,omitempty"`
-	MinCheckPeriodSeconds   *int `json:"minCheckPeriodSeconds,omitempty"`
-}
+// Limits aliases the model-layer struct so the public API is stable
+// across the JSONB-collapse refactor. nil = unlimited.
+type Limits = models.EntitlementLimits
 
-// Features is the boolean half. nil falls back to default.
-type Features struct {
-	SSO             *bool `json:"sso,omitempty"`
-	MCP             *bool `json:"mcp,omitempty"`
-	CustomBranding  *bool `json:"customBranding,omitempty"`
-	PrioritySupport *bool `json:"prioritySupport,omitempty"`
-	MultiRegion     *bool `json:"multiRegion,omitempty"`
-	AdvancedAlerts  *bool `json:"advancedAlerts,omitempty"`
-}
+// Features aliases the model-layer struct. nil = use default.
+type Features = models.EntitlementFeatures
 
-// Entitlements is the full input/output shape used by the API and audit
-// log. Storage uses individual columns; this struct flattens them into
-// the JSON the billing service writes.
+// Entitlements is the full input/output shape used by the API and the
+// audit log. On disk, Limits/Features/AllowedCheckTypes/DisplayName
+// live inside the row's `payload` JSONB column; Source/ExternalRef/
+// Metadata/ExpiresAt/LastSyncedAt are break-out columns. The wire
+// format is preserved across that split.
 type Entitlements struct {
 	Limits            Limits                   `json:"limits"`
 	Features          Features                 `json:"features"`
