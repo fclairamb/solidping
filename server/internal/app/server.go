@@ -31,6 +31,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/credmigrate"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
@@ -1444,8 +1445,14 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 // encrypted columns when a master key is configured and AutoMigrate is on
 // (default). Idempotent — only rows still in plaintext are touched. Logs
 // a summary; errors propagate so the operator notices at startup.
+//
+// When credentials are *disabled* and the DB already holds encrypted rows
+// (operator removed the master key), we log a loud WARN — those rows
+// can't be decrypted at run time and workers will skip them.
 func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
+		s.warnIfEncryptedRowsExist(ctx)
+
 		return nil
 	}
 
@@ -1469,6 +1476,39 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// warnIfEncryptedRowsExist scans the secret-bearing tables for non-NULL
+// private columns when encryption is disabled and emits a single WARN
+// per startup. The query is a counting scan, not a row fetch — cheap
+// enough to run unconditionally.
+func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
+	if s.dbService == nil {
+		return
+	}
+
+	bun := s.dbService.DB()
+
+	checkCount, err := bun.NewSelect().Model((*models.Check)(nil)).
+		Where("config_private IS NOT NULL AND config_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	connCount, err := bun.NewSelect().Model((*models.IntegrationConnection)(nil)).
+		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	if checkCount == 0 && connCount == 0 {
+		return
+	}
+
+	//nolint:sloglint // startup-only; no request context
+	slog.Warn("encrypted rows present but credentials encryption is disabled — these rows are unreadable",
+		"checks", checkCount, "connections", connCount,
+		"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE) to the original key")
 }
 
 // InitializeTestData creates test data for test mode.
