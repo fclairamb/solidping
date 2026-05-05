@@ -94,6 +94,7 @@ function ResetPasswordPage() {
                         {" "}
                         <Link
                           to="/forgot-password"
+                          search={{ email: undefined }}
                           className="underline"
                         >
                           {t("requestNewReset")}

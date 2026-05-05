@@ -413,6 +413,7 @@ function LoginPage() {
                 <div className="text-center">
                   <Link
                     to="/forgot-password"
+                    search={{ email: email || undefined }}
                     className="text-sm text-muted-foreground hover:underline"
                   >
                     {t("forgotPassword")}
