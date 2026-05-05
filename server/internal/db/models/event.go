@@ -21,6 +21,10 @@ const (
 	EventTypeIncidentCreated EventType = "incident.created"
 	// EventTypeIncidentEscalated indicates an incident was escalated.
 	EventTypeIncidentEscalated EventType = "incident.escalated"
+	// EventTypeIncidentEscalationFailed indicates an escalation step
+	// could not be delivered (empty schedule, missing user, etc.). Soft
+	// failure — subsequent steps still fire.
+	EventTypeIncidentEscalationFailed EventType = "incident.escalation_failed"
 	// EventTypeIncidentResolved indicates an incident was resolved.
 	EventTypeIncidentResolved EventType = "incident.resolved"
 	// EventTypeIncidentReopened indicates an incident was reopened after a relapse.
