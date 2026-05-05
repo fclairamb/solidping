@@ -31,11 +31,44 @@
   "fallbackTitle": "Incidente",
   "actions": {
     "acknowledge": "Reconocer",
+    "unacknowledge": "Anular reconocimiento",
+    "snooze": "Posponer…",
+    "wakeUp": "Reactivar",
     "resolve": "Resolver",
     "acknowledged": "Incidente reconocido",
+    "unacknowledged": "Reconocimiento anulado",
+    "snoozed": "Incidente pospuesto",
+    "unsnoozed": "Posposición cancelada",
     "resolved": "Incidente resuelto",
     "acknowledgeFailed": "Error al reconocer el incidente",
+    "unacknowledgeFailed": "Error al anular el reconocimiento",
+    "snoozeFailed": "Error al posponer el incidente",
+    "unsnoozeFailed": "Error al reactivar el incidente",
     "resolveFailed": "Error al resolver el incidente"
+  },
+  "snoozeDialog": {
+    "title": "Posponer incidente",
+    "description": "Silenciar notificaciones hasta la hora elegida. Posponer también reconoce el incidente.",
+    "duration": "Duración",
+    "reason": "Motivo (opcional)",
+    "reasonPlaceholder": "p. ej. desplegando una corrección",
+    "quickSelect": "Selección rápida",
+    "until15m": "15 minutos",
+    "until1h": "1 hora",
+    "until4h": "4 horas",
+    "untilTomorrow9am": "Mañana a las 9",
+    "customDuration": "Personalizada (p. ej. 2h, 30m)",
+    "submit": "Posponer",
+    "cancel": "Cancelar"
+  },
+  "stateBadges": {
+    "acked": "Reconocido",
+    "snoozed": "Pospuesto",
+    "snoozedUntil": "Pospuesto hasta {{time}}"
+  },
+  "stateFilter": {
+    "ackedOnly": "Reconocidos",
+    "snoozedOnly": "Pospuestos"
   },
   "detail": {
     "incidentDetail": "Detalle del incidente",
