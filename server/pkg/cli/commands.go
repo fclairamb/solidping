@@ -100,7 +100,7 @@ func GetCommands() []*cli.Command {
 					Action:    checksGetAction,
 				},
 				{
-					Name:      "add",
+					Name:      flagAdd,
 					Usage:     "Add a new check",
 					ArgsUsage: "<url>",
 					Flags: []cli.Flag{
@@ -204,11 +204,60 @@ func GetCommands() []*cli.Command {
 					Action: checksEventsAction,
 				},
 				{
-					Name:      "remove",
+					Name:      flagRemove,
 					Aliases:   []string{"rm", "delete"},
 					Usage:     "Remove a check",
 					ArgsUsage: argUIDSlug,
 					Action:    checksRemoveAction,
+				},
+				{
+					Name:  "deps",
+					Usage: "Manage check dependencies",
+					Commands: []*cli.Command{
+						{
+							Name:      flagList,
+							Usage:     "List parents of a check",
+							ArgsUsage: "<child-slug>",
+							Action:    checksDepsListAction,
+						},
+						{
+							Name:      flagAdd,
+							Usage:     "Add a parent dependency",
+							ArgsUsage: "<child-slug> <parent-slug>",
+							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:  "kind",
+									Usage: "Dependency kind: hard or soft",
+									Value: depKindHard,
+								},
+								&cli.StringFlag{
+									Name:  "description",
+									Usage: "Optional description for the edge",
+								},
+							},
+							Action: checksDepsAddAction,
+						},
+						{
+							Name:      flagRemove,
+							Aliases:   []string{"rm"},
+							Usage:     "Drop a parent dependency",
+							ArgsUsage: "<child-slug> <parent-slug>",
+							Action:    checksDepsRemoveAction,
+						},
+						{
+							Name:      "set",
+							Usage:     "Replace the full dependsOn set for a child check (PUT-by-slug semantics)",
+							ArgsUsage: "<child-slug>",
+							Flags: []cli.Flag{
+								&cli.StringFlag{
+									Name:     "from",
+									Usage:    "YAML or JSON file with {dependsOn: [{parentSlug, kind, description?}]}",
+									Required: true,
+								},
+							},
+							Action: checksDepsSetAction,
+						},
+					},
 				},
 			},
 		},

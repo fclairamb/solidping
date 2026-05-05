@@ -24,6 +24,8 @@ const (
 	flagName     = "name"
 	flagEvents   = "events"
 	flagCursor   = "cursor"
+	flagAdd      = "add"
+	flagRemove   = "remove"
 
 	colTimestamp = "TIMESTAMP"
 	colType      = "TYPE"
