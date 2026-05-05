@@ -24,6 +24,12 @@
       "ssl": "Domaine pour la vérification SSL"
     }
   },
+  "celebration": {
+    "title": "Premier résultat reçu !",
+    "body": "Nous venons de vérifier {{name}}. Configurez les notifications pour être alerté en cas de panne.",
+    "cta": "Voir la sonde",
+    "dismiss": "Ignorer"
+  },
   "banner": {
     "allGreen": "Tous les systèmes opérationnels",
     "allGreenSub_one": "{{count}} sonde surveillée, {{availability}}% de disponibilité sur 24h",

@@ -24,6 +24,12 @@
       "ssl": "Domain for SSL check"
     }
   },
+  "celebration": {
+    "title": "First result is in!",
+    "body": "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
+    "cta": "View the check",
+    "dismiss": "Dismiss"
+  },
   "banner": {
     "allGreen": "All systems operational",
     "allGreenSub_one": "{{count}} check monitored, {{availability}}% uptime over 24h",

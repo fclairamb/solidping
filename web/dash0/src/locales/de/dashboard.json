@@ -24,6 +24,12 @@
       "ssl": "Domain für SSL-Prüfung"
     }
   },
+  "celebration": {
+    "title": "Erstes Ergebnis ist da!",
+    "body": "Wir haben gerade {{name}} geprüft. Richten Sie Benachrichtigungen ein, um bei Ausfällen sofort informiert zu werden.",
+    "cta": "Prüfung ansehen",
+    "dismiss": "Schließen"
+  },
   "banner": {
     "allGreen": "Alle Systeme betriebsbereit",
     "allGreenSub_one": "{{count}} Prüfung überwacht, {{availability}}% Verfügbarkeit über 24 Std.",

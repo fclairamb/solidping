@@ -93,6 +93,16 @@ Out of scope:
   over time; we are not big enough yet for split tests to be meaningful.
 - **Magic-link / passwordless auth**. Out per security pushback in
   conversation — kept for the record so future readers don't relitigate.
+- **First-run scheduling (immediate run after first check create)**.
+  Deferred to follow-up — the existing 30s scheduler tick already lands
+  the first result well under the 60s goal for HTTP/SSL targets, so
+  we ship without the scheduler nudge and revisit if measurements show
+  a leak there.
+- **Integrations empty-state hero with three big cards**. Deferred —
+  the activation milestones flag exactly this gap so we'll know if
+  the funnel needs the extra UX investment. The existing integrations
+  page is functional; the spec calls this for polish, not for
+  blocking activation.
 
 ## Implementation notes
 

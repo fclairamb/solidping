@@ -24,6 +24,12 @@
       "ssl": "Dominio para SSL"
     }
   },
+  "celebration": {
+    "title": "¡Llegó el primer resultado!",
+    "body": "Acabamos de comprobar {{name}}. Configura las notificaciones para enterarte si alguna vez falla.",
+    "cta": "Ver la comprobación",
+    "dismiss": "Cerrar"
+  },
   "banner": {
     "allGreen": "Todos los sistemas operativos",
     "allGreenSub_one": "{{count}} comprobación monitoreada, {{availability}}% de disponibilidad en 24h",

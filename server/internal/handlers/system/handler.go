@@ -27,6 +27,16 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// ListActivationFunnel handles GET /api/v1/system/activation. Super-admin only.
+func (h *Handler) ListActivationFunnel(writer http.ResponseWriter, req bunrouter.Request) error {
+	resp, err := h.svc.ListActivationFunnel(req.Context())
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // ListParameters handles GET /api/v1/system/parameters.
 func (h *Handler) ListParameters(writer http.ResponseWriter, req bunrouter.Request) error {
 	params, err := h.svc.ListParameters(req.Context())
