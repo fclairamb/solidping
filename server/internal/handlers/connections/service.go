@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -230,6 +231,10 @@ func (s *Service) CreateConnection(
 	if err := s.db.CreateIntegrationConnection(ctx, conn); err != nil {
 		return nil, err
 	}
+
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		activation.SourceAPI, "")
 
 	return toResponse(conn, true), nil
 }

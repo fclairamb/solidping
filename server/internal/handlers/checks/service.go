@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -876,6 +877,11 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		slog.WarnContext(ctx, "failed to emit check.created event", "error", err)
 		// Don't fail check creation for event emission errors
 	}
+
+	// Activation funnel: idempotent — only fires for the org's first check.
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationFirstCheckCreated,
+		activation.SourceAPI, "")
 
 	// Fetch the check with labels for response
 	response := s.convertCheckToResponse(check)

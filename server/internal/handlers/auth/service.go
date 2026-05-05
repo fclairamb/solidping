@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -2119,6 +2120,10 @@ func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRe
 	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
 		return nil, fmt.Errorf("failed to create membership: %w", err)
 	}
+
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationSignupCompleted,
+		activation.SourceRegularForm, userUID)
 
 	return &OrgResponse{
 		UID:  org.UID,
