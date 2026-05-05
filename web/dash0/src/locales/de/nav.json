@@ -115,5 +115,6 @@
     "groupAccount": "Konto",
     "groupOrganization": "Organisation",
     "groupChecks": "Prüfungen"
-  }
+  },
+  "security": "Sicherheit"
 }

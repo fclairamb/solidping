@@ -49,5 +49,6 @@
   "description": "Beschreibung",
   "actions": "Aktionen",
   "viewDetails": "Details anzeigen",
-  "searchPlaceholder": "Suchen..."
+  "searchPlaceholder": "Suchen...",
+  "rename": "Umbenennen"
 }
