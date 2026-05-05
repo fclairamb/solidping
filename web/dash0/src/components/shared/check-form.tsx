@@ -29,11 +29,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
-import { useCheckTypes, useSampleConfigs, useConnections, useCheckConnections } from "@/api/hooks";
+import {
+  useCheckTypes,
+  useSampleConfigs,
+  useConnections,
+  useCheckConnections,
+  useCheckDependencies,
+} from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
+import { CheckPicker } from "@/components/shared/check-picker";
+import { X } from "lucide-react";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
 
@@ -168,6 +176,8 @@ export interface CheckFormData {
   maxAdaptiveIncrease?: number | null;
   labels?: Record<string, string>;
   connectionUids?: string[];
+  dependsOnParentUids?: string[];
+  initialDependsOnParentUids?: string[];
 }
 
 interface CheckFormProps {
@@ -287,6 +297,45 @@ export function CheckForm({
       const cur = prev ?? [];
       return cur.includes(uid) ? cur.filter((u) => u !== uid) : [...cur, uid];
     });
+  }
+
+  const { data: existingDeps } = useCheckDependencies(
+    org,
+    mode === "edit" ? initialData?.uid : undefined,
+  );
+  const [dependsOnParents, setDependsOnParents] = useState<
+    { uid: string; label: string }[] | null
+  >(null);
+  const initialParentUids = useMemo(
+    () => (existingDeps?.dependsOn ?? []).map((e) => e.parentCheck.uid),
+    [existingDeps],
+  );
+
+  useEffect(() => {
+    if (dependsOnParents !== null) return;
+    if (mode === "create") {
+      setDependsOnParents([]);
+      return;
+    }
+    if (existingDeps) {
+      setDependsOnParents(
+        existingDeps.dependsOn.map((e) => ({
+          uid: e.parentCheck.uid,
+          label: e.parentCheck.name || e.parentCheck.slug,
+        })),
+      );
+    }
+  }, [mode, existingDeps, dependsOnParents]);
+
+  function addParent(uid: string, label: string) {
+    setDependsOnParents((prev) => {
+      const cur = prev ?? [];
+      if (cur.some((p) => p.uid === uid)) return cur;
+      return [...cur, { uid, label }];
+    });
+  }
+  function removeParent(uid: string) {
+    setDependsOnParents((prev) => (prev ?? []).filter((p) => p.uid !== uid));
   }
   const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
@@ -798,6 +847,12 @@ export function CheckForm({
         ...(mode === "create" || labelsDirty ? { labels } : {}),
         ...((mode === "create" || connectionsDirty) && connectionUids !== null
           ? { connectionUids }
+          : {}),
+        ...(dependsOnParents !== null
+          ? {
+              dependsOnParentUids: dependsOnParents.map((p) => p.uid),
+              initialDependsOnParentUids: initialParentUids,
+            }
           : {}),
       });
     } catch (err) {
@@ -1549,6 +1604,14 @@ export function CheckForm({
               onToggle={toggleConnection}
             />
 
+            <DependsOnFormSection
+              org={org}
+              checkUid={mode === "edit" ? initialData?.uid : undefined}
+              parents={dependsOnParents ?? []}
+              onAdd={addParent}
+              onRemove={removeParent}
+            />
+
             {checkGroups && checkGroups.length > 0 && (
               <div className="space-y-2">
                 <Label htmlFor="group">Group (optional)</Label>
@@ -1601,6 +1664,65 @@ export function CheckForm({
           </CardFooter>
         </form>
       </Card>
+    </div>
+  );
+}
+
+interface DependsOnFormSectionProps {
+  org: string;
+  checkUid: string | undefined;
+  parents: { uid: string; label: string }[];
+  onAdd: (uid: string, label: string) => void;
+  onRemove: (uid: string) => void;
+}
+
+function DependsOnFormSection({
+  org,
+  checkUid,
+  parents,
+  onAdd,
+  onRemove,
+}: DependsOnFormSectionProps) {
+  const excludeUids = useMemo(() => {
+    const set = new Set<string>(parents.map((p) => p.uid));
+    if (checkUid) set.add(checkUid);
+    return set;
+  }, [parents, checkUid]);
+
+  return (
+    <div className="space-y-2">
+      <Label>Dependencies</Label>
+      <p className="text-xs text-muted-foreground">
+        Parents whose downtime should suppress incident alerts on this check.
+        Edit kind/description on the check detail page after save.
+      </p>
+      <div className="space-y-2">
+        {parents.map((p) => (
+          <div
+            key={p.uid}
+            className="flex items-center gap-2 rounded-md border p-2"
+          >
+            <span className="flex-1 truncate text-sm">{p.label}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onRemove(p.uid)}
+              aria-label="Remove parent"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+        <CheckPicker
+          org={org}
+          excludeUids={excludeUids}
+          onChange={(uid, c) => {
+            if (uid) onAdd(uid, c?.name || c?.slug || uid);
+          }}
+          placeholder="Add a parent check…"
+        />
+      </div>
     </div>
   );
 }

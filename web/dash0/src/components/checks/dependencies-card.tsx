@@ -38,7 +38,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ancestorsAndDescendants, findCyclePath } from "@/lib/dependency-graph";
+import { ancestorsAndDescendants } from "@/lib/dependency-graph";
+import { formatCyclePath } from "@/components/shared/dependency-cycle-path";
 
 interface DependenciesCardProps {
   org: string;
@@ -308,12 +309,9 @@ function AddDependencyRow({
           if (err instanceof ApiError) {
             const code = err.code;
             if (code === "DEPENDENCY_CYCLE") {
-              const path = graph
-                ? findCyclePath(graph, checkUid, parentUid)
-                : undefined;
               setError(
                 t("dependencies:errors.cycle", {
-                  path: path ? path.join(" → ") : "",
+                  path: formatCyclePath(graph, checkUid, parentUid),
                 }),
               );
               return;

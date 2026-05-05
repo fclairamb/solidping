@@ -98,6 +98,17 @@ function CheckNewPage() {
             body: JSON.stringify({ connectionUids: data.connectionUids }),
           });
         }
+        if (data.dependsOnParentUids && data.dependsOnParentUids.length > 0) {
+          for (const parentUid of data.dependsOnParentUids) {
+            await apiFetch(
+              `/api/v1/orgs/${org}/checks/${check.uid}/dependencies`,
+              {
+                method: "POST",
+                body: JSON.stringify({ parentCheckUid: parentUid, kind: "hard" }),
+              },
+            );
+          }
+        }
         toast.success(t("toast.created"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",
