@@ -1570,7 +1570,6 @@ export function useAcceptInvite() {
     mutationFn: (data: {
       token: string;
       name?: string;
-      email?: string;
       password?: string;
     }) =>
       apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {

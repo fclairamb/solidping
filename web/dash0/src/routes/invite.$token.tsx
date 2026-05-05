@@ -31,7 +31,6 @@ function AcceptInvitePage() {
   const isAuthenticated = !!getToken();
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -72,7 +71,6 @@ function AcceptInvitePage() {
       const result = await acceptInvite.mutateAsync({
         token,
         name: name || undefined,
-        email,
         password,
       });
       acceptInviteSession(result);
@@ -136,9 +134,13 @@ function AcceptInvitePage() {
             <span className="font-medium">{inviteInfo.role}</span>
           </p>
           {inviteInfo.email && (
-            <div className="flex items-center justify-center gap-1 mt-2 text-sm text-muted-foreground">
-              <Mail className="h-3 w-3" />
-              <span>{inviteInfo.email}</span>
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="break-all" title={inviteInfo.email}>
+                {t("auth:invite.creatingAccountFor", {
+                  email: inviteInfo.email,
+                })}
+              </span>
             </div>
           )}
         </CardHeader>
@@ -175,19 +177,6 @@ function AcceptInvitePage() {
                   placeholder={t("auth:yourNamePlaceholder")}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  disabled={acceptInvite.isPending}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">{t("common:email")}</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder={t("auth:emailPlaceholder")}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
                   disabled={acceptInvite.isPending}
                 />
               </div>
