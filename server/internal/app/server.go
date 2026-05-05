@@ -513,6 +513,11 @@ func (s *Server) setupRoutes() {
 	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
 	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
 	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
+	orgOnCall.POST("/:slug/ical-feed/rotate", onCallHandler.RotateICalFeed)
+
+	// Public iCal feed — the secret in the URL authorizes access. No auth
+	// middleware: clients are calendar apps that can't bear tokens.
+	api.GET("/on-call-schedules/:secret/feed.ics", onCallHandler.ServeICalFeed)
 
 	// Escalation policies (authentication required)
 	escalationService := escalationpolicies.NewService(s.dbService)
