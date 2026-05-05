@@ -3901,30 +3901,11 @@ func (s *Service) UpsertOrgEntitlements(
 		_, err := tx.NewInsert().
 			Model(ent).
 			On("CONFLICT (organization_uid) DO UPDATE").
-			Set("max_checks = EXCLUDED.max_checks").
-			Set("max_members = EXCLUDED.max_members").
-			Set("max_status_pages = EXCLUDED.max_status_pages").
-			Set("max_check_groups = EXCLUDED.max_check_groups").
-			Set("max_maintenance_windows = EXCLUDED.max_maintenance_windows").
-			Set("max_connections = EXCLUDED.max_connections").
-			Set("max_workers = EXCLUDED.max_workers").
-			Set("max_api_tokens = EXCLUDED.max_api_tokens").
-			Set("retention_days_raw = EXCLUDED.retention_days_raw").
-			Set("retention_days_aggregated = EXCLUDED.retention_days_aggregated").
-			Set("min_check_period_seconds = EXCLUDED.min_check_period_seconds").
-			Set("feature_sso = EXCLUDED.feature_sso").
-			Set("feature_mcp = EXCLUDED.feature_mcp").
-			Set("feature_custom_branding = EXCLUDED.feature_custom_branding").
-			Set("feature_priority_support = EXCLUDED.feature_priority_support").
-			Set("feature_multi_region = EXCLUDED.feature_multi_region").
-			Set("feature_advanced_alerts = EXCLUDED.feature_advanced_alerts").
-			Set("allowed_check_types = EXCLUDED.allowed_check_types").
-			Set("source = EXCLUDED.source").
-			Set("display_name = EXCLUDED.display_name").
+			Set("payload = EXCLUDED.payload").
 			Set("external_ref = EXCLUDED.external_ref").
-			Set("metadata = EXCLUDED.metadata").
 			Set("expires_at = EXCLUDED.expires_at").
 			Set("last_synced_at = EXCLUDED.last_synced_at").
+			Set("metadata = EXCLUDED.metadata").
 			Set("updated_at = EXCLUDED.updated_at").
 			Exec(ctx)
 		if err != nil {
