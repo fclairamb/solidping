@@ -4,11 +4,61 @@
 
 import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, Check, Copy, Moon, Palette, Search, Sun } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowRight,
+  Check,
+  CheckCircle2,
+  Copy,
+  Info,
+  Moon,
+  MoreVertical,
+  Palette,
+  Search,
+  Sun,
+  Triangle,
+} from "lucide-react";
+import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -64,6 +114,7 @@ function DesignReferencePage() {
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
+      <FeedbackSection />
     </div>
   );
 }
@@ -617,6 +668,179 @@ function DataDisplaySection() {
       <CodeSnippet
         code={`import {\n  Table,\n  TableBody,\n  TableCell,\n  TableHead,\n  TableHeader,\n  TableRow,\n} from "@/components/ui/table";\nimport { Skeleton } from "@/components/ui/skeleton";\nimport { useDebounce } from "@/lib/use-debounce";`}
       />
+    </Section>
+  );
+}
+
+function FeedbackSection() {
+  return (
+    <Section
+      id="feedback"
+      title="Feedback"
+      description="Inline alerts, dialogs, tooltips, popovers, and toasts. Each is rendered live — open every one to verify behavior in both themes."
+    >
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Alert</h3>
+        <ExampleRow
+          preview={
+            <div className="flex w-full max-w-md flex-col gap-2">
+              <Alert>
+                <Info />
+                <AlertTitle>Default</AlertTitle>
+                <AlertDescription>Neutral, informational message.</AlertDescription>
+              </Alert>
+              <Alert variant="success">
+                <CheckCircle2 />
+                <AlertTitle>Success</AlertTitle>
+                <AlertDescription>The action completed successfully.</AlertDescription>
+              </Alert>
+              <Alert variant="warning">
+                <Triangle />
+                <AlertTitle>Warning</AlertTitle>
+                <AlertDescription>Something is degraded but still functional.</AlertDescription>
+              </Alert>
+              <Alert variant="destructive">
+                <AlertCircle />
+                <AlertTitle>Destructive</AlertTitle>
+                <AlertDescription>An error occurred. Action failed.</AlertDescription>
+              </Alert>
+            </div>
+          }
+          importLine={`import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";`}
+        />
+
+        <h3 className="text-sm font-medium">Dialog</h3>
+        <ExampleRow
+          preview={
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button variant="outline">Open dialog</Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Dialog title</DialogTitle>
+                  <DialogDescription>Modal content for non-destructive flows.</DialogDescription>
+                </DialogHeader>
+                <p className="text-sm">
+                  Use Dialog for inline forms, multi-step pickers, or any cancelable flow that
+                  doesn&apos;t carry irreversible consequences.
+                </p>
+                <DialogFooter>
+                  <Button variant="outline">Cancel</Button>
+                  <Button>Confirm</Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          }
+          importLine={`import {\n  Dialog,\n  DialogContent,\n  DialogDescription,\n  DialogFooter,\n  DialogHeader,\n  DialogTitle,\n  DialogTrigger,\n} from "@/components/ui/dialog";`}
+        />
+
+        <h3 className="text-sm font-medium">Alert dialog</h3>
+        <ExampleRow
+          preview={
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive">Delete…</Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action is permanent. Use AlertDialog (not Dialog) for destructive
+                    confirmations.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction>Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          }
+          importLine={`import {\n  AlertDialog,\n  AlertDialogAction,\n  AlertDialogCancel,\n  AlertDialogContent,\n  AlertDialogDescription,\n  AlertDialogFooter,\n  AlertDialogHeader,\n  AlertDialogTitle,\n  AlertDialogTrigger,\n} from "@/components/ui/alert-dialog";`}
+        />
+
+        <h3 className="text-sm font-medium">Toast (sonner)</h3>
+        <ExampleRow
+          preview={
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => toast("Hello from sonner")}>
+                Default toast
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => toast.success("Saved successfully")}
+              >
+                Success toast
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => toast.error("Something went wrong")}
+              >
+                Error toast
+              </Button>
+            </div>
+          }
+          importLine={`import { toast } from "sonner";`}
+        />
+
+        <h3 className="text-sm font-medium">Tooltip</h3>
+        <ExampleRow
+          preview={
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline">Hover me</Button>
+                </TooltipTrigger>
+                <TooltipContent>This is a tooltip.</TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          }
+          importLine={`import {\n  Tooltip,\n  TooltipContent,\n  TooltipProvider,\n  TooltipTrigger,\n} from "@/components/ui/tooltip";`}
+        />
+
+        <h3 className="text-sm font-medium">Popover</h3>
+        <ExampleRow
+          preview={
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button variant="outline">Open popover</Button>
+              </PopoverTrigger>
+              <PopoverContent className="p-3">
+                <p className="text-sm">
+                  Popover content — useful for inline pickers and contextual hints that need
+                  more space than a tooltip.
+                </p>
+              </PopoverContent>
+            </Popover>
+          }
+          importLine={`import {\n  Popover,\n  PopoverContent,\n  PopoverTrigger,\n} from "@/components/ui/popover";`}
+        />
+
+        <h3 className="text-sm font-medium">Dropdown menu</h3>
+        <ExampleRow
+          preview={
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="icon" aria-label="Row actions">
+                  <MoreVertical />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem>View</DropdownMenuItem>
+                <DropdownMenuItem>Edit</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-destructive focus:text-destructive">
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+          importLine={`import {\n  DropdownMenu,\n  DropdownMenuContent,\n  DropdownMenuItem,\n  DropdownMenuLabel,\n  DropdownMenuSeparator,\n  DropdownMenuTrigger,\n} from "@/components/ui/dropdown-menu";`}
+        />
+      </div>
     </Section>
   );
 }
