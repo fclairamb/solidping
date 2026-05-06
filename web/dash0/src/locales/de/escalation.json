@@ -5,7 +5,14 @@
     "create": "Neue Richtlinie",
     "empty": "Noch keine Eskalationsrichtlinien. Erstelle eine, um beim Vorfall zu paginieren.",
     "repeats": "Wiederholt {{count}}× alle {{minutes}} Minuten",
-    "editToSeeSteps": "Öffnen, um die Schritte anzuzeigen."
+    "editToSeeSteps": "Öffnen, um die Schritte anzuzeigen.",
+    "searchPlaceholder": "Nach Name suchen…",
+    "noMatches": "Keine Richtlinie entspricht der Suche.",
+    "col": {
+      "name": "Name",
+      "description": "Beschreibung",
+      "repeats": "Wiederholungen"
+    }
   },
   "new": {
     "title": "Neue Eskalationsrichtlinie"

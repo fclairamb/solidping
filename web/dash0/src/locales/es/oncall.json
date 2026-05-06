@@ -7,7 +7,13 @@
     "currentlyOnCall": "De guardia ahora",
     "noOneOnCall": "Nadie de guardia",
     "nextHandoff": "Próximo relevo",
-    "nextHandoffIn": "en {{when}}"
+    "nextHandoffIn": "en {{when}}",
+    "col": {
+      "name": "Nombre",
+      "timezone": "Zona horaria",
+      "rotation": "Rotación",
+      "currentlyOnCall": "De guardia ahora"
+    }
   },
   "detail": {
     "back": "Volver a los turnos",
