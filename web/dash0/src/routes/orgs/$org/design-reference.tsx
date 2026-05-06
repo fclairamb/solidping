@@ -9,6 +9,19 @@ import { ArrowRight, Check, Copy, Moon, Palette, Sun } from "lucide-react";
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
@@ -39,6 +52,7 @@ function DesignReferencePage() {
       <BreadcrumbsSection />
       <ColorTokensSection />
       <ButtonsBadgesSection />
+      <FormsSection />
     </div>
   );
 }
@@ -325,6 +339,123 @@ function ButtonsBadgesSection() {
           }
           importLine={`import { Badge } from "@/components/ui/badge";`}
         />
+      </div>
+    </Section>
+  );
+}
+
+function FormsSection() {
+  return (
+    <Section
+      id="forms"
+      title="Forms"
+      description="Inputs, controls, and the canonical assembled form. Each field group uses space-y-2 internally; spacing between fields is space-y-4."
+    >
+      <div className="space-y-4">
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-input">Input</Label>
+              <Input id="dr-input" placeholder="A standard text input" />
+            </div>
+          }
+          importLine={`import { Input } from "@/components/ui/input";\nimport { Label } from "@/components/ui/label";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-textarea">Textarea</Label>
+              <Textarea id="dr-textarea" placeholder="Multi-line input" rows={3} />
+            </div>
+          }
+          importLine={`import { Textarea } from "@/components/ui/textarea";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-password">Password input</Label>
+              <PasswordInput id="dr-password" placeholder="••••••••" />
+            </div>
+          }
+          importLine={`import { PasswordInput } from "@/components/ui/password-input";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="w-full max-w-sm space-y-2">
+              <Label htmlFor="dr-select">Select</Label>
+              <Select>
+                <SelectTrigger id="dr-select">
+                  <SelectValue placeholder="Pick one" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="alpha">Alpha</SelectItem>
+                  <SelectItem value="beta">Beta</SelectItem>
+                  <SelectItem value="gamma">Gamma</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+          importLine={`import {\n  Select,\n  SelectContent,\n  SelectItem,\n  SelectTrigger,\n  SelectValue,\n} from "@/components/ui/select";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-2">
+              <Checkbox id="dr-checkbox" />
+              <Label htmlFor="dr-checkbox">Checkbox label</Label>
+            </div>
+          }
+          importLine={`import { Checkbox } from "@/components/ui/checkbox";`}
+        />
+
+        <ExampleRow
+          preview={
+            <div className="flex items-center gap-2">
+              <Switch id="dr-switch" />
+              <Label htmlFor="dr-switch">Switch label</Label>
+            </div>
+          }
+          importLine={`import { Switch } from "@/components/ui/switch";`}
+        />
+
+        <h3 className="text-sm font-medium">Assembled form</h3>
+        <div className="rounded-md border bg-card p-4">
+          <form className="max-w-md space-y-4" onSubmit={(e) => e.preventDefault()}>
+            <div className="space-y-2">
+              <Label htmlFor="dr-name">Name</Label>
+              <Input id="dr-name" placeholder="Acme Inc." />
+              <p className="text-xs text-muted-foreground">
+                Used as the display name across the dashboard.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dr-email">Email</Label>
+              <Input
+                id="dr-email"
+                type="email"
+                placeholder="contact@acme.test"
+                aria-invalid="true"
+                aria-describedby="dr-email-error"
+              />
+              <p id="dr-email-error" className="text-xs text-destructive">
+                This is what an inline error message looks like.
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dr-notes">Notes</Label>
+              <Textarea id="dr-notes" rows={3} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline">
+                Cancel
+              </Button>
+              <Button type="submit">Save</Button>
+            </div>
+          </form>
+        </div>
       </div>
     </Section>
   );
