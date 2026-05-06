@@ -7,7 +7,13 @@
     "currentlyOnCall": "Currently on call",
     "noOneOnCall": "No one on call",
     "nextHandoff": "Next handoff",
-    "nextHandoffIn": "in {{when}}"
+    "nextHandoffIn": "in {{when}}",
+    "col": {
+      "name": "Name",
+      "timezone": "Timezone",
+      "rotation": "Rotation",
+      "currentlyOnCall": "Currently on call"
+    }
   },
   "detail": {
     "back": "Back to schedules",

@@ -5,7 +5,14 @@
     "create": "New policy",
     "empty": "No escalation policies yet. Create one to start paging on incidents.",
     "repeats": "Repeats {{count}}× every {{minutes}} minutes",
-    "editToSeeSteps": "Open to see the steps."
+    "editToSeeSteps": "Open to see the steps.",
+    "searchPlaceholder": "Search by name…",
+    "noMatches": "No policies match your search.",
+    "col": {
+      "name": "Name",
+      "description": "Description",
+      "repeats": "Repeats"
+    }
   },
   "new": {
     "title": "New escalation policy"

@@ -7,7 +7,13 @@
     "currentlyOnCall": "Aktuell in Bereitschaft",
     "noOneOnCall": "Niemand in Bereitschaft",
     "nextHandoff": "Nächste Übergabe",
-    "nextHandoffIn": "in {{when}}"
+    "nextHandoffIn": "in {{when}}",
+    "col": {
+      "name": "Name",
+      "timezone": "Zeitzone",
+      "rotation": "Rotation",
+      "currentlyOnCall": "Aktuell in Bereitschaft"
+    }
   },
   "detail": {
     "back": "Zurück zu den Plänen",

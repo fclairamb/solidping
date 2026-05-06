@@ -5,7 +5,14 @@
     "create": "Nouvelle politique",
     "empty": "Aucune politique d'escalade pour l'instant. Créez-en une pour commencer à recevoir des alertes lors d'incidents.",
     "repeats": "Répète {{count}}× toutes les {{minutes}} minutes",
-    "editToSeeSteps": "Ouvrez pour voir les étapes."
+    "editToSeeSteps": "Ouvrez pour voir les étapes.",
+    "searchPlaceholder": "Rechercher par nom…",
+    "noMatches": "Aucune politique ne correspond à votre recherche.",
+    "col": {
+      "name": "Nom",
+      "description": "Description",
+      "repeats": "Répétitions"
+    }
   },
   "new": {
     "title": "Nouvelle politique d'escalade"
