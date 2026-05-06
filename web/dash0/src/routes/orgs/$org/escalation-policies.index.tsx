@@ -1,17 +1,48 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { useMemo, useState } from "react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowUpRight, Plus, Repeat } from "lucide-react";
+import {
+  ArrowUpRight,
+  MoreVertical,
+  Plus,
+  RefreshCw,
+  Repeat,
+  Search,
+} from "lucide-react";
+import { toast } from "sonner";
 
-import { useEscalationPolicies } from "@/api/hooks";
+import {
+  useDeleteEscalationPolicy,
+  useEscalationPolicies,
+  type EscalationPolicy,
+} from "@/api/hooks";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 
 export const Route = createFileRoute("/orgs/$org/escalation-policies/")({
@@ -21,8 +52,28 @@ export const Route = createFileRoute("/orgs/$org/escalation-policies/")({
 function EscalationPoliciesListPage() {
   const { t } = useTranslation(["escalation", "common"]);
   const { org } = Route.useParams();
-  const { data: policies, isLoading, error, refetch } =
-    useEscalationPolicies(org);
+  const {
+    data: policies,
+    isLoading,
+    isRefetching,
+    error,
+    refetch,
+  } = useEscalationPolicies(org);
+  const deleteMutation = useDeleteEscalationPolicy(org);
+  const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<EscalationPolicy | null>(
+    null,
+  );
+
+  const filtered = useMemo(() => {
+    const list = policies || [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((p) => {
+      const haystack = [p.name, p.description].filter(Boolean).join(" ").toLowerCase();
+      return haystack.includes(q);
+    });
+  }, [policies, search]);
 
   if (error) {
     return (
@@ -34,6 +85,20 @@ function EscalationPoliciesListPage() {
       />
     );
   }
+
+  const onConfirmDelete = () => {
+    if (!pendingDelete) return;
+    deleteMutation.mutate(pendingDelete.slug, {
+      onSuccess: () => {
+        toast.success(t("common:delete"));
+        setPendingDelete(null);
+      },
+      onError: () => toast.error(t("common:somethingWentWrong")),
+    });
+  };
+
+  const isEmpty = !isLoading && (!policies || policies.length === 0);
+  const hasSearchButNoMatches = !isEmpty && filtered.length === 0;
 
   return (
     <div className="space-y-6">
@@ -55,55 +120,164 @@ function EscalationPoliciesListPage() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {[...Array(3)].map((_, i) => (
-            <Skeleton key={i} className="h-40 rounded" />
-          ))}
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder={t("escalation:list.searchPlaceholder")}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
+            data-testid="policy-search"
+          />
         </div>
-      ) : !policies || policies.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          data-testid="policy-refresh"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
+
+      <div className="rounded-md border">
+        {isLoading ? (
+          <div className="space-y-2 p-2">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-12 rounded-lg" />
+            ))}
+          </div>
+        ) : isEmpty ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
             {t("escalation:list.empty")}
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {policies.map((policy) => (
-            <Card
-              key={policy.uid}
-              className="hover:shadow-md transition-shadow"
-            >
-              <CardHeader>
-                <CardTitle>
-                  <Link
-                    to="/orgs/$org/escalation-policies/$slug"
-                    params={{ org, slug: policy.slug }}
-                    className="hover:underline"
-                  >
-                    {policy.name}
-                  </Link>
-                </CardTitle>
-                {policy.description && (
-                  <CardDescription>{policy.description}</CardDescription>
-                )}
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm text-muted-foreground">
-                {policy.repeatMax > 0 && policy.repeatAfterMinutes && (
-                  <div className="flex items-center gap-1">
-                    <Repeat className="h-3.5 w-3.5" />
-                    {t("escalation:list.repeats", {
-                      count: policy.repeatMax,
-                      minutes: policy.repeatAfterMinutes,
-                    })}
-                  </div>
-                )}
-                <div>{t("escalation:list.editToSeeSteps")}</div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
+          </p>
+        ) : hasSearchButNoMatches ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {t("escalation:list.noMatches")}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("escalation:list.col.name")}</TableHead>
+                <TableHead>{t("escalation:list.col.description")}</TableHead>
+                <TableHead>{t("escalation:list.col.repeats")}</TableHead>
+                <TableHead className="w-[50px]" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filtered.map((policy) => (
+                <PolicyRow
+                  key={policy.uid}
+                  org={org}
+                  policy={policy}
+                  onDelete={() => setPendingDelete(policy)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => (open ? null : setPendingDelete(null))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("common:confirmDelete")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("escalation:editor.deleteConfirm")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirmDelete}>
+              {t("common:delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
+  );
+}
+
+interface PolicyRowProps {
+  org: string;
+  policy: EscalationPolicy;
+  onDelete: () => void;
+}
+
+function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
+  const { t } = useTranslation(["escalation", "common"]);
+  const navigate = useNavigate();
+
+  return (
+    <TableRow data-testid="policy-row">
+      <TableCell>
+        <Link
+          to="/orgs/$org/escalation-policies/$slug"
+          params={{ org, slug: policy.slug }}
+          className="font-medium hover:underline"
+        >
+          {policy.name}
+        </Link>
+      </TableCell>
+      <TableCell className="max-w-[420px] truncate text-sm text-muted-foreground">
+        {policy.description || ""}
+      </TableCell>
+      <TableCell className="text-sm text-muted-foreground">
+        {policy.repeatMax > 0 && policy.repeatAfterMinutes ? (
+          <span className="inline-flex items-center gap-1">
+            <Repeat className="h-3.5 w-3.5" />
+            {t("escalation:list.repeats", {
+              count: policy.repeatMax,
+              minutes: policy.repeatAfterMinutes,
+            })}
+          </span>
+        ) : (
+          "—"
+        )}
+      </TableCell>
+      <TableCell>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" aria-label="Row actions">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem
+              onClick={() =>
+                navigate({
+                  to: "/orgs/$org/escalation-policies/$slug",
+                  params: { org, slug: policy.slug },
+                })
+              }
+            >
+              {t("common:viewDetails")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={() =>
+                navigate({
+                  to: "/orgs/$org/escalation-policies/$slug",
+                  params: { org, slug: policy.slug },
+                })
+              }
+            >
+              {t("common:edit")}
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive"
+              onClick={onDelete}
+            >
+              {t("common:delete")}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </TableCell>
+    </TableRow>
   );
 }
