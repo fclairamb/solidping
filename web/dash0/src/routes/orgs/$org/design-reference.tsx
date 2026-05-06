@@ -2,9 +2,9 @@
 // hardcoded English — do not add i18n keys for the showcase content.
 // Only the sidebar entry (nav:designReference) is translated.
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { ArrowRight, Check, Copy, Moon, Palette, Sun } from "lucide-react";
+import { ArrowRight, Check, Copy, Moon, Palette, Search, Sun } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +20,18 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { useDebounce } from "@/lib/use-debounce";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
@@ -53,6 +63,7 @@ function DesignReferencePage() {
       <ColorTokensSection />
       <ButtonsBadgesSection />
       <FormsSection />
+      <DataDisplaySection />
     </div>
   );
 }
@@ -457,6 +468,155 @@ function FormsSection() {
           </form>
         </div>
       </div>
+    </Section>
+  );
+}
+
+type MockRow = { id: string; name: string; status: "up" | "down" | "warning"; latency: string };
+
+const MOCK_ROWS: MockRow[] = [
+  { id: "1", name: "api.example.com", status: "up", latency: "120 ms" },
+  { id: "2", name: "checkout-prod", status: "up", latency: "85 ms" },
+  { id: "3", name: "billing-staging", status: "warning", latency: "950 ms" },
+  { id: "4", name: "auth.example.com", status: "down", latency: "—" },
+  { id: "5", name: "static.example.com", status: "up", latency: "42 ms" },
+];
+
+function StatusBadge({ status }: { status: MockRow["status"] }) {
+  if (status === "up") return <Badge variant="success">up</Badge>;
+  if (status === "warning") return <Badge variant="warning">warning</Badge>;
+  return <Badge variant="destructive">down</Badge>;
+}
+
+function MockTableHeader() {
+  return (
+    <TableHeader>
+      <TableRow>
+        <TableHead>Name</TableHead>
+        <TableHead>Status</TableHead>
+        <TableHead>Latency</TableHead>
+      </TableRow>
+    </TableHeader>
+  );
+}
+
+function HappyTable() {
+  const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
+  const rows = useMemo(() => {
+    const q = debouncedSearch.trim().toLowerCase();
+    if (!q) return MOCK_ROWS;
+    return MOCK_ROWS.filter((r) => r.name.toLowerCase().includes(q));
+  }, [debouncedSearch]);
+
+  return (
+    <div className="space-y-3">
+      <div className="relative max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder="Search…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <MockTableHeader />
+          <TableBody>
+            {rows.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={3} className="py-8 text-center text-sm text-muted-foreground">
+                  No matches.
+                </TableCell>
+              </TableRow>
+            ) : (
+              rows.map((row) => (
+                <TableRow key={row.id}>
+                  <TableCell className="font-medium">{row.name}</TableCell>
+                  <TableCell>
+                    <StatusBadge status={row.status} />
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">{row.latency}</TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function LoadingTable() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-9 max-w-xs" />
+      <div className="rounded-md border">
+        <Table>
+          <MockTableHeader />
+          <TableBody>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <TableRow key={i}>
+                <TableCell colSpan={3}>
+                  <Skeleton className="h-5 w-full" />
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function EmptyTable() {
+  return (
+    <div className="space-y-3">
+      <div className="relative max-w-xs">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input placeholder="Search…" disabled className="pl-9" />
+      </div>
+      <div className="rounded-md border">
+        <Table>
+          <MockTableHeader />
+          <TableBody>
+            <TableRow>
+              <TableCell colSpan={3} className="py-12 text-center text-sm text-muted-foreground">
+                No items yet. Create the first one to get started.
+              </TableCell>
+            </TableRow>
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+}
+
+function DataDisplaySection() {
+  return (
+    <Section
+      id="data-display"
+      title="Data display"
+      description="The canonical list pattern: rounded-md border around the table, debounced search input, status badge per row. Three side-by-side variants — happy, loading, empty — because new features cut corners on these states."
+    >
+      <div className="grid gap-4 lg:grid-cols-3">
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Happy path</h3>
+          <HappyTable />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Loading</h3>
+          <LoadingTable />
+        </div>
+        <div className="space-y-2">
+          <h3 className="text-sm font-medium">Empty</h3>
+          <EmptyTable />
+        </div>
+      </div>
+      <CodeSnippet
+        code={`import {\n  Table,\n  TableBody,\n  TableCell,\n  TableHead,\n  TableHeader,\n  TableRow,\n} from "@/components/ui/table";\nimport { Skeleton } from "@/components/ui/skeleton";\nimport { useDebounce } from "@/lib/use-debounce";`}
+      />
     </Section>
   );
 }
