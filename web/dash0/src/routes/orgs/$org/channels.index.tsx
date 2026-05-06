@@ -1,9 +1,13 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { Bell, MoreHorizontal, Plus, RefreshCw, Search, Star } from "lucide-react";
+import { toast } from "sonner";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
   CardContent,
@@ -25,8 +29,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Loader2, MoreHorizontal, Plus, Star } from "lucide-react";
-import { toast } from "sonner";
 import {
   useConnections,
   useDeleteConnection,
@@ -44,7 +46,12 @@ function ChannelsListPage() {
   const { t } = useTranslation("channels");
   const { org } = Route.useParams();
   const navigate = useNavigate();
-  const { data: channels, isLoading } = useConnections(org);
+  const {
+    data: channels,
+    isLoading,
+    isRefetching,
+    refetch,
+  } = useConnections(org);
   const deleteMutation = useDeleteConnection(org);
 
   const [search, setSearch] = useState("");
@@ -59,20 +66,17 @@ function ChannelsListPage() {
     );
   }, [channels, search]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
+  const showEmptyState = !isLoading && channels && channels.length === 0;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t("title", "Channels")}</h1>
-          <p className="text-sm text-muted-foreground">
+          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+            <Bell className="h-7 w-7 text-muted-foreground" />
+            {t("title", "Channels")}
+          </h1>
+          <p className="text-muted-foreground">
             {t(
               "subtitle",
               "Slack, webhooks, email, and more — wire how SolidPing reaches you.",
@@ -87,51 +91,74 @@ function ChannelsListPage() {
         </Button>
       </div>
 
-      {channels && channels.length === 0 ? (
+      {showEmptyState ? (
         <EmptyState org={org} />
       ) : (
-        <Card>
-          <CardHeader className="flex flex-row items-center gap-4">
-            <Input
-              placeholder={t("searchPlaceholder", "Search by name or type…")}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="max-w-sm"
-            />
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("col.name", "Name")}</TableHead>
-                  <TableHead>{t("col.type", "Type")}</TableHead>
-                  <TableHead>{t("col.status", "Status")}</TableHead>
-                  <TableHead>{t("col.usedBy", "Used by")}</TableHead>
-                  <TableHead>{t("col.updated", "Updated")}</TableHead>
-                  <TableHead className="w-[60px]" />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((c) => (
-                  <Row
-                    key={c.uid}
-                    org={org}
-                    channel={c}
-                    onDelete={() =>
-                      deleteMutation.mutate(c.uid, {
-                        onSuccess: () =>
-                          toast.success(t("deleted", "Channel deleted")),
-                        onError: () =>
-                          toast.error(t("deleteFailed", "Delete failed")),
-                      })
-                    }
-                    navigate={navigate}
-                  />
+        <>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="relative flex-1 min-w-[200px] max-w-sm">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={t("searchPlaceholder", "Search by name or type…")}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              data-testid="channels-refresh"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+              />
+            </Button>
+          </div>
+
+          <div className="rounded-md border">
+            {isLoading ? (
+              <div className="space-y-2 p-2">
+                {[...Array(6)].map((_, i) => (
+                  <Skeleton key={i} className="h-12 rounded-lg" />
                 ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>{t("col.name", "Name")}</TableHead>
+                    <TableHead>{t("col.type", "Type")}</TableHead>
+                    <TableHead>{t("col.status", "Status")}</TableHead>
+                    <TableHead>{t("col.usedBy", "Used by")}</TableHead>
+                    <TableHead>{t("col.updated", "Updated")}</TableHead>
+                    <TableHead className="w-[60px]" />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {filtered.map((c) => (
+                    <Row
+                      key={c.uid}
+                      org={org}
+                      channel={c}
+                      onDelete={() =>
+                        deleteMutation.mutate(c.uid, {
+                          onSuccess: () =>
+                            toast.success(t("deleted", "Channel deleted")),
+                          onError: () =>
+                            toast.error(t("deleteFailed", "Delete failed")),
+                        })
+                      }
+                      navigate={navigate}
+                    />
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </>
       )}
     </div>
   );
