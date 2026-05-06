@@ -14,6 +14,7 @@ import {
   BadgeCheck,
   LogOut,
   Moon,
+  Palette,
   Sun,
   ChevronUp,
   User2,
@@ -103,6 +104,11 @@ const testNavItems = [
     titleKey: "testTools",
     path: "/orgs/$org/test" as const,
     icon: Bug,
+  },
+  {
+    titleKey: "designReference",
+    path: "/orgs/$org/design-reference" as const,
+    icon: Palette,
   },
 ];
 
