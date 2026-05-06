@@ -22,6 +22,7 @@ import {
   Globe,
   LayoutDashboard,
   ListChecks,
+  Palette,
   Server,
   User2,
 } from "lucide-react";
@@ -105,6 +106,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
+  const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -437,6 +439,15 @@ function Breadcrumbs({ org }: { org: string }) {
       <span className={activeClass}>
         <GitBranch className={iconClass} />
         {t("dependencies")}
+      </span>
+    );
+  }
+
+  if (isDesignReference) {
+    return (
+      <span className={activeClass}>
+        <Palette className={iconClass} />
+        {t("designReference")}
       </span>
     );
   }

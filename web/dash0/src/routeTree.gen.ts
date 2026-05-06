@@ -28,6 +28,7 @@ import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgIncidentsRouteImport } from './routes/orgs/$org/incidents'
 import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
 import { Route as OrgsOrgEscalationPoliciesRouteImport } from './routes/orgs/$org/escalation-policies'
+import { Route as OrgsOrgDesignReferenceRouteImport } from './routes/orgs/$org/design-reference'
 import { Route as OrgsOrgChecksRouteImport } from './routes/orgs/$org/checks'
 import { Route as OrgsOrgChannelsRouteImport } from './routes/orgs/$org/channels'
 import { Route as OrgsOrgBadgesRouteImport } from './routes/orgs/$org/badges'
@@ -175,6 +176,11 @@ const OrgsOrgEscalationPoliciesRoute =
     path: '/escalation-policies',
     getParentRoute: () => OrgsOrgRoute,
   } as any)
+const OrgsOrgDesignReferenceRoute = OrgsOrgDesignReferenceRouteImport.update({
+  id: '/design-reference',
+  path: '/design-reference',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
 const OrgsOrgChecksRoute = OrgsOrgChecksRouteImport.update({
   id: '/checks',
   path: '/checks',
@@ -453,6 +459,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/channels': typeof OrgsOrgChannelsRouteWithChildren
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
+  '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
@@ -519,6 +526,7 @@ export interface FileRoutesByTo {
   '/reset-password/$token': typeof ResetPasswordTokenRoute
   '/auth/slack/complete': typeof AuthSlackCompleteRoute
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
+  '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
@@ -581,6 +589,7 @@ export interface FileRoutesById {
   '/orgs/$org/badges': typeof OrgsOrgBadgesRoute
   '/orgs/$org/channels': typeof OrgsOrgChannelsRouteWithChildren
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
+  '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
@@ -653,6 +662,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/badges'
     | '/orgs/$org/channels'
     | '/orgs/$org/checks'
+    | '/orgs/$org/design-reference'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
@@ -719,6 +729,7 @@ export interface FileRouteTypes {
     | '/reset-password/$token'
     | '/auth/slack/complete'
     | '/orgs/$org/badges'
+    | '/orgs/$org/design-reference'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
     | '/orgs/$org/register'
@@ -780,6 +791,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/badges'
     | '/orgs/$org/channels'
     | '/orgs/$org/checks'
+    | '/orgs/$org/design-reference'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
@@ -982,6 +994,13 @@ declare module '@tanstack/react-router' {
       path: '/escalation-policies'
       fullPath: '/orgs/$org/escalation-policies'
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/design-reference': {
+      id: '/orgs/$org/design-reference'
+      path: '/design-reference'
+      fullPath: '/orgs/$org/design-reference'
+      preLoaderRoute: typeof OrgsOrgDesignReferenceRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/checks': {
@@ -1547,6 +1566,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgBadgesRoute: typeof OrgsOrgBadgesRoute
   OrgsOrgChannelsRoute: typeof OrgsOrgChannelsRouteWithChildren
   OrgsOrgChecksRoute: typeof OrgsOrgChecksRouteWithChildren
+  OrgsOrgDesignReferenceRoute: typeof OrgsOrgDesignReferenceRoute
   OrgsOrgEscalationPoliciesRoute: typeof OrgsOrgEscalationPoliciesRouteWithChildren
   OrgsOrgEventsRoute: typeof OrgsOrgEventsRoute
   OrgsOrgIncidentsRoute: typeof OrgsOrgIncidentsRouteWithChildren
@@ -1566,6 +1586,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgBadgesRoute: OrgsOrgBadgesRoute,
   OrgsOrgChannelsRoute: OrgsOrgChannelsRouteWithChildren,
   OrgsOrgChecksRoute: OrgsOrgChecksRouteWithChildren,
+  OrgsOrgDesignReferenceRoute: OrgsOrgDesignReferenceRoute,
   OrgsOrgEscalationPoliciesRoute: OrgsOrgEscalationPoliciesRouteWithChildren,
   OrgsOrgEventsRoute: OrgsOrgEventsRoute,
   OrgsOrgIncidentsRoute: OrgsOrgIncidentsRouteWithChildren,
