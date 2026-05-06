@@ -392,43 +392,16 @@ function ButtonsBadgesSection() {
           importLine={`import { Button } from "@/components/ui/button";`}
         />
 
-        <h3 className="text-sm font-medium">Action buttons (icon + label)</h3>
+        <h3 className="text-sm font-medium">Action buttons (icon + label, mobile collapses to icon)</h3>
         <p className="text-sm text-muted-foreground">
-          Pair every action with a recognisable icon and a one-word verb. Use
+          Pair every action with a recognisable icon and a one-word verb. Use{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Save</code> (floppy disk) for
           save, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code> for
           delete, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Pencil</code> for
           edit, and <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RotateCw</code>{" "}
-          for reload. The icon is the primary signal; the label disambiguates.
-        </p>
-        <ExampleRow
-          preview={
-            <>
-              <Button>
-                <Save />
-                Save
-              </Button>
-              <Button variant="destructive">
-                <Trash2 />
-                Delete
-              </Button>
-              <Button variant="outline">
-                <Pencil />
-                Edit
-              </Button>
-              <Button variant="outline">
-                <RotateCw />
-                Reload
-              </Button>
-            </>
-          }
-          importLine={`import { Save, Trash2, Pencil, RotateCw } from "lucide-react";`}
-        />
-
-        <h3 className="text-sm font-medium">Mobile: collapse label, keep icon</h3>
-        <p className="text-sm text-muted-foreground">
-          Below the <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>{" "}
-          breakpoint, the label is hidden and only the icon remains. Wrap the label in{" "}
+          for reload. Below the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code> breakpoint, the
+          label collapses and only the icon remains: wrap the label in{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
             &lt;span className=&quot;hidden sm:inline&quot;&gt;
           </code>{" "}
