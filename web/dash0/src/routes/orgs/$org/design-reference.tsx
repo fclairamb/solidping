@@ -141,7 +141,7 @@ function SubNav() {
   );
 }
 
-export function Section({
+function Section({
   id,
   title,
   description,
@@ -165,7 +165,7 @@ export function Section({
   );
 }
 
-export function CodeSnippet({ code }: { code: string }) {
+function CodeSnippet({ code }: { code: string }) {
   const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
@@ -196,7 +196,7 @@ export function CodeSnippet({ code }: { code: string }) {
   );
 }
 
-export function ExampleRow({
+function ExampleRow({
   preview,
   importLine,
 }: {
