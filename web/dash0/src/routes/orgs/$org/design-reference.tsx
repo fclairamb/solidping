@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertCircle,
+  ArrowLeft,
   ArrowRight,
   Check,
   CheckCircle2,
@@ -14,8 +15,12 @@ import {
   Moon,
   MoreVertical,
   Palette,
+  Pencil,
+  RotateCw,
+  Save,
   Search,
   Sun,
+  Trash2,
   Triangle,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -354,7 +359,7 @@ function ButtonsBadgesSection() {
     <Section
       id="buttons-badges"
       title="Buttons & badges"
-      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job."
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb, collapse to icon-only on mobile, and the top-right back button is always icon-only."
     >
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Button variants</h3>
@@ -385,6 +390,102 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Button } from "@/components/ui/button";`}
+        />
+
+        <h3 className="text-sm font-medium">Action buttons (icon + label)</h3>
+        <p className="text-sm text-muted-foreground">
+          Pair every action with a recognisable icon and a one-word verb. Use
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Save</code> (floppy disk) for
+          save, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code> for
+          delete, <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Pencil</code> for
+          edit, and <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RotateCw</code>{" "}
+          for reload. The icon is the primary signal; the label disambiguates.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <Button>
+                <Save />
+                Save
+              </Button>
+              <Button variant="destructive">
+                <Trash2 />
+                Delete
+              </Button>
+              <Button variant="outline">
+                <Pencil />
+                Edit
+              </Button>
+              <Button variant="outline">
+                <RotateCw />
+                Reload
+              </Button>
+            </>
+          }
+          importLine={`import { Save, Trash2, Pencil, RotateCw } from "lucide-react";`}
+        />
+
+        <h3 className="text-sm font-medium">Mobile: collapse label, keep icon</h3>
+        <p className="text-sm text-muted-foreground">
+          Below the <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>{" "}
+          breakpoint, the label is hidden and only the icon remains. Wrap the label in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;span className=&quot;hidden sm:inline&quot;&gt;
+          </code>{" "}
+          and pair every button with an{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code> so screen
+          readers still announce the action when the text is gone. Resize your viewport to verify.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <Button aria-label="Save">
+                <Save />
+                <span className="hidden sm:inline">Save</span>
+              </Button>
+              <Button variant="destructive" aria-label="Delete">
+                <Trash2 />
+                <span className="hidden sm:inline">Delete</span>
+              </Button>
+              <Button variant="outline" aria-label="Edit">
+                <Pencil />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+              <Button variant="outline" aria-label="Reload">
+                <RotateCw />
+                <span className="hidden sm:inline">Reload</span>
+              </Button>
+            </>
+          }
+          importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
+        />
+
+        <h3 className="text-sm font-medium">Back button (top-right, icon only)</h3>
+        <p className="text-sm text-muted-foreground">
+          When a page has a back button, it sits next to the other top-right actions and is{" "}
+          <strong>always icon-only</strong> regardless of viewport — never paired with a
+          &quot;Back&quot; label. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code> with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
+          and an <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="flex w-full items-center justify-end gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <Button variant="outline" aria-label="Edit">
+                <Pencil />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+              <Button aria-label="Save">
+                <Save />
+                <span className="hidden sm:inline">Save</span>
+              </Button>
+            </div>
+          }
+          importLine={`<Button variant="ghost" size="icon" aria-label="Back">\n  <ArrowLeft />\n</Button>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>
