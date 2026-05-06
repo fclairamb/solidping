@@ -35,6 +35,8 @@ function DesignReferencePage() {
       <SubNav />
       <OverviewSection />
       <PageHeaderSection />
+      <BreadcrumbsSection />
+      <ColorTokensSection />
     </div>
   );
 }
@@ -204,6 +206,91 @@ function PageHeaderSection() {
         />
       </div>
       <CodeSnippet code={`import { PageHeader } from "@/components/shared/page-header";`} />
+    </Section>
+  );
+}
+
+function BreadcrumbsSection() {
+  const snippet = `// In web/dash0/src/routes/orgs/$org.tsx, add a section flag and a branch
+const isFooBar = matches.some((m) => m.routeId.startsWith("/orgs/$org/foo-bar"));
+
+if (isFooBar) {
+  return (
+    <span className={activeClass}>
+      <FooBarIcon className={iconClass} />
+      Foo Bar
+    </span>
+  );
+}`;
+  return (
+    <Section
+      id="breadcrumbs"
+      title="Breadcrumbs"
+      description="Breadcrumbs are route-driven, not a drop-in component. They live in the Breadcrumbs() function inside web/dash0/src/routes/orgs/$org.tsx. Each section adds a flag (isChecks, isIncidents, …) and a branch. The header at the top of this very page is a live example."
+    >
+      <div className="rounded-md border bg-card p-4">
+        <p className="text-sm text-muted-foreground">
+          Look at the header bar above the sidebar trigger — the breadcrumb shows{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">Design Reference</code>{" "}
+          with the Palette icon. That branch was added alongside the others in{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">$org.tsx</code>.
+        </p>
+      </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = [
+  { name: "primary", varName: "--primary", description: "Brand blue, primary actions" },
+  { name: "destructive", varName: "--destructive", description: "Errors, destructive actions" },
+  { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
+  { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
+  { name: "status-ok", varName: "--status-ok", description: "Healthy / passing" },
+  { name: "status-warning", varName: "--status-warning", description: "Degraded" },
+  { name: "status-error", varName: "--status-error", description: "Failing" },
+];
+
+const CHART_TOKENS = ["--chart-1", "--chart-2", "--chart-3", "--chart-4", "--chart-5"];
+
+function Swatch({ varName, label, description }: { varName: string; label: string; description?: string }) {
+  return (
+    <div className="flex items-center gap-3 rounded-md border bg-card p-3">
+      <div
+        className="h-10 w-10 shrink-0 rounded-md border"
+        style={{ backgroundColor: `var(${varName})` }}
+      />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium leading-tight">{label}</p>
+        <p className="font-mono text-xs text-muted-foreground">{varName}</p>
+        {description ? (
+          <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function ColorTokensSection() {
+  return (
+    <Section
+      id="color-tokens"
+      title="Color tokens"
+      description="Use the CSS variable token, not a hex. Tailwind classes like bg-primary, text-destructive, and bg-muted resolve to these tokens — they swap correctly in dark mode."
+    >
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {COLOR_TOKENS.map((t) => (
+          <Swatch key={t.varName} varName={t.varName} label={t.name} description={t.description} />
+        ))}
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Chart palette</h3>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {CHART_TOKENS.map((v, i) => (
+            <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
+          ))}
+        </div>
+      </div>
     </Section>
   );
 }
