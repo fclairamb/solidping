@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { GitBranch } from "lucide-react";
+import { GitBranch, RefreshCw, Search } from "lucide-react";
 
 import { useDependencyGraph, type DependencyKind } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -25,7 +25,8 @@ export const Route = createFileRoute("/orgs/$org/dependencies/")({
 function DependenciesIndexPage() {
   const { t } = useTranslation(["dependencies", "common"]);
   const { org } = Route.useParams();
-  const { data: graph, isLoading, error, refetch } = useDependencyGraph(org);
+  const { data: graph, isLoading, isRefetching, error, refetch } =
+    useDependencyGraph(org);
   const [filter, setFilter] = useState("");
 
   const nameByUid = useMemo(() => {
@@ -81,93 +82,101 @@ function DependenciesIndexPage() {
         <p className="text-muted-foreground">{t("dependencies:list.subtitle")}</p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("dependencies:list.title")}</CardTitle>
-          <CardDescription>{t("dependencies:list.subtitle")}</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
             placeholder={t("dependencies:list.filter")}
-            className="max-w-sm"
+            className="pl-9"
             data-testid="dependencies-filter"
           />
+        </div>
+        <Button
+          variant="outline"
+          size="icon"
+          onClick={() => refetch()}
+          disabled={isRefetching}
+          data-testid="dependencies-refresh"
+        >
+          <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+        </Button>
+      </div>
 
-          {isLoading ? (
-            <div className="space-y-2">
-              {[...Array(3)].map((_, i) => (
-                <Skeleton key={i} className="h-10 rounded" />
-              ))}
-            </div>
-          ) : rows.length === 0 ? (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              {t("dependencies:list.empty")}
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("dependencies:list.parent")}</TableHead>
-                  <TableHead className="w-12" />
-                  <TableHead>{t("dependencies:list.child")}</TableHead>
-                  <TableHead>{t("dependencies:list.kind")}</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.uid} data-testid="dependency-row">
-                    <TableCell>
-                      {r.parent ? (
-                        <Link
-                          to="/orgs/$org/checks/$checkUid"
-                          params={{ org, checkUid: r.parent.uid }}
-                          search={{ graphPeriod: undefined, graphFull: undefined }}
-                          className="hover:underline"
-                        >
-                          {r.parent.name || r.parent.slug}
-                        </Link>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">→</TableCell>
-                    <TableCell>
-                      {r.child ? (
-                        <Link
-                          to="/orgs/$org/checks/$checkUid"
-                          params={{ org, checkUid: r.child.uid }}
-                          search={{ graphPeriod: undefined, graphFull: undefined }}
-                          className="hover:underline"
-                        >
-                          {r.child.name || r.child.slug}
-                        </Link>
-                      ) : (
-                        "-"
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={
-                          r.kind === "hard"
-                            ? "bg-red-500/10 text-red-500"
-                            : "bg-blue-500/10 text-blue-500"
-                        }
+      <div className="rounded-md border">
+        {isLoading ? (
+          <div className="space-y-2 p-2">
+            {[...Array(6)].map((_, i) => (
+              <Skeleton key={i} className="h-12 rounded-lg" />
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {t("dependencies:list.empty")}
+          </p>
+        ) : (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t("dependencies:list.parent")}</TableHead>
+                <TableHead className="w-12" />
+                <TableHead>{t("dependencies:list.child")}</TableHead>
+                <TableHead>{t("dependencies:list.kind")}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((r) => (
+                <TableRow key={r.uid} data-testid="dependency-row">
+                  <TableCell>
+                    {r.parent ? (
+                      <Link
+                        to="/orgs/$org/checks/$checkUid"
+                        params={{ org, checkUid: r.parent.uid }}
+                        search={{ graphPeriod: undefined, graphFull: undefined }}
+                        className="hover:underline"
                       >
-                        {r.kind === "hard"
-                          ? t("dependencies:kindHard")
-                          : t("dependencies:kindSoft")}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                        {r.parent.name || r.parent.slug}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell className="text-muted-foreground">→</TableCell>
+                  <TableCell>
+                    {r.child ? (
+                      <Link
+                        to="/orgs/$org/checks/$checkUid"
+                        params={{ org, checkUid: r.child.uid }}
+                        search={{ graphPeriod: undefined, graphFull: undefined }}
+                        className="hover:underline"
+                      >
+                        {r.child.name || r.child.slug}
+                      </Link>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        r.kind === "hard"
+                          ? "bg-red-500/10 text-red-500"
+                          : "bg-blue-500/10 text-blue-500"
+                      }
+                    >
+                      {r.kind === "hard"
+                        ? t("dependencies:kindHard")
+                        : t("dependencies:kindSoft")}
+                    </Badge>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </div>
     </div>
   );
 }
