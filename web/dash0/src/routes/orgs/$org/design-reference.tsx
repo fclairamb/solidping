@@ -4,9 +4,10 @@
 
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { Check, Copy, Moon, Palette, Sun } from "lucide-react";
+import { ArrowRight, Check, Copy, Moon, Palette, Sun } from "lucide-react";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
@@ -37,6 +38,7 @@ function DesignReferencePage() {
       <PageHeaderSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
+      <ButtonsBadgesSection />
     </div>
   );
 }
@@ -268,6 +270,63 @@ function Swatch({ varName, label, description }: { varName: string; label: strin
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ButtonsBadgesSection() {
+  return (
+    <Section
+      id="buttons-badges"
+      title="Buttons & badges"
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job."
+    >
+      <div className="space-y-4">
+        <h3 className="text-sm font-medium">Button variants</h3>
+        <ExampleRow
+          preview={
+            <>
+              <Button>Default</Button>
+              <Button variant="destructive">Destructive</Button>
+              <Button variant="outline">Outline</Button>
+              <Button variant="secondary">Secondary</Button>
+              <Button variant="ghost">Ghost</Button>
+              <Button variant="link">Link</Button>
+            </>
+          }
+          importLine={`import { Button } from "@/components/ui/button";`}
+        />
+
+        <h3 className="text-sm font-medium">Button sizes</h3>
+        <ExampleRow
+          preview={
+            <>
+              <Button size="sm">Small</Button>
+              <Button size="default">Default</Button>
+              <Button size="lg">Large</Button>
+              <Button size="icon" aria-label="Icon button">
+                <ArrowRight />
+              </Button>
+            </>
+          }
+          importLine={`import { Button } from "@/components/ui/button";`}
+        />
+
+        <h3 className="text-sm font-medium">Badge variants</h3>
+        <ExampleRow
+          preview={
+            <>
+              <Badge>Default</Badge>
+              <Badge variant="secondary">Secondary</Badge>
+              <Badge variant="success">Success</Badge>
+              <Badge variant="warning">Warning</Badge>
+              <Badge variant="destructive">Destructive</Badge>
+              <Badge variant="outline">Outline</Badge>
+            </>
+          }
+          importLine={`import { Badge } from "@/components/ui/badge";`}
+        />
+      </div>
+    </Section>
   );
 }
 
