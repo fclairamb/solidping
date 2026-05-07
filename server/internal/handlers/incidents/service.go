@@ -38,6 +38,11 @@ const MaxSnoozeDuration = 7 * 24 * time.Hour
 // avoids drift across events.
 const payloadKeyVia = "via"
 
+// payloadKeyActorUID is the payload key emitEvent reads when a caller wants
+// the resulting event row attributed to a specific user instead of the
+// default system actor. Used by the manual resolve / ack / snooze paths.
+const payloadKeyActorUID = "actor_uid"
+
 // viaWeb identifies an action taken from the dashboard.
 const viaWeb = "web"
 
@@ -869,12 +874,25 @@ func (s *Service) generateIncidentTitle(check *models.Check) string {
 	return "Check is down"
 }
 
-// emitEvent creates an event for the incident lifecycle.
+// emitEvent creates an event for the incident lifecycle. When the payload
+// carries a non-empty `actor_uid` string, the recorded event is attributed
+// to that user instead of the default system actor — used by the manual
+// resolve / ack / snooze paths so the audit trail keeps the operator UID.
 func (s *Service) emitEvent(
 	ctx context.Context, orgUID string, eventType models.EventType, incident *models.Incident, payload models.JSONMap,
 ) error {
-	event := models.NewEvent(orgUID, eventType, models.ActorTypeSystem)
+	actorType := models.ActorTypeSystem
+	var actorUID *string
+	if payload != nil {
+		if uid, ok := payload[payloadKeyActorUID].(string); ok && uid != "" {
+			actorType = models.ActorTypeUser
+			actorUID = &uid
+		}
+	}
+
+	event := models.NewEvent(orgUID, eventType, actorType)
 	event.IncidentUID = &incident.UID
+	event.ActorUID = actorUID
 	event.Payload = payload
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
@@ -1946,25 +1964,29 @@ func (s *Service) resolveIncidentByOrgUID(
 	incident.ResolutionType = &resolutionType
 	incident.ResolvedBy = update.ResolvedBy
 
-	event := models.NewEvent(orgUID, models.EventTypeIncidentResolved, models.ActorTypeUser)
-	event.IncidentUID = &incident.UID
-	event.CheckUID = &incident.CheckUID
-	event.Payload = models.JSONMap{
+	// Cancel pending escalation steps that haven't fired yet. Must happen
+	// BEFORE emitEvent — the cancel sweep matches every pending job by
+	// incidentUid, so doing it after would also drop the resolved
+	// notifications we're about to queue.
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
+	// Route through emitEvent so the channel fan-out and group-incident dedup
+	// shared with auto-resolve also runs here. Without this, manual resolves
+	// silently skipped notifying every channel that fired on incident open.
+	payload := models.JSONMap{
 		payloadKeyVia:     req.Via,
 		"note":            req.Note,
 		"resolution_type": resolutionType,
+		keyCheckUID:       incident.CheckUID,
 	}
-
 	if req.ActorUID != "" {
-		event.ActorUID = &req.ActorUID
+		payload[payloadKeyActorUID] = req.ActorUID
 	}
 
-	if err := s.db.CreateEvent(ctx, event); err != nil {
-		slog.WarnContext(ctx, "Failed to create resolve event",
+	if err := s.emitEvent(ctx, orgUID, models.EventTypeIncidentResolved, incident, payload); err != nil {
+		slog.WarnContext(ctx, "Failed to emit resolve event",
 			"incident_uid", incident.UID, "error", err)
 	}
-
-	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	return incident, nil
 }
