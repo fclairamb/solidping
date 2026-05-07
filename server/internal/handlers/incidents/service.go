@@ -1964,6 +1964,12 @@ func (s *Service) resolveIncidentByOrgUID(
 	incident.ResolutionType = &resolutionType
 	incident.ResolvedBy = update.ResolvedBy
 
+	// Cancel pending escalation steps that haven't fired yet. Must happen
+	// BEFORE emitEvent — the cancel sweep matches every pending job by
+	// incidentUid, so doing it after would also drop the resolved
+	// notifications we're about to queue.
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
 	// Route through emitEvent so the channel fan-out and group-incident dedup
 	// shared with auto-resolve also runs here. Without this, manual resolves
 	// silently skipped notifying every channel that fired on incident open.
@@ -1981,8 +1987,6 @@ func (s *Service) resolveIncidentByOrgUID(
 		slog.WarnContext(ctx, "Failed to emit resolve event",
 			"incident_uid", incident.UID, "error", err)
 	}
-
-	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	return incident, nil
 }
