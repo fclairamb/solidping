@@ -492,24 +492,33 @@ List regions relevant to the organization. Auth: required
 
 ---
 
-## Connections (Integrations)
+## Channels (formerly: Connections)
 
-Manage notification/integration connections (Slack, Discord, webhook, etc.) at the organization level.
+Manage notification channels (Slack, Discord, email, webhook, etc.) at the
+organization level.
 
-### GET /api/v1/orgs/:org/connections
-List all connections. Auth: required
+> **Naming alignment in progress.** The dashboard, internal docs, and
+> these endpoints' canonical name is **channel**. The legacy name
+> **connection** stays accepted as a path alias for one release so
+> external clients (CLIs, MCP tools) can switch over without breakage.
+> The `/connections` paths return identical responses to the
+> `/channels` paths and will be removed in a future revision per
+> [`specs/done/2026/05/2026-05-07-03-align-channel-and-connection-naming.md`](#).
 
-### POST /api/v1/orgs/:org/connections
-Create a new connection. Auth: required
+### GET /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
+List all channels. Auth: required
 
-### GET /api/v1/orgs/:org/connections/:uid
-Get a connection. Auth: required
+### POST /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
+Create a new channel. Auth: required
 
-### PATCH /api/v1/orgs/:org/connections/:uid
-Update a connection. Auth: required
+### GET /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Get a channel. Auth: required
 
-### DELETE /api/v1/orgs/:org/connections/:uid
-Delete a connection. Auth: required
+### PATCH /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Update a channel. Auth: required
+
+### DELETE /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Delete a channel. Auth: required
 
 ---
 
