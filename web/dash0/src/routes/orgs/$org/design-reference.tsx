@@ -12,6 +12,7 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Eye,
   Info,
   Moon,
   MoreVertical,
@@ -814,7 +815,10 @@ function FeedbackSection() {
           preview={
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="destructive">Delete…</Button>
+                <Button variant="destructive">
+                  <Trash2 />
+                  Delete
+                </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
@@ -903,10 +907,17 @@ function FeedbackSection() {
               <DropdownMenuContent align="end">
                 <DropdownMenuLabel>Actions</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem>View</DropdownMenuItem>
-                <DropdownMenuItem>Edit</DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Eye />
+                  View
+                </DropdownMenuItem>
+                <DropdownMenuItem>
+                  <Pencil />
+                  Edit
+                </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem className="text-destructive focus:text-destructive">
+                  <Trash2 />
                   Delete
                 </DropdownMenuItem>
               </DropdownMenuContent>
