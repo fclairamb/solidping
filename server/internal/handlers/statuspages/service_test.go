@@ -1,13 +1,33 @@
 package statuspages
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
+
+const testPublicSlug = "public"
+
+func setupStatusPagesTest(t *testing.T) (context.Context, *Service, *models.Organization) {
+	t.Helper()
+
+	ctx := t.Context()
+
+	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, dbService.Initialize(ctx))
+	t.Cleanup(func() { _ = dbService.Close() })
+
+	org := models.NewOrganization("acme", "Acme")
+	require.NoError(t, dbService.CreateOrganization(ctx, org))
+
+	return ctx, NewService(dbService), org
+}
 
 func ptrFloat64(v float64) *float64 { return &v }
 func ptrFloat32(v float32) *float32 { return &v }
@@ -154,4 +174,110 @@ func TestBuildTodaySynth_ReturnsNilOnEmpty(t *testing.T) {
 	r.Nil(buildTodaySynth("check-1", nil, todayStart))
 	r.Nil(buildTodaySynth("check-1", []*models.Result{}, todayStart))
 	r.Nil(buildTodaySynth("check-1", []*models.Result{{}}, todayStart), "no avail in any row → nil")
+}
+
+// TestCreateResource_AssignsSequentialPositions pins the contract that new
+// resources land at max+1, never sharing position=0. The dashboard's swap-based
+// reorder UI relies on positions being distinct.
+func TestCreateResource_AssignsSequentialPositions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	checks := make([]*models.Check, 3)
+	for i := range checks {
+		c := models.NewCheck(org.UID, "", "http")
+		r.NoError(svc.db.CreateCheck(ctx, c))
+		checks[i] = c
+	}
+
+	resources := make([]StatusPageResourceResponse, 3)
+	for i, c := range checks {
+		res, errCreate := svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: c.UID})
+		r.NoError(errCreate)
+		resources[i] = res
+	}
+
+	r.Equal(1, resources[0].Position, "first resource should be position 1")
+	r.Equal(2, resources[1].Position, "second resource should be position 2")
+	r.Equal(3, resources[2].Position, "third resource should be position 3")
+}
+
+// TestCreateResource_SwapPositionsReordersList exercises the exact two-PATCH
+// swap the dashboard performs when the user clicks the move-up/down chevrons.
+// Pre-fix every resource shared position=0 so the swap was a no-op; this test
+// catches a regression to that bug.
+func TestCreateResource_SwapPositionsReordersList(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	checks := make([]*models.Check, 3)
+	resources := make([]StatusPageResourceResponse, 3)
+	for i := range checks {
+		c := models.NewCheck(org.UID, "", "http")
+		r.NoError(svc.db.CreateCheck(ctx, c))
+		checks[i] = c
+
+		res, errCreate := svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: c.UID})
+		r.NoError(errCreate)
+		resources[i] = res
+	}
+
+	swapPosA := resources[1].Position
+	swapPosB := resources[0].Position
+	updateA := UpdateResourceRequest{Position: &swapPosA}
+	updateB := UpdateResourceRequest{Position: &swapPosB}
+	_, err = svc.UpdateResource(ctx, org.Slug, page.UID, section.UID, resources[0].UID, updateA)
+	r.NoError(err)
+	_, err = svc.UpdateResource(ctx, org.Slug, page.UID, section.UID, resources[1].UID, updateB)
+	r.NoError(err)
+
+	listed, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(listed, 3)
+	r.Equal(resources[1].UID, listed[0].UID, "swapped second resource should now be first")
+	r.Equal(resources[0].UID, listed[1].UID, "swapped first resource should now be second")
+	r.Equal(resources[2].UID, listed[2].UID, "untouched third resource stays last")
+}
+
+// TestCreateSection_AssignsSequentialPositions mirrors the resource test for
+// the section level, where the same legacy bug existed.
+func TestCreateSection_AssignsSequentialPositions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	first, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+	r.Equal(1, first.Position)
+
+	second, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Edge", Slug: "edge"})
+	r.NoError(err)
+	r.Equal(2, second.Position)
+
+	third, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Internal", Slug: "internal"})
+	r.NoError(err)
+	r.Equal(3, third.Position)
 }

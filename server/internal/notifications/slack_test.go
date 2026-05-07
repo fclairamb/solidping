@@ -821,6 +821,10 @@ func (m *mockDBService) ListStatusPageSections(_ context.Context, _ string) ([]*
 	panic("not implemented")
 }
 
+func (m *mockDBService) MaxStatusPageSectionPosition(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateStatusPageSection(_ context.Context, _ string, _ *models.StatusPageSectionUpdate) error {
 	panic("not implemented")
 }
@@ -838,6 +842,10 @@ func (m *mockDBService) GetStatusPageResource(_ context.Context, _, _ string) (*
 }
 
 func (m *mockDBService) ListStatusPageResources(_ context.Context, _ string) ([]*models.StatusPageResource, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MaxStatusPageResourcePosition(_ context.Context, _ string) (int, error) {
 	panic("not implemented")
 }
 

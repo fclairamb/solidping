@@ -3287,6 +3287,24 @@ func (s *Service) ListStatusPageSections(
 	return sections, err
 }
 
+// MaxStatusPageSectionPosition returns the largest position currently used by
+// any non-deleted section in the given status page, or 0 if no sections exist.
+// Callers add 1 to append a new section at the end.
+func (s *Service) MaxStatusPageSectionPosition(
+	ctx context.Context, pageUID string,
+) (int, error) {
+	var maxPosition int
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageSection)(nil)).
+		ColumnExpr("COALESCE(MAX(position), 0)").
+		Where("status_page_uid = ?", pageUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx, &maxPosition)
+
+	return maxPosition, err
+}
+
 // UpdateStatusPageSection updates a section by UID.
 func (s *Service) UpdateStatusPageSection(
 	ctx context.Context, uid string, update *models.StatusPageSectionUpdate,
@@ -3352,6 +3370,23 @@ func (s *Service) GetStatusPageResource(
 	}
 
 	return resource, nil
+}
+
+// MaxStatusPageResourcePosition returns the largest position currently used by
+// any resource in the given section, or 0 if no resources exist. Callers add 1
+// to append a new resource at the end.
+func (s *Service) MaxStatusPageResourcePosition(
+	ctx context.Context, sectionUID string,
+) (int, error) {
+	var maxPosition int
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageResource)(nil)).
+		ColumnExpr("COALESCE(MAX(position), 0)").
+		Where("section_uid = ?", sectionUID).
+		Scan(ctx, &maxPosition)
+
+	return maxPosition, err
 }
 
 // ListStatusPageResources lists all resources for a section, ordered by position.

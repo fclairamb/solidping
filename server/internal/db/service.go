@@ -308,6 +308,7 @@ type Service interface {
 	GetStatusPageSection(ctx context.Context, pageUID, uid string) (*models.StatusPageSection, error)
 	GetStatusPageSectionBySlug(ctx context.Context, pageUID, slug string) (*models.StatusPageSection, error)
 	ListStatusPageSections(ctx context.Context, pageUID string) ([]*models.StatusPageSection, error)
+	MaxStatusPageSectionPosition(ctx context.Context, pageUID string) (int, error)
 	UpdateStatusPageSection(ctx context.Context, uid string, update *models.StatusPageSectionUpdate) error
 	DeleteStatusPageSection(ctx context.Context, uid string) error
 
@@ -315,6 +316,7 @@ type Service interface {
 	CreateStatusPageResource(ctx context.Context, resource *models.StatusPageResource) error
 	GetStatusPageResource(ctx context.Context, sectionUID, uid string) (*models.StatusPageResource, error)
 	ListStatusPageResources(ctx context.Context, sectionUID string) ([]*models.StatusPageResource, error)
+	MaxStatusPageResourcePosition(ctx context.Context, sectionUID string) (int, error)
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
 

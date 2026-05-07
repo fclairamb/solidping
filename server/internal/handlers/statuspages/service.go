@@ -415,6 +415,37 @@ func (s *Service) ListSections(
 	return responses, nil
 }
 
+// resolveSectionPosition picks the position for a new section: the caller's
+// requested value if any, otherwise max(existing) + 1 so the section appends
+// at the end. Defaulting to 0 would force every new section to share
+// position=0, breaking the swap-based reorder UI.
+func (s *Service) resolveSectionPosition(ctx context.Context, pageUID string, requested *int) (int, error) {
+	if requested != nil {
+		return *requested, nil
+	}
+
+	maxPosition, err := s.db.MaxStatusPageSectionPosition(ctx, pageUID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compute next section position: %w", err)
+	}
+
+	return maxPosition + 1, nil
+}
+
+// resolveResourcePosition is the per-section equivalent of resolveSectionPosition.
+func (s *Service) resolveResourcePosition(ctx context.Context, sectionUID string, requested *int) (int, error) {
+	if requested != nil {
+		return *requested, nil
+	}
+
+	maxPosition, err := s.db.MaxStatusPageResourcePosition(ctx, sectionUID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compute next resource position: %w", err)
+	}
+
+	return maxPosition + 1, nil
+}
+
 // CreateSection creates a new section within a status page.
 func (s *Service) CreateSection(
 	ctx context.Context, orgSlug, pageIdentifier string, req CreateSectionRequest,
@@ -437,9 +468,9 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, ErrSlugConflict
 	}
 
-	position := 0
-	if req.Position != nil {
-		position = *req.Position
+	position, err := s.resolveSectionPosition(ctx, page.UID, req.Position)
+	if err != nil {
+		return StatusPageSectionResponse{}, err
 	}
 
 	section := models.NewStatusPageSection(page.UID, req.Name, req.Slug, position)
@@ -585,9 +616,9 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, ErrCheckNotFound
 	}
 
-	position := 0
-	if req.Position != nil {
-		position = *req.Position
+	position, err := s.resolveResourcePosition(ctx, section.UID, req.Position)
+	if err != nil {
+		return StatusPageResourceResponse{}, err
 	}
 
 	resource := models.NewStatusPageResource(section.UID, check.UID, position)
