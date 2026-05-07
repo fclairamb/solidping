@@ -17,6 +17,10 @@ the relevant code.
 
 - [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
 - [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
+- [features/entitlements.md](features/entitlements.md) — Per-org limits and feature toggles: defaults seed, three-layer resolution (defaults → row → live usage), sources (default / self-hosted / admin / billing-service), stale fallback, audit log.
+- [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
+- [features/mcp.md](features/mcp.md) — Model Context Protocol surface: endpoint, scopes (`mcp` / `mcp:read`), tool inventory, prompts, sessions, protocol version negotiation, how to add a new tool.
+- [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
 
 ## Conventions
 
