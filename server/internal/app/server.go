@@ -668,15 +668,24 @@ func (s *Server) SetupRoutes() {
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
 	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
 
-	// Integration connections routes (authentication required)
+	// Integration connections routes (authentication required).
+	//
+	// We expose the same handlers under both `/connections` (legacy, original
+	// name from when the table was modeled as integration_connections) and
+	// `/channels` (canonical going forward — what operators see in the UI).
+	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
+	// alias is additive so the dashboard, MCP, and CLI can switch over
+	// without an external client breakage. PR-5 drops `/connections`.
 	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
 	connectionsHandler := connections.NewHandler(connectionsService, s.config)
-	orgConnections := api.NewGroup("/orgs/:org/connections").Use(authMiddleware.RequireAuth)
-	orgConnections.GET("", connectionsHandler.ListConnections)
-	orgConnections.POST("", connectionsHandler.CreateConnection)
-	orgConnections.GET("/:uid", connectionsHandler.GetConnection)
-	orgConnections.PATCH("/:uid", connectionsHandler.UpdateConnection)
-	orgConnections.DELETE("/:uid", connectionsHandler.DeleteConnection)
+	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
+		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
+		group.GET("", connectionsHandler.ListConnections)
+		group.POST("", connectionsHandler.CreateConnection)
+		group.GET("/:uid", connectionsHandler.GetConnection)
+		group.PATCH("/:uid", connectionsHandler.UpdateConnection)
+		group.DELETE("/:uid", connectionsHandler.DeleteConnection)
+	}
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService)
