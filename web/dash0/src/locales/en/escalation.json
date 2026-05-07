@@ -31,7 +31,18 @@
     "repeatAfterMinutes": "Repeat after (min)",
     "create": "Create policy",
     "deleteConfirm": "Delete this escalation policy? Open incidents that reference it will be checked first.",
-    "targetUidPlaceholder": "Target UID"
+    "targetUidPlaceholder": "Target UID",
+    "loadingTargets": "Loading…",
+    "pickSchedule": "Pick a schedule",
+    "pickUser": "Pick a user",
+    "pickConnection": "Pick a channel",
+    "noSchedules": "No on-call schedules yet —",
+    "noMembers": "No members in this org.",
+    "noConnections": "No channels yet —",
+    "createSchedule": "create one",
+    "createConnection": "create one",
+    "targetMissing": "The previously-selected {{kind}} no longer exists. Pick another or remove this target.",
+    "targetMissingShort": "missing"
   },
   "targets": {
     "user": "User",

@@ -31,7 +31,18 @@
     "repeatAfterMinutes": "Répéter après (min)",
     "create": "Créer la politique",
     "deleteConfirm": "Supprimer cette politique d'escalade ? Les incidents ouverts qui la référencent seront vérifiés d'abord.",
-    "targetUidPlaceholder": "UID de la cible"
+    "targetUidPlaceholder": "UID de la cible",
+    "loadingTargets": "Chargement…",
+    "pickSchedule": "Choisir une astreinte",
+    "pickUser": "Choisir un utilisateur",
+    "pickConnection": "Choisir un canal",
+    "noSchedules": "Aucune astreinte pour le moment —",
+    "noMembers": "Aucun membre dans cette organisation.",
+    "noConnections": "Aucun canal pour le moment —",
+    "createSchedule": "en créer une",
+    "createConnection": "en créer un",
+    "targetMissing": "La cible {{kind}} sélectionnée précédemment n'existe plus. Choisissez-en une autre ou supprimez cette cible.",
+    "targetMissingShort": "manquante"
   },
   "targets": {
     "user": "Utilisateur",

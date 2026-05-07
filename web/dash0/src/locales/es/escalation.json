@@ -31,7 +31,18 @@
     "repeatAfterMinutes": "Repetir después de (min)",
     "create": "Crear política",
     "deleteConfirm": "¿Eliminar esta política de escalada? Se comprobarán antes los incidentes abiertos que la referencien.",
-    "targetUidPlaceholder": "UID del destino"
+    "targetUidPlaceholder": "UID del destino",
+    "loadingTargets": "Cargando…",
+    "pickSchedule": "Elige una guardia",
+    "pickUser": "Elige un usuario",
+    "pickConnection": "Elige un canal",
+    "noSchedules": "Aún no hay turnos de guardia —",
+    "noMembers": "No hay miembros en esta organización.",
+    "noConnections": "Aún no hay canales —",
+    "createSchedule": "crear uno",
+    "createConnection": "crear uno",
+    "targetMissing": "El destino {{kind}} seleccionado ya no existe. Elige otro o elimina este destino.",
+    "targetMissingShort": "no existe"
   },
   "targets": {
     "user": "Usuario",
