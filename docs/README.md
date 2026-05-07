@@ -10,6 +10,14 @@
 - [api-specification.md](api-specification.md) — Complete REST API specification: auth, orgs, users, workers, checks, results, config
 - [database-model.md](database-model.md) — Database schema with all 28 tables, columns, foreign keys, and design patterns
 
+## Features
+
+End-to-end pages for individual subsystems — read these before touching
+the relevant code.
+
+- [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
+- [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
+
 ## Conventions
 
 Project-wide standards and naming rules.
