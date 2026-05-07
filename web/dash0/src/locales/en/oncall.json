@@ -79,7 +79,13 @@
     "userUids": "Rotation members (in order)",
     "userUidsHelp": "First user is on call from start_at; subsequent rotations move down the list.",
     "submit": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "slugReadOnly": "Slug can't be changed yet — delete and recreate to rename.",
+    "startAtWarning": "Changing the rotation epoch shifts who's currently on call."
+  },
+  "toast": {
+    "updated": "Schedule updated.",
+    "updateFailed": "Failed to update schedule."
   },
   "myOnCall": {
     "title": "My on-call",

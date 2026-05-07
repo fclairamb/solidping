@@ -135,6 +135,36 @@ dark mode, alongside the exact import line. Reuse those components and
 patterns rather than reinventing them — if something is missing, add it to
 the reference page when you build it so the catalog stays canonical.
 
+## UI Conventions
+
+### Editing always changes the route
+
+Editing an entity must navigate to a dedicated route, never open a modal
+dialog. Mirror the create flow: `/<resource>/new` for creation,
+`/<resource>/$id` (or `/<resource>/$id/edit` if a separate read view exists)
+for editing. The edit route should render a full page with the same form
+component used by `/new`.
+
+**Why:** routes are bookmarkable, deep-linkable, browser-back works as
+expected, and the URL is the source of truth for "what the user is doing."
+Modal edits hide state, lose on accidental backdrop clicks, and don't survive
+refreshes. Trivial single-field renames (e.g. inline rename a group label)
+may stay inline, but anything with a multi-field form goes through a route.
+
+**How to apply:** when adding a new editable resource, scaffold both
+`<resource>.new.tsx` and `<resource>.$id.tsx` (or `.edit.tsx`). When
+auditing existing pages, treat `<Dialog>` containing an edit form as a bug
+to migrate.
+
+### Row actions: icons, not menus
+
+In list/table rows, prefer two ghost icon buttons (`Pencil` for edit,
+`Trash2` for delete, with a `text-destructive` class on the latter) over a
+`DropdownMenu` with a `MoreVertical` trigger. The Edit icon links to the
+edit route; the Delete icon opens an `AlertDialog` confirmation. Other
+per-row actions (toggle enabled, set default, etc.) live on the edit page,
+not in the row.
+
 ## Adding New Features
 
 ### Adding a Route

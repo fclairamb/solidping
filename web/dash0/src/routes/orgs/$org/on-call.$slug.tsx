@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Calendar, Trash2 } from "lucide-react";
+import { ArrowLeft, Calendar, Pencil, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   useOnCallSchedule,
@@ -12,6 +13,7 @@ import {
   useEnableOnCallICalFeed,
   useDisableOnCallICalFeed,
   useRotateOnCallICalFeed,
+  useUpdateOnCallSchedule,
   useMembers,
 } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,12 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -32,6 +40,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import {
+  OnCallScheduleForm,
+  type OnCallScheduleFormValues,
+} from "@/components/oncall/on-call-schedule-form";
 
 export const Route = createFileRoute("/orgs/$org/on-call/$slug")({
   component: OnCallDetailPage,
@@ -68,7 +80,10 @@ function OnCallDetailPage() {
   const enableFeed = useEnableOnCallICalFeed(org, slug);
   const disableFeed = useDisableOnCallICalFeed(org, slug);
   const rotateFeed = useRotateOnCallICalFeed(org, slug);
+  const updateMutation = useUpdateOnCallSchedule(org, slug);
   const [feedURL, setFeedURL] = useState<string | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const userByUID = useMemo(() => {
     const m = new Map<string, string>();
@@ -115,6 +130,41 @@ function OnCallDetailPage() {
     setFeedURL(null);
   };
 
+  const handleEditSubmit = async (values: OnCallScheduleFormValues) => {
+    setEditError(null);
+    try {
+      await updateMutation.mutateAsync({
+        name: values.name,
+        description: values.description || undefined,
+        timezone: values.timezone,
+        rotationType: values.rotationType,
+        handoffTime: values.handoffTime,
+        handoffWeekday:
+          values.rotationType === "weekly" ? values.handoffWeekday : undefined,
+        startAt: values.startAt,
+        userUids: values.userUids,
+      });
+      toast.success(t("oncall:toast.updated"));
+      setEditOpen(false);
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : t("oncall:toast.updateFailed");
+      setEditError(message);
+    }
+  };
+
+  const editInitialValues: Partial<OnCallScheduleFormValues> = {
+    name: schedule.name,
+    slug: schedule.slug,
+    description: schedule.description ?? "",
+    timezone: schedule.timezone,
+    rotationType: schedule.rotationType,
+    handoffTime: schedule.handoffTime,
+    handoffWeekday: schedule.handoffWeekday ?? 0,
+    startAt: schedule.startAt,
+    userUids: schedule.userUids ?? [],
+  };
+
   return (
     <div className="space-y-6">
       <div>
@@ -144,6 +194,18 @@ function OnCallDetailPage() {
             </p>
           </div>
           <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setEditError(null);
+                setEditOpen(true);
+              }}
+              data-testid="oncall-edit-button"
+            >
+              <Pencil className="h-4 w-4 mr-1" />
+              {t("oncall:detail.edit")}
+            </Button>
             <Button variant="destructive" size="sm" onClick={handleDelete}>
               <Trash2 className="h-4 w-4 mr-1" />
               {t("oncall:detail.delete")}
@@ -288,6 +350,25 @@ function OnCallDetailPage() {
       <p className="text-xs text-muted-foreground italic">
         {t("oncall:detail.v1Notes")}
       </p>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>{t("oncall:form.edit")}</DialogTitle>
+          </DialogHeader>
+          {editOpen && (
+            <OnCallScheduleForm
+              mode="edit"
+              org={org}
+              initialValues={editInitialValues}
+              onSubmit={handleEditSubmit}
+              onCancel={() => setEditOpen(false)}
+              submitting={updateMutation.isPending}
+              error={editError}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

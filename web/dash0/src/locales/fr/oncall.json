@@ -79,7 +79,13 @@
     "userUids": "Membres de la rotation (dans l'ordre)",
     "userUidsHelp": "Le premier utilisateur est d'astreinte à partir de start_at ; les rotations suivantes descendent la liste.",
     "submit": "Enregistrer",
-    "cancel": "Annuler"
+    "cancel": "Annuler",
+    "slugReadOnly": "L'identifiant ne peut pas être modifié — supprimez et recréez pour renommer.",
+    "startAtWarning": "Modifier l'origine de la rotation décale la personne actuellement d'astreinte."
+  },
+  "toast": {
+    "updated": "Astreinte mise à jour.",
+    "updateFailed": "Échec de la mise à jour de l'astreinte."
   },
   "myOnCall": {
     "title": "Mes astreintes",

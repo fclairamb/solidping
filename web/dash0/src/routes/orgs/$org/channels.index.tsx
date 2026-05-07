@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { Bell, MoreHorizontal, Plus, RefreshCw, Search, Star } from "lucide-react";
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Bell, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -24,15 +24,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   useConnections,
   useDeleteConnection,
-  useUpdateConnection,
   type Connection,
   type ConnectionType,
 } from "@/api/hooks";
@@ -45,7 +48,6 @@ export const Route = createFileRoute("/orgs/$org/channels/")({
 function ChannelsListPage() {
   const { t } = useTranslation("channels");
   const { org } = Route.useParams();
-  const navigate = useNavigate();
   const {
     data: channels,
     isLoading,
@@ -55,6 +57,18 @@ function ChannelsListPage() {
   const deleteMutation = useDeleteConnection(org);
 
   const [search, setSearch] = useState("");
+  const [pendingDelete, setPendingDelete] = useState<Connection | null>(null);
+
+  const onConfirmDelete = () => {
+    if (!pendingDelete) return;
+    deleteMutation.mutate(pendingDelete.uid, {
+      onSuccess: () => {
+        toast.success(t("deleted", "Channel deleted"));
+        setPendingDelete(null);
+      },
+      onError: () => toast.error(t("deleteFailed", "Delete failed")),
+    });
+  };
 
   const filtered = useMemo(() => {
     const list = channels || [];
@@ -90,6 +104,32 @@ function ChannelsListPage() {
           </Link>
         </Button>
       </div>
+
+      <AlertDialog
+        open={!!pendingDelete}
+        onOpenChange={(open) => (open ? null : setPendingDelete(null))}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("deleteConfirmTitle", "Delete channel?")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingDelete
+                ? t("deleteConfirmBody", "This will permanently delete \"{{name}}\".", {
+                    name: pendingDelete.name,
+                  })
+                : ""}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel", "Cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirmDelete}>
+              {t("actions.delete", "Delete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {showEmptyState ? (
         <EmptyState org={org} />
@@ -134,7 +174,7 @@ function ChannelsListPage() {
                     <TableHead>{t("col.status", "Status")}</TableHead>
                     <TableHead>{t("col.usedBy", "Used by")}</TableHead>
                     <TableHead>{t("col.updated", "Updated")}</TableHead>
-                    <TableHead className="w-[60px]" />
+                    <TableHead className="w-[100px]" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -143,15 +183,7 @@ function ChannelsListPage() {
                       key={c.uid}
                       org={org}
                       channel={c}
-                      onDelete={() =>
-                        deleteMutation.mutate(c.uid, {
-                          onSuccess: () =>
-                            toast.success(t("deleted", "Channel deleted")),
-                          onError: () =>
-                            toast.error(t("deleteFailed", "Delete failed")),
-                        })
-                      }
-                      navigate={navigate}
+                      onDelete={() => setPendingDelete(c)}
                     />
                   ))}
                 </TableBody>
@@ -201,33 +233,10 @@ interface RowProps {
   org: string;
   channel: Connection;
   onDelete: () => void;
-  navigate: ReturnType<typeof useNavigate>;
 }
 
-function Row({ org, channel, onDelete, navigate }: RowProps) {
+function Row({ org, channel, onDelete }: RowProps) {
   const { t } = useTranslation("channels");
-  const update = useUpdateConnection(org, channel.uid);
-
-  const toggleEnabled = () =>
-    update.mutate(
-      { enabled: !channel.enabled },
-      {
-        onSuccess: () =>
-          toast.success(
-            channel.enabled
-              ? t("disabled", "Channel disabled")
-              : t("enabled", "Channel enabled"),
-          ),
-      },
-    );
-
-  const toggleDefault = () =>
-    update.mutate(
-      { isDefault: !channel.isDefault },
-      {
-        onSuccess: () => toast.success(t("defaultUpdated", "Default updated")),
-      },
-    );
 
   return (
     <TableRow>
@@ -261,41 +270,25 @@ function Row({ org, channel, onDelete, navigate }: RowProps) {
         {new Date(channel.updatedAt).toLocaleDateString()}
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: "/orgs/$org/channels/$connectionUid",
-                  params: { org, connectionUid: channel.uid },
-                })
-              }
+        <div className="flex items-center justify-end gap-1">
+          <Button asChild variant="ghost" size="icon" aria-label={t("actions.edit", "Edit")}>
+            <Link
+              to="/orgs/$org/channels/$connectionUid"
+              params={{ org, connectionUid: channel.uid }}
             >
-              {t("actions.edit", "Edit")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={toggleEnabled}>
-              {channel.enabled
-                ? t("actions.disable", "Disable")
-                : t("actions.enable", "Enable")}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={toggleDefault}>
-              {channel.isDefault
-                ? t("actions.unsetDefault", "Unset default")
-                : t("actions.setDefault", "Set as default")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={onDelete}
-            >
-              {t("actions.delete", "Delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+            aria-label={t("actions.delete", "Delete")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );

@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { CalendarClock, MoreVertical, Plus, RefreshCw } from "lucide-react";
+import { CalendarClock, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -20,12 +20,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -127,7 +121,7 @@ function OnCallListPage() {
                 <TableHead>{t("oncall:list.col.timezone")}</TableHead>
                 <TableHead>{t("oncall:list.col.rotation")}</TableHead>
                 <TableHead>{t("oncall:list.col.currentlyOnCall")}</TableHead>
-                <TableHead className="w-[50px]" />
+                <TableHead className="w-[100px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -181,7 +175,6 @@ interface ScheduleRowProps {
 
 function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
   const { t } = useTranslation(["oncall", "common"]);
-  const navigate = useNavigate();
   const rotationLabel =
     schedule.rotationType === "daily"
       ? t("oncall:detail.rotationDaily")
@@ -214,41 +207,25 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
         )}
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Row actions">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: "/orgs/$org/on-call/$slug",
-                  params: { org, slug: schedule.slug },
-                })
-              }
+        <div className="flex items-center justify-end gap-1">
+          <Button asChild variant="ghost" size="icon" aria-label={t("oncall:detail.edit")}>
+            <Link
+              to="/orgs/$org/on-call/$slug"
+              params={{ org, slug: schedule.slug }}
             >
-              {t("common:viewDetails")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: "/orgs/$org/on-call/$slug",
-                  params: { org, slug: schedule.slug },
-                })
-              }
-            >
-              {t("oncall:detail.edit")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onDelete}
-            >
-              {t("oncall:detail.delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+            aria-label={t("oncall:detail.delete")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );

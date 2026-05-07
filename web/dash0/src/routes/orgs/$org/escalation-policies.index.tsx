@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   ArrowUpRight,
-  MoreVertical,
+  Pencil,
   Plus,
   RefreshCw,
   Repeat,
   Search,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -27,12 +28,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -164,7 +159,7 @@ function EscalationPoliciesListPage() {
                 <TableHead>{t("escalation:list.col.name")}</TableHead>
                 <TableHead>{t("escalation:list.col.description")}</TableHead>
                 <TableHead>{t("escalation:list.col.repeats")}</TableHead>
-                <TableHead className="w-[50px]" />
+                <TableHead className="w-[100px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -212,7 +207,6 @@ interface PolicyRowProps {
 
 function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
   const { t } = useTranslation(["escalation", "common"]);
-  const navigate = useNavigate();
 
   return (
     <TableRow data-testid="policy-row">
@@ -242,41 +236,25 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
         )}
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" aria-label="Row actions">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: "/orgs/$org/escalation-policies/$slug",
-                  params: { org, slug: policy.slug },
-                })
-              }
+        <div className="flex items-center justify-end gap-1">
+          <Button asChild variant="ghost" size="icon" aria-label={t("common:edit")}>
+            <Link
+              to="/orgs/$org/escalation-policies/$slug"
+              params={{ org, slug: policy.slug }}
             >
-              {t("common:viewDetails")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onClick={() =>
-                navigate({
-                  to: "/orgs/$org/escalation-policies/$slug",
-                  params: { org, slug: policy.slug },
-                })
-              }
-            >
-              {t("common:edit")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
-              onClick={onDelete}
-            >
-              {t("common:delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive hover:text-destructive"
+            onClick={onDelete}
+            aria-label={t("common:delete")}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );
