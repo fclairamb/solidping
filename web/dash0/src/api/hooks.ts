@@ -1189,6 +1189,27 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
   });
 }
 
+// Reorder all resources in a section in one round-trip. The dashboard's
+// drag-and-drop UI sends the new ordered list of UIDs; the backend renumbers
+// `position` to match.
+export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uids: string[]) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/reorder`,
+        { method: "POST", body: JSON.stringify({ uids }) }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+    },
+  });
+}
+
 export function useUpdateResource(org: string, statusPageUid: string, sectionUid: string) {
   const queryClient = useQueryClient();
 

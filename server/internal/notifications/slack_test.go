@@ -849,6 +849,10 @@ func (m *mockDBService) MaxStatusPageResourcePosition(_ context.Context, _ strin
 	panic("not implemented")
 }
 
+func (m *mockDBService) ReorderStatusPageResources(_ context.Context, _ string, _ []string) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateStatusPageResource(
 	_ context.Context, _ string, _ *models.StatusPageResourceUpdate,
 ) error {

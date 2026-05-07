@@ -32,6 +32,10 @@ var (
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format.
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
+	// ErrReorderUIDsMismatch is returned when a reorder request's UID list
+	// does not exactly match the section's current resources (missing,
+	// extra, or duplicate UIDs).
+	ErrReorderUIDsMismatch = errors.New("reorder uids do not match the section's resources")
 )
 
 func validateSlug(slug string) error {
@@ -663,6 +667,48 @@ func (s *Service) UpdateResource(
 	}
 
 	return convertResourceToResponse(updated), nil
+}
+
+// ReorderResources rewrites the section's resources so that orderedUIDs[i]
+// gets position i+1. Validates that orderedUIDs is exactly the current set
+// of resources in the section before applying — partial or stale orderings
+// are rejected so the dashboard can't accidentally drop or duplicate rows.
+func (s *Service) ReorderResources(
+	ctx context.Context, orgSlug, pageIdentifier, sectionIdentifier string, orderedUIDs []string,
+) error {
+	page, err := s.resolveStatusPage(ctx, orgSlug, pageIdentifier)
+	if err != nil {
+		return err
+	}
+
+	section, err := s.resolveSection(ctx, page.UID, sectionIdentifier)
+	if err != nil {
+		return err
+	}
+
+	existing, err := s.db.ListStatusPageResources(ctx, section.UID)
+	if err != nil {
+		return fmt.Errorf("failed to list resources: %w", err)
+	}
+	if len(existing) != len(orderedUIDs) {
+		return ErrReorderUIDsMismatch
+	}
+	known := make(map[string]struct{}, len(existing))
+	for _, r := range existing {
+		known[r.UID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(orderedUIDs))
+	for _, uid := range orderedUIDs {
+		if _, ok := known[uid]; !ok {
+			return ErrReorderUIDsMismatch
+		}
+		if _, dup := seen[uid]; dup {
+			return ErrReorderUIDsMismatch
+		}
+		seen[uid] = struct{}{}
+	}
+
+	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
 }
 
 // DeleteResource removes a check from a section (hard delete).

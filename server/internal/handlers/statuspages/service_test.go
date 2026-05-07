@@ -257,6 +257,77 @@ func TestCreateResource_SwapPositionsReordersList(t *testing.T) {
 	r.Equal(resources[2].UID, listed[2].UID, "untouched third resource stays last")
 }
 
+// TestReorderResources_RewritesPositionsByUIDOrder pins the contract of the
+// drag-and-drop reorder endpoint: orderedUIDs[i] gets position i+1.
+func TestReorderResources_RewritesPositionsByUIDOrder(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	resources := make([]StatusPageResourceResponse, 4)
+	for i := range resources {
+		c := models.NewCheck(org.UID, "", "http")
+		r.NoError(svc.db.CreateCheck(ctx, c))
+
+		res, errCreate := svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: c.UID})
+		r.NoError(errCreate)
+		resources[i] = res
+	}
+
+	newOrder := []string{resources[3].UID, resources[1].UID, resources[0].UID, resources[2].UID}
+	r.NoError(svc.ReorderResources(ctx, org.Slug, page.UID, section.UID, newOrder))
+
+	listed, err := svc.db.ListStatusPageResources(ctx, section.UID)
+	r.NoError(err)
+	r.Len(listed, 4)
+	for i, uid := range newOrder {
+		r.Equal(uid, listed[i].UID, "position %d should be %s", i+1, uid)
+		r.Equal(i+1, listed[i].Position, "position field should be %d", i+1)
+	}
+}
+
+// TestReorderResources_RejectsMismatchedUIDList ensures the endpoint can't be
+// used to drop or duplicate resources via a partial / extra UID list.
+func TestReorderResources_RejectsMismatchedUIDList(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	resources := make([]StatusPageResourceResponse, 2)
+	for i := range resources {
+		c := models.NewCheck(org.UID, "", "http")
+		r.NoError(svc.db.CreateCheck(ctx, c))
+		res, errCreate := svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: c.UID})
+		r.NoError(errCreate)
+		resources[i] = res
+	}
+
+	missing := []string{resources[0].UID}
+	r.ErrorIs(svc.ReorderResources(ctx, org.Slug, page.UID, section.UID, missing), ErrReorderUIDsMismatch)
+
+	duplicate := []string{resources[0].UID, resources[0].UID}
+	r.ErrorIs(svc.ReorderResources(ctx, org.Slug, page.UID, section.UID, duplicate), ErrReorderUIDsMismatch)
+
+	stranger := []string{resources[0].UID, "00000000-0000-0000-0000-000000000000"}
+	r.ErrorIs(svc.ReorderResources(ctx, org.Slug, page.UID, section.UID, stranger), ErrReorderUIDsMismatch)
+}
+
 // TestCreateSection_AssignsSequentialPositions mirrors the resource test for
 // the section level, where the same legacy bug existed.
 func TestCreateSection_AssignsSequentialPositions(t *testing.T) {

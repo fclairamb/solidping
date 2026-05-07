@@ -3404,6 +3404,36 @@ func (s *Service) MaxStatusPageResourcePosition(
 	return maxPosition, err
 }
 
+// ReorderStatusPageResources rewrites the position of every resource in the
+// section so that orderedUIDs[i] gets position i+1. Done in a single
+// transaction; the caller is responsible for validating that orderedUIDs
+// exactly matches the section's current resource set.
+func (s *Service) ReorderStatusPageResources(
+	ctx context.Context, sectionUID string, orderedUIDs []string,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+		for i, uid := range orderedUIDs {
+			res, err := tx.NewUpdate().
+				Model((*models.StatusPageResource)(nil)).
+				Where("uid = ?", uid).
+				Where("section_uid = ?", sectionUID).
+				Set("position = ?", i+1).
+				Set("updated_at = ?", now).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+			rows, _ := res.RowsAffected()
+			if rows == 0 {
+				return fmt.Errorf("resource %q not found in section %q", uid, sectionUID)
+			}
+		}
+
+		return nil
+	})
+}
+
 // UpdateStatusPageResource updates a resource by UID.
 func (s *Service) UpdateStatusPageResource(
 	ctx context.Context, uid string, update *models.StatusPageResourceUpdate,

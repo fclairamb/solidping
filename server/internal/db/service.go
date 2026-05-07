@@ -317,6 +317,7 @@ type Service interface {
 	GetStatusPageResource(ctx context.Context, sectionUID, uid string) (*models.StatusPageResource, error)
 	ListStatusPageResources(ctx context.Context, sectionUID string) ([]*models.StatusPageResource, error)
 	MaxStatusPageResourcePosition(ctx context.Context, sectionUID string) (int, error)
+	ReorderStatusPageResources(ctx context.Context, sectionUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
 

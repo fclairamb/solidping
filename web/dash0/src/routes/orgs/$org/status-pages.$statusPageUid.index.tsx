@@ -15,12 +15,30 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   useStatusPage,
   useChecks,
   useCreateSection,
   useDeleteSection,
   useCreateResource,
   useDeleteResource,
+  useReorderResources,
   useUpdateResource,
   type StatusPageSection,
   type StatusPageResource,
@@ -374,9 +392,31 @@ function ResourceRow({
     }
   };
 
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: resource.uid });
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50">
-      <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      className={cn(
+        "flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50",
+        isDragging && "opacity-60 shadow-md bg-background relative z-10"
+      )}
+    >
+      <button
+        type="button"
+        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        aria-label="Drag to reorder"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
       <div className="flex flex-col -space-y-1">
         <Button
           variant="ghost"
@@ -473,9 +513,18 @@ function SectionCard({
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteSection = useDeleteSection(org, statusPageUid);
+  const reorderResources = useReorderResources(org, statusPageUid, section.uid);
 
   const existingCheckUids = new Set(
     (section.resources || []).map((r) => r.checkUid)
+  );
+
+  // Pointer sensor with a small activation distance so click-and-release on
+  // the drag handle doesn't get hijacked as a drag (matters for keyboard /
+  // accessibility tooling).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDeleteSection = async () => {
@@ -485,6 +534,21 @@ function SectionCard({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("statusPages:sections.deleteFailed"));
     }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const items = section.resources ?? [];
+    const oldIndex = items.findIndex((r) => r.uid === active.id);
+    const newIndex = items.findIndex((r) => r.uid === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(items, oldIndex, newIndex).map((r) => r.uid);
+    reorderResources.mutate(reordered, {
+      onError: (err) => {
+        toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+      },
+    });
   };
 
   return (
@@ -535,20 +599,31 @@ function SectionCard({
       </CardHeader>
       <CardContent>
         {section.resources && section.resources.length > 0 ? (
-          <div className="space-y-1">
-            {section.resources.map((resource, idx) => (
-              <ResourceRow
-                key={resource.uid}
-                resource={resource}
-                index={idx}
-                total={section.resources?.length ?? 0}
-                neighbors={section.resources ?? []}
-                org={org}
-                statusPageUid={statusPageUid}
-                sectionUid={section.uid}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={section.resources.map((r) => r.uid)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-1">
+                {section.resources.map((resource, idx) => (
+                  <ResourceRow
+                    key={resource.uid}
+                    resource={resource}
+                    index={idx}
+                    total={section.resources?.length ?? 0}
+                    neighbors={section.resources ?? []}
+                    org={org}
+                    statusPageUid={statusPageUid}
+                    sectionUid={section.uid}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         ) : (
           <p className="text-sm text-muted-foreground py-4 text-center">
             {t("statusPages:sections.empty")}
