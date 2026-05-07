@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 	"time"
 
@@ -58,7 +57,6 @@ func (h *Handler) ListIncidents(writer http.ResponseWriter, req bunrouter.Reques
 var (
 	errInvalidSince = errors.New("invalid since: must be RFC3339")
 	errInvalidUntil = errors.New("invalid until: must be RFC3339")
-	errInvalidSize  = errors.New("invalid size parameter")
 )
 
 // parseListIncidentsOptions extracts ListIncidents query parameters. Kept
@@ -98,18 +96,11 @@ func parseListIncidentsOptions(query url.Values) (*ListIncidentsOptions, error) 
 		opts.Cursor = v
 	}
 
-	if v := query.Get("size"); v != "" {
-		size, err := strconv.Atoi(v)
-		if err != nil || size < 1 {
-			return nil, errInvalidSize
-		}
-
-		if size > 100 {
-			size = 100
-		}
-
-		opts.Size = size
+	limit, err := base.ParsePageLimit(query, opts.Size, 100)
+	if err != nil {
+		return nil, err
 	}
+	opts.Size = limit
 
 	applyListIncidentsExtras(query, opts)
 
