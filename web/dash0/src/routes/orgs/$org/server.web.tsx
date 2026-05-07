@@ -36,12 +36,12 @@ function WebSettingsPage() {
     if (params) {
       const get = (key: string) =>
         params.find((p) => p.key === key)?.value as string ?? "";
-      setBaseUrl(get("base_url"));
-      setJwtSecret(get("jwt_secret"));
+      setBaseUrl(get("server.base_url"));
+      setJwtSecret(get("auth.jwt_secret"));
     }
   }, [params]);
 
-  const isJwtSecret = params?.find((p) => p.key === "jwt_secret")?.secret;
+  const isJwtSecret = params?.find((p) => p.key === "auth.jwt_secret")?.secret;
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,10 +49,10 @@ function WebSettingsPage() {
     setSaved(false);
 
     try {
-      await setParam.mutateAsync({ key: "base_url", value: baseUrl });
+      await setParam.mutateAsync({ key: "server.base_url", value: baseUrl });
       if (editingJwt) {
         await setParam.mutateAsync({
-          key: "jwt_secret",
+          key: "auth.jwt_secret",
           value: jwtSecret,
           secret: true,
         });
@@ -168,7 +168,7 @@ function WebSettingsPage() {
                     onClick={() => {
                       setEditingJwt(false);
                       const original =
-                        params?.find((p) => p.key === "jwt_secret")?.value as string ?? "";
+                        params?.find((p) => p.key === "auth.jwt_secret")?.value as string ?? "";
                       setJwtSecret(original);
                     }}
                   >

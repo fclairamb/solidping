@@ -72,6 +72,8 @@ func NewTestServer(t *testing.T) *TestServer {
 		t.Fatalf("failed to initialize database: %v", initErr)
 	}
 
+	server.SetupRoutes()
+
 	t.Cleanup(func() {
 		_ = server.Close(context.Background())
 	})

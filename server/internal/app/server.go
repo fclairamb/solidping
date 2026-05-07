@@ -261,13 +261,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		profilerSrv: profiler.New(&cfg.Profiler),
 	}
 
-	server.setupRoutes()
-
 	return server, nil
 }
 
+// SetupRoutes builds the HTTP router and registers every handler. It must
+// be called after InitializeSystemConfig so handlers see the post-overlay
+// config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
+// which the system-parameters table can override at runtime).
+//
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
-func (s *Server) setupRoutes() {
+func (s *Server) SetupRoutes() {
 	router := bunrouter.New()
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
 

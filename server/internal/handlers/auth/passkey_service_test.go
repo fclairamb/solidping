@@ -104,6 +104,51 @@ func TestPasskeyService_EnabledOnLocalhostHTTP(t *testing.T) {
 	r.True(pkSvc.Enabled())
 }
 
+// TestPasskeyService_UsesOverlaidBaseURL pins the contract that the
+// startup reorder relies on: NewPasskeyService reads BaseURL through
+// authSvc.fullCfg at construction time, so a mutation between
+// auth.NewService and auth.NewPasskeyService (which is what
+// InitializeSystemConfig does between server.NewServer and
+// server.SetupRoutes) determines the resulting RP ID. If this ever
+// regresses to a snapshot-at-NewService pattern, the WebAuthn relying
+// party would freeze on the wrong host again.
+func TestPasskeyService_UsesOverlaidBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	user := models.NewUser("alice@example.com")
+	r.NoError(dbSvc.CreateUser(ctx, user))
+
+	cfg := &config.Config{
+		Auth: config.AuthConfig{
+			JWTSecret: "test-secret-1234567890",
+			WebAuthn:  config.WebAuthnConfig{Enabled: true},
+		},
+		Server: config.ServerConfig{BaseURL: "https://wrong.example.com"},
+	}
+
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+
+	// Simulate InitializeSystemConfig overlaying server.base_url from the
+	// parameters table after the auth service exists but before the
+	// PasskeyService is constructed.
+	cfg.Server.BaseURL = "http://localhost:4000"
+
+	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
+	r.True(pkSvc.Enabled())
+
+	resp, err := pkSvc.BeginRegistration(ctx, user.UID)
+	r.NoError(err)
+	r.NotNil(resp.Options)
+	r.Equal("localhost", resp.Options.Response.RelyingParty.ID)
+}
+
 // TestPasskeyService_BeginRegistrationWhenDisabled returns
 // ErrWebAuthnNotConfigured rather than a half-baked options blob.
 func TestPasskeyService_BeginRegistrationWhenDisabled(t *testing.T) {

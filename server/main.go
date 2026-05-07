@@ -171,6 +171,12 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return sysConfigErr
 	}
 
+	// Routes are constructed after InitializeSystemConfig so handlers see
+	// the post-overlay config — e.g. PasskeyService picks up the
+	// system-parameter override of server.base_url and uses it to derive
+	// the WebAuthn RP ID.
+	server.SetupRoutes()
+
 	// Auto-encrypt any plaintext secrets so existing self-hosted installs
 	// pick up encryption transparently when the operator first sets the
 	// master key. No-op when encryption is disabled or AutoMigrate=false.
