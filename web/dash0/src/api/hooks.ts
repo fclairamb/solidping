@@ -628,7 +628,7 @@ export function useResults(
       if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -689,7 +689,7 @@ export function useAllResults(
           params.set("periodEndBefore", options.periodEndBefore);
         if (options?.with) params.set("with", options.with);
         if (cursor) params.set("cursor", cursor);
-        params.set("size", pageSize.toString());
+        params.set("limit", pageSize.toString());
         const query = params.toString();
         const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
         const response = await apiFetch<{
@@ -736,7 +736,7 @@ export function useIncidents(
       if (options?.since) params.set("since", options.since);
       if (options?.until) params.set("until", options.until);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       if (options?.with) params.set("with", options.with);
       if (options?.hideSuppressed) params.set("hideSuppressed", "true");
       if (options?.causedByIncidentUid) params.set("causedByIncidentUid", options.causedByIncidentUid);
@@ -846,7 +846,7 @@ export function useEvents(
       if (options?.incidentUid) params.set("incidentUid", options.incidentUid);
       if (options?.eventType) params.set("eventType", options.eventType);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/events${query ? `?${query}` : ""}`;
       const response = await apiFetch<{

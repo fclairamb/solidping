@@ -93,6 +93,7 @@ previous binary running; check the dev log for the compiler error.
 - Use `PATCH` for all APIs allowing updates
 - Use camelCase consistently for both JSON properties and query parameters (e.g., `checkUid` in JSON and `?checkUid=abc` in URLs)
 - When using query parameters that can contain multiple values, use them in their singular form, for example `checkUid` and not `checkUids`. If there are multiple values, separate them with `,`.
+- The page-size query parameter must be named `limit`. Default and max values are per-endpoint; the name is not. Use `base.ParsePageLimit(query, def, max)` from `server/internal/handlers/base/pagination.go` so legacy `?size=` clients keep working during the deprecation window.
 
 ### API Endpoints (key routes, see `docs/api-specification.md` for full list)
 - GET /api/mgmt/version - Version info
