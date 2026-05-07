@@ -148,3 +148,41 @@ Add tests that pin the new contract:
 - Notifications for `acknowledged` / `unacknowledged` / `snoozed`. Those
   are intentionally silent today (lines 917–918) and changing that
   carries a separate operator-impact discussion.
+
+## Implementation Plan
+
+Concrete commit breakdown:
+
+1. **Teach `emitEvent` to honor a payload-carried actor.** Read
+   `actor_uid` from the payload; when present and non-empty, set
+   `event.ActorType = ActorTypeUser` and `event.ActorUID = &actorUid`.
+   Otherwise keep today's `ActorTypeSystem`. No callers need to change
+   for this commit alone — it's a pure capability addition.
+
+2. **Route manual resolve through `emitEvent`.** Replace the hand-built
+   event block in `resolveIncidentByOrgUID` with a single
+   `emitEvent` call carrying `via`, `note`, `resolution_type`,
+   `check_uid`, `actor_uid` in the payload. Drop now-unused imports
+   if any.
+
+3. **Test: manual resolve queues a notification job.** Single-check
+   incident, one bound channel, manual resolve, assert one
+   `notification` job was created.
+
+4. **Test: manual resolve fans group incidents.** Group incident with
+   multiple members across overlapping channels, manual resolve,
+   assert one notification per (channel, eventType) pair.
+
+5. **Test: actor metadata round-trips.** Manual resolve with
+   `req.ActorUID` set, assert the persisted event row has
+   `ActorType=user` and `ActorUID` matches the request.
+
+6. **Test: idempotent resolve.** Calling resolve on an already-resolved
+   incident returns early without emitting a duplicate event.
+
+7. **QA**: `make build-backend lint-back test`. Iterate until clean.
+
+8. **Audit**: independent subagent verifies every requirement.
+
+9. **Archive + merge**: move spec to `specs/done/2026/05/`, merge
+   `feat/fix-manual-incident-resolve-missing-notifications` into `main`.
