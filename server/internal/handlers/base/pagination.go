@@ -25,7 +25,7 @@ var ErrInvalidLimit = errors.New("invalid limit parameter")
 //
 // Caller is responsible for translating ErrInvalidLimit into the appropriate
 // HTTP response.
-func ParsePageLimit(query url.Values, def, max int) (int, error) {
+func ParsePageLimit(query url.Values, def, maxValue int) (int, error) {
 	raw := query.Get("limit")
 	if raw == "" {
 		// Deprecated alias retained for one release so external clients
@@ -47,8 +47,8 @@ func ParsePageLimit(query url.Values, def, max int) (int, error) {
 		return 0, fmt.Errorf("%w: %d must be >= 1", ErrInvalidLimit, n)
 	}
 
-	if max > 0 && n > max {
-		n = max
+	if maxValue > 0 && n > maxValue {
+		n = maxValue
 	}
 
 	return n, nil

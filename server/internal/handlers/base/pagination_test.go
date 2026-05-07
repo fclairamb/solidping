@@ -1,7 +1,6 @@
 package base_test
 
 import (
-	"errors"
 	"net/url"
 	"testing"
 
@@ -41,7 +40,7 @@ func TestParsePageLimit(t *testing.T) {
 			got, err := base.ParsePageLimit(vals, tt.def, tt.max)
 			if tt.wantErr {
 				r.Error(err)
-				r.True(errors.Is(err, base.ErrInvalidLimit), "errors.Is(err, ErrInvalidLimit)")
+				r.ErrorIs(err, base.ErrInvalidLimit)
 				return
 			}
 			r.NoError(err)
