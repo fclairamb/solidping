@@ -31,7 +31,18 @@
     "repeatAfterMinutes": "Wiederholen nach (Min)",
     "create": "Richtlinie erstellen",
     "deleteConfirm": "Diese Eskalationsrichtlinie löschen? Offene Vorfälle, die sie referenzieren, werden zuerst geprüft.",
-    "targetUidPlaceholder": "Ziel-UID"
+    "targetUidPlaceholder": "Ziel-UID",
+    "loadingTargets": "Wird geladen…",
+    "pickSchedule": "Bereitschaft wählen",
+    "pickUser": "Benutzer wählen",
+    "pickConnection": "Kanal wählen",
+    "noSchedules": "Noch keine Bereitschaftspläne —",
+    "noMembers": "Keine Mitglieder in dieser Organisation.",
+    "noConnections": "Noch keine Kanäle —",
+    "createSchedule": "einen erstellen",
+    "createConnection": "einen erstellen",
+    "targetMissing": "Das zuvor ausgewählte {{kind}} existiert nicht mehr. Wähle ein anderes oder entferne dieses Ziel.",
+    "targetMissingShort": "fehlt"
   },
   "targets": {
     "user": "Benutzer",

@@ -5,11 +5,12 @@ import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
 import {
   type EscalationPolicyStep,
-  type EscalationTargetType,
+  type EscalationPolicyTarget,
   useDeleteEscalationPolicy,
   useEscalationPolicy,
   useUpdateEscalationPolicy,
 } from "@/api/hooks";
+import { StepTargetRow } from "@/components/escalation/step-target-row";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -182,74 +183,25 @@ function EscalationPolicyDetailPage() {
               </div>
               <div className="space-y-1">
                 {step.targets.map((tar, ti) => (
-                  <div key={ti} className="flex gap-2 items-center text-sm">
-                    <select
-                      className="border rounded px-2 py-1 text-sm"
-                      value={tar.type}
-                      onChange={(e) =>
-                        setSteps((prev) =>
-                          prev.map((s, i) =>
-                            i === idx
-                              ? {
-                                  ...s,
-                                  targets: s.targets.map((t2, j) =>
-                                    j === ti
-                                      ? {
-                                          ...t2,
-                                          type: e.target
-                                            .value as EscalationTargetType,
-                                          targetUid:
-                                            e.target.value === "all_admins"
-                                              ? ""
-                                              : t2.targetUid,
-                                        }
-                                      : t2,
-                                  ),
-                                }
-                              : s,
-                          ),
-                        )
-                      }
-                    >
-                      <option value="all_admins">
-                        {t("escalation:targets.all_admins")}
-                      </option>
-                      <option value="schedule">
-                        {t("escalation:targets.schedule")}
-                      </option>
-                      <option value="user">
-                        {t("escalation:targets.user")}
-                      </option>
-                      <option value="connection">
-                        {t("escalation:targets.connection")}
-                      </option>
-                    </select>
-                    {tar.type !== "all_admins" && (
-                      <Input
-                        className="h-8 flex-1"
-                        placeholder={t(
-                          "escalation:editor.targetUidPlaceholder",
-                        )}
-                        value={tar.targetUid || ""}
-                        onChange={(e) =>
-                          setSteps((prev) =>
-                            prev.map((s, i) =>
-                              i === idx
-                                ? {
-                                    ...s,
-                                    targets: s.targets.map((t2, j) =>
-                                      j === ti
-                                        ? { ...t2, targetUid: e.target.value }
-                                        : t2,
-                                    ),
-                                  }
-                                : s,
-                            ),
-                          )
-                        }
-                      />
-                    )}
-                  </div>
+                  <StepTargetRow
+                    key={ti}
+                    org={org}
+                    target={tar}
+                    onChange={(next: EscalationPolicyTarget) =>
+                      setSteps((prev) =>
+                        prev.map((s, i) =>
+                          i === idx
+                            ? {
+                                ...s,
+                                targets: s.targets.map((t2, j) =>
+                                  j === ti ? { ...t2, ...next } : t2,
+                                ),
+                              }
+                            : s,
+                        ),
+                      )
+                    }
+                  />
                 ))}
               </div>
             </div>
