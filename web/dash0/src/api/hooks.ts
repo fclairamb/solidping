@@ -2338,7 +2338,7 @@ export function useConnections(org: string) {
     queryKey: ["connections", org],
     queryFn: async () => {
       const response = await apiFetch<{ data?: Connection[] }>(
-        `/api/v1/orgs/${org}/connections`,
+        `/api/v1/orgs/${org}/channels`,
       );
       return response.data || [];
     },
@@ -2349,7 +2349,7 @@ export function useConnections(org: string) {
 export function useConnection(org: string, uid: string) {
   return useQuery({
     queryKey: ["connection", org, uid],
-    queryFn: () => apiFetch<Connection>(`/api/v1/orgs/${org}/connections/${uid}`),
+    queryFn: () => apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`),
     enabled: !!org && !!uid,
   });
 }
@@ -2358,7 +2358,7 @@ export function useCreateConnection(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: CreateConnectionRequest) =>
-      apiFetch<Connection>(`/api/v1/orgs/${org}/connections`, {
+      apiFetch<Connection>(`/api/v1/orgs/${org}/channels`, {
         method: "POST",
         body: JSON.stringify(request),
       }),
@@ -2372,7 +2372,7 @@ export function useUpdateConnection(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (request: UpdateConnectionRequest) =>
-      apiFetch<Connection>(`/api/v1/orgs/${org}/connections/${uid}`, {
+      apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`, {
         method: "PATCH",
         body: JSON.stringify(request),
       }),
@@ -2387,7 +2387,7 @@ export function useDeleteConnection(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/connections/${uid}`, {
+      apiFetch<void>(`/api/v1/orgs/${org}/channels/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
