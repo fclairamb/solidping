@@ -5,9 +5,10 @@ import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 
 import {
   type EscalationPolicyStep,
-  type EscalationTargetType,
+  type EscalationPolicyTarget,
   useCreateEscalationPolicy,
 } from "@/api/hooks";
+import { StepTargetRow } from "@/components/escalation/step-target-row";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -67,10 +68,10 @@ function NewEscalationPolicyPage() {
     );
   };
 
-  const updateTargetType = (
+  const updateTarget = (
     stepIdx: number,
     targetIdx: number,
-    type: EscalationTargetType,
+    next: EscalationPolicyTarget,
   ) => {
     setSteps((prev) =>
       prev.map((s, i) =>
@@ -78,9 +79,7 @@ function NewEscalationPolicyPage() {
           ? {
               ...s,
               targets: s.targets.map((tar, ti) =>
-                ti === targetIdx
-                  ? { type, targetUid: type === "all_admins" ? "" : tar.targetUid }
-                  : tar,
+                ti === targetIdx ? { ...tar, ...next } : tar,
               ),
             }
           : s,
@@ -199,55 +198,12 @@ function NewEscalationPolicyPage() {
               </div>
               <div className="space-y-1">
                 {step.targets.map((tar, ti) => (
-                  <div key={ti} className="flex gap-2 items-center text-sm">
-                    <select
-                      className="border rounded px-2 py-1 text-sm"
-                      value={tar.type}
-                      onChange={(e) =>
-                        updateTargetType(
-                          idx,
-                          ti,
-                          e.target.value as EscalationTargetType,
-                        )
-                      }
-                    >
-                      <option value="all_admins">
-                        {t("escalation:targets.all_admins")}
-                      </option>
-                      <option value="schedule">
-                        {t("escalation:targets.schedule")}
-                      </option>
-                      <option value="user">
-                        {t("escalation:targets.user")}
-                      </option>
-                      <option value="connection">
-                        {t("escalation:targets.connection")}
-                      </option>
-                    </select>
-                    {tar.type !== "all_admins" && (
-                      <Input
-                        className="h-8 flex-1"
-                        placeholder={t("escalation:editor.targetUidPlaceholder")}
-                        value={tar.targetUid || ""}
-                        onChange={(e) =>
-                          setSteps((prev) =>
-                            prev.map((s, i) =>
-                              i === idx
-                                ? {
-                                    ...s,
-                                    targets: s.targets.map((t2, j) =>
-                                      j === ti
-                                        ? { ...t2, targetUid: e.target.value }
-                                        : t2,
-                                    ),
-                                  }
-                                : s,
-                            ),
-                          )
-                        }
-                      />
-                    )}
-                  </div>
+                  <StepTargetRow
+                    key={ti}
+                    org={org}
+                    target={tar}
+                    onChange={(next) => updateTarget(idx, ti, next)}
+                  />
                 ))}
               </div>
             </div>
