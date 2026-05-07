@@ -229,7 +229,14 @@ function Breadcrumbs({ org }: { org: string }) {
   if (isAccount) {
     const isProfile = routeIds.has("/orgs/$org/account/profile");
     const isTokens = routeIds.has("/orgs/$org/account/tokens");
-    const subLabel = isProfile ? t("profile") : isTokens ? t("tokens") : null;
+    const isSecurity = routeIds.has("/orgs/$org/account/security");
+    const subLabel = isProfile
+      ? t("profile")
+      : isTokens
+        ? t("tokens")
+        : isSecurity
+          ? t("security")
+          : null;
     return (
       <>
         {subLabel ? (

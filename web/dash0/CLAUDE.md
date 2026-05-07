@@ -125,6 +125,16 @@ renders the operator UI — when working on subscriber-facing UX, switch repos.
 - Blue-based color scheme for monitoring context
 - Status colors: green (ok), yellow (warning), red (error)
 
+## Design Reference
+
+Before building or modifying any UI, consult the live design reference at
+`http://localhost:4000/dash0/orgs/default/design-reference` (source:
+`src/routes/orgs/$org/design-reference.tsx`). It renders every shipped
+primitive (buttons, alerts, dialogs, tables, forms…) live in both light and
+dark mode, alongside the exact import line. Reuse those components and
+patterns rather than reinventing them — if something is missing, add it to
+the reference page when you build it so the catalog stays canonical.
+
 ## Adding New Features
 
 ### Adding a Route

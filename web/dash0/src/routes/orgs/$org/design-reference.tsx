@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
   AlertCircle,
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Check,
@@ -21,7 +22,6 @@ import {
   Search,
   Sun,
   Trash2,
-  Triangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -769,7 +769,7 @@ function FeedbackSection() {
                 <AlertDescription>The action completed successfully.</AlertDescription>
               </Alert>
               <Alert variant="warning">
-                <Triangle />
+                <AlertTriangle />
                 <AlertTitle>Warning</AlertTitle>
                 <AlertDescription>Something is degraded but still functional.</AlertDescription>
               </Alert>
