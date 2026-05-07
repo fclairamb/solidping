@@ -33,7 +33,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   useStatusPage,
-  useChecks,
   useCreateSection,
   useDeleteSection,
   useCreateResource,
@@ -42,7 +41,6 @@ import {
   useUpdateResource,
   type StatusPageSection,
   type StatusPageResource,
-  type Check,
 } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -50,7 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -68,13 +66,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -84,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CheckPicker } from "@/components/shared/check-picker";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { ApiError } from "@/api/client";
 
@@ -92,15 +84,6 @@ export const Route = createFileRoute(
 )({
   component: StatusPageDetailPage,
 });
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-}
 
 function StatusDot({ status }: { status?: string }) {
   const color =
@@ -259,28 +242,30 @@ function AddResourceDialog({
   org,
   statusPageUid,
   sectionUid,
-  checks,
   existingCheckUids,
 }: {
   org: string;
   statusPageUid: string;
   sectionUid: string;
-  checks: Check[];
   existingCheckUids: Set<string>;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
-  const [selectedCheckUid, setSelectedCheckUid] = useState("");
+  const [selectedCheckUid, setSelectedCheckUid] = useState<string | undefined>();
+  const [selectedCheckLabel, setSelectedCheckLabel] = useState<string | undefined>();
   const createResource = useCreateResource(org, statusPageUid, sectionUid);
 
-  const availableChecks = checks.filter((c) => !existingCheckUids.has(c.uid));
+  const reset = () => {
+    setSelectedCheckUid(undefined);
+    setSelectedCheckLabel(undefined);
+  };
 
   const handleSubmit = async () => {
     if (!selectedCheckUid) return;
     try {
       await createResource.mutateAsync({ checkUid: selectedCheckUid });
       toast.success(t("statusPages:resources.added"));
-      setSelectedCheckUid("");
+      reset();
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("statusPages:resources.addFailed"));
@@ -288,7 +273,13 @@ function AddResourceDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
@@ -309,18 +300,17 @@ function AddResourceDialog({
           <DialogDescription>{t("statusPages:resources.addDescription")}</DialogDescription>
         </DialogHeader>
         <div className="py-4">
-          <Select value={selectedCheckUid} onValueChange={setSelectedCheckUid}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("statusPages:resources.selectCheck")} />
-            </SelectTrigger>
-            <SelectContent>
-              {availableChecks.map((check) => (
-                <SelectItem key={check.uid} value={check.uid}>
-                  {check.name || check.slug || check.uid.slice(0, 8)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CheckPicker
+            org={org}
+            value={selectedCheckUid}
+            selectedLabel={selectedCheckLabel}
+            excludeUids={existingCheckUids}
+            placeholder={t("statusPages:resources.selectCheck")}
+            onChange={(uid, c) => {
+              setSelectedCheckUid(uid);
+              setSelectedCheckLabel(c ? c.name || c.slug || undefined : undefined);
+            }}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -503,12 +493,10 @@ function SectionCard({
   section,
   org,
   statusPageUid,
-  checks,
 }: {
   section: StatusPageSection;
   org: string;
   statusPageUid: string;
-  checks: Check[];
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -564,7 +552,6 @@ function SectionCard({
               org={org}
               statusPageUid={statusPageUid}
               sectionUid={section.uid}
-              checks={checks}
               existingCheckUids={existingCheckUids}
             />
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -644,8 +631,6 @@ function StatusPageDetailPage() {
     error,
     refetch,
   } = useStatusPage(org, statusPageUid, { with: "sections" });
-
-  const { data: checks } = useChecks(org);
 
   if (isLoading) {
     return (
@@ -766,7 +751,6 @@ function StatusPageDetailPage() {
               section={section}
               org={org}
               statusPageUid={statusPageUid}
-              checks={checks || []}
             />
           ))}
         </div>
