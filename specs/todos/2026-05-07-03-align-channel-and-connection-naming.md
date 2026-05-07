@@ -219,13 +219,22 @@ The branch order is important. PRs land like this:
 ## Implementation Plan (this spec covers PR-1 through PR-4; PR-5 and PR-6
 are explicitly deferred to follow-up specs)
 
-1. **PR-1**: add `/channels` route group as a thin alias next to
-   `/connections`. Tests: existing connection tests still pass; one new
-   smoke test hits `/channels` and asserts the same response shape.
-2. **PR-2**: switch dashboard hooks to `/channels` URLs. No type
-   changes yet. e2e channels test still passes.
-3. **PR-3**: backend rename — files, packages, types, methods, error
-   codes. Big diff but mechanical.
-4. **PR-4**: frontend type rename — `Connection` → `Channel` in
-   `api/hooks.ts` and route param names (`connectionUid` →
+1. **PR-1** ✅ landed 2026-05-07: `/orgs/:org/channels{,/:uid}` route group
+   added next to `/connections`, identical handler bindings. Verified by
+   `TestChannelsAliasMatchesConnections` in
+   `server/test/integration/channels_alias_test.go`. The check-binding
+   path `/checks/:check/connections` is *not* yet aliased (the spec
+   covers org-level connections only); per-check aliasing happens with
+   the wider rename in PR-3.
+2. **PR-2** ✅ landed 2026-05-07: top-level dashboard hooks
+   (`useConnections`, `useConnection`, `useCreateConnection`,
+   `useUpdateConnection`, `useDeleteConnection`) now call
+   `/orgs/$org/channels` on the wire. The `Connection` TS type and the
+   `connections` query-cache key are unchanged — those move in PR-4.
+3. **PR-3** (pending): backend rename — files, packages, types, methods,
+   error codes. Big diff but mechanical. Blocked on the in-flight WIP
+   for spec 04 which touches `channels.index.tsx` and related files;
+   ship after that lands.
+4. **PR-4** (pending): frontend type rename — `Connection` → `Channel`
+   in `api/hooks.ts` and route param names (`connectionUid` →
    `channelUid` in `channels.$channelUid.tsx`).
