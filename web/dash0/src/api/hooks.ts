@@ -1192,8 +1192,14 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
 // Reorder all resources in a section in one round-trip. The dashboard's
 // drag-and-drop UI sends the new ordered list of UIDs; the backend renumbers
 // `position` to match.
+//
+// Optimistically updates the cached `useStatusPage` payload so the React
+// tree already reflects the new order by the time dnd-kit runs the drop
+// animation — without it the dragged item visually snaps back to its
+// original slot before the server roundtrip lands.
 export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
   const queryClient = useQueryClient();
+  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
 
   return useMutation({
     mutationFn: (uids: string[]) =>
@@ -1201,7 +1207,30 @@ export function useReorderResources(org: string, statusPageUid: string, sectionU
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/reorder`,
         { method: "POST", body: JSON.stringify({ uids }) }
       ),
-    onSuccess: () => {
+    onMutate: async (uids) => {
+      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      if (snapshot) {
+        queryClient.setQueryData<StatusPage>(pageWithSectionsKey, {
+          ...snapshot,
+          sections: snapshot.sections?.map((s) => {
+            if (s.uid !== sectionUid || !s.resources) return s;
+            const byUid = new Map(s.resources.map((r) => [r.uid, r]));
+            const reordered = uids
+              .map((uid) => byUid.get(uid))
+              .filter((r): r is StatusPageResource => Boolean(r));
+            return { ...s, resources: reordered };
+          }),
+        });
+      }
+      return { snapshot };
+    },
+    onError: (_err, _uids, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(pageWithSectionsKey, context.snapshot);
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({
         queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
       });
