@@ -6,17 +6,17 @@ Comprehensive directory of uptime monitoring and website monitoring services for
 
 These services have full analysis documents in this directory:
 
-1. **BetterStack Uptime** (formerly Better Uptime) - [betterstack.md](betterstack.md)
+1. **BetterStack Uptime** (formerly Better Uptime) — see [betterstack/](betterstack/) for the deep-dive analysis
    - URL: https://betterstack.com/uptime
    - Focus: Modern incident management + uptime monitoring
    - Pricing: Modular (monitors $25/50, responders $34/each), 10 free monitors
 
-2. **UptimeRobot** - [uptimerobot.md](uptimerobot.md)
+2. **UptimeRobot** — see [uptimerobot/](uptimerobot/) for the deep-dive analysis
    - URL: https://uptimerobot.com
    - Focus: Affordable uptime monitoring
    - Pricing: $7-64/month, 50 free monitors
 
-3. **Pingdom** (SolarWinds) - [pingdom.md](pingdom.md)
+3. **Pingdom** (SolarWinds) — see [pingdom/](pingdom/) for the deep-dive analysis
    - URL: https://www.pingdom.com
    - Focus: Enterprise monitoring with RUM
    - Pricing: ~$15-120+/month, no free tier (14-day trial)
@@ -26,7 +26,7 @@ These services have full analysis documents in this directory:
    - Focus: Self-hosted, beautiful UI, easy setup
    - Pricing: Free (self-hosted), 83k+ GitHub stars
 
-5. **Gatus** - [gatus.md](gatus.md)
+5. **Gatus** — see [gatus/](gatus/) for the deep-dive analysis
    - URL: https://github.com/TwiN/gatus
    - Focus: Developer-centric, YAML config, GitOps
    - Pricing: Free (self-hosted), 10k+ GitHub stars
@@ -156,14 +156,14 @@ These services have full analysis documents in this directory:
     - API: Yes
     - Check Intervals: 1 minute
 
-15. **Hyperping**
+15. **Hyperping** — see [hyperping/](hyperping/) for the deep-dive analysis
     - URL: https://hyperping.com
-    - Focus: Simple, affordable monitoring
-    - Pricing: $0-$35/month
-    - Free Tier: 10 monitors
-    - Notable: Phone call alerts on free tier
-    - API: Yes
-    - Check Intervals: 30 seconds
+    - Focus: Simple, affordable monitoring with strong on-call and status-page features
+    - Pricing: $0 / $24 / $74 / $249 / Enterprise
+    - Free Tier: 20 monitors, 5-min interval, 1 status page
+    - Notable: Two-table outage-vs-incident model; multi-region confirmation embedded in webhook payloads; auto-collected Core Web Vitals on browser checks; built-in i18n on incidents and maintenance
+    - API: Yes (`https://api.hyperping.io`, mixed `/v1`/`/v2`/`/v3` per resource)
+    - Check Intervals: 30 s (Pro), 20 s (Business), 10 s (Enterprise)
 
 16. **Cronitor**
     - URL: https://cronitor.io
