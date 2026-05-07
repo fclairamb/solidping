@@ -1964,21 +1964,21 @@ func (s *Service) resolveIncidentByOrgUID(
 	incident.ResolutionType = &resolutionType
 	incident.ResolvedBy = update.ResolvedBy
 
-	event := models.NewEvent(orgUID, models.EventTypeIncidentResolved, models.ActorTypeUser)
-	event.IncidentUID = &incident.UID
-	event.CheckUID = &incident.CheckUID
-	event.Payload = models.JSONMap{
+	// Route through emitEvent so the channel fan-out and group-incident dedup
+	// shared with auto-resolve also runs here. Without this, manual resolves
+	// silently skipped notifying every channel that fired on incident open.
+	payload := models.JSONMap{
 		payloadKeyVia:     req.Via,
 		"note":            req.Note,
 		"resolution_type": resolutionType,
+		keyCheckUID:       incident.CheckUID,
 	}
-
 	if req.ActorUID != "" {
-		event.ActorUID = &req.ActorUID
+		payload[payloadKeyActorUID] = req.ActorUID
 	}
 
-	if err := s.db.CreateEvent(ctx, event); err != nil {
-		slog.WarnContext(ctx, "Failed to create resolve event",
+	if err := s.emitEvent(ctx, orgUID, models.EventTypeIncidentResolved, incident, payload); err != nil {
+		slog.WarnContext(ctx, "Failed to emit resolve event",
 			"incident_uid", incident.UID, "error", err)
 	}
 
