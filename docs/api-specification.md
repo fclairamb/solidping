@@ -4,7 +4,7 @@ All API routes are prefixed with `/api/v1` unless otherwise noted. Organization-
 
 ## Conventions
 
-- **Pagination**: Cursor-based. Use `cursor` and `size` query parameters. Responses include `hasMore` and `cursor` for the next page.
+- **Pagination**: Cursor-based. Use `cursor` and `limit` query parameters. Responses include `hasMore` and `cursor` for the next page. Endpoints that previously used `?size=` still accept it as a deprecated alias.
 - **Filtering**: Multi-value filters use comma-separated values in singular form (e.g., `?checkUid=a,b`).
 - **Search**: Use `q` for free-text search.
 - **Optional includes**: Use `with` to request related data (e.g., `?with=last_result,check`).
@@ -360,7 +360,7 @@ List events for a specific check. Auth: required
 
 Query parameters:
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -435,7 +435,7 @@ Query parameters:
 - `periodEndBefore` - RFC3339 timestamp
 - `with` - comma-separated optional fields
 - `cursor` - pagination cursor
-- `size` - page size (default 100, max 1000)
+- `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -451,7 +451,7 @@ Query parameters:
 - `until` - RFC3339 timestamp
 - `with` - comma-separated: `check`
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ### GET /api/v1/orgs/:org/incidents/:uid
 Get a single incident. Auth: required
@@ -464,7 +464,7 @@ List events for a specific incident. Auth: required
 
 Query parameters:
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -478,7 +478,7 @@ Query parameters:
 - `checkUid` - filter by check UID
 - `incidentUid` - filter by incident UID
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 

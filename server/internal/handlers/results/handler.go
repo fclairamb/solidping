@@ -4,7 +4,6 @@ package results
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -82,25 +81,13 @@ func (h *Handler) ListResults(writer http.ResponseWriter, req bunrouter.Request)
 	// cursor for pagination
 	opts.Cursor = query.Get("cursor")
 
-	// size (default 100, max 1000)
-	if sizeParam := query.Get("size"); sizeParam != "" {
-		size, err := strconv.Atoi(sizeParam)
-		if err != nil {
-			return h.WriteErrorErr(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid size parameter", err)
-		}
-		if size < 1 {
-			return h.WriteError(
-				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Size must be at least 1")
-		}
-		if size > 1000 {
-			size = 1000
-		}
-		opts.Size = size
+	// limit (canonical) or size (deprecated alias) — default 100, max 1000.
+	limit, err := base.ParsePageLimit(query, 100, 1000)
+	if err != nil {
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
-	if opts.Size == 0 {
-		opts.Size = 100
-	}
+	opts.Size = limit
 
 	// with - comma-separated optional fields
 	if withParam := query.Get("with"); withParam != "" {
