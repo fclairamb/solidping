@@ -88,6 +88,7 @@ import {
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { useDebounce } from "@/lib/use-debounce";
+import { slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/design-reference")({
   component: DesignReferencePage,
@@ -558,6 +559,18 @@ function FormsSection() {
           importLine={`import { Switch } from "@/components/ui/switch";`}
         />
 
+        <h3 className="text-sm font-medium">Name + slug pair</h3>
+        <p className="text-sm text-muted-foreground">
+          When a resource has both a human-readable name and a URL slug, render{" "}
+          <strong>Name first</strong> and auto-fill the slug from it via{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">slugify()</code>{" "}
+          from <code className="rounded bg-muted px-1 py-0.5 text-xs">@/lib/utils</code>.
+          Stop auto-filling once the user has manually edited the slug, so their
+          override is never clobbered. Don't surface a separate "edit slug"
+          toggle — letting them type into the slug field is enough.
+        </p>
+        <NameSlugExample />
+
         <h3 className="text-sm font-medium">Assembled form</h3>
         <div className="rounded-md border bg-card p-4">
           <form className="max-w-md space-y-4" onSubmit={(e) => e.preventDefault()}>
@@ -595,6 +608,45 @@ function FormsSection() {
         </div>
       </div>
     </Section>
+  );
+}
+
+function NameSlugExample() {
+  const [name, setName] = useState("");
+  const [slug, setSlug] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  return (
+    <ExampleRow
+      preview={
+        <div className="grid w-full max-w-lg grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="dr-name-slug-name">Name</Label>
+            <Input
+              id="dr-name-slug-name"
+              value={name}
+              onChange={(e) => {
+                setName(e.target.value);
+                if (!slugManuallyEdited) setSlug(slugify(e.target.value));
+              }}
+              placeholder="Production paging"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="dr-name-slug-slug">Slug</Label>
+            <Input
+              id="dr-name-slug-slug"
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                setSlugManuallyEdited(true);
+              }}
+              placeholder="prod-paging"
+            />
+          </div>
+        </div>
+      }
+      importLine={`import { slugify } from "@/lib/utils";\n\nconst [name, setName] = useState("");\nconst [slug, setSlug] = useState("");\nconst [slugManuallyEdited, setSlugManuallyEdited] = useState(false);\n\n<Input\n  value={name}\n  onChange={(e) => {\n    setName(e.target.value);\n    if (!slugManuallyEdited) setSlug(slugify(e.target.value));\n  }}\n/>\n<Input\n  value={slug}\n  onChange={(e) => {\n    setSlug(e.target.value);\n    setSlugManuallyEdited(true);\n  }}\n/>`}
+    />
   );
 }
 

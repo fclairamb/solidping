@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { slugify } from "@/lib/utils";
 import {
   Select,
   SelectContent,
@@ -31,15 +32,6 @@ interface StatusPageFormData {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
-}
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
 }
 
 export function StatusPageForm({

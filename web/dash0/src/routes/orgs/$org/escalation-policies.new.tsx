@@ -19,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { slugify } from "@/lib/utils";
 
 export const Route = createFileRoute("/orgs/$org/escalation-policies/new")({
   component: NewEscalationPolicyPage,
@@ -31,6 +32,7 @@ function NewEscalationPolicyPage() {
   const create = useCreateEscalationPolicy(org);
 
   const [slug, setSlug] = useState("");
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [repeatMax, setRepeatMax] = useState(0);
@@ -131,19 +133,25 @@ function NewEscalationPolicyPage() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label>{t("escalation:editor.slug")}</Label>
-              <Input
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                placeholder="prod-paging"
-              />
-            </div>
-            <div>
               <Label>{t("escalation:editor.name")}</Label>
               <Input
                 value={name}
-                onChange={(e) => setName(e.target.value)}
+                onChange={(e) => {
+                  setName(e.target.value);
+                  if (!slugManuallyEdited) setSlug(slugify(e.target.value));
+                }}
                 placeholder="Production paging"
+              />
+            </div>
+            <div>
+              <Label>{t("escalation:editor.slug")}</Label>
+              <Input
+                value={slug}
+                onChange={(e) => {
+                  setSlug(e.target.value);
+                  setSlugManuallyEdited(true);
+                }}
+                placeholder="prod-paging"
               />
             </div>
           </div>
