@@ -31,11 +31,44 @@
   "fallbackTitle": "Vorfall",
   "actions": {
     "acknowledge": "Bestätigen",
+    "unacknowledge": "Bestätigung aufheben",
+    "snooze": "Schlummern…",
+    "wakeUp": "Aufwecken",
     "resolve": "Auflösen",
     "acknowledged": "Vorfall bestätigt",
+    "unacknowledged": "Bestätigung entfernt",
+    "snoozed": "Vorfall pausiert",
+    "unsnoozed": "Pause beendet",
     "resolved": "Vorfall aufgelöst",
     "acknowledgeFailed": "Bestätigen des Vorfalls fehlgeschlagen",
+    "unacknowledgeFailed": "Aufheben der Bestätigung fehlgeschlagen",
+    "snoozeFailed": "Pausieren fehlgeschlagen",
+    "unsnoozeFailed": "Aufwecken fehlgeschlagen",
     "resolveFailed": "Auflösen des Vorfalls fehlgeschlagen"
+  },
+  "snoozeDialog": {
+    "title": "Vorfall pausieren",
+    "description": "Benachrichtigungen bis zur gewählten Zeit unterdrücken. Pausieren bestätigt den Vorfall ebenfalls.",
+    "duration": "Dauer",
+    "reason": "Grund (optional)",
+    "reasonPlaceholder": "z. B. Fix wird ausgerollt",
+    "quickSelect": "Schnellauswahl",
+    "until15m": "15 Minuten",
+    "until1h": "1 Stunde",
+    "until4h": "4 Stunden",
+    "untilTomorrow9am": "Morgen um 9 Uhr",
+    "customDuration": "Eigene Dauer (z. B. 2h, 30m)",
+    "submit": "Pausieren",
+    "cancel": "Abbrechen"
+  },
+  "stateBadges": {
+    "acked": "Bestätigt",
+    "snoozed": "Pausiert",
+    "snoozedUntil": "Pausiert bis {{time}}"
+  },
+  "stateFilter": {
+    "ackedOnly": "Bestätigt",
+    "snoozedOnly": "Pausiert"
   },
   "detail": {
     "incidentDetail": "Vorfallsdetail",
@@ -74,5 +107,17 @@
     "hoursAgo": "vor {{count}} Std",
     "minutesAgo": "vor {{count}} Min",
     "justNow": "gerade eben"
+  },
+  "rollup": {
+    "causedByActive": "Zusammengefasst unter dem Vorfall <strong>{{parent}}</strong> — Benachrichtigungen sind unterdrückt, während die Ursache offen ist.",
+    "parentLoading": "der Ursachen-Vorfall",
+    "causedByPast": "Dieser Vorfall war bis {{resolvedAt}} unter {{parent}} zusammengefasst. Die Benachrichtigung erfolgte dann.",
+    "blastRadiusTitle": "Auswirkung ({{count}} betroffen)",
+    "blastRadiusFooter": "Benachrichtigungen werden für jedes Kind ausgelöst, das beim Auflösen dieses Vorfalls noch ausgefallen ist.",
+    "blastRadiusEmpty": "Aktuell sind keine Kind-Vorfälle unter diesem zusammengefasst.",
+    "rolledUpBadge": "zusammengefasst",
+    "showRolledUp": "Zusammengefasste Vorfälle anzeigen",
+    "pagingSuppressed": "Benachrichtigung unterdrückt",
+    "rolledUpInactive": "zusammengefasst"
   }
 }

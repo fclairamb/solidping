@@ -160,9 +160,9 @@ func TestSSLConfig_GetConfig(t *testing.T) {
 	r := require.New(t)
 	r.Equal("example.com", m["host"])
 	r.Equal(8443, m["port"])
-	r.Equal(14, m["threshold_days"])
+	r.Equal(14, m["thresholdDays"])
 	r.Equal("15s", m["timeout"])
-	r.Equal("other.example.com", m["server_name"])
+	r.Equal("other.example.com", m["serverName"])
 }
 
 func TestSSLConfig_GetConfig_Defaults(t *testing.T) {
@@ -177,5 +177,5 @@ func TestSSLConfig_GetConfig_Defaults(t *testing.T) {
 	r := require.New(t)
 	r.Equal("example.com", m["host"])
 	r.NotContains(m, "port")
-	r.NotContains(m, "server_name")
+	r.NotContains(m, "serverName")
 }

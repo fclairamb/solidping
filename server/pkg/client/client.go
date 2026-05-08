@@ -428,3 +428,148 @@ func derefString(s *string, defaultVal string) string {
 
 	return defaultVal
 }
+
+// rawRequest performs an authenticated HTTP request against the API and decodes
+// the JSON response into out (when out != nil and the body is non-empty). It is
+// used by hand-written wrappers for endpoints that aren't yet in the generated
+// client.
+func (c *SolidPingClient) rawRequest(
+	ctx context.Context, method, path string, body any, out any,
+) (int, error) {
+	var bodyReader io.Reader
+
+	if body != nil {
+		buf, err := json.Marshal(body)
+		if err != nil {
+			return 0, fmt.Errorf("marshal body: %w", err)
+		}
+
+		bodyReader = bytes.NewReader(buf)
+	}
+
+	url := strings.TrimRight(c.config.BaseURL, "/") + path
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
+	if err != nil {
+		return 0, fmt.Errorf("build request: %w", err)
+	}
+
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	httpClient := http.DefaultClient
+	if c.loggingTransport != nil {
+		httpClient = &http.Client{Transport: c.loggingTransport}
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return 0, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp.StatusCode, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var apiErr Error
+		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Title != "" {
+			return resp.StatusCode, fmt.Errorf("%w: %s", ErrUnexpectedStatus, apiErr.Title)
+		}
+
+		return resp.StatusCode, fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
+	}
+
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return resp.StatusCode, fmt.Errorf("decode response: %w", err)
+		}
+	}
+
+	return resp.StatusCode, nil
+}
+
+// DependencyRef is a minimal {uid, slug, name} reference used by dependency
+// responses.
+type DependencyRef struct {
+	UID  string `json:"uid"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
+}
+
+// DependencyEdge is one row in the per-check dependency response.
+type DependencyEdge struct {
+	UID         string        `json:"uid"`
+	ParentCheck DependencyRef `json:"parentCheck"`
+	ChildCheck  DependencyRef `json:"childCheck"`
+	Kind        string        `json:"kind"`
+	Description *string       `json:"description,omitempty"`
+}
+
+// PerCheckDependencies is the data payload for ListCheckDependencies.
+type PerCheckDependencies struct {
+	DependsOn    []DependencyEdge `json:"dependsOn"`
+	DependedOnBy []DependencyEdge `json:"dependedOnBy"`
+}
+
+// CreateDependencyBody is the body for AddCheckDependency.
+type CreateDependencyBody struct {
+	ParentCheckUID string  `json:"parentCheckUid"`
+	Kind           string  `json:"kind"`
+	Description    *string `json:"description,omitempty"`
+}
+
+// ListCheckDependencies returns the parents and children of a check.
+func (c *SolidPingClient) ListCheckDependencies(
+	ctx context.Context, org, check string,
+) (*PerCheckDependencies, error) {
+	var resp struct {
+		Data PerCheckDependencies `json:"data"`
+	}
+
+	if _, err := c.rawRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v1/orgs/%s/checks/%s/dependencies", org, check), nil, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp.Data, nil
+}
+
+// AddCheckDependency creates one parent edge for a child check.
+func (c *SolidPingClient) AddCheckDependency(
+	ctx context.Context, org, child string, body CreateDependencyBody,
+) (*DependencyEdge, error) {
+	var dep DependencyEdge
+	if _, err := c.rawRequest(ctx, http.MethodPost,
+		fmt.Sprintf("/api/v1/orgs/%s/checks/%s/dependencies", org, child), body, &dep); err != nil {
+		return nil, err
+	}
+
+	return &dep, nil
+}
+
+// DeleteCheckDependency removes one edge by uid.
+func (c *SolidPingClient) DeleteCheckDependency(
+	ctx context.Context, org, child, depUID string,
+) error {
+	_, err := c.rawRequest(ctx, http.MethodDelete,
+		fmt.Sprintf("/api/v1/orgs/%s/checks/%s/dependencies/%s", org, child, depUID), nil, nil)
+	return err
+}
+
+// RawPutCheckBySlug PUTs a free-form payload to /checks/{slug}. Used by the
+// CLI to apply dependsOn together with the existing check config — the
+// generated UpsertCheckRequest doesn't yet expose dependsOn.
+func (c *SolidPingClient) RawPutCheckBySlug(
+	ctx context.Context, org, slug string, body map[string]any,
+) (int, error) {
+	return c.rawRequest(ctx, http.MethodPut,
+		fmt.Sprintf("/api/v1/orgs/%s/checks/%s", org, slug), body, nil)
+}

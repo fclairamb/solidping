@@ -50,5 +50,42 @@
     "expiry90days": "90 jours",
     "expiry1year": "1 an",
     "expiryNone": "Sans expiration"
+  },
+  "security": {
+    "passkeys": {
+      "title": "Passkeys",
+      "subtitle": "Sign in without a password using your device or a hardware key.",
+      "empty": "No passkeys registered yet.",
+      "add": "Add passkey",
+      "added": "Passkey added.",
+      "removed": "Passkey removed.",
+      "lastUsed": "Last used",
+      "renamePrompt": "New name for this passkey:",
+      "lastAuthMethod": "Add another passkey or set a password before removing this one.",
+      "unsupported": "This browser does not support passkeys."
+    },
+    "totp": {
+      "title": "Two-Factor Authentication (TOTP)",
+      "subtitle": "Add a time-based code as a second sign-in factor.",
+      "status": "Status",
+      "enabled": "Enabled",
+      "notEnabled": "Not enabled",
+      "enable": "Enable 2FA",
+      "disable": "Disable 2FA",
+      "disabled": "2FA disabled.",
+      "skippedWithPasskey": "Skipped when you sign in with a passkey.",
+      "setupTitle": "Set up two-factor authentication",
+      "setupSubtitle": "Scan the QR code with your authenticator app, or enter the secret manually.",
+      "manualSecret": "Manual secret",
+      "codeLabel": "6-digit code",
+      "confirm": "Confirm",
+      "recoveryTitle": "Recovery codes",
+      "recoverySubtitle": "Save these codes — they let you sign in if you lose your device. Each code works once.",
+      "copyAll": "Copy all codes",
+      "savedCheck": "I have saved these codes in a safe place.",
+      "done": "Done",
+      "disableTitle": "Disable two-factor authentication",
+      "disableSubtitle": "Enter a current 6-digit code to confirm."
+    }
   }
 }

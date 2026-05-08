@@ -38,6 +38,11 @@ const MaxSnoozeDuration = 7 * 24 * time.Hour
 // avoids drift across events.
 const payloadKeyVia = "via"
 
+// payloadKeyActorUID is the payload key emitEvent reads when a caller wants
+// the resulting event row attributed to a specific user instead of the
+// default system actor. Used by the manual resolve / ack / snooze paths.
+const payloadKeyActorUID = "actor_uid"
+
 // viaWeb identifies an action taken from the dashboard.
 const viaWeb = "web"
 
@@ -238,6 +243,9 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 
 	incident := models.NewIncident(check.OrganizationUID, check.UID, result.PeriodStart, title)
 
+	// Roll up under a hard parent if one is open within the correlation window.
+	s.applyRollup(ctx, check, incident)
+
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
 		return fmt.Errorf("failed to create incident: %w", err)
 	}
@@ -283,6 +291,12 @@ func (s *Service) resolveIncident(
 		keyTotalFailures:   incident.FailureCount,
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident resolved event: %w", err)
+	}
+
+	// Re-evaluate any rolled-up children: those still down need to page now.
+	if err := s.reEvaluateRollupChildren(ctx, incident); err != nil {
+		slog.WarnContext(ctx, "Failed to re-evaluate rollup children",
+			"parentIncidentUid", incident.UID, "error", err)
 	}
 
 	return nil
@@ -400,6 +414,26 @@ func (s *Service) reopenIncident(
 		ClearAcknowledgedAt: true,
 		ClearAcknowledgedBy: true,
 	}
+
+	// Re-evaluate rollup on reopen — a hard parent could have started failing
+	// in the cooldown window between resolve and reopen.
+	tmp := *incident
+	tmp.StartedAt = result.PeriodStart
+	tmp.PagingSuppressed = false
+	tmp.CausedByIncidentUID = nil
+	s.applyRollup(ctx, check, &tmp)
+
+	suppressed := tmp.PagingSuppressed
+	update.PagingSuppressed = &suppressed
+
+	if tmp.CausedByIncidentUID != nil {
+		update.CausedByIncidentUID = tmp.CausedByIncidentUID
+	} else {
+		update.ClearCausedByIncidentUID = true
+	}
+
+	incident.PagingSuppressed = suppressed
+	incident.CausedByIncidentUID = tmp.CausedByIncidentUID
 
 	if err := s.db.UpdateIncident(ctx, incident.UID, &update); err != nil {
 		return fmt.Errorf("failed to reopen incident: %w", err)
@@ -623,6 +657,20 @@ func (s *Service) createGroupIncident(
 	incident.CheckGroupUID = check.CheckGroupUID
 
 	if err := s.db.CreateIncident(ctx, incident); err != nil {
+		// Race: another concurrent failure beat us to it. Re-fetch the existing
+		// active group incident and attach this check as a member.
+		if isUniqueConstraintError(err) {
+			existing, lookupErr := s.db.FindActiveIncidentByGroupUID(ctx, *check.CheckGroupUID)
+			if lookupErr != nil {
+				return fmt.Errorf("group incident race: lookup after unique violation: %w", lookupErr)
+			}
+
+			slog.WarnContext(ctx, "group incident race resolved, joined existing",
+				"incidentUid", existing.UID, "checkUid", check.UID)
+
+			return s.updateGroupMemberOnFailure(ctx, check, result, existing)
+		}
+
 		return fmt.Errorf("failed to create group incident: %w", err)
 	}
 
@@ -826,12 +874,25 @@ func (s *Service) generateIncidentTitle(check *models.Check) string {
 	return "Check is down"
 }
 
-// emitEvent creates an event for the incident lifecycle.
+// emitEvent creates an event for the incident lifecycle. When the payload
+// carries a non-empty `actor_uid` string, the recorded event is attributed
+// to that user instead of the default system actor — used by the manual
+// resolve / ack / snooze paths so the audit trail keeps the operator UID.
 func (s *Service) emitEvent(
 	ctx context.Context, orgUID string, eventType models.EventType, incident *models.Incident, payload models.JSONMap,
 ) error {
-	event := models.NewEvent(orgUID, eventType, models.ActorTypeSystem)
+	actorType := models.ActorTypeSystem
+	var actorUID *string
+	if payload != nil {
+		if uid, ok := payload[payloadKeyActorUID].(string); ok && uid != "" {
+			actorType = models.ActorTypeUser
+			actorUID = &uid
+		}
+	}
+
+	event := models.NewEvent(orgUID, eventType, actorType)
 	event.IncidentUID = &incident.UID
+	event.ActorUID = actorUID
 	event.Payload = payload
 
 	if err := s.db.CreateEvent(ctx, event); err != nil {
@@ -842,6 +903,12 @@ func (s *Service) emitEvent(
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
+		if incident.PagingSuppressed && eventType != models.EventTypeIncidentResolved {
+			// Rolled-up child: notifications are deferred until parent
+			// resolves. Resolve still notifies so timeline observers see closure.
+			return nil
+		}
+
 		if incident.CheckGroupUID != nil {
 			s.queueGroupNotifications(ctx, orgUID, incident.UID, eventType)
 
@@ -855,11 +922,26 @@ func (s *Service) emitEvent(
 			return nil
 		}
 		s.queueNotifications(ctx, orgUID, checkUID, incident.UID, eventType)
+
+		// Escalation policy fan-out: only on initial open. Resolved /
+		// reopened don't start a new paging cycle (resolved is final;
+		// reopened is a relapse and the original cycle's pending steps
+		// were either fired or canceled).
+		if eventType == models.EventTypeIncidentCreated {
+			s.scheduleEscalationPolicy(ctx, orgUID, checkUID, incident)
+		}
 	case models.EventTypeCheckCreated, models.EventTypeCheckUpdated,
 		models.EventTypeCheckDeleted,
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
-		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed:
-		// No notifications for these event types — operator actions, not lifecycle changes.
+		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
+		models.EventTypeIncidentEscalationFailed,
+		models.EventTypeOrgActivationSignupCompleted,
+		models.EventTypeOrgActivationFirstCheckCreated,
+		models.EventTypeOrgActivationFirstResultReceived,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		models.EventTypeOrgActivationFirstIncidentPaged:
+		// No notifications for these event types — operator actions, soft
+		// escalation failures, or activation milestones.
 	}
 
 	return nil
@@ -978,6 +1060,78 @@ func (s *Service) queueNotifications(
 	}
 }
 
+// scheduleEscalationPolicy resolves the policy that applies to this
+// check (check.escalation_policy_uid wins, then check_group's, then
+// nil) and schedules cycle 0 of its steps. Best-effort: failures are
+// logged but never block incident creation. The cancel sweep keyed on
+// `incidentUid` in job config will drop these jobs on ack/snooze/resolve
+// with no extra wiring.
+func (s *Service) scheduleEscalationPolicy(
+	ctx context.Context, orgUID, checkUID string, incident *models.Incident,
+) {
+	check, err := s.db.GetCheck(ctx, orgUID, checkUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load check", "checkUid", checkUID, "error", err)
+
+		return
+	}
+
+	policyUID := resolveEscalationPolicyUID(ctx, s.db, check)
+	if policyUID == "" {
+		return
+	}
+
+	policy, err := s.db.GetEscalationPolicy(ctx, orgUID, policyUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load policy",
+			"policyUid", policyUID, "error", err)
+
+		return
+	}
+
+	steps, err := s.db.ListEscalationPolicySteps(ctx, policyUID)
+	if err != nil {
+		slog.WarnContext(ctx, "escalation: failed to load steps",
+			"policyUid", policyUID, "error", err)
+
+		return
+	}
+
+	if len(steps) == 0 {
+		return
+	}
+
+	if scheduleErr := jobtypes.ScheduleEscalationCycle(
+		ctx, s.jobsSvc, incident, policy, steps, incident.StartedAt, 0, slog.Default(),
+	); scheduleErr != nil {
+		slog.WarnContext(ctx, "escalation: failed to schedule cycle 0",
+			"policyUid", policyUID, "error", scheduleErr)
+	}
+}
+
+// resolveEscalationPolicyUID picks the right policy for a check: check's
+// own policy wins; otherwise the check group's; otherwise none.
+func resolveEscalationPolicyUID(ctx context.Context, dbSvc db.Service, check *models.Check) string {
+	if check.EscalationPolicyUID != nil && *check.EscalationPolicyUID != "" {
+		return *check.EscalationPolicyUID
+	}
+
+	if check.CheckGroupUID == nil || *check.CheckGroupUID == "" {
+		return ""
+	}
+
+	group, err := dbSvc.GetCheckGroup(ctx, check.OrganizationUID, *check.CheckGroupUID)
+	if err != nil || group == nil {
+		return ""
+	}
+
+	if group.EscalationPolicyUID != nil && *group.EscalationPolicyUID != "" {
+		return *group.EscalationPolicyUID
+	}
+
+	return ""
+}
+
 // ListIncidentsOptions contains options for listing incidents.
 type ListIncidentsOptions struct {
 	CheckUIDs      []string
@@ -989,6 +1143,8 @@ type ListIncidentsOptions struct {
 	Cursor         string
 	Size           int
 	WithCheck      bool // Include check details in response
+	HideSuppressed bool // Hide rolled-up (paging-suppressed) incidents
+	CausedByUID    string
 }
 
 // CheckResponse represents check details embedded in incident responses.
@@ -1000,24 +1156,32 @@ type CheckResponse struct {
 
 // IncidentResponse represents an incident in API responses.
 type IncidentResponse struct {
-	UID            string                   `json:"uid"`
-	CheckUID       string                   `json:"checkUid"`
-	CheckSlug      *string                  `json:"checkSlug,omitempty"`
-	CheckName      *string                  `json:"checkName,omitempty"`
-	State          string                   `json:"state"`
-	StartedAt      time.Time                `json:"startedAt"`
-	ResolvedAt     *time.Time               `json:"resolvedAt,omitempty"`
-	EscalatedAt    *time.Time               `json:"escalatedAt,omitempty"`
-	AcknowledgedAt *time.Time               `json:"acknowledgedAt,omitempty"`
-	FailureCount   int                      `json:"failureCount"`
-	RelapseCount   int                      `json:"relapseCount"`
-	LastReopenedAt *time.Time               `json:"lastReopenedAt,omitempty"`
-	Title          *string                  `json:"title,omitempty"`
-	Description    *string                  `json:"description,omitempty"`
-	Check          *CheckResponse           `json:"check,omitempty"`
-	CheckGroupUID  *string                  `json:"checkGroupUid,omitempty"`
-	CheckGroupSlug *string                  `json:"checkGroupSlug,omitempty"`
-	Members        []IncidentMemberResponse `json:"members,omitempty"`
+	UID                 string                   `json:"uid"`
+	CheckUID            string                   `json:"checkUid"`
+	CheckSlug           *string                  `json:"checkSlug,omitempty"`
+	CheckName           *string                  `json:"checkName,omitempty"`
+	State               string                   `json:"state"`
+	StartedAt           time.Time                `json:"startedAt"`
+	ResolvedAt          *time.Time               `json:"resolvedAt,omitempty"`
+	ResolvedBy          *string                  `json:"resolvedBy,omitempty"`
+	ResolutionType      *string                  `json:"resolutionType,omitempty"`
+	EscalatedAt         *time.Time               `json:"escalatedAt,omitempty"`
+	AcknowledgedAt      *time.Time               `json:"acknowledgedAt,omitempty"`
+	AcknowledgedBy      *string                  `json:"acknowledgedBy,omitempty"`
+	SnoozedUntil        *time.Time               `json:"snoozedUntil,omitempty"`
+	SnoozedBy           *string                  `json:"snoozedBy,omitempty"`
+	SnoozeReason        *string                  `json:"snoozeReason,omitempty"`
+	FailureCount        int                      `json:"failureCount"`
+	RelapseCount        int                      `json:"relapseCount"`
+	LastReopenedAt      *time.Time               `json:"lastReopenedAt,omitempty"`
+	Title               *string                  `json:"title,omitempty"`
+	Description         *string                  `json:"description,omitempty"`
+	Check               *CheckResponse           `json:"check,omitempty"`
+	CheckGroupUID       *string                  `json:"checkGroupUid,omitempty"`
+	CheckGroupSlug      *string                  `json:"checkGroupSlug,omitempty"`
+	Members             []IncidentMemberResponse `json:"members,omitempty"`
+	CausedByIncidentUID *string                  `json:"causedByIncidentUid,omitempty"`
+	PagingSuppressed    bool                     `json:"pagingSuppressed,omitempty"`
 }
 
 // IncidentMemberResponse represents a single member of a group incident.
@@ -1060,19 +1224,27 @@ func stateToString(state models.IncidentState) string {
 // incidentToResponse converts a model incident to an API response.
 func incidentToResponse(inc *models.Incident) IncidentResponse {
 	return IncidentResponse{
-		UID:            inc.UID,
-		CheckUID:       inc.CheckUID,
-		State:          stateToString(inc.State),
-		StartedAt:      inc.StartedAt,
-		ResolvedAt:     inc.ResolvedAt,
-		EscalatedAt:    inc.EscalatedAt,
-		AcknowledgedAt: inc.AcknowledgedAt,
-		FailureCount:   inc.FailureCount,
-		RelapseCount:   inc.RelapseCount,
-		LastReopenedAt: inc.LastReopenedAt,
-		Title:          inc.Title,
-		Description:    inc.Description,
-		CheckGroupUID:  inc.CheckGroupUID,
+		UID:                 inc.UID,
+		CheckUID:            inc.CheckUID,
+		State:               stateToString(inc.State),
+		StartedAt:           inc.StartedAt,
+		ResolvedAt:          inc.ResolvedAt,
+		ResolvedBy:          inc.ResolvedBy,
+		ResolutionType:      inc.ResolutionType,
+		EscalatedAt:         inc.EscalatedAt,
+		AcknowledgedAt:      inc.AcknowledgedAt,
+		AcknowledgedBy:      inc.AcknowledgedBy,
+		SnoozedUntil:        inc.SnoozedUntil,
+		SnoozedBy:           inc.SnoozedBy,
+		SnoozeReason:        inc.SnoozeReason,
+		FailureCount:        inc.FailureCount,
+		RelapseCount:        inc.RelapseCount,
+		LastReopenedAt:      inc.LastReopenedAt,
+		Title:               inc.Title,
+		Description:         inc.Description,
+		CheckGroupUID:       inc.CheckGroupUID,
+		CausedByIncidentUID: inc.CausedByIncidentUID,
+		PagingSuppressed:    inc.PagingSuppressed,
 	}
 }
 
@@ -1186,13 +1358,27 @@ func (s *Service) ListIncidents(
 		MemberCheckUID:  opts.MemberCheckUID,
 		Since:           opts.Since,
 		Until:           opts.Until,
+		HideSuppressed:  opts.HideSuppressed,
+		CausedByUID:     opts.CausedByUID,
 		Limit:           opts.Size + 1, // Fetch one extra to determine hasMore
 	}
 
-	// Convert state strings to state values
+	// Convert state strings to state values. "acked" / "snoozed" are derived
+	// states (active + acknowledged_at | snoozed_until) — they imply
+	// state=active so the SQL stays consistent (an acked-and-resolved
+	// incident shouldn't appear under "acked").
 	for _, stateStr := range opts.States {
-		if state, ok := stringToState(stateStr); ok {
-			filter.States = append(filter.States, state)
+		switch stateStr {
+		case "acked":
+			filter.AckedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		case "snoozed":
+			filter.SnoozedOnly = true
+			filter.States = append(filter.States, models.IncidentStateActive)
+		default:
+			if state, ok := stringToState(stateStr); ok {
+				filter.States = append(filter.States, state)
+			}
 		}
 	}
 
@@ -1298,18 +1484,72 @@ func (s *Service) GetIncidentByUID(ctx context.Context, orgUID, incidentUID stri
 	return incident, nil
 }
 
+// tryEmailAck performs an email-channel ack and returns whether it
+// succeeded. Folds the (incident, error) result the magic-link handler
+// doesn't need into a single bool so the caller can keep its return type
+// simple (nil error after rendering an HTML error page would otherwise trip
+// the nilerr lint).
+func (s *Service) tryEmailAck(
+	ctx context.Context, orgSlug, incidentUID, ackedBy, recipientEmail string,
+) bool {
+	_, err := s.AcknowledgeIncident(ctx, orgSlug, &AcknowledgeIncidentRequest{
+		IncidentUID:         incidentUID,
+		AcknowledgedBy:      ackedBy,
+		AcknowledgedByEmail: recipientEmail,
+		Note:                "",
+		Via:                 "email",
+	})
+
+	return err == nil
+}
+
+// lookupUserUIDByEmail returns the User UID for the given email, or "" if no
+// user is found. Used by the magic-link ack path where the recipient may or
+// may not be a known platform user.
+func (s *Service) lookupUserUIDByEmail(ctx context.Context, email string) string {
+	if email == "" {
+		return ""
+	}
+
+	user, err := s.db.GetUserByEmail(ctx, email)
+	if err != nil || user == nil {
+		return ""
+	}
+
+	return user.UID
+}
+
 // AcknowledgeIncidentRequest contains the data needed to acknowledge an incident.
 type AcknowledgeIncidentRequest struct {
 	IncidentUID    string
 	AcknowledgedBy string // User UID or identifier
-	SlackUserID    string // Slack user ID if acknowledged via Slack
-	SlackUsername  string // Slack username for display
-	Note           string // Optional free-text note
-	Via            string // "slack", "web", "email", etc.
+	// AcknowledgedByEmail is the recipient email for magic-link acks where
+	// AcknowledgedBy may be empty (recipient is not a known user). Goes into
+	// the event payload so the audit trail is complete.
+	AcknowledgedByEmail string
+	SlackUserID         string // Slack user ID if acknowledged via Slack
+	SlackUsername       string // Slack username for display
+	Note                string // Optional free-text note
+	Via                 string // "slack", "web", "email", etc.
 }
 
-// AcknowledgeIncident marks an incident as acknowledged.
+// AcknowledgeIncident marks an incident as acknowledged. Accepts the org
+// slug (as the HTTP layer always has) and resolves it to a UID internally.
 func (s *Service) AcknowledgeIncident(
+	ctx context.Context, orgSlug string, req *AcknowledgeIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.acknowledgeIncidentByOrgUID(ctx, org.UID, req)
+}
+
+// acknowledgeIncidentByOrgUID is the org-UID variant used by internal callers
+// (Slack handler, sweeper) that already hold a UID — they skip the slug
+// lookup that the public method performs.
+func (s *Service) acknowledgeIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *AcknowledgeIncidentRequest,
 ) (*models.Incident, error) {
 	// Get the incident
@@ -1355,6 +1595,12 @@ func (s *Service) AcknowledgeIncident(
 		"slack_user_id":  req.SlackUserID,
 		"slack_username": req.SlackUsername,
 		"note":           req.Note,
+	}
+	// Magic-link acks come in with the recipient email even when the
+	// recipient is not a known platform user — record it on the payload so
+	// the audit trail names the acker even when actor_uid is NULL.
+	if req.AcknowledgedByEmail != "" {
+		event.Payload["acknowledged_by_email"] = req.AcknowledgedByEmail
 	}
 	if req.AcknowledgedBy != "" {
 		event.ActorUID = &req.AcknowledgedBy
@@ -1411,7 +1657,7 @@ func (s *Service) GetCheckByUID(ctx context.Context, orgUID, checkUID string) (*
 func (s *Service) AcknowledgeIncidentFromSlack(
 	ctx context.Context, orgUID, incidentUID, slackUserID, slackUsername string,
 ) (*models.Incident, error) {
-	return s.AcknowledgeIncident(ctx, orgUID, &AcknowledgeIncidentRequest{
+	return s.acknowledgeIncidentByOrgUID(ctx, orgUID, &AcknowledgeIncidentRequest{
 		IncidentUID:   incidentUID,
 		SlackUserID:   slackUserID,
 		SlackUsername: slackUsername,
@@ -1420,8 +1666,19 @@ func (s *Service) AcknowledgeIncidentFromSlack(
 }
 
 // UnacknowledgeIncident clears the acknowledgment on an incident. Use case:
-// ack'd by mistake, want escalation to resume.
+// ack'd by mistake, want escalation to resume. Accepts the org slug.
 func (s *Service) UnacknowledgeIncident(
+	ctx context.Context, orgSlug, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.unacknowledgeIncidentByOrgUID(ctx, org.UID, incidentUID, actorUID, via)
+}
+
+func (s *Service) unacknowledgeIncidentByOrgUID(
 	ctx context.Context, orgUID, incidentUID, actorUID, via string,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
@@ -1478,8 +1735,19 @@ type SnoozeIncidentRequest struct {
 
 // SnoozeIncident silences an incident until a future time. Snooze implies
 // acknowledgment — silencing an unack'd incident is the worst-of-both-worlds
-// state, so the ack is set if missing.
+// state, so the ack is set if missing. Accepts the org slug.
 func (s *Service) SnoozeIncident(
+	ctx context.Context, orgSlug string, req *SnoozeIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.snoozeIncidentByOrgUID(ctx, org.UID, req)
+}
+
+func (s *Service) snoozeIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *SnoozeIncidentRequest,
 ) (*models.Incident, error) {
 	until, err := s.resolveSnoozeUntil(req)
@@ -1575,8 +1843,19 @@ func (s *Service) resolveSnoozeUntil(req *SnoozeIncidentRequest) (time.Time, err
 }
 
 // UnsnoozeIncident clears the snooze on an incident. via is "manual" or
-// "auto" (the auto sweeper uses "auto").
+// "auto" (the auto sweeper uses "auto"). Accepts the org slug.
 func (s *Service) UnsnoozeIncident(
+	ctx context.Context, orgSlug, incidentUID, actorUID, via string,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.unsnoozeIncidentByOrgUID(ctx, org.UID, incidentUID, actorUID, via)
+}
+
+func (s *Service) unsnoozeIncidentByOrgUID(
 	ctx context.Context, orgUID, incidentUID, actorUID, via string,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
@@ -1636,8 +1915,19 @@ type ResolveIncidentRequest struct {
 // ResolveIncident closes an incident manually. Idempotent: returns the
 // existing incident if already resolved. If a new failure rolls in after a
 // manual resolve, the existing incident-creation logic opens a fresh
-// incident — manual resolutions are never reopened.
+// incident — manual resolutions are never reopened. Accepts the org slug.
 func (s *Service) ResolveIncident(
+	ctx context.Context, orgSlug string, req *ResolveIncidentRequest,
+) (*models.Incident, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, ErrOrganizationNotFound
+	}
+
+	return s.resolveIncidentByOrgUID(ctx, org.UID, req)
+}
+
+func (s *Service) resolveIncidentByOrgUID(
 	ctx context.Context, orgUID string, req *ResolveIncidentRequest,
 ) (*models.Incident, error) {
 	incident, err := s.db.GetIncident(ctx, orgUID, req.IncidentUID)
@@ -1674,25 +1964,29 @@ func (s *Service) ResolveIncident(
 	incident.ResolutionType = &resolutionType
 	incident.ResolvedBy = update.ResolvedBy
 
-	event := models.NewEvent(orgUID, models.EventTypeIncidentResolved, models.ActorTypeUser)
-	event.IncidentUID = &incident.UID
-	event.CheckUID = &incident.CheckUID
-	event.Payload = models.JSONMap{
+	// Cancel pending escalation steps that haven't fired yet. Must happen
+	// BEFORE emitEvent — the cancel sweep matches every pending job by
+	// incidentUid, so doing it after would also drop the resolved
+	// notifications we're about to queue.
+	s.cancelPendingNotifications(ctx, incident.UID, nil)
+
+	// Route through emitEvent so the channel fan-out and group-incident dedup
+	// shared with auto-resolve also runs here. Without this, manual resolves
+	// silently skipped notifying every channel that fired on incident open.
+	payload := models.JSONMap{
 		payloadKeyVia:     req.Via,
 		"note":            req.Note,
 		"resolution_type": resolutionType,
+		keyCheckUID:       incident.CheckUID,
 	}
-
 	if req.ActorUID != "" {
-		event.ActorUID = &req.ActorUID
+		payload[payloadKeyActorUID] = req.ActorUID
 	}
 
-	if err := s.db.CreateEvent(ctx, event); err != nil {
-		slog.WarnContext(ctx, "Failed to create resolve event",
+	if err := s.emitEvent(ctx, orgUID, models.EventTypeIncidentResolved, incident, payload); err != nil {
+		slog.WarnContext(ctx, "Failed to emit resolve event",
 			"incident_uid", incident.UID, "error", err)
 	}
-
-	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	return incident, nil
 }
@@ -1710,7 +2004,7 @@ func (s *Service) SweepUnsnooze(ctx context.Context) (int, error) {
 	count := 0
 
 	for _, inc := range incidents {
-		if _, err := s.UnsnoozeIncident(ctx, inc.OrganizationUID, inc.UID, "", "auto"); err != nil {
+		if _, err := s.unsnoozeIncidentByOrgUID(ctx, inc.OrganizationUID, inc.UID, "", "auto"); err != nil {
 			slog.WarnContext(ctx, "Failed to auto-unsnooze incident",
 				"incident_uid", inc.UID, "error", err)
 

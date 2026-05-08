@@ -18,5 +18,13 @@
   "today": "Hoy",
   "uptime": "de disponibilidad",
   "noData": "Sin datos",
-  "responseTime": "Tiempo de respuesta"
+  "responseTime": "Tiempo de respuesta",
+  "status": {
+    "up": "Disponible",
+    "down": "Caído",
+    "timeout": "Tiempo de espera",
+    "error": "Error",
+    "created": "Creado",
+    "running": "En ejecución"
+  }
 }

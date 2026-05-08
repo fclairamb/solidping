@@ -31,11 +31,44 @@
   "fallbackTitle": "Incident",
   "actions": {
     "acknowledge": "Acknowledge",
+    "unacknowledge": "Unacknowledge",
+    "snooze": "Snooze…",
+    "wakeUp": "Wake up",
     "resolve": "Resolve",
     "acknowledged": "Incident acknowledged",
+    "unacknowledged": "Acknowledgment cleared",
+    "snoozed": "Incident snoozed",
+    "unsnoozed": "Snooze cleared",
     "resolved": "Incident resolved",
     "acknowledgeFailed": "Failed to acknowledge incident",
+    "unacknowledgeFailed": "Failed to clear acknowledgment",
+    "snoozeFailed": "Failed to snooze incident",
+    "unsnoozeFailed": "Failed to wake incident",
     "resolveFailed": "Failed to resolve incident"
+  },
+  "snoozeDialog": {
+    "title": "Snooze incident",
+    "description": "Silence notifications until the chosen time. Snoozing also acknowledges the incident.",
+    "duration": "Duration",
+    "reason": "Reason (optional)",
+    "reasonPlaceholder": "e.g., deploying fix",
+    "quickSelect": "Quick select",
+    "until15m": "15 minutes",
+    "until1h": "1 hour",
+    "until4h": "4 hours",
+    "untilTomorrow9am": "Tomorrow at 9am",
+    "customDuration": "Custom (e.g., 2h, 30m)",
+    "submit": "Snooze",
+    "cancel": "Cancel"
+  },
+  "stateBadges": {
+    "acked": "Acked",
+    "snoozed": "Snoozed",
+    "snoozedUntil": "Snoozed until {{time}}"
+  },
+  "stateFilter": {
+    "ackedOnly": "Acknowledged",
+    "snoozedOnly": "Snoozed"
   },
   "detail": {
     "incidentDetail": "Incident Detail",
@@ -74,5 +107,17 @@
     "hoursAgo": "{{count}}h ago",
     "minutesAgo": "{{count}}m ago",
     "justNow": "just now"
+  },
+  "rollup": {
+    "causedByActive": "Rolled up under <strong>{{parent}}</strong> incident — paging is suppressed while the root cause is open.",
+    "parentLoading": "the root-cause incident",
+    "causedByPast": "This incident was rolled up under {{parent}} until {{resolvedAt}}. Paging fired then.",
+    "blastRadiusTitle": "Blast radius ({{count}} affected)",
+    "blastRadiusFooter": "Paging will fire on any child still down when this incident resolves.",
+    "blastRadiusEmpty": "No child incidents currently rolled up under this one.",
+    "rolledUpBadge": "rolled up",
+    "showRolledUp": "Show rolled-up incidents",
+    "pagingSuppressed": "paging suppressed",
+    "rolledUpInactive": "rolled up"
   }
 }

@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,8 +13,9 @@ import {
   Loader2,
   Mail,
 } from "lucide-react";
-import { ApiError, getToken, setToken } from "@/api/client";
+import { ApiError, getToken } from "@/api/client";
 import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
+import { useAuth } from "@/contexts/AuthContext";
 
 export const Route = createFileRoute("/invite/$token")({
   component: AcceptInvitePage,
@@ -25,20 +27,19 @@ function AcceptInvitePage() {
   const navigate = useNavigate();
   const { data: inviteInfo, isLoading: infoLoading, error: infoError } = useInviteInfo(token);
   const acceptInvite = useAcceptInvite();
+  const { acceptInviteSession } = useAuth();
 
   const isAuthenticated = !!getToken();
 
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleAcceptAuthenticated = async () => {
     setError(null);
     try {
       const result = await acceptInvite.mutateAsync({ token });
-      setToken(result.accessToken);
+      acceptInviteSession(result);
       navigate({
         to: "/orgs/$org",
         params: { org: result.organization.slug },
@@ -56,11 +57,6 @@ function AcceptInvitePage() {
     e.preventDefault();
     setError(null);
 
-    if (password !== confirmPassword) {
-      setError(t("auth:passwordsDoNotMatch"));
-      return;
-    }
-
     if (password.length < 8) {
       setError(t("auth:passwordTooShort"));
       return;
@@ -70,10 +66,9 @@ function AcceptInvitePage() {
       const result = await acceptInvite.mutateAsync({
         token,
         name: name || undefined,
-        email,
         password,
       });
-      setToken(result.accessToken);
+      acceptInviteSession(result);
       navigate({
         to: "/orgs/$org",
         params: { org: result.organization.slug },
@@ -134,9 +129,13 @@ function AcceptInvitePage() {
             <span className="font-medium">{inviteInfo.role}</span>
           </p>
           {inviteInfo.email && (
-            <div className="flex items-center justify-center gap-1 mt-2 text-sm text-muted-foreground">
-              <Mail className="h-3 w-3" />
-              <span>{inviteInfo.email}</span>
+            <div className="mt-3 flex items-center justify-center gap-2 text-sm">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <span className="break-all" title={inviteInfo.email}>
+                {t("auth:invite.creatingAccountFor", {
+                  email: inviteInfo.email,
+                })}
+              </span>
             </div>
           )}
         </CardHeader>
@@ -178,37 +177,12 @@ function AcceptInvitePage() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="email">{t("common:email")}</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder={t("auth:emailPlaceholder")}
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                  disabled={acceptInvite.isPending}
-                />
-              </div>
-
-              <div className="space-y-2">
                 <Label htmlFor="password">{t("common:password")}</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={acceptInvite.isPending}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">{t("auth:confirmPassword")}</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={acceptInvite.isPending}
                 />

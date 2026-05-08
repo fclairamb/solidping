@@ -4,7 +4,6 @@ package events
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"strings"
 
 	"github.com/uptrace/bunrouter"
@@ -58,17 +57,12 @@ func (h *Handler) ListEvents(writer http.ResponseWriter, req bunrouter.Request) 
 		opts.Cursor = cursor
 	}
 
-	// Parse size
-	if sizeParam := query.Get("size"); sizeParam != "" {
-		size, err := strconv.Atoi(sizeParam)
-		if err != nil || size < 1 {
-			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid size parameter")
-		}
-		if size > 100 {
-			size = 100
-		}
-		opts.Size = size
+	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
+	limit, err := base.ParsePageLimit(query, opts.Size, 100)
+	if err != nil {
+		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
+	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
@@ -96,17 +90,12 @@ func (h *Handler) ListIncidentEvents(writer http.ResponseWriter, req bunrouter.R
 		opts.Cursor = cursor
 	}
 
-	// Parse size
-	if sizeParam := query.Get("size"); sizeParam != "" {
-		size, err := strconv.Atoi(sizeParam)
-		if err != nil || size < 1 {
-			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid size parameter")
-		}
-		if size > 100 {
-			size = 100
-		}
-		opts.Size = size
+	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
+	limit, err := base.ParsePageLimit(query, opts.Size, 100)
+	if err != nil {
+		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
+	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {
@@ -134,17 +123,12 @@ func (h *Handler) ListCheckEvents(writer http.ResponseWriter, req bunrouter.Requ
 		opts.Cursor = cursor
 	}
 
-	// Parse size
-	if sizeParam := query.Get("size"); sizeParam != "" {
-		size, err := strconv.Atoi(sizeParam)
-		if err != nil || size < 1 {
-			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid size parameter")
-		}
-		if size > 100 {
-			size = 100
-		}
-		opts.Size = size
+	// Parse limit (canonical) or size (deprecated alias). Default 20, max 100.
+	limit, err := base.ParsePageLimit(query, opts.Size, 100)
+	if err != nil {
+		return h.WriteErrorErr(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid limit parameter", err)
 	}
+	opts.Size = limit
 
 	response, err := h.svc.ListEvents(req.Context(), orgSlug, &opts)
 	if err != nil {

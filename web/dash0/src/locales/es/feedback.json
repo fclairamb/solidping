@@ -9,5 +9,10 @@
   "submit": "Enviar",
   "sending": "Enviando…",
   "success": "¡Gracias! Tu reporte fue enviado.",
-  "error": "Algo salió mal. Por favor inténtalo de nuevo."
+  "error": "Algo salió mal. Por favor inténtalo de nuevo.",
+  "tool_select": "Seleccionar",
+  "tool_rect": "Rectángulo",
+  "tool_arrow": "Flecha",
+  "tool_text": "Texto",
+  "undo": "Deshacer"
 }

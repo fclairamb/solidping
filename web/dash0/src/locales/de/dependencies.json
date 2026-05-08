@@ -1,0 +1,43 @@
+{
+  "title": "Abhängigkeiten",
+  "dependsOn": "Hängt ab von",
+  "dependsOnHelp": "Diese Prüfung schlägt fehl, wenn die folgenden fehlschlagen",
+  "dependedOnBy": "Abhängig davon",
+  "dependedOnByHelp": "Diese Prüfungen schlagen fehl, wenn diese fehlschlägt",
+  "addDependency": "Abhängigkeit hinzufügen",
+  "saveDependency": "Speichern",
+  "cancel": "Abbrechen",
+  "kind": "Art",
+  "kindHard": "Hart",
+  "kindSoft": "Weich",
+  "kindHardTooltip": "Ein Ausfall dieses Elternteils unterdrückt Benachrichtigungen für diese Prüfung",
+  "kindSoftTooltip": "Informativ — Benachrichtigungen werden weiterhin ausgelöst",
+  "description": "Beschreibung",
+  "descriptionPlaceholder": "Optional — wie ist die Beziehung?",
+  "noDependencies": "Keine Abhängigkeiten konfiguriert. Fügen Sie oben ein Elternteil hinzu, um das Vorfall-Rollup zu starten.",
+  "noDependents": "Noch hängt nichts von dieser Prüfung ab.",
+  "remove": "Abhängigkeit entfernen",
+  "removeConfirmTitle": "Abhängigkeit von {{parent}} entfernen?",
+  "removeConfirmBody": "Dies stoppt das Vorfall-Rollup für diese Kante.",
+  "removeConfirmAction": "Entfernen",
+  "errors": {
+    "cycle": "Dies würde einen Zyklus erzeugen: {{path}}",
+    "duplicate": "Bereits ein Elternteil.",
+    "notFound": "Prüfung nicht gefunden.",
+    "self": "Eine Prüfung kann nicht von sich selbst abhängen.",
+    "generic": "Hinzufügen der Abhängigkeit fehlgeschlagen."
+  },
+  "pickCheck": "Prüfung auswählen…",
+  "searchChecks": "Prüfungen suchen…",
+  "noMatches": "Keine Treffer.",
+  "list": {
+    "title": "Abhängigkeitsgraph",
+    "subtitle": "Alle gerichteten Abhängigkeiten zwischen Prüfungen in dieser Organisation.",
+    "empty": "Noch keine Abhängigkeiten in dieser Organisation.",
+    "filter": "Nach Prüfungsname filtern",
+    "parent": "Elternteil",
+    "child": "Kind",
+    "kind": "Art",
+    "description": "Beschreibung"
+  }
+}

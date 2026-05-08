@@ -143,11 +143,19 @@ export interface IncidentDetail {
   description?: string;
   startedAt?: string;
   acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  snoozedUntil?: string;
+  snoozedBy?: string;
+  snoozeReason?: string;
   escalatedAt?: string;
   resolvedAt?: string;
+  resolvedBy?: string;
+  resolutionType?: "auto" | "manual" | "expired";
   failureCount?: number;
   relapseCount?: number;
   lastReopenedAt?: string;
+  causedByIncidentUid?: string;
+  pagingSuppressed?: boolean;
 }
 
 export interface Event {
@@ -184,6 +192,7 @@ function buildChecksUrl(
     q?: string;
     checkGroupUid?: string;
     internal?: string;
+    status?: string;
     limit?: number;
     cursor?: string;
   }
@@ -194,6 +203,7 @@ function buildChecksUrl(
   if (options?.q) params.set("q", options.q);
   if (options?.checkGroupUid) params.set("checkGroupUid", options.checkGroupUid);
   if (options?.internal) params.set("internal", options.internal);
+  if (options?.status) params.set("status", options.status);
   if (options?.limit) params.set("limit", options.limit.toString());
   if (options?.cursor) params.set("cursor", options.cursor);
   const query = params.toString();
@@ -218,7 +228,15 @@ export function useChecks(
 
 export function useInfiniteChecks(
   org: string,
-  options?: { labels?: string; with?: string; q?: string; checkGroupUid?: string; internal?: string; limit?: number }
+  options?: {
+    labels?: string;
+    with?: string;
+    q?: string;
+    checkGroupUid?: string;
+    internal?: string;
+    status?: string;
+    limit?: number;
+  }
 ) {
   return useInfiniteQuery({
     queryKey: ["checks", "infinite", org, options],
@@ -311,6 +329,21 @@ export function useLabelSuggestions(
     },
     enabled: (opts.enabled ?? true) && !!org,
     staleTime: 30_000,
+  });
+}
+
+export function useCloneCheck(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (sourceUid: string) =>
+      apiFetch<Check>(`/api/v1/orgs/${org}/checks/${sourceUid}/clone`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", "infinite", org] });
+    },
   });
 }
 
@@ -443,6 +476,133 @@ export function useDeleteCheckGroup(org: string) {
   });
 }
 
+// Check Dependency types
+export type DependencyKind = "hard" | "soft";
+export interface CheckRef {
+  uid: string;
+  slug: string;
+  name: string;
+}
+export interface DependencyEdge {
+  uid: string;
+  parentCheck: CheckRef;
+  childCheck: CheckRef;
+  kind: DependencyKind;
+  description?: string;
+}
+export interface PerCheckDependencies {
+  dependsOn: DependencyEdge[];
+  dependedOnBy: DependencyEdge[];
+}
+export interface GraphNode {
+  uid: string;
+  slug: string;
+  name: string;
+}
+export interface GraphEdge {
+  uid: string;
+  parentCheckUid: string;
+  childCheckUid: string;
+  kind: DependencyKind;
+}
+export interface GraphResponse {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+// Check Dependency hooks
+export function useCheckDependencies(
+  org: string,
+  checkUid: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["dependencies", org, checkUid],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: PerCheckDependencies }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies`,
+      );
+      return r.data;
+    },
+    enabled: !!org && !!checkUid,
+  });
+}
+
+export function useCreateCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: {
+      parentCheckUid: string;
+      kind: DependencyKind;
+      description?: string;
+    }) =>
+      apiFetch<DependencyEdge>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies`,
+        { method: "POST", body: JSON.stringify(body) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useUpdateCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (vars: {
+      uid: string;
+      kind?: DependencyKind;
+      description?: string;
+    }) =>
+      apiFetch<DependencyEdge>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies/${vars.uid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            kind: vars.kind,
+            description: vars.description,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useDeleteCheckDependency(org: string, checkUid: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/dependencies/${uid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["dependencies", org] });
+      qc.invalidateQueries({ queryKey: ["dependencyGraph", org] });
+    },
+  });
+}
+
+export function useDependencyGraph(
+  org: string,
+  opts?: { enabled?: boolean },
+) {
+  return useQuery({
+    queryKey: ["dependencyGraph", org],
+    queryFn: async () => {
+      const r = await apiFetch<{ data: GraphResponse }>(
+        `/api/v1/orgs/${org}/dependencies`,
+      );
+      return r.data;
+    },
+    enabled: (opts?.enabled ?? true) && !!org,
+    staleTime: 30_000,
+  });
+}
+
 // Results hooks
 export function useResults(
   org: string,
@@ -468,7 +628,7 @@ export function useResults(
       if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -529,7 +689,7 @@ export function useAllResults(
           params.set("periodEndBefore", options.periodEndBefore);
         if (options?.with) params.set("with", options.with);
         if (cursor) params.set("cursor", cursor);
-        params.set("size", pageSize.toString());
+        params.set("limit", pageSize.toString());
         const query = params.toString();
         const path = `/api/v1/orgs/${org}/results${query ? `?${query}` : ""}`;
         const response = await apiFetch<{
@@ -551,13 +711,17 @@ export function useAllResults(
 export function useIncidents(
   org: string,
   options?: {
-    state?: "active" | "resolved";
+    // "acked" / "snoozed" are derived states the backend translates to
+    // active + filter; the frontend just passes the literal through.
+    state?: "active" | "resolved" | "acked" | "snoozed";
     checkUid?: string;
     since?: string;
     until?: string;
     cursor?: string;
     size?: number;
     with?: string;
+    hideSuppressed?: boolean;
+    causedByIncidentUid?: string;
     refetchInterval?: number;
   }
 ) {
@@ -572,8 +736,10 @@ export function useIncidents(
       if (options?.since) params.set("since", options.since);
       if (options?.until) params.set("until", options.until);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       if (options?.with) params.set("with", options.with);
+      if (options?.hideSuppressed) params.set("hideSuppressed", "true");
+      if (options?.causedByIncidentUid) params.set("causedByIncidentUid", options.causedByIncidentUid);
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/incidents${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -680,7 +846,7 @@ export function useEvents(
       if (options?.incidentUid) params.set("incidentUid", options.incidentUid);
       if (options?.eventType) params.set("eventType", options.eventType);
       if (options?.cursor) params.set("cursor", options.cursor);
-      if (options?.size) params.set("size", options.size.toString());
+      if (options?.size) params.set("limit", options.size.toString());
       const query = params.toString();
       const path = `/api/v1/orgs/${org}/events${query ? `?${query}` : ""}`;
       const response = await apiFetch<{
@@ -1013,6 +1179,74 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
       apiFetch<StatusPageResource>(
         `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources`,
         { method: "POST", body: JSON.stringify(request) }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+    },
+  });
+}
+
+// Reorder all resources in a section in one round-trip. The dashboard's
+// drag-and-drop UI sends the new ordered list of UIDs; the backend renumbers
+// `position` to match.
+//
+// Optimistically updates the cached `useStatusPage` payload so the React
+// tree already reflects the new order by the time dnd-kit runs the drop
+// animation — without it the dragged item visually snaps back to its
+// original slot before the server roundtrip lands.
+export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
+  const queryClient = useQueryClient();
+  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+
+  return useMutation({
+    mutationFn: (uids: string[]) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/reorder`,
+        { method: "POST", body: JSON.stringify({ uids }) }
+      ),
+    onMutate: async (uids) => {
+      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      if (snapshot) {
+        queryClient.setQueryData<StatusPage>(pageWithSectionsKey, {
+          ...snapshot,
+          sections: snapshot.sections?.map((s) => {
+            if (s.uid !== sectionUid || !s.resources) return s;
+            const byUid = new Map(s.resources.map((r) => [r.uid, r]));
+            const reordered = uids
+              .map((uid) => byUid.get(uid))
+              .filter((r): r is StatusPageResource => Boolean(r));
+            return { ...s, resources: reordered };
+          }),
+        });
+      }
+      return { snapshot };
+    },
+    onError: (_err, _uids, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(pageWithSectionsKey, context.snapshot);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageResources", org, statusPageUid, sectionUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+    },
+  });
+}
+
+export function useUpdateResource(org: string, statusPageUid: string, sectionUid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ resourceUid, request }: { resourceUid: string; request: UpdateResourceRequest }) =>
+      apiFetch<StatusPageResource>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/${sectionUid}/resources/${resourceUid}`,
+        { method: "PATCH", body: JSON.stringify(request) }
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
@@ -1385,19 +1619,21 @@ export function useInviteInfo(token: string) {
   });
 }
 
+export interface AcceptInviteResponse {
+  accessToken: string;
+  user: { email: string; name?: string; avatarUrl?: string; role: string };
+  organization: { uid: string; slug: string; name?: string };
+  organizations?: Array<{ slug: string; name?: string; role: string }>;
+}
+
 export function useAcceptInvite() {
   return useMutation({
     mutationFn: (data: {
       token: string;
       name?: string;
-      email?: string;
       password?: string;
     }) =>
-      apiFetch<{
-        accessToken: string;
-        user: { email: string; name?: string; avatarUrl?: string; role: string };
-        organization: { uid: string; slug: string; name?: string };
-      }>("/api/v1/auth/accept-invite", {
+      apiFetch<AcceptInviteResponse>("/api/v1/auth/accept-invite", {
         method: "POST",
         body: JSON.stringify(data),
         skipAuth: true,
@@ -1723,3 +1959,532 @@ export function useSampleConfigs(checkType: string) {
   });
 }
 
+// ============================================================================
+// On-call schedules
+// ============================================================================
+
+export type OnCallRotationType = "daily" | "weekly";
+
+export interface OnCallUserRef {
+  uid: string;
+  name: string;
+  email: string;
+}
+
+export interface OnCallSchedule {
+  uid: string;
+  slug: string;
+  name: string;
+  description?: string;
+  timezone: string;
+  rotationType: OnCallRotationType;
+  handoffTime: string;
+  handoffWeekday?: number;
+  startAt: string;
+  icalEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+  userUids?: string[];
+  currentlyOnCall?: OnCallUserRef;
+}
+
+export interface OnCallPreviewSlot {
+  userUid: string;
+  from: string;
+  to: string;
+}
+
+export interface OnCallOverride {
+  uid: string;
+  scheduleUid: string;
+  userUid: string;
+  startAt: string;
+  endAt: string;
+  reason?: string;
+  createdByUid?: string;
+  createdAt: string;
+}
+
+export interface CreateOnCallScheduleRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  timezone: string;
+  rotationType: OnCallRotationType;
+  handoffTime: string;
+  handoffWeekday?: number;
+  startAt: string;
+  userUids: string[];
+}
+
+export interface UpdateOnCallScheduleRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  timezone?: string;
+  rotationType?: OnCallRotationType;
+  handoffTime?: string;
+  handoffWeekday?: number;
+  startAt?: string;
+  userUids?: string[];
+}
+
+export interface CreateOnCallOverrideRequest {
+  userUid: string;
+  startAt: string;
+  endAt: string;
+  reason?: string;
+}
+
+export function useOnCallSchedules(org: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallSchedule[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useOnCallSchedule(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug],
+    queryFn: () =>
+      apiFetch<OnCallSchedule>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+      ),
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useOnCallSchedulePreview(
+  org: string,
+  slug: string,
+  days = 14,
+) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug, "preview", days],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallPreviewSlot[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/preview?days=${days}`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useOnCallScheduleOverrides(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["onCallSchedules", org, slug, "overrides"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: OnCallOverride[] }>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useCreateOnCallSchedule(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateOnCallScheduleRequest) =>
+      apiFetch<OnCallSchedule>(`/api/v1/orgs/${org}/on-call-schedules`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useUpdateOnCallSchedule(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateOnCallScheduleRequest) =>
+      apiFetch<OnCallSchedule>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useDeleteOnCallSchedule(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/on-call-schedules/${slug}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["onCallSchedules", org] });
+    },
+  });
+}
+
+export function useCreateOnCallOverride(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateOnCallOverrideRequest) =>
+      apiFetch<OnCallOverride>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides`,
+        { method: "POST", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "overrides"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "preview"],
+      });
+    },
+  });
+}
+
+export function useDeleteOnCallOverride(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (overrideUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/overrides/${overrideUid}`,
+        { method: "DELETE" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "overrides"],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug, "preview"],
+      });
+    },
+  });
+}
+
+export interface OnCallICalFeedResponse {
+  secret: string;
+  url: string;
+}
+
+export function useEnableOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OnCallICalFeedResponse>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/enable`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
+
+export function useDisableOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/disable`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
+
+export function useRotateOnCallICalFeed(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<OnCallICalFeedResponse>(
+        `/api/v1/orgs/${org}/on-call-schedules/${slug}/ical-feed/rotate`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["onCallSchedules", org, slug],
+      });
+    },
+  });
+}
+
+// Escalation policies — orchestration that fires steps in order with
+// delays, with cancellation on ack/snooze/resolve. Distinct from
+// check_connections (per-check broadcast).
+export type EscalationTargetType =
+  | "user"
+  | "schedule"
+  | "connection"
+  | "all_admins";
+
+export interface EscalationPolicyTarget {
+  uid?: string;
+  type: EscalationTargetType;
+  targetUid?: string;
+  position?: number;
+}
+
+export interface EscalationPolicyStep {
+  uid?: string;
+  position: number;
+  delayMinutes: number;
+  targets: EscalationPolicyTarget[];
+}
+
+export interface EscalationPolicy {
+  uid: string;
+  slug: string;
+  name: string;
+  description?: string;
+  repeatMax: number;
+  repeatAfterMinutes?: number | null;
+  steps?: EscalationPolicyStep[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateEscalationPolicyRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  repeatMax: number;
+  repeatAfterMinutes?: number | null;
+  steps: EscalationPolicyStep[];
+}
+
+export interface UpdateEscalationPolicyRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  repeatMax?: number;
+  repeatAfterMinutes?: number | null;
+  steps?: EscalationPolicyStep[];
+}
+
+export function useEscalationPolicies(org: string) {
+  return useQuery({
+    queryKey: ["escalationPolicies", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: EscalationPolicy[] }>(
+        `/api/v1/orgs/${org}/escalation-policies`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useEscalationPolicy(org: string, slug: string) {
+  return useQuery({
+    queryKey: ["escalationPolicies", org, slug],
+    queryFn: () =>
+      apiFetch<EscalationPolicy>(
+        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+      ),
+    enabled: !!org && !!slug,
+  });
+}
+
+export function useCreateEscalationPolicy(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateEscalationPolicyRequest) =>
+      apiFetch<EscalationPolicy>(`/api/v1/orgs/${org}/escalation-policies`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
+    },
+  });
+}
+
+export function useUpdateEscalationPolicy(org: string, slug: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateEscalationPolicyRequest) =>
+      apiFetch<EscalationPolicy>(
+        `/api/v1/orgs/${org}/escalation-policies/${slug}`,
+        { method: "PATCH", body: JSON.stringify(request) },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["escalationPolicies", org],
+      });
+    },
+  });
+}
+
+export function useDeleteEscalationPolicy(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (slug: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/escalation-policies/${slug}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["escalationPolicies", org] });
+    },
+  });
+}
+
+// Notification channels (integration_connections). The settings shape
+// is per-type and intentionally narrow — we hand-write the per-type
+// types rather than a single anything-goes blob.
+export type ConnectionType =
+  | "slack"
+  | "discord"
+  | "webhook"
+  | "email"
+  | "googlechat"
+  | "mattermost"
+  | "ntfy"
+  | "opsgenie"
+  | "pushover";
+
+export interface Connection {
+  uid: string;
+  type: ConnectionType;
+  name: string;
+  enabled: boolean;
+  isDefault: boolean;
+  settings?: Record<string, unknown>;
+  settingsPrivateKeys?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateConnectionRequest {
+  type: ConnectionType;
+  name: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export interface UpdateConnectionRequest {
+  name?: string;
+  enabled?: boolean;
+  isDefault?: boolean;
+  settings?: Record<string, unknown>;
+}
+
+export function useConnections(org: string) {
+  return useQuery({
+    queryKey: ["connections", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: Connection[] }>(
+        `/api/v1/orgs/${org}/channels`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useConnection(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["connection", org, uid],
+    queryFn: () => apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateConnection(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateConnectionRequest) =>
+      apiFetch<Connection>(`/api/v1/orgs/${org}/channels`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+    },
+  });
+}
+
+export function useUpdateConnection(org: string, uid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateConnectionRequest) =>
+      apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+      queryClient.invalidateQueries({ queryKey: ["connection", org, uid] });
+    },
+  });
+}
+
+export function useDeleteConnection(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/channels/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+    },
+  });
+}
+
+// CheckConnection is what GET /checks/$check/connections returns — a
+// flattened view of the bound connection (uid is the underlying
+// connection UID), not the join row.
+export interface CheckConnection {
+  uid: string;
+  type: ConnectionType;
+  name: string;
+  enabled: boolean;
+  isDefault: boolean;
+}
+
+export function useCheckConnections(org: string, checkUid: string | undefined) {
+  return useQuery({
+    queryKey: ["checkConnections", org, checkUid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: CheckConnection[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!checkUid,
+  });
+}
+
+export function useSetCheckConnections(org: string, checkUid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (connectionUids: string[]) =>
+      apiFetch<{ data?: CheckConnection[] }>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ connectionUids }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["checkConnections", org, checkUid],
+      });
+    },
+  });
+}

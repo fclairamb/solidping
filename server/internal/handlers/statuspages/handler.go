@@ -276,6 +276,41 @@ func (h *Handler) UpdateResource(writer http.ResponseWriter, req bunrouter.Reque
 	return h.WriteJSON(writer, http.StatusOK, resource)
 }
 
+// ReorderResourcesRequest is the body for the reorder endpoint: an ordered
+// list of resource UIDs that exactly matches the section's current set.
+type ReorderResourcesRequest struct {
+	UIDs []string `json:"uids"`
+}
+
+// ReorderResources handles renumbering resources within a section to match
+// the supplied order. Used by the dashboard's drag-and-drop UI.
+func (h *Handler) ReorderResources(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	pageIdentifier := req.Param("statusPageUid")
+	sectionIdentifier := req.Param("sectionUid")
+
+	var reorderReq ReorderResourcesRequest
+	if err := json.NewDecoder(req.Body).Decode(&reorderReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if err := h.svc.ReorderResources(
+		req.Context(), orgSlug, pageIdentifier, sectionIdentifier, reorderReq.UIDs,
+	); err != nil {
+		if errors.Is(err, ErrReorderUIDsMismatch) {
+			return h.WriteValidationError(writer, "Reorder UIDs do not match the section", []base.ValidationErrorField{
+				{Name: "uids", Message: "must list every resource in the section exactly once"},
+			})
+		}
+
+		return h.handleSectionError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusNoContent, nil)
+}
+
 // DeleteResource handles removing a check from a section.
 func (h *Handler) DeleteResource(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")

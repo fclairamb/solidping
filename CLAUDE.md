@@ -70,6 +70,12 @@ previous binary running; check the dev log for the compiler error.
   - `make clean` - Remove built binaries and artifacts
   - `make clean-all` - Remove all generated files including node_modules
 
+## Credentials encryption at rest
+- `SP_ENCRYPTION_MASTER_KEY` — base64-encoded 32-byte KEK. When set, secret keys in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column and an AES-256-GCM-encrypted private column (`*_private`). The dashboard never echoes secret values back; it gets a `configPrivateKeys: [...]` hint instead.
+- `SP_ENCRYPTION_MASTER_KEY_FILE` — file path containing the base64 key. Wins over the env var when both are set (k8s secret-mount pattern).
+- `SP_ENCRYPTION_AUTO_MIGRATE` — defaults to `true`. Encrypts any pre-existing plaintext secrets on startup. Set `false` to opt out and run `./solidping encrypt-credentials [--dry-run]` manually.
+- **Threat model caveat:** encryption-at-rest only protects against database theft. It does not protect against a compromised server process, a malicious admin, a worker leaking credentials in its logs, or an over-permissive RBAC config. The fallback when no master key is set is plaintext (V1) — safe default for self-hosted, called out in startup logs.
+
 ## Default credentials
 - User: `admin@solidping.com`
 - Pass: `solidpass`
@@ -87,6 +93,7 @@ previous binary running; check the dev log for the compiler error.
 - Use `PATCH` for all APIs allowing updates
 - Use camelCase consistently for both JSON properties and query parameters (e.g., `checkUid` in JSON and `?checkUid=abc` in URLs)
 - When using query parameters that can contain multiple values, use them in their singular form, for example `checkUid` and not `checkUids`. If there are multiple values, separate them with `,`.
+- The page-size query parameter must be named `limit`. Default and max values are per-endpoint; the name is not. Use `base.ParsePageLimit(query, def, max)` from `server/internal/handlers/base/pagination.go` so legacy `?size=` clients keep working during the deprecation window.
 
 ### API Endpoints (key routes, see `docs/api-specification.md` for full list)
 - GET /api/mgmt/version - Version info
@@ -108,6 +115,12 @@ previous binary running; check the dev log for the compiler error.
 - GET/PATCH /api/v1/orgs/$org/settings - Org settings
 - GET/POST /api/v1/orgs/$org/tokens - Org tokens
 - GET/POST/DELETE /api/v1/orgs/$org/invitations - Invitations
+- POST/GET /api/v1/auth/membership-requests - Self request to join an org by slug
+- DELETE /api/v1/auth/membership-requests/$uid - Cancel own request
+- GET /api/v1/orgs/$org/membership-requests - Admin: list incoming requests
+- POST /api/v1/orgs/$org/membership-requests/$uid/approve|reject - Admin: decide
+- GET/PUT/PATCH /api/v1/orgs/$org/entitlements - Per-org limits + features (service-token or admin)
+- GET /api/v1/orgs/$org/entitlements/audits - Entitlement audit log (admin / service-token)
 - CRUD /api/v1/orgs/$org/members - Members
 - CRUD /api/v1/orgs/$org/checks - Checks
 - POST /api/v1/orgs/$org/checks/validate - Validate check config
@@ -156,6 +169,9 @@ All errors should return:
 - `ORGANIZATION_NOT_FOUND` / `USER_NOT_FOUND` / `CHECK_NOT_FOUND` / `CONNECTION_NOT_FOUND` - Resource not found
 - `STATUS_PAGE_NOT_FOUND` / `STATUS_PAGE_SECTION_NOT_FOUND` / `CHECK_GROUP_NOT_FOUND` - Resource not found
 - `MAINTENANCE_WINDOW_NOT_FOUND` / `TOKEN_NOT_FOUND` - Resource not found
+- `INVALID_AUTO_JOIN_REGEX` - Auto-join email pattern is missing or too permissive
+- `ALREADY_A_MEMBER` / `REQUEST_PENDING` / `REQUEST_NOT_FOUND` / `REQUEST_COOLDOWN_ACTIVE` - Membership request errors
+- `ENTITLEMENT_EXCEEDED` / `FEATURE_NOT_ENTITLED` / `ENTITLEMENTS_STALE` - Entitlements errors
 
 ### API Testing
 ```bash

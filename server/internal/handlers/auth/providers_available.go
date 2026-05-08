@@ -12,14 +12,22 @@ import (
 // ProvidersHandler handles the available auth providers endpoint.
 type ProvidersHandler struct {
 	base.HandlerBase
-	cfg *config.Config
+	cfg            *config.Config
+	passkeyEnabled func() bool
 }
 
-// NewProvidersHandler creates a new providers handler.
-func NewProvidersHandler(cfg *config.Config) *ProvidersHandler {
+// NewProvidersHandler creates a new providers handler. When passkeyEnabled
+// is non-nil it's queried each request — supports the case where WebAuthn
+// is configured but disabled at runtime (e.g. base URL is not https).
+func NewProvidersHandler(cfg *config.Config, passkeyEnabled func() bool) *ProvidersHandler {
+	if passkeyEnabled == nil {
+		passkeyEnabled = func() bool { return false }
+	}
+
 	return &ProvidersHandler{
-		HandlerBase: base.NewHandlerBase(cfg),
-		cfg:         cfg,
+		HandlerBase:    base.NewHandlerBase(cfg),
+		cfg:            cfg,
+		passkeyEnabled: passkeyEnabled,
 	}
 }
 
@@ -33,6 +41,7 @@ type ProviderInfo struct {
 type ProvidersResponse struct {
 	Data                []ProviderInfo `json:"data"`
 	RegistrationEnabled bool           `json:"registrationEnabled"`
+	PasskeysEnabled     bool           `json:"passkeysEnabled"`
 }
 
 // ListProviders returns which auth providers are configured.
@@ -86,5 +95,6 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ bunrouter
 	return h.WriteJSON(writer, http.StatusOK, ProvidersResponse{
 		Data:                providers,
 		RegistrationEnabled: h.cfg.Auth.RegistrationEmailPattern != "",
+		PasskeysEnabled:     h.passkeyEnabled(),
 	})
 }

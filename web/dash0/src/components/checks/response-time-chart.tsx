@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import {
   AreaChart,
   Area,
@@ -16,6 +17,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
+import { PinnedResultBox } from "@/components/checks/pinned-result-box";
 
 type TimeRange = "hour" | "day" | "week" | "month";
 
@@ -205,9 +207,35 @@ export function ResponseTimeChart({
   initialFullRange,
   onSettingsChange,
 }: ResponseTimeChartProps) {
+  const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
+  const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  const dotPositions = useRef<Record<string, { cx: number; cy: number }>>({});
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const [chartWidth, setChartWidth] = useState(0);
+  const [chartHeight, setChartHeight] = useState(0);
+
+  // Callback ref so the observer attaches whenever the wrapper enters the
+  // DOM — including after the loading skeleton clears, which happens on a
+  // later render than the initial mount.
+  const chartWrapperRef = useCallback((node: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!node) return;
+    const rect = node.getBoundingClientRect();
+    setChartWidth(rect.width);
+    setChartHeight(rect.height);
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setChartWidth(entry.contentRect.width);
+        setChartHeight(entry.contentRect.height);
+      }
+    });
+    observer.observe(node);
+    observerRef.current = observer;
+  }, []);
 
   const updateTimeRange = (range: TimeRange) => {
     setTimeRange(range);
@@ -217,6 +245,17 @@ export function ResponseTimeChart({
   const updateFullRange = (full: boolean) => {
     setFullRange(full);
     onSettingsChange?.(timeRange, full);
+  };
+
+  const handleDotClick = (uid: string) => {
+    if (selectedUid === uid) {
+      navigate({
+        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+        params: { org, checkUid, resultUid: uid },
+      });
+      return;
+    }
+    setSelectedUid(uid);
   };
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
@@ -398,7 +437,7 @@ export function ResponseTimeChart({
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
-        <CardTitle>Response Times</CardTitle>
+        <CardTitle>{t("detail.chart.title")}</CardTitle>
         <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer">
             <Switch
@@ -406,7 +445,7 @@ export function ResponseTimeChart({
               onCheckedChange={updateFullRange}
               className="scale-75"
             />
-            <span className="hidden sm:inline">Full range</span>
+            <span className="hidden sm:inline">{t("detail.chart.fullRange")}</span>
           </label>
           <div className="flex items-center gap-1">
             {(["hour", "day", "week", "month"] as TimeRange[]).map((range) => (
@@ -417,8 +456,12 @@ export function ResponseTimeChart({
                 onClick={() => updateTimeRange(range)}
                 className="px-2 text-xs sm:px-3 sm:text-sm"
               >
-                <span className="sm:hidden">{range[0].toUpperCase()}</span>
-                <span className="hidden sm:inline capitalize">{range}</span>
+                <span className="sm:hidden">
+                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}Short`)}
+                </span>
+                <span className="hidden sm:inline">
+                  {t(`detail.chart.range${range.charAt(0).toUpperCase() + range.slice(1)}`)}
+                </span>
               </Button>
             ))}
           </div>
@@ -427,16 +470,21 @@ export function ResponseTimeChart({
       <CardContent>
         {regions.length > 1 && (
           <div className="text-xs text-muted-foreground mb-2">
-            Showing all regions ({regions.join(", ")})
+            {t("detail.chart.showingAllRegions", { regions: regions.join(", ") })}
           </div>
         )}
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : chartData.length === 0 ? (
           <div className="h-[300px] flex items-center justify-center text-muted-foreground">
-            No data available
+            {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
+          <div
+            ref={chartWrapperRef}
+            className="relative"
+            onClick={() => setSelectedUid(null)}
+          >
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={chartData}>
               <defs>
@@ -494,6 +542,7 @@ export function ResponseTimeChart({
                   if (!active || !payload?.length) return null;
                   const data = payload[0].payload as ChartPoint;
                   if (data.durationMs == null) return null;
+                  if (data.uid && data.uid === selectedUid) return null;
                   return (
                     <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
                       <p className="text-muted-foreground">
@@ -509,7 +558,7 @@ export function ResponseTimeChart({
                       )}
                       {data.uid && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          Click point for details
+                          {t("detail.chart.tooltipClickPoint")}
                         </p>
                       )}
                     </div>
@@ -526,7 +575,7 @@ export function ResponseTimeChart({
                   label={
                     gap.showLabel
                       ? {
-                          value: "No data",
+                          value: t("detail.chart.noData"),
                           position: "center",
                           fill: "var(--muted-foreground)",
                           fontSize: 11,
@@ -556,6 +605,54 @@ export function ResponseTimeChart({
                   if (cx == null || cy == null || !payload?.uid) {
                     return <g key={reactKey} />;
                   }
+                  const uid = payload.uid;
+                  // Cache the dot's coordinates for the pinned-box anchor.
+                  // Mutating a ref outside the React commit phase is safe —
+                  // it doesn't trigger a re-render.
+                  dotPositions.current[uid] = { cx, cy };
+                  const fill =
+                    payload.status === "down" ||
+                    payload.status === "unknown"
+                      ? COLOR_DOWN
+                      : COLOR_UP;
+                  const isSelected = selectedUid === uid;
+                  return (
+                    <circle
+                      key={reactKey}
+                      cx={cx}
+                      cy={cy}
+                      r={isSelected ? 5 : 3.5}
+                      fill={fill}
+                      stroke={isSelected ? "var(--primary)" : undefined}
+                      strokeWidth={isSelected ? 2 : 0}
+                      style={{ cursor: "pointer" }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDotClick(uid);
+                      }}
+                    >
+                      <title>
+                        {isSelected
+                          ? t("detail.chart.dotClickAgain")
+                          : t("detail.chart.dotClickForDetails")}
+                      </title>
+                    </circle>
+                  );
+                }}
+                activeDot={(props) => {
+                  const dotProps = props as {
+                    cx?: number;
+                    cy?: number;
+                    payload?: ChartPoint;
+                    key?: React.Key | null;
+                  };
+                  const { cx, cy, payload, key } = dotProps;
+                  const reactKey =
+                    key == null ? undefined : (key as React.Key);
+                  if (cx == null || cy == null || !payload?.uid) {
+                    return <g key={reactKey} />;
+                  }
+                  const uid = payload.uid;
                   const fill =
                     payload.status === "down" ||
                     payload.status === "unknown"
@@ -566,28 +663,31 @@ export function ResponseTimeChart({
                       key={reactKey}
                       cx={cx}
                       cy={cy}
-                      r={3.5}
+                      r={5}
                       fill={fill}
                       style={{ cursor: "pointer" }}
-                      onClick={() =>
-                        navigate({
-                          to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-                          params: {
-                            org,
-                            checkUid,
-                            resultUid: payload.uid!,
-                          },
-                        })
-                      }
-                    >
-                      <title>Click for details</title>
-                    </circle>
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDotClick(uid);
+                      }}
+                    />
                   );
                 }}
-                activeDot={{ r: 5, style: { cursor: "pointer" } }}
               />
             </AreaChart>
           </ResponsiveContainer>
+          {selectedUid && (
+            <PinnedResultBox
+              org={org}
+              checkUid={checkUid}
+              resultUid={selectedUid}
+              anchor={dotPositions.current[selectedUid]}
+              width={chartWidth}
+              height={chartHeight}
+              onClose={() => setSelectedUid(null)}
+            />
+          )}
+          </div>
         )}
       </CardContent>
     </Card>

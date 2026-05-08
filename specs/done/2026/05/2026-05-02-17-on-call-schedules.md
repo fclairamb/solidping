@@ -313,3 +313,63 @@ Tests:
   field. Either add one in this spec or default to the user's browser
   zone in the UI and require explicit selection. Prefer the latter for v1
   to avoid scope creep — note the org-level setting as future work.
+
+## Implementation Plan
+
+A prior branch (`bc70f1d0`) had this spec partly built — backend models,
+repos, resolver, and HTTP handler. That work is salvageable; what's missing
+is the frontend, the iCal feed, the my-on-call widget, and full test
+coverage. Plan picks up from that point.
+
+### Backend foundation (recovered)
+
+1. **Migrations** — port the prior `006_on_call_schedules` to the next free
+   numbers (postgres `016`, sqlite `015`). Adjust column types to match the
+   conventions of the surrounding files. Add the unique constraints called
+   out in the spec.
+2. **Models** — `models.OnCallSchedule`, `OnCallScheduleUser`,
+   `OnCallScheduleOverride` with constructors and update structs.
+3. **Repositories** — postgres + sqlite implementations of the Bun queries
+   used by the service.
+4. **DB service interface** — extend `db.Service` with the new methods.
+5. **Service** — `oncallschedules.Service` with CRUD + override CRUD +
+   resolver hook. Defines its own error sentinels.
+6. **Resolver** — pure function on a (schedule, users, overrides, t) tuple
+   so it's directly unit-testable. Handles DST, overrides, soft-deleted
+   users, empty rotation.
+7. **Handler** — REST endpoints per the spec, including the preview API.
+   Wired into `app/server.go`. Validation and error mapping.
+8. **iCal feed** — public route `/api/v1/on-call-schedules/$secret/feed.ics`
+   plus `enable/disable/rotate` endpoints. Uses the resolver to enumerate
+   slots ±12 months. Cache-Control: max-age=900.
+
+### Tests (mandatory before audit)
+
+9. **Resolver tests** — table-driven covering: weekly Europe/Paris handoff
+   on Monday 09:00, daily 2-user, DST spring-forward, override during
+   handoff, two overlapping overrides → most recent wins, empty user list,
+   schedule before start_at, soft-deleted user skipped.
+10. **iCal generator tests** — event count, timezone, `text/calendar`
+    parses round-trip.
+11. **Handler tests** — CRUD happy path + a couple of validation failures.
+
+### Frontend (dash0)
+
+12. **API hooks** — `useOnCallSchedules`, `useOnCallSchedule`,
+    `useOnCallSchedulePreview`, mutations for CRUD + overrides + iCal feed.
+13. **List route** — `/orgs/$org/on-call` with cards showing currently
+    on-call + next handoff.
+14. **Detail route** — `/orgs/$org/on-call/$slug` with the calendar strip,
+    user roster (drag-to-reorder), overrides table, iCal section.
+15. **Wizard** — `/orgs/$org/on-call/new` form. Default timezone from
+    `Intl.DateTimeFormat().resolvedOptions().timeZone`.
+16. **My on-call widget** — surface in the dashboard home (or profile page
+    if there is no home yet — confirm at implementation time).
+17. **i18n** — `oncall` namespace in en/fr/de/es with strings used in the
+    routes above.
+
+### QA + audit
+
+18. `make build-backend build-dash0 lint-back test`
+19. Independent completeness audit per the implement-todos process. Address
+    any gaps before archiving.

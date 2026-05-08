@@ -76,6 +76,14 @@ type Service interface {
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
 	DeleteUserToken(ctx context.Context, uid string) error
 
+	// UserPasskey operations
+	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
+	GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error)
+	GetUserPasskeyByCredentialID(ctx context.Context, credentialID []byte) (*models.UserPasskey, error)
+	ListUserPasskeysByUser(ctx context.Context, userUID string) ([]*models.UserPasskey, error)
+	UpdateUserPasskey(ctx context.Context, uid string, update models.UserPasskeyUpdate) error
+	DeleteUserPasskey(ctx context.Context, uid string) error
+
 	// Worker operations
 	CreateWorker(ctx context.Context, worker *models.Worker) error
 	GetWorker(ctx context.Context, uid string) (*models.Worker, error)
@@ -178,6 +186,7 @@ type Service interface {
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
 
 	// Escalation policy steps (replace-all is the typical write path)
+	GetEscalationPolicyStep(ctx context.Context, stepUID string) (*models.EscalationPolicyStep, error)
 	ListEscalationPolicySteps(ctx context.Context, policyUID string) ([]*models.EscalationPolicyStep, error)
 	ReplaceEscalationPolicySteps(
 		ctx context.Context, policyUID string, steps []*models.EscalationPolicyStep,
@@ -299,6 +308,7 @@ type Service interface {
 	GetStatusPageSection(ctx context.Context, pageUID, uid string) (*models.StatusPageSection, error)
 	GetStatusPageSectionBySlug(ctx context.Context, pageUID, slug string) (*models.StatusPageSection, error)
 	ListStatusPageSections(ctx context.Context, pageUID string) ([]*models.StatusPageSection, error)
+	MaxStatusPageSectionPosition(ctx context.Context, pageUID string) (int, error)
 	UpdateStatusPageSection(ctx context.Context, uid string, update *models.StatusPageSectionUpdate) error
 	DeleteStatusPageSection(ctx context.Context, uid string) error
 
@@ -306,6 +316,8 @@ type Service interface {
 	CreateStatusPageResource(ctx context.Context, resource *models.StatusPageResource) error
 	GetStatusPageResource(ctx context.Context, sectionUID, uid string) (*models.StatusPageResource, error)
 	ListStatusPageResources(ctx context.Context, sectionUID string) ([]*models.StatusPageResource, error)
+	MaxStatusPageResourcePosition(ctx context.Context, sectionUID string) (int, error)
+	ReorderStatusPageResources(ctx context.Context, sectionUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
 
@@ -329,6 +341,33 @@ type Service interface {
 		ctx context.Context, orgUID string, filter models.ListFilesFilter,
 	) ([]*models.File, int64, error)
 	DeleteFile(ctx context.Context, orgUID, uid string) error
+
+	// CheckDependency operations
+	CreateCheckDependency(ctx context.Context, dep *models.CheckDependency) error
+	GetCheckDependency(ctx context.Context, orgUID, depUID string) (*models.CheckDependency, error)
+	ListCheckDependenciesByOrg(ctx context.Context, orgUID string) ([]*models.CheckDependency, error)
+	ListCheckDependencyParents(ctx context.Context, childCheckUID string) ([]*models.CheckDependency, error)
+	ListCheckDependencyChildren(ctx context.Context, parentCheckUID string) ([]*models.CheckDependency, error)
+	FindCheckDependencyEdge(ctx context.Context, parentUID, childUID string) (*models.CheckDependency, error)
+	UpdateCheckDependency(ctx context.Context, depUID string, update *models.CheckDependencyUpdate) error
+	DeleteCheckDependency(ctx context.Context, depUID string) error
+	ListSuppressedChildIncidents(ctx context.Context, parentIncidentUID string) ([]*models.Incident, error)
+	FindActiveIncidentsForChecksInWindow(
+		ctx context.Context, checkUIDs []string, since, until time.Time,
+	) ([]*models.Incident, error)
+
+	// Org entitlement operations
+	GetOrgEntitlements(ctx context.Context, orgUID string) (*models.OrgEntitlements, error)
+	UpsertOrgEntitlements(
+		ctx context.Context, ent *models.OrgEntitlements, audit *models.OrgEntitlementAudit,
+	) error
+	ListOrgEntitlementAudits(
+		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
+	) ([]*models.OrgEntitlementAudit, error)
+	CountChecksForOrg(ctx context.Context, orgUID string) (int, error)
+	CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error)
+	CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error)
+	CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error)
 
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error

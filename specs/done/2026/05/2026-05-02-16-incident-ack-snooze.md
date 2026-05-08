@@ -311,3 +311,28 @@ Automated tests (`server/internal/handlers/incidents/handler_test.go`,
 - **Slack ack already works**: Don't refactor `AcknowledgeIncidentFromSlack`
   to share code with the new web path beyond what's already shared. The Slack
   call site is stable; touching it adds risk.
+
+## Implementation Plan — completion pass (2026-05-05)
+
+The first implementation shipped backend ack/unack/snooze/unsnooze/resolve
+endpoints, schema, sweeper, hooks, and an `Acknowledge` button + Resolve
+button on the incident detail page. This completion pass closes the four
+items the reopening commit `be31acc6` flagged:
+
+1. **Frontend — incident detail action row**: surface `Snooze`, `Unack`, `Unsnooze` actions alongside the existing `Acknowledge` and `Resolve`. State-conditional rendering per the spec's "Action row" matrix (Open / Acknowledged / Snoozed / Resolved). All four hooks (`useSnoozeIncident`, `useUnacknowledgeIncident`, `useUnsnoozeIncident`, `useResolveIncident`) already exist — wire them up.
+
+2. **Frontend — snooze dialog**: a small dialog with quick-select buttons (15m / 1h / 4h / Until tomorrow 9am) plus a free-form duration input and an optional reason field. Submits via `useSnoozeIncident`.
+
+3. **Frontend — incident list state badges + filter**: add a state column to the rows (Acked / Snoozed badges in addition to the existing Open / Resolved derived state), and extend the state filter Select with `acked` and `snoozed` options. Both feed the existing `state` query param; the backend `parseListIncidentsOptions` already accepts the derived filters per the first pass.
+
+4. **Backend — magic-link `/ack` endpoint**: `GET /api/v1/orgs/$org/incidents/$uid/ack?token=…`. HMAC-signed token (signed with the existing JWT secret), payload `{incident_uid, recipient_email, exp}`, 7-day expiry. Returns `text/html` (a tiny acknowledged page or 410-Gone-with-link page on failure). Idempotent on token reuse. Public route (no Authorization header — the token authenticates).
+
+5. **Backend — emit magic-link in email notifications**: helper `BuildIncidentAckURL(incident, recipient)` issues the signed token; the email template gains a styled "Acknowledge" button pointing at it. Other channels (Discord, webhook, etc.) get the URL inline in the message body — no interactive buttons in this pass.
+
+6. **i18n + tests**: localize the new dialog/buttons in en/fr/de/es. Unit tests for token generation/verification (valid, expired, tampered, wrong-incident).
+
+7. **QA + completeness audit**.
+
+Out of this completion pass:
+- Discord interactive buttons (mentioned in spec but explicitly deferred).
+- Per-token revocation list (spec accepts that rotating `SP_AUTH_JWT_SECRET` invalidates everything; v1 trade-off documented).

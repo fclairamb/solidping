@@ -3,8 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Activity,
@@ -22,7 +22,6 @@ function ResetPasswordPage() {
   const { t } = useTranslation("auth");
   const { token } = Route.useParams();
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
   const resetPassword = useResetPassword();
@@ -30,11 +29,6 @@ function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (password !== confirmPassword) {
-      setError(t("passwordsDoNotMatch"));
-      return;
-    }
 
     if (password.length < 8) {
       setError(t("passwordTooShort", { ns: "common" }));
@@ -94,6 +88,7 @@ function ResetPasswordPage() {
                         {" "}
                         <Link
                           to="/forgot-password"
+                          search={{ email: undefined }}
                           className="underline"
                         >
                           {t("requestNewReset")}
@@ -105,24 +100,11 @@ function ResetPasswordPage() {
               )}
               <div className="space-y-2">
                 <Label htmlFor="password">{t("newPassword")}</Label>
-                <Input
+                <PasswordInput
                   id="password"
-                  type="password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  required
-                  disabled={resetPassword.isPending}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="confirmPassword">
-                  {t("confirmNewPassword")}
-                </Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
                   required
                   disabled={resetPassword.isPending}
                 />

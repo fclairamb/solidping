@@ -1,5 +1,7 @@
 package credentials
 
+import "sort"
+
 // SecretFielder is an *optional* interface a checker config can implement
 // to declare which top-level keys in its config map carry secrets. Going
 // through an optional interface (rather than adding the method to the
@@ -67,4 +69,59 @@ func MergeConfig(public, private map[string]any) map[string]any {
 	}
 
 	return merged
+}
+
+// MergePatch applies the PATCH-merge rule used by both checks and
+// connections: secret keys absent from `patch` are preserved from
+// `existing`; an explicit nil/empty value clears them. Non-secret keys
+// follow replace-wholesale semantics (anything in `existing` that isn't
+// in `patch` is dropped).
+func MergePatch(existing, patch map[string]any, secretFields []string) map[string]any {
+	merged := make(map[string]any, len(existing)+len(patch))
+	for k, v := range existing {
+		merged[k] = v
+	}
+
+	secretSet := make(map[string]struct{}, len(secretFields))
+	for _, k := range secretFields {
+		secretSet[k] = struct{}{}
+	}
+
+	for key, val := range patch {
+		if _, isSecret := secretSet[key]; isSecret {
+			if val == nil || val == "" {
+				delete(merged, key)
+
+				continue
+			}
+		}
+
+		merged[key] = val
+	}
+
+	for key := range merged {
+		if _, isSecret := secretSet[key]; isSecret {
+			continue
+		}
+
+		if _, present := patch[key]; !present {
+			delete(merged, key)
+		}
+	}
+
+	return merged
+}
+
+// SortedKeys returns the keys of m in lexicographic order. Stable output
+// matters for the *PrivateKeys columns so the dashboard placeholder list
+// doesn't flicker between renders.
+func SortedKeys(m map[string]any) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+
+	sort.Strings(out)
+
+	return out
 }

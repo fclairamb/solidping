@@ -9,5 +9,10 @@
   "submit": "Send",
   "sending": "Sending…",
   "success": "Thanks! Your report was sent.",
-  "error": "Something went wrong. Please try again."
+  "error": "Something went wrong. Please try again.",
+  "tool_select": "Select",
+  "tool_rect": "Box",
+  "tool_arrow": "Arrow",
+  "tool_text": "Text",
+  "undo": "Undo"
 }

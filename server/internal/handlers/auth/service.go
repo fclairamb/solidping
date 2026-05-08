@@ -20,6 +20,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/pquerna/otp/totp"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -248,6 +249,8 @@ type MeResponse struct {
 	Organization              *OrganizationInfo          `json:"organization"`
 	Organizations             []OrganizationSummary      `json:"organizations"`
 	TOTPEnabled               bool                       `json:"totpEnabled"`
+	PasskeyCount              int                        `json:"passkeyCount"`
+	HasPassword               bool                       `json:"hasPassword"`
 	PendingMembershipRequests []MembershipRequestSummary `json:"pendingMembershipRequests,omitempty"`
 }
 
@@ -318,6 +321,8 @@ type CreateTokenResponse struct {
 }
 
 // NewService creates a new authentication service.
+//
+//nolint:gocritic // cfg embeds the WebAuthn block (~112 bytes) — value semantics keep call sites simple.
 func NewService(
 	dbService db.Service, cfg config.AuthConfig, fullCfg *config.Config,
 	jobsSvc jobsvc.Service,
@@ -367,8 +372,6 @@ func (s *Service) enqueueEmail(
 // Login authenticates a user and returns access and refresh tokens.
 // orgSlug is treated as a preference — the system will try to honor it but will
 // gracefully fall back to available organizations if the user is not a member.
-//
-//nolint:funlen,cyclop
 func (s *Service) Login(
 	ctx context.Context, orgSlug, email, password string, authContext Context,
 ) (*LoginResponse, error) {
@@ -423,7 +426,32 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	// Update last active timestamp
+	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "password", authContext)
+}
+
+// completeLogin is the shared post-authentication path used by Login,
+// the OAuth callback, and the passkey FinishLogin. It updates last-active,
+// issues access + refresh tokens (or just access for the no-org case),
+// and writes the refresh-token row tagged with the authentication method
+// for forensics. Callers must have already validated the user's identity
+// and resolved the organization preference (resolvedOrg may be nil for
+// users with no membership).
+//
+// Token issuance is identical across paths; the only knob is `method`
+// (one of "password", "passkey", "oauth") which lands in the token's
+// Properties.created_with.method field.
+//
+//nolint:funlen
+func (s *Service) completeLogin(
+	ctx context.Context,
+	user *models.User,
+	resolvedOrg *models.Organization,
+	role string,
+	loginAction LoginAction,
+	orgSummaries []OrganizationSummary,
+	method string,
+	authContext Context,
+) (*LoginResponse, error) {
 	now := time.Now()
 
 	if updateErr := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{LastActiveAt: &now}); updateErr != nil {
@@ -438,7 +466,6 @@ func (s *Service) Login(
 		Role:      role,
 	}
 
-	// No org case: issue token with empty org, skip refresh token
 	if resolvedOrg == nil {
 		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role)
 		if tokenErr != nil {
@@ -455,25 +482,28 @@ func (s *Service) Login(
 		}, nil
 	}
 
-	// Generate access token
 	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role)
 	if err != nil {
 		return nil, err
 	}
 
-	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
 		return nil, err
 	}
 
-	// Store refresh token in database
 	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
 	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
+
+	createdWith := authContext.ToMap()
+	if createdWith == nil {
+		createdWith = map[string]any{}
+	}
+	createdWith[keyMethod] = method
 	refreshToken.Properties = models.JSONMap{
-		keyCreatedWith: authContext.ToMap(),
+		keyCreatedWith: createdWith,
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
@@ -1048,6 +1078,9 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		return nil, err
 	}
 
+	passkeys, _ := s.db.ListUserPasskeysByUser(ctx, user.UID)
+	hasPassword := user.PasswordHash != nil && *user.PasswordHash != ""
+
 	return &MeResponse{
 		User: &UserInfo{
 			UID:       user.UID,
@@ -1063,6 +1096,8 @@ func (s *Service) GetUserInfo(ctx context.Context, claims *Claims) (*MeResponse,
 		},
 		Organizations:             orgs,
 		TOTPEnabled:               user.TOTPEnabled,
+		PasskeyCount:              len(passkeys),
+		HasPassword:               hasPassword,
 		PendingMembershipRequests: pending,
 	}, nil
 }
@@ -2120,6 +2155,10 @@ func (s *Service) CreateOrg(ctx context.Context, userUID string, req CreateOrgRe
 		return nil, fmt.Errorf("failed to create membership: %w", err)
 	}
 
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationSignupCompleted,
+		activation.SourceRegularForm, userUID)
+
 	return &OrgResponse{
 		UID:  org.UID,
 		Slug: org.Slug,
@@ -2475,6 +2514,11 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
+	orgSummaries, errOrgs := s.getOrganizationsForUser(ctx, user.UID)
+	if errOrgs != nil {
+		return nil, fmt.Errorf("failed to list user organizations: %w", errOrgs)
+	}
+
 	return &LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
@@ -2491,6 +2535,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 			Slug: matchedOrg.Slug,
 			Name: matchedOrg.Name,
 		},
+		Organizations: orgSummaries,
 	}, nil
 }
 
@@ -2619,10 +2664,10 @@ func (s *Service) sendInvitationEmail(
 
 	s.enqueueEmail(ctx, orgUID, recipientEmail, "invitation.html",
 		map[string]any{
-			"OrgName":     orgName,
-			"Role":        role,
-			"InviterName": inviterName,
-			"InviteURL":   inviteURL,
+			emailKeyOrgName: orgName,
+			"Role":          role,
+			"InviterName":   inviterName,
+			"InviteURL":     inviteURL,
 		},
 	)
 }

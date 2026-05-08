@@ -2,6 +2,7 @@ import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/contexts/AuthContext";
 import { TabNav } from "@/components/shared/tab-nav";
+import { useOrgMembershipRequests } from "@/api/hooks";
 
 export const Route = createFileRoute("/orgs/$org/organization")({
   component: OrganizationLayout,
@@ -10,8 +11,13 @@ export const Route = createFileRoute("/orgs/$org/organization")({
 function OrganizationLayout() {
   const { t } = useTranslation(["org", "nav"]);
   const { org } = Route.useParams();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const navigate = useNavigate();
+  const { data: pendingData } = useOrgMembershipRequests(org, {
+    status: "pending",
+    enabled: !!user?.isAdmin,
+  });
+  const pendingCount = pendingData?.data.length ?? 0;
 
   const tabs = [
     { label: t("nav:members"), path: "/orgs/$org/organization/members" },
@@ -19,10 +25,14 @@ function OrganizationLayout() {
     {
       label: t("nav:requests", "Requests"),
       path: "/orgs/$org/organization/requests",
+      badge: pendingCount,
     },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 
+  if (isLoading) {
+    return null;
+  }
   if (!user?.isAdmin) {
     navigate({ to: "/orgs/$org", params: { org }, replace: true });
     return null;

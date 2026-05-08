@@ -2,10 +2,15 @@
   "dashboard": "Dashboard",
   "checks": "Prüfungen",
   "incidents": "Vorfälle",
+  "dependencies": "Abhängigkeiten",
+  "onCall": "Bereitschaft",
+  "escalationPolicies": "Eskalationsrichtlinien",
   "events": "Ereignisse",
+  "channels": "Kanäle",
   "statusPages": "Statusseiten",
   "badges": "Abzeichen",
   "testTools": "Testwerkzeuge",
+  "designReference": "Design-Referenz",
   "new": "Neu",
   "edit": "Bearbeiten",
   "profile": "Profil",
@@ -111,5 +116,6 @@
     "groupAccount": "Konto",
     "groupOrganization": "Organisation",
     "groupChecks": "Prüfungen"
-  }
+  },
+  "security": "Sicherheit"
 }

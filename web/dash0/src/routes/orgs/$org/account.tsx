@@ -12,6 +12,7 @@ function AccountLayout() {
 
   const tabs = [
     { label: t("nav:profile"), path: "/orgs/$org/account/profile" },
+    { label: t("nav:security"), path: "/orgs/$org/account/security" },
     { label: t("nav:tokens"), path: "/orgs/$org/account/tokens" },
   ];
 

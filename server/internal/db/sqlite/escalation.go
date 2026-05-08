@@ -22,19 +22,25 @@ func (s *Service) CreateEscalationPolicy(ctx context.Context, policy *models.Esc
 	return nil
 }
 
-// GetEscalationPolicy fetches a policy by UID, scoped to its organization.
+// GetEscalationPolicy fetches a policy by UID. When orgUID is non-empty
+// the lookup is scoped to that organization (the normal CRUD path); an
+// empty orgUID returns the policy regardless of org (used by the
+// escalation runtime which only knows the policy UID).
 func (s *Service) GetEscalationPolicy(
 	ctx context.Context, orgUID, policyUID string,
 ) (*models.EscalationPolicy, error) {
 	var policy models.EscalationPolicy
 
-	err := s.db.NewSelect().
+	query := s.db.NewSelect().
 		Model(&policy).
 		Where("uid = ?", policyUID).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Scan(ctx)
-	if err != nil {
+		Where("deleted_at IS NULL")
+
+	if orgUID != "" {
+		query = query.Where("organization_uid = ?", orgUID)
+	}
+
+	if err := query.Scan(ctx); err != nil {
 		return nil, fmt.Errorf("get escalation policy: %w", err)
 	}
 
@@ -141,6 +147,24 @@ func (s *Service) DeleteEscalationPolicy(ctx context.Context, policyUID string) 
 	}
 
 	return nil
+}
+
+// GetEscalationPolicyStep loads a single step by UID. Used by the
+// escalation runtime when a job fires and only knows its step UID.
+func (s *Service) GetEscalationPolicyStep(
+	ctx context.Context, stepUID string,
+) (*models.EscalationPolicyStep, error) {
+	step := new(models.EscalationPolicyStep)
+
+	err := s.db.NewSelect().
+		Model(step).
+		Where("uid = ?", stepUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("get escalation policy step: %w", err)
+	}
+
+	return step, nil
 }
 
 // ListEscalationPolicySteps returns the steps of a policy ordered by position.

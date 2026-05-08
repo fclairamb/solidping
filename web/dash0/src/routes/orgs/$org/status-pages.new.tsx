@@ -26,6 +26,9 @@ function StatusPageNewPage() {
           description: data.description || undefined,
           visibility: data.visibility,
           isDefault: data.isDefault || undefined,
+          showAvailability: data.showAvailability,
+          showResponseTime: data.showResponseTime,
+          historyDays: data.historyDays,
         });
         toast.success(t("toast.created"));
         navigate({

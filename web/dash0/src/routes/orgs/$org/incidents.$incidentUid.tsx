@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeft,
+  BellOff,
   CheckCircle,
   Clock,
   ExternalLink,
@@ -14,10 +15,19 @@ import {
 import { toast } from "sonner";
 import {
   useIncident,
+  useIncidents,
   useAcknowledgeIncident,
+  useUnacknowledgeIncident,
+  useSnoozeIncident,
+  useUnsnoozeIncident,
   useResolveIncident,
   useEvents,
+  type Event,
+  type IncidentDetail,
 } from "@/api/hooks";
+import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -119,7 +129,11 @@ function IncidentDetailPage() {
   const { data: events } = useEvents(org, { incidentUid, size: 20 });
 
   const acknowledgeIncident = useAcknowledgeIncident(org);
+  const unacknowledgeIncident = useUnacknowledgeIncident(org);
+  const snoozeIncident = useSnoozeIncident(org);
+  const unsnoozeIncident = useUnsnoozeIncident(org);
   const resolveIncident = useResolveIncident(org);
+  const [snoozeOpen, setSnoozeOpen] = useState(false);
 
   const handleAcknowledge = async () => {
     try {
@@ -128,6 +142,39 @@ function IncidentDetailPage() {
       refetch();
     } catch {
       toast.error(t("actions.acknowledgeFailed"));
+    }
+  };
+
+  const handleUnacknowledge = async () => {
+    try {
+      await unacknowledgeIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.unacknowledged"));
+      refetch();
+    } catch {
+      toast.error(t("actions.unacknowledgeFailed"));
+    }
+  };
+
+  const handleSnooze = async (
+    payload: { duration?: string; until?: string; reason?: string },
+  ) => {
+    try {
+      await snoozeIncident.mutateAsync({ uid: incidentUid, body: payload });
+      toast.success(t("actions.snoozed"));
+      setSnoozeOpen(false);
+      refetch();
+    } catch {
+      toast.error(t("actions.snoozeFailed"));
+    }
+  };
+
+  const handleUnsnooze = async () => {
+    try {
+      await unsnoozeIncident.mutateAsync({ uid: incidentUid });
+      toast.success(t("actions.unsnoozed"));
+      refetch();
+    } catch {
+      toast.error(t("actions.unsnoozeFailed"));
     }
   };
 
@@ -170,7 +217,7 @@ function IncidentDetailPage() {
     return (
       <div className="text-center py-12">
         <p className="text-muted-foreground mb-4">{t("incidentNotFound")}</p>
-        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }}>
+        <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }}>
           <Button variant="outline">{t("backToIncidents")}</Button>
         </Link>
       </div>
@@ -178,17 +225,20 @@ function IncidentDetailPage() {
   }
 
   const isActive = incident.state === "active";
+  const isSnoozed =
+    !!incident.snoozedUntil && new Date(incident.snoozedUntil).getTime() > Date.now();
   const relapseCount = incident.relapseCount ?? 0;
 
   return (
     <div className="space-y-6">
+      <CausedByBanner org={org} incident={incident} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <Button
             variant="ghost"
             size="icon"
             onClick={() =>
-              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const } })
+              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
             }
           >
             <ArrowLeft className="h-4 w-4" />
@@ -208,6 +258,16 @@ function IncidentDetailPage() {
             <Badge variant={isActive ? "destructive" : "secondary"}>
               {isActive ? t("active") : t("resolved")}
             </Badge>
+            {isActive && isSnoozed && incident.snoozedUntil && (
+              <Badge variant="outline">
+                {t("stateBadges.snoozedUntil", {
+                  time: new Date(incident.snoozedUntil).toLocaleString(),
+                })}
+              </Badge>
+            )}
+            {isActive && !isSnoozed && incident.acknowledgedAt && (
+              <Badge variant="outline">{t("stateBadges.acked")}</Badge>
+            )}
             {relapseCount > 0 && (
               <Badge variant="outline">
                 {t("reopenedTimes", {
@@ -230,7 +290,7 @@ function IncidentDetailPage() {
               className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
             />
           </Button>
-          {isActive && !incident.acknowledgedAt && (
+          {isActive && !incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
               onClick={handleAcknowledge}
@@ -240,6 +300,44 @@ function IncidentDetailPage() {
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               ) : null}
               {t("actions.acknowledge")}
+            </Button>
+          )}
+          {isActive && incident.acknowledgedAt && !isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={handleUnacknowledge}
+              disabled={unacknowledgeIncident.isPending}
+            >
+              {unacknowledgeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("actions.unacknowledge")}
+            </Button>
+          )}
+          {isActive && !isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={() => setSnoozeOpen(true)}
+              disabled={snoozeIncident.isPending}
+            >
+              {snoozeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <BellOff className="mr-2 h-4 w-4" />
+              )}
+              {t("actions.snooze")}
+            </Button>
+          )}
+          {isActive && isSnoozed && (
+            <Button
+              variant="outline"
+              onClick={handleUnsnooze}
+              disabled={unsnoozeIncident.isPending}
+            >
+              {unsnoozeIncident.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : null}
+              {t("actions.wakeUp")}
             </Button>
           )}
           {isActive && (
@@ -364,6 +462,18 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
+      <BlastRadiusCard org={org} incident={incident} />
+
+      {events?.data && (
+        <EscalationTimelineCard
+          events={events.data.filter(
+            (e) =>
+              e.eventType === "incident.escalated" ||
+              e.eventType === "incident.escalation_failed",
+          )}
+        />
+      )}
+
       {events?.data && events.data.length > 0 && (
         <Card>
           <CardHeader>
@@ -402,6 +512,205 @@ function IncidentDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      <SnoozeDialog
+        open={snoozeOpen}
+        onOpenChange={setSnoozeOpen}
+        isPending={snoozeIncident.isPending}
+        onSubmit={handleSnooze}
+      />
     </div>
+  );
+}
+
+function CausedByBanner({
+  org,
+  incident,
+}: {
+  org: string;
+  incident: IncidentDetail;
+}) {
+  const { t } = useTranslation("incidents");
+  const { data: parent } = useIncident(org, incident.causedByIncidentUid ?? "");
+
+  if (!incident.causedByIncidentUid) return null;
+
+  const parentName =
+    parent?.checkName || parent?.checkSlug || t("rollup.parentLoading");
+
+  if (incident.pagingSuppressed) {
+    return (
+      <Alert className="border-yellow-500/50 bg-yellow-500/10 text-yellow-900 dark:text-yellow-100">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          <Trans
+            t={t}
+            i18nKey="rollup.causedByActive"
+            values={{ parent: parentName }}
+            components={{
+              strong: (
+                <Link
+                  to="/orgs/$org/incidents/$incidentUid"
+                  params={{ org, incidentUid: incident.causedByIncidentUid }}
+                  className="font-semibold underline"
+                />
+              ),
+            }}
+          />
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <Alert className="border-green-500/50 bg-green-500/10 text-green-900 dark:text-green-100">
+      <CheckCircle className="h-4 w-4" />
+      <AlertDescription>
+        {t("rollup.causedByPast", {
+          parent: parentName,
+          resolvedAt: parent?.resolvedAt
+            ? new Date(parent.resolvedAt).toLocaleString()
+            : "",
+        })}
+      </AlertDescription>
+    </Alert>
+  );
+}
+
+function BlastRadiusCard({
+  org,
+  incident,
+}: {
+  org: string;
+  incident: IncidentDetail;
+}) {
+  const { t } = useTranslation("incidents");
+  const { data: children } = useIncidents(org, {
+    causedByIncidentUid: incident.uid,
+    size: 50,
+    refetchInterval: incident.state === "active" ? 30_000 : undefined,
+  });
+
+  const items = children?.data ?? [];
+  if (items.length === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>
+          {t("rollup.blastRadiusTitle", { count: items.length })}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("detail.checkLabel")}</TableHead>
+              <TableHead>{t("detail.state", { defaultValue: "State" })}</TableHead>
+              <TableHead>{t("rollup.rolledUpBadge")}</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {items.map((child) => (
+              <TableRow key={child.uid}>
+                <TableCell>
+                  {child.checkName || child.checkSlug || child.checkUid}
+                </TableCell>
+                <TableCell>
+                  <Badge variant={child.state === "active" ? "destructive" : "secondary"}>
+                    {child.state === "active" ? t("active") : t("resolved")}
+                  </Badge>
+                </TableCell>
+                <TableCell>
+                  {child.pagingSuppressed && (
+                    <Badge variant="outline">{t("rollup.rolledUpBadge")}</Badge>
+                  )}
+                </TableCell>
+                <TableCell>
+                  {child.uid && (
+                    <Link
+                      to="/orgs/$org/incidents/$incidentUid"
+                      params={{ org, incidentUid: child.uid }}
+                      className="text-primary hover:underline"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+        <p className="mt-3 text-xs text-muted-foreground">
+          {t("rollup.blastRadiusFooter")}
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+interface EscalationTimelineCardProps {
+  events: Event[];
+}
+
+function EscalationTimelineCard({ events }: EscalationTimelineCardProps) {
+  const { t } = useTranslation(["escalation"]);
+
+  if (!events || events.length === 0) {
+    return null;
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("escalation:timeline.title")}</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {events.map((event) => {
+          const failed = event.eventType === "incident.escalation_failed";
+          const stepPos = event.payload?.step_position as
+            | number
+            | undefined;
+          const repeatIdx = event.payload?.repeat_index as
+            | number
+            | undefined;
+          return (
+            <div
+              key={event.uid}
+              className="flex items-center gap-3 text-sm py-1 border-b last:border-0"
+            >
+              <span
+                className={
+                  failed
+                    ? "text-red-500 font-medium"
+                    : "text-green-600 font-medium"
+                }
+              >
+                {failed
+                  ? t("escalation:timeline.failed")
+                  : t("escalation:timeline.fired")}
+              </span>
+              <span className="text-muted-foreground">
+                {event.createdAt
+                  ? new Date(event.createdAt).toLocaleString()
+                  : "-"}
+              </span>
+              {stepPos !== undefined && (
+                <span>· step {stepPos + 1}</span>
+              )}
+              {repeatIdx !== undefined && repeatIdx > 0 && (
+                <span>· cycle {repeatIdx + 1}</span>
+              )}
+              {failed && typeof event.payload?.reason === "string" && (
+                <span className="text-red-500">
+                  · {event.payload.reason}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }

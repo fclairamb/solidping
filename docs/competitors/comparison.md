@@ -4,19 +4,21 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 
 ## Quick Overview
 
-| Feature | BetterStack Uptime | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io |
-|---------|-------------------|-------------|---------|------------|---------|-----------------|
-| **Founded** | 2021 (as Better Uptime) | 2010 | 2007 | 2010 | 2018 | 2015 |
-| **Owner** | Independent | Independent | SolarWinds | Accel-KKR | Independent (VC) | Independent |
-| **Primary Market** | Modern DevOps teams | Budget-conscious users | Enterprise | Mid-market | Developer teams | Cron/heartbeat |
-| **Pricing Model** | Modular/component | Monitor-based | Monitor + feature | Monitor-based | Usage-based (runs) | Check-based |
-| **Best Known For** | Incident management | 50 free monitors | RUM + Enterprise | Broad protocol support | Monitoring as code | Cron monitoring |
-| **Self-hosted** | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (BSD) |
-| **API Version** | v2 (v3 for incidents) | v2 (v3 available) | 3.1 (2.1 legacy) | v1 | v1 | v3 |
+| Feature | BetterStack Uptime | Hyperping | UptimeRobot | Pingdom | StatusCake | Checkly | Healthchecks.io |
+|---------|-------------------|-----------|-------------|---------|------------|---------|-----------------|
+| **Founded** | 2021 (as Better Uptime) | 2018 | 2010 | 2007 | 2010 | 2018 | 2015 |
+| **Owner** | Independent | Independent (bootstrapped) | Independent | SolarWinds | Accel-KKR | Independent (VC) | Independent |
+| **Primary Market** | Modern DevOps teams | SMB / mid-market | Budget-conscious users | Enterprise | Mid-market | Developer teams | Cron/heartbeat |
+| **Pricing Model** | Modular/component | Tiered (per-feature) | Monitor-based | Monitor + feature | Monitor-based | Usage-based (runs) | Check-based |
+| **Best Known For** | Incident management | Outage-vs-incident split, multi-region confirm | 50 free monitors | RUM + Enterprise | Broad protocol support | Monitoring as code | Cron monitoring |
+| **Self-hosted** | ❌ | ❌ | ❌ | ❌ | ❌ | ❌ | ✅ (BSD) |
+| **API Version** | v2 (v3 for incidents) | mixed v1/v2/v3 per resource | v2 (v3 available) | 3.1 (2.1 legacy) | v1 | v1 | v3 |
 
 > **Also analyzed**: [Site24x7](site24x7.md) (Zoho/ManageEngine) — all-in-one mid-market alternative with 100+ monitor types, 130+ probe locations, 50-monitor free tier, and built-in APM/RUM. Not included in tables below to keep them focused on uptime-first competitors.
 
 > **Where SolidPing stands today (May 2026)**: 32 check types (broadest of any tool surveyed), 9 native notification channels, multi-region distributed workers, status pages with availability, maintenance windows, **adaptive incident resolution + group-incident correlation + ack/snooze/manual-resolve**, **on-call schedules + multi-step escalation policies**, **credentials encryption at rest** (envelope encryption with out-of-band master key), labels with autocomplete + filtering, 2FA, MCP/AI integration, browser monitoring (Rod), Prometheus metrics, dual PostgreSQL/SQLite backend, single-binary self-hosting. See "SolidPing Competitive Position" below for the full ✅/❌ inventory.
+
+> **Design ideas worth borrowing**: distilled in [../research/alerting-patterns.md](../research/alerting-patterns.md) — synthesizes findings from the deep-dive research on BetterStack ([betterstack/](betterstack/)) and Hyperping ([hyperping/](hyperping/)) into actionable input for future specs.
 
 ## Pricing Comparison
 
@@ -25,6 +27,7 @@ Comprehensive comparison of uptime monitoring services for the SolidPing project
 | Service | Free Monitors | Check Interval | Status Pages | Heartbeats | Notable Limits |
 |---------|---------------|----------------|--------------|------------|----------------|
 | **BetterStack** | 10 monitors | 3 minutes | 1 (basic) | 10 | 3-minute checks |
+| **Hyperping** | 20 monitors | 5 minutes | 1 (basic) | ✅ included | No browser checks; HTTP/Port/Ping/Keyword only |
 | **UptimeRobot** | 50 monitors | 5 minutes | 1 (basic) | ❌ Pro only | 5-minute checks, 10 API req/min |
 | **Pingdom** | ❌ No free tier | - | - | - | 14-day trial only |
 | **StatusCake** | 10 monitors | 5 minutes | ✅ | ✅ Push | 75 free SMS/month |

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowUp, ArrowDown, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Check } from "@/api/hooks";
@@ -32,10 +33,27 @@ function LiveDuration({ since }: { since: string }) {
   return <>{formatDuration(Math.max(0, elapsed))}</>;
 }
 
+// LiveDurationAgo wraps the live elapsed time in the locale-appropriate
+// "ago" template ("5m ago" in EN, "il y a 5m" in FR, "vor 5m" in DE/ES) so
+// the suffix isn't hard-coded as a trailing word.
+function LiveDurationAgo({ since }: { since: string }) {
+  const { t } = useTranslation("checks");
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const elapsed = Math.max(0, now - new Date(since).getTime());
+  return <>{t("detail.summary.ago", { duration: formatDuration(elapsed) })}</>;
+}
+
 export function CheckSummaryCards({
   check,
   totalIncidents,
 }: CheckSummaryCardsProps) {
+  const { t } = useTranslation("checks");
   const isUp = check.lastResult?.status === "up";
   const isDown =
     check.lastResult?.status === "down" ||
@@ -55,13 +73,17 @@ export function CheckSummaryCards({
             ) : (
               <ArrowUp className="h-4 w-4" />
             )}
-            {isUp ? "Currently up for" : isDown ? "Currently down for" : "Status"}
+            {isUp
+              ? t("detail.summary.currentlyUp")
+              : isDown
+                ? t("detail.summary.currentlyDown")
+                : t("detail.summary.statusFallback")}
           </div>
           <div className="text-2xl font-bold">
             {check.lastStatusChange?.time ? (
               <LiveDuration since={check.lastStatusChange.time} />
             ) : (
-              "Unknown"
+              t("detail.summary.unknown")
             )}
           </div>
         </CardContent>
@@ -72,13 +94,13 @@ export function CheckSummaryCards({
         <CardContent className="pt-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
             <Clock className="h-4 w-4" />
-            Last checked
+            {t("detail.summary.lastChecked")}
           </div>
           <div className="text-2xl font-bold">
             {check.lastResult?.timestamp ? (
-              <><LiveDuration since={check.lastResult.timestamp} /> ago</>
+              <LiveDurationAgo since={check.lastResult.timestamp} />
             ) : (
-              "Never"
+              t("detail.summary.never")
             )}
           </div>
         </CardContent>
@@ -89,7 +111,7 @@ export function CheckSummaryCards({
         <CardContent className="pt-6">
           <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
             <AlertTriangle className="h-4 w-4" />
-            Incidents
+            {t("detail.summary.incidents")}
           </div>
           <div className="text-2xl font-bold">{totalIncidents}</div>
         </CardContent>

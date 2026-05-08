@@ -18,5 +18,13 @@
   "today": "Today",
   "uptime": "uptime",
   "noData": "No data",
-  "responseTime": "Response Time"
+  "responseTime": "Response Time",
+  "status": {
+    "up": "Up",
+    "down": "Down",
+    "timeout": "Timeout",
+    "error": "Error",
+    "created": "Created",
+    "running": "Running"
+  }
 }

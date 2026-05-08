@@ -1,15 +1,20 @@
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
   Activity,
+  ArrowUpRight,
+  Bell,
   Bug,
   LayoutDashboard,
   ListChecks,
   AlertTriangle,
   Calendar,
+  CalendarClock,
+  GitBranch,
   Globe,
   BadgeCheck,
   LogOut,
   Moon,
+  Palette,
   Sun,
   ChevronUp,
   User2,
@@ -58,9 +63,29 @@ const navItems = [
     icon: AlertTriangle,
   },
   {
+    titleKey: "dependencies",
+    path: "/orgs/$org/dependencies" as const,
+    icon: GitBranch,
+  },
+  {
+    titleKey: "onCall",
+    path: "/orgs/$org/on-call" as const,
+    icon: CalendarClock,
+  },
+  {
+    titleKey: "escalationPolicies",
+    path: "/orgs/$org/escalation-policies" as const,
+    icon: ArrowUpRight,
+  },
+  {
     titleKey: "events",
     path: "/orgs/$org/events" as const,
     icon: Calendar,
+  },
+  {
+    titleKey: "channels",
+    path: "/orgs/$org/channels" as const,
+    icon: Bell,
   },
   {
     titleKey: "statusPages",
@@ -79,6 +104,11 @@ const testNavItems = [
     titleKey: "testTools",
     path: "/orgs/$org/test" as const,
     icon: Bug,
+  },
+  {
+    titleKey: "designReference",
+    path: "/orgs/$org/design-reference" as const,
+    icon: Palette,
   },
 ];
 

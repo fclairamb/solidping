@@ -12,7 +12,9 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
@@ -38,6 +40,10 @@ type Service struct {
 	db          db.Service
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
+	// creds is always non-nil — its .Enabled() reports whether a master
+	// key is configured. Used in ClaimJobs to merge encrypted secrets
+	// into the plaintext config dispatched to the worker over TLS.
+	creds credentials.Service
 }
 
 // NewService creates a new workers service.
@@ -45,11 +51,13 @@ func NewService(
 	dbService db.Service,
 	checkJobSvc checkjobsvc.Service,
 	incidentSvc *incidents.Service,
+	creds credentials.Service,
 ) *Service {
 	return &Service{
 		db:          dbService,
 		checkJobSvc: checkJobSvc,
 		incidentSvc: incidentSvc,
+		creds:       creds,
 	}
 }
 
@@ -164,7 +172,12 @@ type ClaimJobsResponse struct {
 	Jobs []*models.CheckJob `json:"jobs"`
 }
 
-// ClaimJobs claims available check jobs for the worker.
+// ClaimJobs claims available check jobs for the worker. For each job with
+// encrypted secrets, decrypt and merge them into Config before sending —
+// workers receive plaintext over TLS and never see the envelope. On
+// decrypt failure (missing key, tampered ciphertext, missing org DEK) the
+// job is skipped with a logged warning rather than dispatched with
+// half-credentials.
 func (s *Service) ClaimJobs(
 	ctx context.Context, req *ClaimJobsRequest,
 ) (*ClaimJobsResponse, error) {
@@ -175,11 +188,45 @@ func (s *Service) ClaimJobs(
 		return nil, fmt.Errorf("failed to claim jobs: %w", err)
 	}
 
-	if jobs == nil {
-		jobs = []*models.CheckJob{}
+	out := make([]*models.CheckJob, 0, len(jobs))
+
+	for _, job := range jobs {
+		if job.ConfigPrivate == nil || *job.ConfigPrivate == "" {
+			out = append(out, job)
+			continue
+		}
+
+		if !s.creds.Enabled() {
+			slog.WarnContext(ctx,
+				"skipping encrypted job — SP_ENCRYPTION_MASTER_KEY not set",
+				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID)
+
+			continue
+		}
+
+		private, decErr := s.creds.DecryptForOrg(ctx, job.OrganizationUID, *job.ConfigPrivate)
+		if decErr != nil {
+			slog.ErrorContext(ctx,
+				"failed to decrypt job config",
+				"orgUid", job.OrganizationUID, "checkUid", job.CheckUID, "jobUid", job.UID,
+				"error", decErr)
+
+			continue
+		}
+
+		merged := credentials.MergeConfig(job.Config, private)
+		job.Config = models.JSONMap(merged)
+		// Strip the envelope before responding — never ship it to a worker
+		// even though the worker is trusted; defense-in-depth keeps the
+		// "decrypt happens server-side" invariant easy to verify.
+		job.ConfigPrivate = nil
+		job.ConfigPrivateKeys = nil
+		job.Encrypted = false
+
+		out = append(out, job)
 	}
 
-	return &ClaimJobsResponse{Jobs: jobs}, nil
+	return &ClaimJobsResponse{Jobs: out}, nil
 }
 
 // SubmitResultRequest is the input for SubmitResult.
@@ -242,6 +289,10 @@ func (s *Service) SubmitResult(
 	if saveErr := s.db.SaveResultWithStatusTracking(ctx, result); saveErr != nil {
 		return nil, fmt.Errorf("failed to save result: %w", saveErr)
 	}
+
+	activation.Emit(ctx, s.db, job.OrganizationUID,
+		models.EventTypeOrgActivationFirstResultReceived,
+		activation.SourceSystem, "")
 
 	// 4. Process incidents (best-effort).
 	check, checkErr := s.db.GetCheck(

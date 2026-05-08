@@ -516,7 +516,7 @@ create table integration_connections (
   type              varchar(50) not null,
   name              varchar(255) not null,
   enabled           boolean not null default true,
-  is_default        boolean not null default true,
+  is_default        boolean not null default false,
   settings          jsonb not null default '{}',
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now(),

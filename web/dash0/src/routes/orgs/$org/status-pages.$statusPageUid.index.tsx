@@ -10,18 +10,37 @@ import {
   Trash2,
   Star,
   GripVertical,
+  ChevronUp,
+  ChevronDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
+  DndContext,
+  PointerSensor,
+  KeyboardSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   useStatusPage,
-  useChecks,
   useCreateSection,
   useDeleteSection,
   useCreateResource,
   useDeleteResource,
+  useReorderResources,
+  useUpdateResource,
   type StatusPageSection,
   type StatusPageResource,
-  type Check,
 } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,7 +48,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { cn } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
 import {
   Card,
   CardContent,
@@ -47,13 +66,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -63,6 +75,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CheckPicker } from "@/components/shared/check-picker";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { ApiError } from "@/api/client";
 
@@ -71,15 +84,6 @@ export const Route = createFileRoute(
 )({
   component: StatusPageDetailPage,
 });
-
-function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-}
 
 function StatusDot({ status }: { status?: string }) {
   const color =
@@ -238,28 +242,30 @@ function AddResourceDialog({
   org,
   statusPageUid,
   sectionUid,
-  checks,
   existingCheckUids,
 }: {
   org: string;
   statusPageUid: string;
   sectionUid: string;
-  checks: Check[];
   existingCheckUids: Set<string>;
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [open, setOpen] = useState(false);
-  const [selectedCheckUid, setSelectedCheckUid] = useState("");
+  const [selectedCheckUid, setSelectedCheckUid] = useState<string | undefined>();
+  const [selectedCheckLabel, setSelectedCheckLabel] = useState<string | undefined>();
   const createResource = useCreateResource(org, statusPageUid, sectionUid);
 
-  const availableChecks = checks.filter((c) => !existingCheckUids.has(c.uid));
+  const reset = () => {
+    setSelectedCheckUid(undefined);
+    setSelectedCheckLabel(undefined);
+  };
 
   const handleSubmit = async () => {
     if (!selectedCheckUid) return;
     try {
       await createResource.mutateAsync({ checkUid: selectedCheckUid });
       toast.success(t("statusPages:resources.added"));
-      setSelectedCheckUid("");
+      reset();
       setOpen(false);
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("statusPages:resources.addFailed"));
@@ -267,7 +273,13 @@ function AddResourceDialog({
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) reset();
+      }}
+    >
       <Tooltip>
         <TooltipTrigger asChild>
           <DialogTrigger asChild>
@@ -288,18 +300,17 @@ function AddResourceDialog({
           <DialogDescription>{t("statusPages:resources.addDescription")}</DialogDescription>
         </DialogHeader>
         <div className="py-4">
-          <Select value={selectedCheckUid} onValueChange={setSelectedCheckUid}>
-            <SelectTrigger>
-              <SelectValue placeholder={t("statusPages:resources.selectCheck")} />
-            </SelectTrigger>
-            <SelectContent>
-              {availableChecks.map((check) => (
-                <SelectItem key={check.uid} value={check.uid}>
-                  {check.name || check.slug || check.uid.slice(0, 8)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <CheckPicker
+            org={org}
+            value={selectedCheckUid}
+            selectedLabel={selectedCheckLabel}
+            excludeUids={existingCheckUids}
+            placeholder={t("statusPages:resources.selectCheck")}
+            onChange={(uid, c) => {
+              setSelectedCheckUid(uid);
+              setSelectedCheckLabel(c ? c.name || c.slug || undefined : undefined);
+            }}
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => setOpen(false)}>
@@ -319,11 +330,17 @@ function AddResourceDialog({
 
 function ResourceRow({
   resource,
+  index,
+  total,
+  neighbors,
   org,
   statusPageUid,
   sectionUid,
 }: {
   resource: StatusPageResource;
+  index: number;
+  total: number;
+  neighbors: StatusPageResource[];
   org: string;
   statusPageUid: string;
   sectionUid: string;
@@ -331,6 +348,7 @@ function ResourceRow({
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteResource = useDeleteResource(org, statusPageUid, sectionUid);
+  const updateResource = useUpdateResource(org, statusPageUid, sectionUid);
 
   const handleDelete = async () => {
     try {
@@ -341,9 +359,76 @@ function ResourceRow({
     }
   };
 
+  // Swap positions with the adjacent neighbor. Two PATCHes keep the
+  // backend's existing semantics intact (no renumbering helper needed).
+  const move = async (delta: -1 | 1) => {
+    const target = index + delta;
+    if (target < 0 || target >= total) return;
+    const neighbor = neighbors[target];
+    if (!neighbor) return;
+    try {
+      await Promise.all([
+        updateResource.mutateAsync({
+          resourceUid: resource.uid,
+          request: { position: neighbor.position },
+        }),
+        updateResource.mutateAsync({
+          resourceUid: neighbor.uid,
+          request: { position: resource.position },
+        }),
+      ]);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+    }
+  };
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: resource.uid });
+  const dragStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   return (
-    <div className="flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50">
-      <GripVertical className="h-4 w-4 text-muted-foreground/50" />
+    <div
+      ref={setNodeRef}
+      style={dragStyle}
+      className={cn(
+        "flex items-center gap-3 py-2 px-3 rounded-md hover:bg-muted/50",
+        isDragging && "opacity-60 shadow-md bg-background relative z-10"
+      )}
+    >
+      <button
+        type="button"
+        className="touch-none cursor-grab active:cursor-grabbing text-muted-foreground/50 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+        aria-label="Drag to reorder"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </button>
+      <div className="flex flex-col -space-y-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 p-0"
+          disabled={index === 0 || updateResource.isPending}
+          onClick={() => move(-1)}
+          aria-label="Move up"
+        >
+          <ChevronUp className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 p-0"
+          disabled={index === total - 1 || updateResource.isPending}
+          onClick={() => move(1)}
+          aria-label="Move down"
+        >
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </div>
       <StatusDot status={resource.check?.status} />
       <span className="flex-1 text-sm">
         {resource.publicName || resource.check?.name || resource.checkUid.slice(0, 8)}
@@ -408,19 +493,26 @@ function SectionCard({
   section,
   org,
   statusPageUid,
-  checks,
 }: {
   section: StatusPageSection;
   org: string;
   statusPageUid: string;
-  checks: Check[];
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const deleteSection = useDeleteSection(org, statusPageUid);
+  const reorderResources = useReorderResources(org, statusPageUid, section.uid);
 
   const existingCheckUids = new Set(
     (section.resources || []).map((r) => r.checkUid)
+  );
+
+  // Pointer sensor with a small activation distance so click-and-release on
+  // the drag handle doesn't get hijacked as a drag (matters for keyboard /
+  // accessibility tooling).
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   );
 
   const handleDeleteSection = async () => {
@@ -430,6 +522,21 @@ function SectionCard({
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : t("statusPages:sections.deleteFailed"));
     }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const items = section.resources ?? [];
+    const oldIndex = items.findIndex((r) => r.uid === active.id);
+    const newIndex = items.findIndex((r) => r.uid === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(items, oldIndex, newIndex).map((r) => r.uid);
+    reorderResources.mutate(reordered, {
+      onError: (err) => {
+        toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+      },
+    });
   };
 
   return (
@@ -445,7 +552,6 @@ function SectionCard({
               org={org}
               statusPageUid={statusPageUid}
               sectionUid={section.uid}
-              checks={checks}
               existingCheckUids={existingCheckUids}
             />
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
@@ -480,17 +586,31 @@ function SectionCard({
       </CardHeader>
       <CardContent>
         {section.resources && section.resources.length > 0 ? (
-          <div className="space-y-1">
-            {section.resources.map((resource) => (
-              <ResourceRow
-                key={resource.uid}
-                resource={resource}
-                org={org}
-                statusPageUid={statusPageUid}
-                sectionUid={section.uid}
-              />
-            ))}
-          </div>
+          <DndContext
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleDragEnd}
+          >
+            <SortableContext
+              items={section.resources.map((r) => r.uid)}
+              strategy={verticalListSortingStrategy}
+            >
+              <div className="space-y-1">
+                {section.resources.map((resource, idx) => (
+                  <ResourceRow
+                    key={resource.uid}
+                    resource={resource}
+                    index={idx}
+                    total={section.resources?.length ?? 0}
+                    neighbors={section.resources ?? []}
+                    org={org}
+                    statusPageUid={statusPageUid}
+                    sectionUid={section.uid}
+                  />
+                ))}
+              </div>
+            </SortableContext>
+          </DndContext>
         ) : (
           <p className="text-sm text-muted-foreground py-4 text-center">
             {t("statusPages:sections.empty")}
@@ -511,8 +631,6 @@ function StatusPageDetailPage() {
     error,
     refetch,
   } = useStatusPage(org, statusPageUid, { with: "sections" });
-
-  const { data: checks } = useChecks(org);
 
   if (isLoading) {
     return (
@@ -633,7 +751,6 @@ function StatusPageDetailPage() {
               section={section}
               org={org}
               statusPageUid={statusPageUid}
-              checks={checks || []}
             />
           ))}
         </div>

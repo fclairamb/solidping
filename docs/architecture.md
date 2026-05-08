@@ -324,7 +324,8 @@ solidping/
 - Automatic check suppression during windows
 
 ### Security
-- **Two-Factor Authentication**: TOTP-based 2FA
+- **Two-Factor Authentication**: TOTP-based 2FA, with passkey (WebAuthn) as a step-up second factor when the user has registered one
+- **Passkey authentication**: WebAuthn/FIDO2 credentials registered against the org's RP ID (derived from `server.base_url` so the binding survives system-parameter overrides); supports both passwordless login and 2FA challenge
 - **Credentials encryption at rest**: Envelope encryption with an out-of-band master key (`SP_ENCRYPTION_MASTER_KEY` / `_FILE`); per-check secret fields stored in a separate `config_private` column and never echoed back to the dashboard
 - **Personal Access Tokens** with scoped revocation
 - **OAuth providers**: Google, GitHub, GitLab, Microsoft, Slack, Discord (per-provider enable toggle)

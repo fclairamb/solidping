@@ -464,6 +464,12 @@ func (m *mockDBService) DeleteEscalationPolicy(_ context.Context, _ string) erro
 	return nil
 }
 
+func (m *mockDBService) GetEscalationPolicyStep(
+	_ context.Context, _ string,
+) (*models.EscalationPolicyStep, error) {
+	return nil, errMockNotImplemented
+}
+
 func (m *mockDBService) ListEscalationPolicySteps(
 	_ context.Context, _ string,
 ) ([]*models.EscalationPolicyStep, error) {
@@ -609,6 +615,30 @@ func (m *mockDBService) UpdateUserToken(_ context.Context, _ string, _ models.Us
 }
 
 func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CreateUserPasskey(_ context.Context, _ *models.UserPasskey) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetUserPasskey(_ context.Context, _ string) (*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetUserPasskeyByCredentialID(_ context.Context, _ []byte) (*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListUserPasskeysByUser(_ context.Context, _ string) ([]*models.UserPasskey, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateUserPasskey(_ context.Context, _ string, _ models.UserPasskeyUpdate) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteUserPasskey(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
@@ -791,6 +821,10 @@ func (m *mockDBService) ListStatusPageSections(_ context.Context, _ string) ([]*
 	panic("not implemented")
 }
 
+func (m *mockDBService) MaxStatusPageSectionPosition(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) UpdateStatusPageSection(_ context.Context, _ string, _ *models.StatusPageSectionUpdate) error {
 	panic("not implemented")
 }
@@ -808,6 +842,14 @@ func (m *mockDBService) GetStatusPageResource(_ context.Context, _, _ string) (*
 }
 
 func (m *mockDBService) ListStatusPageResources(_ context.Context, _ string) ([]*models.StatusPageResource, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) MaxStatusPageResourcePosition(_ context.Context, _ string) (int, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReorderStatusPageResources(_ context.Context, _ string, _ []string) error {
 	panic("not implemented")
 }
 
@@ -965,6 +1007,94 @@ func (m *mockDBService) ApproveMembershipRequest(
 	_ context.Context, _ *models.MembershipRequest, _ *models.OrganizationMember,
 ) error {
 	panic("not implemented")
+}
+
+func (m *mockDBService) CreateCheckDependency(_ context.Context, _ *models.CheckDependency) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetCheckDependency(
+	_ context.Context, _, _ string,
+) (*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependenciesByOrg(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependencyParents(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListCheckDependencyChildren(
+	_ context.Context, _ string,
+) ([]*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindCheckDependencyEdge(
+	_ context.Context, _, _ string,
+) (*models.CheckDependency, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateCheckDependency(
+	_ context.Context, _ string, _ *models.CheckDependencyUpdate,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteCheckDependency(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSuppressedChildIncidents(
+	_ context.Context, _ string,
+) ([]*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) FindActiveIncidentsForChecksInWindow(
+	_ context.Context, _ []string, _, _ time.Time,
+) ([]*models.Incident, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetOrgEntitlements(_ context.Context, _ string) (*models.OrgEntitlements, error) {
+	return nil, nil //nolint:nilnil // mock
+}
+
+func (m *mockDBService) UpsertOrgEntitlements(
+	_ context.Context, _ *models.OrgEntitlements, _ *models.OrgEntitlementAudit,
+) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListOrgEntitlementAudits(
+	_ context.Context, _ models.ListOrgEntitlementAuditsFilter,
+) ([]*models.OrgEntitlementAudit, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) CountChecksForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountStatusPagesForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountCheckGroupsForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) CountConnectionsForOrg(_ context.Context, _ string) (int, error) {
+	return 0, nil
 }
 
 func TestSlackSender_Send_NewThread(t *testing.T) {

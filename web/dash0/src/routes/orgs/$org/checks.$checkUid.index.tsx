@@ -17,6 +17,7 @@ import {
 import { toast } from "sonner";
 import {
   useCheck,
+  useCloneCheck,
   useDeleteCheck,
   useUpdateCheck,
   useResults,
@@ -57,6 +58,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
+import { DependenciesCard } from "@/components/checks/dependencies-card";
 
 export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -320,6 +322,7 @@ function CheckDetailPage() {
 
   const { data: regionsData } = useRegions(org);
   const deleteCheck = useDeleteCheck(org);
+  const cloneCheck = useCloneCheck(org);
   const updateCheck = useUpdateCheck(org, checkUid);
 
   const startEditingSlug = () => {
@@ -517,6 +520,26 @@ function CheckDetailPage() {
               <Pencil className="h-4 w-4" />
             </Button>
           </Link>
+          <Button
+            variant="outline"
+            size="icon"
+            disabled={cloneCheck.isPending}
+            title={t("checks:detail.clone") ?? "Clone"}
+            onClick={async () => {
+              try {
+                const newCheck = await cloneCheck.mutateAsync(checkUid);
+                toast.success(t("checks:detail.cloned") ?? "Check cloned");
+                navigate({
+                  to: "/orgs/$org/checks/$checkUid/edit",
+                  params: { org, checkUid: newCheck.uid! },
+                });
+              } catch {
+                toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
+              }
+            }}
+          >
+            <Copy className="h-4 w-4" />
+          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -805,6 +828,8 @@ function CheckDetailPage() {
         </Card>
       </div>
 
+      <DependenciesCard org={org} checkUid={checkUid} />
+
       <Card>
         <CardHeader>
           <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
@@ -901,15 +926,22 @@ function CheckDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant={
-                          incident.state === "active"
-                            ? "destructive"
-                            : "secondary"
-                        }
-                      >
-                        {incident.state}
-                      </Badge>
+                      <div className="flex items-center gap-1">
+                        <Badge
+                          variant={
+                            incident.state === "active"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                        >
+                          {incident.state}
+                        </Badge>
+                        {incident.pagingSuppressed && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("incidents:rollup.rolledUpBadge")}
+                          </Badge>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm">
                       <IncidentDuration incident={incident} />

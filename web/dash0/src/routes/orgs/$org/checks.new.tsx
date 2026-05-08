@@ -2,6 +2,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { useCreateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import { apiFetch } from "@/api/client";
 import { CheckForm } from "@/components/shared/check-form";
 import type { Check } from "@/api/hooks";
 
@@ -90,7 +91,25 @@ function CheckNewPage() {
           period: data.period,
           config: data.config ?? {},
           regions: data.regions,
+          ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
+        if (data.connectionUids && data.connectionUids.length > 0) {
+          await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/connections`, {
+            method: "PUT",
+            body: JSON.stringify({ connectionUids: data.connectionUids }),
+          });
+        }
+        if (data.dependsOnParentUids && data.dependsOnParentUids.length > 0) {
+          for (const parentUid of data.dependsOnParentUids) {
+            await apiFetch(
+              `/api/v1/orgs/${org}/checks/${check.uid}/dependencies`,
+              {
+                method: "POST",
+                body: JSON.stringify({ parentCheckUid: parentUid, kind: "hard" }),
+              },
+            );
+          }
+        }
         toast.success(t("toast.created"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",

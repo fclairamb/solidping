@@ -4,7 +4,7 @@ All API routes are prefixed with `/api/v1` unless otherwise noted. Organization-
 
 ## Conventions
 
-- **Pagination**: Cursor-based. Use `cursor` and `size` query parameters. Responses include `hasMore` and `cursor` for the next page.
+- **Pagination**: Cursor-based. Use `cursor` and `limit` query parameters. Responses include `hasMore` and `cursor` for the next page. Endpoints that previously used `?size=` still accept it as a deprecated alias.
 - **Filtering**: Multi-value filters use comma-separated values in singular form (e.g., `?checkUid=a,b`).
 - **Search**: Use `q` for free-text search.
 - **Optional includes**: Use `with` to request related data (e.g., `?with=last_result,check`).
@@ -159,6 +159,88 @@ Revoke a pending invitation. Auth: required (admin)
 
 ---
 
+## Membership Requests
+
+A confirmed user with no membership in an org can ask to join by slug.
+Org admins can approve or reject. Each (org, user) pair has at most one
+row; subsequent requests update it in place per the state machine
+(pending → approved | rejected | cancelled, with re-request after
+cooldown for rejected and immediate re-request for cancelled).
+
+### POST /api/v1/auth/membership-requests
+Open or re-open a request. Auth: required.
+Body: `{"orgSlug":"<slug>","message":"<optional>"}`.
+Errors: `ORGANIZATION_NOT_FOUND`, `ALREADY_A_MEMBER`,
+`REQUEST_PENDING`, `REQUEST_COOLDOWN_ACTIVE`.
+
+### GET /api/v1/auth/membership-requests
+List the caller's own request history. Auth: required.
+
+### DELETE /api/v1/auth/membership-requests/:uid
+Cancel the caller's own request. Auth: required (owner). Admins must
+use the reject endpoint instead.
+
+### GET /api/v1/orgs/:org/membership-requests
+List incoming requests for the org. Auth: required (admin).
+Query parameters: `status` (optional, e.g. `pending`).
+
+### POST /api/v1/orgs/:org/membership-requests/:uid/approve
+Approve a request and create the membership in one transaction.
+Auth: required (admin). Body: `{"role":"user|admin|viewer"}` (default
+`user`). Sends a decision email to the requester.
+
+### POST /api/v1/orgs/:org/membership-requests/:uid/reject
+Reject a request. Auth: required (admin). Body:
+`{"reason":"<optional>"}`. Sends a decision email to the requester. The
+requester can re-submit only after the cooldown
+(`membership_requests.cooldown_days`, default 7).
+
+---
+
+## Entitlements
+
+Per-org limits + boolean features. Owned by an external billing service
+in SaaS, by org admins in self-hosted. The OSS knows nothing about plan
+SKUs — only raw numbers and booleans. NULL on a limit means "unlimited";
+NULL on a feature means "use the in-code default".
+
+### GET /api/v1/orgs/:org/entitlements
+Returns the resolved entitlements (defaults merged with the stored row),
+plus live `usage` counts and a `stale` flag. Auth: any authenticated
+org member.
+
+### PUT /api/v1/orgs/:org/entitlements
+Replaces the entitlement row. Body: `{limits, features, allowedCheckTypes,
+displayName, externalRef, expiresAt, lastSyncedAt, metadata}`. Optional
+`X-Entitlements-Reason` header is recorded on the audit log. Auth: a
+valid `entitlements.service_token` (preferred for SaaS) OR an org admin
+JWT when `entitlements.admin_writes_enabled` is true (default in
+self-hosted). Returns the resolved entitlements.
+
+### PATCH /api/v1/orgs/:org/entitlements
+Same auth as PUT, but only updates the fields present in the body. Useful
+for incremental changes (e.g. extend a trial). Returns the resolved
+entitlements.
+
+### GET /api/v1/orgs/:org/entitlements/audits
+Returns the entitlement audit rows for the org, newest first. Optional
+`?limit=` query parameter (default 50, max 200). Auth: org admin or
+service token.
+
+System parameters:
+- `entitlements.service_token` — secret bearer token for the billing
+  service. Unset in self-hosted by default.
+- `entitlements.admin_writes_enabled` — boolean, default true in
+  self-hosted, set to false in SaaS to lock writes to the service token.
+- `entitlements.upgrade_url_template` — template URL with `{org}` placed
+  for the slug; surfaced on GET as `upgradeUrl` so the frontend can
+  render an upgrade affordance. Empty in self-hosted.
+- `entitlements.stale_after_days` — days before a billing-service row is
+  considered stale and the resolver falls back to defaults. Default 0
+  (no stale fallback) in self-hosted.
+
+---
+
 ## Members
 
 ### GET /api/v1/orgs/:org/members
@@ -218,11 +300,31 @@ Response:
 ### POST /api/v1/orgs/:org/checks/validate
 Validate a check configuration without persisting. Auth: required
 
+Request body accepts the same shape as `POST /checks` plus optional
+`dependsOn` (slug-keyed) and `slug` (so cycle / self-edge / duplicate /
+cross-org / unknown-parent validators can run before the check exists).
+Returns `{"valid": true}` or `{"valid": false, "fields": [...]}` with one
+field-level entry per failing validator.
+
 ### GET /api/v1/orgs/:org/checks/export
 Export all checks as JSON. Auth: required
 
+Each `ExportCheck` carries an optional `dependsOn` array of
+`{parentSlug, kind, description?}` entries, sorted by `parentSlug` for
+deterministic diffs. The field is `omitempty` — exports for orgs with no
+dep edges stay byte-identical to the pre-dependsOn shape.
+
 ### POST /api/v1/orgs/:org/checks/import
 Import checks from JSON. Auth: required
+
+Two-pass when any entry carries `dependsOn`: pass 1 upserts every check
+unchanged, pass 2 resolves `parentSlug` → check UID against the now-current
+org state and applies an additive merge of edges (new edges created;
+existing edges with same kind+description are no-ops; differing edges are
+updated). Cycle / self-edge / unknown-parent failures are reported per row
+in the existing `errors` array. Pass 2 is skipped silently for any check
+whose pass-1 upsert failed, with an explicit
+`skipped dependsOn: pass-1 upsert failed for this check` error.
 
 ### GET /api/v1/orgs/:org/checks/:checkUid
 Get a single check by UID or slug. Auth: required
@@ -232,6 +334,20 @@ Query parameters:
 
 ### PUT /api/v1/orgs/:org/checks/:slug
 Upsert a check by slug (create if not exists, update if exists). Auth: required
+
+Request body optionally carries `dependsOn`, pointer-typed (`*[]…`) so the
+handler can distinguish three states:
+- **absent** (`null` / field missing) → existing dep edges untouched. This
+  is the back-compat default for tooling that doesn't know about deps —
+  partial PUT must not nuke deps.
+- **explicit empty array** (`[]`) → all dep edges for this check are
+  deleted.
+- **non-empty array** → set the dep edges to exactly this list (destructive
+  sync). All cycle / self-edge / cross-org / kind / duplicate validators
+  run before any write; any failure aborts the whole operation. Caveat: the
+  dep apply currently runs after the check upsert outside any wrapping
+  transaction — a failed dep apply leaves the check itself updated. A
+  follow-up will move the whole flow into a single transaction.
 
 ### PATCH /api/v1/orgs/:org/checks/:checkUid
 Update a check. Auth: required
@@ -244,7 +360,7 @@ List events for a specific check. Auth: required
 
 Query parameters:
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -319,7 +435,7 @@ Query parameters:
 - `periodEndBefore` - RFC3339 timestamp
 - `with` - comma-separated optional fields
 - `cursor` - pagination cursor
-- `size` - page size (default 100, max 1000)
+- `limit` - page size (default 100, max 1000). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -335,7 +451,7 @@ Query parameters:
 - `until` - RFC3339 timestamp
 - `with` - comma-separated: `check`
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ### GET /api/v1/orgs/:org/incidents/:uid
 Get a single incident. Auth: required
@@ -348,7 +464,7 @@ List events for a specific incident. Auth: required
 
 Query parameters:
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -362,7 +478,7 @@ Query parameters:
 - `checkUid` - filter by check UID
 - `incidentUid` - filter by incident UID
 - `cursor` - pagination cursor
-- `size` - page size (default 20, max 100)
+- `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
 ---
 
@@ -376,24 +492,33 @@ List regions relevant to the organization. Auth: required
 
 ---
 
-## Connections (Integrations)
+## Channels (formerly: Connections)
 
-Manage notification/integration connections (Slack, Discord, webhook, etc.) at the organization level.
+Manage notification channels (Slack, Discord, email, webhook, etc.) at the
+organization level.
 
-### GET /api/v1/orgs/:org/connections
-List all connections. Auth: required
+> **Naming alignment in progress.** The dashboard, internal docs, and
+> these endpoints' canonical name is **channel**. The legacy name
+> **connection** stays accepted as a path alias for one release so
+> external clients (CLIs, MCP tools) can switch over without breakage.
+> The `/connections` paths return identical responses to the
+> `/channels` paths and will be removed in a future revision per
+> [`specs/done/2026/05/2026-05-07-03-align-channel-and-connection-naming.md`](#).
 
-### POST /api/v1/orgs/:org/connections
-Create a new connection. Auth: required
+### GET /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
+List all channels. Auth: required
 
-### GET /api/v1/orgs/:org/connections/:uid
-Get a connection. Auth: required
+### POST /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
+Create a new channel. Auth: required
 
-### PATCH /api/v1/orgs/:org/connections/:uid
-Update a connection. Auth: required
+### GET /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Get a channel. Auth: required
 
-### DELETE /api/v1/orgs/:org/connections/:uid
-Delete a connection. Auth: required
+### PATCH /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Update a channel. Auth: required
+
+### DELETE /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
+Delete a channel. Auth: required
 
 ---
 

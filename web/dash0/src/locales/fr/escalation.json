@@ -1,0 +1,59 @@
+{
+  "list": {
+    "title": "Politiques d'escalade",
+    "subtitle": "Orchestration réutilisable d'étapes d'alerte avec délais et annulation lors de l'acquittement, de la mise en sourdine ou de la résolution.",
+    "create": "Nouvelle politique",
+    "empty": "Aucune politique d'escalade pour l'instant. Créez-en une pour commencer à recevoir des alertes lors d'incidents.",
+    "repeats": "Répète {{count}}× toutes les {{minutes}} minutes",
+    "editToSeeSteps": "Ouvrez pour voir les étapes.",
+    "searchPlaceholder": "Rechercher par nom…",
+    "noMatches": "Aucune politique ne correspond à votre recherche.",
+    "col": {
+      "name": "Nom",
+      "description": "Description",
+      "repeats": "Répétitions"
+    }
+  },
+  "new": {
+    "title": "Nouvelle politique d'escalade"
+  },
+  "editor": {
+    "basics": "Informations",
+    "slug": "Identifiant",
+    "name": "Nom",
+    "description": "Description",
+    "steps": "Étapes",
+    "step": "Étape",
+    "delayMinutes": "Délai (min)",
+    "addStep": "Ajouter une étape",
+    "repeat": "Répétition",
+    "repeatMax": "Nombre maximum de répétitions (0 = pas de répétition)",
+    "repeatAfterMinutes": "Répéter après (min)",
+    "create": "Créer la politique",
+    "deleteConfirm": "Supprimer cette politique d'escalade ? Les incidents ouverts qui la référencent seront vérifiés d'abord.",
+    "targetUidPlaceholder": "UID de la cible",
+    "loadingTargets": "Chargement…",
+    "pickSchedule": "Choisir une astreinte",
+    "pickUser": "Choisir un utilisateur",
+    "pickConnection": "Choisir un canal",
+    "noSchedules": "Aucune astreinte pour le moment —",
+    "noMembers": "Aucun membre dans cette organisation.",
+    "noConnections": "Aucun canal pour le moment —",
+    "createSchedule": "en créer une",
+    "createConnection": "en créer un",
+    "targetMissing": "La cible {{kind}} sélectionnée précédemment n'existe plus. Choisissez-en une autre ou supprimez cette cible.",
+    "targetMissingShort": "manquante"
+  },
+  "targets": {
+    "user": "Utilisateur",
+    "schedule": "Planning d'astreinte",
+    "connection": "Connexion de notification",
+    "all_admins": "Tous les administrateurs"
+  },
+  "timeline": {
+    "title": "Chronologie de l'escalade",
+    "fired": "Déclenchée",
+    "pending": "En attente",
+    "failed": "Escalade échouée"
+  }
+}

@@ -111,7 +111,7 @@ func TestListProviders(t *testing.T) {
 				},
 			}
 
-			h := NewProvidersHandler(cfg)
+			h := NewProvidersHandler(cfg, nil)
 
 			req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/api/v1/auth/providers", nil)
 			rec := httptest.NewRecorder()

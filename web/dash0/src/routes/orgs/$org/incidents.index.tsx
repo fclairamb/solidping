@@ -6,6 +6,7 @@ import { useIncidents, type IncidentDetail } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -23,13 +24,22 @@ import {
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
 
-type StateFilter = "all" | "active" | "resolved";
+type StateFilter = "all" | "active" | "resolved" | "acked" | "snoozed";
+
+const STATE_FILTER_VALUES: StateFilter[] = [
+  "all",
+  "active",
+  "acked",
+  "snoozed",
+  "resolved",
+];
 
 export const Route = createFileRoute("/orgs/$org/incidents/")({
   validateSearch: (search: Record<string, unknown>) => ({
-    state: (["all", "active", "resolved"].includes(search.state as string)
+    state: (STATE_FILTER_VALUES.includes(search.state as StateFilter)
       ? search.state
       : "all") as StateFilter,
+    showSuppressed: search.showSuppressed === "true" ? true : undefined,
   }),
   component: IncidentsIndexPage,
 });
@@ -87,7 +97,7 @@ function formatRelativeTime(dateStr: string): string {
 function IncidentsIndexPage() {
   const { t } = useTranslation("incidents");
   const { org } = Route.useParams();
-  const { state: stateFilter } = Route.useSearch();
+  const { state: stateFilter, showSuppressed } = Route.useSearch();
   const navigate = useNavigate();
 
   const {
@@ -100,6 +110,7 @@ function IncidentsIndexPage() {
     state: stateFilter === "all" ? undefined : stateFilter,
     size: 50,
     with: "check",
+    hideSuppressed: !showSuppressed,
   });
 
   return (
@@ -122,7 +133,7 @@ function IncidentsIndexPage() {
           onValueChange={(v) =>
             navigate({
               to: ".",
-              search: { state: v as StateFilter },
+              search: { state: v as StateFilter, showSuppressed },
               replace: true,
             })
           }
@@ -133,9 +144,28 @@ function IncidentsIndexPage() {
           <SelectContent>
             <SelectItem value="all">{t("allIncidents")}</SelectItem>
             <SelectItem value="active">{t("activeOnly")}</SelectItem>
+            <SelectItem value="acked">{t("stateFilter.ackedOnly")}</SelectItem>
+            <SelectItem value="snoozed">{t("stateFilter.snoozedOnly")}</SelectItem>
             <SelectItem value="resolved">{t("resolvedOnly")}</SelectItem>
           </SelectContent>
         </Select>
+        <label className="flex items-center gap-2 text-sm">
+          <Switch
+            checked={!!showSuppressed}
+            onCheckedChange={(checked) =>
+              navigate({
+                to: ".",
+                search: {
+                  state: stateFilter,
+                  showSuppressed: checked ? true : undefined,
+                },
+                replace: true,
+              })
+            }
+            data-testid="incidents-show-suppressed-toggle"
+          />
+          <span>{t("rollup.showRolledUp")}</span>
+        </label>
         <Button
           variant="outline"
           size="icon"
@@ -181,9 +211,29 @@ function IncidentsIndexPage() {
                       >
                         {incident.title || incident.checkName || incident.checkSlug}
                       </Link>
+                      {incident.state === "active" &&
+                        incident.snoozedUntil &&
+                        new Date(incident.snoozedUntil).getTime() > Date.now() && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("stateBadges.snoozed")}
+                          </Badge>
+                        )}
+                      {incident.state === "active" &&
+                        incident.acknowledgedAt &&
+                        (!incident.snoozedUntil ||
+                          new Date(incident.snoozedUntil).getTime() <= Date.now()) && (
+                          <Badge variant="outline" className="text-xs">
+                            {t("stateBadges.acked")}
+                          </Badge>
+                        )}
                       {(incident.relapseCount ?? 0) > 0 && (
                         <Badge variant="outline" className="text-xs">
                           {t("relapse", { count: incident.relapseCount })}
+                        </Badge>
+                      )}
+                      {incident.pagingSuppressed && (
+                        <Badge variant="outline" className="text-xs">
+                          {t("rollup.rolledUpBadge")}
                         </Badge>
                       )}
                     </div>

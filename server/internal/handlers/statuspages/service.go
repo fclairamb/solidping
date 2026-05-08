@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -31,6 +32,10 @@ var (
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format.
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
+	// ErrReorderUIDsMismatch is returned when a reorder request's UID list
+	// does not exactly match the section's current resources (missing,
+	// extra, or duplicate UIDs).
+	ErrReorderUIDsMismatch = errors.New("reorder uids do not match the section's resources")
 )
 
 func validateSlug(slug string) error {
@@ -125,6 +130,9 @@ type DailyAvailabilityPoint struct {
 type ResponseTimePoint struct {
 	Time        string   `json:"time"`
 	DurationP95 *float32 `json:"durationP95,omitempty"`
+	// Status indicates the check's outcome at this point: "up", "down",
+	// "timeout", "error", or "" when not applicable.
+	Status string `json:"status,omitempty"`
 }
 
 // --- Request types ---
@@ -411,6 +419,37 @@ func (s *Service) ListSections(
 	return responses, nil
 }
 
+// resolveSectionPosition picks the position for a new section: the caller's
+// requested value if any, otherwise max(existing) + 1 so the section appends
+// at the end. Defaulting to 0 would force every new section to share
+// position=0, breaking the swap-based reorder UI.
+func (s *Service) resolveSectionPosition(ctx context.Context, pageUID string, requested *int) (int, error) {
+	if requested != nil {
+		return *requested, nil
+	}
+
+	maxPosition, err := s.db.MaxStatusPageSectionPosition(ctx, pageUID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compute next section position: %w", err)
+	}
+
+	return maxPosition + 1, nil
+}
+
+// resolveResourcePosition is the per-section equivalent of resolveSectionPosition.
+func (s *Service) resolveResourcePosition(ctx context.Context, sectionUID string, requested *int) (int, error) {
+	if requested != nil {
+		return *requested, nil
+	}
+
+	maxPosition, err := s.db.MaxStatusPageResourcePosition(ctx, sectionUID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to compute next resource position: %w", err)
+	}
+
+	return maxPosition + 1, nil
+}
+
 // CreateSection creates a new section within a status page.
 func (s *Service) CreateSection(
 	ctx context.Context, orgSlug, pageIdentifier string, req CreateSectionRequest,
@@ -433,9 +472,9 @@ func (s *Service) CreateSection(
 		return StatusPageSectionResponse{}, ErrSlugConflict
 	}
 
-	position := 0
-	if req.Position != nil {
-		position = *req.Position
+	position, err := s.resolveSectionPosition(ctx, page.UID, req.Position)
+	if err != nil {
+		return StatusPageSectionResponse{}, err
 	}
 
 	section := models.NewStatusPageSection(page.UID, req.Name, req.Slug, position)
@@ -581,9 +620,9 @@ func (s *Service) CreateResource(
 		return StatusPageResourceResponse{}, ErrCheckNotFound
 	}
 
-	position := 0
-	if req.Position != nil {
-		position = *req.Position
+	position, err := s.resolveResourcePosition(ctx, section.UID, req.Position)
+	if err != nil {
+		return StatusPageResourceResponse{}, err
 	}
 
 	resource := models.NewStatusPageResource(section.UID, check.UID, position)
@@ -628,6 +667,48 @@ func (s *Service) UpdateResource(
 	}
 
 	return convertResourceToResponse(updated), nil
+}
+
+// ReorderResources rewrites the section's resources so that orderedUIDs[i]
+// gets position i+1. Validates that orderedUIDs is exactly the current set
+// of resources in the section before applying — partial or stale orderings
+// are rejected so the dashboard can't accidentally drop or duplicate rows.
+func (s *Service) ReorderResources(
+	ctx context.Context, orgSlug, pageIdentifier, sectionIdentifier string, orderedUIDs []string,
+) error {
+	page, err := s.resolveStatusPage(ctx, orgSlug, pageIdentifier)
+	if err != nil {
+		return err
+	}
+
+	section, err := s.resolveSection(ctx, page.UID, sectionIdentifier)
+	if err != nil {
+		return err
+	}
+
+	existing, err := s.db.ListStatusPageResources(ctx, section.UID)
+	if err != nil {
+		return fmt.Errorf("failed to list resources: %w", err)
+	}
+	if len(existing) != len(orderedUIDs) {
+		return ErrReorderUIDsMismatch
+	}
+	known := make(map[string]struct{}, len(existing))
+	for _, r := range existing {
+		known[r.UID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(orderedUIDs))
+	for _, uid := range orderedUIDs {
+		if _, ok := known[uid]; !ok {
+			return ErrReorderUIDsMismatch
+		}
+		if _, dup := seen[uid]; dup {
+			return ErrReorderUIDsMismatch
+		}
+		seen[uid] = struct{}{}
+	}
+
+	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
 }
 
 // DeleteResource removes a check from a section (hard delete).
@@ -712,7 +793,7 @@ func (s *Service) ViewDefaultStatusPage(
 
 // --- Availability enrichment ---
 
-//nolint:gocognit,nestif,cyclop,funlen // Availability enrichment has inherent conditional complexity
+//nolint:cyclop,funlen // Availability enrichment has inherent conditional complexity
 func (s *Service) enrichWithAvailability(
 	ctx context.Context, orgUID string, page *models.StatusPage, sections []StatusPageSectionResponse,
 ) {
@@ -763,65 +844,12 @@ func (s *Service) enrichWithAvailability(
 
 	hourlyResp, err := s.db.ListResults(ctx, hourlyFilter)
 	if err == nil && hourlyResp != nil {
-		// Synthesize today's daily result from hourly data for each check
 		hourlyByCheck := make(map[string][]*models.Result)
 		for _, r := range hourlyResp.Results {
 			hourlyByCheck[r.CheckUID] = append(hourlyByCheck[r.CheckUID], r)
 		}
 
-		for _, checkUID := range checkUIDs {
-			// Skip if we already have a daily result for today
-			hasDailyToday := false
-			todayStr := todayStart.Format("2006-01-02")
-			for _, r := range resultsByCheck[checkUID] {
-				if r.PeriodStart.Format("2006-01-02") == todayStr {
-					hasDailyToday = true
-
-					break
-				}
-			}
-
-			if hasDailyToday {
-				continue
-			}
-
-			// Aggregate hourly results for this check
-			var totalAvail float64
-
-			var count int
-
-			var totalDuration, totalDurationP95 float64
-
-			for _, hourlyResult := range hourlyByCheck[checkUID] {
-				if hourlyResult.AvailabilityPct != nil {
-					totalAvail += *hourlyResult.AvailabilityPct
-					count++
-				}
-
-				if hourlyResult.Duration != nil {
-					totalDuration += float64(*hourlyResult.Duration)
-				}
-
-				if hourlyResult.DurationP95 != nil {
-					totalDurationP95 += float64(*hourlyResult.DurationP95)
-				}
-			}
-
-			if count > 0 {
-				avgAvail := totalAvail / float64(count)
-				avgDuration := float32(totalDuration / float64(count))
-				avgP95 := float32(totalDurationP95 / float64(count))
-				synthResult := &models.Result{
-					CheckUID:        checkUID,
-					PeriodStart:     todayStart,
-					AvailabilityPct: &avgAvail,
-					Duration:        &avgDuration,
-					DurationP95:     &avgP95,
-					TotalChecks:     &count,
-				}
-				resultsByCheck[checkUID] = append(resultsByCheck[checkUID], synthResult)
-			}
-		}
+		synthesizeTodayAvailability(resultsByCheck, hourlyByCheck, checkUIDs, todayStart)
 	}
 
 	// Fetch the last 100 results per check (any period type) for the response time chart
@@ -857,6 +885,70 @@ func (s *Service) enrichWithAvailability(
 			)
 			sections[i].Resources[j].Availability = availData
 		}
+	}
+}
+
+// synthesizeTodayAvailability replaces today's stored daily row (if any) with a fresh
+// synthesis built from today's hourly results. This keeps today's availability bar live
+// even after the daily aggregator has computed today's row.
+func synthesizeTodayAvailability(
+	resultsByCheck, hourlyByCheck map[string][]*models.Result,
+	checkUIDs []string,
+	todayStart time.Time,
+) {
+	todayStr := todayStart.Format("2006-01-02")
+
+	for _, checkUID := range checkUIDs {
+		synth := buildTodaySynth(checkUID, hourlyByCheck[checkUID], todayStart)
+		if synth == nil {
+			continue
+		}
+
+		filtered := resultsByCheck[checkUID][:0]
+		for _, r := range resultsByCheck[checkUID] {
+			if r.PeriodStart.Format("2006-01-02") != todayStr {
+				filtered = append(filtered, r)
+			}
+		}
+		resultsByCheck[checkUID] = append(filtered, synth)
+	}
+}
+
+func buildTodaySynth(checkUID string, hourlyResults []*models.Result, todayStart time.Time) *models.Result {
+	var totalAvail, totalDuration, totalDurationP95 float64
+
+	var count int
+
+	for _, hourlyResult := range hourlyResults {
+		if hourlyResult.AvailabilityPct != nil {
+			totalAvail += *hourlyResult.AvailabilityPct
+			count++
+		}
+
+		if hourlyResult.Duration != nil {
+			totalDuration += float64(*hourlyResult.Duration)
+		}
+
+		if hourlyResult.DurationP95 != nil {
+			totalDurationP95 += float64(*hourlyResult.DurationP95)
+		}
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	avgAvail := totalAvail / float64(count)
+	avgDuration := float32(totalDuration / float64(count))
+	avgP95 := float32(totalDurationP95 / float64(count))
+
+	return &models.Result{
+		CheckUID:        checkUID,
+		PeriodStart:     todayStart,
+		AvailabilityPct: &avgAvail,
+		Duration:        &avgDuration,
+		DurationP95:     &avgP95,
+		TotalChecks:     &count,
 	}
 }
 
@@ -916,34 +1008,40 @@ func buildAvailabilityData(
 	}
 
 	if showResponseTime {
-		// Use the last 100 results (any type: raw, hour, day) for the response time chart
-		rtData := make([]ResponseTimePoint, 0, len(recentResults))
-
-		for _, recentResult := range recentResults {
-			// For raw results, use Duration; for aggregated results, use DurationP95
-			var duration *float32
-			if recentResult.DurationP95 != nil {
-				duration = recentResult.DurationP95
-			} else if recentResult.Duration != nil {
-				duration = recentResult.Duration
-			}
-
-			point := ResponseTimePoint{
-				Time:        recentResult.PeriodStart.UTC().Format(time.RFC3339),
-				DurationP95: duration,
-			}
-			rtData = append(rtData, point)
-		}
-
-		// Results come in DESC order, reverse for chronological display
-		for i, j := 0, len(rtData)-1; i < j; i, j = i+1, j-1 {
-			rtData[i], rtData[j] = rtData[j], rtData[i]
-		}
-
-		data.ResponseTimeData = rtData
+		data.ResponseTimeData = buildResponseTimeData(recentResults)
 	}
 
 	return data
+}
+
+func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
+	rtData := make([]ResponseTimePoint, 0, len(recentResults))
+
+	for _, recentResult := range recentResults {
+		var duration *float32
+		if recentResult.DurationP95 != nil {
+			duration = recentResult.DurationP95
+		} else if recentResult.Duration != nil {
+			duration = recentResult.Duration
+		}
+
+		var statusStr string
+		if recentResult.Status != nil {
+			statusStr = strings.ToLower(models.StatusToString(*recentResult.Status))
+		}
+
+		rtData = append(rtData, ResponseTimePoint{
+			Time:        recentResult.PeriodStart.UTC().Format(time.RFC3339),
+			DurationP95: duration,
+			Status:      statusStr,
+		})
+	}
+
+	for i, j := 0, len(rtData)-1; i < j; i, j = i+1, j-1 {
+		rtData[i], rtData[j] = rtData[j], rtData[i]
+	}
+
+	return rtData
 }
 
 func availabilityToStatus(pct float64) string {

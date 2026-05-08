@@ -78,6 +78,12 @@ type EncryptionConfig struct {
 	// SP_ENCRYPTION_MASTER_KEY_FILE. Wins over MasterKey when both set —
 	// matches the Kubernetes secret-mount pattern.
 	MasterKeyFile string `koanf:"master_key_file"`
+	// AutoMigrate runs the encrypt-credentials sweep at startup when a
+	// master key is configured. Defaults to true; set
+	// SP_ENCRYPTION_AUTO_MIGRATE=false to opt out and run the CLI command
+	// manually instead. Idempotent either way — only rows still in
+	// plaintext are touched.
+	AutoMigrate bool `koanf:"auto_migrate"`
 }
 
 // PrometheusConfig contains Prometheus metrics endpoint configuration.
@@ -209,10 +215,23 @@ type AggregationConfig struct {
 
 // AuthConfig contains authentication configuration.
 type AuthConfig struct {
-	JWTSecret                string        `koanf:"jwt_secret"`
-	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
-	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
-	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	JWTSecret                string         `koanf:"jwt_secret"`
+	AccessTokenExpiry        time.Duration  `koanf:"access_token_expiry"`
+	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
+	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
+	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
+}
+
+// WebAuthnConfig configures the passkey / WebAuthn relying party. RPID
+// must match the host the dashboard runs on (no scheme, no port). Origins
+// are full origin strings (https://app.example.com). When RPID is empty
+// it is derived from ServerConfig.BaseURL at startup; if the resolved
+// scheme is not https (and host is not localhost) passkeys are disabled.
+type WebAuthnConfig struct {
+	Enabled       bool     `koanf:"enabled"`
+	RPID          string   `koanf:"rp_id"`
+	RPDisplayName string   `koanf:"rp_display_name"`
+	Origins       []string `koanf:"origins"`
 }
 
 // SlackConfig contains Slack integration configuration.
@@ -293,6 +312,10 @@ func Load() (*Config, error) {
 			JWTSecret:          "change-me-in-production",
 			AccessTokenExpiry:  time.Hour,
 			RefreshTokenExpiry: 7 * 24 * time.Hour,
+			WebAuthn: WebAuthnConfig{
+				Enabled:       true,
+				RPDisplayName: "SolidPing",
+			},
 		},
 		Email: EmailConfig{
 			Port:     587,
@@ -330,6 +353,9 @@ func Load() (*Config, error) {
 		Prometheus: PrometheusConfig{
 			Enabled: true,
 			Path:    "/metrics",
+		},
+		Encryption: EncryptionConfig{
+			AutoMigrate: true,
 		},
 	}
 

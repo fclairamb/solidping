@@ -10,6 +10,18 @@
 - [api-specification.md](api-specification.md) — Complete REST API specification: auth, orgs, users, workers, checks, results, config
 - [database-model.md](database-model.md) — Database schema with all 28 tables, columns, foreign keys, and design patterns
 
+## Features
+
+End-to-end pages for individual subsystems — read these before touching
+the relevant code.
+
+- [features/notifications-and-escalation.md](features/notifications-and-escalation.md) — How a check failure becomes a page: incident lifecycle, channel fan-out, escalation policies, on-call resolution, suppression layers (maintenance windows, cascade rollup, ack/snooze).
+- [features/check-dependencies.md](features/check-dependencies.md) — Hard vs soft dependency edges, cascade rollup walk, parent-resolve re-evaluation, correlation windows, edge cases.
+- [features/entitlements.md](features/entitlements.md) — Per-org limits and feature toggles: defaults seed, three-layer resolution (defaults → row → live usage), sources (default / self-hosted / admin / billing-service), stale fallback, audit log.
+- [features/email-inbox-checks.md](features/email-inbox-checks.md) — Passive checks that succeed when an email arrives. JMAP supervisor, per-check token, status resolution priority, mailbox retention, distinction from email-as-channel.
+- [features/mcp.md](features/mcp.md) — Model Context Protocol surface: endpoint, scopes (`mcp` / `mcp:read`), tool inventory, prompts, sessions, protocol version negotiation, how to add a new tool.
+- [features/browser-monitoring.md](features/browser-monitoring.md) — Headless-Chrome (chromedp) checks: when to pick browser over http, execution model, capabilities & limits, worker requirements, security model.
+
 ## Conventions
 
 Project-wide standards and naming rules.
@@ -37,22 +49,62 @@ Project-wide standards and naming rules.
 
 ## Research
 
-- [research/market-feedback.md](research/market-feedback.md) — User pain points, feature wishes, and willingness-to-pay across BetterStack and the competitive set, with SolidPing positioning implications
+- [research/alerting-patterns.md](research/alerting-patterns.md) — Monitoring & alerting design ideas distilled from BetterStack and Hyperping research; input for future specs (May 2026)
 - [research/screenshot-tools.md](research/screenshot-tools.md) — Go screenshot tools comparison (chromedp, Rod, gowitness, gochro) — Rod recommended
 
 ## Competitors
 
 Market analysis of uptime monitoring services.
 
-- [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 8 competitors, with current SolidPing positioning (May 2026)
+- [competitors/comparison.md](competitors/comparison.md) — Comparison matrix and pricing across 9 competitors, with current SolidPing positioning (May 2026)
 - [competitors/criteria.md](competitors/criteria.md) — Evaluation framework: pricing, features, protocols, deployment, support
 - [competitors/full-list.md](competitors/full-list.md) — Comprehensive directory of all monitoring services
-- [competitors/betterstack.md](competitors/betterstack.md) — BetterStack Uptime analysis
+
+### Per-competitor analyses
+
+- BetterStack — [betterstack/](competitors/betterstack/)
+  - [betterstack/README.md](competitors/betterstack/README.md) — Index, at-a-glance, headline takeaways
+  - [betterstack/monitoring.md](competitors/betterstack/monitoring.md) — Detection logic, recovery, regions/quorum, `validating` state
+  - [betterstack/alerting.md](competitors/betterstack/alerting.md) — Severities, escalation policies, on-call, ack/snooze, channels, incident grouping
+  - [betterstack/platform.md](competitors/betterstack/platform.md) — Heartbeats, Playwright, status pages, maintenance windows
+  - [betterstack/api.md](competitors/betterstack/api.md) — REST surface, auth, pagination, monitor types, fields reference
+  - [betterstack/integrations.md](competitors/betterstack/integrations.md) — Outgoing webhooks, Terraform provider, Telemetry/AI features
+  - [betterstack/comparison.md](competitors/betterstack/comparison.md) — vs SolidPing capability matrix and lessons
+  - [betterstack/sources.md](competitors/betterstack/sources.md) — Source URLs
+- Hyperping — [hyperping/](competitors/hyperping/)
+  - [hyperping/README.md](competitors/hyperping/README.md) — Index, at-a-glance, headline takeaways
+  - [hyperping/monitoring.md](competitors/hyperping/monitoring.md) — Monitor types, HTTP config, intervals, multi-region confirmation
+  - [hyperping/alerting.md](competitors/hyperping/alerting.md) — Channels, escalation, on-call, outage-vs-incident model, maintenance
+  - [hyperping/platform.md](competitors/hyperping/platform.md) — Heartbeats (Healthchecks), browser checks, status pages
+  - [hyperping/api.md](competitors/hyperping/api.md) — API surface, webhooks, community Terraform/SDKs, pricing
+  - [hyperping/sources.md](competitors/hyperping/sources.md) — Source URLs
 - [competitors/checkly.md](competitors/checkly.md) — Checkly analysis (monitoring-as-code, Playwright)
-- [competitors/gatus.md](competitors/gatus.md) — Gatus analysis (config-as-code, self-hosted)
+- Gatus — [gatus/](competitors/gatus/)
+  - [gatus/README.md](competitors/gatus/README.md) — Index, at-a-glance, key features
+  - [gatus/configuration.md](competitors/gatus/configuration.md) — Configuration syntax and technology stack
+  - [gatus/deployment.md](competitors/gatus/deployment.md) — Installation, deployment, performance, security
+  - [gatus/api.md](competitors/gatus/api.md) — API surface
+  - [gatus/alerting.md](competitors/gatus/alerting.md) — Conditions, alert rules, channels
+  - [gatus/comparison.md](competitors/gatus/comparison.md) — Strengths, weaknesses, vs SolidPing, use cases
+  - [gatus/sources.md](competitors/gatus/sources.md) — Source URLs
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
-- [competitors/pingdom.md](competitors/pingdom.md) — Pingdom analysis (RUM, page speed)
+- Pingdom — [pingdom/](competitors/pingdom/)
+  - [pingdom/README.md](competitors/pingdom/README.md) — Index, at-a-glance, key features
+  - [pingdom/monitoring.md](competitors/pingdom/monitoring.md) — Check types in-depth (HTTP, transaction, ping, TCP/UDP, DNS, mail) and global probe network
+  - [pingdom/api.md](competitors/pingdom/api.md) — API architecture, auth, core endpoints (3.1), complete API reference
+  - [pingdom/pricing.md](competitors/pingdom/pricing.md) — Synthetic and RUM plans, billing, pain points
+  - [pingdom/comparison.md](competitors/pingdom/comparison.md) — vs SolidPing, technical considerations, limitations, API design patterns
+  - [pingdom/examples.md](competitors/pingdom/examples.md) — Integration examples (HTTP, TCP, DNS, SMTP, results, summary, maintenance)
+  - [pingdom/sources.md](competitors/pingdom/sources.md) — Source URLs
 - [competitors/site24x7.md](competitors/site24x7.md) — Site24x7 analysis (Zoho/ManageEngine all-in-one, 100+ monitor types, AIOps)
 - [competitors/statuscake.md](competitors/statuscake.md) — StatusCake analysis (43 probe locations)
 - [competitors/uptime-kuma.md](competitors/uptime-kuma.md) — Uptime Kuma analysis (self-hosted, Vue.js)
-- [competitors/uptimerobot.md](competitors/uptimerobot.md) — UptimeRobot analysis (free tier, protocol support)
+- UptimeRobot — [uptimerobot/](competitors/uptimerobot/)
+  - [uptimerobot/README.md](competitors/uptimerobot/README.md) — Index, at-a-glance, headline takeaways
+  - [uptimerobot/api.md](competitors/uptimerobot/api.md) — API architecture, auth, rate limits, core v3 endpoints
+  - [uptimerobot/api-reference.md](competitors/uptimerobot/api-reference.md) — Complete API reference tables (endpoints, types, status codes, headers)
+  - [uptimerobot/heartbeats.md](competitors/uptimerobot/heartbeats.md) — Heartbeat monitoring in-depth (cron, Task Scheduler, Python)
+  - [uptimerobot/pricing.md](competitors/uptimerobot/pricing.md) — Free / Solo / Team / Enterprise plans and pricing insights
+  - [uptimerobot/comparison.md](competitors/uptimerobot/comparison.md) — vs SolidPing, technical considerations, limitations, API design patterns
+  - [uptimerobot/examples.md](competitors/uptimerobot/examples.md) — Integration examples (HTTP, keyword, port, heartbeat, Slack, status page)
+  - [uptimerobot/sources.md](competitors/uptimerobot/sources.md) — Source URLs

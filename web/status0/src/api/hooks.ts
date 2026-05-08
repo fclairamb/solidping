@@ -16,6 +16,7 @@ export interface DailyAvailabilityPoint {
 export interface ResponseTimePoint {
   time: string;
   durationP95?: number;
+  status?: "up" | "down" | "timeout" | "error" | "created" | "running" | string;
 }
 
 export interface ResourceAvailabilityData {

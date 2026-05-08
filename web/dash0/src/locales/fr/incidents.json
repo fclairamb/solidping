@@ -31,11 +31,44 @@
   "fallbackTitle": "Incident",
   "actions": {
     "acknowledge": "Acquitter",
+    "unacknowledge": "Annuler l'acquittement",
+    "snooze": "Mettre en pause…",
+    "wakeUp": "Réactiver",
     "resolve": "Résoudre",
     "acknowledged": "Incident acquitté",
+    "unacknowledged": "Acquittement annulé",
+    "snoozed": "Incident mis en pause",
+    "unsnoozed": "Pause annulée",
     "resolved": "Incident résolu",
     "acknowledgeFailed": "Échec de l'acquittement de l'incident",
+    "unacknowledgeFailed": "Échec de l'annulation de l'acquittement",
+    "snoozeFailed": "Échec de la mise en pause",
+    "unsnoozeFailed": "Échec de la réactivation",
     "resolveFailed": "Échec de la résolution de l'incident"
+  },
+  "snoozeDialog": {
+    "title": "Mettre l'incident en pause",
+    "description": "Couper les notifications jusqu'à l'heure choisie. Mettre en pause acquitte aussi l'incident.",
+    "duration": "Durée",
+    "reason": "Raison (facultatif)",
+    "reasonPlaceholder": "ex. déploiement d'un correctif",
+    "quickSelect": "Sélection rapide",
+    "until15m": "15 minutes",
+    "until1h": "1 heure",
+    "until4h": "4 heures",
+    "untilTomorrow9am": "Demain à 9h",
+    "customDuration": "Personnalisée (ex. 2h, 30m)",
+    "submit": "Mettre en pause",
+    "cancel": "Annuler"
+  },
+  "stateBadges": {
+    "acked": "Acquitté",
+    "snoozed": "En pause",
+    "snoozedUntil": "En pause jusqu'à {{time}}"
+  },
+  "stateFilter": {
+    "ackedOnly": "Acquittés",
+    "snoozedOnly": "En pause"
   },
   "detail": {
     "incidentDetail": "Détail de l'incident",
@@ -74,5 +107,17 @@
     "hoursAgo": "il y a {{count}}h",
     "minutesAgo": "il y a {{count}}min",
     "justNow": "à l'instant"
+  },
+  "rollup": {
+    "causedByActive": "Regroupé sous l'incident <strong>{{parent}}</strong> — les notifications sont suspendues tant que la cause racine est ouverte.",
+    "parentLoading": "l'incident racine",
+    "causedByPast": "Cet incident a été regroupé sous {{parent}} jusqu'à {{resolvedAt}}. Les notifications ont été émises alors.",
+    "blastRadiusTitle": "Portée ({{count}} affecté(s))",
+    "blastRadiusFooter": "Les notifications seront émises pour tout enfant encore en panne à la résolution de cet incident.",
+    "blastRadiusEmpty": "Aucun incident enfant n'est actuellement regroupé sous celui-ci.",
+    "rolledUpBadge": "regroupé",
+    "showRolledUp": "Afficher les incidents regroupés",
+    "pagingSuppressed": "notifications suspendues",
+    "rolledUpInactive": "regroupé"
   }
 }

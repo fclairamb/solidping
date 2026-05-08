@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"path"
 	"strings"
 	"sync"
@@ -27,18 +28,25 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/credmigrate"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
+	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/features"
@@ -214,6 +222,24 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EmailFormatter = emailFormatter
 
+	// Credentials encryption service. The master key comes from env (or a
+	// file mount) — never persisted server-side. With no key configured,
+	// .Enabled() is false and write paths fall back to plaintext storage.
+	credSvc, err := BuildCredentialsService(cfg, dbService)
+	if err != nil {
+		return nil, fmt.Errorf("init credentials service: %w", err)
+	}
+	svcList.Credentials = credSvc
+
+	if !credSvc.Enabled() {
+		// Plaintext-fallback warning at startup so an unconfigured prod
+		// install can be spotted in logs.
+		//
+		//nolint:sloglint // startup-only, no request context
+		slog.Warn("credentials encryption disabled — secrets stored in plaintext",
+			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
+	}
+
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
 		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
@@ -235,13 +261,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		profilerSrv: profiler.New(&cfg.Profiler),
 	}
 
-	server.setupRoutes()
-
 	return server, nil
 }
 
+// SetupRoutes builds the HTTP router and registers every handler. It must
+// be called after InitializeSystemConfig so handlers see the post-overlay
+// config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
+// which the system-parameters table can override at runtime).
+//
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
-func (s *Server) setupRoutes() {
+func (s *Server) SetupRoutes() {
 	router := bunrouter.New()
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
 
@@ -254,6 +283,8 @@ func (s *Server) setupRoutes() {
 
 	// Create auth handler and middleware
 	authHandler := auth.NewHandler(s.authService, s.config)
+	passkeyService := auth.NewPasskeyService(s.authService, s.dbService)
+	passkeyHandler := auth.NewPasskeyHandler(passkeyService, base.NewHandlerBase(s.config))
 	authMiddleware := middleware.NewAuthMiddleware(s.authService, s.dbService, s.config)
 
 	// Root-level auth routes (public, no authentication required)
@@ -268,6 +299,8 @@ func (s *Server) setupRoutes() {
 	rootAuth.POST("/accept-invite", authHandler.AcceptInvite)
 	rootAuth.POST("/2fa/verify", authHandler.Verify2FA)
 	rootAuth.POST("/2fa/recovery", authHandler.Recovery2FA)
+	rootAuth.POST("/passkeys/login/begin", passkeyHandler.LoginBegin)
+	rootAuth.POST("/passkeys/login/finish", passkeyHandler.LoginFinish)
 
 	// Root-level auth routes (protected, authentication required)
 	rootAuthProtected := rootAuth.Use(authMiddleware.RequireAuth)
@@ -280,6 +313,11 @@ func (s *Server) setupRoutes() {
 	rootAuthProtected.POST("/2fa/confirm", authHandler.Confirm2FA)
 	rootAuthProtected.DELETE("/2fa", authHandler.Disable2FA)
 	rootAuthProtected.DELETE("/tokens/:tokenUid", authHandler.RevokeToken)
+	rootAuthProtected.POST("/passkeys/register/begin", passkeyHandler.RegisterBegin)
+	rootAuthProtected.POST("/passkeys/register/finish", passkeyHandler.RegisterFinish)
+	rootAuthProtected.GET("/passkeys", passkeyHandler.List)
+	rootAuthProtected.PATCH("/passkeys/:uid", passkeyHandler.Rename)
+	rootAuthProtected.DELETE("/passkeys/:uid", passkeyHandler.Delete)
 	rootAuthProtected.POST("/membership-requests", authHandler.CreateMembershipRequestHandler)
 	rootAuthProtected.GET("/membership-requests", authHandler.ListOwnMembershipRequestsHandler)
 	rootAuthProtected.DELETE("/membership-requests/:uid", authHandler.CancelMembershipRequestHandler)
@@ -366,7 +404,7 @@ func (s *Server) setupRoutes() {
 	}
 
 	// Auth providers endpoint (public)
-	providersHandler := auth.NewProvidersHandler(s.config)
+	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
 
 	// Check types service (constructed early so MCP can use it too)
@@ -374,7 +412,9 @@ func (s *Server) setupRoutes() {
 	checkTypesService := checktypes.NewService(activationResolver, s.config.Server.BaseURL)
 
 	// MCP endpoint (auth via PAT token, org derived from token)
-	s.mcpHandler = mcp.NewHandler(s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService)
+	s.mcpHandler = mcp.NewHandler(
+		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService, s.services.Credentials,
+	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
@@ -390,7 +430,7 @@ func (s *Server) setupRoutes() {
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
-	checksService := checks.NewService(s.dbService, s.services.EventNotifier)
+	checksService := checks.NewService(s.dbService, s.services.EventNotifier, s.services.Credentials)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -427,6 +467,16 @@ func (s *Server) setupRoutes() {
 	orgCheckGroups.PATCH("/:uid", checkGroupsHandler.UpdateCheckGroup)
 	orgCheckGroups.DELETE("/:uid", checkGroupsHandler.DeleteCheckGroup)
 
+	// Check dependency routes (authentication required)
+	depsService := checkdependencies.NewService(s.dbService)
+	depsHandler := checkdependencies.NewHandler(depsService, s.config)
+	orgChecks.GET("/:check/dependencies", depsHandler.ListForCheck)
+	orgChecks.POST("/:check/dependencies", depsHandler.Create)
+	orgChecks.PATCH("/:check/dependencies/:uid", depsHandler.Update)
+	orgChecks.DELETE("/:check/dependencies/:uid", depsHandler.Delete)
+	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
+	orgDeps.GET("", depsHandler.Graph)
+
 	// Check-connection routes (authentication required)
 	checkConnectionsService := checkconnections.NewService(s.dbService)
 	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
@@ -453,6 +503,7 @@ func (s *Server) setupRoutes() {
 		s.dbService,
 		s.services.CheckJobs,
 		incidents.NewService(s.dbService, s.jobSvc),
+		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
 	workerAPI := api.NewGroup("/workers")
@@ -483,6 +534,10 @@ func (s *Server) setupRoutes() {
 	orgIncidents.POST("/:uid/unsnooze", incidentsHandler.UnsnoozeIncident)
 	orgIncidents.POST("/:uid/resolve", incidentsHandler.ResolveIncident)
 
+	// Magic-link ack — public route (the signed token authenticates).
+	// Returns text/html so it renders in a browser opened from a mail client.
+	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
 	onCallHandler := oncallschedules.NewHandler(onCallService, s.dbService, s.config)
@@ -498,6 +553,21 @@ func (s *Server) setupRoutes() {
 	orgOnCall.DELETE("/:slug/overrides/:overrideUid", onCallHandler.DeleteOverride)
 	orgOnCall.POST("/:slug/ical-feed/enable", onCallHandler.EnableICalFeed)
 	orgOnCall.POST("/:slug/ical-feed/disable", onCallHandler.DisableICalFeed)
+	orgOnCall.POST("/:slug/ical-feed/rotate", onCallHandler.RotateICalFeed)
+
+	// Public iCal feed — the secret in the URL authorizes access. No auth
+	// middleware: clients are calendar apps that can't bear tokens.
+	api.GET("/on-call-schedules/:secret/feed.ics", onCallHandler.ServeICalFeed)
+
+	// Wire the on-call resolver into the escalation step job so
+	// schedule-target steps can find who is paged at fire time. The
+	// indirection avoids an import cycle between jobtypes and
+	// oncallschedules; jobtypes only knows the function shape.
+	jobtypes.SetOnCallResolver(func(
+		ctx context.Context, _ *jobdef.JobContext, scheduleUID string, at time.Time,
+	) (*models.User, error) {
+		return onCallService.Resolve(ctx, scheduleUID, at)
+	})
 
 	// Escalation policies (authentication required)
 	escalationService := escalationpolicies.NewService(s.dbService)
@@ -578,16 +648,44 @@ func (s *Server) setupRoutes() {
 	systemActions.GET("/email-inbox/status", systemHandler.EmailInboxStatus)
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
+	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
 
-	// Integration connections routes (authentication required)
-	connectionsService := connections.NewService(s.dbService)
+	// Org entitlements routes. The handler does its own auth gating
+	// (service token preferred for SaaS billing service; admin user
+	// fallback gated by entitlements.admin_writes_enabled). The plain
+	// GET endpoint is open to any authenticated org member, so we wrap
+	// the group with RequireAuth + RequireOrgAccess; the handler then
+	// applies a stricter check on writes.
+	entitlementsService := entitlementsapi.NewService(
+		s.dbService, entitlementsapi.DefaultEntitlements, 0,
+	)
+	entitlementsHandler := entitlements.NewHandler(entitlementsService, s.dbService, s.config)
+	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
+		Use(authMiddleware.RequireAuth).
+		Use(authMiddleware.RequireOrgAccess)
+	orgEntitlements.GET("", entitlementsHandler.Get)
+	orgEntitlements.PUT("", entitlementsHandler.Put)
+	orgEntitlements.PATCH("", entitlementsHandler.Patch)
+	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
+
+	// Integration connections routes (authentication required).
+	//
+	// We expose the same handlers under both `/connections` (legacy, original
+	// name from when the table was modeled as integration_connections) and
+	// `/channels` (canonical going forward — what operators see in the UI).
+	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
+	// alias is additive so the dashboard, MCP, and CLI can switch over
+	// without an external client breakage. PR-5 drops `/connections`.
+	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
 	connectionsHandler := connections.NewHandler(connectionsService, s.config)
-	orgConnections := api.NewGroup("/orgs/:org/connections").Use(authMiddleware.RequireAuth)
-	orgConnections.GET("", connectionsHandler.ListConnections)
-	orgConnections.POST("", connectionsHandler.CreateConnection)
-	orgConnections.GET("/:uid", connectionsHandler.GetConnection)
-	orgConnections.PATCH("/:uid", connectionsHandler.UpdateConnection)
-	orgConnections.DELETE("/:uid", connectionsHandler.DeleteConnection)
+	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
+		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
+		group.GET("", connectionsHandler.ListConnections)
+		group.POST("", connectionsHandler.CreateConnection)
+		group.GET("/:uid", connectionsHandler.GetConnection)
+		group.PATCH("/:uid", connectionsHandler.UpdateConnection)
+		group.DELETE("/:uid", connectionsHandler.DeleteConnection)
+	}
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService)
@@ -605,6 +703,8 @@ func (s *Server) setupRoutes() {
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid", statusPagesHandler.DeleteSection)
 	orgStatusPages.GET("/:statusPageUid/sections/:sectionUid/resources", statusPagesHandler.ListResources)
 	orgStatusPages.POST("/:statusPageUid/sections/:sectionUid/resources", statusPagesHandler.CreateResource)
+	orgStatusPages.POST(
+		"/:statusPageUid/sections/:sectionUid/resources/reorder", statusPagesHandler.ReorderResources)
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.UpdateResource)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.DeleteResource)
 
@@ -1396,6 +1496,76 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	return nil
 }
 
+// MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the
+// encrypted columns when a master key is configured and AutoMigrate is on
+// (default). Idempotent — only rows still in plaintext are touched. Logs
+// a summary; errors propagate so the operator notices at startup.
+//
+// When credentials are *disabled* and the DB already holds encrypted rows
+// (operator removed the master key), we log a loud WARN — those rows
+// can't be decrypted at run time and workers will skip them.
+func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
+	if s.services == nil || s.services.Credentials == nil || !s.services.Credentials.Enabled() {
+		s.warnIfEncryptedRowsExist(ctx)
+
+		return nil
+	}
+
+	if !s.config.Encryption.AutoMigrate {
+		slog.InfoContext(ctx, "encrypt-credentials auto-migrate disabled by config")
+
+		return nil
+	}
+
+	stats, err := credmigrate.Run(ctx, s.dbService, s.services.Credentials, credmigrate.Options{
+		Logger: slog.Default(),
+	})
+	if err != nil {
+		return fmt.Errorf("auto-migrate credentials: %w", err)
+	}
+
+	if stats.ChecksMigrated > 0 || stats.ConnectionsMigrated > 0 {
+		slog.InfoContext(ctx, "encrypted plaintext credentials at startup",
+			"checksMigrated", stats.ChecksMigrated,
+			"connectionsMigrated", stats.ConnectionsMigrated)
+	}
+
+	return nil
+}
+
+// warnIfEncryptedRowsExist scans the secret-bearing tables for non-NULL
+// private columns when encryption is disabled and emits a single WARN
+// per startup. The query is a counting scan, not a row fetch — cheap
+// enough to run unconditionally.
+func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
+	if s.dbService == nil {
+		return
+	}
+
+	bun := s.dbService.DB()
+
+	checkCount, err := bun.NewSelect().Model((*models.Check)(nil)).
+		Where("config_private IS NOT NULL AND config_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	connCount, err := bun.NewSelect().Model((*models.IntegrationConnection)(nil)).
+		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
+	if err != nil {
+		return
+	}
+
+	if checkCount == 0 && connCount == 0 {
+		return
+	}
+
+	//nolint:sloglint // startup-only; no request context
+	slog.Warn("encrypted rows present but credentials encryption is disabled — these rows are unreadable",
+		"checks", checkCount, "connections", connCount,
+		"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE) to the original key")
+}
+
 // InitializeTestData creates test data for test mode.
 // This should be called after Initialize and before Start.
 func (s *Server) InitializeTestData(ctx context.Context) error {
@@ -1413,4 +1583,76 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// BuildCredentialsService loads the KEK (env or file), constructs the
+// credentials service, and wires the per-org DEK store against the
+// existing parameters table. Returns a disabled service (no error) when
+// no master key is configured — that is the documented fallback.
+//
+// Exported so the encrypt-credentials CLI command can build the same
+// service the server uses, without duplicating the wiring.
+func BuildCredentialsService(cfg *config.Config, dbService db.Service) (credentials.Service, error) {
+	kek, err := loadEncryptionMasterKey(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	store := credentials.ParamStore{
+		Load: func(ctx context.Context, orgUID, key string) (json.RawMessage, bool, error) {
+			param, getErr := dbService.GetOrgParameter(ctx, orgUID, key)
+			if getErr != nil {
+				return nil, false, getErr
+			}
+			if param == nil {
+				return nil, false, nil
+			}
+			raw, mErr := json.Marshal(param.Value)
+			if mErr != nil {
+				return nil, false, mErr
+			}
+			return raw, true, nil
+		},
+		Save: func(ctx context.Context, orgUID, key string, value any, secret bool) error {
+			return dbService.SetOrgParameter(ctx, orgUID, key, value, secret)
+		},
+	}
+
+	return credentials.NewService(kek, store)
+}
+
+// loadEncryptionMasterKey returns the raw KEK bytes from the env-derived
+// config. Returns nil (with no error) when no key is configured — that
+// disables encryption. Both base64 and base64-without-padding are
+// accepted, matching what kubectl create secret typically emits.
+func loadEncryptionMasterKey(cfg *config.Config) ([]byte, error) {
+	source := cfg.Encryption.MasterKey
+	if cfg.Encryption.MasterKeyFile != "" {
+		// File path wins when both are set — matches the spec contract.
+		// Read lazily here so a missing file fails loudly at startup
+		// rather than silently disabling encryption.
+		bytes, err := readMasterKeyFile(cfg.Encryption.MasterKeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("read master key file: %w", err)
+		}
+		source = bytes
+	}
+
+	if source == "" {
+		return nil, nil
+	}
+
+	return credentials.DecodeMasterKey(source)
+}
+
+// readMasterKeyFile slurps the file at path and returns its trimmed
+// contents. Trim is important — env-mounted secrets often have a trailing
+// newline. The contents are still treated as a base64 string by the
+// caller, so any other whitespace would break decoding anyway.
+func readMasterKeyFile(path string) (string, error) {
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(bytes)), nil
 }

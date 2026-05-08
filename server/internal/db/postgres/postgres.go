@@ -31,6 +31,10 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// errResourceNotInSection signals that a status-page reorder request referenced
+// a resource UID that is not part of the targeted section.
+var errResourceNotInSection = errors.New("resource not in section")
+
 // Config holds PostgreSQL connection configuration.
 type Config struct {
 	// DSN is the PostgreSQL connection string (used when not using embedded)
@@ -749,6 +753,110 @@ func (s *Service) DeleteUserToken(ctx context.Context, uid string) error {
 	return err
 }
 
+// UserPasskey operations
+
+// CreateUserPasskey inserts a new passkey row.
+func (s *Service) CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error {
+	_, err := s.db.NewInsert().Model(passkey).Exec(ctx)
+
+	return err
+}
+
+// GetUserPasskey returns a non-deleted passkey by uid.
+func (s *Service) GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error) {
+	row := new(models.UserPasskey)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// GetUserPasskeyByCredentialID looks a passkey up by its WebAuthn
+// credential ID. Used during the assertion-verification step.
+func (s *Service) GetUserPasskeyByCredentialID(
+	ctx context.Context, credentialID []byte,
+) (*models.UserPasskey, error) {
+	row := new(models.UserPasskey)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("credential_id = ?", credentialID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// ListUserPasskeysByUser returns all non-deleted passkeys for a user.
+func (s *Service) ListUserPasskeysByUser(
+	ctx context.Context, userUID string,
+) ([]*models.UserPasskey, error) {
+	var rows []*models.UserPasskey
+
+	err := s.db.NewSelect().
+		Model(&rows).
+		Where("user_uid = ?", userUID).
+		Where("deleted_at IS NULL").
+		Order("created_at DESC").
+		Scan(ctx)
+
+	return rows, err
+}
+
+// UpdateUserPasskey applies a partial update. SignCount/LastUsedAt are
+// the hot path (called on every successful assertion); Name is the cold
+// path (rename UI).
+func (s *Service) UpdateUserPasskey(
+	ctx context.Context, uid string, update models.UserPasskeyUpdate,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.UserPasskey)(nil)).
+		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	if update.Name != nil {
+		query = query.Set("name = ?", *update.Name)
+	}
+
+	if update.SignCount != nil {
+		query = query.Set("sign_count = ?", *update.SignCount)
+	}
+
+	if update.LastUsedAt != nil {
+		query = query.Set("last_used_at = ?", *update.LastUsedAt)
+	}
+
+	if update.BackupState != nil {
+		query = query.Set("backup_state = ?", *update.BackupState)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// DeleteUserPasskey soft-deletes a passkey.
+func (s *Service) DeleteUserPasskey(ctx context.Context, uid string) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.UserPasskey)(nil)).
+		Where("uid = ?", uid).
+		Set("deleted_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
 // Worker operations
 
 func (s *Service) CreateWorker(ctx context.Context, worker *models.Worker) error {
@@ -941,6 +1049,9 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
+		checkJob.ConfigPrivate = check.ConfigPrivate
+		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.ScheduledAt = &now
 		if _, err := tx.NewInsert().Model(checkJob).Exec(ctx); err != nil {
 			return err
@@ -960,6 +1071,9 @@ func createCheckJobs(ctx context.Context, tx bun.Tx, check *models.Check) error 
 		checkJob := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
 		checkJob.Type = check.Type
 		checkJob.Config = check.Config
+		checkJob.ConfigPrivate = check.ConfigPrivate
+		checkJob.ConfigPrivateKeys = check.ConfigPrivateKeys
+		checkJob.Encrypted = check.ConfigPrivate != nil
 		checkJob.Region = &regionCopy
 		checkJob.ScheduledAt = &scheduledAt
 
@@ -1026,6 +1140,7 @@ func (s *Service) GetCheckByEmailToken(ctx context.Context, token string) (*mode
 	return check, nil
 }
 
+//nolint:funlen // List query builder handles many optional filters inline
 func (s *Service) ListChecks(
 	ctx context.Context, orgUID string, filter *models.ListChecksFilter,
 ) ([]*models.Check, int64, error) {
@@ -1090,6 +1205,12 @@ func (s *Service) ListChecks(
 			countQuery = countQuery.Where("internal = FALSE")
 		}
 
+		// Apply current-status filter
+		if len(filter.Statuses) > 0 {
+			query = query.Where("status IN (?)", bun.List(filter.Statuses))
+			countQuery = countQuery.Where("status IN (?)", bun.List(filter.Statuses))
+		}
+
 		// Apply cursor
 		if filter.CursorCreatedAt != nil && filter.CursorUID != nil {
 			query = query.Where(
@@ -1114,6 +1235,7 @@ func (s *Service) ListChecks(
 	return checks, int64(total), err
 }
 
+//nolint:cyclop // long but flat: one branch per optional column
 func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.CheckUpdate) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
@@ -1149,6 +1271,18 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("config = ?", *update.Config)
 	}
 
+	if update.ConfigPrivate != nil {
+		query = query.Set("config_private = ?", *update.ConfigPrivate)
+	} else if update.ClearConfigPrivate {
+		query = query.Set("config_private = NULL")
+	}
+
+	if update.ConfigPrivateKeys != nil {
+		query = query.Set("config_private_keys = ?", *update.ConfigPrivateKeys)
+	} else if update.ClearConfigPrivate {
+		query = query.Set("config_private_keys = NULL")
+	}
+
 	if update.Enabled != nil {
 		query = query.Set("enabled = ?", *update.Enabled)
 	}
@@ -1171,6 +1305,13 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 
 	if update.MaxAdaptiveIncrease != nil {
 		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	}
+
+	switch {
+	case update.ClearEscalationPolicyUID:
+		query = query.Set("escalation_policy_uid = NULL")
+	case update.EscalationPolicyUID != nil:
+		query = query.Set("escalation_policy_uid = ?", *update.EscalationPolicyUID)
 	}
 
 	_, err := query.Exec(ctx)
@@ -1743,6 +1884,8 @@ func applyIncidentSetFields(query *bun.UpdateQuery, update *models.IncidentUpdat
 		{"title", update.Title},
 		{"description", update.Description},
 		{"details", update.Details},
+		{"caused_by_incident_uid", update.CausedByIncidentUID},
+		{"paging_suppressed", update.PagingSuppressed},
 	}
 
 	for i := range setters {
@@ -1776,6 +1919,10 @@ func applyIncidentSet(query *bun.UpdateQuery, column string, value any) *bun.Upd
 		if typed != nil {
 			return query.Set(column+" = ?", *typed)
 		}
+	case *bool:
+		if typed != nil {
+			return query.Set(column+" = ?", *typed)
+		}
 	}
 
 	return query
@@ -1806,6 +1953,9 @@ func applyClearFields(query *bun.UpdateQuery, update *models.IncidentUpdate) *bu
 	}
 	if update.ClearSnoozeReason {
 		query = query.Set("snooze_reason = NULL")
+	}
+	if update.ClearCausedByIncidentUID {
+		query = query.Set("caused_by_incident_uid = NULL")
 	}
 	return query
 }
@@ -2056,6 +2206,26 @@ func (s *Service) ListIncidents(ctx context.Context, filter *models.ListIncident
 
 	if filter.Until != nil {
 		query = query.Where("started_at < ?", *filter.Until)
+	}
+
+	if filter.HideSuppressed {
+		query = query.Where("paging_suppressed = ?", false)
+	}
+
+	if filter.AckedOnly {
+		// Acked = active with non-NULL acknowledged_at. Snoozed-but-not-yet
+		// expired counts as snoozed, not just acked, so exclude it here.
+		query = query.
+			Where("acknowledged_at IS NOT NULL").
+			Where("(snoozed_until IS NULL OR snoozed_until <= ?)", time.Now())
+	}
+
+	if filter.SnoozedOnly {
+		query = query.Where("snoozed_until > ?", time.Now())
+	}
+
+	if filter.CausedByUID != "" {
+		query = query.Where("caused_by_incident_uid = ?", filter.CausedByUID)
 	}
 
 	if filter.CursorTimestamp != nil {
@@ -2718,6 +2888,17 @@ func (s *Service) UpdateIntegrationConnection(
 		query = query.Set("settings = ?", *update.Settings)
 	}
 
+	switch {
+	case update.ClearSettingsPrivate:
+		query = query.Set("settings_private = NULL").
+			Set("settings_private_keys = NULL")
+	case update.SettingsPrivate != nil:
+		query = query.Set("settings_private = ?", *update.SettingsPrivate)
+		if update.SettingsPrivateKeys != nil {
+			query = query.Set("settings_private_keys = ?", *update.SettingsPrivateKeys)
+		}
+	}
+
 	_, err := query.Exec(ctx)
 
 	return err
@@ -3110,6 +3291,24 @@ func (s *Service) ListStatusPageSections(
 	return sections, err
 }
 
+// MaxStatusPageSectionPosition returns the largest position currently used by
+// any non-deleted section in the given status page, or 0 if no sections exist.
+// Callers add 1 to append a new section at the end.
+func (s *Service) MaxStatusPageSectionPosition(
+	ctx context.Context, pageUID string,
+) (int, error) {
+	var maxPosition int
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageSection)(nil)).
+		ColumnExpr("COALESCE(MAX(position), 0)").
+		Where("status_page_uid = ?", pageUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx, &maxPosition)
+
+	return maxPosition, err
+}
+
 // UpdateStatusPageSection updates a section by UID.
 func (s *Service) UpdateStatusPageSection(
 	ctx context.Context, uid string, update *models.StatusPageSectionUpdate,
@@ -3190,6 +3389,53 @@ func (s *Service) ListStatusPageResources(
 		Scan(ctx)
 
 	return resources, err
+}
+
+// MaxStatusPageResourcePosition returns the largest position currently used by
+// any resource in the given section, or 0 if no resources exist. Callers add 1
+// to append a new resource at the end.
+func (s *Service) MaxStatusPageResourcePosition(
+	ctx context.Context, sectionUID string,
+) (int, error) {
+	var maxPosition int
+
+	err := s.db.NewSelect().
+		Model((*models.StatusPageResource)(nil)).
+		ColumnExpr("COALESCE(MAX(position), 0)").
+		Where("section_uid = ?", sectionUID).
+		Scan(ctx, &maxPosition)
+
+	return maxPosition, err
+}
+
+// ReorderStatusPageResources rewrites the position of every resource in the
+// section so that orderedUIDs[i] gets position i+1. Done in a single
+// transaction; the caller is responsible for validating that orderedUIDs
+// exactly matches the section's current resource set.
+func (s *Service) ReorderStatusPageResources(
+	ctx context.Context, sectionUID string, orderedUIDs []string,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+		for i, uid := range orderedUIDs {
+			res, err := tx.NewUpdate().
+				Model((*models.StatusPageResource)(nil)).
+				Where("uid = ?", uid).
+				Where("section_uid = ?", sectionUID).
+				Set("position = ?", i+1).
+				Set("updated_at = ?", now).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+			rows, _ := res.RowsAffected()
+			if rows == 0 {
+				return fmt.Errorf("%w: resource %q section %q", errResourceNotInSection, uid, sectionUID)
+			}
+		}
+
+		return nil
+	})
 }
 
 // UpdateStatusPageResource updates a resource by UID.
@@ -3710,7 +3956,7 @@ func (s *Service) GetMembershipRequest(
 		Model(request).
 		Relation("Organization").
 		Relation("User").
-		Where("mr.uid = ?", uid).
+		Where("membership_request.uid = ?", uid).
 		Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -3793,4 +4039,127 @@ func (s *Service) ApproveMembershipRequest(
 
 		return nil
 	})
+}
+
+// GetOrgEntitlements fetches the entitlement row for an org. Returns
+// (nil, nil) when no row exists — the resolver merges defaults instead
+// of erroring.
+func (s *Service) GetOrgEntitlements(
+	ctx context.Context, orgUID string,
+) (*models.OrgEntitlements, error) {
+	row := new(models.OrgEntitlements)
+
+	err := s.db.NewSelect().
+		Model(row).
+		Where("organization_uid = ?", orgUID).
+		Scan(ctx)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil //nolint:nilnil // documented sentinel
+		}
+
+		return nil, err
+	}
+
+	return row, nil
+}
+
+// UpsertOrgEntitlements writes the entitlement row + audit row in one tx.
+func (s *Service) UpsertOrgEntitlements(
+	ctx context.Context, ent *models.OrgEntitlements, audit *models.OrgEntitlementAudit,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		ent.UpdatedAt = time.Now()
+
+		_, err := tx.NewInsert().
+			Model(ent).
+			On("CONFLICT (organization_uid) DO UPDATE").
+			Set("payload = EXCLUDED.payload").
+			Set("external_ref = EXCLUDED.external_ref").
+			Set("expires_at = EXCLUDED.expires_at").
+			Set("last_synced_at = EXCLUDED.last_synced_at").
+			Set("metadata = EXCLUDED.metadata").
+			Set("updated_at = EXCLUDED.updated_at").
+			Exec(ctx)
+		if err != nil {
+			return err
+		}
+
+		if _, err := tx.NewInsert().Model(audit).Exec(ctx); err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// ListOrgEntitlementAudits returns audit rows for an org, newest first.
+func (s *Service) ListOrgEntitlementAudits(
+	ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
+) ([]*models.OrgEntitlementAudit, error) {
+	var rows []*models.OrgEntitlementAudit
+
+	query := s.db.NewSelect().
+		Model(&rows).
+		Order("org_entitlement_audit.created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+	}
+	if filter.Limit > 0 {
+		query = query.Limit(filter.Limit)
+	}
+	if filter.Offset > 0 {
+		query = query.Offset(filter.Offset)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return rows, nil
+}
+
+// CountChecksForOrg counts non-deleted checks for the org.
+func (s *Service) CountChecksForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.Check)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountStatusPagesForOrg counts non-deleted status pages for the org.
+func (s *Service) CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.StatusPage)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountCheckGroupsForOrg counts non-deleted check groups for the org.
+func (s *Service) CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.CheckGroup)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
+}
+
+// CountConnectionsForOrg counts non-deleted integration connections for the org.
+func (s *Service) CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error) {
+	count, err := s.db.NewSelect().
+		Model((*models.IntegrationConnection)(nil)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+
+	return count, err
 }

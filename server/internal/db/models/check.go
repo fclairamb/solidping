@@ -24,18 +24,26 @@ const (
 
 // Check represents a monitoring configuration.
 type Check struct {
-	UID             string             `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID string             `bun:"organization_uid,notnull"`
-	CheckGroupUID   *string            `bun:"check_group_uid"`
-	Name            *string            `bun:"name"`
-	Slug            *string            `bun:"slug"`
-	Description     *string            `bun:"description"`
-	Type            string             `bun:"type,notnull"`
-	Config          JSONMap            `bun:"config,type:jsonb,nullzero"`
-	Regions         []string           `bun:"regions,type:text[],array"`
-	Enabled         bool               `bun:"enabled,notnull"`
-	Internal        bool               `bun:"internal,notnull,default:false"`
-	Period          timeutils.Duration `bun:"period,notnull"`
+	UID             string  `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID string  `bun:"organization_uid,notnull"`
+	CheckGroupUID   *string `bun:"check_group_uid"`
+	Name            *string `bun:"name"`
+	Slug            *string `bun:"slug"`
+	Description     *string `bun:"description"`
+	Type            string  `bun:"type,notnull"`
+	Config          JSONMap `bun:"config,type:jsonb,nullzero"`
+	// ConfigPrivate holds the AES-GCM envelope (JSON) for the secret keys
+	// split out of Config at write time. NULL when no encrypted secrets exist
+	// on this row — distinct from "encryption disabled at the server".
+	ConfigPrivate *string `bun:"config_private,type:text,nullzero"`
+	// ConfigPrivateKeys is a JSON array of the key names (e.g. `["password"]`)
+	// whose values live in ConfigPrivate. Non-secret by construction; surfaced
+	// to the dashboard so it can render placeholder hints without decrypting.
+	ConfigPrivateKeys *string            `bun:"config_private_keys,type:text,nullzero"`
+	Regions           []string           `bun:"regions,type:text[],array"`
+	Enabled           bool               `bun:"enabled,notnull"`
+	Internal          bool               `bun:"internal,notnull,default:false"`
+	Period            timeutils.Duration `bun:"period,notnull"`
 
 	// Incident tracking thresholds
 	IncidentThreshold   int `bun:"incident_threshold,notnull,default:1"`
@@ -89,16 +97,19 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 
 // CheckUpdate represents fields that can be updated.
 type CheckUpdate struct {
-	CheckGroupUID *string
-	Name          *string
-	Slug          *string
-	Description   *string
-	Type          *string
-	Config        *JSONMap
-	Regions       *[]string
-	Enabled       *bool
-	Internal      *bool
-	Period        *timeutils.Duration
+	CheckGroupUID      *string
+	Name               *string
+	Slug               *string
+	Description        *string
+	Type               *string
+	Config             *JSONMap
+	ConfigPrivate      *string
+	ConfigPrivateKeys  *string
+	ClearConfigPrivate bool
+	Regions            *[]string
+	Enabled            *bool
+	Internal           *bool
+	Period             *timeutils.Duration
 
 	// Incident tracking thresholds
 	IncidentThreshold   *int
@@ -176,6 +187,7 @@ type ListChecksFilter struct {
 	CheckGroupUID   *string           // filter by check group UID; "none" = ungrouped checks only
 	Query           string            // search term for name/slug (case-insensitive substring)
 	Internal        *string           // "true", "false", or "all" — filter by internal status
+	Statuses        []CheckStatus     // optional filter by current status (up/down/etc.)
 	Limit           int               // max results to return (0 = no limit)
 	CursorCreatedAt *time.Time        // cursor: created_at of last item from previous page
 	CursorUID       *string           // cursor: uid of last item from previous page

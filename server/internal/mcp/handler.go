@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/uptrace/bunrouter"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
@@ -97,16 +98,17 @@ func NewHandler(
 	eventNotifier notifier.EventNotifier,
 	jobSvc jobsvc.Service,
 	checkTypesSvc *checktypes.Service,
+	creds credentials.Service,
 ) *Handler {
 	handler := &Handler{
-		checksSvc:      checks.NewService(dbService, eventNotifier),
+		checksSvc:      checks.NewService(dbService, eventNotifier, creds),
 		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
 		incidentsSvc:   incidents.NewService(dbService, jobSvc),
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
-		connectionsSvc: connections.NewService(dbService),
+		connectionsSvc: connections.NewService(dbService, creds),
 		checkGroupsSvc: checkgroups.NewService(dbService),
 		regionsSvc:     regionshandler.NewService(dbService),
 		dbService:      dbService,

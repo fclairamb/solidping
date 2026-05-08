@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
@@ -12,6 +13,8 @@ import (
 
 const (
 	defaultMembershipRequestCooldownDays = 7
+
+	emailKeyOrgName = "OrgName"
 )
 
 // MembershipRequestCreateRequest is the body of POST
@@ -83,6 +86,8 @@ func (s *Service) CreateMembershipRequest(
 			return nil, err
 		}
 
+		s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
+
 		summary := buildMembershipSummary(request, org)
 
 		return &summary, nil
@@ -110,6 +115,8 @@ func (s *Service) CreateMembershipRequest(
 	if err := s.db.UpdateMembershipRequest(ctx, existing); err != nil {
 		return nil, err
 	}
+
+	s.notifyAdminsOfMembershipRequest(ctx, org, userUID, message)
 
 	summary := buildMembershipSummary(existing, org)
 
@@ -253,6 +260,8 @@ func (s *Service) ApproveMembershipRequest(
 	slog.InfoContext(ctx, "membership request approved",
 		"requestUID", request.UID, "orgUID", org.UID, "userUID", request.UserUID)
 
+	s.notifyRequesterOfDecision(ctx, org, request.UserUID, "approved", string(role), "")
+
 	return nil
 }
 
@@ -288,7 +297,13 @@ func (s *Service) RejectMembershipRequest(
 		request.DecisionReason = &r
 	}
 
-	return s.db.UpdateMembershipRequest(ctx, request)
+	if err := s.db.UpdateMembershipRequest(ctx, request); err != nil {
+		return err
+	}
+
+	s.notifyRequesterOfDecision(ctx, org, request.UserUID, "rejected", "", reason)
+
+	return nil
 }
 
 // listPendingMembershipRequests is used by GetUserInfo to surface the
@@ -337,6 +352,81 @@ func (s *Service) inCooldown(decidedAt *time.Time) bool {
 // can swap the source (env, parameters) without touching call sites.
 func membershipRequestCooldown(_ interface{}) time.Duration {
 	return time.Duration(defaultMembershipRequestCooldownDays) * 24 * time.Hour
+}
+
+// notifyAdminsOfMembershipRequest emails every admin of org about a new
+// pending request. Failures are logged but never bubble up.
+func (s *Service) notifyAdminsOfMembershipRequest(
+	ctx context.Context, org *models.Organization, requesterUID string, message *string,
+) {
+	requester, err := s.db.GetUser(ctx, requesterUID)
+	if err != nil || requester == nil {
+		slog.WarnContext(ctx, "membership request: cannot load requester for notification",
+			"userUID", requesterUID, "error", err)
+		return
+	}
+
+	members, err := s.db.ListMembersByOrg(ctx, org.UID)
+	if err != nil {
+		slog.WarnContext(ctx, "membership request: cannot list admins for notification",
+			"orgUID", org.UID, "error", err)
+		return
+	}
+
+	requesterName := requester.Name
+	if requesterName == "" {
+		requesterName = requester.Email
+	}
+
+	msg := ""
+	if message != nil {
+		msg = *message
+	}
+
+	requestsURL := fmt.Sprintf("%s/dash0/orgs/%s/members?tab=requests",
+		s.fullCfg.Server.BaseURL, org.Slug)
+
+	for _, member := range members {
+		if member.Role != models.MemberRoleAdmin || member.User == nil || member.User.Email == "" {
+			continue
+		}
+
+		s.enqueueEmail(ctx, org.UID, member.User.Email, "membership_request_new.html",
+			map[string]any{
+				emailKeyOrgName:  org.Name,
+				"RequesterName":  requesterName,
+				"RequesterEmail": requester.Email,
+				"Message":        msg,
+				"RequestsURL":    requestsURL,
+			},
+		)
+	}
+}
+
+// notifyRequesterOfDecision emails the requester after an admin approves or
+// rejects their request. Decision is "approved" or "rejected".
+func (s *Service) notifyRequesterOfDecision(
+	ctx context.Context, org *models.Organization,
+	requesterUID, decision, role, reason string,
+) {
+	requester, err := s.db.GetUser(ctx, requesterUID)
+	if err != nil || requester == nil || requester.Email == "" {
+		slog.WarnContext(ctx, "membership decision: cannot load requester for notification",
+			"userUID", requesterUID, "error", err)
+		return
+	}
+
+	dashboardURL := fmt.Sprintf("%s/dash0/orgs/%s", s.fullCfg.Server.BaseURL, org.Slug)
+
+	s.enqueueEmail(ctx, org.UID, requester.Email, "membership_request_decision.html",
+		map[string]any{
+			emailKeyOrgName: org.Name,
+			"Decision":      decision,
+			"Role":          role,
+			"Reason":        reason,
+			"DashboardURL":  dashboardURL,
+		},
+	)
 }
 
 func buildMembershipSummary(

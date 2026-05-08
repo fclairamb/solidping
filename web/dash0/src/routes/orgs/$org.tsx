@@ -10,14 +10,19 @@ import {
 } from "@tanstack/react-router";
 import {
   AlertTriangle,
+  ArrowUpRight,
   BadgeCheck,
+  Bell,
   Bug,
   Building,
   Calendar,
+  CalendarClock,
   ChevronRight,
+  GitBranch,
   Globe,
   LayoutDashboard,
   ListChecks,
+  Palette,
   Server,
   User2,
 } from "lucide-react";
@@ -30,7 +35,16 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { useCheck, useFeatures, useIncident, useStatusPage } from "@/api/hooks";
+import {
+  useCheck,
+  useConnection,
+  useEscalationPolicy,
+  useFeatures,
+  useIncident,
+  useOnCallSchedule,
+  useResult,
+  useStatusPage,
+} from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
@@ -88,13 +102,39 @@ function Breadcrumbs({ org }: { org: string }) {
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
+  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
+  const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
+  const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
+  const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
+  const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
+  const { data: result } = useResult(
+    org,
+    params.checkUid ?? "",
+    params.resultUid ?? "",
+  );
   // Incidents section
   const { data: incident } = useIncident(org, params.incidentUid ?? "");
   // Status pages section
   const { data: statusPage } = useStatusPage(org, params.statusPageUid ?? "");
+  // Channels / on-call / escalation-policies sections — short-circuit on
+  // empty/wrong-section param so each hook only fetches when its branch is
+  // active. on-call and escalation share the param name `slug`, so dispatch
+  // by section flag here too.
+  const { data: connection } = useConnection(
+    org,
+    isChannels ? (params.connectionUid ?? "") : "",
+  );
+  const { data: onCallSchedule } = useOnCallSchedule(
+    org,
+    isOnCall ? (params.slug ?? "") : "",
+  );
+  const { data: escalationPolicy } = useEscalationPolicy(
+    org,
+    isEscalation ? (params.slug ?? "") : "",
+  );
 
   if (isDashboard) {
     return (
@@ -107,9 +147,16 @@ function Breadcrumbs({ org }: { org: string }) {
 
   if (isChecks) {
     const checkUid = params.checkUid;
+    const resultUid = params.resultUid;
     const isCheckEdit = routeIds.has("/orgs/$org/checks/$checkUid/edit");
+    const isCheckResult = routeIds.has(
+      "/orgs/$org/checks/$checkUid/results/$resultUid",
+    );
     const isNewCheck = routeIds.has("/orgs/$org/checks/new");
     const checkName = check?.name || check?.slug || checkUid?.slice(0, 8);
+    const resultLabel = result?.periodStart
+      ? new Date(result.periodStart).toLocaleString()
+      : (resultUid?.slice(0, 8) ?? "");
 
     return (
       <>
@@ -127,7 +174,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {checkUid && (
           <>
             <BreadcrumbSeparator />
-            {isCheckEdit ? (
+            {isCheckEdit || isCheckResult ? (
               <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined }} className={linkClass}>
                 {checkName}
               </Link>
@@ -142,6 +189,12 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("edit")}</span>
           </>
         )}
+        {isCheckResult && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{resultLabel}</span>
+          </>
+        )}
       </>
     );
   }
@@ -153,7 +206,7 @@ function Breadcrumbs({ org }: { org: string }) {
     return (
       <>
         {incidentUid ? (
-          <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const }} className={linkClass}><AlertTriangle className={iconClass} />{t("incidents")}</Link>
+          <Link to="/orgs/$org/incidents" params={{ org }} search={{ state: "all" as const, showSuppressed: undefined }} className={linkClass}><AlertTriangle className={iconClass} />{t("incidents")}</Link>
         ) : (
           <span className={activeClass}><AlertTriangle className={iconClass} />{t("incidents")}</span>
         )}
@@ -176,7 +229,14 @@ function Breadcrumbs({ org }: { org: string }) {
   if (isAccount) {
     const isProfile = routeIds.has("/orgs/$org/account/profile");
     const isTokens = routeIds.has("/orgs/$org/account/tokens");
-    const subLabel = isProfile ? t("profile") : isTokens ? t("tokens") : null;
+    const isSecurity = routeIds.has("/orgs/$org/account/security");
+    const subLabel = isProfile
+      ? t("profile")
+      : isTokens
+        ? t("tokens")
+        : isSecurity
+          ? t("security")
+          : null;
     return (
       <>
         {subLabel ? (
@@ -293,6 +353,108 @@ function Breadcrumbs({ org }: { org: string }) {
       <span className={activeClass}>
         <Bug className={iconClass} />
         {t("testTools")}
+      </span>
+    );
+  }
+
+  if (isChannels) {
+    const connectionUid = params.connectionUid;
+    const isNew = routeIds.has("/orgs/$org/channels/new");
+    const channelName = connection?.name || connectionUid?.slice(0, 8);
+
+    return (
+      <>
+        {connectionUid || isNew ? (
+          <Link to="/orgs/$org/channels" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("channels")}</Link>
+        ) : (
+          <span className={activeClass}><Bell className={iconClass} />{t("channels")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {connectionUid && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{channelName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isOnCall) {
+    const slug = params.slug;
+    const isNew = routeIds.has("/orgs/$org/on-call/new");
+    const scheduleName = onCallSchedule?.name || slug;
+
+    return (
+      <>
+        {slug || isNew ? (
+          <Link to="/orgs/$org/on-call" params={{ org }} className={linkClass}><CalendarClock className={iconClass} />{t("onCall")}</Link>
+        ) : (
+          <span className={activeClass}><CalendarClock className={iconClass} />{t("onCall")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {slug && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{scheduleName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isEscalation) {
+    const slug = params.slug;
+    const isNew = routeIds.has("/orgs/$org/escalation-policies/new");
+    const policyName = escalationPolicy?.name || slug;
+
+    return (
+      <>
+        {slug || isNew ? (
+          <Link to="/orgs/$org/escalation-policies" params={{ org }} className={linkClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</Link>
+        ) : (
+          <span className={activeClass}><ArrowUpRight className={iconClass} />{t("escalationPolicies")}</span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {slug && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{policyName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isDependencies) {
+    return (
+      <span className={activeClass}>
+        <GitBranch className={iconClass} />
+        {t("dependencies")}
+      </span>
+    );
+  }
+
+  if (isDesignReference) {
+    return (
+      <span className={activeClass}>
+        <Palette className={iconClass} />
+        {t("designReference")}
       </span>
     );
   }

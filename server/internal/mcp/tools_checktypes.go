@@ -61,7 +61,7 @@ func validateCheckDef() ToolDefinition {
 	}
 }
 
-func (h *Handler) toolValidateCheck(ctx context.Context, _ string, args map[string]any) ToolCallResult {
+func (h *Handler) toolValidateCheck(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	typeStr := getStringArg(args, schemaKeyType)
 	if typeStr == "" {
 		return errorResult("type is required")
@@ -70,7 +70,7 @@ func (h *Handler) toolValidateCheck(ctx context.Context, _ string, args map[stri
 	if config == nil {
 		return errorResult("config is required")
 	}
-	result, err := h.checksSvc.ValidateCheck(ctx, checks.ValidateCheckRequest{
+	result, err := h.checksSvc.ValidateCheck(ctx, orgSlug, checks.ValidateCheckRequest{
 		Type:   typeStr,
 		Config: config,
 	})

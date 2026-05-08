@@ -1,0 +1,43 @@
+{
+  "title": "Dependencies",
+  "dependsOn": "Depends on",
+  "dependsOnHelp": "This check breaks when these break",
+  "dependedOnBy": "Depended on by",
+  "dependedOnByHelp": "These break when this breaks",
+  "addDependency": "Add dependency",
+  "saveDependency": "Save",
+  "cancel": "Cancel",
+  "kind": "Kind",
+  "kindHard": "Hard",
+  "kindSoft": "Soft",
+  "kindHardTooltip": "Failure of this parent suppresses paging on this check",
+  "kindSoftTooltip": "Informational — paging still fires",
+  "description": "Description",
+  "descriptionPlaceholder": "Optional — what is the relationship?",
+  "noDependencies": "No dependencies configured. Add a parent above to start cascading-incident rollup.",
+  "noDependents": "Nothing depends on this check yet.",
+  "remove": "Remove dependency",
+  "removeConfirmTitle": "Remove dependency on {{parent}}?",
+  "removeConfirmBody": "This stops cascading-incident rollup for this edge.",
+  "removeConfirmAction": "Remove",
+  "errors": {
+    "cycle": "This would create a cycle: {{path}}",
+    "duplicate": "Already a parent.",
+    "notFound": "Check not found.",
+    "self": "A check cannot depend on itself.",
+    "generic": "Failed to add dependency."
+  },
+  "pickCheck": "Pick a check…",
+  "searchChecks": "Search checks…",
+  "noMatches": "No matches.",
+  "list": {
+    "title": "Dependency graph",
+    "subtitle": "All directed dependencies between checks in this organization.",
+    "empty": "No dependencies in this organization yet.",
+    "filter": "Filter by check name",
+    "parent": "Parent",
+    "child": "Child",
+    "kind": "Kind",
+    "description": "Description"
+  }
+}

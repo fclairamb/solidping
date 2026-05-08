@@ -83,6 +83,7 @@ function CreateOrgCard() {
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
+  const [slugAdvancedOpen, setSlugAdvancedOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleNameChange = (value: string) => {
@@ -131,23 +132,40 @@ function CreateOrgCard() {
               disabled={createOrg.isPending}
               placeholder={t("noOrg.orgNamePlaceholder")}
             />
+            {slug && !slugAdvancedOpen && (
+              <p className="text-xs text-muted-foreground">
+                {t("noOrg.slugPreview", { slug, defaultValue: "Will be reachable as " })}
+                <code className="font-mono">{slug}</code>
+              </p>
+            )}
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="orgSlug">{t("noOrg.slug")}</Label>
-            <Input
-              id="orgSlug"
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                setSlugTouched(true);
-              }}
-              required
-              pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
-              title={t("noOrg.slugTitle")}
-              disabled={createOrg.isPending}
-              placeholder={t("noOrg.slugPlaceholder")}
-            />
-          </div>
+          {!slugAdvancedOpen ? (
+            <button
+              type="button"
+              onClick={() => setSlugAdvancedOpen(true)}
+              className="text-xs text-muted-foreground hover:underline"
+              data-testid="no-org-advanced-toggle"
+            >
+              {t("noOrg.advanced", { defaultValue: "Advanced — customize slug" })}
+            </button>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="orgSlug">{t("noOrg.slug")}</Label>
+              <Input
+                id="orgSlug"
+                value={slug}
+                onChange={(e) => {
+                  setSlug(e.target.value);
+                  setSlugTouched(true);
+                }}
+                required
+                pattern="[a-z0-9][a-z0-9-]{1,18}[a-z0-9]"
+                title={t("noOrg.slugTitle")}
+                disabled={createOrg.isPending}
+                placeholder={t("noOrg.slugPlaceholder")}
+              />
+            </div>
+          )}
           <Button type="submit" className="w-full" disabled={createOrg.isPending}>
             {createOrg.isPending ? (
               <>

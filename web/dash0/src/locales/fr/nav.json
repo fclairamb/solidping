@@ -2,10 +2,15 @@
   "dashboard": "Tableau de bord",
   "checks": "Contrôles",
   "incidents": "Incidents",
+  "dependencies": "Dépendances",
+  "onCall": "Astreintes",
+  "escalationPolicies": "Politiques d'escalade",
   "events": "Événements",
+  "channels": "Canaux",
   "statusPages": "Pages de statut",
   "badges": "Badges",
   "testTools": "Outils de test",
+  "designReference": "Référence design",
   "new": "Nouveau",
   "edit": "Modifier",
   "profile": "Profil",
@@ -111,5 +116,6 @@
     "groupAccount": "Compte",
     "groupOrganization": "Organisation",
     "groupChecks": "Contrôles"
-  }
+  },
+  "security": "Sécurité"
 }

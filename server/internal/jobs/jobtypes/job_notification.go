@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 )
@@ -25,6 +28,9 @@ var (
 	ErrMissingIncidentUID = errors.New("incidentUid is required")
 	// ErrMissingEventType is returned when eventType is not provided.
 	ErrMissingEventType = errors.New("eventType is required")
+	// ErrEncryptionDisabled is returned when a connection has encrypted
+	// settings but the credentials service is not available (no master key).
+	ErrEncryptionDisabled = errors.New("connection has encrypted settings but encryption is disabled")
 )
 
 // NotificationJobConfig configures notification parameters.
@@ -79,6 +85,25 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %w", ErrConnectionNotFound, err)
 	}
 
+	// Decrypt and merge any encrypted settings (slack tokens, webhook
+	// URLs, opsgenie keys, etc.) before passing them down to the sender.
+	// On decrypt failure we don't ship a half-credential — fail the job.
+	if connection.SettingsPrivate != nil && *connection.SettingsPrivate != "" {
+		if jctx.Services.Credentials == nil || !jctx.Services.Credentials.Enabled() {
+			return fmt.Errorf("%w: %s", ErrEncryptionDisabled, connection.UID)
+		}
+
+		private, decErr := jctx.Services.Credentials.DecryptForOrg(
+			ctx, connection.OrganizationUID, *connection.SettingsPrivate,
+		)
+		if decErr != nil {
+			return fmt.Errorf("decrypt connection settings: %w", decErr)
+		}
+
+		merged := credentials.MergeConfig(connection.Settings, private)
+		connection.Settings = models.JSONMap(merged)
+	}
+
 	// 2. Load incident
 	incident, err := jctx.DBService.GetIncident(ctx, connection.OrganizationUID, r.config.IncidentUID)
 	if err != nil {
@@ -97,12 +122,25 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %s", ErrSenderNotFound, connection.Type)
 	}
 
+	// Look up the org slug so the email sender can build user-facing URLs
+	// (magic-link ack endpoint). A missing org is logged but does not fail
+	// the notification — recipients still get the email, just without a
+	// one-click ack link.
+	var orgSlug string
+	if org, orgErr := jctx.DBService.GetOrganization(ctx, connection.OrganizationUID); orgErr == nil {
+		orgSlug = org.Slug
+	} else {
+		log.WarnContext(ctx, "Failed to load org slug for notification URLs",
+			"orgUid", connection.OrganizationUID, "error", orgErr)
+	}
+
 	// 5. Build notification payload
 	payload := &notifications.Payload{
 		EventType:  r.config.EventType,
 		Incident:   incident,
 		Check:      check,
 		Connection: connection,
+		OrgSlug:    orgSlug,
 	}
 
 	// 6. Send notification
@@ -122,5 +160,12 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	}
 
 	log.InfoContext(ctx, "Notification sent successfully")
+
+	// Activation funnel: idempotent — fires once on the first successful
+	// incident notification dispatch for this org.
+	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
+		models.EventTypeOrgActivationFirstIncidentPaged,
+		activation.SourceSystem, "")
+
 	return nil
 }

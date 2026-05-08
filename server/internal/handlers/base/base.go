@@ -60,6 +60,20 @@ const (
 	ErrorCodeRequestPending            ErrorCode = "REQUEST_PENDING"
 	ErrorCodeRequestNotFound           ErrorCode = "REQUEST_NOT_FOUND"
 	ErrorCodeRequestCooldownActive     ErrorCode = "REQUEST_COOLDOWN_ACTIVE"
+	ErrorCodeDependencyCycle           ErrorCode = "DEPENDENCY_CYCLE"
+	ErrorCodeDependencySelf            ErrorCode = "DEPENDENCY_SELF"
+	ErrorCodeDependencyCrossOrg        ErrorCode = "DEPENDENCY_CROSS_ORG"
+	ErrorCodeDependencyNotFound        ErrorCode = "DEPENDENCY_NOT_FOUND"
+	ErrorCodeDependencyDuplicate       ErrorCode = "DEPENDENCY_DUPLICATE"
+	ErrorCodeDependencyInvalidKind     ErrorCode = "DEPENDENCY_INVALID_KIND"
+	ErrorCodeEntitlementExceeded       ErrorCode = "ENTITLEMENT_EXCEEDED"
+	ErrorCodeFeatureNotEntitled        ErrorCode = "FEATURE_NOT_ENTITLED"
+	ErrorCodeEntitlementsStale         ErrorCode = "ENTITLEMENTS_STALE"
+	ErrorCodePasskeyNotFound           ErrorCode = "PASSKEY_NOT_FOUND"
+	ErrorCodePasskeyVerificationFailed ErrorCode = "PASSKEY_VERIFICATION_FAILED"
+	ErrorCodePasskeySessionExpired     ErrorCode = "PASSKEY_SESSION_EXPIRED"
+	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
+	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

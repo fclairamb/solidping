@@ -34,7 +34,9 @@ type SSLConfig struct {
 	ServerName string `json:"serverName"`
 }
 
-// FromMap populates the configuration from a map.
+// FromMap populates the configuration from a map. Accepts both camelCase
+// (canonical, matching JSON tags) and snake_case (legacy) for thresholdDays
+// and serverName so existing rows keep working.
 func (c *SSLConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
@@ -46,9 +48,7 @@ func (c *SSLConfig) FromMap(configMap map[string]any) error {
 		c.Port = port
 	}
 
-	if threshold, ok := configMap["threshold_days"].(float64); ok {
-		c.ThresholdDays = int(threshold)
-	} else if threshold, ok := configMap["threshold_days"].(int); ok {
+	if threshold, ok := readIntKey(configMap, "thresholdDays", "threshold_days"); ok {
 		c.ThresholdDays = threshold
 	}
 
@@ -61,14 +61,40 @@ func (c *SSLConfig) FromMap(configMap map[string]any) error {
 		c.Timeout = duration
 	}
 
-	if serverName, ok := configMap["server_name"].(string); ok {
+	if serverName, ok := readStringKey(configMap, "serverName", "server_name"); ok {
 		c.ServerName = serverName
 	}
 
 	return nil
 }
 
-// GetConfig returns the configuration as a map.
+// readIntKey returns the first integer value found at any of the supplied keys.
+func readIntKey(configMap map[string]any, keys ...string) (int, bool) {
+	for _, key := range keys {
+		switch v := configMap[key].(type) {
+		case float64:
+			return int(v), true
+		case int:
+			return v, true
+		}
+	}
+
+	return 0, false
+}
+
+// readStringKey returns the first non-empty string value found at any of the supplied keys.
+func readStringKey(configMap map[string]any, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if s, ok := configMap[key].(string); ok && s != "" {
+			return s, true
+		}
+	}
+
+	return "", false
+}
+
+// GetConfig returns the configuration as a map using the canonical camelCase
+// keys that match the JSON tags (and the keys the dash0 form writes).
 func (c *SSLConfig) GetConfig() map[string]any {
 	config := map[string]any{
 		checkerdef.OutputKeyHost: c.Host,
@@ -79,7 +105,7 @@ func (c *SSLConfig) GetConfig() map[string]any {
 	}
 
 	if c.ThresholdDays != 0 {
-		config["threshold_days"] = c.ThresholdDays
+		config["thresholdDays"] = c.ThresholdDays
 	}
 
 	if c.Timeout != 0 {
@@ -87,7 +113,7 @@ func (c *SSLConfig) GetConfig() map[string]any {
 	}
 
 	if c.ServerName != "" {
-		config["server_name"] = c.ServerName
+		config["serverName"] = c.ServerName
 	}
 
 	return config

@@ -6,7 +6,29 @@
   "welcome": {
     "title": "Welcome to SolidPing",
     "subtitle": "Create your first check to start monitoring.",
-    "cta": "Create your first check"
+    "firstCheckSubtitle": "Pick a check type and tell us what to monitor.",
+    "cta": "Create your first check",
+    "create": "Create check",
+    "creating": "Creating...",
+    "advancedHint": "Need more control?",
+    "advancedLink": "Open the full check editor",
+    "unexpectedError": "An unexpected error occurred.",
+    "quick": {
+      "http": "HTTP",
+      "icmp": "Ping",
+      "ssl": "SSL"
+    },
+    "quickLabel": {
+      "http": "URL to monitor",
+      "icmp": "Host to ping",
+      "ssl": "Domain for SSL check"
+    }
+  },
+  "celebration": {
+    "title": "First result is in!",
+    "body": "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
+    "cta": "View the check",
+    "dismiss": "Dismiss"
   },
   "banner": {
     "allGreen": "All systems operational",

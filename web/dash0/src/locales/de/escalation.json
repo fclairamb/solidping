@@ -1,0 +1,59 @@
+{
+  "list": {
+    "title": "Eskalationsrichtlinien",
+    "subtitle": "Wiederverwendbare Orchestrierung von Paging-Schritten mit Verzögerungen und Abbruch bei Bestätigung/Snooze/Lösung.",
+    "create": "Neue Richtlinie",
+    "empty": "Noch keine Eskalationsrichtlinien. Erstelle eine, um beim Vorfall zu paginieren.",
+    "repeats": "Wiederholt {{count}}× alle {{minutes}} Minuten",
+    "editToSeeSteps": "Öffnen, um die Schritte anzuzeigen.",
+    "searchPlaceholder": "Nach Name suchen…",
+    "noMatches": "Keine Richtlinie entspricht der Suche.",
+    "col": {
+      "name": "Name",
+      "description": "Beschreibung",
+      "repeats": "Wiederholungen"
+    }
+  },
+  "new": {
+    "title": "Neue Eskalationsrichtlinie"
+  },
+  "editor": {
+    "basics": "Grunddaten",
+    "slug": "Slug",
+    "name": "Name",
+    "description": "Beschreibung",
+    "steps": "Schritte",
+    "step": "Schritt",
+    "delayMinutes": "Verzögerung (Min)",
+    "addStep": "Schritt hinzufügen",
+    "repeat": "Wiederholung",
+    "repeatMax": "Max. Wiederholungen (0 = keine)",
+    "repeatAfterMinutes": "Wiederholen nach (Min)",
+    "create": "Richtlinie erstellen",
+    "deleteConfirm": "Diese Eskalationsrichtlinie löschen? Offene Vorfälle, die sie referenzieren, werden zuerst geprüft.",
+    "targetUidPlaceholder": "Ziel-UID",
+    "loadingTargets": "Wird geladen…",
+    "pickSchedule": "Bereitschaft wählen",
+    "pickUser": "Benutzer wählen",
+    "pickConnection": "Kanal wählen",
+    "noSchedules": "Noch keine Bereitschaftspläne —",
+    "noMembers": "Keine Mitglieder in dieser Organisation.",
+    "noConnections": "Noch keine Kanäle —",
+    "createSchedule": "einen erstellen",
+    "createConnection": "einen erstellen",
+    "targetMissing": "Das zuvor ausgewählte {{kind}} existiert nicht mehr. Wähle ein anderes oder entferne dieses Ziel.",
+    "targetMissingShort": "fehlt"
+  },
+  "targets": {
+    "user": "Benutzer",
+    "schedule": "Bereitschaftsplan",
+    "connection": "Benachrichtigungsverbindung",
+    "all_admins": "Alle Administratoren"
+  },
+  "timeline": {
+    "title": "Eskalations-Zeitleiste",
+    "fired": "Ausgelöst",
+    "pending": "Ausstehend",
+    "failed": "Eskalation fehlgeschlagen"
+  }
+}

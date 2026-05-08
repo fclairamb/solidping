@@ -15,9 +15,14 @@ type OrganizationProvider struct {
 	ProviderID      string       `bun:"provider_id,notnull"` // e.g., Slack Team ID T0123456789
 	ProviderName    string       `bun:"provider_name"`       // e.g., "Acme Corp Slack Workspace"
 	Metadata        JSONMap      `bun:"metadata,type:jsonb,nullzero"`
-	CreatedAt       time.Time    `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time    `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time   `bun:"deleted_at"`
+	// MetadataPrivate / MetadataPrivateKeys mirror the credential-encryption
+	// shape used on Check.Config — OAuth client secrets and similar live
+	// here as an AES-GCM envelope at rest.
+	MetadataPrivate     *string    `bun:"metadata_private,type:text,nullzero"`
+	MetadataPrivateKeys *string    `bun:"metadata_private_keys,type:text,nullzero"`
+	CreatedAt           time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt           time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt           *time.Time `bun:"deleted_at"`
 
 	// Relations (for eager loading)
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
@@ -40,8 +45,11 @@ func NewOrganizationProvider(orgUID string, providerType ProviderType, providerI
 
 // OrganizationProviderUpdate represents fields that can be updated.
 type OrganizationProviderUpdate struct {
-	ProviderName *string
-	Metadata     *JSONMap
+	ProviderName         *string
+	Metadata             *JSONMap
+	MetadataPrivate      *string
+	MetadataPrivateKeys  *string
+	ClearMetadataPrivate bool
 }
 
 // User represents a global user account.
@@ -234,4 +242,54 @@ type UserTokenUpdate struct {
 	Properties   *JSONMap
 	ExpiresAt    *time.Time
 	LastActiveAt *time.Time
+}
+
+// UserPasskey is a registered WebAuthn credential. The public key is not
+// a secret, so no encryption-at-rest envelope is needed. SignCount is a
+// monotonically-increasing replay guard reported by the authenticator;
+// regressions indicate a cloned credential and should reject the assertion.
+type UserPasskey struct {
+	UID               string     `bun:"uid,pk,type:varchar(36)"`
+	UserUID           string     `bun:"user_uid,notnull"`
+	Name              string     `bun:"name,notnull"`
+	CredentialID      []byte     `bun:"credential_id,notnull"`
+	PublicKey         []byte     `bun:"public_key,notnull"`
+	AAGUID            *string    `bun:"aaguid"`
+	SignCount         uint32     `bun:"sign_count,notnull,default:0"`
+	Transports        []string   `bun:"transports,type:jsonb,nullzero"`
+	BackupEligible    bool       `bun:"backup_eligible,notnull,default:false"`
+	BackupState       bool       `bun:"backup_state,notnull,default:false"`
+	UserVerified      bool       `bun:"user_verified,notnull,default:false"`
+	AttestationFormat *string    `bun:"attestation_format"`
+	LastUsedAt        *time.Time `bun:"last_used_at"`
+	CreatedAt         time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt         time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
+	DeletedAt         *time.Time `bun:"deleted_at"`
+
+	User *User `bun:"rel:belongs-to,join:user_uid=uid"`
+}
+
+// NewUserPasskey builds a new passkey row with a generated UID.
+func NewUserPasskey(userUID, name string, credentialID, publicKey []byte) *UserPasskey {
+	now := time.Now()
+
+	return &UserPasskey{
+		UID:          uuid.New().String(),
+		UserUID:      userUID,
+		Name:         name,
+		CredentialID: credentialID,
+		PublicKey:    publicKey,
+		CreatedAt:    now,
+		UpdatedAt:    now,
+	}
+}
+
+// UserPasskeyUpdate carries the mutable subset of UserPasskey. SignCount
+// and LastUsedAt update on every successful assertion; Name updates via
+// the rename endpoint.
+type UserPasskeyUpdate struct {
+	Name        *string
+	SignCount   *uint32
+	LastUsedAt  *time.Time
+	BackupState *bool
 }

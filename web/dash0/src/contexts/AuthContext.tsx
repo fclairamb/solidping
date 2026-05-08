@@ -27,6 +27,11 @@ export interface LoginResult {
   loginAction: string;
   organizations: OrganizationSummary[];
   resolvedOrg?: string;
+  // 2FA challenge — when set, the login *did not* succeed; the caller
+  // must collect a TOTP code (or recovery code) and call verify2FA /
+  // useRecoveryCode with the temp token to complete the sign-in.
+  requires2FA?: boolean;
+  tempToken?: string;
 }
 
 interface AuthContextType {
@@ -37,9 +42,19 @@ interface AuthContextType {
   isLoading: boolean;
   login: (org: string, email: string, password: string) => Promise<LoginResult>;
   loginWithOAuth: (accessToken: string, orgSlug: string) => Promise<void>;
+  acceptInviteSession: (response: AuthResponse) => void;
   logout: () => Promise<void>;
   switchOrg: (orgSlug: string) => Promise<void>;
   refreshUser: () => Promise<void>;
+  // Completes a 2FA login from a temp token + a TOTP / recovery code.
+  // Both call paths return the same shape as a normal login result so
+  // callers route on loginAction identically.
+  verify2FA: (tempToken: string, code: string) => Promise<LoginResult>;
+  useRecoveryCode: (tempToken: string, code: string) => Promise<LoginResult>;
+  // Hands an already-issued passkey login response back to the auth
+  // context so user/org/token state lands in the same place as a
+  // password login.
+  applyLoginResponse: (response: AuthResponse) => Promise<LoginResult>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -59,6 +74,11 @@ interface AuthResponse {
   };
   organizations?: OrganizationSummary[];
   loginAction?: string;
+  // The password-login path may return a 2FA challenge instead of
+  // tokens. When requires2Fa is true, accessToken is empty and the
+  // caller must complete the flow with verify2FA / useRecoveryCode.
+  requires2Fa?: boolean;
+  tempToken?: string;
 }
 
 interface MeResponse {
@@ -143,15 +163,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     validateSession();
   }, [validateSession]);
 
-  const login = async (orgSlug: string, email: string, password: string): Promise<LoginResult> => {
-    const data = await apiFetch<AuthResponse>(
-      `/api/v1/auth/login`,
-      {
-        method: "POST",
-        body: JSON.stringify({ org: orgSlug, email, password }),
-        skipAuth: true,
-      }
-    );
+  const applyLoginResponse = async (data: AuthResponse): Promise<LoginResult> => {
+    if (data.requires2Fa && data.tempToken) {
+      return {
+        loginAction: "",
+        organizations: [],
+        requires2FA: true,
+        tempToken: data.tempToken,
+      };
+    }
 
     const loginAction = data.loginAction || "";
     const resolvedOrg = data.organization?.slug;
@@ -172,12 +192,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isSuperAdmin: data.user.role === "superadmin",
     });
 
-    // Use organizations from login response if available
     const orgs = data.organizations || [];
     if (orgs.length > 0) {
       setOrganizations(orgs);
     } else {
-      // Fallback to /me for backward compatibility
       try {
         const meData = await apiFetch<MeResponse>(`/api/v1/auth/me`);
         setOrganizations(meData.organizations || []);
@@ -187,6 +205,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     return { loginAction, organizations: orgs, resolvedOrg };
+  };
+
+  const login = async (orgSlug: string, email: string, password: string): Promise<LoginResult> => {
+    const data = await apiFetch<AuthResponse>(
+      `/api/v1/auth/login`,
+      {
+        method: "POST",
+        body: JSON.stringify({ org: orgSlug, email, password }),
+        skipAuth: true,
+      }
+    );
+
+    return applyLoginResponse(data);
+  };
+
+  const verify2FA = async (tempToken: string, code: string): Promise<LoginResult> => {
+    const data = await apiFetch<AuthResponse>(`/api/v1/auth/2fa/verify`, {
+      method: "POST",
+      body: JSON.stringify({ tempToken, code }),
+      skipAuth: true,
+    });
+    return applyLoginResponse(data);
+  };
+
+  const useRecoveryCode = async (tempToken: string, code: string): Promise<LoginResult> => {
+    const data = await apiFetch<AuthResponse>(`/api/v1/auth/2fa/recovery`, {
+      method: "POST",
+      body: JSON.stringify({ tempToken, recoveryCode: code }),
+      skipAuth: true,
+    });
+    return applyLoginResponse(data);
+  };
+
+  const acceptInviteSession = (data: AuthResponse) => {
+    setToken(data.accessToken);
+    if (data.organization?.slug) {
+      setStoredOrg(data.organization.slug);
+      setOrg(data.organization.slug);
+    }
+    setUser({
+      email: data.user.email,
+      name: data.user.name,
+      avatarUrl: data.user.avatarUrl,
+      roles: [data.user.role],
+      isAdmin: data.user.role === "admin" || data.user.role === "superadmin",
+      isSuperAdmin: data.user.role === "superadmin",
+    });
+    setOrganizations(data.organizations || []);
   };
 
   const loginWithOAuth = async (accessToken: string, orgSlug: string) => {
@@ -279,9 +345,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         login,
         loginWithOAuth,
+        acceptInviteSession,
         logout,
         switchOrg,
         refreshUser,
+        verify2FA,
+        useRecoveryCode,
+        applyLoginResponse,
       }}
     >
       {children}

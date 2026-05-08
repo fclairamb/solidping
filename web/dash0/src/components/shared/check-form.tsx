@@ -29,8 +29,19 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
 import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } from "@/api/hooks";
-import { useCheckTypes, useSampleConfigs } from "@/api/hooks";
+import {
+  useCheckTypes,
+  useSampleConfigs,
+  useConnections,
+  useCheckConnections,
+  useCheckDependencies,
+} from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
+import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
+import { Link } from "@tanstack/react-router";
+import { Badge } from "@/components/ui/badge";
+import { CheckPicker } from "@/components/shared/check-picker";
+import { X } from "lucide-react";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
 
@@ -164,6 +175,9 @@ export interface CheckFormData {
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
   labels?: Record<string, string>;
+  connectionUids?: string[];
+  dependsOnParentUids?: string[];
+  initialDependsOnParentUids?: string[];
 }
 
 interface CheckFormProps {
@@ -232,7 +246,7 @@ export function CheckForm({
     return secondsToHMS(defSec);
   }
 
-  const slugRegex = /^[a-z][a-z0-9-]{2,19}$/;
+  const slugRegex = /^[a-z][a-z0-9-]{2,49}$/;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function validateSlug(value: string): string | null {
@@ -240,7 +254,7 @@ export function CheckForm({
     if (uuidRegex.test(value)) return "Slug must not be a UUID";
     if (!slugRegex.test(value)) {
       if (value.length < 3) return "Slug must be at least 3 characters";
-      if (value.length > 20) return "Slug must be at most 20 characters";
+      if (value.length > 50) return "Slug must be at most 50 characters";
       if (!/^[a-z]/.test(value)) return "Slug must start with a lowercase letter";
       return "Slug must contain only lowercase letters, digits, and hyphens";
     }
@@ -254,6 +268,73 @@ export function CheckForm({
   const [checkGroupUid, setCheckGroupUid] = useState(initialData?.checkGroupUid || "");
   const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
   const [labelsDirty, setLabelsDirty] = useState(false);
+
+  const { data: connections } = useConnections(org);
+  const { data: existingBindings } = useCheckConnections(
+    org,
+    mode === "edit" ? initialData?.uid : undefined,
+  );
+  const [connectionUids, setConnectionUids] = useState<string[] | null>(null);
+
+  // Seed once per fetch: in create mode preselect defaults; in edit mode use the
+  // current bindings.
+  useEffect(() => {
+    if (connectionUids !== null) return;
+    if (mode === "create") {
+      if (!connections) return;
+      setConnectionUids(connections.filter((c) => c.isDefault && c.enabled).map((c) => c.uid));
+      return;
+    }
+    if (existingBindings) {
+      setConnectionUids(existingBindings.map((c) => c.uid));
+    }
+  }, [mode, connections, existingBindings, connectionUids]);
+
+  function toggleConnection(uid: string) {
+    setConnectionUids((prev) => {
+      const cur = prev ?? [];
+      return cur.includes(uid) ? cur.filter((u) => u !== uid) : [...cur, uid];
+    });
+  }
+
+  const { data: existingDeps } = useCheckDependencies(
+    org,
+    mode === "edit" ? initialData?.uid : undefined,
+  );
+  const [dependsOnParents, setDependsOnParents] = useState<
+    { uid: string; label: string }[] | null
+  >(null);
+  const initialParentUids = useMemo(
+    () => (existingDeps?.dependsOn ?? []).map((e) => e.parentCheck.uid),
+    [existingDeps],
+  );
+
+  useEffect(() => {
+    if (dependsOnParents !== null) return;
+    if (mode === "create") {
+      setDependsOnParents([]);
+      return;
+    }
+    if (existingDeps) {
+      setDependsOnParents(
+        existingDeps.dependsOn.map((e) => ({
+          uid: e.parentCheck.uid,
+          label: e.parentCheck.name || e.parentCheck.slug,
+        })),
+      );
+    }
+  }, [mode, existingDeps, dependsOnParents]);
+
+  function addParent(uid: string, label: string) {
+    setDependsOnParents((prev) => {
+      const cur = prev ?? [];
+      if (cur.some((p) => p.uid === uid)) return cur;
+      return [...cur, { uid, label }];
+    });
+  }
+  function removeParent(uid: string) {
+    setDependsOnParents((prev) => (prev ?? []).filter((p) => p.uid !== uid));
+  }
   const [period, setPeriod] = useState(initialData?.period || getDefaultPeriodHMS(initialType));
   const initialPeriod = parsePeriod(initialData?.period || "00:05:00");
   const [periodValue, setPeriodValue] = useState(initialPeriod.value);
@@ -296,6 +377,14 @@ export function CheckForm({
   const [keyword, setKeyword] = useState(getConfigField(initialData?.config, "keyword"));
   const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
   const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
+  const [thresholdDays, setThresholdDays] = useState(
+    getConfigField(initialData?.config, "thresholdDays") ||
+      getConfigField(initialData?.config, "threshold_days"),
+  );
+  const [serverName, setServerName] = useState(
+    getConfigField(initialData?.config, "serverName") ||
+      getConfigField(initialData?.config, "server_name"),
+  );
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
@@ -387,7 +476,6 @@ export function CheckForm({
     const cfg: Record<string, unknown> = {};
     switch (type) {
       case "http":
-      case "ssl":
       case "websocket":
         if (url) cfg.url = url;
         if (type === "http") {
@@ -397,6 +485,12 @@ export function CheckForm({
           if (username) cfg.username = username;
           if (password) cfg.password = password;
         }
+        break;
+      case "ssl":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (serverName) cfg.serverName = serverName;
+        if (thresholdDays) cfg.thresholdDays = parseInt(thresholdDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -549,7 +643,6 @@ export function CheckForm({
 
     switch (type) {
       case "http":
-      case "ssl":
       case "websocket":
         if (!url) { setError("URL is required"); return; }
         config.url = url;
@@ -560,6 +653,13 @@ export function CheckForm({
           if (username) config.username = username;
           if (password) config.password = password;
         }
+        break;
+      case "ssl":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (serverName) config.serverName = serverName;
+        if (thresholdDays) config.thresholdDays = parseInt(thresholdDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -743,6 +843,13 @@ export function CheckForm({
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
         ...(mode === "create" || labelsDirty ? { labels } : {}),
+        ...(connectionUids !== null ? { connectionUids } : {}),
+        ...(dependsOnParents !== null
+          ? {
+              dependsOnParentUids: dependsOnParents.map((p) => p.uid),
+              initialDependsOnParentUids: initialParentUids,
+            }
+          : {}),
       });
     } catch (err) {
       if (err instanceof ApiError) {
@@ -812,12 +919,29 @@ export function CheckForm({
         );
       case "ssl":
         return (
-          <div className="space-y-2">
-            <Label htmlFor="url">URL</Label>
-            <Input id="url" type="url" placeholder="https://example.com" value={url} onChange={(e) => setUrl(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
-            {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
-          </div>
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="443" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="serverName">Server Name (SNI, optional)</Label>
+                <Input id="serverName" type="text" placeholder="defaults to host" value={serverName} onChange={(e) => setServerName(e.target.value)} data-testid="check-server-name-input" />
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="thresholdDays">Threshold (days)</Label>
+                <Input id="thresholdDays" type="number" placeholder="30" value={thresholdDays} onChange={(e) => setThresholdDays(e.target.value)} data-testid="check-threshold-days-input" />
+              </div>
+            </div>
+          </>
         );
       case "websocket":
         return (
@@ -1469,6 +1593,21 @@ export function CheckForm({
               <p className="text-xs text-muted-foreground">Optional key/value tags for grouping and filtering.</p>
             </div>
 
+            <NotifyViaSection
+              org={org}
+              connections={connections}
+              selected={connectionUids ?? []}
+              onToggle={toggleConnection}
+            />
+
+            <DependsOnFormSection
+              org={org}
+              checkUid={mode === "edit" ? initialData?.uid : undefined}
+              parents={dependsOnParents ?? []}
+              onAdd={addParent}
+              onRemove={removeParent}
+            />
+
             {checkGroups && checkGroups.length > 0 && (
               <div className="space-y-2">
                 <Label htmlFor="group">Group (optional)</Label>
@@ -1521,6 +1660,135 @@ export function CheckForm({
           </CardFooter>
         </form>
       </Card>
+    </div>
+  );
+}
+
+interface DependsOnFormSectionProps {
+  org: string;
+  checkUid: string | undefined;
+  parents: { uid: string; label: string }[];
+  onAdd: (uid: string, label: string) => void;
+  onRemove: (uid: string) => void;
+}
+
+function DependsOnFormSection({
+  org,
+  checkUid,
+  parents,
+  onAdd,
+  onRemove,
+}: DependsOnFormSectionProps) {
+  const excludeUids = useMemo(() => {
+    const set = new Set<string>(parents.map((p) => p.uid));
+    if (checkUid) set.add(checkUid);
+    return set;
+  }, [parents, checkUid]);
+
+  return (
+    <div className="space-y-2">
+      <Label>Dependencies</Label>
+      <p className="text-xs text-muted-foreground">
+        Parents whose downtime should suppress incident alerts on this check.
+        Edit kind/description on the check detail page after save.
+      </p>
+      <div className="space-y-2">
+        {parents.map((p) => (
+          <div
+            key={p.uid}
+            className="flex items-center gap-2 rounded-md border p-2"
+          >
+            <span className="flex-1 truncate text-sm">{p.label}</span>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() => onRemove(p.uid)}
+              aria-label="Remove parent"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        ))}
+        <CheckPicker
+          org={org}
+          excludeUids={excludeUids}
+          onChange={(uid, c) => {
+            if (uid) onAdd(uid, c?.name || c?.slug || uid);
+          }}
+          placeholder="Add a parent check…"
+        />
+      </div>
+    </div>
+  );
+}
+
+interface NotifyViaSectionProps {
+  org: string;
+  connections: ReturnType<typeof useConnections>["data"];
+  selected: string[];
+  onToggle: (uid: string) => void;
+}
+
+function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSectionProps) {
+  const list = connections ?? [];
+  // Disabled channels stay listed if currently bound so the user can unbind
+  // them; otherwise they're hidden from the picker.
+  const visible = list.filter((c) => c.enabled || selected.includes(c.uid));
+
+  if (visible.length === 0) {
+    return (
+      <div className="space-y-2">
+        <Label>Notify via</Label>
+        <div className="rounded border border-dashed p-3 text-sm text-muted-foreground">
+          No channels yet.{" "}
+          <Link
+            to="/orgs/$org/channels/new"
+            params={{ org }}
+            className="font-medium text-primary underline-offset-4 hover:underline"
+          >
+            Create one
+          </Link>{" "}
+          to be paged when this check fails.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <Label>Notify via</Label>
+      <div className="grid gap-2 sm:grid-cols-2">
+        {visible.map((c) => {
+          const checked = selected.includes(c.uid);
+          const cbId = `notify-via-${c.uid}`;
+          return (
+            <label
+              key={c.uid}
+              htmlFor={cbId}
+              className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50"
+            >
+              <Checkbox id={cbId} checked={checked} onCheckedChange={() => onToggle(c.uid)} />
+              <ChannelIcon type={c.type} className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm flex-1 truncate">{c.name}</span>
+              <span className="text-xs text-muted-foreground">{channelLabel(c.type)}</span>
+              {!c.enabled && (
+                <Badge variant="outline" className="text-xs">disabled</Badge>
+              )}
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Channels selected here are notified on incident events.{" "}
+        <Link
+          to="/orgs/$org/channels"
+          params={{ org }}
+          className="text-primary underline-offset-4 hover:underline"
+        >
+          Manage channels
+        </Link>
+      </p>
     </div>
   );
 }

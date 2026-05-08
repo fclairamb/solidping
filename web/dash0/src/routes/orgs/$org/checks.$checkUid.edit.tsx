@@ -1,7 +1,16 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { useCheck, useUpdateCheck, useCheckGroups, useRegions } from "@/api/hooks";
+import {
+  useCheck,
+  useUpdateCheck,
+  useCheckGroups,
+  useRegions,
+  useSetCheckConnections,
+  useCreateCheckDependency,
+  useDeleteCheckDependency,
+  useCheckDependencies,
+} from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckForm } from "@/components/shared/check-form";
@@ -16,6 +25,10 @@ function CheckEditPage() {
   const { org, checkUid } = Route.useParams();
   const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
   const updateCheck = useUpdateCheck(org, checkUid);
+  const setConnections = useSetCheckConnections(org, checkUid);
+  const createDep = useCreateCheckDependency(org, checkUid);
+  const deleteDep = useDeleteCheckDependency(org, checkUid);
+  const { data: existingDepsForSync } = useCheckDependencies(org, checkUid);
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
 
@@ -77,7 +90,28 @@ function CheckEditPage() {
           regions: data.regions,
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
           maxAdaptiveIncrease: data.maxAdaptiveIncrease,
+          ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
+        if (data.connectionUids !== undefined) {
+          await setConnections.mutateAsync(data.connectionUids);
+        }
+        if (data.dependsOnParentUids !== undefined) {
+          const desired = new Set(data.dependsOnParentUids);
+          const currentEdges = existingDepsForSync?.dependsOn ?? [];
+          const currentParentToEdge = new Map(
+            currentEdges.map((e) => [e.parentCheck.uid, e]),
+          );
+          const toAdd = data.dependsOnParentUids.filter(
+            (uid) => !currentParentToEdge.has(uid),
+          );
+          const toRemove = currentEdges.filter((e) => !desired.has(e.parentCheck.uid));
+          for (const parentUid of toAdd) {
+            await createDep.mutateAsync({ parentCheckUid: parentUid, kind: "hard" });
+          }
+          for (const edge of toRemove) {
+            await deleteDep.mutateAsync(edge.uid);
+          }
+        }
         toast.success(t("toast.updated"));
         navigate({
           to: "/orgs/$org/checks/$checkUid",

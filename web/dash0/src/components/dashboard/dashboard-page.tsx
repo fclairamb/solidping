@@ -12,7 +12,6 @@ import {
   Clock,
   LayoutDashboard,
   ListChecks,
-  Plus,
   RefreshCw,
 } from "lucide-react";
 import {
@@ -40,6 +39,8 @@ import {
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
+import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
+import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -119,6 +120,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     state: "active",
     size: 5,
     with: "check",
+    hideSuppressed: true,
     refetchInterval: INCIDENT_POLL_MS,
   });
   const since24h = useMemo(
@@ -225,9 +227,10 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
       {isInitialLoading ? (
         <DashboardSkeleton />
       ) : isEmptyOrg ? (
-        <EmptyOrgWelcome org={org} />
+        <EmptyStateOnboarding org={org} />
       ) : (
         <>
+          <FirstResultCelebration org={org} checks={checks} />
           <OverallStatusBanner
             allGreen={downCount === 0 && incidentsCount === 0}
             hardDownCount={hardDownCount}
@@ -302,9 +305,72 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             onRetry={() => eventsQuery.refetch()}
             tickNow={tickNow}
           />
+
+          <MyOnCallWidget org={org} />
         </>
       )}
     </div>
+  );
+}
+
+// FirstResultCelebration shows a one-shot banner the first time an org's
+// first check has a result. Persisted in localStorage so it doesn't re-fire
+// across reloads. Quiet on subsequent checks — this is an activation moment,
+// not a per-check toast.
+function FirstResultCelebration({ org, checks }: { org: string; checks: Check[] }) {
+  const { t } = useTranslation("dashboard");
+  const storageKey = `solidping_celebrated_first_result_${org}`;
+  const [dismissed, setDismissed] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    return window.localStorage.getItem(storageKey) === "1";
+  });
+
+  // Trigger only when there is a single check and it has at least one result
+  // (lastResult is populated by the dashboard's checks-with-last-result query).
+  const trigger =
+    !dismissed && checks.length === 1 && checks[0]?.lastResult !== undefined;
+  const checkName = checks[0]?.name || "";
+
+  useEffect(() => {
+    if (trigger) {
+      window.localStorage.setItem(storageKey, "1");
+    }
+  }, [trigger, storageKey]);
+
+  if (!trigger) return null;
+
+  return (
+    <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
+      <CardContent className="pt-6 pb-6 flex items-center gap-4">
+        <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-500 shrink-0" />
+        <div className="flex-1">
+          <h2 className="text-lg font-semibold text-green-900 dark:text-green-100">
+            {t("celebration.title", "First result is in!")}
+          </h2>
+          <p className="text-sm text-green-800/80 dark:text-green-300/80">
+            {t("celebration.body", {
+              defaultValue:
+                "We just checked {{name}}. Hook up notifications so you'll know if it ever goes down.",
+              name: checkName,
+            })}
+          </p>
+        </div>
+        <Button asChild size="sm">
+          <a href={`/dash0/orgs/${org}/checks/${checks[0]?.uid}`}>
+            {t("celebration.cta", "View the check")}
+            <ArrowRight className="ml-1 h-3.5 w-3.5" />
+          </a>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setDismissed(true)}
+          aria-label={t("celebration.dismiss", "Dismiss")}
+        >
+          ×
+        </Button>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -323,45 +389,6 @@ function DashboardSkeleton() {
       </div>
       <Skeleton className="h-72 rounded-xl" />
     </div>
-  );
-}
-
-function EmptyOrgWelcome({ org }: { org: string }) {
-  const { t } = useTranslation("dashboard");
-  return (
-    <Card className="border-2 border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/30">
-      <CardContent className="pt-6 flex flex-col items-center text-center gap-4 py-12">
-        <div className="rounded-full bg-blue-100 dark:bg-blue-900 p-4">
-          <Plus className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-        </div>
-        <div>
-          <h2 className="text-2xl font-bold">{t("welcome.title")}</h2>
-          <p className="text-muted-foreground mt-1">{t("welcome.subtitle")}</p>
-        </div>
-        <Button asChild size="lg">
-          <Link
-            to="/orgs/$org/checks/new"
-            params={{ org }}
-            search={{
-              checkType: undefined,
-              checkPeriod: undefined,
-              checkName: undefined,
-              checkSlug: undefined,
-              httpUrl: undefined,
-              httpMethod: undefined,
-              host: undefined,
-              port: undefined,
-              url: undefined,
-              domain: undefined,
-              username: undefined,
-              database: undefined,
-            }}
-          >
-            {t("welcome.cta")}
-          </Link>
-        </Button>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -645,7 +672,7 @@ function ActiveIncidentsList({
         <Link
           to="/orgs/$org/incidents"
           params={{ org }}
-          search={{ state: "active" }}
+          search={{ state: "active" as const, showSuppressed: undefined }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
         >
           {t("activeIncidents.footer")}
