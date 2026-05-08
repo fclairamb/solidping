@@ -69,7 +69,7 @@ import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgChannelsNewRouteImport } from './routes/orgs/$org/channels.new'
-import { Route as OrgsOrgChannelsConnectionUidRouteImport } from './routes/orgs/$org/channels.$connectionUid'
+import { Route as OrgsOrgChannelsChannelUidRouteImport } from './routes/orgs/$org/channels.$channelUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
@@ -394,10 +394,10 @@ const OrgsOrgChannelsNewRoute = OrgsOrgChannelsNewRouteImport.update({
   path: '/new',
   getParentRoute: () => OrgsOrgChannelsRoute,
 } as any)
-const OrgsOrgChannelsConnectionUidRoute =
-  OrgsOrgChannelsConnectionUidRouteImport.update({
-    id: '/$connectionUid',
-    path: '/$connectionUid',
+const OrgsOrgChannelsChannelUidRoute =
+  OrgsOrgChannelsChannelUidRouteImport.update({
+    id: '/$channelUid',
+    path: '/$channelUid',
     getParentRoute: () => OrgsOrgChannelsRoute,
   } as any)
 const OrgsOrgAccountTokensRoute = OrgsOrgAccountTokensRouteImport.update({
@@ -480,7 +480,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
-  '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
+  '/orgs/$org/channels/$channelUid': typeof OrgsOrgChannelsChannelUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
@@ -541,7 +541,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
-  '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
+  '/orgs/$org/channels/$channelUid': typeof OrgsOrgChannelsChannelUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
@@ -612,7 +612,7 @@ export interface FileRoutesById {
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
-  '/orgs/$org/channels/$connectionUid': typeof OrgsOrgChannelsConnectionUidRoute
+  '/orgs/$org/channels/$channelUid': typeof OrgsOrgChannelsChannelUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
@@ -686,7 +686,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
-    | '/orgs/$org/channels/$connectionUid'
+    | '/orgs/$org/channels/$channelUid'
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
@@ -747,7 +747,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
-    | '/orgs/$org/channels/$connectionUid'
+    | '/orgs/$org/channels/$channelUid'
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/escalation-policies/$slug'
@@ -817,7 +817,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
-    | '/orgs/$org/channels/$connectionUid'
+    | '/orgs/$org/channels/$channelUid'
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
@@ -1295,11 +1295,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChannelsNewRouteImport
       parentRoute: typeof OrgsOrgChannelsRoute
     }
-    '/orgs/$org/channels/$connectionUid': {
-      id: '/orgs/$org/channels/$connectionUid'
-      path: '/$connectionUid'
-      fullPath: '/orgs/$org/channels/$connectionUid'
-      preLoaderRoute: typeof OrgsOrgChannelsConnectionUidRouteImport
+    '/orgs/$org/channels/$channelUid': {
+      id: '/orgs/$org/channels/$channelUid'
+      path: '/$channelUid'
+      fullPath: '/orgs/$org/channels/$channelUid'
+      preLoaderRoute: typeof OrgsOrgChannelsChannelUidRouteImport
       parentRoute: typeof OrgsOrgChannelsRoute
     }
     '/orgs/$org/account/tokens': {
@@ -1387,13 +1387,13 @@ const OrgsOrgAccountRouteWithChildren = OrgsOrgAccountRoute._addFileChildren(
 )
 
 interface OrgsOrgChannelsRouteChildren {
-  OrgsOrgChannelsConnectionUidRoute: typeof OrgsOrgChannelsConnectionUidRoute
+  OrgsOrgChannelsChannelUidRoute: typeof OrgsOrgChannelsChannelUidRoute
   OrgsOrgChannelsNewRoute: typeof OrgsOrgChannelsNewRoute
   OrgsOrgChannelsIndexRoute: typeof OrgsOrgChannelsIndexRoute
 }
 
 const OrgsOrgChannelsRouteChildren: OrgsOrgChannelsRouteChildren = {
-  OrgsOrgChannelsConnectionUidRoute: OrgsOrgChannelsConnectionUidRoute,
+  OrgsOrgChannelsChannelUidRoute: OrgsOrgChannelsChannelUidRoute,
   OrgsOrgChannelsNewRoute: OrgsOrgChannelsNewRoute,
   OrgsOrgChannelsIndexRoute: OrgsOrgChannelsIndexRoute,
 }

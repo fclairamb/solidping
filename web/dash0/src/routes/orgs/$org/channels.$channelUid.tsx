@@ -22,9 +22,9 @@ import {
 import { Loader2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useConnection,
-  useUpdateConnection,
-  useDeleteConnection,
+  useChannel,
+  useUpdateChannel,
+  useDeleteChannel,
 } from "@/api/hooks";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
 import {
@@ -32,18 +32,18 @@ import {
   type ChannelFormState,
 } from "@/components/channels/channel-form";
 
-export const Route = createFileRoute("/orgs/$org/channels/$connectionUid")({
+export const Route = createFileRoute("/orgs/$org/channels/$channelUid")({
   component: ChannelDetailPage,
 });
 
 function ChannelDetailPage() {
   const { t } = useTranslation("channels");
-  const { org, connectionUid } = Route.useParams();
+  const { org, channelUid } = Route.useParams();
   const navigate = useNavigate();
 
-  const { data: channel, isLoading } = useConnection(org, connectionUid);
-  const update = useUpdateConnection(org, connectionUid);
-  const remove = useDeleteConnection(org);
+  const { data: channel, isLoading } = useChannel(org, channelUid);
+  const update = useUpdateChannel(org, channelUid);
+  const remove = useDeleteChannel(org);
 
   const [form, setForm] = useState<ChannelFormState | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -74,7 +74,7 @@ function ChannelDetailPage() {
 
   const handleDelete = async () => {
     try {
-      await remove.mutateAsync(connectionUid);
+      await remove.mutateAsync(channelUid);
       toast.success(t("deleted", "Channel deleted"));
       navigate({ to: "/orgs/$org/channels", params: { org } });
     } catch {

@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import type { Connection, ConnectionType } from "@/api/hooks";
+import type { Channel, ConnectionType } from "@/api/hooks";
 
 export interface ChannelFormState {
   name: string;
@@ -15,7 +15,7 @@ export interface ChannelFormState {
 
 interface ChannelFormProps {
   type: ConnectionType;
-  initial?: Connection | null;
+  initial?: Channel | null;
   initialName?: string;
   onChange: (state: ChannelFormState) => void;
 }

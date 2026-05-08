@@ -477,15 +477,20 @@ func (s *Server) SetupRoutes() {
 	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
 	orgDeps.GET("", depsHandler.Graph)
 
-	// Check-connection routes (authentication required)
+	// Check-channel binding routes (authentication required). Same dual-route
+	// pattern as the org-level channels block: `/connections` is the legacy
+	// path, `/channels` is canonical going forward. PR-5 of spec
+	// 2026-05-07-03 drops the old path once external callers have moved.
 	checkConnectionsService := checkconnections.NewService(s.dbService)
 	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
-	orgChecks.GET("/:check/connections", checkConnectionsHandler.ListChannels)
-	orgChecks.PUT("/:check/connections", checkConnectionsHandler.SetConnections)
-	orgChecks.POST("/:check/connections/:connection", checkConnectionsHandler.AddConnection)
-	orgChecks.DELETE("/:check/connections/:connection", checkConnectionsHandler.RemoveConnection)
-	orgChecks.GET("/:check/connections/:connection", checkConnectionsHandler.GetConnectionSettings)
-	orgChecks.PATCH("/:check/connections/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	for _, suffix := range []string{"/connections", "/channels"} {
+		orgChecks.GET("/:check"+suffix, checkConnectionsHandler.ListChannels)
+		orgChecks.PUT("/:check"+suffix, checkConnectionsHandler.SetConnections)
+		orgChecks.POST("/:check"+suffix+"/:connection", checkConnectionsHandler.AddConnection)
+		orgChecks.DELETE("/:check"+suffix+"/:connection", checkConnectionsHandler.RemoveConnection)
+		orgChecks.GET("/:check"+suffix+"/:connection", checkConnectionsHandler.GetConnectionSettings)
+		orgChecks.PATCH("/:check"+suffix+"/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	}
 
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService)

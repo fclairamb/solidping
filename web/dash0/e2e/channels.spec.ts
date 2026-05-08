@@ -11,7 +11,7 @@ async function getAuthToken(page: Page): Promise<string> {
 }
 
 async function deleteConnection(page: Page, token: string, uid: string) {
-  await page.request.delete(`${API_BASE}/api/v1/orgs/test/connections/${uid}`, {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/channels/${uid}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
@@ -53,7 +53,7 @@ test.describe("Notification Channels", () => {
       ),
     );
     const detailUrl = page.url();
-    const connectionUid = detailUrl.split("/").pop()!;
+    const channelUid = detailUrl.split("/").pop()!;
 
     // 2. Channel appears in the list
     await page.goto("orgs/test/channels");
@@ -90,11 +90,11 @@ test.describe("Notification Channels", () => {
     // Verify the binding via API
     const bindings = await page.request
       .get(
-        `${API_BASE}/api/v1/orgs/test/checks/${check.uid}/connections`,
+        `${API_BASE}/api/v1/orgs/test/checks/${check.uid}/channels`,
         { headers: { Authorization: `Bearer ${token}` } },
       )
       .then((r) => r.json());
-    expect(bindings.data?.some((b: { uid: string }) => b.uid === connectionUid)).toBe(
+    expect(bindings.data?.some((b: { uid: string }) => b.uid === channelUid)).toBe(
       true,
     );
 
@@ -107,16 +107,16 @@ test.describe("Notification Channels", () => {
 
     const afterUnbind = await page.request
       .get(
-        `${API_BASE}/api/v1/orgs/test/checks/${check.uid}/connections`,
+        `${API_BASE}/api/v1/orgs/test/checks/${check.uid}/channels`,
         { headers: { Authorization: `Bearer ${token}` } },
       )
       .then((r) => r.json());
     expect(
-      (afterUnbind.data ?? []).some((b: { uid: string }) => b.uid === connectionUid),
+      (afterUnbind.data ?? []).some((b: { uid: string }) => b.uid === channelUid),
     ).toBe(false);
 
     // 5. Delete the channel via the UI
-    await page.goto(`orgs/test/channels/${connectionUid}`);
+    await page.goto(`orgs/test/channels/${channelUid}`);
     await page.waitForLoadState("networkidle");
     await page.getByRole("button", { name: /delete channel/i }).click();
     const dialog = page.getByRole("alertdialog");
@@ -138,7 +138,7 @@ test.describe("Notification Channels", () => {
 
     // Wipe any existing connections so the empty state shows
     const list = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/connections`, {
+      .get(`${API_BASE}/api/v1/orgs/test/channels`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((r) => r.json());

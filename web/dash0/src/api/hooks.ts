@@ -2393,7 +2393,7 @@ export type ConnectionType =
   | "opsgenie"
   | "pushover";
 
-export interface Connection {
+export interface Channel {
   uid: string;
   type: ConnectionType;
   name: string;
@@ -2405,7 +2405,7 @@ export interface Connection {
   updatedAt: string;
 }
 
-export interface CreateConnectionRequest {
+export interface CreateChannelRequest {
   type: ConnectionType;
   name: string;
   enabled?: boolean;
@@ -2413,18 +2413,18 @@ export interface CreateConnectionRequest {
   settings?: Record<string, unknown>;
 }
 
-export interface UpdateConnectionRequest {
+export interface UpdateChannelRequest {
   name?: string;
   enabled?: boolean;
   isDefault?: boolean;
   settings?: Record<string, unknown>;
 }
 
-export function useConnections(org: string) {
+export function useChannels(org: string) {
   return useQuery({
-    queryKey: ["connections", org],
+    queryKey: ["channels", org],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: Connection[] }>(
+      const response = await apiFetch<{ data?: Channel[] }>(
         `/api/v1/orgs/${org}/channels`,
       );
       return response.data || [];
@@ -2433,44 +2433,44 @@ export function useConnections(org: string) {
   });
 }
 
-export function useConnection(org: string, uid: string) {
+export function useChannel(org: string, uid: string) {
   return useQuery({
-    queryKey: ["connection", org, uid],
-    queryFn: () => apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`),
+    queryKey: ["channel", org, uid],
+    queryFn: () => apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`),
     enabled: !!org && !!uid,
   });
 }
 
-export function useCreateConnection(org: string) {
+export function useCreateChannel(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: CreateConnectionRequest) =>
-      apiFetch<Connection>(`/api/v1/orgs/${org}/channels`, {
+    mutationFn: (request: CreateChannelRequest) =>
+      apiFetch<Channel>(`/api/v1/orgs/${org}/channels`, {
         method: "POST",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
     },
   });
 }
 
-export function useUpdateConnection(org: string, uid: string) {
+export function useUpdateChannel(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: UpdateConnectionRequest) =>
-      apiFetch<Connection>(`/api/v1/orgs/${org}/channels/${uid}`, {
+    mutationFn: (request: UpdateChannelRequest) =>
+      apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`, {
         method: "PATCH",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["connections", org] });
-      queryClient.invalidateQueries({ queryKey: ["connection", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["channel", org, uid] });
     },
   });
 }
 
-export function useDeleteConnection(org: string) {
+export function useDeleteChannel(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
@@ -2478,14 +2478,15 @@ export function useDeleteConnection(org: string) {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["connections", org] });
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
     },
   });
 }
 
-// CheckConnection is what GET /checks/$check/connections returns — a
-// flattened view of the bound connection (uid is the underlying
-// connection UID), not the join row.
+// CheckConnection is what GET /checks/$check/channels returns — a
+// flattened view of the bound channel (uid is the underlying channel
+// UID), not the join row. The TS-side name keeps "Connection" until
+// the join-table rename in the follow-up DB-rename spec.
 export interface CheckConnection {
   uid: string;
   type: ConnectionType;
@@ -2499,7 +2500,7 @@ export function useCheckConnections(org: string, checkUid: string | undefined) {
     queryKey: ["checkConnections", org, checkUid],
     queryFn: async () => {
       const response = await apiFetch<{ data?: CheckConnection[] }>(
-        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+        `/api/v1/orgs/${org}/checks/${checkUid}/channels`,
       );
       return response.data || [];
     },
@@ -2512,7 +2513,7 @@ export function useSetCheckConnections(org: string, checkUid: string) {
   return useMutation({
     mutationFn: (connectionUids: string[]) =>
       apiFetch<{ data?: CheckConnection[] }>(
-        `/api/v1/orgs/${org}/checks/${checkUid}/connections`,
+        `/api/v1/orgs/${org}/checks/${checkUid}/channels`,
         {
           method: "PUT",
           body: JSON.stringify({ connectionUids }),

@@ -32,7 +32,7 @@ import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } 
 import {
   useCheckTypes,
   useSampleConfigs,
-  useConnections,
+  useChannels,
   useCheckConnections,
   useCheckDependencies,
 } from "@/api/hooks";
@@ -269,7 +269,7 @@ export function CheckForm({
   const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
   const [labelsDirty, setLabelsDirty] = useState(false);
 
-  const { data: connections } = useConnections(org);
+  const { data: connections } = useChannels(org);
   const { data: existingBindings } = useCheckConnections(
     org,
     mode === "edit" ? initialData?.uid : undefined,
@@ -1725,7 +1725,7 @@ function DependsOnFormSection({
 
 interface NotifyViaSectionProps {
   org: string;
-  connections: ReturnType<typeof useConnections>["data"];
+  connections: ReturnType<typeof useChannels>["data"];
   selected: string[];
   onToggle: (uid: string) => void;
 }
