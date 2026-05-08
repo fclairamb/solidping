@@ -27,6 +27,26 @@ const (
 	CheckStatusDegraded CheckStatus = 7
 )
 
+// String returns the lowercase wire name for a CheckStatus, used by the
+// dashboard to key status colors and labels. Unknown values fall back to
+// "unknown" so an unset DB column never blows up the UI.
+func (s CheckStatus) String() string {
+	switch s {
+	case CheckStatusCreated:
+		return "created"
+	case CheckStatusUp:
+		return "up"
+	case CheckStatusDown:
+		return "down"
+	case CheckStatusValidating:
+		return "validating"
+	case CheckStatusDegraded:
+		return "degraded"
+	default:
+		return "unknown"
+	}
+}
+
 // Check represents a monitoring configuration.
 type Check struct {
 	UID             string  `bun:"uid,pk,type:varchar(36)"`

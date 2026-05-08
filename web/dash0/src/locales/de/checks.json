@@ -13,6 +13,9 @@
   "allChecks": "Alle Prüfungen",
   "internal": "Intern",
   "ungroupedChecks": "Nicht gruppierte Prüfungen",
+  "status": {
+    "validating": "Wird geprüft"
+  },
   "table": {
     "name": "Name",
     "type": "Typ",

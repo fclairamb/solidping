@@ -13,6 +13,9 @@
   "allChecks": "Tous les contrôles",
   "internal": "Interne",
   "ungroupedChecks": "Contrôles non groupés",
+  "status": {
+    "validating": "En validation"
+  },
   "table": {
     "name": "Nom",
     "type": "Type",

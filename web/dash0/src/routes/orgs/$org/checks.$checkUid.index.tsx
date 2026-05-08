@@ -404,13 +404,13 @@ function CheckDetailPage() {
     );
   }
 
+  const headerStatus = check.status ?? check.lastResult?.status;
   const statusColor =
-    check.lastResult?.status === "up"
+    headerStatus === "up"
       ? "bg-green-500"
-      : check.lastResult?.status === "down" ||
-          check.lastResult?.status === "error"
+      : headerStatus === "down" || headerStatus === "error"
         ? "bg-red-500"
-        : check.lastResult?.status === "timeout"
+        : headerStatus === "validating" || headerStatus === "timeout"
           ? "bg-yellow-500"
           : "bg-muted-foreground";
 
@@ -688,15 +688,18 @@ function CheckDetailPage() {
                 <Badge
                   variant="secondary"
                   className={
-                    check.lastResult?.status === "up"
+                    headerStatus === "up"
                       ? "bg-green-500/10 text-green-500"
-                      : check.lastResult?.status === "down" ||
-                          check.lastResult?.status === "error"
+                      : headerStatus === "down" || headerStatus === "error"
                         ? "bg-red-500/10 text-red-500"
-                        : ""
+                        : headerStatus === "validating"
+                          ? "bg-yellow-500/10 text-yellow-500"
+                          : ""
                   }
                 >
-                  {check.lastResult?.status || t("checks:detail.unknown").toLowerCase()}
+                  {headerStatus === "validating"
+                    ? t("checks:status.validating")
+                    : headerStatus || t("checks:detail.unknown").toLowerCase()}
                 </Badge>
                 {check.enabled === false && (
                   <Badge variant="outline">{t("checks:detail.disabled")}</Badge>

@@ -463,15 +463,20 @@ type CheckResponse struct {
 	// for this check. The dashboard uses it to render placeholder hints
 	// (●●●●●●●●) for fields it can't display. Non-secret by construction
 	// — these are key names, not values.
-	ConfigPrivateKeys []string                  `json:"configPrivateKeys,omitempty"`
-	Regions           []string                  `json:"regions,omitempty"`
-	Enabled           *bool                     `json:"enabled,omitempty"`
-	Internal          *bool                     `json:"internal,omitempty"`
-	Period            *string                   `json:"period,omitempty"`
-	Labels            map[string]string         `json:"labels,omitempty"`
-	LastResult        *LastResultResponse       `json:"lastResult,omitempty"`
-	LastStatusChange  *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
-	CreatedAt         *time.Time                `json:"createdAt,omitempty"`
+	ConfigPrivateKeys []string          `json:"configPrivateKeys,omitempty"`
+	Regions           []string          `json:"regions,omitempty"`
+	Enabled           *bool             `json:"enabled,omitempty"`
+	Internal          *bool             `json:"internal,omitempty"`
+	Period            *string           `json:"period,omitempty"`
+	Labels            map[string]string `json:"labels,omitempty"`
+	// Status is the synthesized check-level status: "up", "down",
+	// "validating" (failure observed but threshold not crossed), "created",
+	// or "degraded". Distinct from LastResult.Status, which echoes the raw
+	// result row.
+	Status           string                    `json:"status,omitempty"`
+	LastResult       *LastResultResponse       `json:"lastResult,omitempty"`
+	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
+	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
 
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
@@ -1720,6 +1725,7 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Enabled:                  &check.Enabled,
 		Internal:                 &check.Internal,
 		Period:                   &periodStr,
+		Status:                   check.Status.String(),
 		CreatedAt:                &check.CreatedAt,
 		ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
 		MaxAdaptiveIncrease:      check.MaxAdaptiveIncrease,
