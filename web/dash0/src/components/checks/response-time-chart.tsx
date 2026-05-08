@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
 import { useNavigate } from "@tanstack/react-router";
-import { useAllResults } from "@/api/hooks";
+import { useResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -25,6 +25,9 @@ interface ResponseTimeChartProps {
   org: string;
   checkUid: string;
   refetchInterval?: number;
+  // Check period in ms — drives raw-vs-hour tier choice on the "day" range so
+  // dense (1-min) checks roll up to ~24 hourly points instead of ~1440 raw.
+  periodMs?: number;
   initialPeriod?: TimeRange;
   initialFullRange?: boolean;
   onSettingsChange?: (period: TimeRange, fullRange: boolean) => void;
@@ -203,6 +206,7 @@ export function ResponseTimeChart({
   org,
   checkUid,
   refetchInterval,
+  periodMs,
   initialPeriod,
   initialFullRange,
   onSettingsChange,
@@ -260,26 +264,29 @@ export function ResponseTimeChart({
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
-  // Each timestamp lives in exactly one tier (the aggregator deletes source rows
-  // when rolling up). Querying a single tier misses the rest of the timeline:
-  // a Week view that asks only for `hour` skips the recent raw window plus any
-  // older buckets already rolled to `day`. Pass the union of tiers that can
-  // contain data within this range.
+  // Pick exactly one tier per range so the chart fetches the smallest payload
+  // that still covers the window. The aggregator stores each timestamp in
+  // exactly one tier, so the trailing edge of the current bucket can be
+  // briefly missing on the right edge of the chart while the rollup runs —
+  // accept that visual gap rather than fetching the full raw timeline.
+  const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
   const periodType =
     timeRange === "month"
-      ? "raw,hour,day,month"
+      ? "day"
       : timeRange === "week"
-        ? "raw,hour,day"
+        ? "hour"
         : timeRange === "day"
-          ? "raw,hour"
+          ? denseEnoughForHourly
+            ? "hour"
+            : "raw"
           : "raw";
 
-  const { data: results, isLoading } = useAllResults(org, {
+  const { data: results, isLoading } = useResults(org, {
     checkUid,
     periodStartAfter,
     periodType,
     with: "durationMs,region",
-    size: 1000,
+    size: 500,
     refetchInterval,
   });
 
