@@ -37,7 +37,7 @@ test.describe("Notification Channels", () => {
     await page.waitForURL((url) => url.pathname.endsWith("/channels/new"));
 
     // Pick webhook type
-    await page.getByRole("button", { name: /^webhook$/i }).click();
+    await page.getByRole("button", { name: /^webhook\b/i }).click();
 
     const channelName = `E2E Webhook ${Date.now()}`;
     await page.getByLabel("Name").fill(channelName);

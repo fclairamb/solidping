@@ -11,7 +11,7 @@ export const Route = createFileRoute("/orgs/$org/organization")({
 function OrganizationLayout() {
   const { t } = useTranslation(["org", "nav"]);
   const { org } = Route.useParams();
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const navigate = useNavigate();
   const { data: pendingData } = useOrgMembershipRequests(org, {
     status: "pending",
@@ -30,6 +30,9 @@ function OrganizationLayout() {
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 
+  if (isLoading) {
+    return null;
+  }
   if (!user?.isAdmin) {
     navigate({ to: "/orgs/$org", params: { org }, replace: true });
     return null;

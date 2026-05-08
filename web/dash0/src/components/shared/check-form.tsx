@@ -246,7 +246,7 @@ export function CheckForm({
     return secondsToHMS(defSec);
   }
 
-  const slugRegex = /^[a-z][a-z0-9-]{2,19}$/;
+  const slugRegex = /^[a-z][a-z0-9-]{2,49}$/;
   const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   function validateSlug(value: string): string | null {
@@ -254,7 +254,7 @@ export function CheckForm({
     if (uuidRegex.test(value)) return "Slug must not be a UUID";
     if (!slugRegex.test(value)) {
       if (value.length < 3) return "Slug must be at least 3 characters";
-      if (value.length > 20) return "Slug must be at most 20 characters";
+      if (value.length > 50) return "Slug must be at most 50 characters";
       if (!/^[a-z]/.test(value)) return "Slug must start with a lowercase letter";
       return "Slug must contain only lowercase letters, digits, and hyphens";
     }

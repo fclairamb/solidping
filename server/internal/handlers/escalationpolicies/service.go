@@ -18,6 +18,7 @@ import (
 var (
 	ErrPolicyNotFound      = errors.New("escalation policy not found")
 	ErrPolicyInUse         = errors.New("escalation policy is referenced by an open incident")
+	ErrOrgNotFound         = errors.New("organization not found")
 	ErrInvalidTargetType   = errors.New("target type must be one of user|schedule|connection|all_admins")
 	ErrTargetUIDRequired   = errors.New("target UID is required for user/schedule/connection targets")
 	ErrTargetUIDForbidden  = errors.New("target UID must be empty for all_admins targets")
@@ -34,6 +35,18 @@ type Service struct {
 // NewService builds a service.
 func NewService(dbService db.Service) *Service {
 	return &Service{db: dbService}
+}
+
+// ResolveOrgUID maps an org slug (from the URL path) to its UID. Handlers
+// call this before invoking other service methods, since the service stores
+// and queries by org UID, not slug.
+func (s *Service) ResolveOrgUID(ctx context.Context, orgSlug string) (string, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil || org == nil {
+		return "", ErrOrgNotFound
+	}
+
+	return org.UID, nil
 }
 
 // TargetInput is the request shape for one target inside a step.

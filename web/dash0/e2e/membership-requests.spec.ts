@@ -118,7 +118,7 @@ test.describe("Membership requests", () => {
       window.localStorage.setItem("solidping_token", "stub");
     });
 
-    await page.goto("/no-org");
+    await page.goto("no-org");
     await page.waitForLoadState("networkidle");
 
     await expect(

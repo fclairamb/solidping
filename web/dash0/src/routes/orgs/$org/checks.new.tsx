@@ -91,6 +91,7 @@ function CheckNewPage() {
           period: data.period,
           config: data.config ?? {},
           regions: data.regions,
+          ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         if (data.connectionUids && data.connectionUids.length > 0) {
           await apiFetch(`/api/v1/orgs/${org}/checks/${check.uid}/connections`, {

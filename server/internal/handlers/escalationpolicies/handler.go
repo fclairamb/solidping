@@ -32,6 +32,8 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, ErrOrgNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrPolicyNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Escalation policy not found")
 	case errors.Is(err, ErrPolicyInUse):
@@ -124,7 +126,10 @@ func toPolicyHeaderJSON(policy *models.EscalationPolicy) policyJSON {
 
 // ListPolicies handles GET /api/v1/orgs/:org/escalation-policies.
 func (h *Handler) ListPolicies(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
 
 	policies, err := h.svc.ListPolicies(req.Context(), orgUID)
 	if err != nil {
@@ -185,10 +190,13 @@ func toStepInputs(steps []stepBody) []StepInput {
 
 // CreatePolicy handles POST /api/v1/orgs/:org/escalation-policies.
 func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
 
 	var body CreatePolicyBody
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+	if decodeErr := json.NewDecoder(req.Body).Decode(&body); decodeErr != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
 	}
 
@@ -215,7 +223,10 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 
 // GetPolicy handles GET /api/v1/orgs/:org/escalation-policies/:slug.
 func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
 	slug := req.Param("slug")
 
 	detail, err := h.svc.GetPolicyBySlug(req.Context(), orgUID, slug)
@@ -238,11 +249,14 @@ type UpdatePolicyBody struct {
 
 // UpdatePolicy handles PATCH /api/v1/orgs/:org/escalation-policies/:slug.
 func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
 	slug := req.Param("slug")
 
 	var body UpdatePolicyBody
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
+	if decodeErr := json.NewDecoder(req.Body).Decode(&body); decodeErr != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid JSON body")
 	}
 
@@ -269,7 +283,10 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 
 // DeletePolicy handles DELETE /api/v1/orgs/:org/escalation-policies/:slug.
 func (h *Handler) DeletePolicy(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
 	slug := req.Param("slug")
 
 	if err := h.svc.DeletePolicy(req.Context(), orgUID, slug); err != nil {
