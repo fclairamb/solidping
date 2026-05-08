@@ -76,6 +76,7 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
+import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
@@ -432,6 +433,11 @@ const OrgsOrgStatusPagesStatusPageUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgStatusPagesStatusPageUidRoute,
   } as any)
+const OrgsOrgOnCallSlugEditRoute = OrgsOrgOnCallSlugEditRouteImport.update({
+  id: '/edit',
+  path: '/edit',
+  getParentRoute: () => OrgsOrgOnCallSlugRoute,
+} as any)
 const OrgsOrgChecksCheckUidEditRoute =
   OrgsOrgChecksCheckUidEditRouteImport.update({
     id: '/edit',
@@ -481,7 +487,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -511,6 +517,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
@@ -540,7 +547,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -569,6 +576,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/test': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
@@ -611,7 +619,7 @@ export interface FileRoutesById {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
-  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRoute
+  '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -641,6 +649,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/': typeof OrgsOrgStatusPagesIndexRoute
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
+  '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
@@ -714,6 +723,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/'
     | '/orgs/$org/test/'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
@@ -772,6 +782,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/test'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/status-pages/$statusPageUid'
@@ -843,6 +854,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/'
     | '/orgs/$org/test/'
     | '/orgs/$org/checks/$checkUid/edit'
+    | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/status-pages/$statusPageUid/'
@@ -1332,6 +1344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgStatusPagesStatusPageUidEditRouteImport
       parentRoute: typeof OrgsOrgStatusPagesStatusPageUidRoute
     }
+    '/orgs/$org/on-call/$slug/edit': {
+      id: '/orgs/$org/on-call/$slug/edit'
+      path: '/edit'
+      fullPath: '/orgs/$org/on-call/$slug/edit'
+      preLoaderRoute: typeof OrgsOrgOnCallSlugEditRouteImport
+      parentRoute: typeof OrgsOrgOnCallSlugRoute
+    }
     '/orgs/$org/checks/$checkUid/edit': {
       id: '/orgs/$org/checks/$checkUid/edit'
       path: '/edit'
@@ -1448,14 +1467,25 @@ const OrgsOrgIncidentsRouteChildren: OrgsOrgIncidentsRouteChildren = {
 const OrgsOrgIncidentsRouteWithChildren =
   OrgsOrgIncidentsRoute._addFileChildren(OrgsOrgIncidentsRouteChildren)
 
+interface OrgsOrgOnCallSlugRouteChildren {
+  OrgsOrgOnCallSlugEditRoute: typeof OrgsOrgOnCallSlugEditRoute
+}
+
+const OrgsOrgOnCallSlugRouteChildren: OrgsOrgOnCallSlugRouteChildren = {
+  OrgsOrgOnCallSlugEditRoute: OrgsOrgOnCallSlugEditRoute,
+}
+
+const OrgsOrgOnCallSlugRouteWithChildren =
+  OrgsOrgOnCallSlugRoute._addFileChildren(OrgsOrgOnCallSlugRouteChildren)
+
 interface OrgsOrgOnCallRouteChildren {
-  OrgsOrgOnCallSlugRoute: typeof OrgsOrgOnCallSlugRoute
+  OrgsOrgOnCallSlugRoute: typeof OrgsOrgOnCallSlugRouteWithChildren
   OrgsOrgOnCallNewRoute: typeof OrgsOrgOnCallNewRoute
   OrgsOrgOnCallIndexRoute: typeof OrgsOrgOnCallIndexRoute
 }
 
 const OrgsOrgOnCallRouteChildren: OrgsOrgOnCallRouteChildren = {
-  OrgsOrgOnCallSlugRoute: OrgsOrgOnCallSlugRoute,
+  OrgsOrgOnCallSlugRoute: OrgsOrgOnCallSlugRouteWithChildren,
   OrgsOrgOnCallNewRoute: OrgsOrgOnCallNewRoute,
   OrgsOrgOnCallIndexRoute: OrgsOrgOnCallIndexRoute,
 }

@@ -210,7 +210,7 @@ function ScheduleRow({ org, schedule, onDelete }: ScheduleRowProps) {
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("oncall:detail.edit")}>
             <Link
-              to="/orgs/$org/on-call/$slug"
+              to="/orgs/$org/on-call/$slug/edit"
               params={{ org, slug: schedule.slug }}
             >
               <Pencil className="h-4 w-4" />
