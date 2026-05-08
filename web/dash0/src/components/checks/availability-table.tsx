@@ -131,16 +131,22 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
     return subDays(now, 365).toISOString();
   }, []);
 
+  // Aggregated tiers only — the table never displays raw rows. ~70 buckets
+  // for a year of daily + monthly data fits well under the size cap. Bump
+  // the refetch floor to 60s; annual availability doesn't move that fast.
+  const tableRefetchInterval = Math.max(refetchInterval ?? 60_000, 60_000);
+
   const { data: allResults, isLoading: loadingResults } = useAllResults(org, {
     checkUid,
     periodStartAfter: yearAgo,
+    periodType: "hour,day,month",
     with: "availabilityPct",
     size: 1000,
-    refetchInterval,
+    refetchInterval: tableRefetchInterval,
   });
 
   // Filter results by periodType client-side
-  const { hourlyResults, dailyResults, monthlyResults, rawResults } = useMemo(() => {
+  const { hourlyResults, dailyResults, monthlyResults } = useMemo(() => {
     const data = allResults?.data || [];
     const todayStart = startOfDay(new Date());
     const thirtyDaysAgo = subDays(new Date(), 30);
@@ -148,14 +154,13 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
       hourlyResults: data.filter((r) => r.periodType === "hour" && r.periodStart && new Date(r.periodStart) >= todayStart),
       dailyResults: data.filter((r) => r.periodType === "day" && r.periodStart && new Date(r.periodStart) >= thirtyDaysAgo),
       monthlyResults: data.filter((r) => r.periodType === "month"),
-      rawResults: data.filter((r) => r.periodType === "raw"),
     };
   }, [allResults]);
 
   const { data: incidents, isLoading: loadingIncidents } = useIncidents(org, {
     checkUid,
     size: 100,
-    refetchInterval,
+    refetchInterval: tableRefetchInterval,
   });
 
   const isLoading = loadingResults || loadingIncidents;
@@ -172,29 +177,6 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
       ) as { availabilityPct: number }[];
       if (valid.length === 0) return null;
       return valid.reduce((sum, r) => sum + r.availabilityPct, 0) / valid.length;
-    }
-
-    function rawAvailability(
-      data: { status?: string; periodStart?: string }[] | undefined,
-      start: Date,
-      end: Date
-    ): number | null {
-      if (!data?.length) return null;
-      const inWindow = data.filter((r) => {
-        if (!r.periodStart) return true;
-        const t = new Date(r.periodStart);
-        return t >= start && t <= end;
-      });
-      // Lifecycle and transient rows are not measurements; mirror the backend
-      // filter (badges/service.go and job_aggregation.go) so a fresh check
-      // doesn't appear at ~75% while its only "created" row is still in the
-      // raw window.
-      const measured = inWindow.filter(
-        (r) => r.status !== "created" && r.status !== "running"
-      );
-      if (measured.length === 0) return null;
-      const successCount = measured.filter((r) => r.status === "up").length;
-      return (successCount * 100) / measured.length;
     }
 
     // Filter daily results for 7-day window
@@ -226,15 +208,6 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
 
       const incStats = computeIncidentStats(incidentData, period.getStart(), now);
 
-      // Fallback: compute from raw results if no aggregated data
-      if (availability == null) {
-        availability = rawAvailability(
-          rawResults,
-          period.getStart(),
-          now
-        );
-      }
-
       const downtime =
         availability != null
           ? (1 - availability / 100) * period.durationMs
@@ -251,7 +224,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
         average: incStats.average,
       };
     });
-  }, [hourlyResults, dailyResults, monthlyResults, rawResults, incidents]);
+  }, [hourlyResults, dailyResults, monthlyResults, incidents]);
 
   if (isLoading) {
     return (
