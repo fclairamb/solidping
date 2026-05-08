@@ -361,7 +361,7 @@ create table integration_connections (
   type              text not null, -- Integration type: slack, discord, webhook, email, betterstack, etc.
   name              text not null, -- Human-readable connection name
   enabled           integer not null default 1, -- Whether this connection actively sends notifications
-  is_default        integer not null default 1, -- If true, auto-attach to new checks for notifications
+  is_default        integer not null default 0, -- If true, auto-attach to new checks for notifications
   settings          text not null default '{}', -- Type-specific configuration as JSON (webhook URL, Slack channel, etc.)
   created_at        text not null default (datetime('now')),
   updated_at        text not null default (datetime('now')),

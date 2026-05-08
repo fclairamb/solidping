@@ -845,9 +845,7 @@ export function CheckForm({
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
         ...(mode === "create" || labelsDirty ? { labels } : {}),
-        ...((mode === "create" || connectionsDirty) && connectionUids !== null
-          ? { connectionUids }
-          : {}),
+        ...(connectionUids !== null ? { connectionUids } : {}),
         ...(dependsOnParents !== null
           ? {
               dependsOnParentUids: dependsOnParents.map((p) => p.uid),
