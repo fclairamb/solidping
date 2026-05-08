@@ -36,6 +36,10 @@ var migrationsFS embed.FS
 // a resource UID that is not part of the targeted section.
 var errResourceNotInSection = errors.New("resource not in section")
 
+// errSectionNotInPage signals that a status-page section reorder request
+// referenced a section UID that is not part of the targeted page.
+var errSectionNotInPage = errors.New("section not in status page")
+
 // Config holds SQLite configuration.
 type Config struct {
 	// DataDir is the directory where the database file will be stored
@@ -3416,6 +3420,36 @@ func (s *Service) ReorderStatusPageResources(
 			rows, _ := res.RowsAffected()
 			if rows == 0 {
 				return fmt.Errorf("%w: resource %q section %q", errResourceNotInSection, uid, sectionUID)
+			}
+		}
+
+		return nil
+	})
+}
+
+// ReorderStatusPageSections rewrites the position of every section in the
+// page so that orderedUIDs[i] gets position i+1. Done in a single
+// transaction; the caller is responsible for validating that orderedUIDs
+// exactly matches the page's current section set.
+func (s *Service) ReorderStatusPageSections(
+	ctx context.Context, statusPageUID string, orderedUIDs []string,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+		for i, uid := range orderedUIDs {
+			res, err := tx.NewUpdate().
+				Model((*models.StatusPageSection)(nil)).
+				Where("uid = ?", uid).
+				Where("status_page_uid = ?", statusPageUID).
+				Set("position = ?", i+1).
+				Set("updated_at = ?", now).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+			rows, _ := res.RowsAffected()
+			if rows == 0 {
+				return fmt.Errorf("%w: section %q page %q", errSectionNotInPage, uid, statusPageUID)
 			}
 		}
 
