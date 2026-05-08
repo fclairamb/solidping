@@ -275,7 +275,6 @@ export function CheckForm({
     mode === "edit" ? initialData?.uid : undefined,
   );
   const [connectionUids, setConnectionUids] = useState<string[] | null>(null);
-  const [connectionsDirty, setConnectionsDirty] = useState(false);
 
   // Seed once per fetch: in create mode preselect defaults; in edit mode use the
   // current bindings.
@@ -292,7 +291,6 @@ export function CheckForm({
   }, [mode, connections, existingBindings, connectionUids]);
 
   function toggleConnection(uid: string) {
-    setConnectionsDirty(true);
     setConnectionUids((prev) => {
       const cur = prev ?? [];
       return cur.includes(uid) ? cur.filter((u) => u !== uid) : [...cur, uid];
