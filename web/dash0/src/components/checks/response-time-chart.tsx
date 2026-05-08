@@ -598,54 +598,61 @@ export function ResponseTimeChart({
                 fill={`url(#fillGradient-${checkUid})`}
                 strokeWidth={2}
                 connectNulls={false}
-                animationDuration={300}
-                dot={(props) => {
-                  const dotProps = props as {
-                    cx?: number;
-                    cy?: number;
-                    payload?: ChartPoint;
-                    key?: React.Key | null;
-                  };
-                  const { cx, cy, payload, key } = dotProps;
-                  const reactKey =
-                    key == null ? undefined : (key as React.Key);
-                  if (cx == null || cy == null || !payload?.uid) {
-                    return <g key={reactKey} />;
-                  }
-                  const uid = payload.uid;
-                  // Cache the dot's coordinates for the pinned-box anchor.
-                  // Mutating a ref outside the React commit phase is safe —
-                  // it doesn't trigger a re-render.
-                  dotPositions.current[uid] = { cx, cy };
-                  const fill =
-                    payload.status === "down" ||
-                    payload.status === "unknown"
-                      ? COLOR_DOWN
-                      : COLOR_UP;
-                  const isSelected = selectedUid === uid;
-                  return (
-                    <circle
-                      key={reactKey}
-                      cx={cx}
-                      cy={cy}
-                      r={isSelected ? 5 : 3.5}
-                      fill={fill}
-                      stroke={isSelected ? "var(--primary)" : undefined}
-                      strokeWidth={isSelected ? 2 : 0}
-                      style={{ cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDotClick(uid);
-                      }}
-                    >
-                      <title>
-                        {isSelected
-                          ? t("detail.chart.dotClickAgain")
-                          : t("detail.chart.dotClickForDetails")}
-                      </title>
-                    </circle>
-                  );
-                }}
+                isAnimationActive={false}
+                dot={
+                  // Dense data → skip per-point circles entirely. activeDot
+                  // still renders the hover/selected dot and caches the anchor
+                  // so the pinned-result box can find it.
+                  chartData.length > 150
+                    ? false
+                    : (props) => {
+                        const dotProps = props as {
+                          cx?: number;
+                          cy?: number;
+                          payload?: ChartPoint;
+                          key?: React.Key | null;
+                        };
+                        const { cx, cy, payload, key } = dotProps;
+                        const reactKey =
+                          key == null ? undefined : (key as React.Key);
+                        if (cx == null || cy == null || !payload?.uid) {
+                          return <g key={reactKey} />;
+                        }
+                        const uid = payload.uid;
+                        // Cache the dot's coordinates for the pinned-box anchor.
+                        // Mutating a ref outside the React commit phase is safe —
+                        // it doesn't trigger a re-render.
+                        dotPositions.current[uid] = { cx, cy };
+                        const fill =
+                          payload.status === "down" ||
+                          payload.status === "unknown"
+                            ? COLOR_DOWN
+                            : COLOR_UP;
+                        const isSelected = selectedUid === uid;
+                        return (
+                          <circle
+                            key={reactKey}
+                            cx={cx}
+                            cy={cy}
+                            r={isSelected ? 5 : 3.5}
+                            fill={fill}
+                            stroke={isSelected ? "var(--primary)" : undefined}
+                            strokeWidth={isSelected ? 2 : 0}
+                            style={{ cursor: "pointer" }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDotClick(uid);
+                            }}
+                          >
+                            <title>
+                              {isSelected
+                                ? t("detail.chart.dotClickAgain")
+                                : t("detail.chart.dotClickForDetails")}
+                            </title>
+                          </circle>
+                        );
+                      }
+                }
                 activeDot={(props) => {
                   const dotProps = props as {
                     cx?: number;
@@ -660,6 +667,9 @@ export function ResponseTimeChart({
                     return <g key={reactKey} />;
                   }
                   const uid = payload.uid;
+                  // Always cache the active-dot anchor so the pinned-result box
+                  // works even when per-point dots are off.
+                  dotPositions.current[uid] = { cx, cy };
                   const fill =
                     payload.status === "down" ||
                     payload.status === "unknown"
