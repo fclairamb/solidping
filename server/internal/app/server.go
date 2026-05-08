@@ -698,6 +698,7 @@ func (s *Server) SetupRoutes() {
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
+	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
 	orgStatusPages.GET("/:statusPageUid/sections/:sectionUid", statusPagesHandler.GetSection)
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid", statusPagesHandler.UpdateSection)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid", statusPagesHandler.DeleteSection)
