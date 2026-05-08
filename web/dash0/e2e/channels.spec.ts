@@ -46,8 +46,12 @@ test.describe("Notification Channels", () => {
       .fill("https://example.com/webhook");
     await page.getByRole("button", { name: /create channel/i }).click();
 
-    // Should land on detail page
-    await page.waitForURL((url) => /\/channels\/[^/]+$/.test(url.pathname));
+    // Should land on detail page (UUID, not /channels/new — which also matches [^/]+).
+    await page.waitForURL((url) =>
+      /\/channels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+        url.pathname,
+      ),
+    );
     const detailUrl = page.url();
     const connectionUid = detailUrl.split("/").pop()!;
 
