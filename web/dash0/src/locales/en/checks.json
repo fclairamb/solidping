@@ -13,6 +13,9 @@
   "allChecks": "All checks",
   "internal": "Internal",
   "ungroupedChecks": "Ungrouped Checks",
+  "status": {
+    "validating": "Validating"
+  },
   "table": {
     "name": "Name",
     "type": "Type",

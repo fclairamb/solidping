@@ -108,27 +108,18 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return nil // Skip initial or unknown statuses
 	}
 
-	// Calculate new status
-	var newStatus models.CheckStatus
-	if isSuccess {
-		newStatus = models.CheckStatusUp
-	} else {
-		newStatus = models.CheckStatusDown
+	// Look up any active incident first — we need it to decide between
+	// `down` (incident open or threshold crossed) and `validating` (failures
+	// observed, threshold not crossed yet, no incident open).
+	activeIncident, lookupErr := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
+	if lookupErr != nil && !errors.Is(lookupErr, sql.ErrNoRows) {
+		return fmt.Errorf("failed to find active incident: %w", lookupErr)
 	}
 
-	// Update check status tracking
 	now := time.Now()
-	var statusChangedAt *time.Time
-	var newStreak int
-
-	if check.Status == newStatus {
-		// Same status: increment streak
-		newStreak = check.StatusStreak + 1
-	} else {
-		// Status changed: reset streak and update timestamp
-		newStreak = 1
-		statusChangedAt = &now
-	}
+	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
+		check, isSuccess, isFailure, activeIncident, now,
+	)
 
 	// Update check status in database
 	if err := s.db.UpdateCheckStatus(ctx, check.UID, newStatus, newStreak, statusChangedAt); err != nil {
@@ -142,20 +133,65 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		check.StatusChangedAt = statusChangedAt
 	}
 
-	return s.routeCheckResult(ctx, check, result, isFailure)
+	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
 }
 
-// routeCheckResult finds the active incident and dispatches to the per-check
-// or group state machine. Extracted from ProcessCheckResult to keep cyclomatic
-// complexity manageable.
-func (s *Service) routeCheckResult(
-	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
-) error {
-	incident, err := s.db.FindActiveIncidentByCheckUID(ctx, check.UID)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
-		return fmt.Errorf("failed to find active incident: %w", err)
+// deriveCheckStatus computes the next (status, streak, statusChangedAt) for
+// a check given the previous state, this result's success/failure flags, the
+// active incident (if any), and the current wall-clock time. Pure function
+// to keep ProcessCheckResult under the cyclomatic-complexity cap.
+//
+// The validating <-> down transitions are treated as sub-states of the same
+// failure lifecycle: streak keeps growing across the boundary and
+// statusChangedAt is not bumped. Only the up<->failing edge bumps it.
+func deriveCheckStatus(
+	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident, now time.Time,
+) (models.CheckStatus, int, *time.Time) {
+	prevWasFailure := check.Status == models.CheckStatusDown ||
+		check.Status == models.CheckStatusValidating
+
+	var newStreak int
+	var statusChangedAt *time.Time
+	if (isSuccess && check.Status == models.CheckStatusUp) ||
+		(isFailure && prevWasFailure) {
+		newStreak = check.StatusStreak + 1
+	} else {
+		newStreak = 1
+		statusChangedAt = &now
 	}
 
+	var newStatus models.CheckStatus
+	switch {
+	case isSuccess:
+		newStatus = models.CheckStatusUp
+	case activeIncident != nil || newStreak >= check.IncidentThreshold:
+		newStatus = models.CheckStatusDown
+	default:
+		newStatus = models.CheckStatusValidating
+	}
+
+	// validating <-> down do not bump statusChangedAt: both are sub-states
+	// of "the check is failing right now".
+	newIsFailure := newStatus == models.CheckStatusDown ||
+		newStatus == models.CheckStatusValidating
+	if statusChangedAt == nil && check.Status != newStatus &&
+		(!prevWasFailure || !newIsFailure) {
+		statusChangedAt = &now
+	}
+
+	return newStatus, newStreak, statusChangedAt
+}
+
+// routeCheckResultWithIncident dispatches to the per-check or group state
+// machine using a pre-fetched active incident (or nil). Extracted from
+// ProcessCheckResult to keep cyclomatic complexity manageable; the
+// pre-fetched incident lets the validating-state derivation upstream and the
+// state-machine downstream agree on what the active incident is for this
+// result.
+func (s *Service) routeCheckResultWithIncident(
+	ctx context.Context, check *models.Check, result *models.Result, isFailure bool,
+	incident *models.Incident,
+) error {
 	// Route uses the active incident's CheckGroupUID first; falls back to the
 	// check's group when there's no active incident yet.
 	isGroup := (incident != nil && incident.CheckGroupUID != nil) ||

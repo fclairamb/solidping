@@ -47,6 +47,7 @@ export interface Check {
   period?: string;
   createdAt?: string;
   updatedAt?: string;
+  status?: "up" | "down" | "validating" | "created" | "degraded" | "unknown";
   lastResult?: {
     uid?: string;
     status?: "up" | "down" | "error" | "timeout" | "created";

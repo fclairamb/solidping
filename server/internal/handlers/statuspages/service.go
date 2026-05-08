@@ -1212,6 +1212,11 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 		statusStr = "up"
 	case models.CheckStatusDown:
 		statusStr = "down"
+	case models.CheckStatusValidating:
+		// Validating is a transient internal state — the public status page
+		// should still read "up" until the failure is confirmed and an
+		// incident opens.
+		statusStr = "up"
 	case models.CheckStatusDegraded:
 		statusStr = "degraded"
 	}

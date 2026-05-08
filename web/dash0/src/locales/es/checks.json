@@ -13,6 +13,9 @@
   "allChecks": "Todas las comprobaciones",
   "internal": "Interna",
   "ungroupedChecks": "Comprobaciones sin grupo",
+  "status": {
+    "validating": "Validando"
+  },
   "table": {
     "name": "Nombre",
     "type": "Tipo",

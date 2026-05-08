@@ -54,11 +54,12 @@ export function CheckSummaryCards({
   totalIncidents,
 }: CheckSummaryCardsProps) {
   const { t } = useTranslation("checks");
-  const isUp = check.lastResult?.status === "up";
+  const summaryStatus = check.status ?? check.lastResult?.status;
+  const isUp = summaryStatus === "up";
   const isDown =
-    check.lastResult?.status === "down" ||
-    check.lastResult?.status === "error" ||
-    check.lastResult?.status === "timeout";
+    summaryStatus === "down" ||
+    summaryStatus === "error" ||
+    summaryStatus === "timeout";
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
