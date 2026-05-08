@@ -281,13 +281,22 @@ export function ResponseTimeChart({
             : "raw"
           : "raw";
 
+  // Derive a chart-specific refetch floor: 30s for hour/day, 5min for
+  // week/month. The user just wants the line to move within a minute or two
+  // — the page's fast first-30s window doesn't apply to the graph.
+  const baseInterval = periodMs ?? refetchInterval ?? 60_000;
+  const chartRefetchInterval =
+    timeRange === "week" || timeRange === "month"
+      ? Math.max(baseInterval, 5 * 60_000)
+      : Math.max(baseInterval, 30_000);
+
   const { data: results, isLoading } = useResults(org, {
     checkUid,
     periodStartAfter,
     periodType,
     with: "durationMs,region",
     size: 500,
-    refetchInterval,
+    refetchInterval: chartRefetchInterval,
   });
 
   const { chartData, regions, formatSpanMs, domainMin, domainMax, gaps } =
