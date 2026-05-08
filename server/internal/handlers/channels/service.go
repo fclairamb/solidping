@@ -1,5 +1,7 @@
-// Package connections provides HTTP handlers for integration connection management.
-package connections
+// Package channels provides HTTP handlers for notification channel management
+// (Slack, Discord, webhook, email, etc.). The legacy `integration_connections`
+// table backs this domain — see spec 2026-05-07-03 for the rename rationale.
+package channels
 
 import (
 	"context"
@@ -40,8 +42,8 @@ func NewService(dbService db.Service, creds credentials.Service) *Service {
 	}
 }
 
-// ConnectionResponse represents a connection in API responses.
-type ConnectionResponse struct {
+// ChannelResponse represents a connection in API responses.
+type ChannelResponse struct {
 	UID       string         `json:"uid"`
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
@@ -59,11 +61,11 @@ type ConnectionResponse struct {
 
 // ListConnectionsResponse represents the response for listing connections.
 type ListConnectionsResponse struct {
-	Data []*ConnectionResponse `json:"data"`
+	Data []*ChannelResponse `json:"data"`
 }
 
-// CreateConnectionRequest represents the request to create a connection.
-type CreateConnectionRequest struct {
+// CreateChannelRequest represents the request to create a connection.
+type CreateChannelRequest struct {
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
 	Enabled   *bool          `json:"enabled,omitempty"`
@@ -71,8 +73,8 @@ type CreateConnectionRequest struct {
 	Settings  map[string]any `json:"settings,omitempty"`
 }
 
-// UpdateConnectionRequest represents the request to update a connection.
-type UpdateConnectionRequest struct {
+// UpdateChannelRequest represents the request to update a connection.
+type UpdateChannelRequest struct {
 	Name      *string        `json:"name,omitempty"`
 	Enabled   *bool          `json:"enabled,omitempty"`
 	IsDefault *bool          `json:"isDefault,omitempty"`
@@ -83,8 +85,8 @@ type UpdateConnectionRequest struct {
 // already-public side: secret keys live in SettingsPrivate (encrypted) and
 // are exposed only as names via SettingsPrivateKeys so the dashboard can
 // show placeholder pills.
-func toResponse(conn *models.IntegrationConnection, includeSettings bool) *ConnectionResponse {
-	resp := &ConnectionResponse{
+func toResponse(conn *models.Channel, includeSettings bool) *ChannelResponse {
+	resp := &ChannelResponse{
 		UID:       conn.UID,
 		Type:      string(conn.Type),
 		Name:      conn.Name,
@@ -120,8 +122,8 @@ func toResponse(conn *models.IntegrationConnection, includeSettings bool) *Conne
 	return resp
 }
 
-// ListConnections returns all connections for an organization.
-func (s *Service) ListConnections(
+// ListChannels returns all connections for an organization.
+func (s *Service) ListChannels(
 	ctx context.Context, orgSlug string, connType *string,
 ) (*ListConnectionsResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -133,7 +135,7 @@ func (s *Service) ListConnections(
 		return nil, err
 	}
 
-	filter := &models.ListIntegrationConnectionsFilter{
+	filter := &models.ListChannelsFilter{
 		OrganizationUID: org.UID,
 	}
 
@@ -142,13 +144,13 @@ func (s *Service) ListConnections(
 		filter.Type = &ct
 	}
 
-	connections, err := s.db.ListIntegrationConnections(ctx, filter)
+	connections, err := s.db.ListChannels(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 
 	response := &ListConnectionsResponse{
-		Data: make([]*ConnectionResponse, 0, len(connections)),
+		Data: make([]*ChannelResponse, 0, len(connections)),
 	}
 
 	for _, conn := range connections {
@@ -158,10 +160,10 @@ func (s *Service) ListConnections(
 	return response, nil
 }
 
-// GetConnection returns a connection by UID.
-func (s *Service) GetConnection(
+// GetChannel returns a connection by UID.
+func (s *Service) GetChannel(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*ConnectionResponse, error) {
+) (*ChannelResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -171,7 +173,7 @@ func (s *Service) GetConnection(
 		return nil, err
 	}
 
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrConnectionNotFound
@@ -188,10 +190,10 @@ func (s *Service) GetConnection(
 	return toResponse(conn, true), nil
 }
 
-// CreateConnection creates a new connection.
-func (s *Service) CreateConnection(
-	ctx context.Context, orgSlug string, req CreateConnectionRequest,
-) (*ConnectionResponse, error) {
+// CreateChannel creates a new connection.
+func (s *Service) CreateChannel(
+	ctx context.Context, orgSlug string, req CreateChannelRequest,
+) (*ChannelResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -214,7 +216,7 @@ func (s *Service) CreateConnection(
 		return nil, ErrInvalidConnectionType
 	}
 
-	conn := models.NewIntegrationConnection(org.UID, connType, req.Name)
+	conn := models.NewChannel(org.UID, connType, req.Name)
 
 	if req.Enabled != nil {
 		conn.Enabled = *req.Enabled
@@ -228,7 +230,7 @@ func (s *Service) CreateConnection(
 		return nil, err
 	}
 
-	if err := s.db.CreateIntegrationConnection(ctx, conn); err != nil {
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
 		return nil, err
 	}
 
@@ -239,10 +241,10 @@ func (s *Service) CreateConnection(
 	return toResponse(conn, true), nil
 }
 
-// UpdateConnection updates a connection.
-func (s *Service) UpdateConnection(
-	ctx context.Context, orgSlug, connectionUID string, req UpdateConnectionRequest,
-) (*ConnectionResponse, error) {
+// UpdateChannel updates a connection.
+func (s *Service) UpdateChannel(
+	ctx context.Context, orgSlug, connectionUID string, req UpdateChannelRequest,
+) (*ChannelResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -252,7 +254,7 @@ func (s *Service) UpdateConnection(
 		return nil, err
 	}
 
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, ErrConnectionNotFound
@@ -266,7 +268,7 @@ func (s *Service) UpdateConnection(
 		return nil, ErrConnectionNotFound
 	}
 
-	update := &models.IntegrationConnectionUpdate{
+	update := &models.ChannelUpdate{
 		Name:      req.Name,
 		Enabled:   req.Enabled,
 		IsDefault: req.IsDefault,
@@ -295,12 +297,12 @@ func (s *Service) UpdateConnection(
 		update.ClearSettingsPrivate = conn.SettingsPrivate == nil
 	}
 
-	if updateErr := s.db.UpdateIntegrationConnection(ctx, connectionUID, update); updateErr != nil {
+	if updateErr := s.db.UpdateChannel(ctx, connectionUID, update); updateErr != nil {
 		return nil, updateErr
 	}
 
 	// Fetch updated connection
-	conn, err = s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err = s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		return nil, err
 	}
@@ -314,7 +316,7 @@ func (s *Service) UpdateConnection(
 // connection. When encryption is disabled at the server, secrets stay
 // plaintext on Settings (logged-once startup warning covers the gap).
 func (s *Service) applySettingsEncryption(
-	ctx context.Context, conn *models.IntegrationConnection, effective map[string]any,
+	ctx context.Context, conn *models.Channel, effective map[string]any,
 ) error {
 	if effective == nil {
 		effective = map[string]any{}
@@ -360,7 +362,7 @@ func (s *Service) applySettingsEncryption(
 // of a connection. Used by the PATCH path so secret-preservation has the
 // existing values to merge into.
 func (s *Service) loadDecryptedSettings(
-	ctx context.Context, conn *models.IntegrationConnection,
+	ctx context.Context, conn *models.Channel,
 ) (map[string]any, error) {
 	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
 		out := make(map[string]any, len(conn.Settings))
@@ -392,8 +394,8 @@ func (s *Service) loadDecryptedSettings(
 	return out, nil
 }
 
-// DeleteConnection deletes a connection.
-func (s *Service) DeleteConnection(ctx context.Context, orgSlug, connectionUID string) error {
+// DeleteChannel deletes a connection.
+func (s *Service) DeleteChannel(ctx context.Context, orgSlug, connectionUID string) error {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -403,7 +405,7 @@ func (s *Service) DeleteConnection(ctx context.Context, orgSlug, connectionUID s
 		return err
 	}
 
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrConnectionNotFound
@@ -417,5 +419,5 @@ func (s *Service) DeleteConnection(ctx context.Context, orgSlug, connectionUID s
 		return ErrConnectionNotFound
 	}
 
-	return s.db.DeleteIntegrationConnection(ctx, connectionUID)
+	return s.db.DeleteChannel(ctx, connectionUID)
 }

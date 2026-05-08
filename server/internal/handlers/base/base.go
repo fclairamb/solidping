@@ -26,7 +26,7 @@ const (
 	ErrorCodeOrganizationNotFound      ErrorCode = "ORGANIZATION_NOT_FOUND"
 	ErrorCodeUserNotFound              ErrorCode = "USER_NOT_FOUND"
 	ErrorCodeCheckNotFound             ErrorCode = "CHECK_NOT_FOUND"
-	ErrorCodeConnectionNotFound        ErrorCode = "CONNECTION_NOT_FOUND"
+	ErrorCodeChannelNotFound           ErrorCode = "CHANNEL_NOT_FOUND"
 	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
 	ErrorCodeInvalidToken              ErrorCode = "INVALID_TOKEN"
 	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"

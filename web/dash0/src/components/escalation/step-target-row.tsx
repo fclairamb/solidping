@@ -9,7 +9,7 @@ import { AlertTriangle } from "lucide-react";
 import {
   type EscalationPolicyTarget,
   type EscalationTargetType,
-  useConnections,
+  useChannels,
   useMembers,
   useOnCallSchedules,
 } from "@/api/hooks";
@@ -180,7 +180,7 @@ function ConnectionSelect({
   onChange: (uid: string) => void;
 }) {
   const { t } = useTranslation(["escalation"]);
-  const { data: connections, isLoading } = useConnections(org);
+  const { data: connections, isLoading } = useChannels(org);
 
   if (isLoading) {
     return <SelectShell placeholder={t("escalation:editor.loadingTargets")} />;

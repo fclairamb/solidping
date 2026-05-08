@@ -27,12 +27,12 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
-// ListConnections handles GET /api/v1/orgs/:org/checks/:check/connections.
-func (h *Handler) ListConnections(writer http.ResponseWriter, req bunrouter.Request) error {
+// ListChannels handles GET /api/v1/orgs/:org/checks/:check/connections.
+func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkID := req.Param("check")
 
-	connections, err := h.svc.ListConnections(req.Context(), orgSlug, checkID)
+	connections, err := h.svc.ListChannels(req.Context(), orgSlug, checkID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}

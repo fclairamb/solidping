@@ -28,8 +28,8 @@ func NewService(dbService db.Service) *Service {
 	return &Service{db: dbService}
 }
 
-// ConnectionResponse represents a connection in API responses.
-type ConnectionResponse struct {
+// ChannelResponse represents a connection in API responses.
+type ChannelResponse struct {
 	UID       string `json:"uid"`
 	Type      string `json:"type"`
 	Name      string `json:"name"`
@@ -39,7 +39,7 @@ type ConnectionResponse struct {
 
 // ListConnectionsResponse represents the response for listing connections.
 type ListConnectionsResponse struct {
-	Data []*ConnectionResponse `json:"data"`
+	Data []*ChannelResponse `json:"data"`
 }
 
 // SetConnectionsRequest represents the request to set all connections for a check.
@@ -62,8 +62,8 @@ type ConnectionSettingsResponse struct {
 	Settings  *models.JSONMap `json:"settings,omitempty"`
 }
 
-// ListConnections lists all connections for a check.
-func (s *Service) ListConnections(
+// ListChannels lists all connections for a check.
+func (s *Service) ListChannels(
 	ctx context.Context, orgSlug, checkIdentifier string,
 ) (*ListConnectionsResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -79,16 +79,16 @@ func (s *Service) ListConnections(
 		return nil, ErrCheckNotFound
 	}
 
-	connections, err := s.db.ListConnectionsForCheck(ctx, check.UID)
+	connections, err := s.db.ListChannelsForCheck(ctx, check.UID)
 	if err != nil {
 		return nil, err
 	}
 
 	response := &ListConnectionsResponse{
-		Data: make([]*ConnectionResponse, 0, len(connections)),
+		Data: make([]*ChannelResponse, 0, len(connections)),
 	}
 	for _, conn := range connections {
-		response.Data = append(response.Data, &ConnectionResponse{
+		response.Data = append(response.Data, &ChannelResponse{
 			UID:       conn.UID,
 			Type:      string(conn.Type),
 			Name:      conn.Name,
@@ -119,7 +119,7 @@ func (s *Service) SetConnections(
 
 	// Validate all connections exist and belong to org
 	for _, connUID := range req.ConnectionUIDs {
-		conn, connErr := s.db.GetIntegrationConnection(ctx, connUID)
+		conn, connErr := s.db.GetChannel(ctx, connUID)
 		if connErr != nil {
 			return ErrConnectionNotFound
 		}
@@ -146,7 +146,7 @@ func (s *Service) AddConnection(ctx context.Context, orgSlug, checkIdentifier, c
 		return ErrCheckNotFound
 	}
 
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil || conn.OrganizationUID != org.UID {
 		return ErrConnectionNotFound
 	}
@@ -190,7 +190,7 @@ func (s *Service) GetConnectionSettings(
 		return nil, ErrCheckNotFound
 	}
 
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil || conn.OrganizationUID != org.UID {
 		return nil, ErrConnectionNotFound
 	}
@@ -231,7 +231,7 @@ func (s *Service) UpdateConnectionSettings(
 	}
 
 	// Verify connection exists and belongs to org
-	conn, err := s.db.GetIntegrationConnection(ctx, connectionUID)
+	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil || conn.OrganizationUID != org.UID {
 		return ErrConnectionNotFound
 	}

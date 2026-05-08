@@ -80,7 +80,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	log := jctx.Logger
 
 	// 1. Load connection
-	connection, err := jctx.DBService.GetIntegrationConnection(ctx, r.config.ConnectionUID)
+	connection, err := jctx.DBService.GetChannel(ctx, r.config.ConnectionUID)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrConnectionNotFound, err)
 	}
