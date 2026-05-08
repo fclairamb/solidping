@@ -1765,12 +1765,14 @@ function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSec
       <div className="grid gap-2 sm:grid-cols-2">
         {visible.map((c) => {
           const checked = selected.includes(c.uid);
+          const cbId = `notify-via-${c.uid}`;
           return (
             <label
               key={c.uid}
+              htmlFor={cbId}
               className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50"
             >
-              <Checkbox checked={checked} onCheckedChange={() => onToggle(c.uid)} />
+              <Checkbox id={cbId} checked={checked} onCheckedChange={() => onToggle(c.uid)} />
               <ChannelIcon type={c.type} className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm flex-1 truncate">{c.name}</span>
               <span className="text-xs text-muted-foreground">{channelLabel(c.type)}</span>
