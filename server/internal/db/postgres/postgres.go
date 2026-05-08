@@ -31,6 +31,10 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// errResourceNotInSection signals that a status-page reorder request referenced
+// a resource UID that is not part of the targeted section.
+var errResourceNotInSection = errors.New("resource not in section")
+
 // Config holds PostgreSQL connection configuration.
 type Config struct {
 	// DSN is the PostgreSQL connection string (used when not using embedded)
@@ -3426,7 +3430,7 @@ func (s *Service) ReorderStatusPageResources(
 			}
 			rows, _ := res.RowsAffected()
 			if rows == 0 {
-				return fmt.Errorf("resource %q not found in section %q", uid, sectionUID)
+				return fmt.Errorf("%w: resource %q section %q", errResourceNotInSection, uid, sectionUID)
 			}
 		}
 
