@@ -502,27 +502,27 @@ func (m *mockDBService) ListEvents(_ context.Context, _ *models.ListEventsFilter
 	panic("not implemented")
 }
 
-func (m *mockDBService) CreateIntegrationConnection(_ context.Context, _ *models.IntegrationConnection) error {
+func (m *mockDBService) CreateChannel(_ context.Context, _ *models.Channel) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetIntegrationConnection(_ context.Context, _ string) (*models.IntegrationConnection, error) {
+func (m *mockDBService) GetChannel(_ context.Context, _ string) (*models.Channel, error) {
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListIntegrationConnections(
-	_ context.Context, _ *models.ListIntegrationConnectionsFilter,
-) ([]*models.IntegrationConnection, error) {
+func (m *mockDBService) ListChannels(
+	_ context.Context, _ *models.ListChannelsFilter,
+) ([]*models.Channel, error) {
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateIntegrationConnection(
-	_ context.Context, _ string, _ *models.IntegrationConnectionUpdate,
+func (m *mockDBService) UpdateChannel(
+	_ context.Context, _ string, _ *models.ChannelUpdate,
 ) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) DeleteIntegrationConnection(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteChannel(_ context.Context, _ string) error {
 	panic("not implemented")
 }
 
@@ -530,7 +530,7 @@ func (m *mockDBService) CreateCheckConnection(_ context.Context, _ *models.Check
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListConnectionsForCheck(_ context.Context, _ string) ([]*models.IntegrationConnection, error) {
+func (m *mockDBService) ListChannelsForCheck(_ context.Context, _ string) ([]*models.Channel, error) {
 	panic("not implemented")
 }
 
@@ -550,7 +550,7 @@ func (m *mockDBService) SetCheckConnections(_ context.Context, _ string, _ []str
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListDefaultConnections(_ context.Context, _ string) ([]*models.IntegrationConnection, error) {
+func (m *mockDBService) ListDefaultChannels(_ context.Context, _ string) ([]*models.Channel, error) {
 	panic("not implemented")
 }
 
@@ -764,9 +764,9 @@ func (m *mockDBService) ListSystemParameters(_ context.Context) ([]*models.Param
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetIntegrationConnectionByProperty(
+func (m *mockDBService) GetChannelByProperty(
 	_ context.Context, _, _, _ string,
-) (*models.IntegrationConnection, error) {
+) (*models.Channel, error) {
 	panic("not implemented")
 }
 
@@ -1217,7 +1217,7 @@ func TestSlackSender_Send_MissingAccessToken(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.IntegrationConnection{
+		Connection: &models.Channel{
 			Settings: models.JSONMap{
 				"channel_id": "C123",
 				// access_token is missing
@@ -1248,7 +1248,7 @@ func TestSlackSender_Send_MissingChannel(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.IntegrationConnection{
+		Connection: &models.Channel{
 			Settings: models.JSONMap{
 				"access_token": "xoxb-test-token",
 				// channel_id is missing
@@ -1279,7 +1279,7 @@ func TestSlackSender_Send_StateEntryGetError(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.IntegrationConnection{
+		Connection: &models.Channel{
 			Settings: models.JSONMap{
 				"access_token": "xoxb-test-token",
 				"channel_id":   "C123",

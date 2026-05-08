@@ -2798,15 +2798,15 @@ func (s *Service) DeleteOrgParameter(ctx context.Context, orgUID, key string) er
 
 // IntegrationConnection operations
 
-// CreateIntegrationConnection creates a new integration connection.
-func (s *Service) CreateIntegrationConnection(ctx context.Context, conn *models.IntegrationConnection) error {
+// CreateChannel creates a new integration connection.
+func (s *Service) CreateChannel(ctx context.Context, conn *models.Channel) error {
 	_, err := s.db.NewInsert().Model(conn).Exec(ctx)
 	return err
 }
 
-// GetIntegrationConnection retrieves an integration connection by UID.
-func (s *Service) GetIntegrationConnection(ctx context.Context, uid string) (*models.IntegrationConnection, error) {
-	conn := new(models.IntegrationConnection)
+// GetChannel retrieves an integration connection by UID.
+func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, error) {
+	conn := new(models.Channel)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2820,11 +2820,11 @@ func (s *Service) GetIntegrationConnection(ctx context.Context, uid string) (*mo
 	return conn, nil
 }
 
-// GetIntegrationConnectionByProperty retrieves a connection by a settings property.
-func (s *Service) GetIntegrationConnectionByProperty(
+// GetChannelByProperty retrieves a connection by a settings property.
+func (s *Service) GetChannelByProperty(
 	ctx context.Context, connType, propertyName, propertyValue string,
-) (*models.IntegrationConnection, error) {
-	conn := new(models.IntegrationConnection)
+) (*models.Channel, error) {
+	conn := new(models.Channel)
 
 	jsonPath := "$." + propertyName
 
@@ -2841,11 +2841,11 @@ func (s *Service) GetIntegrationConnectionByProperty(
 	return conn, nil
 }
 
-// ListIntegrationConnections lists integration connections with optional filtering.
-func (s *Service) ListIntegrationConnections(
-	ctx context.Context, filter *models.ListIntegrationConnectionsFilter,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+// ListChannels lists integration connections with optional filtering.
+func (s *Service) ListChannels(
+	ctx context.Context, filter *models.ListChannelsFilter,
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	query := s.db.NewSelect().
 		Model(&connections).
@@ -2866,12 +2866,12 @@ func (s *Service) ListIntegrationConnections(
 	return connections, err
 }
 
-// UpdateIntegrationConnection updates an integration connection.
-func (s *Service) UpdateIntegrationConnection(
-	ctx context.Context, uid string, update *models.IntegrationConnectionUpdate,
+// UpdateChannel updates an integration connection.
+func (s *Service) UpdateChannel(
+	ctx context.Context, uid string, update *models.ChannelUpdate,
 ) error {
 	query := s.db.NewUpdate().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
@@ -2908,10 +2908,10 @@ func (s *Service) UpdateIntegrationConnection(
 	return err
 }
 
-// DeleteIntegrationConnection soft-deletes an integration connection.
-func (s *Service) DeleteIntegrationConnection(ctx context.Context, uid string) error {
+// DeleteChannel soft-deletes an integration connection.
+func (s *Service) DeleteChannel(ctx context.Context, uid string) error {
 	_, err := s.db.NewUpdate().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Set("deleted_at = ?", time.Now()).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2939,11 +2939,11 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 	return err
 }
 
-// ListConnectionsForCheck returns all connections associated with a check.
-func (s *Service) ListConnectionsForCheck(
+// ListChannelsForCheck returns all connections associated with a check.
+func (s *Service) ListChannelsForCheck(
 	ctx context.Context, checkUID string,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -2988,11 +2988,11 @@ func (s *Service) SetCheckConnections(ctx context.Context, checkUID string, conn
 	})
 }
 
-// ListDefaultConnections returns all default connections for an organization.
-func (s *Service) ListDefaultConnections(
+// ListDefaultChannels returns all default connections for an organization.
+func (s *Service) ListDefaultChannels(
 	ctx context.Context, orgUID string,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -4192,7 +4192,7 @@ func (s *Service) CountCheckGroupsForOrg(ctx context.Context, orgUID string) (in
 // CountConnectionsForOrg counts non-deleted integration connections for the org.
 func (s *Service) CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error) {
 	count, err := s.db.NewSelect().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Count(ctx)

@@ -14,11 +14,11 @@ import (
 
 // Payload contains all data needed to send a notification.
 type Payload struct {
-	EventType               string                        // "incident.created", "incident.resolved", "incident.escalated"
-	Incident                *models.Incident              // The incident
-	Check                   *models.Check                 // The check
-	Connection              *models.IntegrationConnection // The connection to send via
-	CheckConnectionSettings *models.JSONMap               // Optional check-level override settings
+	EventType               string           // "incident.created", "incident.resolved", "incident.escalated"
+	Incident                *models.Incident // The incident
+	Check                   *models.Check    // The check
+	Connection              *models.Channel  // The connection to send via
+	CheckConnectionSettings *models.JSONMap  // Optional check-level override settings
 	// OrgSlug is the organization slug used to build user-facing URLs (e.g.
 	// magic-link ack URLs). Populated by the notification job runner.
 	OrgSlug string

@@ -263,23 +263,23 @@ type Service interface {
 	ListSystemParameters(ctx context.Context) ([]*models.Parameter, error)
 
 	// IntegrationConnection operations
-	CreateIntegrationConnection(ctx context.Context, conn *models.IntegrationConnection) error
-	GetIntegrationConnection(ctx context.Context, uid string) (*models.IntegrationConnection, error)
-	GetIntegrationConnectionByProperty(
+	CreateChannel(ctx context.Context, conn *models.Channel) error
+	GetChannel(ctx context.Context, uid string) (*models.Channel, error)
+	GetChannelByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
-	) (*models.IntegrationConnection, error)
-	ListIntegrationConnections(
-		ctx context.Context, filter *models.ListIntegrationConnectionsFilter,
-	) ([]*models.IntegrationConnection, error)
-	UpdateIntegrationConnection(ctx context.Context, uid string, update *models.IntegrationConnectionUpdate) error
-	DeleteIntegrationConnection(ctx context.Context, uid string) error
+	) (*models.Channel, error)
+	ListChannels(
+		ctx context.Context, filter *models.ListChannelsFilter,
+	) ([]*models.Channel, error)
+	UpdateChannel(ctx context.Context, uid string, update *models.ChannelUpdate) error
+	DeleteChannel(ctx context.Context, uid string) error
 
 	// CheckConnection operations
 	CreateCheckConnection(ctx context.Context, conn *models.CheckConnection) error
 	DeleteCheckConnection(ctx context.Context, checkUID, connectionUID string) error
-	ListConnectionsForCheck(ctx context.Context, checkUID string) ([]*models.IntegrationConnection, error)
+	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Channel, error)
 	SetCheckConnections(ctx context.Context, checkUID string, connectionUIDs []string) error
-	ListDefaultConnections(ctx context.Context, orgUID string) ([]*models.IntegrationConnection, error)
+	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Channel, error)
 	UpdateCheckConnection(ctx context.Context, checkUID, connectionUID string, update *models.CheckConnectionUpdate) error
 	GetCheckConnection(ctx context.Context, checkUID, connectionUID string) (*models.CheckConnection, error)
 	ListCheckConnectionsWithSettings(ctx context.Context, checkUID string) ([]*models.CheckConnection, error)

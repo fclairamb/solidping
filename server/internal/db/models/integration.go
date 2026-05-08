@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
 // ConnectionType represents the type of integration connection.
@@ -23,8 +24,17 @@ const (
 	ConnectionTypePushover   ConnectionType = "pushover"
 )
 
-// IntegrationConnection represents a connection to an external integration.
-type IntegrationConnection struct {
+// Channel represents a notification target — a Slack channel, Discord
+// webhook, email recipient list, generic webhook URL, etc. The legacy
+// table name `integration_connections` is preserved via the bun tag
+// until the follow-up DB-rename spec ships; the model name and all
+// callers use `Channel` to match the user-facing terminology.
+type Channel struct {
+	// Both the table name and the SQL alias are pinned to the legacy name so
+	// existing raw queries and joins keep matching. The DB-rename spec
+	// (Phase 3) drops these tags when it renames the underlying table.
+	bun.BaseModel `bun:"table:integration_connections,alias:integration_connection"`
+
 	UID             string         `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string         `bun:"organization_uid,notnull"`
 	Type            ConnectionType `bun:"type,notnull"`
@@ -45,11 +55,11 @@ type IntegrationConnection struct {
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
 }
 
-// NewIntegrationConnection creates a new integration connection with generated UID.
-func NewIntegrationConnection(orgUID string, connType ConnectionType, name string) *IntegrationConnection {
+// NewChannel creates a new integration connection with generated UID.
+func NewChannel(orgUID string, connType ConnectionType, name string) *Channel {
 	now := time.Now()
 
-	return &IntegrationConnection{
+	return &Channel{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,
 		Type:            connType,
@@ -62,8 +72,8 @@ func NewIntegrationConnection(orgUID string, connType ConnectionType, name strin
 	}
 }
 
-// IntegrationConnectionUpdate represents fields that can be updated.
-type IntegrationConnectionUpdate struct {
+// ChannelUpdate represents fields that can be updated.
+type ChannelUpdate struct {
 	Name                 *string
 	Enabled              *bool
 	IsDefault            *bool
@@ -73,8 +83,8 @@ type IntegrationConnectionUpdate struct {
 	ClearSettingsPrivate bool
 }
 
-// ListIntegrationConnectionsFilter represents filter options for listing connections.
-type ListIntegrationConnectionsFilter struct {
+// ListChannelsFilter represents filter options for listing connections.
+type ListChannelsFilter struct {
 	OrganizationUID string
 	Type            *ConnectionType
 	Enabled         *bool

@@ -1007,7 +1007,7 @@ func (s *Service) queueGroupNotifications(
 			continue
 		}
 
-		conns, err := s.db.ListConnectionsForCheck(ctx, member.CheckUID)
+		conns, err := s.db.ListChannelsForCheck(ctx, member.CheckUID)
 		if err != nil {
 			slog.WarnContext(ctx, "Failed to load connections for group member",
 				"checkUid", member.CheckUID, "error", err)
@@ -1060,7 +1060,7 @@ func (s *Service) queueNotifications(
 	ctx context.Context, orgUID, checkUID, incidentUID string, eventType models.EventType,
 ) {
 	// Get connections for this check
-	connections, err := s.db.ListConnectionsForCheck(ctx, checkUID)
+	connections, err := s.db.ListChannelsForCheck(ctx, checkUID)
 	if err != nil {
 		slog.WarnContext(ctx, "Failed to get connections for check", "checkUid", checkUID, "error", err)
 		return // Don't fail incident processing for notification errors

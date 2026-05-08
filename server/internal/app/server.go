@@ -39,12 +39,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
-	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
@@ -480,7 +480,7 @@ func (s *Server) SetupRoutes() {
 	// Check-connection routes (authentication required)
 	checkConnectionsService := checkconnections.NewService(s.dbService)
 	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
-	orgChecks.GET("/:check/connections", checkConnectionsHandler.ListConnections)
+	orgChecks.GET("/:check/connections", checkConnectionsHandler.ListChannels)
 	orgChecks.PUT("/:check/connections", checkConnectionsHandler.SetConnections)
 	orgChecks.POST("/:check/connections/:connection", checkConnectionsHandler.AddConnection)
 	orgChecks.DELETE("/:check/connections/:connection", checkConnectionsHandler.RemoveConnection)
@@ -676,15 +676,15 @@ func (s *Server) SetupRoutes() {
 	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
 	// alias is additive so the dashboard, MCP, and CLI can switch over
 	// without an external client breakage. PR-5 drops `/connections`.
-	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
-	connectionsHandler := connections.NewHandler(connectionsService, s.config)
+	channelsService := channels.NewService(s.dbService, s.services.Credentials)
+	channelsHandler := channels.NewHandler(channelsService, s.config)
 	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
 		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
-		group.GET("", connectionsHandler.ListConnections)
-		group.POST("", connectionsHandler.CreateConnection)
-		group.GET("/:uid", connectionsHandler.GetConnection)
-		group.PATCH("/:uid", connectionsHandler.UpdateConnection)
-		group.DELETE("/:uid", connectionsHandler.DeleteConnection)
+		group.GET("", channelsHandler.ListChannels)
+		group.POST("", channelsHandler.CreateChannel)
+		group.GET("/:uid", channelsHandler.GetChannel)
+		group.PATCH("/:uid", channelsHandler.UpdateChannel)
+		group.DELETE("/:uid", channelsHandler.DeleteChannel)
 	}
 
 	// Status pages routes (authentication required)
@@ -1551,7 +1551,7 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 		return
 	}
 
-	connCount, err := bun.NewSelect().Model((*models.IntegrationConnection)(nil)).
+	connCount, err := bun.NewSelect().Model((*models.Channel)(nil)).
 		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
 	if err != nil {
 		return

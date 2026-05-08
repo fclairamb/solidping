@@ -869,7 +869,7 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 
 	// Auto-attach default connections
-	defaultConnections, err := s.db.ListDefaultConnections(ctx, org.UID)
+	defaultConnections, err := s.db.ListDefaultChannels(ctx, org.UID)
 	if err == nil {
 		for _, conn := range defaultConnections {
 			checkConn := models.NewCheckConnection(check.UID, conn.UID, org.UID)

@@ -17,9 +17,9 @@ type CheckConnection struct {
 	UpdatedAt       time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 
 	// Relations (optional, for eager loading)
-	Check        *Check                 `bun:"rel:belongs-to,join:check_uid=uid"`
-	Connection   *IntegrationConnection `bun:"rel:belongs-to,join:connection_uid=uid"`
-	Organization *Organization          `bun:"rel:belongs-to,join:organization_uid=uid"`
+	Check        *Check        `bun:"rel:belongs-to,join:check_uid=uid"`
+	Connection   *Channel      `bun:"rel:belongs-to,join:connection_uid=uid"`
+	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
 }
 
 // CheckConnectionUpdate represents fields that can be updated for a check-connection.
@@ -43,7 +43,7 @@ func NewCheckConnection(checkUID, connectionUID, organizationUID string) *CheckC
 
 // GetEffectiveSettings merges connection defaults with check-level overrides.
 // The check-connection settings take precedence over connection defaults.
-func GetEffectiveSettings(connection *IntegrationConnection, checkConnection *CheckConnection) JSONMap {
+func GetEffectiveSettings(connection *Channel, checkConnection *CheckConnection) JSONMap {
 	effective := make(JSONMap)
 
 	// Copy connection defaults
