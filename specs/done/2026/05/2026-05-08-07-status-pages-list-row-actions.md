@@ -132,3 +132,21 @@ In `status-pages.index.tsx`:
 8. Smoke-test the existing Playwright suite under `web/dash0/e2e/`
    for any selectors that used the dropdown trigger
    (`role="menu"` etc.) and update them.
+
+## Implementation Plan
+
+1. **Add `viewPublic` key** to `web/dash0/src/locales/{en,de,es,fr}/statusPages.json`
+   alongside the existing `viewDetails` / `edit` / `delete`.
+2. **Replace dropdown with three icon buttons** in
+   `web/dash0/src/routes/orgs/$org/status-pages.index.tsx`'s `StatusPageRow`:
+   external-link → public page in new tab; pencil → detail page;
+   trash → existing AlertDialog flow. Drop the `DropdownMenu*` and
+   `MoreVertical` imports.
+3. **Tooltips** on each button reusing the existing tooltip pattern
+   from the detail-page header (no need to add a tooltip lib —
+   `aria-label` + `title` is enough for v1).
+4. **No e2e change**: a quick grep for `MoreVertical` / `role="menu"`
+   / dropdown selectors against the status-pages list confirms no
+   existing test depends on the dropdown.
+5. **QA**: `make build-backend build-client lint-back test`.
+6. **Audit + archive**.
