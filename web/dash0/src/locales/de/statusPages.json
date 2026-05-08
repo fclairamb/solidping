@@ -63,6 +63,7 @@
     "save": "Änderungen speichern",
     "updated": "Bereich aktualisiert",
     "updateFailed": "Aktualisieren des Bereichs fehlgeschlagen",
+    "dragHandle": "Bereich zum Neuordnen ziehen",
     "delete": "Bereich löschen",
     "deleteDescription": "Diesen Bereich und alle zugehörigen Ressourcen-Zuordnungen löschen? Die Prüfungen selbst werden nicht beeinflusst.",
     "deleted": "Bereich gelöscht",

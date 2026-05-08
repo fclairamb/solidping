@@ -63,6 +63,7 @@
     "save": "Guardar cambios",
     "updated": "Sección actualizada",
     "updateFailed": "Error al actualizar la sección",
+    "dragHandle": "Arrastrar para reordenar la sección",
     "delete": "Eliminar sección",
     "deleteDescription": "¿Eliminar esta sección y todas sus asignaciones de recursos? Las comprobaciones en sí no se verán afectadas.",
     "deleted": "Sección eliminada",

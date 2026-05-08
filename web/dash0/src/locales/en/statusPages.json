@@ -63,6 +63,7 @@
     "save": "Save changes",
     "updated": "Section updated",
     "updateFailed": "Failed to update section",
+    "dragHandle": "Drag to reorder section",
     "delete": "Delete Section",
     "deleteDescription": "Delete this section and all its resource assignments? The checks themselves will not be affected.",
     "deleted": "Section deleted",
