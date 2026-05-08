@@ -595,7 +595,7 @@ function CheckDetailPage() {
         <ResponseTimeChart
           org={org}
           checkUid={checkUid}
-          refetchInterval={refetchInterval}
+          periodMs={periodMs}
           initialPeriod={graphPeriod}
           initialFullRange={graphFull}
           onSettingsChange={(period, full) =>
