@@ -7,15 +7,15 @@ require (
 	github.com/arran4/golang-ical v0.3.5
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.100.1
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
-	github.com/fsnotify/fsnotify v1.10.0
-	github.com/getsentry/sentry-go v0.46.1
+	github.com/fsnotify/fsnotify v1.10.1
+	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/go-webauthn/webauthn v0.17.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -73,7 +73,7 @@ require (
 	golang.org/x/net v0.53.0
 	golang.org/x/sys v0.43.0
 	golang.org/x/term v0.42.0
-	google.golang.org/grpc v1.80.0
+	google.golang.org/grpc v1.81.0
 	gopkg.in/yaml.v3 v3.0.1
 	nhooyr.io/websocket v1.8.17
 )
