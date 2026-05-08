@@ -18,6 +18,11 @@ const (
 	CheckStatusUp CheckStatus = 3
 	// CheckStatusDown indicates the check is failing.
 	CheckStatusDown CheckStatus = 4
+	// CheckStatusValidating is the transient state between "first failure
+	// observed" and "incident opens" — the streak is non-zero but hasn't
+	// crossed IncidentThreshold yet. Display-only: never triggers
+	// notifications, never gates the incident state machine.
+	CheckStatusValidating CheckStatus = 5
 	// CheckStatusDegraded indicates the check is experiencing issues (reserved for future use).
 	CheckStatusDegraded CheckStatus = 7
 )
