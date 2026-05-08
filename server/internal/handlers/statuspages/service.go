@@ -711,6 +711,43 @@ func (s *Service) ReorderResources(
 	return s.db.ReorderStatusPageResources(ctx, section.UID, orderedUIDs)
 }
 
+// ReorderSections rewrites the page's sections so that orderedUIDs[i] gets
+// position i+1. Validates that orderedUIDs is exactly the current set of
+// sections on the page before applying — partial or stale orderings are
+// rejected so the dashboard can't accidentally drop or duplicate sections.
+func (s *Service) ReorderSections(
+	ctx context.Context, orgSlug, pageIdentifier string, orderedUIDs []string,
+) error {
+	page, err := s.resolveStatusPage(ctx, orgSlug, pageIdentifier)
+	if err != nil {
+		return err
+	}
+
+	existing, err := s.db.ListStatusPageSections(ctx, page.UID)
+	if err != nil {
+		return fmt.Errorf("failed to list sections: %w", err)
+	}
+	if len(existing) != len(orderedUIDs) {
+		return ErrReorderUIDsMismatch
+	}
+	known := make(map[string]struct{}, len(existing))
+	for _, sec := range existing {
+		known[sec.UID] = struct{}{}
+	}
+	seen := make(map[string]struct{}, len(orderedUIDs))
+	for _, uid := range orderedUIDs {
+		if _, ok := known[uid]; !ok {
+			return ErrReorderUIDsMismatch
+		}
+		if _, dup := seen[uid]; dup {
+			return ErrReorderUIDsMismatch
+		}
+		seen[uid] = struct{}{}
+	}
+
+	return s.db.ReorderStatusPageSections(ctx, page.UID, orderedUIDs)
+}
+
 // DeleteResource removes a check from a section (hard delete).
 func (s *Service) DeleteResource(
 	ctx context.Context, orgSlug, pageIdentifier, sectionIdentifier, resourceUID string,

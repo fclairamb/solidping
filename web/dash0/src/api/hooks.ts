@@ -1197,6 +1197,42 @@ export function useCreateResource(org: string, statusPageUid: string, sectionUid
 // tree already reflects the new order by the time dnd-kit runs the drop
 // animation — without it the dragged item visually snaps back to its
 // original slot before the server roundtrip lands.
+export function useReorderSections(org: string, statusPageUid: string) {
+  const queryClient = useQueryClient();
+  const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];
+
+  return useMutation({
+    mutationFn: (uids: string[]) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/sections/reorder`,
+        { method: "POST", body: JSON.stringify({ uids }) }
+      ),
+    onMutate: async (uids) => {
+      await queryClient.cancelQueries({ queryKey: ["statusPage", org, statusPageUid] });
+      const snapshot = queryClient.getQueryData<StatusPage>(pageWithSectionsKey);
+      if (snapshot?.sections) {
+        const byUid = new Map(snapshot.sections.map((s) => [s.uid, s]));
+        const reordered = uids
+          .map((uid) => byUid.get(uid))
+          .filter((s): s is StatusPageSection => Boolean(s));
+        queryClient.setQueryData<StatusPage>(pageWithSectionsKey, {
+          ...snapshot,
+          sections: reordered,
+        });
+      }
+      return { snapshot };
+    },
+    onError: (_err, _uids, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(pageWithSectionsKey, context.snapshot);
+      }
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusPage", org, statusPageUid] });
+    },
+  });
+}
+
 export function useReorderResources(org: string, statusPageUid: string, sectionUid: string) {
   const queryClient = useQueryClient();
   const pageWithSectionsKey = ["statusPage", org, statusPageUid, { with: "sections" }];

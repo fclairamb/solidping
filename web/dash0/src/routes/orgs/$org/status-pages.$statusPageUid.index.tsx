@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
@@ -35,9 +35,12 @@ import {
   useStatusPage,
   useCreateSection,
   useDeleteSection,
+  useUpdateSection,
   useCreateResource,
   useDeleteResource,
+  useDeleteStatusPage,
   useReorderResources,
+  useReorderSections,
   useUpdateResource,
   type StatusPageSection,
   type StatusPageResource,
@@ -231,6 +234,79 @@ function AddSectionDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={!name || createSection.isPending}>
             {t("statusPages:sections.create")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// EditSectionDialog renders inside SectionCard so the useUpdateSection hook
+// is bound to a specific section UID; mounting/unmounting per-card keeps the
+// hook signature `(org, statusPageUid, sectionUid)` working.
+function EditSectionDialog({
+  org,
+  statusPageUid,
+  section,
+  open,
+  onOpenChange,
+}: {
+  org: string;
+  statusPageUid: string;
+  section: StatusPageSection;
+  open: boolean;
+  onOpenChange: (next: boolean) => void;
+}) {
+  const { t } = useTranslation(["statusPages", "common"]);
+  const [name, setName] = useState(section.name);
+  const [slug, setSlug] = useState(section.slug);
+  const updateSection = useUpdateSection(org, statusPageUid, section.uid);
+
+  const handleSubmit = async () => {
+    try {
+      await updateSection.mutateAsync({ name, slug: slug || slugify(name) });
+      toast.success(t("statusPages:sections.updated"));
+      onOpenChange(false);
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("statusPages:sections.updateFailed"),
+      );
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("statusPages:sections.editTitle")}</DialogTitle>
+          <DialogDescription>
+            {t("statusPages:sections.editDescription")}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Label>{t("statusPages:sections.name")}</Label>
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("statusPages:sections.namePlaceholder")}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>{t("statusPages:sections.slug")}</Label>
+            <Input
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              placeholder={t("statusPages:sections.slugPlaceholder")}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            {t("common:cancel")}
+          </Button>
+          <Button onClick={handleSubmit} disabled={!name || updateSection.isPending}>
+            {t("statusPages:sections.save")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -500,8 +576,23 @@ function SectionCard({
 }) {
   const { t } = useTranslation(["statusPages", "common"]);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
   const deleteSection = useDeleteSection(org, statusPageUid);
   const reorderResources = useReorderResources(org, statusPageUid, section.uid);
+
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: section.uid });
+  const sortableStyle = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
 
   const existingCheckUids = new Set(
     (section.resources || []).map((r) => r.checkUid)
@@ -540,12 +631,23 @@ function SectionCard({
   };
 
   return (
-    <Card>
+    <Card ref={setNodeRef} style={sortableStyle}>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">{section.name}</CardTitle>
-            <CardDescription>{section.slug}</CardDescription>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="touch-none cursor-grab text-muted-foreground/60 hover:text-muted-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded p-1"
+              aria-label={t("statusPages:sections.dragHandle", "Drag to reorder section")}
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+            <div>
+              <CardTitle className="text-lg">{section.name}</CardTitle>
+              <CardDescription>{section.slug}</CardDescription>
+            </div>
           </div>
           <div className="flex gap-1">
             <AddResourceDialog
@@ -554,12 +656,24 @@ function SectionCard({
               sectionUid={section.uid}
               existingCheckUids={existingCheckUids}
             />
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground"
+              onClick={() => setEditOpen(true)}
+              aria-label={t("statusPages:sections.edit")}
+              title={t("statusPages:sections.edit")}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
             <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 text-muted-foreground"
+                className="h-8 w-8 text-destructive hover:text-destructive"
                 onClick={() => setDeleteOpen(true)}
+                aria-label={t("statusPages:sections.delete")}
+                title={t("statusPages:sections.delete")}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -584,6 +698,13 @@ function SectionCard({
           </div>
         </div>
       </CardHeader>
+      <EditSectionDialog
+        org={org}
+        statusPageUid={statusPageUid}
+        section={section}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+      />
       <CardContent>
         {section.resources && section.resources.length > 0 ? (
           <DndContext
@@ -624,6 +745,7 @@ function SectionCard({
 function StatusPageDetailPage() {
   const { t } = useTranslation(["statusPages", "common"]);
   const { org, statusPageUid } = Route.useParams();
+  const navigate = useNavigate();
 
   const {
     data: page,
@@ -631,6 +753,43 @@ function StatusPageDetailPage() {
     error,
     refetch,
   } = useStatusPage(org, statusPageUid, { with: "sections" });
+
+  const reorderSections = useReorderSections(org, statusPageUid);
+  const deleteStatusPage = useDeleteStatusPage(org);
+  const [pageDeleteOpen, setPageDeleteOpen] = useState(false);
+
+  const sectionDndSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleSectionDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || !page?.sections || active.id === over.id) return;
+    const items = page.sections;
+    const oldIndex = items.findIndex((s) => s.uid === active.id);
+    const newIndex = items.findIndex((s) => s.uid === over.id);
+    if (oldIndex === -1 || newIndex === -1) return;
+    const reordered = arrayMove(items, oldIndex, newIndex).map((s) => s.uid);
+    reorderSections.mutate(reordered, {
+      onError: (err) => {
+        toast.error(err instanceof ApiError ? err.message : "Failed to reorder");
+      },
+    });
+  };
+
+  const handleDeletePage = async () => {
+    if (!page) return;
+    try {
+      await deleteStatusPage.mutateAsync(page.uid);
+      toast.success(t("statusPages:toast.deleted"));
+      navigate({ to: "/orgs/$org/status-pages", params: { org } });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : t("statusPages:toast.deleteFailed"),
+      );
+    }
+  };
 
   if (isLoading) {
     return (
@@ -735,6 +894,46 @@ function StatusPageDetailPage() {
               {t("statusPages:edit")}
             </TooltipContent>
           </Tooltip>
+          <AlertDialog open={pageDeleteOpen} onOpenChange={setPageDeleteOpen}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setPageDeleteOpen(true)}
+                  aria-label={t("statusPages:delete")}
+                >
+                  <Trash2 className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">
+                    {t("statusPages:delete")}
+                  </span>
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="sm:hidden">
+                {t("statusPages:delete")}
+              </TooltipContent>
+            </Tooltip>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  {t("statusPages:deleteDialog.title")}
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  {t("statusPages:deleteDialog.description")}
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>{t("common:cancel")}</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleDeletePage}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  {t("statusPages:delete")}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 
@@ -744,16 +943,27 @@ function StatusPageDetailPage() {
       </div>
 
       {page.sections && page.sections.length > 0 ? (
-        <div className="space-y-4">
-          {page.sections.map((section) => (
-            <SectionCard
-              key={section.uid}
-              section={section}
-              org={org}
-              statusPageUid={statusPageUid}
-            />
-          ))}
-        </div>
+        <DndContext
+          sensors={sectionDndSensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleSectionDragEnd}
+        >
+          <SortableContext
+            items={page.sections.map((s) => s.uid)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-4">
+              {page.sections.map((section) => (
+                <SectionCard
+                  key={section.uid}
+                  section={section}
+                  org={org}
+                  statusPageUid={statusPageUid}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       ) : (
         <Card>
           <CardContent className="py-8 text-center text-muted-foreground">

@@ -170,3 +170,39 @@ entry point for bulk-style ops and matches the row-actions spec
 6. Add a Playwright spec at `web/dash0/e2e/status-page-section-reorder.spec.ts`
    mirroring `status-page-reorder.spec.ts` (resource version) for the
    section drag.
+
+## Implementation Plan
+
+1. **Backend reorder endpoint**:
+   - `db.ReorderStatusPageSections(ctx, statusPageUID, []string)` in
+     postgres + sqlite, transaction-wrapped, mirroring
+     `ReorderStatusPageResources`. Reuse the same package-level
+     `errResourceNotInSection`-style sentinel (introduce
+     `errSectionNotInPage`).
+   - `service.ReorderStatusPageSections` validates the UID set matches
+     the page's current sections (no missing/extra/duplicates) before
+     calling the db method.
+   - `handler.ReorderStatusPageSections` parses `{uids: []}`, calls
+     the service, returns 204.
+   - Route in `server.go`:
+     `POST /orgs/:org/status-pages/:statusPageUid/sections/reorder`.
+   - Unit tests: `service_test.go` table test for reorder (success,
+     mismatch, unknown UID, duplicates).
+2. **Frontend reorder hook**: `useReorderSections(org, statusPageUid)`
+   in `hooks.ts`, mirroring `useReorderResources` with optimistic
+   cache update.
+3. **Section dnd in SectionCard**: wrap the section list in
+   `DndContext` + `SortableContext`, add `useSortable` to `SectionCard`
+   plus a `GripVertical` handle. Drop the up/down chevrons (if any) on
+   sections; resources keep theirs.
+4. **Section edit dialog**: generalize `AddSectionDialog` into
+   `SectionDialog` that takes an optional `section` for edit mode.
+   Add a Pencil icon button to each section header that opens it in
+   edit mode. Wire to `useUpdateSection`.
+5. **Delete-status-page button on header**: add a destructive Delete
+   button next to Edit, with an `AlertDialog` reusing the list-page
+   copy. On confirm: `useDeleteStatusPage`, toast, redirect to
+   `/orgs/$org/status-pages`.
+6. **i18n**: add `sections.edit`, `sections.editTitle`,
+   `detail.delete`, `detail.deleteConfirm` keys in en/de/es/fr.
+7. **QA + audit + archive**.
