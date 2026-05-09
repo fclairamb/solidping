@@ -2312,6 +2312,45 @@ func (s *Service) UpdateCheckStatus(
 	return err
 }
 
+// UpdateCheckIncidentClocks persists the FirstFailureAt and
+// FirstSuccessSinceFailureAt timestamps used by the time-based incident
+// state machine. nil set/true clear behaves as a tri-state: nil and
+// !clear means "leave as-is" (we do not write the column at all).
+func (s *Service) UpdateCheckIncidentClocks(
+	ctx context.Context, checkUID string,
+	firstFailureAt *time.Time, clearFirstFailure bool,
+	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", checkUID).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	wrote := false
+	if firstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *firstFailureAt)
+		wrote = true
+	} else if clearFirstFailure {
+		query = query.Set("first_failure_at = NULL")
+		wrote = true
+	}
+	if firstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
+		wrote = true
+	} else if clearFirstSuccessSinceFailure {
+		query = query.Set("first_success_since_failure_at = NULL")
+		wrote = true
+	}
+	if !wrote {
+		return nil
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
 // Event operations
 
 func (s *Service) CreateEvent(ctx context.Context, event *models.Event) error {

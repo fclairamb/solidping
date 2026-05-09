@@ -621,8 +621,8 @@ func (s *SlackSender) handleIncidentReopen(
 func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.MessageResponse {
 	relapseCount := payload.Incident.RelapseCount
 	text := fmt.Sprintf(
-		":warning: Incident reopened (relapse #%d). Now requires %d consecutive successes to resolve.",
-		relapseCount, payload.Check.RecoveryThreshold+relapseCount,
+		":warning: Incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
+		relapseCount, payload.Check.RecoveryPeriodSeconds,
 	)
 
 	blocks := []slack.Block{

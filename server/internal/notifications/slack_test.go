@@ -748,6 +748,12 @@ func (m *mockDBService) UpdateCheckStatus(
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateCheckIncidentClocks(
+	_ context.Context, _ string, _ *time.Time, _ bool, _ *time.Time, _ bool,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetSystemParameter(_ context.Context, _ string) (*models.Parameter, error) {
 	panic("not implemented")
 }

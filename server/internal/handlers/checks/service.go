@@ -1826,23 +1826,23 @@ type ExportDocument struct {
 
 // ExportCheck represents a single check in the export format.
 type ExportCheck struct {
-	Name                     string               `json:"name"`
-	Slug                     string               `json:"slug"`
-	Description              string               `json:"description,omitempty"`
-	Type                     string               `json:"type"`
-	Config                   map[string]any       `json:"config"`
-	Regions                  []string             `json:"regions,omitempty"`
-	Labels                   map[string]string    `json:"labels,omitempty"`
-	Enabled                  bool                 `json:"enabled"`
-	Internal                 bool                 `json:"internal,omitempty"`
-	Period                   string               `json:"period,omitempty"`
-	Group                    string               `json:"group,omitempty"`
-	IncidentThreshold        int                  `json:"incidentThreshold,omitempty"`
-	EscalationThreshold      int                  `json:"escalationThreshold,omitempty"`
-	RecoveryThreshold        int                  `json:"recoveryThreshold,omitempty"`
-	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int                 `json:"maxAdaptiveIncrease,omitempty"`
-	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
+	Name                      string               `json:"name"`
+	Slug                      string               `json:"slug"`
+	Description               string               `json:"description,omitempty"`
+	Type                      string               `json:"type"`
+	Config                    map[string]any       `json:"config"`
+	Regions                   []string             `json:"regions,omitempty"`
+	Labels                    map[string]string    `json:"labels,omitempty"`
+	Enabled                   bool                 `json:"enabled"`
+	Internal                  bool                 `json:"internal,omitempty"`
+	Period                    string               `json:"period,omitempty"`
+	Group                     string               `json:"group,omitempty"`
+	ConfirmationPeriodSeconds int                  `json:"confirmationPeriodSeconds,omitempty"`
+	EscalationThreshold       int                  `json:"escalationThreshold,omitempty"`
+	RecoveryPeriodSeconds     int                  `json:"recoveryPeriodSeconds,omitempty"`
+	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
+	MaxAdaptiveIncrease       *int                 `json:"maxAdaptiveIncrease,omitempty"`
+	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
@@ -1958,17 +1958,17 @@ func (s *Service) ExportChecks(
 		periodStr, _ := periodValue.(string)
 
 		exported := ExportCheck{
-			Type:                     check.Type,
-			Config:                   stripSecretKeysForExport(check),
-			Regions:                  check.Regions,
-			Enabled:                  check.Enabled,
-			Internal:                 check.Internal,
-			Period:                   periodStr,
-			IncidentThreshold:        check.IncidentThreshold,
-			EscalationThreshold:      check.EscalationThreshold,
-			RecoveryThreshold:        check.RecoveryThreshold,
-			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
-			MaxAdaptiveIncrease:      check.MaxAdaptiveIncrease,
+			Type:                      check.Type,
+			Config:                    stripSecretKeysForExport(check),
+			Regions:                   check.Regions,
+			Enabled:                   check.Enabled,
+			Internal:                  check.Internal,
+			Period:                    periodStr,
+			ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
+			EscalationThreshold:       check.EscalationThreshold,
+			RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
+			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
+			MaxAdaptiveIncrease:       check.MaxAdaptiveIncrease,
 		}
 
 		if check.Name != nil {
@@ -2480,9 +2480,9 @@ func (s *Service) cloneBuildCheck(
 	clone.Regions = append([]string(nil), source.Regions...)
 	clone.Period = source.Period
 	clone.Internal = source.Internal
-	clone.IncidentThreshold = source.IncidentThreshold
+	clone.ConfirmationPeriodSeconds = source.ConfirmationPeriodSeconds
 	clone.EscalationThreshold = source.EscalationThreshold
-	clone.RecoveryThreshold = source.RecoveryThreshold
+	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
 	clone.EscalationPolicyUID = source.EscalationPolicyUID
