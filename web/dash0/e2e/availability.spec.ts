@@ -105,7 +105,7 @@ test.describe("Availability Table", () => {
     await expect(downtimeCells.first()).toBeVisible({ timeout: 10000 });
   });
 
-  test("should compute availability from raw results when no aggregated data", async ({
+  test("should show dash when only raw results are available (no aggregated)", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -158,9 +158,12 @@ test.describe("Availability Table", () => {
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
-    // Should show 50% computed from raw results. formatAvailability emits 1
-    // decimal below 99 (was 4 before spec #47).
-    await expect(page.getByText("50.0%").first()).toBeVisible({ timeout: 10000 });
+    // The table fetches only aggregated tiers (hour/day/month) and no longer
+    // falls back to raw rows — see d99a4198. With raw-only data the period
+    // rows must read "-".
+    const todayRow = page.getByRole("row").filter({ hasText: "Today" });
+    await expect(todayRow.getByRole("cell").nth(1)).toHaveText("-", { timeout: 10000 });
+    await expect(page.getByText("50.0%")).toHaveCount(0);
   });
 
   test("should show dash when no data at all", async ({
