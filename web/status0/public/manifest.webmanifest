@@ -1,0 +1,22 @@
+{
+  "name": "SolidPing Status",
+  "short_name": "Status",
+  "description": "Public status page for SolidPing",
+  "start_url": "/status0/",
+  "display": "standalone",
+  "background_color": "#f8f9fb",
+  "theme_color": "#e91e63",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "256x256"
+    }
+  ]
+}

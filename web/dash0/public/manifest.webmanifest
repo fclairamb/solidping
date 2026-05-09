@@ -1,0 +1,22 @@
+{
+  "name": "SolidPing",
+  "short_name": "SolidPing",
+  "description": "Operator dashboard for SolidPing monitoring",
+  "start_url": "/dash0/",
+  "display": "standalone",
+  "background_color": "#f8f9fb",
+  "theme_color": "#e91e63",
+  "icons": [
+    {
+      "src": "favicon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any"
+    },
+    {
+      "src": "logo.png",
+      "type": "image/png",
+      "sizes": "256x256"
+    }
+  ]
+}

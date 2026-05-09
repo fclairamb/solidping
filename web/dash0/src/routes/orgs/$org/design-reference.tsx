@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/logo";
 import {
   Dialog,
   DialogContent,
@@ -100,6 +101,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "page-header", label: "Page header" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
+  { id: "brand", label: "Brand" },
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
@@ -120,6 +122,7 @@ function DesignReferencePage() {
       <PageHeaderSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
+      <BrandSection />
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
@@ -383,8 +386,10 @@ if (isFooBar) {
 }
 
 const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = [
-  { name: "primary", varName: "--primary", description: "Brand blue, primary actions" },
-  { name: "destructive", varName: "--destructive", description: "Errors, destructive actions" },
+  { name: "primary", varName: "--primary", description: "Action color (buttons, links, focus rings)" },
+  { name: "brand", varName: "--brand", description: "Logo/marketing chrome — never an interactive affordance" },
+  { name: "brand-muted", varName: "--brand-muted", description: "Soft brand wash for headers / hero strips" },
+  { name: "destructive", varName: "--destructive", description: "Delete / irreversible action confirms" },
   { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
   { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
   { name: "status-ok", varName: "--status-ok", description: "Healthy / passing" },
@@ -1033,6 +1038,54 @@ function FeedbackSection() {
           }
           importLine={`import {\n  DropdownMenu,\n  DropdownMenuContent,\n  DropdownMenuItem,\n  DropdownMenuLabel,\n  DropdownMenuSeparator,\n  DropdownMenuTrigger,\n} from "@/components/ui/dropdown-menu";`}
         />
+      </div>
+    </Section>
+  );
+}
+
+function BrandSection() {
+  return (
+    <Section
+      id="brand"
+      title="Brand"
+      description="The SolidPing mark, plus the brand-color tokens reserved for chrome (logo tile, header strips, marketing accents). Brand color is never used as an interactive affordance in the operator UI — the rule that keeps brand-pink from competing with destructive / status-error reds."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Logo sizes</h3>
+        <div className="flex flex-wrap items-end gap-6">
+          {[16, 24, 32, 48, 64, 96].map((size) => (
+            <div key={size} className="flex flex-col items-center gap-2">
+              <Logo size={size} />
+              <span className="text-xs text-muted-foreground">{size}px</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Wordmark variant</h3>
+        <Logo size={32} variant="wordmark" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Brand swatches (kept distinct from primary / destructive / status-error)
+        </h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Swatch
+            varName="--brand"
+            label="brand"
+            description="Logo tile, header strips, marketing CTAs"
+          />
+          <Swatch
+            varName="--brand-foreground"
+            label="brand-foreground"
+            description="Text on brand-colored chrome"
+          />
+          <Swatch
+            varName="--brand-muted"
+            label="brand-muted"
+            description="Soft brand wash for hero strips"
+          />
+        </div>
       </div>
     </Section>
   );

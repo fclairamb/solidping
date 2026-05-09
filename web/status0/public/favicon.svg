@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SolidPing">
+  <title>SolidPing</title>
+  <defs>
+    <linearGradient id="shieldFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f06292"/>
+      <stop offset="100%" stop-color="#c2185b"/>
+    </linearGradient>
+  </defs>
+  <!-- Shield body. The viewBox is 256x256 to match the original
+       res/logo.png; refine the path against the live mark when
+       hand-authoring is needed. -->
+  <path d="M128 16
+           C 96 32, 64 40, 32 40
+           L 32 128
+           C 32 184, 80 224, 128 240
+           C 176 224, 224 184, 224 128
+           L 224 40
+           C 192 40, 160 32, 128 16 Z"
+        fill="url(#shieldFill)" stroke="#9c1454" stroke-width="3"/>
+  <!-- EKG / pulse line forming a checkmark. White with rounded caps so
+       it reads at sidebar size (16–24 px). -->
+  <path d="M48 132
+           L 88 132
+           L 104 96
+           L 124 168
+           L 144 116
+           L 160 144
+           L 176 116
+           L 200 132"
+        fill="none" stroke="#ffffff" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Small check accent at the top right of the pulse, matching the
+       PNG's checkmark notch. -->
+  <path d="M168 100 L 184 116 L 208 84"
+        fill="none" stroke="#ffffff" stroke-width="14"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
