@@ -17,15 +17,15 @@ import (
 // direct-channel types "sms"/"voice"/"push"/"critical_push" that gate
 // behind future provider integrations.
 type Severity struct {
-	UID             string    `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID string    `bun:"organization_uid,notnull"`
-	Slug            string    `bun:"slug,notnull"`
-	Name            string    `bun:"name,notnull"`
-	Description     *string   `bun:"description"`
-	Channels        string    `bun:"channels,notnull,default:'[]'"`
-	IsDefault       bool      `bun:"is_default,notnull,default:false"`
-	CreatedAt       time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	UID             string     `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID string     `bun:"organization_uid,notnull"`
+	Slug            string     `bun:"slug,notnull"`
+	Name            string     `bun:"name,notnull"`
+	Description     *string    `bun:"description"`
+	Channels        string     `bun:"channels,notnull,default:'[]'"`
+	IsDefault       bool       `bun:"is_default,notnull,default:false"`
+	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt       *time.Time `bun:"deleted_at"`
 }
 
@@ -97,10 +97,19 @@ type SeveritySeed struct {
 // The "default" row is the org's default severity used by escalation
 // steps that omit `severityUid` and target a user / all_admins.
 func DefaultSeveritySeeds() []SeveritySeed {
+	emailType := string(ConnectionTypeEmail)
+	slackType := string(ConnectionTypeSlack)
+
 	return []SeveritySeed{
-		{Slug: "low", Name: "Low", Channels: []string{"email"}, IsDefault: false},
-		{Slug: "default", Name: "Default", Channels: []string{"email", "slack"}, IsDefault: true},
-		{Slug: "critical", Name: "Critical",
-			Channels: []string{"email", "slack", "sms", "voice", "critical_push"}, IsDefault: false},
+		{Slug: "low", Name: "Low", Channels: []string{emailType}, IsDefault: false},
+		{
+			Slug: "default", Name: "Default",
+			Channels: []string{emailType, slackType}, IsDefault: true,
+		},
+		{
+			Slug: "critical", Name: "Critical",
+			Channels:  []string{emailType, slackType, "sms", "voice", "critical_push"},
+			IsDefault: false,
+		},
 	}
 }

@@ -63,6 +63,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
+	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
@@ -466,6 +467,17 @@ func (s *Server) SetupRoutes() {
 	orgCheckGroups.GET("/:uid", checkGroupsHandler.GetCheckGroup)
 	orgCheckGroups.PATCH("/:uid", checkGroupsHandler.UpdateCheckGroup)
 	orgCheckGroups.DELETE("/:uid", checkGroupsHandler.DeleteCheckGroup)
+
+	// Severity routes (authentication required). Per-org channel-set
+	// primitive consumed by escalation step fan-out — spec 2026-05-08-03.
+	severitiesService := severities.NewService(s.dbService)
+	severitiesHandler := severities.NewHandler(severitiesService, s.config)
+	orgSeverities := api.NewGroup("/orgs/:org/severities").Use(authMiddleware.RequireAuth)
+	orgSeverities.GET("", severitiesHandler.ListSeverities)
+	orgSeverities.POST("", severitiesHandler.CreateSeverity)
+	orgSeverities.GET("/:uid", severitiesHandler.GetSeverity)
+	orgSeverities.PATCH("/:uid", severitiesHandler.UpdateSeverity)
+	orgSeverities.DELETE("/:uid", severitiesHandler.DeleteSeverity)
 
 	// Check dependency routes (authentication required)
 	depsService := checkdependencies.NewService(s.dbService)

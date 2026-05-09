@@ -66,10 +66,10 @@ type EscalationPolicyUpdate struct {
 // steps (see spec): inserting a step in the middle does not require
 // recomputing downstream delays.
 type EscalationPolicyStep struct {
-	UID          string    `bun:"uid,pk,type:varchar(36)"`
-	PolicyUID    string    `bun:"policy_uid,notnull"`
-	Position     int       `bun:"position,notnull"`
-	DelayMinutes int       `bun:"delay_minutes,notnull"`
+	UID          string `bun:"uid,pk,type:varchar(36)"`
+	PolicyUID    string `bun:"policy_uid,notnull"`
+	Position     int    `bun:"position,notnull"`
+	DelayMinutes int    `bun:"delay_minutes,notnull"`
 	// SeverityUID points to the severity that decides the channel-set
 	// for this step. NULL = "fall back to the org default severity for
 	// user/all_admins targets, or the connection's own channel for
