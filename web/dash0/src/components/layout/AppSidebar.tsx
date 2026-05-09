@@ -180,8 +180,8 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link to="/orgs/$org" params={{ org }}>
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-brand text-brand-foreground overflow-hidden">
-                  <Logo size={24} />
+                <div className="flex aspect-square size-8 items-center justify-center">
+                  <Logo size={32} />
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">SolidPing</span>
