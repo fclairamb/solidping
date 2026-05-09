@@ -17,6 +17,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -69,6 +79,7 @@ function OnCallDetailPage() {
   const disableFeed = useDisableOnCallICalFeed(org, slug);
   const rotateFeed = useRotateOnCallICalFeed(org, slug);
   const [feedURL, setFeedURL] = useState<string | null>(null);
+  const [deleteOpen, setDeleteOpen] = useState(false);
 
   const userByUID = useMemo(() => {
     const m = new Map<string, string>();
@@ -93,9 +104,9 @@ function OnCallDetailPage() {
     return <div className="p-6 text-muted-foreground">{t("oncall:detail.previewLoading")}</div>;
   }
 
-  const handleDelete = async () => {
-    if (!confirm(t("oncall:detail.deleteConfirmBody"))) return;
+  const handleConfirmDelete = async () => {
     await deleteMutation.mutateAsync(slug);
+    setDeleteOpen(false);
     navigate({ to: "/orgs/$org/on-call", params: { org } });
   };
 
@@ -117,48 +128,52 @@ function OnCallDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <Link
-          to="/orgs/$org/on-call"
-          params={{ org }}
-          className="text-sm text-muted-foreground hover:underline flex items-center gap-1 mb-2"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          {t("oncall:detail.back")}
-        </Link>
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">{schedule.name}</h1>
-            <p className="text-muted-foreground text-sm">
-              {schedule.timezone} ·{" "}
-              {schedule.rotationType === "daily"
-                ? t("oncall:detail.handoffDaily", { time: schedule.handoffTime })
-                : t("oncall:detail.handoffWeekly", {
-                    weekday: t(
-                      `oncall:form.weekday${(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const)[
-                        schedule.handoffWeekday ?? 0
-                      ]}`,
-                    ),
-                    time: schedule.handoffTime,
-                  })}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link
-                to="/orgs/$org/on-call/$slug/edit"
-                params={{ org, slug }}
-                data-testid="oncall-edit-button"
-              >
-                <Pencil className="h-4 w-4 mr-1" />
-                {t("oncall:detail.edit")}
-              </Link>
-            </Button>
-            <Button variant="destructive" size="sm" onClick={handleDelete}>
-              <Trash2 className="h-4 w-4 mr-1" />
-              {t("oncall:detail.delete")}
-            </Button>
-          </div>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">{schedule.name}</h1>
+          <p className="text-muted-foreground text-sm">
+            {schedule.timezone} ·{" "}
+            {schedule.rotationType === "daily"
+              ? t("oncall:detail.handoffDaily", { time: schedule.handoffTime })
+              : t("oncall:detail.handoffWeekly", {
+                  weekday: t(
+                    `oncall:form.weekday${(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const)[
+                      schedule.handoffWeekday ?? 0
+                    ]}`,
+                  ),
+                  time: schedule.handoffTime,
+                })}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            aria-label={t("oncall:detail.back")}
+          >
+            <Link to="/orgs/$org/on-call" params={{ org }}>
+              <ArrowLeft />
+            </Link>
+          </Button>
+          <Button asChild variant="outline" aria-label={t("oncall:detail.edit")}>
+            <Link
+              to="/orgs/$org/on-call/$slug/edit"
+              params={{ org, slug }}
+              data-testid="oncall-edit-button"
+            >
+              <Pencil />
+              <span className="hidden sm:inline">{t("oncall:detail.edit")}</span>
+            </Link>
+          </Button>
+          <Button
+            variant="destructive"
+            aria-label={t("oncall:detail.delete")}
+            onClick={() => setDeleteOpen(true)}
+          >
+            <Trash2 />
+            <span className="hidden sm:inline">{t("oncall:detail.delete")}</span>
+          </Button>
         </div>
       </div>
 
@@ -298,6 +313,25 @@ function OnCallDetailPage() {
       <p className="text-xs text-muted-foreground italic">
         {t("oncall:detail.v1Notes")}
       </p>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {t("oncall:detail.deleteConfirmTitle", { name: schedule.name })}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("oncall:detail.deleteConfirmBody")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("oncall:form.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmDelete}>
+              {t("oncall:detail.deleteConfirmAction")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

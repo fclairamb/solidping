@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import { useOnCallSchedule, useUpdateOnCallSchedule } from "@/api/hooks";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -88,18 +89,20 @@ function EditOnCallSchedulePage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
-        <Link
-          to="/orgs/$org/on-call/$slug"
-          params={{ org, slug }}
-          className="text-sm text-muted-foreground hover:underline flex items-center gap-1 mb-2"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          {t("oncall:detail.back")}
-        </Link>
+      <div className="flex items-start justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight">
           {t("oncall:form.edit")}
         </h1>
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          aria-label={t("oncall:detail.back")}
+        >
+          <Link to="/orgs/$org/on-call/$slug" params={{ org, slug }}>
+            <ArrowLeft />
+          </Link>
+        </Button>
       </div>
 
       <Card>

@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { ArrowLeft } from "lucide-react";
 
 import { useCreateOnCallSchedule } from "@/api/hooks";
+import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -53,10 +55,20 @@ function NewOnCallSchedulePage() {
 
   return (
     <div className="space-y-6 max-w-2xl">
-      <div>
+      <div className="flex items-start justify-between gap-4">
         <h1 className="text-3xl font-bold tracking-tight">
           {t("oncall:form.create")}
         </h1>
+        <Button
+          asChild
+          variant="ghost"
+          size="icon"
+          aria-label={t("oncall:detail.back")}
+        >
+          <Link to="/orgs/$org/on-call" params={{ org }}>
+            <ArrowLeft />
+          </Link>
+        </Button>
       </div>
 
       <Card>
