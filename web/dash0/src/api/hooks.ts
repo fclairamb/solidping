@@ -382,9 +382,9 @@ export interface ExportCheck {
   enabled: boolean;
   period?: string;
   group?: string;
-  incidentThreshold?: number;
+  confirmationPeriodSeconds?: number;
   escalationThreshold?: number;
-  recoveryThreshold?: number;
+  recoveryPeriodSeconds?: number;
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
 }
