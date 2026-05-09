@@ -1,5 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Logo } from "@/components/ui/logo";
 import {
   Tooltip,
   TooltipContent,
@@ -198,13 +199,26 @@ export function StatusPageView({ page }: { page: StatusPage }) {
 
   return (
     <div className="min-h-screen">
-      <div className="mx-auto max-w-3xl px-4 py-12 relative">
-        <div className="absolute top-4 right-4">
-          <LanguageSwitcher />
+      {/* Brand bar — visual continuity hook from solidping.io. Brand
+          pink lives here; the status banner below uses status colors
+          only. */}
+      <header className="bg-brand text-brand-foreground">
+        <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Logo size={32} />
+            <span className="font-semibold text-base">{page.name}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher />
+          </div>
         </div>
-        {/* Header */}
+      </header>
+
+      <div className="mx-auto max-w-3xl px-4 py-12">
+        {/* Status hero — color is determined exclusively by status.
+            Brand color is never used here so the banner reads as
+            green / yellow / red, not as a sibling of the brand bar. */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold tracking-tight">{page.name}</h1>
           {page.description && (
             <p className="mt-2 text-muted-foreground">{page.description}</p>
           )}
@@ -247,9 +261,20 @@ export function StatusPageView({ page }: { page: StatusPage }) {
           )}
         </div>
 
-        {/* Footer */}
-        <div className="mt-12 text-center text-xs text-muted-foreground">
-          {t("poweredBy")}{versionInfo ? ` v${versionInfo.version}` : ""}
+        {/* Footer — outbound brand link to solidping.io. text-brand
+            (pink) signals "leaves this page" vs internal nav which
+            stays primary blue. */}
+        <div className="mt-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1">
+          <a
+            href="https://www.solidping.io"
+            target="_blank"
+            rel="noreferrer noopener"
+            className="inline-flex items-center gap-1.5 text-brand hover:underline"
+          >
+            {t("poweredBy")}
+            <Logo size={14} variant="wordmark" />
+          </a>
+          {versionInfo ? <span>v{versionInfo.version}</span> : null}
         </div>
       </div>
     </div>
