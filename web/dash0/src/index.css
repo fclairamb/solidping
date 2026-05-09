@@ -33,6 +33,9 @@
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-brand: var(--brand);
+  --color-brand-foreground: var(--brand-foreground);
+  --color-brand-muted: var(--brand-muted);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
@@ -47,6 +50,14 @@
   /* Primary: Blue for monitoring/status theme */
   --primary: oklch(0.55 0.18 250);
   --primary-foreground: oklch(0.98 0.01 250);
+
+  /* Brand: crimson/magenta — solidping.io identity. Reserved for chrome
+     (logo tile, header strips, marketing accents) — never used as an
+     interactive affordance in the operator UI so it doesn't collide
+     with the destructive / status-error palette. */
+  --brand: oklch(0.58 0.22 5);
+  --brand-foreground: oklch(0.98 0.01 5);
+  --brand-muted: oklch(0.92 0.05 5);
 
   /* Accent: Lighter blue */
   --accent: oklch(0.88 0.08 250);
@@ -109,6 +120,10 @@
 .dark {
   --primary: oklch(0.65 0.16 250);
   --primary-foreground: oklch(0.15 0.02 250);
+
+  --brand: oklch(0.65 0.2 5);
+  --brand-foreground: oklch(0.15 0.02 5);
+  --brand-muted: oklch(0.3 0.08 5);
 
   --accent: oklch(0.3 0.05 250);
   --accent-foreground: oklch(0.95 0.015 250);
