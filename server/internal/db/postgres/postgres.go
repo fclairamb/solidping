@@ -1303,13 +1303,7 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
 	}
 
-	if update.ReopenCooldownMultiplier != nil {
-		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
-	}
-
-	if update.MaxAdaptiveIncrease != nil {
-		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
-	}
+	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
 	case update.ClearEscalationPolicyUID:
@@ -1321,6 +1315,28 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyAdaptiveAndIncidentTrackingPg sets the adaptive-resolution and
+// time-based incident-tracking columns on an UpdateCheck query. Extracted
+// from UpdateCheck to keep that function under the funlen lint cap.
+func applyAdaptiveAndIncidentTrackingPg(
+	query *bun.UpdateQuery, update *models.CheckUpdate,
+) *bun.UpdateQuery {
+	if update.ReopenCooldownMultiplier != nil {
+		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
+	}
+	if update.MaxAdaptiveIncrease != nil {
+		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	}
+	if update.ConfirmationPeriodSeconds != nil {
+		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
+	}
+	if update.RecoveryPeriodSeconds != nil {
+		query = query.Set("recovery_period_seconds = ?", *update.RecoveryPeriodSeconds)
+	}
+
+	return query
 }
 
 func (s *Service) DeleteCheck(ctx context.Context, uid string) error {

@@ -1314,6 +1314,13 @@ func (s *Service) UpdateCheck( //nolint:funlen // PATCH builder spans many optio
 		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
 	}
 
+	if update.ConfirmationPeriodSeconds != nil {
+		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
+	}
+	if update.RecoveryPeriodSeconds != nil {
+		query = query.Set("recovery_period_seconds = ?", *update.RecoveryPeriodSeconds)
+	}
+
 	switch {
 	case update.ClearEscalationPolicyUID:
 		query = query.Set("escalation_policy_uid = NULL")
