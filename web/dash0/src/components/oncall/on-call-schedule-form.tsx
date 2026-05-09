@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Save } from "lucide-react";
 
 import { useMembers, type OnCallRotationType } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
@@ -281,12 +282,17 @@ export function OnCallScheduleForm({
         </p>
       )}
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={submitting}>
-          {t("oncall:form.submit")}
-        </Button>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           {t("oncall:form.cancel")}
+        </Button>
+        <Button
+          type="submit"
+          disabled={submitting}
+          aria-label={t("oncall:form.submit")}
+        >
+          <Save />
+          <span className="hidden sm:inline">{t("oncall:form.submit")}</span>
         </Button>
       </div>
     </form>

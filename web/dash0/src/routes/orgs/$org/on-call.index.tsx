@@ -82,10 +82,10 @@ function OnCallListPage() {
           </h1>
           <p className="text-muted-foreground">{t("oncall:list.subtitle")}</p>
         </div>
-        <Button asChild>
+        <Button asChild aria-label={t("oncall:list.create")}>
           <Link to="/orgs/$org/on-call/new" params={{ org }}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t("oncall:list.create")}
+            <Plus />
+            <span className="hidden sm:inline">{t("oncall:list.create")}</span>
           </Link>
         </Button>
       </div>
