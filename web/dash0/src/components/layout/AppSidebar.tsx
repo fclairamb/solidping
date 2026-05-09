@@ -1,6 +1,5 @@
 import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-router";
 import {
-  Activity,
   ArrowUpRight,
   Bell,
   Bug,
@@ -45,6 +44,7 @@ import { useVersion } from "@/api/hooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
+import { Logo } from "@/components/ui/logo";
 
 const navItems = [
   {
@@ -180,8 +180,8 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <SidebarMenuButton size="lg" asChild>
               <Link to="/orgs/$org" params={{ org }}>
-                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                  <Activity className="size-4" />
+                <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-brand text-brand-foreground overflow-hidden">
+                  <Logo size={24} />
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold">SolidPing</span>
