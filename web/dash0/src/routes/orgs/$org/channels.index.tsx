@@ -34,9 +34,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  useConnections,
-  useDeleteConnection,
-  type Connection,
+  useChannels,
+  useDeleteChannel,
+  type Channel,
   type ConnectionType,
 } from "@/api/hooks";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
@@ -53,11 +53,11 @@ function ChannelsListPage() {
     isLoading,
     isRefetching,
     refetch,
-  } = useConnections(org);
-  const deleteMutation = useDeleteConnection(org);
+  } = useChannels(org);
+  const deleteMutation = useDeleteChannel(org);
 
   const [search, setSearch] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<Connection | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Channel | null>(null);
 
   const onConfirmDelete = () => {
     if (!pendingDelete) return;
@@ -231,7 +231,7 @@ function EmptyState({ org }: { org: string }) {
 
 interface RowProps {
   org: string;
-  channel: Connection;
+  channel: Channel;
   onDelete: () => void;
 }
 
@@ -242,8 +242,8 @@ function Row({ org, channel, onDelete }: RowProps) {
     <TableRow>
       <TableCell>
         <Link
-          to="/orgs/$org/channels/$connectionUid"
-          params={{ org, connectionUid: channel.uid }}
+          to="/orgs/$org/channels/$channelUid"
+          params={{ org, channelUid: channel.uid }}
           className="flex items-center gap-2 font-medium hover:underline"
         >
           <ChannelIcon type={channel.type} className="h-4 w-4" />
@@ -273,8 +273,8 @@ function Row({ org, channel, onDelete }: RowProps) {
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("actions.edit", "Edit")}>
             <Link
-              to="/orgs/$org/channels/$connectionUid"
-              params={{ org, connectionUid: channel.uid }}
+              to="/orgs/$org/channels/$channelUid"
+              params={{ org, channelUid: channel.uid }}
             >
               <Pencil className="h-4 w-4" />
             </Link>

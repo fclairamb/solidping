@@ -39,12 +39,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
-	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
@@ -63,6 +63,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
+	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
@@ -467,6 +468,17 @@ func (s *Server) SetupRoutes() {
 	orgCheckGroups.PATCH("/:uid", checkGroupsHandler.UpdateCheckGroup)
 	orgCheckGroups.DELETE("/:uid", checkGroupsHandler.DeleteCheckGroup)
 
+	// Severity routes (authentication required). Per-org channel-set
+	// primitive consumed by escalation step fan-out — spec 2026-05-08-03.
+	severitiesService := severities.NewService(s.dbService)
+	severitiesHandler := severities.NewHandler(severitiesService, s.config)
+	orgSeverities := api.NewGroup("/orgs/:org/severities").Use(authMiddleware.RequireAuth)
+	orgSeverities.GET("", severitiesHandler.ListSeverities)
+	orgSeverities.POST("", severitiesHandler.CreateSeverity)
+	orgSeverities.GET("/:uid", severitiesHandler.GetSeverity)
+	orgSeverities.PATCH("/:uid", severitiesHandler.UpdateSeverity)
+	orgSeverities.DELETE("/:uid", severitiesHandler.DeleteSeverity)
+
 	// Check dependency routes (authentication required)
 	depsService := checkdependencies.NewService(s.dbService)
 	depsHandler := checkdependencies.NewHandler(depsService, s.config)
@@ -477,15 +489,20 @@ func (s *Server) SetupRoutes() {
 	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
 	orgDeps.GET("", depsHandler.Graph)
 
-	// Check-connection routes (authentication required)
+	// Check-channel binding routes (authentication required). Same dual-route
+	// pattern as the org-level channels block: `/connections` is the legacy
+	// path, `/channels` is canonical going forward. PR-5 of spec
+	// 2026-05-07-03 drops the old path once external callers have moved.
 	checkConnectionsService := checkconnections.NewService(s.dbService)
 	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
-	orgChecks.GET("/:check/connections", checkConnectionsHandler.ListConnections)
-	orgChecks.PUT("/:check/connections", checkConnectionsHandler.SetConnections)
-	orgChecks.POST("/:check/connections/:connection", checkConnectionsHandler.AddConnection)
-	orgChecks.DELETE("/:check/connections/:connection", checkConnectionsHandler.RemoveConnection)
-	orgChecks.GET("/:check/connections/:connection", checkConnectionsHandler.GetConnectionSettings)
-	orgChecks.PATCH("/:check/connections/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	for _, suffix := range []string{"/connections", "/channels"} {
+		orgChecks.GET("/:check"+suffix, checkConnectionsHandler.ListChannels)
+		orgChecks.PUT("/:check"+suffix, checkConnectionsHandler.SetConnections)
+		orgChecks.POST("/:check"+suffix+"/:connection", checkConnectionsHandler.AddConnection)
+		orgChecks.DELETE("/:check"+suffix+"/:connection", checkConnectionsHandler.RemoveConnection)
+		orgChecks.GET("/:check"+suffix+"/:connection", checkConnectionsHandler.GetConnectionSettings)
+		orgChecks.PATCH("/:check"+suffix+"/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	}
 
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService)
@@ -676,15 +693,15 @@ func (s *Server) SetupRoutes() {
 	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
 	// alias is additive so the dashboard, MCP, and CLI can switch over
 	// without an external client breakage. PR-5 drops `/connections`.
-	connectionsService := connections.NewService(s.dbService, s.services.Credentials)
-	connectionsHandler := connections.NewHandler(connectionsService, s.config)
+	channelsService := channels.NewService(s.dbService, s.services.Credentials)
+	channelsHandler := channels.NewHandler(channelsService, s.config)
 	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
 		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
-		group.GET("", connectionsHandler.ListConnections)
-		group.POST("", connectionsHandler.CreateConnection)
-		group.GET("/:uid", connectionsHandler.GetConnection)
-		group.PATCH("/:uid", connectionsHandler.UpdateConnection)
-		group.DELETE("/:uid", connectionsHandler.DeleteConnection)
+		group.GET("", channelsHandler.ListChannels)
+		group.POST("", channelsHandler.CreateChannel)
+		group.GET("/:uid", channelsHandler.GetChannel)
+		group.PATCH("/:uid", channelsHandler.UpdateChannel)
+		group.DELETE("/:uid", channelsHandler.DeleteChannel)
 	}
 
 	// Status pages routes (authentication required)
@@ -698,6 +715,7 @@ func (s *Server) SetupRoutes() {
 	orgStatusPages.DELETE("/:statusPageUid", statusPagesHandler.DeleteStatusPage)
 	orgStatusPages.GET("/:statusPageUid/sections", statusPagesHandler.ListSections)
 	orgStatusPages.POST("/:statusPageUid/sections", statusPagesHandler.CreateSection)
+	orgStatusPages.POST("/:statusPageUid/sections/reorder", statusPagesHandler.ReorderSections)
 	orgStatusPages.GET("/:statusPageUid/sections/:sectionUid", statusPagesHandler.GetSection)
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid", statusPagesHandler.UpdateSection)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid", statusPagesHandler.DeleteSection)
@@ -1550,7 +1568,7 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 		return
 	}
 
-	connCount, err := bun.NewSelect().Model((*models.IntegrationConnection)(nil)).
+	connCount, err := bun.NewSelect().Model((*models.Channel)(nil)).
 		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
 	if err != nil {
 		return

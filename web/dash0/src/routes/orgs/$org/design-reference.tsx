@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/ui/logo";
 import {
   Dialog,
   DialogContent,
@@ -96,9 +97,11 @@ export const Route = createFileRoute("/orgs/$org/design-reference")({
 
 const SECTIONS: { id: string; label: string }[] = [
   { id: "overview", label: "Overview" },
+  { id: "conventions", label: "Conventions" },
   { id: "page-header", label: "Page header" },
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
+  { id: "brand", label: "Brand" },
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
@@ -115,14 +118,70 @@ function DesignReferencePage() {
       />
       <SubNav />
       <OverviewSection />
+      <ConventionsSection />
       <PageHeaderSection />
       <BreadcrumbsSection />
       <ColorTokensSection />
+      <BrandSection />
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
       <FeedbackSection />
     </div>
+  );
+}
+
+function ConventionsSection() {
+  return (
+    <Section
+      id="conventions"
+      title="Conventions"
+      description="Project-wide rules that shape how routes, forms, and row actions feel across the app. Read once; reach for them whenever you scaffold something new."
+    >
+      <div className="space-y-4">
+        <div className="rounded-md border bg-card p-4 space-y-2">
+          <h3 className="text-sm font-semibold">Editing always changes the route</h3>
+          <p className="text-sm text-muted-foreground">
+            Editing an entity must navigate to a dedicated route, never open a
+            modal dialog. Mirror the create flow:{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">/&lt;resource&gt;/new</code>{" "}
+            for creation,{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">/&lt;resource&gt;/$id/edit</code>{" "}
+            for editing. The edit route renders a full page and reuses the same
+            form component as the create route.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Why:</strong> routes are bookmarkable, deep-linkable,
+            browser-back works as expected, and the URL is the source of truth
+            for "what the user is doing." Modal edits hide state, lose on
+            accidental backdrop clicks, and don't survive refreshes.
+          </p>
+          <p className="text-sm text-muted-foreground">
+            <strong>Carve-out:</strong> trivial single-field renames may stay
+            inline. Anything with a multi-field form goes through a route.
+          </p>
+        </div>
+        <div className="rounded-md border bg-card p-4 space-y-2">
+          <h3 className="text-sm font-semibold">Row actions: icons, not menus</h3>
+          <p className="text-sm text-muted-foreground">
+            In list/table rows, prefer two ghost icon buttons (
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Pencil</code>{" "}
+            for edit,{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+            for delete with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>
+            ) over a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
+            with a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
+            trigger. The Edit icon links to the edit route; the Delete icon
+            opens an{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">AlertDialog</code>
+            . Other per-row actions live on the edit page, not in the row.
+          </p>
+        </div>
+      </div>
+    </Section>
   );
 }
 
@@ -327,8 +386,10 @@ if (isFooBar) {
 }
 
 const COLOR_TOKENS: { name: string; varName: string; description?: string }[] = [
-  { name: "primary", varName: "--primary", description: "Brand blue, primary actions" },
-  { name: "destructive", varName: "--destructive", description: "Errors, destructive actions" },
+  { name: "primary", varName: "--primary", description: "Action color (buttons, links, focus rings)" },
+  { name: "brand", varName: "--brand", description: "Logo/marketing chrome — never an interactive affordance" },
+  { name: "brand-muted", varName: "--brand-muted", description: "Soft brand wash for headers / hero strips" },
+  { name: "destructive", varName: "--destructive", description: "Delete / irreversible action confirms" },
   { name: "accent", varName: "--accent", description: "Hover/highlight surface" },
   { name: "muted-foreground", varName: "--muted-foreground", description: "Secondary text" },
   { name: "status-ok", varName: "--status-ok", description: "Healthy / passing" },
@@ -977,6 +1038,54 @@ function FeedbackSection() {
           }
           importLine={`import {\n  DropdownMenu,\n  DropdownMenuContent,\n  DropdownMenuItem,\n  DropdownMenuLabel,\n  DropdownMenuSeparator,\n  DropdownMenuTrigger,\n} from "@/components/ui/dropdown-menu";`}
         />
+      </div>
+    </Section>
+  );
+}
+
+function BrandSection() {
+  return (
+    <Section
+      id="brand"
+      title="Brand"
+      description="The SolidPing mark, plus the brand-color tokens reserved for chrome (logo tile, header strips, marketing accents). Brand color is never used as an interactive affordance in the operator UI — the rule that keeps brand-pink from competing with destructive / status-error reds."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Logo sizes</h3>
+        <div className="flex flex-wrap items-end gap-6">
+          {[16, 24, 32, 48, 64, 96].map((size) => (
+            <div key={size} className="flex flex-col items-center gap-2">
+              <Logo size={size} />
+              <span className="text-xs text-muted-foreground">{size}px</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Wordmark variant</h3>
+        <Logo size={32} variant="wordmark" />
+      </div>
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Brand swatches (kept distinct from primary / destructive / status-error)
+        </h3>
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Swatch
+            varName="--brand"
+            label="brand"
+            description="Logo tile, header strips, marketing CTAs"
+          />
+          <Swatch
+            varName="--brand-foreground"
+            label="brand-foreground"
+            description="Text on brand-colored chrome"
+          />
+          <Swatch
+            varName="--brand-muted"
+            label="brand-muted"
+            description="Soft brand wash for hero strips"
+          />
+        </div>
       </div>
     </Section>
   );

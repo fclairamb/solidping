@@ -37,7 +37,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useCheck,
-  useConnection,
+  useChannel,
   useEscalationPolicy,
   useFeatures,
   useIncident,
@@ -123,9 +123,9 @@ function Breadcrumbs({ org }: { org: string }) {
   // empty/wrong-section param so each hook only fetches when its branch is
   // active. on-call and escalation share the param name `slug`, so dispatch
   // by section flag here too.
-  const { data: connection } = useConnection(
+  const { data: connection } = useChannel(
     org,
-    isChannels ? (params.connectionUid ?? "") : "",
+    isChannels ? (params.channelUid ?? "") : "",
   );
   const { data: onCallSchedule } = useOnCallSchedule(
     org,
@@ -358,13 +358,13 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isChannels) {
-    const connectionUid = params.connectionUid;
+    const channelUid = params.channelUid;
     const isNew = routeIds.has("/orgs/$org/channels/new");
-    const channelName = connection?.name || connectionUid?.slice(0, 8);
+    const channelName = connection?.name || channelUid?.slice(0, 8);
 
     return (
       <>
-        {connectionUid || isNew ? (
+        {channelUid || isNew ? (
           <Link to="/orgs/$org/channels" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("channels")}</Link>
         ) : (
           <span className={activeClass}><Bell className={iconClass} />{t("channels")}</span>
@@ -375,7 +375,7 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("new")}</span>
           </>
         )}
-        {connectionUid && (
+        {channelUid && (
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{channelName}</span>

@@ -66,12 +66,17 @@ type EscalationPolicyUpdate struct {
 // steps (see spec): inserting a step in the middle does not require
 // recomputing downstream delays.
 type EscalationPolicyStep struct {
-	UID          string    `bun:"uid,pk,type:varchar(36)"`
-	PolicyUID    string    `bun:"policy_uid,notnull"`
-	Position     int       `bun:"position,notnull"`
-	DelayMinutes int       `bun:"delay_minutes,notnull"`
-	CreatedAt    time.Time `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt    time.Time `bun:"updated_at,notnull,default:current_timestamp"`
+	UID          string `bun:"uid,pk,type:varchar(36)"`
+	PolicyUID    string `bun:"policy_uid,notnull"`
+	Position     int    `bun:"position,notnull"`
+	DelayMinutes int    `bun:"delay_minutes,notnull"`
+	// SeverityUID points to the severity that decides the channel-set
+	// for this step. NULL = "fall back to the org default severity for
+	// user/all_admins targets, or the connection's own channel for
+	// connection targets". Spec 2026-05-08-03.
+	SeverityUID *string   `bun:"severity_uid"`
+	CreatedAt   time.Time `bun:"created_at,notnull,default:current_timestamp"`
+	UpdatedAt   time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }
 
 // NewEscalationPolicyStep builds a step row with a fresh UID.

@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
-	test test-dash lint lint-back lint-dash fmt deps migrate help
+	test test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons
 .DEFAULT_GOAL := build
 
 APP_NAME := solidping
@@ -44,7 +44,24 @@ kill:
 	lsof -ti :5174 | xargs kill
 	lsof -ti :5175 | xargs kill
 
-build: build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-backend ## Build complete application
+build: sync-brand-assets build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-backend ## Build complete application
+
+sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/public/
+	@mkdir -p web/dash0/public web/status0/public
+	@cp res/logo.svg web/dash0/public/logo.svg
+	@cp res/logo.svg web/status0/public/logo.svg
+	@cp res/logo.svg web/dash0/public/favicon.svg
+	@cp res/logo.svg web/status0/public/favicon.svg
+	@cp res/logo.png web/dash0/public/logo.png
+	@cp res/logo.png web/status0/public/logo.png
+	@if [ -d res/favicons ]; then \
+		cp res/favicons/*.png web/dash0/public/; \
+		cp res/favicons/*.png web/status0/public/; \
+	fi
+	@echo "Brand assets synced to web/dash0/public/ and web/status0/public/"
+
+build-favicons: ## Generate favicon PNG set from res/logo.svg into res/favicons/
+	@./scripts/build-favicons.sh
 
 docker-build: ## Build Docker image
 	@echo "Building Docker image..."

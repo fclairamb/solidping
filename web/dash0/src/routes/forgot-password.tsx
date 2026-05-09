@@ -6,7 +6,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Activity, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useRequestPasswordReset } from "@/api/hooks";
 
@@ -45,13 +46,13 @@ function ForgotPasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             {submitted ? (
               <CheckCircle2 className="h-12 w-12 text-green-500" />
             ) : (
-              <Activity className="h-12 w-12 text-primary" />
+              <Logo size={64} />
             )}
           </div>
           <CardTitle className="text-2xl">

@@ -105,7 +105,7 @@ function StatusDot({ status }: { status?: string | null }) {
       ? "bg-green-500"
       : status === "down" || status === "error"
         ? "bg-red-500"
-        : status === "timeout"
+        : status === "validating" || status === "timeout"
           ? "bg-yellow-500"
           : "bg-muted-foreground";
 
@@ -113,19 +113,27 @@ function StatusDot({ status }: { status?: string | null }) {
 }
 
 function StatusBadge({ status }: { status?: string | null }) {
+  const { t } = useTranslation("checks");
   const label = status || "unknown";
   const className =
     label === "up"
       ? "bg-green-500/10 text-green-500"
       : label === "down" || label === "error"
         ? "bg-red-500/10 text-red-500"
-        : label === "created"
-          ? "bg-blue-500/10 text-blue-500"
-          : "";
+        : label === "validating"
+          ? "bg-yellow-500/10 text-yellow-500"
+          : label === "created"
+            ? "bg-blue-500/10 text-blue-500"
+            : "";
+
+  // The validating status is operator-shorthand for "we've seen a failure
+  // but haven't crossed the confirmation threshold yet" — show the
+  // localized label rather than the raw enum string.
+  const displayLabel = label === "validating" ? t("status.validating") : label;
 
   return (
     <Badge variant="secondary" className={className}>
-      {label}
+      {displayLabel}
     </Badge>
   );
 }
@@ -181,7 +189,7 @@ function CheckRow({
           search={{ graphPeriod: undefined, graphFull: undefined }}
           className="flex items-center gap-2 hover:underline font-medium"
         >
-          <StatusDot status={check.lastResult?.status} />
+          <StatusDot status={check.status ?? check.lastResult?.status} />
           {check.name || check.slug || check.uid?.slice(0, 8)}
         </Link>
       </TableCell>
@@ -201,7 +209,7 @@ function CheckRow({
         {renderTarget()}
       </TableCell>
       <TableCell>
-        <StatusBadge status={check.lastResult?.status} />
+        <StatusBadge status={check.status ?? check.lastResult?.status} />
       </TableCell>
       <TableCell className="text-muted-foreground">
         {check.lastResult?.durationMs != null

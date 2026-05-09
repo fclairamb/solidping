@@ -35,6 +35,10 @@ var migrationsFS embed.FS
 // a resource UID that is not part of the targeted section.
 var errResourceNotInSection = errors.New("resource not in section")
 
+// errSectionNotInPage signals that a status-page section reorder request
+// referenced a section UID that is not part of the targeted page.
+var errSectionNotInPage = errors.New("section not in status page")
+
 // Config holds PostgreSQL connection configuration.
 type Config struct {
 	// DSN is the PostgreSQL connection string (used when not using embedded)
@@ -1299,13 +1303,7 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
 	}
 
-	if update.ReopenCooldownMultiplier != nil {
-		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
-	}
-
-	if update.MaxAdaptiveIncrease != nil {
-		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
-	}
+	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
 	case update.ClearEscalationPolicyUID:
@@ -1317,6 +1315,28 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyAdaptiveAndIncidentTrackingPg sets the adaptive-resolution and
+// time-based incident-tracking columns on an UpdateCheck query. Extracted
+// from UpdateCheck to keep that function under the funlen lint cap.
+func applyAdaptiveAndIncidentTrackingPg(
+	query *bun.UpdateQuery, update *models.CheckUpdate,
+) *bun.UpdateQuery {
+	if update.ReopenCooldownMultiplier != nil {
+		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
+	}
+	if update.MaxAdaptiveIncrease != nil {
+		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	}
+	if update.ConfirmationPeriodSeconds != nil {
+		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
+	}
+	if update.RecoveryPeriodSeconds != nil {
+		query = query.Set("recovery_period_seconds = ?", *update.RecoveryPeriodSeconds)
+	}
+
+	return query
 }
 
 func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
@@ -2310,6 +2330,44 @@ func (s *Service) UpdateCheckStatus(
 	return err
 }
 
+// UpdateCheckIncidentClocks persists the FirstFailureAt and
+// FirstSuccessSinceFailureAt timestamps used by the time-based incident
+// state machine. See sqlite.go for the tri-state semantics.
+func (s *Service) UpdateCheckIncidentClocks(
+	ctx context.Context, checkUID string,
+	firstFailureAt *time.Time, clearFirstFailure bool,
+	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", checkUID).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	wrote := false
+	if firstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *firstFailureAt)
+		wrote = true
+	} else if clearFirstFailure {
+		query = query.Set("first_failure_at = NULL")
+		wrote = true
+	}
+	if firstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
+		wrote = true
+	} else if clearFirstSuccessSinceFailure {
+		query = query.Set("first_success_since_failure_at = NULL")
+		wrote = true
+	}
+	if !wrote {
+		return nil
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
 // Event operations
 
 func (s *Service) CreateEvent(ctx context.Context, event *models.Event) error {
@@ -2796,15 +2854,15 @@ func (s *Service) DeleteOrgParameter(ctx context.Context, orgUID, key string) er
 
 // IntegrationConnection operations
 
-// CreateIntegrationConnection creates a new integration connection.
-func (s *Service) CreateIntegrationConnection(ctx context.Context, conn *models.IntegrationConnection) error {
+// CreateChannel creates a new integration connection.
+func (s *Service) CreateChannel(ctx context.Context, conn *models.Channel) error {
 	_, err := s.db.NewInsert().Model(conn).Exec(ctx)
 	return err
 }
 
-// GetIntegrationConnection retrieves an integration connection by UID.
-func (s *Service) GetIntegrationConnection(ctx context.Context, uid string) (*models.IntegrationConnection, error) {
-	conn := new(models.IntegrationConnection)
+// GetChannel retrieves an integration connection by UID.
+func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, error) {
+	conn := new(models.Channel)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2818,11 +2876,11 @@ func (s *Service) GetIntegrationConnection(ctx context.Context, uid string) (*mo
 	return conn, nil
 }
 
-// GetIntegrationConnectionByProperty retrieves a connection by a settings property.
-func (s *Service) GetIntegrationConnectionByProperty(
+// GetChannelByProperty retrieves a connection by a settings property.
+func (s *Service) GetChannelByProperty(
 	ctx context.Context, connType, propertyName, propertyValue string,
-) (*models.IntegrationConnection, error) {
-	conn := new(models.IntegrationConnection)
+) (*models.Channel, error) {
+	conn := new(models.Channel)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2837,11 +2895,11 @@ func (s *Service) GetIntegrationConnectionByProperty(
 	return conn, nil
 }
 
-// ListIntegrationConnections lists integration connections with optional filtering.
-func (s *Service) ListIntegrationConnections(
-	ctx context.Context, filter *models.ListIntegrationConnectionsFilter,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+// ListChannels lists integration connections with optional filtering.
+func (s *Service) ListChannels(
+	ctx context.Context, filter *models.ListChannelsFilter,
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	query := s.db.NewSelect().
 		Model(&connections).
@@ -2862,12 +2920,12 @@ func (s *Service) ListIntegrationConnections(
 	return connections, err
 }
 
-// UpdateIntegrationConnection updates an integration connection.
-func (s *Service) UpdateIntegrationConnection(
-	ctx context.Context, uid string, update *models.IntegrationConnectionUpdate,
+// UpdateChannel updates an integration connection.
+func (s *Service) UpdateChannel(
+	ctx context.Context, uid string, update *models.ChannelUpdate,
 ) error {
 	query := s.db.NewUpdate().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
@@ -2904,10 +2962,10 @@ func (s *Service) UpdateIntegrationConnection(
 	return err
 }
 
-// DeleteIntegrationConnection soft-deletes an integration connection.
-func (s *Service) DeleteIntegrationConnection(ctx context.Context, uid string) error {
+// DeleteChannel soft-deletes an integration connection.
+func (s *Service) DeleteChannel(ctx context.Context, uid string) error {
 	_, err := s.db.NewUpdate().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Set("deleted_at = ?", time.Now()).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2935,11 +2993,11 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 	return err
 }
 
-// ListConnectionsForCheck returns all connections associated with a check.
-func (s *Service) ListConnectionsForCheck(
+// ListChannelsForCheck returns all connections associated with a check.
+func (s *Service) ListChannelsForCheck(
 	ctx context.Context, checkUID string,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -2984,11 +3042,11 @@ func (s *Service) SetCheckConnections(ctx context.Context, checkUID string, conn
 	})
 }
 
-// ListDefaultConnections returns all default connections for an organization.
-func (s *Service) ListDefaultConnections(
+// ListDefaultChannels returns all default connections for an organization.
+func (s *Service) ListDefaultChannels(
 	ctx context.Context, orgUID string,
-) ([]*models.IntegrationConnection, error) {
-	var connections []*models.IntegrationConnection
+) ([]*models.Channel, error) {
+	var connections []*models.Channel
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -3431,6 +3489,36 @@ func (s *Service) ReorderStatusPageResources(
 			rows, _ := res.RowsAffected()
 			if rows == 0 {
 				return fmt.Errorf("%w: resource %q section %q", errResourceNotInSection, uid, sectionUID)
+			}
+		}
+
+		return nil
+	})
+}
+
+// ReorderStatusPageSections rewrites the position of every section in the
+// page so that orderedUIDs[i] gets position i+1. Done in a single
+// transaction; the caller is responsible for validating that orderedUIDs
+// exactly matches the page's current section set.
+func (s *Service) ReorderStatusPageSections(
+	ctx context.Context, statusPageUID string, orderedUIDs []string,
+) error {
+	return s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+		now := time.Now()
+		for i, uid := range orderedUIDs {
+			res, err := tx.NewUpdate().
+				Model((*models.StatusPageSection)(nil)).
+				Where("uid = ?", uid).
+				Where("status_page_uid = ?", statusPageUID).
+				Set("position = ?", i+1).
+				Set("updated_at = ?", now).
+				Exec(ctx)
+			if err != nil {
+				return err
+			}
+			rows, _ := res.RowsAffected()
+			if rows == 0 {
+				return fmt.Errorf("%w: section %q page %q", errSectionNotInPage, uid, statusPageUID)
 			}
 		}
 
@@ -4156,7 +4244,7 @@ func (s *Service) CountCheckGroupsForOrg(ctx context.Context, orgUID string) (in
 // CountConnectionsForOrg counts non-deleted integration connections for the org.
 func (s *Service) CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error) {
 	count, err := s.db.NewSelect().
-		Model((*models.IntegrationConnection)(nil)).
+		Model((*models.Channel)(nil)).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Count(ctx)

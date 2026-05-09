@@ -127,8 +127,8 @@ func NewService(
 }
 
 // GetConnectionByTeamID retrieves a Slack connection by team ID.
-func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.IntegrationConnection, error) {
-	conn, err := s.db.GetIntegrationConnectionByProperty(
+func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.Channel, error) {
+	conn, err := s.db.GetChannelByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
 	)
 	if err != nil {
@@ -282,7 +282,7 @@ func (s *Service) createOrUpdateConnection(
 	ctx context.Context, orgUID string, oauthResp *OAuthResponse,
 ) (string, error) {
 	// Check if a connection already exists for this team
-	existingConn, err := s.db.GetIntegrationConnectionByProperty(
+	existingConn, err := s.db.GetChannelByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -306,13 +306,13 @@ func (s *Service) createOrUpdateConnection(
 
 	if existingConn != nil {
 		// Update existing connection
-		update := &models.IntegrationConnectionUpdate{
+		update := &models.ChannelUpdate{
 			Settings: &settingsMap,
 		}
 		name := oauthResp.Team.Name
 		update.Name = &name
 
-		if err := s.db.UpdateIntegrationConnection(ctx, existingConn.UID, update); err != nil {
+		if err := s.db.UpdateChannel(ctx, existingConn.UID, update); err != nil {
 			return "", fmt.Errorf("failed to update connection: %w", err)
 		}
 
@@ -320,10 +320,10 @@ func (s *Service) createOrUpdateConnection(
 	}
 
 	// Create new connection
-	conn := models.NewIntegrationConnection(orgUID, models.ConnectionTypeSlack, oauthResp.Team.Name)
+	conn := models.NewChannel(orgUID, models.ConnectionTypeSlack, oauthResp.Team.Name)
 	conn.Settings = settingsMap
 
-	if err := s.db.CreateIntegrationConnection(ctx, conn); err != nil {
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
 		return "", fmt.Errorf("failed to create connection: %w", err)
 	}
 
@@ -543,7 +543,7 @@ func (s *Service) ensureOrganizationMembership(
 
 // HandleAppUninstalled handles the app_uninstalled event.
 func (s *Service) HandleAppUninstalled(ctx context.Context, teamID string) error {
-	conn, err := s.db.GetIntegrationConnectionByProperty(
+	conn, err := s.db.GetChannelByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
 	)
 	if err != nil {
@@ -555,7 +555,7 @@ func (s *Service) HandleAppUninstalled(ctx context.Context, teamID string) error
 		return err
 	}
 
-	if err := s.db.DeleteIntegrationConnection(ctx, conn.UID); err != nil {
+	if err := s.db.DeleteChannel(ctx, conn.UID); err != nil {
 		return fmt.Errorf("failed to delete connection: %w", err)
 	}
 
@@ -681,11 +681,11 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 		return fmt.Errorf("failed to convert settings: %w", err)
 	}
 
-	update := &models.IntegrationConnectionUpdate{
+	update := &models.ChannelUpdate{
 		Settings: &settingsMap,
 	}
 
-	if err := s.db.UpdateIntegrationConnection(ctx, conn.UID, update); err != nil {
+	if err := s.db.UpdateChannel(ctx, conn.UID, update); err != nil {
 		return fmt.Errorf("failed to update connection: %w", err)
 	}
 

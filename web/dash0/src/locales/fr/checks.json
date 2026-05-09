@@ -13,6 +13,9 @@
   "allChecks": "Tous les contrôles",
   "internal": "Interne",
   "ungroupedChecks": "Contrôles non groupés",
+  "status": {
+    "validating": "En validation"
+  },
   "table": {
     "name": "Nom",
     "type": "Type",
@@ -99,9 +102,11 @@
     "labelValue": "Valeur",
     "addLabel": "Ajouter une étiquette",
     "adaptiveResolution": "Résolution adaptative",
-    "incidentThreshold": "Seuil d'incident",
+    "confirmationPeriod": "Période de confirmation",
+    "confirmationPeriodHelp": "Attendre cette durée après le premier échec avant d'ouvrir un incident. 0 = ouvrir immédiatement.",
     "escalationThreshold": "Seuil d'escalade",
-    "recoveryThreshold": "Seuil de récupération",
+    "recoveryPeriod": "Période de récupération",
+    "recoveryPeriodHelp": "Attendre cette durée après le premier succès avant de résoudre l'incident. Tout échec dans la fenêtre réinitialise le compteur.",
     "reopenCooldown": "Multiplicateur de réouverture",
     "maxAdaptiveIncrease": "Augmentation adaptative maximale",
     "saveChanges": "Enregistrer les modifications",

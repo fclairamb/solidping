@@ -13,6 +13,9 @@
   "allChecks": "Todas las comprobaciones",
   "internal": "Interna",
   "ungroupedChecks": "Comprobaciones sin grupo",
+  "status": {
+    "validating": "Validando"
+  },
   "table": {
     "name": "Nombre",
     "type": "Tipo",
@@ -99,9 +102,11 @@
     "labelValue": "Valor",
     "addLabel": "Añadir etiqueta",
     "adaptiveResolution": "Resolución adaptativa",
-    "incidentThreshold": "Umbral de incidente",
+    "confirmationPeriod": "Período de confirmación",
+    "confirmationPeriodHelp": "Esperar este tiempo después del primer fallo antes de abrir un incidente. 0 = abrir inmediatamente.",
     "escalationThreshold": "Umbral de escalada",
-    "recoveryThreshold": "Umbral de recuperación",
+    "recoveryPeriod": "Período de recuperación",
+    "recoveryPeriodHelp": "Esperar este tiempo después del primer éxito antes de resolver el incidente. Cualquier fallo dentro de la ventana reinicia el contador.",
     "reopenCooldown": "Multiplicador de espera de reapertura",
     "maxAdaptiveIncrease": "Aumento adaptativo máximo",
     "saveChanges": "Guardar cambios",

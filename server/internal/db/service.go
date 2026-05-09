@@ -205,6 +205,16 @@ type Service interface {
 	UpdateCheckStatus(
 		ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
 	) error
+	// UpdateCheckIncidentClocks updates the time-based incident clocks
+	// (first_failure_at / first_success_since_failure_at) for a check.
+	// Tri-state: nil + !clear means leave as-is; nil + clear writes NULL;
+	// non-nil writes the value. See spec
+	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
+	UpdateCheckIncidentClocks(
+		ctx context.Context, checkUID string,
+		firstFailureAt *time.Time, clearFirstFailure bool,
+		firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+	) error
 
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
@@ -263,26 +273,41 @@ type Service interface {
 	ListSystemParameters(ctx context.Context) ([]*models.Parameter, error)
 
 	// IntegrationConnection operations
-	CreateIntegrationConnection(ctx context.Context, conn *models.IntegrationConnection) error
-	GetIntegrationConnection(ctx context.Context, uid string) (*models.IntegrationConnection, error)
-	GetIntegrationConnectionByProperty(
+	CreateChannel(ctx context.Context, conn *models.Channel) error
+	GetChannel(ctx context.Context, uid string) (*models.Channel, error)
+	GetChannelByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
-	) (*models.IntegrationConnection, error)
-	ListIntegrationConnections(
-		ctx context.Context, filter *models.ListIntegrationConnectionsFilter,
-	) ([]*models.IntegrationConnection, error)
-	UpdateIntegrationConnection(ctx context.Context, uid string, update *models.IntegrationConnectionUpdate) error
-	DeleteIntegrationConnection(ctx context.Context, uid string) error
+	) (*models.Channel, error)
+	ListChannels(
+		ctx context.Context, filter *models.ListChannelsFilter,
+	) ([]*models.Channel, error)
+	UpdateChannel(ctx context.Context, uid string, update *models.ChannelUpdate) error
+	DeleteChannel(ctx context.Context, uid string) error
 
 	// CheckConnection operations
 	CreateCheckConnection(ctx context.Context, conn *models.CheckConnection) error
 	DeleteCheckConnection(ctx context.Context, checkUID, connectionUID string) error
-	ListConnectionsForCheck(ctx context.Context, checkUID string) ([]*models.IntegrationConnection, error)
+	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Channel, error)
 	SetCheckConnections(ctx context.Context, checkUID string, connectionUIDs []string) error
-	ListDefaultConnections(ctx context.Context, orgUID string) ([]*models.IntegrationConnection, error)
+	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Channel, error)
 	UpdateCheckConnection(ctx context.Context, checkUID, connectionUID string, update *models.CheckConnectionUpdate) error
 	GetCheckConnection(ctx context.Context, checkUID, connectionUID string) (*models.CheckConnection, error)
 	ListCheckConnectionsWithSettings(ctx context.Context, checkUID string) ([]*models.CheckConnection, error)
+
+	// Severity operations (per-org channel-set primitive — spec 2026-05-08-03).
+	CreateSeverity(ctx context.Context, severity *models.Severity) error
+	GetSeverity(ctx context.Context, orgUID, identifier string) (*models.Severity, error)
+	ListSeverities(ctx context.Context, filter *models.ListSeveritiesFilter) ([]*models.Severity, error)
+	UpdateSeverity(ctx context.Context, uid string, update *models.SeverityUpdate) error
+	DeleteSeverity(ctx context.Context, uid string) error
+	// ClearOrgDefaultSeverity unsets the is_default flag on whichever live
+	// severity currently carries it for the org. Used right before promoting
+	// a different row to default so the partial unique index doesn't trip.
+	ClearOrgDefaultSeverity(ctx context.Context, orgUID string) error
+	// GetOrgDefaultSeverity returns the org's default severity. The escalation
+	// step runner falls back to it when a step has no explicit severity_uid
+	// and targets a user / all_admins.
+	GetOrgDefaultSeverity(ctx context.Context, orgUID string) (*models.Severity, error)
 
 	// CheckGroup operations
 	CreateCheckGroup(ctx context.Context, group *models.CheckGroup) error
@@ -318,6 +343,7 @@ type Service interface {
 	ListStatusPageResources(ctx context.Context, sectionUID string) ([]*models.StatusPageResource, error)
 	MaxStatusPageResourcePosition(ctx context.Context, sectionUID string) (int, error)
 	ReorderStatusPageResources(ctx context.Context, sectionUID string, orderedUIDs []string) error
+	ReorderStatusPageSections(ctx context.Context, statusPageUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
 

@@ -43,7 +43,7 @@ function ConfirmRegistrationPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           {error ? (
             <>

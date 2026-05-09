@@ -5,7 +5,8 @@ import {
   Plus,
   Search,
   RefreshCw,
-  MoreVertical,
+  ExternalLink,
+  Pencil,
   Trash2,
   Star,
   Globe,
@@ -24,12 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -83,38 +78,52 @@ function StatusPageRow({
         </Badge>
       </TableCell>
       <TableCell>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="h-8 w-8">
-              <MoreVertical className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem asChild>
-              <Link
-                to="/orgs/$org/status-pages/$statusPageUid"
-                params={{ org, statusPageUid: page.uid }}
-              >
-                {t("viewDetails")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem asChild>
-              <Link
-                to="/orgs/$org/status-pages/$statusPageUid/edit"
-                params={{ org, statusPageUid: page.uid }}
-              >
-                {t("edit")}
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              className="text-destructive"
-              onClick={() => onDelete(page.uid)}
+        <div className="flex items-center justify-end gap-1">
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("viewPublic")}
+            title={t("viewPublic")}
+          >
+            <a
+              href={`/status0/${org}/${page.slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid={`status-page-row-view-${page.slug}`}
             >
-              <Trash2 className="mr-2 h-4 w-4" />
-              {t("delete")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <ExternalLink className="h-4 w-4" />
+            </a>
+          </Button>
+          <Button
+            asChild
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8"
+            aria-label={t("edit")}
+            title={t("edit")}
+          >
+            <Link
+              to="/orgs/$org/status-pages/$statusPageUid"
+              params={{ org, statusPageUid: page.uid }}
+              data-testid={`status-page-row-edit-${page.slug}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Link>
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-destructive hover:text-destructive"
+            aria-label={t("delete")}
+            title={t("delete")}
+            onClick={() => onDelete(page.uid)}
+            data-testid={`status-page-row-delete-${page.slug}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </TableCell>
     </TableRow>
   );

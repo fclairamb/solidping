@@ -108,7 +108,7 @@ func (s *WebhookSender) buildPayload(payload *Payload) map[string]any {
 
 	if payload.Incident.RelapseCount > 0 {
 		result["relapseCount"] = payload.Incident.RelapseCount
-		result["effectiveRecoveryThreshold"] = payload.Check.RecoveryThreshold + min(payload.Incident.RelapseCount, 5)
+		result["recoveryPeriodSeconds"] = payload.Check.RecoveryPeriodSeconds
 	}
 
 	return result

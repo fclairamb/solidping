@@ -70,6 +70,10 @@ function useTick(intervalMs: number) {
   return now;
 }
 
+function effectiveStatus(check: Check): string | undefined {
+  return check.status ?? check.lastResult?.status;
+}
+
 function isDownStatus(status?: string): boolean {
   return status === "down" || status === "error" || status === "timeout";
 }
@@ -80,7 +84,10 @@ function isHardDownStatus(status?: string): boolean {
 
 function pickTopAttention(checks: Check[]): Check[] {
   return [...checks]
-    .filter((c) => c.lastResult?.status && c.lastResult.status !== "up")
+    .filter((c) => {
+      const s = effectiveStatus(c);
+      return s && s !== "up" && s !== "created";
+    })
     .sort((a, b) => {
       const aTime = a.lastStatusChange?.time
         ? new Date(a.lastStatusChange.time).getTime()
@@ -161,9 +168,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   const enabledCount = checks.filter((c) => c.enabled !== false).length;
   const disabledCount = checks.length - enabledCount;
-  const downCount = checks.filter((c) => isDownStatus(c.lastResult?.status)).length;
+  const downCount = checks.filter((c) => isDownStatus(effectiveStatus(c))).length;
   const hardDownCount = checks.filter((c) =>
-    isHardDownStatus(c.lastResult?.status),
+    isHardDownStatus(effectiveStatus(c)),
   ).length;
   const timeoutOnlyCount = downCount - hardDownCount;
   const incidentsCount = incidents.length;
@@ -504,7 +511,7 @@ function statusBadgeVariant(
   status?: string,
 ): "default" | "destructive" | "secondary" | "outline" {
   if (status === "down" || status === "error") return "destructive";
-  if (status === "timeout") return "secondary";
+  if (status === "validating" || status === "timeout") return "secondary";
   return "outline";
 }
 
@@ -566,10 +573,12 @@ function NeedsAttentionList({
                 >
                   <div className="flex items-center gap-3 min-w-0">
                     <Badge
-                      variant={statusBadgeVariant(check.lastResult?.status)}
+                      variant={statusBadgeVariant(effectiveStatus(check))}
                       className="text-xs uppercase"
                     >
-                      {check.lastResult?.status || "?"}
+                      {effectiveStatus(check) === "validating"
+                        ? t("checks:status.validating")
+                        : effectiveStatus(check) || "?"}
                     </Badge>
                     <span className="font-medium truncate">
                       {check.name || check.slug || check.uid}

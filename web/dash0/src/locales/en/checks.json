@@ -13,6 +13,9 @@
   "allChecks": "All checks",
   "internal": "Internal",
   "ungroupedChecks": "Ungrouped Checks",
+  "status": {
+    "validating": "Validating"
+  },
   "table": {
     "name": "Name",
     "type": "Type",
@@ -99,9 +102,11 @@
     "labelValue": "Value",
     "addLabel": "Add Label",
     "adaptiveResolution": "Adaptive Resolution",
-    "incidentThreshold": "Incident Threshold",
+    "confirmationPeriod": "Confirmation Period",
+    "confirmationPeriodHelp": "Wait this long after the first failure before opening an incident. 0 = open immediately.",
     "escalationThreshold": "Escalation Threshold",
-    "recoveryThreshold": "Recovery Threshold",
+    "recoveryPeriod": "Recovery Period",
+    "recoveryPeriodHelp": "Wait this long after the first success before resolving the incident. Any failure inside the window resets the clock.",
     "reopenCooldown": "Reopen Cooldown Multiplier",
     "maxAdaptiveIncrease": "Max Adaptive Increase",
     "saveChanges": "Save Changes",

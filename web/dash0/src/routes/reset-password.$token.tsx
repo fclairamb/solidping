@@ -6,12 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import {
-  Activity,
-  AlertCircle,
-  CheckCircle2,
-  Loader2,
-} from "lucide-react";
+import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
+
+import { Logo } from "@/components/ui/logo";
 import { useResetPassword } from "@/api/hooks";
 
 export const Route = createFileRoute("/reset-password/$token")({
@@ -50,7 +47,7 @@ function ResetPasswordPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             {success ? (
@@ -58,7 +55,7 @@ function ResetPasswordPage() {
             ) : error ? (
               <AlertCircle className="h-12 w-12 text-destructive" />
             ) : (
-              <Activity className="h-12 w-12 text-primary" />
+              <Logo size={64} />
             )}
           </div>
           <CardTitle className="text-2xl">

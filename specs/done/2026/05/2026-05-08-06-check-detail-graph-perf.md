@@ -186,3 +186,32 @@ End-to-end:
    if any rely on per-point `<circle>` selectors, update them.
 
 No backend tests should be affected — this is a pure client change.
+
+## Implementation Plan
+
+1. **Tier selection by range**
+   (`web/dash0/src/components/checks/response-time-chart.tsx`):
+   accept a new `periodMs` prop and replace the comma-list `periodType`
+   with one tier per range:
+   - `hour` → `raw`
+   - `day` → `raw` if `periodMs ≥ 5min`, else `hour`
+   - `week` → `hour`
+   - `month` → `day`
+2. **Single-page `useResults` with size cap** (~500). Drop
+   `useAllResults` from the chart.
+3. **Drop dense-data dot rendering and animation**. `dot={false}` once
+   `chartData.length > 150`; keep `activeDot`. Adapt the
+   pinned-result-anchor logic to read `cx/cy` from the `activeDot`
+   callback instead of the now-skipped `dot` writer.
+4. **Floor the chart's `refetchInterval`** in
+   `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`: pass a
+   chart-specific interval, ignoring the fast-poll first-30s window.
+   `Math.max(periodMs, 30_000)` for hour/day; `Math.max(periodMs, 5min)`
+   for week/month.
+5. **AvailabilityTable: drop the raw-row fetch + fallback** in
+   `web/dash0/src/components/checks/availability-table.tsx`. Fetch only
+   `periodType=hour,day,month` over a year. Bump `refetchInterval` floor
+   to 60s.
+6. **QA**: `make build-client lint-back` (frontend-only change; backend
+   tests untouched).
+7. **Audit + archive**.

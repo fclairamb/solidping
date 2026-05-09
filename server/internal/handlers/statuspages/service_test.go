@@ -2,6 +2,7 @@ package statuspages
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -326,6 +327,72 @@ func TestReorderResources_RejectsMismatchedUIDList(t *testing.T) {
 
 	stranger := []string{resources[0].UID, "00000000-0000-0000-0000-000000000000"}
 	r.ErrorIs(svc.ReorderResources(ctx, org.Slug, page.UID, section.UID, stranger), ErrReorderUIDsMismatch)
+}
+
+// TestReorderSections_RewritesPositionsByUIDOrder pins the contract of the
+// section reorder endpoint: orderedUIDs[i] gets position i+1.
+func TestReorderSections_RewritesPositionsByUIDOrder(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	sections := make([]StatusPageSectionResponse, 4)
+	for i := range sections {
+		sec, errCreate := svc.CreateSection(
+			ctx, org.Slug, page.UID,
+			CreateSectionRequest{Name: fmt.Sprintf("Section %d", i), Slug: fmt.Sprintf("sec-%d", i)},
+		)
+		r.NoError(errCreate)
+		sections[i] = sec
+	}
+
+	newOrder := []string{sections[3].UID, sections[1].UID, sections[0].UID, sections[2].UID}
+	r.NoError(svc.ReorderSections(ctx, org.Slug, page.UID, newOrder))
+
+	listed, err := svc.db.ListStatusPageSections(ctx, page.UID)
+	r.NoError(err)
+	r.Len(listed, 4)
+	for i, uid := range newOrder {
+		r.Equal(uid, listed[i].UID, "position %d should be %s", i+1, uid)
+		r.Equal(i+1, listed[i].Position, "position field should be %d", i+1)
+	}
+}
+
+// TestReorderSections_RejectsMismatchedUIDList ensures the endpoint can't be
+// used to drop or duplicate sections via a partial / extra UID list.
+func TestReorderSections_RejectsMismatchedUIDList(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	pageReq := &CreateStatusPageRequest{Name: "Public", Slug: testPublicSlug}
+	page, err := svc.CreateStatusPage(ctx, org.Slug, pageReq)
+	r.NoError(err)
+
+	sections := make([]StatusPageSectionResponse, 2)
+	for i := range sections {
+		sec, errCreate := svc.CreateSection(
+			ctx, org.Slug, page.UID,
+			CreateSectionRequest{Name: fmt.Sprintf("Section %d", i), Slug: fmt.Sprintf("sec-%d", i)},
+		)
+		r.NoError(errCreate)
+		sections[i] = sec
+	}
+
+	missing := []string{sections[0].UID}
+	r.ErrorIs(svc.ReorderSections(ctx, org.Slug, page.UID, missing), ErrReorderUIDsMismatch)
+
+	duplicate := []string{sections[0].UID, sections[0].UID}
+	r.ErrorIs(svc.ReorderSections(ctx, org.Slug, page.UID, duplicate), ErrReorderUIDsMismatch)
+
+	stranger := []string{sections[0].UID, "00000000-0000-0000-0000-000000000000"}
+	r.ErrorIs(svc.ReorderSections(ctx, org.Slug, page.UID, stranger), ErrReorderUIDsMismatch)
 }
 
 // TestCreateSection_AssignsSequentialPositions mirrors the resource test for

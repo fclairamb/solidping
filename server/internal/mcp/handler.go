@@ -14,10 +14,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
-	"github.com/fclairamb/solidping/server/internal/handlers/connections"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
@@ -78,7 +78,7 @@ type Handler struct {
 	eventsSvc      *events.Service
 	statusPagesSvc *statuspages.Service
 	maintenanceSvc *maintenancewindows.Service
-	connectionsSvc *connections.Service
+	connectionsSvc *channels.Service
 	checkGroupsSvc *checkgroups.Service
 	regionsSvc     *regionshandler.Service
 	dbService      db.Service
@@ -108,7 +108,7 @@ func NewHandler(
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
-		connectionsSvc: connections.NewService(dbService, creds),
+		connectionsSvc: channels.NewService(dbService, creds),
 		checkGroupsSvc: checkgroups.NewService(dbService),
 		regionsSvc:     regionshandler.NewService(dbService),
 		dbService:      dbService,

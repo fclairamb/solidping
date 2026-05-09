@@ -12,7 +12,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useCreateConnection,
+  useCreateChannel,
   type ConnectionType,
 } from "@/api/hooks";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
@@ -49,7 +49,7 @@ function NewChannelPage() {
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate();
-  const create = useCreateConnection(org);
+  const create = useCreateChannel(org);
 
   const [type, setType] = useState<ConnectionType | null>(search.type ?? null);
   const [form, setForm] = useState<ChannelFormState | null>(null);
@@ -68,8 +68,8 @@ function NewChannelPage() {
       });
       toast.success(t("created", "Channel created"));
       navigate({
-        to: "/orgs/$org/channels/$connectionUid",
-        params: { org, connectionUid: created.uid },
+        to: "/orgs/$org/channels/$channelUid",
+        params: { org, channelUid: created.uid },
       });
     } catch {
       toast.error(t("createFailed", "Failed to create channel"));

@@ -108,3 +108,29 @@ proving ground for the convention.
 - `web/dash0/CLAUDE.md` — convention (already done)
 - `web/dash0/src/routes/orgs/$org/design-reference.tsx` — surface the rule
 - `web/dash0/e2e/` — update or add the on-call edit smoke test
+
+## Implementation Plan
+
+1. **New route file `on-call.$slug.edit.tsx`.** Mirrors `on-call.new.tsx`:
+   loads schedule via `useOnCallSchedule(org, slug)`, renders
+   `<OnCallScheduleForm mode="edit" />`, calls
+   `useUpdateOnCallSchedule(org, slug)`, on success toasts and navigates
+   back to `/on-call/$slug`. Loading state reuses the detail page's
+   "previewLoading" string. 404 → toast + redirect to `/on-call`. Includes
+   a back link to the detail page.
+2. **Detail-page cleanup (`on-call.$slug.tsx`).** Drop the `Dialog`,
+   `editOpen`/`editError` state, `useUpdateOnCallSchedule`,
+   `OnCallScheduleForm` import, `handleEditSubmit`, and `editInitialValues`.
+   Convert the Edit button into a `Link` to `/orgs/$org/on-call/$slug/edit`,
+   keeping the `data-testid="oncall-edit-button"` for tests.
+3. **List-row Edit icon (`on-call.index.tsx`).** Already points at the
+   detail page; rewire its row Edit icon to the new `/on-call/$slug/edit`
+   route so the per-row affordance matches the detail-page button.
+4. **Audit follow-ups.** File one spec per remaining edit-in-modal
+   site identified in the scope:
+   - `checks.index.tsx` group rename dialog (single-field — borderline)
+   - `status-pages.$statusPageUid.index.tsx` section/resource forms
+     (the new `2026-05-08-06-status-page-detail-section-and-delete.md`
+     already covers section edit, so confirm there's no extra TODO).
+5. **QA.** `make build-backend build-client lint-back test`.
+6. **Completeness audit** + archive to `specs/done/2026/05/`.

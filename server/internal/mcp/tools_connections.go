@@ -3,7 +3,7 @@ package mcp
 import (
 	"context"
 
-	"github.com/fclairamb/solidping/server/internal/handlers/connections"
+	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 )
 
 func listConnectionsDef() ToolDefinition {
@@ -27,7 +27,7 @@ func (h *Handler) toolListConnections(ctx context.Context, orgSlug string, args 
 		connType = &v
 	}
 
-	result, err := h.connectionsSvc.ListConnections(ctx, orgSlug, connType)
+	result, err := h.connectionsSvc.ListChannels(ctx, orgSlug, connType)
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -65,7 +65,7 @@ func (h *Handler) toolCreateConnection(ctx context.Context, orgSlug string, args
 		return errorResult("type and name are required")
 	}
 
-	req := connections.CreateConnectionRequest{
+	req := channels.CreateChannelRequest{
 		Type:      connType,
 		Name:      name,
 		Enabled:   getBoolArg(args, "enabled"),
@@ -73,7 +73,7 @@ func (h *Handler) toolCreateConnection(ctx context.Context, orgSlug string, args
 		Settings:  getMapArg(args, "settings"),
 	}
 
-	result, err := h.connectionsSvc.CreateConnection(ctx, orgSlug, req)
+	result, err := h.connectionsSvc.CreateChannel(ctx, orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
 	}

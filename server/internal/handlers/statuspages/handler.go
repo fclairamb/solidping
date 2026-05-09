@@ -311,6 +311,40 @@ func (h *Handler) ReorderResources(writer http.ResponseWriter, req bunrouter.Req
 	return h.WriteJSON(writer, http.StatusNoContent, nil)
 }
 
+// ReorderSectionsRequest is the body for the section-reorder endpoint: an
+// ordered list of section UIDs that exactly matches the page's current set.
+type ReorderSectionsRequest struct {
+	UIDs []string `json:"uids"`
+}
+
+// ReorderSections handles renumbering sections within a page to match the
+// supplied order. Used by the dashboard's section drag-and-drop UI.
+func (h *Handler) ReorderSections(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	pageIdentifier := req.Param("statusPageUid")
+
+	var reorderReq ReorderSectionsRequest
+	if err := json.NewDecoder(req.Body).Decode(&reorderReq); err != nil {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: fieldBody, Message: msgInvalidJSON},
+		})
+	}
+
+	if err := h.svc.ReorderSections(
+		req.Context(), orgSlug, pageIdentifier, reorderReq.UIDs,
+	); err != nil {
+		if errors.Is(err, ErrReorderUIDsMismatch) {
+			return h.WriteValidationError(writer, "Reorder UIDs do not match the page", []base.ValidationErrorField{
+				{Name: "uids", Message: "must list every section in the page exactly once"},
+			})
+		}
+
+		return h.handleSectionError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusNoContent, nil)
+}
+
 // DeleteResource handles removing a check from a section.
 func (h *Handler) DeleteResource(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")

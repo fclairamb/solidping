@@ -1,10 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { Command } from "cmdk";
+import { Check, ChevronsUpDown, Save } from "lucide-react";
 
 import { useMembers, type OnCallRotationType } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -13,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 export interface OnCallScheduleFormValues {
   name: string;
@@ -94,6 +102,7 @@ export function OnCallScheduleForm({
 
   const { data: membersResp } = useMembers(org);
   const members = useMemo(() => membersResp?.data ?? [], [membersResp]);
+  const browserTimezone = useMemo(() => defaultBrowserTimezone(), []);
 
   const set = <K extends keyof OnCallScheduleFormValues>(
     key: K,
@@ -163,13 +172,26 @@ export function OnCallScheduleForm({
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="oncall-tz">{t("oncall:form.timezone")}</Label>
-        <Input
+        <div className="flex items-center justify-between gap-2">
+          <Label htmlFor="oncall-tz">{t("oncall:form.timezone")}</Label>
+          {browserTimezone && browserTimezone !== values.timezone && (
+            <button
+              type="button"
+              onClick={() => set("timezone", browserTimezone)}
+              className="text-xs text-muted-foreground hover:text-foreground hover:underline"
+              data-testid="oncall-timezone-use-browser"
+            >
+              {t("oncall:form.timezoneUseBrowser", { tz: browserTimezone })}
+            </button>
+          )}
+        </div>
+        <TimezoneCombobox
           id="oncall-tz"
           value={values.timezone}
-          onChange={(e) => set("timezone", e.target.value)}
+          onChange={(v) => set("timezone", v)}
           placeholder={t("oncall:form.timezonePlaceholder")}
-          required
+          searchPlaceholder={t("oncall:form.timezoneSearch")}
+          emptyLabel={t("oncall:form.noTimezones")}
         />
       </div>
 
@@ -281,14 +303,111 @@ export function OnCallScheduleForm({
         </p>
       )}
 
-      <div className="flex gap-2">
-        <Button type="submit" disabled={submitting}>
-          {t("oncall:form.submit")}
-        </Button>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           {t("oncall:form.cancel")}
         </Button>
+        <Button
+          type="submit"
+          disabled={submitting}
+          aria-label={t("oncall:form.submit")}
+        >
+          <Save />
+          <span className="hidden sm:inline">{t("oncall:form.submit")}</span>
+        </Button>
       </div>
     </form>
+  );
+}
+
+const TIMEZONE_FALLBACK = ["UTC"];
+
+function getTimezones(): string[] {
+  const intl = Intl as typeof Intl & {
+    supportedValuesOf?: (k: string) => string[];
+  };
+  try {
+    const list = intl.supportedValuesOf?.("timeZone");
+    if (list && list.length > 0) return list;
+  } catch {
+    // fall through to fallback
+  }
+  return TIMEZONE_FALLBACK;
+}
+
+interface TimezoneComboboxProps {
+  id?: string;
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  searchPlaceholder: string;
+  emptyLabel: string;
+}
+
+function TimezoneCombobox({
+  id,
+  value,
+  onChange,
+  placeholder,
+  searchPlaceholder,
+  emptyLabel,
+}: TimezoneComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const timezones = useMemo(() => getTimezones(), []);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+          data-testid="oncall-timezone-select"
+        >
+          <span className={cn(!value && "text-muted-foreground")}>
+            {value || placeholder}
+          </span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-[--radix-popover-trigger-width] p-0"
+        align="start"
+      >
+        <Command>
+          <Command.Input
+            placeholder={searchPlaceholder}
+            className="flex h-9 w-full border-b bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground"
+          />
+          <Command.List className="max-h-64 overflow-y-auto p-1">
+            <Command.Empty className="px-3 py-6 text-center text-sm text-muted-foreground">
+              {emptyLabel}
+            </Command.Empty>
+            {timezones.map((tz) => (
+              <Command.Item
+                key={tz}
+                value={tz}
+                onSelect={() => {
+                  onChange(tz);
+                  setOpen(false);
+                }}
+                className="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <Check
+                  className={cn(
+                    "h-4 w-4 shrink-0",
+                    value === tz ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <span>{tz}</span>
+              </Command.Item>
+            ))}
+          </Command.List>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
