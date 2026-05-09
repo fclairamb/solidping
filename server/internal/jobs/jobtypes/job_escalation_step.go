@@ -115,7 +115,14 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		return fmt.Errorf("list targets: %w", err)
 	}
 
-	stats := r.fanOut(ctx, jctx, log, incident, targets)
+	// Resolve the severity channel-set, if any. nil means "no severity
+	// filter; deliver via the target's own channel(s) as before". An
+	// explicit severity narrows: only deliveries whose channel-type is
+	// in the severity's channels[] are fired; the rest are skipped with
+	// an audit log entry.
+	channelFilter := r.resolveSeverityChannels(ctx, jctx, log, step, policy.OrganizationUID)
+
+	stats := r.fanOutWithSeverity(ctx, jctx, log, incident, targets, channelFilter)
 
 	r.emitEscalatedEvent(ctx, jctx, log, incident, step, len(targets), stats)
 
@@ -157,30 +164,118 @@ type fanOutStats struct {
 // (which we do not surface yet); Slack/Discord per-user DMs require a
 // per-org bot which is its own spec. Targeting Slack channels remains
 // available via the `connection` target type.
-func (r *EscalationStepJobRun) fanOut(
+// fanOutWithSeverity is the severity-aware fan-out. A non-nil filter
+// means "only deliver via channel-types in this set"; nil means
+// "deliver via the target's own channel as before". Skipped deliveries
+// log a warning so operators can reconcile when a severity rules out a
+// target's only channel.
+func (r *EscalationStepJobRun) fanOutWithSeverity(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, targets []*models.EscalationPolicyTarget,
+	filter map[string]bool,
 ) fanOutStats {
 	stats := fanOutStats{}
 
 	for _, target := range targets {
 		switch target.TargetType {
 		case models.EscalationTargetConnection:
+			if !r.connectionPassesSeverityFilter(ctx, jctx, log, target, filter) {
+				stats.Skipped++
+
+				continue
+			}
 			if target.TargetUID != nil && r.enqueueNotificationFor(ctx, jctx, log, incident, *target.TargetUID) {
 				stats.NotificationJobs++
 			} else {
 				stats.Skipped++
 			}
 		case models.EscalationTargetUser:
+			if filter != nil && !filter["email"] {
+				log.InfoContext(ctx, "severity skipped user target — email not in channel-set",
+					"targetUID", target.TargetUID)
+				stats.Skipped++
+
+				continue
+			}
 			stats.DirectEmails += r.pageUser(ctx, jctx, log, incident, target.TargetUID)
 		case models.EscalationTargetSchedule:
+			if filter != nil && !filter["email"] {
+				log.InfoContext(ctx, "severity skipped schedule target — email not in channel-set",
+					"targetUID", target.TargetUID)
+				stats.Skipped++
+
+				continue
+			}
 			stats.DirectEmails += r.pageSchedule(ctx, jctx, log, incident, target.TargetUID)
 		case models.EscalationTargetAllAdmins:
+			if filter != nil && !filter["email"] {
+				log.InfoContext(ctx, "severity skipped all-admins target — email not in channel-set")
+				stats.Skipped++
+
+				continue
+			}
 			stats.DirectEmails += r.pageAllAdmins(ctx, jctx, log, incident)
 		}
 	}
 
 	return stats
+}
+
+// resolveSeverityChannels returns the channel-set the step's severity
+// allows, or nil when the step has no severity (= no filter, default
+// behavior). The returned map keys are channel-type strings ("email",
+// "slack", "sms", …).
+func (r *EscalationStepJobRun) resolveSeverityChannels(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	step *models.EscalationPolicyStep, orgUID string,
+) map[string]bool {
+	if step.SeverityUID == nil || *step.SeverityUID == "" {
+		return nil
+	}
+	sev, err := jctx.DBService.GetSeverity(ctx, orgUID, *step.SeverityUID)
+	if err != nil {
+		log.WarnContext(ctx, "severity lookup failed; firing without filter",
+			"severityUID", *step.SeverityUID, "error", err)
+
+		return nil
+	}
+	out := make(map[string]bool, 8)
+	for _, c := range sev.ChannelList() {
+		out[c] = true
+	}
+
+	return out
+}
+
+// connectionPassesSeverityFilter checks whether a connection target's
+// underlying channel type is permitted by the severity. Returns true
+// when the filter is nil (no severity in play) or when the connection's
+// type is in the allowed set.
+func (r *EscalationStepJobRun) connectionPassesSeverityFilter(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	target *models.EscalationPolicyTarget, filter map[string]bool,
+) bool {
+	if filter == nil {
+		return true
+	}
+	if target.TargetUID == nil {
+		return false
+	}
+	conn, err := jctx.DBService.GetChannel(ctx, *target.TargetUID)
+	if err != nil {
+		log.WarnContext(ctx, "severity filter: channel lookup failed; skipping target",
+			"connectionUID", *target.TargetUID, "error", err)
+
+		return false
+	}
+	if !filter[string(conn.Type)] {
+		log.InfoContext(ctx, "severity skipped connection target — channel type not in set",
+			"connectionUID", *target.TargetUID, "channelType", string(conn.Type))
+
+		return false
+	}
+
+	return true
 }
 
 // enqueueNotificationFor queues a notification job for the

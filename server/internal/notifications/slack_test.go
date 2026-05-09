@@ -754,6 +754,36 @@ func (m *mockDBService) UpdateCheckIncidentClocks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) CreateSeverity(_ context.Context, _ *models.Severity) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSeverity(_ context.Context, _, _ string) (*models.Severity, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ListSeverities(
+	_ context.Context, _ *models.ListSeveritiesFilter,
+) ([]*models.Severity, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpdateSeverity(_ context.Context, _ string, _ *models.SeverityUpdate) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteSeverity(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ClearOrgDefaultSeverity(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetOrgDefaultSeverity(_ context.Context, _ string) (*models.Severity, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) GetSystemParameter(_ context.Context, _ string) (*models.Parameter, error) {
 	panic("not implemented")
 }

@@ -39,6 +39,8 @@ const (
 	ErrorCodeStatusPageNotFound        ErrorCode = "STATUS_PAGE_NOT_FOUND"
 	ErrorCodeStatusPageSectionNotFound ErrorCode = "STATUS_PAGE_SECTION_NOT_FOUND"
 	ErrorCodeCheckGroupNotFound        ErrorCode = "CHECK_GROUP_NOT_FOUND"
+	ErrorCodeSeverityNotFound          ErrorCode = "SEVERITY_NOT_FOUND"
+	ErrorCodeSeverityInUse             ErrorCode = "SEVERITY_IN_USE"
 	ErrorCodeRegistrationDisabled      ErrorCode = "REGISTRATION_DISABLED"
 	ErrorCodeEmailNotAllowed           ErrorCode = "EMAIL_NOT_ALLOWED"
 	ErrorCodeRegistrationExpired       ErrorCode = "REGISTRATION_EXPIRED"

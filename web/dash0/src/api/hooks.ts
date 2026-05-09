@@ -2283,7 +2283,107 @@ export interface EscalationPolicyStep {
   uid?: string;
   position: number;
   delayMinutes: number;
+  // severityUid points at the per-org Severity row that gates which
+  // channel-types fire when this step pages. null/undefined means
+  // "no severity filter — fall through to the target's own channel".
+  severityUid?: string | null;
   targets: EscalationPolicyTarget[];
+}
+
+// Severity is the per-org channel-set primitive (spec 2026-05-08-03).
+// `channels` is a list of channel-type strings (e.g. "email", "slack",
+// "sms", "voice", "critical_push").
+export interface Severity {
+  uid: string;
+  slug: string;
+  name: string;
+  description?: string;
+  channels: string[];
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateSeverityRequest {
+  slug: string;
+  name: string;
+  description?: string;
+  channels: string[];
+  isDefault?: boolean;
+}
+
+export interface UpdateSeverityRequest {
+  slug?: string;
+  name?: string;
+  description?: string;
+  channels?: string[];
+  isDefault?: boolean;
+}
+
+export function useSeverities(org: string) {
+  return useQuery({
+    queryKey: ["severities", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: Severity[] }>(
+        `/api/v1/orgs/${org}/severities`,
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useSeverity(org: string, identifier: string) {
+  return useQuery({
+    queryKey: ["severity", org, identifier],
+    queryFn: () =>
+      apiFetch<Severity>(`/api/v1/orgs/${org}/severities/${identifier}`),
+    enabled: !!org && !!identifier,
+  });
+}
+
+export function useCreateSeverity(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: CreateSeverityRequest) =>
+      apiFetch<Severity>(`/api/v1/orgs/${org}/severities`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["severities", org] });
+    },
+  });
+}
+
+export function useUpdateSeverity(org: string, identifier: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: UpdateSeverityRequest) =>
+      apiFetch<Severity>(`/api/v1/orgs/${org}/severities/${identifier}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["severities", org] });
+      queryClient.invalidateQueries({
+        queryKey: ["severity", org, identifier],
+      });
+    },
+  });
+}
+
+export function useDeleteSeverity(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (identifier: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/severities/${identifier}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["severities", org] });
+    },
+  });
 }
 
 export interface EscalationPolicy {

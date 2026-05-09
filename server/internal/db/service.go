@@ -294,6 +294,21 @@ type Service interface {
 	GetCheckConnection(ctx context.Context, checkUID, connectionUID string) (*models.CheckConnection, error)
 	ListCheckConnectionsWithSettings(ctx context.Context, checkUID string) ([]*models.CheckConnection, error)
 
+	// Severity operations (per-org channel-set primitive — spec 2026-05-08-03).
+	CreateSeverity(ctx context.Context, severity *models.Severity) error
+	GetSeverity(ctx context.Context, orgUID, identifier string) (*models.Severity, error)
+	ListSeverities(ctx context.Context, filter *models.ListSeveritiesFilter) ([]*models.Severity, error)
+	UpdateSeverity(ctx context.Context, uid string, update *models.SeverityUpdate) error
+	DeleteSeverity(ctx context.Context, uid string) error
+	// ClearOrgDefaultSeverity unsets the is_default flag on whichever live
+	// severity currently carries it for the org. Used right before promoting
+	// a different row to default so the partial unique index doesn't trip.
+	ClearOrgDefaultSeverity(ctx context.Context, orgUID string) error
+	// GetOrgDefaultSeverity returns the org's default severity. The escalation
+	// step runner falls back to it when a step has no explicit severity_uid
+	// and targets a user / all_admins.
+	GetOrgDefaultSeverity(ctx context.Context, orgUID string) (*models.Severity, error)
+
 	// CheckGroup operations
 	CreateCheckGroup(ctx context.Context, group *models.CheckGroup) error
 	GetCheckGroup(ctx context.Context, orgUID, uid string) (*models.CheckGroup, error)
