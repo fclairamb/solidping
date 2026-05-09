@@ -62,6 +62,8 @@ export interface Check {
   };
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
 }
 
 export interface RegionDefinition {
@@ -97,6 +99,8 @@ export interface UpdateCheckRequest {
   period?: string;
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
 }
 
 export interface OrgResult {
@@ -382,9 +386,9 @@ export interface ExportCheck {
   enabled: boolean;
   period?: string;
   group?: string;
-  incidentThreshold?: number;
+  confirmationPeriodSeconds?: number;
   escalationThreshold?: number;
-  recoveryThreshold?: number;
+  recoveryPeriodSeconds?: number;
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
 }

@@ -174,6 +174,8 @@ export interface CheckFormData {
   regions?: string[];
   reopenCooldownMultiplier?: number | null;
   maxAdaptiveIncrease?: number | null;
+  confirmationPeriodSeconds?: number;
+  recoveryPeriodSeconds?: number;
   labels?: Record<string, string>;
   connectionUids?: string[];
   dependsOnParentUids?: string[];
@@ -388,6 +390,12 @@ export function CheckForm({
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
+  const [confirmationPeriodSeconds, setConfirmationPeriodSeconds] = useState(
+    initialData?.confirmationPeriodSeconds?.toString() ?? "",
+  );
+  const [recoveryPeriodSeconds, setRecoveryPeriodSeconds] = useState(
+    initialData?.recoveryPeriodSeconds?.toString() ?? "",
+  );
   const [error, setError] = useState<string | null>(null);
 
   // Check type combobox state
@@ -842,6 +850,12 @@ export function CheckForm({
         ...(showRegions ? { regions: selectedRegions } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
         maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
+        ...(confirmationPeriodSeconds !== ""
+          ? { confirmationPeriodSeconds: parseInt(confirmationPeriodSeconds, 10) }
+          : {}),
+        ...(recoveryPeriodSeconds !== ""
+          ? { recoveryPeriodSeconds: parseInt(recoveryPeriodSeconds, 10) }
+          : {}),
         ...(mode === "create" || labelsDirty ? { labels } : {}),
         ...(connectionUids !== null ? { connectionUids } : {}),
         ...(dependsOnParents !== null
@@ -1622,6 +1636,22 @@ export function CheckForm({
             )}
 
             <div className="space-y-2">
+              <Label className="text-base font-medium">Incident Tracking</Label>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
+                  <Input id="confirmationPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
+                  <Input id="recoveryPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2">
               <Label className="text-base font-medium">Adaptive Resolution</Label>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -1632,7 +1662,7 @@ export function CheckForm({
                 <div className="space-y-1">
                   <Label htmlFor="maxAdaptiveIncrease" className="text-sm">Max adaptive increase</Label>
                   <Input id="maxAdaptiveIncrease" type="number" min={0} placeholder="5 (default)" value={maxAdaptiveIncrease} onChange={(e) => setMaxAdaptiveIncrease(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Extra consecutive successes required per relapse. 0 = fixed threshold.</p>
+                  <p className="text-xs text-muted-foreground">Reserved for the reopen-cooldown calculation. 0 = no extra wait.</p>
                 </div>
               </div>
             </div>

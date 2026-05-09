@@ -121,9 +121,18 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		check, isSuccess, isFailure, activeIncident, now,
 	)
 
+	clocks := deriveIncidentClocks(check, isSuccess, isFailure, activeIncident, now)
+
 	// Update check status in database
 	if err := s.db.UpdateCheckStatus(ctx, check.UID, newStatus, newStreak, statusChangedAt); err != nil {
 		return fmt.Errorf("failed to update check status: %w", err)
+	}
+	if err := s.db.UpdateCheckIncidentClocks(
+		ctx, check.UID,
+		clocks.FirstFailureAt, clocks.ClearFirstFailureAt,
+		clocks.FirstSuccessSinceFailureAt, clocks.ClearFirstSuccessSinceFailureAt,
+	); err != nil {
+		return fmt.Errorf("failed to update check incident clocks: %w", err)
 	}
 
 	// Update local check object for incident logic
@@ -132,8 +141,74 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	if statusChangedAt != nil {
 		check.StatusChangedAt = statusChangedAt
 	}
+	applyClocks(check, clocks, now)
 
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
+}
+
+// incidentClocks captures the FirstFailureAt / FirstSuccessSinceFailureAt
+// transition for this result. Tri-state per field: a non-nil pointer sets
+// the column, a true Clear* flag sets it to NULL, and the zero value
+// leaves the column untouched.
+type incidentClocks struct {
+	FirstFailureAt                  *time.Time
+	ClearFirstFailureAt             bool
+	FirstSuccessSinceFailureAt      *time.Time
+	ClearFirstSuccessSinceFailureAt bool
+}
+
+// deriveIncidentClocks computes the FirstFailureAt and
+// FirstSuccessSinceFailureAt transitions for this result. The flap-reset
+// rule is encoded by clearing one when the other is set.
+func deriveIncidentClocks(
+	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident, now time.Time,
+) incidentClocks {
+	out := incidentClocks{}
+	switch {
+	case isFailure && activeIncident == nil:
+		// First failure (or continuing pre-incident streak): arm the
+		// confirmation clock the first time we see a failure on an up check.
+		if check.FirstFailureAt == nil {
+			t := now
+			out.FirstFailureAt = &t
+		}
+	case isFailure && activeIncident != nil:
+		// Failure during the recovery window resets the recovery clock.
+		if check.FirstSuccessSinceFailureAt != nil {
+			out.ClearFirstSuccessSinceFailureAt = true
+		}
+	case isSuccess && activeIncident == nil:
+		// Success when no incident is open: clear any pre-incident validating
+		// clock so the next failure starts fresh.
+		if check.FirstFailureAt != nil {
+			out.ClearFirstFailureAt = true
+		}
+	case isSuccess && activeIncident != nil:
+		// First success during an active incident arms the recovery clock.
+		if check.FirstSuccessSinceFailureAt == nil {
+			t := now
+			out.FirstSuccessSinceFailureAt = &t
+		}
+	}
+
+	return out
+}
+
+// applyClocks mirrors deriveIncidentClocks's tri-state into the in-memory
+// Check, so handleFailure/handleSuccess can read the just-written values.
+func applyClocks(check *models.Check, clocks incidentClocks, _ time.Time) {
+	if clocks.FirstFailureAt != nil {
+		t := *clocks.FirstFailureAt
+		check.FirstFailureAt = &t
+	} else if clocks.ClearFirstFailureAt {
+		check.FirstFailureAt = nil
+	}
+	if clocks.FirstSuccessSinceFailureAt != nil {
+		t := *clocks.FirstSuccessSinceFailureAt
+		check.FirstSuccessSinceFailureAt = &t
+	} else if clocks.ClearFirstSuccessSinceFailureAt {
+		check.FirstSuccessSinceFailureAt = nil
+	}
 }
 
 // deriveCheckStatus computes the next (status, streak, statusChangedAt) for
@@ -150,25 +225,9 @@ func deriveCheckStatus(
 	prevWasFailure := check.Status == models.CheckStatusDown ||
 		check.Status == models.CheckStatusValidating
 
-	var newStreak int
-	var statusChangedAt *time.Time
-	if (isSuccess && check.Status == models.CheckStatusUp) ||
-		(isFailure && prevWasFailure) {
-		newStreak = check.StatusStreak + 1
-	} else {
-		newStreak = 1
-		statusChangedAt = &now
-	}
+	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, prevWasFailure, now)
 
-	var newStatus models.CheckStatus
-	switch {
-	case isSuccess:
-		newStatus = models.CheckStatusUp
-	case activeIncident != nil || newStreak >= check.IncidentThreshold:
-		newStatus = models.CheckStatusDown
-	default:
-		newStatus = models.CheckStatusValidating
-	}
+	newStatus := pickStatus(check, isSuccess, isFailure, activeIncident, newStreak, now)
 
 	// validating <-> down do not bump statusChangedAt: both are sub-states
 	// of "the check is failing right now".
@@ -180,6 +239,60 @@ func deriveCheckStatus(
 	}
 
 	return newStatus, newStreak, statusChangedAt
+}
+
+// deriveStreakAndChange computes the next streak count and whether
+// statusChangedAt should bump for the up<->failing edge.
+func deriveStreakAndChange(
+	check *models.Check, isSuccess, isFailure, prevWasFailure bool, now time.Time,
+) (int, *time.Time) {
+	if (isSuccess && check.Status == models.CheckStatusUp) ||
+		(isFailure && prevWasFailure) {
+		return check.StatusStreak + 1, nil
+	}
+	t := now
+
+	return 1, &t
+}
+
+// pickStatus chooses the externally-visible status for this result. The
+// confirmation-elapsed branch falls back to `now` for the very first
+// failure (FirstFailureAt isn't persisted yet at this point in
+// ProcessCheckResult), which makes the "open immediately"
+// (ConfirmationPeriodSeconds == 0) path flip straight to down.
+func pickStatus(
+	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident,
+	newStreak int, now time.Time,
+) models.CheckStatus {
+	if isSuccess {
+		return models.CheckStatusUp
+	}
+	if activeIncident != nil {
+		return models.CheckStatusDown
+	}
+	if isFailure && confirmationElapsedDerive(check, newStreak, now) {
+		return models.CheckStatusDown
+	}
+
+	return models.CheckStatusValidating
+}
+
+// confirmationElapsedDerive is the in-derive variant of confirmationElapsed:
+// it accepts an in-flight newStreak so a not-yet-persisted FirstFailureAt
+// can still be reasoned about as "the failure starts right now".
+func confirmationElapsedDerive(check *models.Check, newStreak int, now time.Time) bool {
+	var firstFailure time.Time
+	switch {
+	case check.FirstFailureAt != nil:
+		firstFailure = *check.FirstFailureAt
+	case newStreak == 1:
+		firstFailure = now
+	default:
+		firstFailure = now
+	}
+	confirmation := time.Duration(check.ConfirmationPeriodSeconds) * time.Second
+
+	return !now.Before(firstFailure.Add(confirmation))
 }
 
 // routeCheckResultWithIncident dispatches to the per-check or group state
@@ -216,8 +329,8 @@ func (s *Service) routeCheckResultWithIncident(
 func (s *Service) handleFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	if incident == nil && check.StatusStreak < check.IncidentThreshold {
-		// Not enough consecutive failures yet
+	if incident == nil && !confirmationElapsed(check, time.Now()) {
+		// Confirmation window hasn't elapsed; stay validating.
 		return nil
 	}
 
@@ -261,15 +374,36 @@ func (s *Service) handleSuccess(
 		return nil
 	}
 
-	// Use adaptive recovery threshold based on relapse count
-	threshold := effectiveRecoveryThreshold(check, incident)
-	if check.StatusStreak >= threshold {
-		// Resolve the incident
+	if recoveryElapsed(check, time.Now()) {
 		return s.resolveIncident(ctx, check, result, incident)
 	}
 
-	// Not enough consecutive successes yet - incident remains active
+	// Recovery window hasn't elapsed - incident remains active.
 	return nil
+}
+
+// confirmationElapsed reports whether the configured ConfirmationPeriod
+// has passed since the check first started failing. A 0-second period
+// means "open immediately on first failure".
+func confirmationElapsed(check *models.Check, now time.Time) bool {
+	if check.FirstFailureAt == nil {
+		return false
+	}
+	period := time.Duration(check.ConfirmationPeriodSeconds) * time.Second
+
+	return !now.Before(check.FirstFailureAt.Add(period))
+}
+
+// recoveryElapsed reports whether the configured RecoveryPeriod has
+// passed since the first success arrived during the active incident.
+// A 0-second period means "resolve immediately on first success".
+func recoveryElapsed(check *models.Check, now time.Time) bool {
+	if check.FirstSuccessSinceFailureAt == nil {
+		return false
+	}
+	period := time.Duration(check.RecoveryPeriodSeconds) * time.Second
+
+	return !now.Before(check.FirstSuccessSinceFailureAt.Add(period))
 }
 
 // createIncident creates a new incident.
@@ -382,22 +516,15 @@ func calculateCooldown(check *models.Check) time.Duration {
 	return cooldown
 }
 
-const defaultMaxAdaptiveIncrease = 5
-
-// effectiveRecoveryThreshold returns the adaptive recovery threshold for an incident.
-// It increases by 1 per relapse, capped by the check's MaxAdaptiveIncrease setting.
-func effectiveRecoveryThreshold(check *models.Check, incident *models.Incident) int {
-	maxIncrease := defaultMaxAdaptiveIncrease
-	if check.MaxAdaptiveIncrease != nil {
-		maxIncrease = *check.MaxAdaptiveIncrease
-	}
-
-	increase := incident.RelapseCount
-	if increase > maxIncrease {
-		increase = maxIncrease
-	}
-
-	return check.RecoveryThreshold + increase
+// effectiveRecoveryPeriodSeconds is retained as a thin pass-through so the
+// reopen-event payload can keep emitting a "how long does recovery take"
+// number for downstream notifications. The adaptive-per-relapse multiplier
+// is gone (spec 2026-05-08-02 dropped count-based adaptive recovery); we
+// return the configured period as-is. The MaxAdaptiveIncrease check field
+// stays around for the reopen-cooldown calculation, which is a separate
+// adaptive concern.
+func effectiveRecoveryPeriodSeconds(check *models.Check) int {
+	return check.RecoveryPeriodSeconds
 }
 
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
@@ -475,11 +602,6 @@ func (s *Service) reopenIncident(
 		return fmt.Errorf("failed to reopen incident: %w", err)
 	}
 
-	// Emit reopened event
-	effThreshold := effectiveRecoveryThreshold(check, &models.Incident{
-		RelapseCount: newRelapseCount,
-	})
-
 	// Pass check fields to the incident for notification payload
 	incident.RelapseCount = newRelapseCount
 
@@ -488,7 +610,7 @@ func (s *Service) reopenIncident(
 		keyCheckSlug:                  check.Slug,
 		keyRelapseCount:               newRelapseCount,
 		keyResultUID:                  result.UID,
-		keyEffectiveRecoveryThreshold: effThreshold,
+		keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
 	}); err != nil {
 		return fmt.Errorf("failed to emit incident reopened event: %w", err)
 	}
@@ -529,7 +651,7 @@ func (s *Service) countEnabledGroupMembers(ctx context.Context, orgUID, groupUID
 func (s *Service) handleGroupFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	if incident == nil && check.StatusStreak < check.IncidentThreshold {
+	if incident == nil && !confirmationElapsed(check, time.Now()) {
 		return nil
 	}
 
@@ -786,17 +908,13 @@ func (s *Service) reopenGroupIncident(
 
 	incident.RelapseCount = newRelapseCount
 
-	effThreshold := effectiveRecoveryThreshold(check, &models.Incident{
-		RelapseCount: newRelapseCount,
-	})
-
 	if err := s.emitEvent(
 		ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
 			keyCheckUID:                   check.UID,
 			keyCheckSlug:                  check.Slug,
 			keyRelapseCount:               newRelapseCount,
 			keyResultUID:                  result.UID,
-			keyEffectiveRecoveryThreshold: effThreshold,
+			keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
 		}); err != nil {
 		return fmt.Errorf("failed to emit group reopened event: %w", err)
 	}
@@ -826,8 +944,7 @@ func (s *Service) handleGroupSuccess(
 		return nil
 	}
 
-	threshold := effectiveRecoveryThreshold(check, incident)
-	if check.StatusStreak < threshold {
+	if !recoveryElapsed(check, time.Now()) {
 		return nil
 	}
 

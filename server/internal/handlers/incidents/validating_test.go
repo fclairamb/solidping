@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -16,9 +17,9 @@ import (
 
 // validatingSetup spins up the smallest world that can drive
 // ProcessCheckResult: an in-memory db, an org, and a check with a
-// configurable IncidentThreshold. Mirrors resolveSetup but skips the
+// configurable confirmation period. Mirrors resolveSetup but skips the
 // pre-existing incident and connection — these tests are about the
-// streak/state machine, not notifications.
+// state machine, not notifications.
 type validatingSetup struct {
 	svc   *incidents.Service
 	dbSvc *sqlite.Service
@@ -26,7 +27,11 @@ type validatingSetup struct {
 	check *models.Check
 }
 
-func newValidatingSetup(t *testing.T, threshold int) *validatingSetup {
+// newValidatingSetup creates a check with the given confirmation period
+// in seconds. 0 = "open immediately on first failure". Use
+// backdateFirstFailure to simulate a check that has been failing for
+// long enough to cross the period.
+func newValidatingSetup(t *testing.T, confirmationSeconds int) *validatingSetup {
 	t.Helper()
 	ctx := t.Context()
 	r := require.New(t)
@@ -44,7 +49,8 @@ func newValidatingSetup(t *testing.T, threshold int) *validatingSetup {
 
 	check := models.NewCheck(org.UID, "api", "http")
 	check.Status = models.CheckStatusUp
-	check.IncidentThreshold = threshold
+	check.ConfirmationPeriodSeconds = confirmationSeconds
+	check.RecoveryPeriodSeconds = 0
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
 	return &validatingSetup{svc: svc, dbSvc: dbSvc, org: org, check: check}
@@ -76,32 +82,44 @@ func (s *validatingSetup) submit(t *testing.T, status models.ResultStatus) {
 	require.NoError(t, s.svc.ProcessCheckResult(context.Background(), s.check, result))
 }
 
+// backdateFirstFailure rewrites first_failure_at to a past time so the
+// next failure result sees the confirmation period as elapsed without
+// the test having to actually wait. Mirrors how production rows behave
+// after the configured period passes; we'd otherwise need a fake clock.
+func (s *validatingSetup) backdateFirstFailure(t *testing.T, ago time.Duration) {
+	t.Helper()
+	past := time.Now().Add(-ago)
+	require.NoError(t, s.dbSvc.UpdateCheckIncidentClocks(
+		t.Context(), s.check.UID, &past, false, nil, false,
+	))
+	s.check.FirstFailureAt = &past
+}
+
 // TestProcessCheckResultEntersValidatingOnFirstFailure pins the headline
 // behavior of the new state: the very first failure flips the check to
-// validating, not down, and no incident opens until the streak crosses
-// IncidentThreshold.
+// validating (not down) when the confirmation period hasn't elapsed.
 func TestProcessCheckResultEntersValidatingOnFirstFailure(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	s := newValidatingSetup(t, 3)
+	s := newValidatingSetup(t, 60) // 60s confirmation
 
 	s.submit(t, models.ResultStatusDown)
 
 	c := s.reload(t)
 	r.Equal(models.CheckStatusValidating, c.Status,
 		"first failure must flip to validating, not down")
-	r.Equal(1, c.StatusStreak)
+	r.NotNil(c.FirstFailureAt, "first_failure_at must be armed")
 	r.False(s.hasActiveIncident(t),
-		"no incident should open while still in validating")
+		"no incident should open while inside the confirmation window")
 }
 
-// TestProcessCheckResultStaysValidatingUntilThreshold confirms the
-// validating sub-state spans the entire confirmation window — only the
-// streak that crosses IncidentThreshold flips to down.
-func TestProcessCheckResultStaysValidatingUntilThreshold(t *testing.T) {
+// TestProcessCheckResultStaysValidatingUntilPeriodElapses confirms that
+// failures within the configured window stay validating, and the
+// failure that crosses the wall-clock threshold opens the incident.
+func TestProcessCheckResultStaysValidatingUntilPeriodElapses(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	s := newValidatingSetup(t, 3)
+	s := newValidatingSetup(t, 60)
 
 	s.submit(t, models.ResultStatusDown)
 	r.Equal(models.CheckStatusValidating, s.reload(t).Status)
@@ -109,27 +127,28 @@ func TestProcessCheckResultStaysValidatingUntilThreshold(t *testing.T) {
 	s.submit(t, models.ResultStatusDown)
 	c := s.reload(t)
 	r.Equal(models.CheckStatusValidating, c.Status,
-		"second failure under threshold stays validating")
-	r.Equal(2, c.StatusStreak)
+		"failure within window stays validating")
 	r.False(s.hasActiveIncident(t))
+
+	// Simulate "we've been failing for 65 seconds now" — the next
+	// failure result should cross the 60s threshold.
+	s.backdateFirstFailure(t, 65*time.Second)
 
 	s.submit(t, models.ResultStatusDown)
 	c = s.reload(t)
 	r.Equal(models.CheckStatusDown, c.Status,
-		"threshold-crossing failure flips to down")
-	r.Equal(3, c.StatusStreak)
+		"failure after confirmation window flips to down")
 	r.True(s.hasActiveIncident(t),
-		"crossing IncidentThreshold opens an incident")
+		"crossing the confirmation period opens an incident")
 }
 
 // TestProcessCheckResultRecoversFromValidatingWithoutIncident verifies the
-// "transient blip" path: a single failure that's followed by a success
-// must return to up without ever opening an incident or persisting any
-// down/incident audit trail.
+// "transient blip" path: a failure followed by a success must return to
+// up without ever opening an incident, and must clear first_failure_at.
 func TestProcessCheckResultRecoversFromValidatingWithoutIncident(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	s := newValidatingSetup(t, 3)
+	s := newValidatingSetup(t, 60)
 
 	s.submit(t, models.ResultStatusDown)
 	r.Equal(models.CheckStatusValidating, s.reload(t).Status)
@@ -138,25 +157,59 @@ func TestProcessCheckResultRecoversFromValidatingWithoutIncident(t *testing.T) {
 	c := s.reload(t)
 	r.Equal(models.CheckStatusUp, c.Status,
 		"success while validating returns to up")
-	r.Equal(1, c.StatusStreak)
+	r.Nil(c.FirstFailureAt,
+		"first_failure_at must be cleared on success")
 	r.False(s.hasActiveIncident(t),
 		"transient validating blip must not open an incident")
 }
 
-// TestProcessCheckResultDownStaysDown locks in that an already-open
-// incident keeps the check in down — validating is purely the
-// pre-incident sub-state, never reached on the way back up.
-func TestProcessCheckResultDownStaysDown(t *testing.T) {
+// TestProcessCheckResultZeroConfirmationOpensImmediately verifies that
+// ConfirmationPeriodSeconds=0 (the default) opens the incident on the
+// first failure result, matching pre-spec behavior for threshold=1.
+func TestProcessCheckResultZeroConfirmationOpensImmediately(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	s := newValidatingSetup(t, 1)
+	s := newValidatingSetup(t, 0)
 
 	s.submit(t, models.ResultStatusDown)
 	r.Equal(models.CheckStatusDown, s.reload(t).Status,
-		"threshold=1 means the first failure opens an incident immediately")
+		"confirmation=0 means first failure opens immediately")
 	r.True(s.hasActiveIncident(t))
 
 	s.submit(t, models.ResultStatusDown)
 	r.Equal(models.CheckStatusDown, s.reload(t).Status,
 		"subsequent failures with an active incident stay down, never validating")
+}
+
+// TestRecoveryFlapResetsClock pins the flap-reset rule from the spec:
+// a failure during the recovery window clears first_success_since_failure_at,
+// so the recovery clock restarts on the next observed success.
+func TestRecoveryFlapResetsClock(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newValidatingSetup(t, 0)
+	s.check.RecoveryPeriodSeconds = 60
+	r.NoError(s.dbSvc.UpdateCheck(t.Context(), s.check.UID, &models.CheckUpdate{
+		RecoveryPeriodSeconds: &s.check.RecoveryPeriodSeconds,
+	}))
+
+	// Open the incident.
+	s.submit(t, models.ResultStatusDown)
+	r.True(s.hasActiveIncident(t))
+
+	// First success arms the recovery clock.
+	s.submit(t, models.ResultStatusUp)
+	c := s.reload(t)
+	r.NotNil(c.FirstSuccessSinceFailureAt,
+		"first success during incident arms the recovery clock")
+	r.True(s.hasActiveIncident(t),
+		"recovery period 60s; one success doesn't auto-resolve yet")
+
+	// A failure during recovery wipes the clock.
+	s.submit(t, models.ResultStatusDown)
+	c = s.reload(t)
+	r.Nil(c.FirstSuccessSinceFailureAt,
+		"failure during recovery window clears first_success_since_failure_at")
+	r.True(s.hasActiveIncident(t),
+		"incident remains open after flap")
 }

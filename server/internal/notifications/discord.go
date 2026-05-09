@@ -160,8 +160,8 @@ func (ds *DiscordSender) buildIncidentReopenedEmbed(payload *Payload) discord.Em
 			checkName, payload.Incident.RelapseCount,
 		),
 		Description: fmt.Sprintf(
-			"Now requires %d consecutive successes to resolve.",
-			payload.Check.RecoveryThreshold+payload.Incident.RelapseCount,
+			"Recovery requires the check to stay up for %d seconds.",
+			payload.Check.RecoveryPeriodSeconds,
 		),
 		Color:     discord.ColorRed,
 		Fields:    fields,

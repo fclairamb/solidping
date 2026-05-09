@@ -19,9 +19,9 @@ const (
 	// CheckStatusDown indicates the check is failing.
 	CheckStatusDown CheckStatus = 4
 	// CheckStatusValidating is the transient state between "first failure
-	// observed" and "incident opens" — the streak is non-zero but hasn't
-	// crossed IncidentThreshold yet. Display-only: never triggers
-	// notifications, never gates the incident state machine.
+	// observed" and "incident opens" — the failure has been seen but the
+	// configured ConfirmationPeriod hasn't elapsed yet. Display-only:
+	// never triggers notifications, never gates the incident state machine.
 	CheckStatusValidating CheckStatus = 5
 	// CheckStatusDegraded indicates the check is experiencing issues (reserved for future use).
 	CheckStatusDegraded CheckStatus = 7
@@ -70,10 +70,25 @@ type Check struct {
 	Internal          bool               `bun:"internal,notnull,default:false"`
 	Period            timeutils.Duration `bun:"period,notnull"`
 
-	// Incident tracking thresholds
-	IncidentThreshold   int `bun:"incident_threshold,notnull,default:1"`
+	// Incident tracking — wall-clock periods (seconds). Replaces the old
+	// count-based thresholds per spec
+	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
+	// `0` means "open / resolve immediately on the first opposite signal".
+	ConfirmationPeriodSeconds int `bun:"confirmation_period_seconds,notnull,default:0"`
+	RecoveryPeriodSeconds     int `bun:"recovery_period_seconds,notnull,default:0"`
+	// EscalationThreshold remains streak-based for now — it gates the *second*
+	// notification step, not the incident open. Will be re-modeled when the
+	// escalation-severity primitive ships.
 	EscalationThreshold int `bun:"escalation_threshold,notnull,default:3"`
-	RecoveryThreshold   int `bun:"recovery_threshold,notnull,default:1"`
+	// FirstFailureAt is set on the result that flips the streak from 0 to 1
+	// on a failing check (no active incident yet). Cleared on the next success.
+	// The incident opens when now - FirstFailureAt >= ConfirmationPeriod.
+	FirstFailureAt *time.Time `bun:"first_failure_at"`
+	// FirstSuccessSinceFailureAt is set on the first success arriving while
+	// an incident is open. Cleared by any subsequent failure during the
+	// recovery window. Auto-resolve fires when
+	// now - FirstSuccessSinceFailureAt >= RecoveryPeriod.
+	FirstSuccessSinceFailureAt *time.Time `bun:"first_success_since_failure_at"`
 
 	// Adaptive resolution settings (nil = use defaults)
 	ReopenCooldownMultiplier *int `bun:"reopen_cooldown_multiplier"`
@@ -103,20 +118,20 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 	}
 
 	return &Check{
-		UID:                 uuid.New().String(),
-		OrganizationUID:     orgUID,
-		Slug:                slugPtr,
-		Type:                checkType,
-		Config:              make(JSONMap),
-		Enabled:             true,
-		Period:              timeutils.Duration(time.Minute), // default to 1 minute
-		IncidentThreshold:   3,
-		EscalationThreshold: 10,
-		RecoveryThreshold:   3,
-		Status:              CheckStatusCreated,
-		StatusStreak:        0,
-		CreatedAt:           now,
-		UpdatedAt:           now,
+		UID:                       uuid.New().String(),
+		OrganizationUID:           orgUID,
+		Slug:                      slugPtr,
+		Type:                      checkType,
+		Config:                    make(JSONMap),
+		Enabled:                   true,
+		Period:                    timeutils.Duration(time.Minute), // default to 1 minute
+		ConfirmationPeriodSeconds: 120,
+		EscalationThreshold:       10,
+		RecoveryPeriodSeconds:     120,
+		Status:                    CheckStatusCreated,
+		StatusStreak:              0,
+		CreatedAt:                 now,
+		UpdatedAt:                 now,
 	}
 }
 
@@ -136,10 +151,18 @@ type CheckUpdate struct {
 	Internal           *bool
 	Period             *timeutils.Duration
 
-	// Incident tracking thresholds
-	IncidentThreshold   *int
-	EscalationThreshold *int
-	RecoveryThreshold   *int
+	// Incident tracking — wall-clock periods replacing the legacy count
+	// thresholds. EscalationThreshold stays count-based for now.
+	ConfirmationPeriodSeconds *int
+	RecoveryPeriodSeconds     *int
+	EscalationThreshold       *int
+
+	// FirstFailureAt / FirstSuccessSinceFailureAt drive the open/resolve
+	// clocks; ProcessCheckResult sets/clears them as the streak signal flips.
+	FirstFailureAt                  *time.Time
+	FirstSuccessSinceFailureAt      *time.Time
+	ClearFirstFailureAt             bool
+	ClearFirstSuccessSinceFailureAt bool
 
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int

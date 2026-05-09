@@ -205,6 +205,16 @@ type Service interface {
 	UpdateCheckStatus(
 		ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
 	) error
+	// UpdateCheckIncidentClocks updates the time-based incident clocks
+	// (first_failure_at / first_success_since_failure_at) for a check.
+	// Tri-state: nil + !clear means leave as-is; nil + clear writes NULL;
+	// non-nil writes the value. See spec
+	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
+	UpdateCheckIncidentClocks(
+		ctx context.Context, checkUID string,
+		firstFailureAt *time.Time, clearFirstFailure bool,
+		firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+	) error
 
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error

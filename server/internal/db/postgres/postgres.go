@@ -1303,13 +1303,7 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 		query = query.Set("regions = ?", pgdialect.Array(*update.Regions))
 	}
 
-	if update.ReopenCooldownMultiplier != nil {
-		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
-	}
-
-	if update.MaxAdaptiveIncrease != nil {
-		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
-	}
+	query = applyAdaptiveAndIncidentTrackingPg(query, update)
 
 	switch {
 	case update.ClearEscalationPolicyUID:
@@ -1321,6 +1315,28 @@ func (s *Service) UpdateCheck(ctx context.Context, uid string, update *models.Ch
 	_, err := query.Exec(ctx)
 
 	return err
+}
+
+// applyAdaptiveAndIncidentTrackingPg sets the adaptive-resolution and
+// time-based incident-tracking columns on an UpdateCheck query. Extracted
+// from UpdateCheck to keep that function under the funlen lint cap.
+func applyAdaptiveAndIncidentTrackingPg(
+	query *bun.UpdateQuery, update *models.CheckUpdate,
+) *bun.UpdateQuery {
+	if update.ReopenCooldownMultiplier != nil {
+		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
+	}
+	if update.MaxAdaptiveIncrease != nil {
+		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	}
+	if update.ConfirmationPeriodSeconds != nil {
+		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
+	}
+	if update.RecoveryPeriodSeconds != nil {
+		query = query.Set("recovery_period_seconds = ?", *update.RecoveryPeriodSeconds)
+	}
+
+	return query
 }
 
 func (s *Service) DeleteCheck(ctx context.Context, uid string) error {
@@ -2307,6 +2323,44 @@ func (s *Service) UpdateCheckStatus(
 
 	if changedAt != nil {
 		query = query.Set("status_changed_at = ?", *changedAt)
+	}
+
+	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// UpdateCheckIncidentClocks persists the FirstFailureAt and
+// FirstSuccessSinceFailureAt timestamps used by the time-based incident
+// state machine. See sqlite.go for the tri-state semantics.
+func (s *Service) UpdateCheckIncidentClocks(
+	ctx context.Context, checkUID string,
+	firstFailureAt *time.Time, clearFirstFailure bool,
+	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+) error {
+	query := s.db.NewUpdate().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", checkUID).
+		Where("deleted_at IS NULL").
+		Set("updated_at = ?", time.Now())
+
+	wrote := false
+	if firstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *firstFailureAt)
+		wrote = true
+	} else if clearFirstFailure {
+		query = query.Set("first_failure_at = NULL")
+		wrote = true
+	}
+	if firstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
+		wrote = true
+	} else if clearFirstSuccessSinceFailure {
+		query = query.Set("first_success_since_failure_at = NULL")
+		wrote = true
+	}
+	if !wrote {
+		return nil
 	}
 
 	_, err := query.Exec(ctx)

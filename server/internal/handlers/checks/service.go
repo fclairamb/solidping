@@ -109,6 +109,21 @@ func isUUID(s string) bool {
 	return err == nil
 }
 
+// errIncidentPeriodOutOfRange is returned when ConfirmationPeriodSeconds
+// or RecoveryPeriodSeconds is outside [0, 86400]. Cap is one day so
+// typos can't accidentally suspend alerting indefinitely.
+var errIncidentPeriodOutOfRange = errors.New("must be between 0 and 86400 seconds (one day)")
+
+// validateIncidentPeriod range-checks a confirmation/recovery period in
+// seconds. 0 is allowed and means "fire immediately on the first signal".
+func validateIncidentPeriod(seconds int) error {
+	if seconds < 0 || seconds > 86400 {
+		return errIncidentPeriodOutOfRange
+	}
+
+	return nil
+}
+
 // validateSlug validates that a slug has a valid format.
 // Valid slugs: start with lowercase letter, followed by 2-49 lowercase letters, digits, or hyphens.
 // Total length: 3-50 characters. Must not look like a UUID.
@@ -482,6 +497,11 @@ type CheckResponse struct {
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
 
+	// Wall-clock incident-tracking periods (seconds), per spec 2026-05-08-02.
+	// 0 means "open / resolve immediately on first signal".
+	ConfirmationPeriodSeconds int `json:"confirmationPeriodSeconds"`
+	RecoveryPeriodSeconds     int `json:"recoveryPeriodSeconds"`
+
 	// EscalationPolicyUID points to the escalation policy that fires when
 	// an incident on this check opens. Empty/nil = no policy on the check
 	// (the group's policy may still apply at run time).
@@ -718,6 +738,11 @@ type CreateCheckRequest struct {
 	Period        *string           `json:"period"`
 	Labels        map[string]string `json:"labels"`
 
+	// Wall-clock incident-tracking periods (seconds), per spec
+	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
+	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
+	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
@@ -842,6 +867,19 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	// Set adaptive resolution settings
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	check.MaxAdaptiveIncrease = req.MaxAdaptiveIncrease
+
+	if req.ConfirmationPeriodSeconds != nil {
+		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
+			return CheckResponse{}, fmt.Errorf("confirmationPeriodSeconds: %w", vErr)
+		}
+		check.ConfirmationPeriodSeconds = *req.ConfirmationPeriodSeconds
+	}
+	if req.RecoveryPeriodSeconds != nil {
+		if vErr := validateIncidentPeriod(*req.RecoveryPeriodSeconds); vErr != nil {
+			return CheckResponse{}, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
+		}
+		check.RecoveryPeriodSeconds = *req.RecoveryPeriodSeconds
+	}
 
 	if req.EscalationPolicyUID != nil && *req.EscalationPolicyUID != "" {
 		check.EscalationPolicyUID = req.EscalationPolicyUID
@@ -975,6 +1013,11 @@ type UpdateCheckRequest struct {
 	// itself (the group's policy may still apply); empty string = clear.
 	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
 
+	// Wall-clock incident-tracking periods (seconds), per spec
+	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
+	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
+	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
 	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
@@ -988,16 +1031,22 @@ type UpdateCheckRequest struct {
 // to a non-nil zero-length slice — wipe all edges for this check), and
 // non-empty (set the edges to exactly this list).
 type UpsertCheckRequest struct {
-	Name          string                `json:"name"`
-	Description   string                `json:"description"`
-	CheckGroupUID *string               `json:"checkGroupUid"`
-	Type          string                `json:"type"`
-	Config        map[string]any        `json:"config"`
-	Enabled       *bool                 `json:"enabled"`
-	Internal      *bool                 `json:"internal,omitempty"`
-	Period        *string               `json:"period"`
-	Labels        map[string]string     `json:"labels"`
-	DependsOn     *[]ExportedDependency `json:"dependsOn,omitempty"`
+	Name          string            `json:"name"`
+	Description   string            `json:"description"`
+	CheckGroupUID *string           `json:"checkGroupUid"`
+	Type          string            `json:"type"`
+	Config        map[string]any    `json:"config"`
+	Enabled       *bool             `json:"enabled"`
+	Internal      *bool             `json:"internal,omitempty"`
+	Period        *string           `json:"period"`
+	Labels        map[string]string `json:"labels"`
+
+	// Wall-clock incident-tracking periods (seconds), per spec
+	// 2026-05-08-02. 0 means "open / resolve immediately on first signal".
+	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
+	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
+
+	DependsOn *[]ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // UpdateCheck updates an existing check by UID or slug.
@@ -1091,6 +1140,18 @@ func (s *Service) UpdateCheck(
 	}
 	if req.MaxAdaptiveIncrease != nil {
 		update.MaxAdaptiveIncrease = req.MaxAdaptiveIncrease
+	}
+	if req.ConfirmationPeriodSeconds != nil {
+		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
+			return CheckResponse{}, fmt.Errorf("confirmationPeriodSeconds: %w", vErr)
+		}
+		update.ConfirmationPeriodSeconds = req.ConfirmationPeriodSeconds
+	}
+	if req.RecoveryPeriodSeconds != nil {
+		if vErr := validateIncidentPeriod(*req.RecoveryPeriodSeconds); vErr != nil {
+			return CheckResponse{}, fmt.Errorf("recoveryPeriodSeconds: %w", vErr)
+		}
+		update.RecoveryPeriodSeconds = req.RecoveryPeriodSeconds
 	}
 
 	// Update check in DB
@@ -1713,23 +1774,25 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 	}
 
 	return CheckResponse{
-		UID:                      check.UID,
-		Name:                     check.Name,
-		Slug:                     check.Slug,
-		Description:              check.Description,
-		CheckGroupUID:            check.CheckGroupUID,
-		Type:                     &check.Type,
-		Config:                   check.Config,
-		ConfigPrivateKeys:        privateKeys,
-		Regions:                  check.Regions,
-		Enabled:                  &check.Enabled,
-		Internal:                 &check.Internal,
-		Period:                   &periodStr,
-		Status:                   check.Status.String(),
-		CreatedAt:                &check.CreatedAt,
-		ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
-		MaxAdaptiveIncrease:      check.MaxAdaptiveIncrease,
-		EscalationPolicyUID:      check.EscalationPolicyUID,
+		UID:                       check.UID,
+		Name:                      check.Name,
+		Slug:                      check.Slug,
+		Description:               check.Description,
+		CheckGroupUID:             check.CheckGroupUID,
+		Type:                      &check.Type,
+		Config:                    check.Config,
+		ConfigPrivateKeys:         privateKeys,
+		Regions:                   check.Regions,
+		Enabled:                   &check.Enabled,
+		Internal:                  &check.Internal,
+		Period:                    &periodStr,
+		Status:                    check.Status.String(),
+		CreatedAt:                 &check.CreatedAt,
+		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
+		MaxAdaptiveIncrease:       check.MaxAdaptiveIncrease,
+		ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
+		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
+		EscalationPolicyUID:       check.EscalationPolicyUID,
 	}
 }
 
@@ -1826,23 +1889,23 @@ type ExportDocument struct {
 
 // ExportCheck represents a single check in the export format.
 type ExportCheck struct {
-	Name                     string               `json:"name"`
-	Slug                     string               `json:"slug"`
-	Description              string               `json:"description,omitempty"`
-	Type                     string               `json:"type"`
-	Config                   map[string]any       `json:"config"`
-	Regions                  []string             `json:"regions,omitempty"`
-	Labels                   map[string]string    `json:"labels,omitempty"`
-	Enabled                  bool                 `json:"enabled"`
-	Internal                 bool                 `json:"internal,omitempty"`
-	Period                   string               `json:"period,omitempty"`
-	Group                    string               `json:"group,omitempty"`
-	IncidentThreshold        int                  `json:"incidentThreshold,omitempty"`
-	EscalationThreshold      int                  `json:"escalationThreshold,omitempty"`
-	RecoveryThreshold        int                  `json:"recoveryThreshold,omitempty"`
-	ReopenCooldownMultiplier *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int                 `json:"maxAdaptiveIncrease,omitempty"`
-	DependsOn                []ExportedDependency `json:"dependsOn,omitempty"`
+	Name                      string               `json:"name"`
+	Slug                      string               `json:"slug"`
+	Description               string               `json:"description,omitempty"`
+	Type                      string               `json:"type"`
+	Config                    map[string]any       `json:"config"`
+	Regions                   []string             `json:"regions,omitempty"`
+	Labels                    map[string]string    `json:"labels,omitempty"`
+	Enabled                   bool                 `json:"enabled"`
+	Internal                  bool                 `json:"internal,omitempty"`
+	Period                    string               `json:"period,omitempty"`
+	Group                     string               `json:"group,omitempty"`
+	ConfirmationPeriodSeconds int                  `json:"confirmationPeriodSeconds,omitempty"`
+	EscalationThreshold       int                  `json:"escalationThreshold,omitempty"`
+	RecoveryPeriodSeconds     int                  `json:"recoveryPeriodSeconds,omitempty"`
+	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
+	MaxAdaptiveIncrease       *int                 `json:"maxAdaptiveIncrease,omitempty"`
+	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
 // ExportedDependency mirrors an edge in slug-keyed form. Slug-keyed because
@@ -1958,17 +2021,17 @@ func (s *Service) ExportChecks(
 		periodStr, _ := periodValue.(string)
 
 		exported := ExportCheck{
-			Type:                     check.Type,
-			Config:                   stripSecretKeysForExport(check),
-			Regions:                  check.Regions,
-			Enabled:                  check.Enabled,
-			Internal:                 check.Internal,
-			Period:                   periodStr,
-			IncidentThreshold:        check.IncidentThreshold,
-			EscalationThreshold:      check.EscalationThreshold,
-			RecoveryThreshold:        check.RecoveryThreshold,
-			ReopenCooldownMultiplier: check.ReopenCooldownMultiplier,
-			MaxAdaptiveIncrease:      check.MaxAdaptiveIncrease,
+			Type:                      check.Type,
+			Config:                    stripSecretKeysForExport(check),
+			Regions:                   check.Regions,
+			Enabled:                   check.Enabled,
+			Internal:                  check.Internal,
+			Period:                    periodStr,
+			ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
+			EscalationThreshold:       check.EscalationThreshold,
+			RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
+			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
+			MaxAdaptiveIncrease:       check.MaxAdaptiveIncrease,
 		}
 
 		if check.Name != nil {
@@ -2480,9 +2543,9 @@ func (s *Service) cloneBuildCheck(
 	clone.Regions = append([]string(nil), source.Regions...)
 	clone.Period = source.Period
 	clone.Internal = source.Internal
-	clone.IncidentThreshold = source.IncidentThreshold
+	clone.ConfirmationPeriodSeconds = source.ConfirmationPeriodSeconds
 	clone.EscalationThreshold = source.EscalationThreshold
-	clone.RecoveryThreshold = source.RecoveryThreshold
+	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
 	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
 	clone.EscalationPolicyUID = source.EscalationPolicyUID

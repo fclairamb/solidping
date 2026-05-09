@@ -186,6 +186,15 @@ func createCheckDef() ToolDefinition {
 			propCheckGroupUID: stringProp(
 				"Assign the check to a check group (UID or slug), e.g. \"core-services\".",
 			),
+			"confirmationPeriodSeconds": intProp(
+				"Wall-clock seconds to wait after the first failure before opening an incident. " +
+					"0 = open immediately on the first failure. Range 0–86400 (one day). Default 120.",
+			),
+			"recoveryPeriodSeconds": intProp(
+				"Wall-clock seconds the check must stay UP before auto-resolving an incident. " +
+					"Any failure inside the window resets the recovery clock. " +
+					"0 = resolve immediately. Range 0–86400. Default 120.",
+			),
 		}, []string{schemaKeyConfig}),
 	}
 }
@@ -213,6 +222,15 @@ func (h *Handler) toolCreateCheck(ctx context.Context, orgSlug string, args map[
 
 	if g := getStringArg(args, "checkGroupUid"); g != "" {
 		req.CheckGroupUID = &g
+	}
+
+	if _, ok := args["confirmationPeriodSeconds"]; ok {
+		v := getIntArg(args, "confirmationPeriodSeconds", 0)
+		req.ConfirmationPeriodSeconds = &v
+	}
+	if _, ok := args["recoveryPeriodSeconds"]; ok {
+		v := getIntArg(args, "recoveryPeriodSeconds", 0)
+		req.RecoveryPeriodSeconds = &v
 	}
 
 	result, err := h.checksSvc.CreateCheck(ctx, orgSlug, req)
@@ -248,6 +266,14 @@ func updateCheckDef() ToolDefinition {
 			schemaKeyDescription: stringProp("Updated free-text description shown in the UI."),
 			propCheckGroupUID: stringProp(
 				"Move to a different group (UID or slug). Pass an empty string to ungroup.",
+			),
+			"confirmationPeriodSeconds": intProp(
+				"Wall-clock seconds to wait after the first failure before opening an incident. " +
+					"0 = open immediately. Range 0–86400 (one day).",
+			),
+			"recoveryPeriodSeconds": intProp(
+				"Wall-clock seconds the check must stay UP before auto-resolving. Any failure " +
+					"inside the window resets the recovery clock. 0 = resolve immediately. Range 0–86400.",
 			),
 		}, []string{propIdentifier}),
 	}
@@ -286,6 +312,14 @@ func (h *Handler) toolUpdateCheck(ctx context.Context, orgSlug string, args map[
 	if _, ok := args["checkGroupUid"]; ok {
 		g := getStringArg(args, "checkGroupUid")
 		req.CheckGroupUID = &g
+	}
+	if _, ok := args["confirmationPeriodSeconds"]; ok {
+		v := getIntArg(args, "confirmationPeriodSeconds", 0)
+		req.ConfirmationPeriodSeconds = &v
+	}
+	if _, ok := args["recoveryPeriodSeconds"]; ok {
+		v := getIntArg(args, "recoveryPeriodSeconds", 0)
+		req.RecoveryPeriodSeconds = &v
 	}
 
 	result, err := h.checksSvc.UpdateCheck(ctx, orgSlug, identifier, &req)
