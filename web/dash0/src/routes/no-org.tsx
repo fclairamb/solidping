@@ -7,7 +7,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Activity, AlertCircle, Loader2, X } from "lucide-react";
+import { Logo } from "@/components/ui/logo";
+import { AlertCircle, Loader2, X } from "lucide-react";
 import { ApiError, setToken } from "@/api/client";
 import {
   useCreateOrg,
@@ -39,7 +40,7 @@ function NoOrgPage() {
       <div className="w-full max-w-4xl space-y-6">
         <div className="text-center">
           <div className="flex justify-center mb-3">
-            <Activity className="h-12 w-12 text-primary" />
+            <Logo size={64} />
           </div>
           <h1 className="text-2xl font-semibold">{t("noOrg.welcome")}</h1>
           <p className="text-sm text-muted-foreground mt-1">

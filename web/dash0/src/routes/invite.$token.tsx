@@ -7,12 +7,8 @@ import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Activity,
-  AlertCircle,
-  Loader2,
-  Mail,
-} from "lucide-react";
+import { Logo } from "@/components/ui/logo";
+import { AlertCircle, Loader2, Mail } from "lucide-react";
 import { ApiError, getToken } from "@/api/client";
 import { useInviteInfo, useAcceptInvite } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
@@ -85,7 +81,7 @@ function AcceptInvitePage() {
   if (infoLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md border-t-4 border-t-brand">
           <CardContent className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </CardContent>
@@ -97,7 +93,7 @@ function AcceptInvitePage() {
   if (infoError || !inviteInfo) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="w-full max-w-md">
+        <Card className="w-full max-w-md border-t-4 border-t-brand">
           <CardHeader className="text-center">
             <div className="flex justify-center mb-4">
               <AlertCircle className="h-12 w-12 text-destructive" />
@@ -116,10 +112,10 @@ function AcceptInvitePage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <Card className="w-full max-w-md">
+      <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <Activity className="h-12 w-12 text-primary" />
+            <Logo size={64} />
           </div>
           <CardTitle className="text-2xl">
             {t("auth:invite.joinTitle", { orgName: inviteInfo.orgName })}
