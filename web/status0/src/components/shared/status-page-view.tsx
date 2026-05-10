@@ -199,10 +199,11 @@ export function StatusPageView({ page }: { page: StatusPage }) {
 
   return (
     <div className="min-h-screen">
-      {/* Brand bar — visual continuity hook from solidping.io. Brand
-          pink lives here; the status banner below uses status colors
-          only. */}
-      <header className="bg-brand text-brand-foreground">
+      {/* Brand bar — white surface with a brand-pink logo. The brand
+          color is confined to the logo so the page reads as one
+          continuous document; the status banner below uses status
+          colors only. */}
+      <header className="border-b border-border">
         <div className="mx-auto max-w-3xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Logo size={32} />
@@ -269,10 +270,9 @@ export function StatusPageView({ page }: { page: StatusPage }) {
             href="https://www.solidping.io"
             target="_blank"
             rel="noreferrer noopener"
-            className="inline-flex items-center gap-1.5 text-brand hover:underline"
+            className="text-brand hover:underline"
           >
             {t("poweredBy")}
-            <Logo size={14} variant="wordmark" />
           </a>
           {versionInfo ? <span>v{versionInfo.version}</span> : null}
         </div>
