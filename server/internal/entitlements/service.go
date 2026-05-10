@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -14,22 +15,14 @@ import (
 
 // Errors returned by the entitlements service.
 var (
-	// ErrEntitlementExceeded is returned by CanCreate when the requested
-	// resource would exceed the org's quota.
+	// ErrEntitlementExceeded is returned when a request would breach a
+	// numeric quota (MaxSSOUsers / MaxChecksPerMinute).
 	ErrEntitlementExceeded = errors.New("entitlement exceeded")
-	// ErrFeatureNotEntitled is returned by FeatureEnabled when a boolean
-	// feature is off for the org.
-	ErrFeatureNotEntitled = errors.New("feature not entitled")
-	// ErrUnknownResource is returned when CanCreate is called with a name
-	// the service doesn't know how to count.
-	ErrUnknownResource = errors.New("unknown resource for entitlement check")
-	// ErrUnknownFeature is returned when FeatureEnabled gets a name it
-	// doesn't recognize.
-	ErrUnknownFeature = errors.New("unknown feature")
 )
 
 // QuotaError carries the precise numbers a frontend needs to render a
-// "you're at 5/5 checks" message. Returned from CanCreate.
+// "you're at 30/30 SSO users" message. Returned from CheckSSOMembership
+// and ReserveCheckExecution.
 type QuotaError struct {
 	LimitName    string
 	Limit        int
@@ -47,14 +40,22 @@ func (e *QuotaError) Error() string {
 // Unwrap allows errors.Is(err, ErrEntitlementExceeded) to match.
 func (e *QuotaError) Unwrap() error { return ErrEntitlementExceeded }
 
-// Service provides entitlement Resolve / Set / CanCreate / FeatureEnabled.
-// In PR 1, CanCreate / FeatureEnabled are stubs that always allow — the
-// enforcement-batch PRs wire them into actual handlers.
+// Service exposes Resolve / Set, plus the two enforcement methods
+// CheckSSOMembership and ReserveCheckExecution. The token bucket used
+// by ReserveCheckExecution is process-local — multi-replica
+// deployments need a shared store (Redis / PG advisory) which is a
+// follow-up.
 type Service struct {
 	db         db.Service
 	defaults   Entitlements
 	staleAfter time.Duration
 	now        func() time.Time
+
+	// Per-org rate limiters for ReserveCheckExecution. Lazily built on
+	// first use; cleared on Set so admin overrides take effect
+	// immediately. Keyed by org UID.
+	limitersMu sync.Mutex
+	limiters   map[string]*tokenBucket
 }
 
 // NewService builds an entitlements service with the given defaults.
@@ -62,8 +63,6 @@ type Service struct {
 //
 // defaults is held by value for the service's lifetime; passing by
 // pointer would invite mutation.
-//
-//nolint:gocritic
 func NewService(
 	dbService db.Service, defaults Entitlements, staleAfter time.Duration,
 ) *Service {
@@ -72,13 +71,13 @@ func NewService(
 		defaults:   defaults,
 		staleAfter: staleAfter,
 		now:        time.Now,
+		limiters:   make(map[string]*tokenBucket),
 	}
 }
 
-// Resolve merges the stored row with defaults and live usage. Falls back
-// to defaults entirely when the row is stale (last_synced_at older than
-// staleAfter and source == billing-service); admin overrides do not go
-// stale.
+// Resolve merges the stored row with defaults. Falls back to defaults
+// entirely when the row is stale (last_synced_at older than staleAfter
+// and source == billing-service); admin overrides do not go stale.
 func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) {
 	row, err := s.db.GetOrgEntitlements(ctx, orgUID)
 	if err != nil {
@@ -87,13 +86,6 @@ func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) 
 
 	stale := s.isStale(row)
 	merged := s.merge(row, stale)
-
-	usage, err := s.computeUsage(ctx, orgUID)
-	if err != nil {
-		return Resolved{}, fmt.Errorf("compute usage: %w", err)
-	}
-
-	merged.Usage = usage
 	merged.Stale = stale
 
 	return merged, nil
@@ -101,8 +93,6 @@ func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) 
 
 // Set replaces the entitlement row and writes an audit entry in the same
 // transaction. Pass empty actor for unattended writes.
-//
-//nolint:gocritic // in is the request payload, intentional value semantics
 func (s *Service) Set(
 	ctx context.Context, orgUID string, input Entitlements, actor, reason string,
 ) error {
@@ -140,49 +130,119 @@ func (s *Service) Set(
 		return fmt.Errorf("upsert entitlements: %w", err)
 	}
 
+	// Drop the cached limiter so the new cap (if any) takes effect on
+	// the next ReserveCheckExecution call.
+	s.limitersMu.Lock()
+	delete(s.limiters, orgUID)
+	s.limitersMu.Unlock()
+
 	slog.InfoContext(ctx, "entitlements written",
 		"orgUID", orgUID, "source", input.Source, "actor", actor)
 
 	return nil
 }
 
-// CanCreate is the boundary check for create-* handlers. PR 1 stub: no
-// enforcement is wired in yet, so this always returns nil. Enforcement
-// PRs (3 and 4) add actual count vs limit logic.
-func (s *Service) CanCreate(_ context.Context, _ /*orgUID*/, _ /*resource*/ string) error {
+// CheckSSOMembership returns ErrEntitlementExceeded (wrapped in
+// QuotaError) when the org has reached its MaxSSOUsers quota. Counts
+// distinct organization members linked to any user_providers row.
+// nil cap = unlimited.
+//
+// Race window: the count + caller's insert are not atomic, so a tight
+// race may slip a 31st user in. Acceptable for a 30-seat self-hosted
+// guard; tighten with a transactional lock if it ever matters.
+func (s *Service) CheckSSOMembership(ctx context.Context, orgUID string) error {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
+	}
+
+	if resolved.Limits.MaxSSOUsers == nil {
+		return nil
+	}
+
+	limit := *resolved.Limits.MaxSSOUsers
+
+	count, err := s.db.CountSSOMembersForOrg(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("count sso members: %w", err)
+	}
+
+	if count >= limit {
+		return &QuotaError{
+			LimitName:    "MaxSSOUsers",
+			Limit:        limit,
+			CurrentUsage: count,
+		}
+	}
+
 	return nil
 }
 
-// FeatureEnabled is the boolean-feature gate for handlers. PR 1 stub:
-// always returns the default value for the feature so callers wired in
-// the early enforcement PRs see no behavior change.
-func (s *Service) FeatureEnabled(_ context.Context, _ /*orgUID*/, feature string) (bool, error) {
-	val, ok := defaultFeatureFlag(s.defaults.Features, feature)
-	if !ok {
-		return false, fmt.Errorf("%w: %s", ErrUnknownFeature, feature)
+// ReserveCheckExecution consults a per-org token bucket. Each call
+// consumes one token; a depleted bucket returns ErrEntitlementExceeded
+// (wrapped in QuotaError). Refill rate is `cap / 60` tokens/sec and
+// burst is `cap`, so a freshly-resolved org starts full and recovers
+// linearly.
+//
+// nil cap = unlimited (skip lookup, no allocation).
+func (s *Service) ReserveCheckExecution(ctx context.Context, orgUID string) error {
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		return fmt.Errorf("resolve entitlements: %w", err)
 	}
 
-	return val, nil
+	if resolved.Limits.MaxChecksPerMinute == nil {
+		return nil
+	}
+
+	limit := *resolved.Limits.MaxChecksPerMinute
+	if limit <= 0 {
+		// 0 means "no executions allowed at all"; surface a quota error
+		// so the caller can defer the job. Negative values are clamped
+		// to the same behavior.
+		return &QuotaError{LimitName: "MaxChecksPerMinute", Limit: limit, CurrentUsage: 0}
+	}
+
+	bucket := s.limiterFor(orgUID, limit)
+	if !bucket.allow(s.now()) {
+		return &QuotaError{
+			LimitName:    "MaxChecksPerMinute",
+			Limit:        limit,
+			CurrentUsage: limit,
+		}
+	}
+
+	return nil
 }
 
-// Defaults returns the in-memory defaults for callers that need to render
-// "X / Y" indicators when no row exists.
+// limiterFor returns (creating if needed) the token bucket for orgUID.
+// Capacity is taken at first construction; later changes are honored by
+// Set, which clears the cache.
+func (s *Service) limiterFor(orgUID string, capacity int) *tokenBucket {
+	s.limitersMu.Lock()
+	defer s.limitersMu.Unlock()
+
+	bucket, ok := s.limiters[orgUID]
+	if !ok {
+		bucket = newTokenBucket(capacity, s.now())
+		s.limiters[orgUID] = bucket
+	}
+
+	return bucket
+}
+
+// Defaults returns the in-memory defaults for callers that need to
+// render "X / Y" indicators when no row exists.
 func (s *Service) Defaults() Entitlements {
 	return s.defaults
 }
 
 // merge produces a Resolved by filling nulls from defaults. If stale is
-// true, the entire payload is dropped in favor of defaults (caller still
-// surfaces source/display name so the UI can label the stale state).
-// Straight-line per-field overlay; a loop would obscure the type-level
-// mapping.
-//
-//nolint:cyclop,funlen
+// true, the entire payload is dropped in favor of defaults.
 func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out := Resolved{
-		Limits:   s.defaults.Limits,
-		Features: s.defaults.Features,
-		Source:   models.EntitlementSourceDefault,
+		Limits: s.defaults.Limits,
+		Source: models.EntitlementSourceDefault,
 	}
 
 	if row == nil || stale {
@@ -195,62 +255,11 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out.LastSyncedAt = row.LastSyncedAt
 
 	limits := row.Payload.Limits
-	if limits.MaxChecks != nil {
-		out.Limits.MaxChecks = limits.MaxChecks
+	if limits.MaxSSOUsers != nil {
+		out.Limits.MaxSSOUsers = limits.MaxSSOUsers
 	}
-	if limits.MaxMembers != nil {
-		out.Limits.MaxMembers = limits.MaxMembers
-	}
-	if limits.MaxStatusPages != nil {
-		out.Limits.MaxStatusPages = limits.MaxStatusPages
-	}
-	if limits.MaxCheckGroups != nil {
-		out.Limits.MaxCheckGroups = limits.MaxCheckGroups
-	}
-	if limits.MaxMaintenanceWindows != nil {
-		out.Limits.MaxMaintenanceWindows = limits.MaxMaintenanceWindows
-	}
-	if limits.MaxConnections != nil {
-		out.Limits.MaxConnections = limits.MaxConnections
-	}
-	if limits.MaxWorkers != nil {
-		out.Limits.MaxWorkers = limits.MaxWorkers
-	}
-	if limits.MaxAPITokens != nil {
-		out.Limits.MaxAPITokens = limits.MaxAPITokens
-	}
-	if limits.RetentionDaysRaw != nil {
-		out.Limits.RetentionDaysRaw = limits.RetentionDaysRaw
-	}
-	if limits.RetentionDaysAggregated != nil {
-		out.Limits.RetentionDaysAggregated = limits.RetentionDaysAggregated
-	}
-	if limits.MinCheckPeriodSeconds != nil {
-		out.Limits.MinCheckPeriodSeconds = limits.MinCheckPeriodSeconds
-	}
-
-	features := row.Payload.Features
-	if features.SSO != nil {
-		out.Features.SSO = features.SSO
-	}
-	if features.MCP != nil {
-		out.Features.MCP = features.MCP
-	}
-	if features.CustomBranding != nil {
-		out.Features.CustomBranding = features.CustomBranding
-	}
-	if features.PrioritySupport != nil {
-		out.Features.PrioritySupport = features.PrioritySupport
-	}
-	if features.MultiRegion != nil {
-		out.Features.MultiRegion = features.MultiRegion
-	}
-	if features.AdvancedAlerts != nil {
-		out.Features.AdvancedAlerts = features.AdvancedAlerts
-	}
-
-	if len(row.Payload.AllowedCheckTypes) > 0 {
-		out.AllowedCheckTypes = row.Payload.AllowedCheckTypes
+	if limits.MaxChecksPerMinute != nil {
+		out.Limits.MaxChecksPerMinute = limits.MaxChecksPerMinute
 	}
 
 	return out
@@ -275,45 +284,9 @@ func (s *Service) isStale(row *models.OrgEntitlements) bool {
 	return s.now().Sub(*row.LastSyncedAt) > s.staleAfter
 }
 
-// computeUsage reads counts from the db for the org-scoped resources
-// most useful to render a "X / Y used" panel. Cheap when there is no
-// quota set (the queries are bounded by org_uid).
-func (s *Service) computeUsage(ctx context.Context, orgUID string) (Usage, error) {
-	checks, err := s.db.CountChecksForOrg(ctx, orgUID)
-	if err != nil {
-		return Usage{}, err
-	}
-	members, err := s.db.ListMembersByOrg(ctx, orgUID)
-	if err != nil {
-		return Usage{}, err
-	}
-	statusPages, err := s.db.CountStatusPagesForOrg(ctx, orgUID)
-	if err != nil {
-		return Usage{}, err
-	}
-	checkGroups, err := s.db.CountCheckGroupsForOrg(ctx, orgUID)
-	if err != nil {
-		return Usage{}, err
-	}
-	connections, err := s.db.CountConnectionsForOrg(ctx, orgUID)
-	if err != nil {
-		return Usage{}, err
-	}
-
-	return Usage{
-		Checks:      checks,
-		Members:     len(members),
-		StatusPages: statusPages,
-		CheckGroups: checkGroups,
-		Connections: connections,
-	}, nil
-}
-
 // toModel maps an Entitlements (input) onto an OrgEntitlements row. If
 // previous is non-nil the existing UID is preserved; otherwise a fresh
 // one is generated.
-//
-//nolint:gocritic // input is the inbound payload — value semantics intentional
 func toModel(
 	orgUID string, input Entitlements, previous *models.OrgEntitlements,
 ) *models.OrgEntitlements {
@@ -324,12 +297,10 @@ func toModel(
 	}
 
 	row.Payload = models.EntitlementsPayload{
-		Version:           models.EntitlementsPayloadVersion,
-		Source:            input.Source,
-		Limits:            input.Limits,
-		Features:          input.Features,
-		AllowedCheckTypes: input.AllowedCheckTypes,
-		DisplayName:       input.DisplayName,
+		Version:     models.EntitlementsPayloadVersion,
+		Source:      input.Source,
+		Limits:      input.Limits,
+		DisplayName: input.DisplayName,
 	}
 
 	row.ExternalRef = input.ExternalRef
@@ -360,37 +331,44 @@ func modelToJSON(row *models.OrgEntitlements) (models.JSONMap, error) {
 	return out, nil
 }
 
-// defaultFeatureFlag looks up a feature by name. Used by FeatureEnabled
-// in PR 1 (pre-enforcement) to surface the default value.
-func defaultFeatureFlag(features Features, name string) (bool, bool) {
-	switch name {
-	case "sso":
-		if features.SSO != nil {
-			return *features.SSO, true
+// tokenBucket is a minimal per-org token bucket. Tokens refill at
+// rate (capacity / 60) tokens per second; capacity is the burst.
+type tokenBucket struct {
+	mu       sync.Mutex
+	capacity int
+	tokens   float64
+	last     time.Time
+}
+
+func newTokenBucket(capacity int, now time.Time) *tokenBucket {
+	return &tokenBucket{
+		capacity: capacity,
+		tokens:   float64(capacity),
+		last:     now,
+	}
+}
+
+// allow consumes one token if available. Returns false when the bucket
+// is empty.
+func (b *tokenBucket) allow(now time.Time) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	rate := float64(b.capacity) / 60.0
+	elapsed := now.Sub(b.last).Seconds()
+	if elapsed > 0 {
+		b.tokens += elapsed * rate
+		if b.tokens > float64(b.capacity) {
+			b.tokens = float64(b.capacity)
 		}
-	case "mcp":
-		if features.MCP != nil {
-			return *features.MCP, true
-		}
-	case "custom_branding":
-		if features.CustomBranding != nil {
-			return *features.CustomBranding, true
-		}
-	case "priority_support":
-		if features.PrioritySupport != nil {
-			return *features.PrioritySupport, true
-		}
-	case "multi_region":
-		if features.MultiRegion != nil {
-			return *features.MultiRegion, true
-		}
-	case "advanced_alerts":
-		if features.AdvancedAlerts != nil {
-			return *features.AdvancedAlerts, true
-		}
-	default:
-		return false, false
+		b.last = now
 	}
 
-	return false, false
+	if b.tokens >= 1 {
+		b.tokens--
+
+		return true
+	}
+
+	return false
 }

@@ -43,7 +43,7 @@ func passkeyTestUser(t *testing.T) (
 		},
 	}
 
-	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	return pkSvc, dbSvc, user
@@ -71,7 +71,7 @@ func TestPasskeyService_DisabledWhenBaseURLPlainHTTP(t *testing.T) {
 		Server: config.ServerConfig{BaseURL: "http://public.example.com"},
 	}
 
-	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	r.False(pkSvc.Enabled())
@@ -98,7 +98,7 @@ func TestPasskeyService_EnabledOnLocalhostHTTP(t *testing.T) {
 		Server: config.ServerConfig{BaseURL: "http://localhost:4000"},
 	}
 
-	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	r.True(pkSvc.Enabled())
@@ -133,7 +133,7 @@ func TestPasskeyService_UsesOverlaidBaseURL(t *testing.T) {
 		Server: config.ServerConfig{BaseURL: "https://wrong.example.com"},
 	}
 
-	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 
 	// Simulate InitializeSystemConfig overlaying server.base_url from the
 	// parameters table after the auth service exists but before the
@@ -169,7 +169,7 @@ func TestPasskeyService_BeginRegistrationWhenDisabled(t *testing.T) {
 		Server: config.ServerConfig{BaseURL: "https://example.com"},
 	}
 
-	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil)
+	authSvc := auth.NewService(dbSvc, cfg.Auth, cfg, nil, nil)
 	pkSvc := auth.NewPasskeyService(authSvc, dbSvc)
 
 	user := models.NewUser("a@b.com")

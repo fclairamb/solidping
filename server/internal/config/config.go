@@ -34,6 +34,18 @@ const (
 	DatabaseTypeSQLiteMemory     = "sqlite-memory"
 )
 
+// Deployment mode constants. Drives the per-org entitlement defaults:
+// self-hosted caps SSO membership, SaaS caps aggregate check rate.
+const (
+	DeploymentModeSelfHosted = "self-hosted"
+	DeploymentModeSaaS       = "saas"
+)
+
+// ValidDeploymentModes returns the supported SP_DEPLOYMENT_MODE values.
+func ValidDeploymentModes() []string {
+	return []string{DeploymentModeSelfHosted, DeploymentModeSaaS}
+}
+
 var (
 	// ErrInvalidDatabaseType is returned when the database type is invalid.
 	ErrInvalidDatabaseType = errors.New(
@@ -49,6 +61,8 @@ var (
 	ErrRegionRequiredForChecks = errors.New("SP_NODE_REGION is required when SP_NODE_ROLE is set to 'checks'")
 	// ErrInvalidAggregationRetention is returned when an aggregation retention value is < 1.
 	ErrInvalidAggregationRetention = errors.New("aggregation retention values must be >= 1")
+	// ErrInvalidDeploymentMode is returned when SP_DEPLOYMENT_MODE is set to something other than "saas" / "self-hosted".
+	ErrInvalidDeploymentMode = errors.New("deployment mode must be 'saas' or 'self-hosted'")
 )
 
 // ValidNodeRoles returns all valid role values.
@@ -129,9 +143,18 @@ type Config struct {
 	Aggregation AggregationConfig    `koanf:"aggregation"`
 	FileStorage FileStorageConfig    `koanf:"filestorage"`
 	App         AppConfig            `koanf:"app"`
+	Deployment  DeploymentConfig     `koanf:"deployment"`
 	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
+}
+
+// DeploymentConfig picks per-org entitlement defaults. SP_DEPLOYMENT_MODE
+// drives Mode; "self-hosted" (default) caps SSO membership at 30,
+// "saas" caps aggregate check executions at 6/min. Validation is at
+// startup — unknown values fail fast.
+type DeploymentConfig struct {
+	Mode string `koanf:"mode"`
 }
 
 // NodeConfig contains node role configuration.
@@ -357,6 +380,9 @@ func Load() (*Config, error) {
 		Encryption: EncryptionConfig{
 			AutoMigrate: true,
 		},
+		Deployment: DeploymentConfig{
+			Mode: DeploymentModeSelfHosted,
+		},
 	}
 
 	if err := koanfInstance.Load(structs.Provider(defaults, "koanf"), nil); err != nil {
@@ -507,6 +533,14 @@ func (c *Config) Validate() error {
 			c.Aggregation.RetentionRaw,
 			c.Aggregation.RetentionHour,
 			c.Aggregation.RetentionDay)
+	}
+
+	// Validate deployment mode (empty = self-hosted, set in defaults).
+	if c.Deployment.Mode == "" {
+		c.Deployment.Mode = DeploymentModeSelfHosted
+	}
+	if !slices.Contains(ValidDeploymentModes(), c.Deployment.Mode) {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidDeploymentMode, c.Deployment.Mode)
 	}
 
 	return nil

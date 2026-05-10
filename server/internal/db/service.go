@@ -390,10 +390,10 @@ type Service interface {
 	ListOrgEntitlementAudits(
 		ctx context.Context, filter models.ListOrgEntitlementAuditsFilter,
 	) ([]*models.OrgEntitlementAudit, error)
-	CountChecksForOrg(ctx context.Context, orgUID string) (int, error)
-	CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error)
-	CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error)
-	CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error)
+	// CountSSOMembersForOrg counts org members linked to at least one
+	// row in user_providers. Used by the entitlements service to enforce
+	// MaxSSOUsers.
+	CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error)
 
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error

@@ -246,8 +246,20 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
 	}
 
-	// Create auth service
-	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService)
+	// Entitlements service. Defaults are deployment-mode dependent
+	// (self-hosted caps SSO; SaaS caps check rate). Stale-after of zero
+	// disables billing-service stale fallback — fine for both deployment
+	// modes today, the billing integration can flip it later via system
+	// parameters.
+	entitlementsService := entitlementsapi.NewService(
+		dbService, entitlementsapi.DefaultsFor(cfg.Deployment.Mode), 0,
+	)
+	svcList.Entitlements = entitlementsService
+
+	// Create auth service. The entitlements service gates SSO membership
+	// caps inside ensureMembership (every OAuth callback) and inside
+	// autoJoinMatchingOrgs.
+	authService := auth.NewService(dbService, cfg.Auth, cfg, jobService, entitlementsService)
 
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
@@ -673,10 +685,7 @@ func (s *Server) SetupRoutes() {
 	// GET endpoint is open to any authenticated org member, so we wrap
 	// the group with RequireAuth + RequireOrgAccess; the handler then
 	// applies a stricter check on writes.
-	entitlementsService := entitlementsapi.NewService(
-		s.dbService, entitlementsapi.DefaultEntitlements, 0,
-	)
-	entitlementsHandler := entitlements.NewHandler(entitlementsService, s.dbService, s.config)
+	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)

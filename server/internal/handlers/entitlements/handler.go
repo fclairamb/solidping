@@ -147,9 +147,13 @@ func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, parti
 	}
 
 	var input entcore.Entitlements
-	if decErr := json.NewDecoder(req.Body).Decode(&input); decErr != nil {
+	dec := json.NewDecoder(req.Body)
+	dec.DisallowUnknownFields()
+	if decErr := dec.Decode(&input); decErr != nil {
+		// DisallowUnknownFields surfaces e.g. legacy callers sending
+		// "maxChecks" — reject loudly so the deprecation is obvious.
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: "body", Message: decErr.Error()},
 		})
 	}
 
@@ -218,8 +222,6 @@ func (h *Handler) ListAudits(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // mergePartial loads the current row and overlays it with the input.
-//
-//nolint:gocritic // input is the request payload, intentional value semantics
 func (h *Handler) mergePartial(
 	ctx context.Context, orgUID string, input entcore.Entitlements,
 ) entcore.Entitlements {
@@ -232,21 +234,15 @@ func (h *Handler) mergePartial(
 	}
 
 	out := entcore.Entitlements{
-		Limits:            current.Limits,
-		Features:          current.Features,
-		AllowedCheckTypes: current.AllowedCheckTypes,
-		Source:            input.Source,
-		DisplayName:       current.DisplayName,
-		ExpiresAt:         current.ExpiresAt,
-		LastSyncedAt:      current.LastSyncedAt,
+		Limits:       current.Limits,
+		Source:       input.Source,
+		DisplayName:  current.DisplayName,
+		ExpiresAt:    current.ExpiresAt,
+		LastSyncedAt: current.LastSyncedAt,
 	}
 
 	overlayLimits(&out.Limits, input.Limits)
-	overlayFeatures(&out.Features, input.Features)
 
-	if len(input.AllowedCheckTypes) > 0 {
-		out.AllowedCheckTypes = input.AllowedCheckTypes
-	}
 	if input.DisplayName != nil {
 		out.DisplayName = input.DisplayName
 	}
@@ -266,61 +262,12 @@ func (h *Handler) mergePartial(
 	return out
 }
 
-//nolint:gocritic // src holds 11 nullable pointers; value semantics make the per-field overlay straight-line
 func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
-	if src.MaxChecks != nil {
-		dst.MaxChecks = src.MaxChecks
+	if src.MaxSSOUsers != nil {
+		dst.MaxSSOUsers = src.MaxSSOUsers
 	}
-	if src.MaxMembers != nil {
-		dst.MaxMembers = src.MaxMembers
-	}
-	if src.MaxStatusPages != nil {
-		dst.MaxStatusPages = src.MaxStatusPages
-	}
-	if src.MaxCheckGroups != nil {
-		dst.MaxCheckGroups = src.MaxCheckGroups
-	}
-	if src.MaxMaintenanceWindows != nil {
-		dst.MaxMaintenanceWindows = src.MaxMaintenanceWindows
-	}
-	if src.MaxConnections != nil {
-		dst.MaxConnections = src.MaxConnections
-	}
-	if src.MaxWorkers != nil {
-		dst.MaxWorkers = src.MaxWorkers
-	}
-	if src.MaxAPITokens != nil {
-		dst.MaxAPITokens = src.MaxAPITokens
-	}
-	if src.RetentionDaysRaw != nil {
-		dst.RetentionDaysRaw = src.RetentionDaysRaw
-	}
-	if src.RetentionDaysAggregated != nil {
-		dst.RetentionDaysAggregated = src.RetentionDaysAggregated
-	}
-	if src.MinCheckPeriodSeconds != nil {
-		dst.MinCheckPeriodSeconds = src.MinCheckPeriodSeconds
-	}
-}
-
-func overlayFeatures(dst *entcore.Features, src entcore.Features) {
-	if src.SSO != nil {
-		dst.SSO = src.SSO
-	}
-	if src.MCP != nil {
-		dst.MCP = src.MCP
-	}
-	if src.CustomBranding != nil {
-		dst.CustomBranding = src.CustomBranding
-	}
-	if src.PrioritySupport != nil {
-		dst.PrioritySupport = src.PrioritySupport
-	}
-	if src.MultiRegion != nil {
-		dst.MultiRegion = src.MultiRegion
-	}
-	if src.AdvancedAlerts != nil {
-		dst.AdvancedAlerts = src.AdvancedAlerts
+	if src.MaxChecksPerMinute != nil {
+		dst.MaxChecksPerMinute = src.MaxChecksPerMinute
 	}
 }
 

@@ -108,12 +108,23 @@ var (
 
 // Service provides authentication business logic.
 type Service struct {
-	db       db.Service
-	cfg      config.AuthConfig
-	fullCfg  *config.Config
-	jobsSvc  jobsvc.Service
-	patCache map[string]*cachedPATClaims
-	cacheMux sync.RWMutex
+	db           db.Service
+	cfg          config.AuthConfig
+	fullCfg      *config.Config
+	jobsSvc      jobsvc.Service
+	entitlements EntitlementsChecker
+	patCache     map[string]*cachedPATClaims
+	cacheMux     sync.RWMutex
+}
+
+// EntitlementsChecker is the slice of the entitlements service the auth
+// package needs. Defined as an interface so we can stub it in tests
+// without dragging the full service in.
+type EntitlementsChecker interface {
+	// CheckSSOMembership returns a non-nil error (wrapping
+	// entitlements.ErrEntitlementExceeded) when adding another SSO-linked
+	// member to orgUID would breach the MaxSSOUsers cap.
+	CheckSSOMembership(ctx context.Context, orgUID string) error
 }
 
 type cachedPATClaims struct {
@@ -322,18 +333,33 @@ type CreateTokenResponse struct {
 
 // NewService creates a new authentication service.
 //
+// entitlements is optional; pass nil for callers that do not need SSO
+// membership-cap enforcement (e.g. unit tests of unrelated paths).
+//
 //nolint:gocritic // cfg embeds the WebAuthn block (~112 bytes) — value semantics keep call sites simple.
 func NewService(
 	dbService db.Service, cfg config.AuthConfig, fullCfg *config.Config,
-	jobsSvc jobsvc.Service,
+	jobsSvc jobsvc.Service, entitlements EntitlementsChecker,
 ) *Service {
 	return &Service{
-		db:       dbService,
-		cfg:      cfg,
-		fullCfg:  fullCfg,
-		jobsSvc:  jobsSvc,
-		patCache: make(map[string]*cachedPATClaims),
+		db:           dbService,
+		cfg:          cfg,
+		fullCfg:      fullCfg,
+		jobsSvc:      jobsSvc,
+		entitlements: entitlements,
+		patCache:     make(map[string]*cachedPATClaims),
 	}
+}
+
+// CheckSSOSlot is exposed for OAuth services that already share the
+// auth Service. It delegates to the configured entitlements checker;
+// nil checker = no-op (passes through).
+func (s *Service) CheckSSOSlot(ctx context.Context, orgUID string) error {
+	if s.entitlements == nil {
+		return nil
+	}
+
+	return s.entitlements.CheckSSOMembership(ctx, orgUID)
 }
 
 // enqueueEmail builds an email job and pushes it onto the job queue.
@@ -1844,6 +1870,15 @@ func (s *Service) autoJoinMatchingOrgs(ctx context.Context, userUID, userEmail s
 		_, err = s.db.GetMemberByUserAndOrg(ctx, userUID, *param.OrganizationUID)
 		if err == nil {
 			continue // Already a member
+		}
+
+		// Skip orgs that are at their MaxSSOUsers cap. Logged at INFO so
+		// operators can see why an auto-join didn't happen.
+		if err := s.CheckSSOSlot(ctx, *param.OrganizationUID); err != nil {
+			slog.InfoContext(ctx, "Skipping SSO auto-join, org at cap",
+				"orgUID", *param.OrganizationUID, "userUID", userUID, "error", err)
+
+			continue
 		}
 
 		// Create membership

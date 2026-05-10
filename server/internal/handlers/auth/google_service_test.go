@@ -45,7 +45,7 @@ func setupGoogleTestService(t *testing.T) (*GoogleOAuthService, context.Context)
 		},
 	}
 
-	authService := NewService(dbService, cfg.Auth, cfg, nil)
+	authService := NewService(dbService, cfg.Auth, cfg, nil, nil)
 	svc := NewGoogleOAuthService(dbService, cfg, authService)
 
 	return svc, ctx

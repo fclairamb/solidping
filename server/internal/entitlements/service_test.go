@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
@@ -24,9 +25,38 @@ func setup(t *testing.T) (*entitlements.Service, *models.Organization, *sqlite.S
 	org := models.NewOrganization("ent-org", "Ent Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := entitlements.NewService(dbSvc, entitlements.DefaultEntitlements, 0)
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), 0)
 
 	return svc, org, dbSvc
+}
+
+func TestDefaultsForSelfHosted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	defaults := entitlements.DefaultsFor(config.DeploymentModeSelfHosted)
+	r.NotNil(defaults.Limits.MaxSSOUsers)
+	r.Equal(30, *defaults.Limits.MaxSSOUsers)
+	r.Nil(defaults.Limits.MaxChecksPerMinute)
+}
+
+func TestDefaultsForSaaS(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	defaults := entitlements.DefaultsFor(config.DeploymentModeSaaS)
+	r.Nil(defaults.Limits.MaxSSOUsers)
+	r.NotNil(defaults.Limits.MaxChecksPerMinute)
+	r.Equal(6, *defaults.Limits.MaxChecksPerMinute)
+}
+
+func TestDefaultsForUnknownFallsBackToSelfHosted(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	defaults := entitlements.DefaultsFor("nope")
+	r.NotNil(defaults.Limits.MaxSSOUsers)
+	r.Equal(30, *defaults.Limits.MaxSSOUsers)
 }
 
 func TestResolveDefaultsWhenNoRow(t *testing.T) {
@@ -38,10 +68,10 @@ func TestResolveDefaultsWhenNoRow(t *testing.T) {
 	r.NoError(err)
 	r.Equal(models.EntitlementSourceDefault, resolved.Source)
 	r.False(resolved.Stale)
-	// Defaults: max_checks is nil (unlimited), retention_days_raw=30.
-	r.Nil(resolved.Limits.MaxChecks)
-	r.NotNil(resolved.Limits.RetentionDaysRaw)
-	r.Equal(30, *resolved.Limits.RetentionDaysRaw)
+	// Self-hosted defaults: MaxSSOUsers=30, MaxChecksPerMinute nil.
+	r.NotNil(resolved.Limits.MaxSSOUsers)
+	r.Equal(30, *resolved.Limits.MaxSSOUsers)
+	r.Nil(resolved.Limits.MaxChecksPerMinute)
 }
 
 func TestSetMergesWithDefaults(t *testing.T) {
@@ -51,10 +81,7 @@ func TestSetMergesWithDefaults(t *testing.T) {
 
 	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
 		Limits: entitlements.Limits{
-			MaxChecks: entitlements.Int(5),
-		},
-		Features: entitlements.Features{
-			SSO: entitlements.Bool(false),
+			MaxChecksPerMinute: entitlements.Int(12),
 		},
 		Source: models.EntitlementSourceBilling,
 	}, "service:entitlements", "test"))
@@ -62,13 +89,11 @@ func TestSetMergesWithDefaults(t *testing.T) {
 	resolved, err := svc.Resolve(t.Context(), org.UID)
 	r.NoError(err)
 	r.Equal(models.EntitlementSourceBilling, resolved.Source)
-	r.NotNil(resolved.Limits.MaxChecks)
-	r.Equal(5, *resolved.Limits.MaxChecks)
-	r.NotNil(resolved.Features.SSO)
-	r.False(*resolved.Features.SSO)
-	// Defaults still apply for unset fields.
-	r.NotNil(resolved.Features.MCP)
-	r.True(*resolved.Features.MCP)
+	r.NotNil(resolved.Limits.MaxChecksPerMinute)
+	r.Equal(12, *resolved.Limits.MaxChecksPerMinute)
+	// Default MaxSSOUsers still surfaces for unset fields.
+	r.NotNil(resolved.Limits.MaxSSOUsers)
+	r.Equal(30, *resolved.Limits.MaxSSOUsers)
 }
 
 func TestSetWritesAuditRow(t *testing.T) {
@@ -77,12 +102,12 @@ func TestSetWritesAuditRow(t *testing.T) {
 	svc, org, dbSvc := setup(t)
 
 	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxChecks: entitlements.Int(10)},
+		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(10)},
 		Source: models.EntitlementSourceBilling,
 	}, "actor-1", "stripe.event.123"))
 
 	r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
-		Limits: entitlements.Limits{MaxChecks: entitlements.Int(20)},
+		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(20)},
 		Source: models.EntitlementSourceBilling,
 	}, "actor-2", "stripe.event.456"))
 
@@ -119,11 +144,13 @@ func TestStaleFallsBackToDefaults(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	staleAfter := 24 * time.Hour
-	svc := entitlements.NewService(dbSvc, entitlements.DefaultEntitlements, staleAfter)
+	svc := entitlements.NewService(
+		dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), staleAfter,
+	)
 
 	old := time.Now().Add(-72 * time.Hour)
 	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits:       entitlements.Limits{MaxChecks: entitlements.Int(3)},
+		Limits:       entitlements.Limits{MaxSSOUsers: entitlements.Int(3)},
 		Source:       models.EntitlementSourceBilling,
 		LastSyncedAt: &old,
 	}, "service:entitlements", ""))
@@ -131,8 +158,9 @@ func TestStaleFallsBackToDefaults(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.True(resolved.Stale)
-	// MaxChecks reverts to default (nil = unlimited) since stale.
-	r.Nil(resolved.Limits.MaxChecks)
+	// MaxSSOUsers reverts to default (30) since stale.
+	r.NotNil(resolved.Limits.MaxSSOUsers)
+	r.Equal(30, *resolved.Limits.MaxSSOUsers)
 }
 
 func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
@@ -149,11 +177,13 @@ func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	staleAfter := 24 * time.Hour
-	svc := entitlements.NewService(dbSvc, entitlements.DefaultEntitlements, staleAfter)
+	svc := entitlements.NewService(
+		dbSvc, entitlements.DefaultsFor(config.DeploymentModeSelfHosted), staleAfter,
+	)
 
 	old := time.Now().Add(-72 * time.Hour)
 	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
-		Limits:       entitlements.Limits{MaxChecks: entitlements.Int(7)},
+		Limits:       entitlements.Limits{MaxSSOUsers: entitlements.Int(7)},
 		Source:       models.EntitlementSourceAdmin,
 		LastSyncedAt: &old,
 	}, "user:abc", ""))
@@ -161,36 +191,134 @@ func TestStaleDoesNotApplyToAdminOverride(t *testing.T) {
 	resolved, err := svc.Resolve(ctx, org.UID)
 	r.NoError(err)
 	r.False(resolved.Stale)
-	r.NotNil(resolved.Limits.MaxChecks)
-	r.Equal(7, *resolved.Limits.MaxChecks)
+	r.NotNil(resolved.Limits.MaxSSOUsers)
+	r.Equal(7, *resolved.Limits.MaxSSOUsers)
 }
 
-func TestFeatureEnabledStubReturnsDefault(t *testing.T) {
+// TestCheckSSOMembershipUnlimitedWhenNil exercises the no-cap path
+// (a SaaS org by default, where MaxSSOUsers is nil).
+func TestCheckSSOMembershipUnlimitedWhenNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("saas-org", "SaaS Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+	r.NoError(svc.CheckSSOMembership(ctx, org.UID))
+}
+
+func TestCheckSSOMembershipBlocksAtCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	// Lower the cap to 2 for a fast test.
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxSSOUsers: entitlements.Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	// Seed two SSO-linked members.
+	for _, label := range []string{"alice", "bob"} {
+		user := models.NewUser(label + "@example.com")
+		r.NoError(dbSvc.CreateUser(ctx, user))
+
+		member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)
+		r.NoError(dbSvc.CreateOrganizationMember(ctx, member))
+
+		provider := models.NewUserProvider(user.UID, models.ProviderTypeGoogle, label+"-sub")
+		r.NoError(dbSvc.CreateUserProvider(ctx, provider))
+	}
+
+	// Cap reached: third call must fail.
+	err := svc.CheckSSOMembership(ctx, org.UID)
+	r.Error(err)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxSSOUsers", quotaErr.LimitName)
+	r.Equal(2, quotaErr.Limit)
+	r.Equal(2, quotaErr.CurrentUsage)
+}
+
+func TestReserveCheckExecutionUnlimitedWhenNil(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	svc, org, _ := setup(t)
-
-	enabled, err := svc.FeatureEnabled(t.Context(), org.UID, "mcp")
-	r.NoError(err)
-	r.True(enabled)
-
-	enabled, err = svc.FeatureEnabled(t.Context(), org.UID, "priority_support")
-	r.NoError(err)
-	r.False(enabled)
-
-	_, err = svc.FeatureEnabled(t.Context(), org.UID, "nonexistent_feature")
-	r.ErrorIs(err, entitlements.ErrUnknownFeature)
+	// Self-hosted defaults: MaxChecksPerMinute is nil, so a thousand
+	// calls in a row succeed instantly.
+	for range 1000 {
+		r.NoError(svc.ReserveCheckExecution(t.Context(), org.UID))
+	}
 }
 
-func TestCanCreateStubAlwaysAllows(t *testing.T) {
+func TestReserveCheckExecutionBucketDrains(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
-	svc, org, _ := setup(t)
+	ctx := t.Context()
 
-	// PR-1 stub: no enforcement. Calling with any resource name returns
-	// nil (allow). Enforcement PRs replace this with real logic.
-	r.NoError(svc.CanCreate(t.Context(), org.UID, "checks"))
-	r.NoError(svc.CanCreate(t.Context(), org.UID, "anything-goes"))
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("rated-org", "Rated Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+
+	// SaaS default cap is 6/min — the bucket starts full so the first
+	// six calls succeed; the seventh is denied.
+	for i := range 6 {
+		r.NoError(svc.ReserveCheckExecution(ctx, org.UID), "call %d", i+1)
+	}
+
+	err = svc.ReserveCheckExecution(ctx, org.UID)
+	r.Error(err)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxChecksPerMinute", quotaErr.LimitName)
+	r.Equal(6, quotaErr.Limit)
+}
+
+func TestReserveCheckExecutionResetOnSet(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("rated2-org", "Rated2 Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	svc := entitlements.NewService(dbSvc, entitlements.DefaultsFor(config.DeploymentModeSaaS), 0)
+	for range 6 {
+		r.NoError(svc.ReserveCheckExecution(ctx, org.UID))
+	}
+	r.Error(svc.ReserveCheckExecution(ctx, org.UID))
+
+	// An admin override clears the cached limiter so the new cap takes
+	// effect immediately. Bumping the cap to 100 lets fresh calls through.
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecksPerMinute: entitlements.Int(100)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	r.NoError(svc.ReserveCheckExecution(ctx, org.UID))
 }
 
 // TestPayloadRoundTrip ensures every field that lives inside the payload
@@ -209,33 +337,15 @@ func TestPayloadRoundTrip(t *testing.T) {
 
 	in := entitlements.Entitlements{
 		Limits: entitlements.Limits{
-			MaxChecks:               entitlements.Int(10),
-			MaxMembers:              entitlements.Int(5),
-			MaxStatusPages:          entitlements.Int(2),
-			MaxCheckGroups:          entitlements.Int(3),
-			MaxMaintenanceWindows:   entitlements.Int(4),
-			MaxConnections:          entitlements.Int(6),
-			MaxWorkers:              entitlements.Int(7),
-			MaxAPITokens:            entitlements.Int(8),
-			RetentionDaysRaw:        entitlements.Int(15),
-			RetentionDaysAggregated: entitlements.Int(180),
-			MinCheckPeriodSeconds:   entitlements.Int(60),
+			MaxSSOUsers:        entitlements.Int(50),
+			MaxChecksPerMinute: entitlements.Int(120),
 		},
-		Features: entitlements.Features{
-			SSO:             entitlements.Bool(true),
-			MCP:             entitlements.Bool(false),
-			CustomBranding:  entitlements.Bool(true),
-			PrioritySupport: entitlements.Bool(false),
-			MultiRegion:     entitlements.Bool(true),
-			AdvancedAlerts:  entitlements.Bool(false),
-		},
-		AllowedCheckTypes: []string{"http", "tcp"},
-		Source:            models.EntitlementSourceBilling,
-		DisplayName:       &displayName,
-		ExternalRef:       &externalRef,
-		Metadata:          map[string]any{"plan": "pro"},
-		ExpiresAt:         &expires,
-		LastSyncedAt:      &synced,
+		Source:       models.EntitlementSourceBilling,
+		DisplayName:  &displayName,
+		ExternalRef:  &externalRef,
+		Metadata:     map[string]any{"plan": "pro"},
+		ExpiresAt:    &expires,
+		LastSyncedAt: &synced,
 	}
 
 	r.NoError(svc.Set(t.Context(), org.UID, in, "service:entitlements", "round-trip"))
@@ -249,8 +359,6 @@ func TestPayloadRoundTrip(t *testing.T) {
 	r.Equal(expires, resolved.ExpiresAt.UTC().Truncate(time.Second))
 	r.NotNil(resolved.LastSyncedAt)
 	r.Equal(synced, resolved.LastSyncedAt.UTC().Truncate(time.Second))
-	r.Equal(in.AllowedCheckTypes, resolved.AllowedCheckTypes)
 
 	r.Equal(in.Limits, resolved.Limits)
-	r.Equal(in.Features, resolved.Features)
 }

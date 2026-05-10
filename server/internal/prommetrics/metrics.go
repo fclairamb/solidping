@@ -117,11 +117,24 @@ var (
 		[]string{labelOrganization, labelCheckType},
 	)
 
+	// ChecksRateLimited counts check executions skipped because the
+	// org's MaxChecksPerMinute entitlement was already drained for the
+	// current bucket. Skipped jobs are simply rescheduled for next
+	// period — no result row is written.
+	ChecksRateLimited = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_checks_rate_limited_total",
+			Help: "Total check executions skipped due to MaxChecksPerMinute entitlement",
+		},
+		[]string{labelOrganization},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
 		WorkersActive, WorkerFreeRunners, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
+		ChecksRateLimited,
 	}
 )
 
