@@ -3,7 +3,7 @@ module github.com/fclairamb/solidping/server
 go 1.26
 
 require (
-	github.com/IBM/sarama v1.48.0
+	github.com/IBM/sarama v1.48.1
 	github.com/arran4/golang-ical v0.3.5
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -154,7 +154,7 @@ require (
 	github.com/jcmturner/rpc/v2 v2.0.3 // indirect
 	github.com/jinzhu/inflection v1.0.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/klauspost/compress v1.18.6 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/kr/fs v0.1.0 // indirect
 	github.com/likexian/gokit v0.25.16 // indirect
