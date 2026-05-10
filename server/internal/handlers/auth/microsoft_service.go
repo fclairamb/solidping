@@ -349,6 +349,13 @@ func (s *MicrosoftOAuthService) ensureMembership(
 		role = models.MemberRoleAdmin
 	}
 
+	// Enforce MaxSSOUsers before creating the membership. The very first
+	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
+	// always succeeds.
+	if err := s.authService.CheckSSOSlot(ctx, orgUID); err != nil {
+		return nil, err
+	}
+
 	// Create membership
 	member = models.NewOrganizationMember(orgUID, userUID, role)
 	now := time.Now()

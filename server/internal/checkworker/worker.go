@@ -25,7 +25,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 )
 
@@ -495,6 +497,29 @@ func (r *CheckWorker) executeJob(
 			return nil
 		case <-timer.C:
 			// Scheduled time reached, continue with check execution
+		}
+	}
+
+	// Per-org MaxChecksPerMinute gate. Drained buckets reschedule the
+	// job for next period without writing a result, so the user sees
+	// missed executions in their history rather than a hard error. The
+	// entitlements service treats nil caps as unlimited (no-op).
+	if entSvc := r.services.Entitlements; entSvc != nil {
+		if rateErr := entSvc.ReserveCheckExecution(ctx, checkJob.OrganizationUID); rateErr != nil {
+			var quotaErr *entitlements.QuotaError
+			if errors.As(rateErr, &quotaErr) {
+				prommetrics.ChecksRateLimited.WithLabelValues(checkJob.OrganizationUID).Inc()
+				logger.InfoContext(ctx, "Check execution rate-limited; deferring to next period",
+					"check_uid", checkJob.CheckUID, "limit", quotaErr.Limit)
+				// Release the lease (which reschedules next_run_at) and skip the
+				// outbound probe.
+				return r.releaseLease(ctx, checkJob)
+			}
+			// Anything else is an unexpected resolve failure — log and
+			// fall through so the check still runs (fail-open: better
+			// to occasionally over-execute than to silently halt).
+			logger.WarnContext(ctx, "ReserveCheckExecution failed; running check anyway",
+				"error", rateErr)
 		}
 	}
 

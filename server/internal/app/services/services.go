@@ -5,6 +5,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/email"
+	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 )
@@ -19,6 +20,10 @@ type Registry struct {
 	// Credentials encrypts/decrypts secret JSON keys at rest. Always
 	// non-nil; .Enabled() reports whether a master key is configured.
 	Credentials credentials.Service
+	// Entitlements gates per-org limits (MaxSSOUsers / MaxChecksPerMinute).
+	// Always non-nil after server bootstrap; safe to call regardless of
+	// deployment mode (callers honor nil caps as "unlimited").
+	Entitlements *entitlements.Service
 }
 
 // NewRegistry creates a new services registry.

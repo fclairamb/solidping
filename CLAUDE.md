@@ -70,6 +70,9 @@ previous binary running; check the dev log for the compiler error.
   - `make clean` - Remove built binaries and artifacts
   - `make clean-all` - Remove all generated files including node_modules
 
+## Deployment mode
+- `SP_DEPLOYMENT_MODE` — `self-hosted` (default) or `saas`. Drives the per-org entitlement defaults: `self-hosted` caps `MaxSSOUsers` at 30; `saas` caps `MaxChecksPerMinute` at 6. Anything else is unlimited. The two limits are the only fields enforced — `MaxSSOUsers` at every OAuth callback (refusing the 31st new SSO membership for an org), `MaxChecksPerMinute` at the worker dispatch (rate-limited executions are skipped + counted in `solidping_checks_rate_limited_total`). Admins can override either cap per-org via `PUT/PATCH /api/v1/orgs/$org/entitlements`.
+
 ## Credentials encryption at rest
 - `SP_ENCRYPTION_MASTER_KEY` — base64-encoded 32-byte KEK. When set, secret keys in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column and an AES-256-GCM-encrypted private column (`*_private`). The dashboard never echoes secret values back; it gets a `configPrivateKeys: [...]` hint instead.
 - `SP_ENCRYPTION_MASTER_KEY_FILE` — file path containing the base64 key. Wins over the env var when both are set (k8s secret-mount pattern).

@@ -4202,46 +4202,18 @@ func (s *Service) ListOrgEntitlementAudits(
 	return rows, nil
 }
 
-// CountChecksForOrg counts non-deleted checks for the org.
-func (s *Service) CountChecksForOrg(ctx context.Context, orgUID string) (int, error) {
-	count, err := s.db.NewSelect().
-		Model((*models.Check)(nil)).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Count(ctx)
+// CountSSOMembersForOrg counts org members linked to at least one
+// user_providers row. Used by the entitlements service to enforce
+// MaxSSOUsers at the OAuth callback.
+func (s *Service) CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error) {
+	var count int
 
-	return count, err
-}
-
-// CountStatusPagesForOrg counts non-deleted status pages for the org.
-func (s *Service) CountStatusPagesForOrg(ctx context.Context, orgUID string) (int, error) {
-	count, err := s.db.NewSelect().
-		Model((*models.StatusPage)(nil)).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Count(ctx)
-
-	return count, err
-}
-
-// CountCheckGroupsForOrg counts non-deleted check groups for the org.
-func (s *Service) CountCheckGroupsForOrg(ctx context.Context, orgUID string) (int, error) {
-	count, err := s.db.NewSelect().
-		Model((*models.CheckGroup)(nil)).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Count(ctx)
-
-	return count, err
-}
-
-// CountConnectionsForOrg counts non-deleted integration connections for the org.
-func (s *Service) CountConnectionsForOrg(ctx context.Context, orgUID string) (int, error) {
-	count, err := s.db.NewSelect().
-		Model((*models.Channel)(nil)).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Count(ctx)
+	err := s.db.NewSelect().
+		Table("organization_members").
+		ColumnExpr("COUNT(DISTINCT organization_members.user_uid)").
+		Join("JOIN user_providers ON user_providers.user_uid = organization_members.user_uid").
+		Where("organization_members.organization_uid = ?", orgUID).
+		Scan(ctx, &count)
 
 	return count, err
 }

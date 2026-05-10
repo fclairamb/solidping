@@ -37,7 +37,7 @@ func setupAuthTestService(t *testing.T) (*Service, db.Service, context.Context) 
 		RefreshTokenExpiry: 7 * 24 * time.Hour,
 	}
 
-	svc := NewService(dbService, cfg, nil, nil)
+	svc := NewService(dbService, cfg, nil, nil, nil)
 
 	return svc, dbService, ctx
 }
@@ -67,7 +67,7 @@ func setupAuthTestServiceWithConfig(t *testing.T, baseURL string) (*Service, db.
 		},
 	}
 
-	svc := NewService(dbService, fullCfg.Auth, fullCfg, nil)
+	svc := NewService(dbService, fullCfg.Auth, fullCfg, nil, nil)
 
 	return svc, dbService, ctx
 }

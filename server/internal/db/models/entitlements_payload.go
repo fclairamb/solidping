@@ -19,28 +19,14 @@ var ErrUnknownEntitlementsPayloadVersion = errors.New("unknown entitlements payl
 
 // EntitlementLimits is the quantitative half of an entitlement set.
 // nil = unlimited. JSON tags are the wire format consumed by the API.
+//
+// Only two limits are modeled: MaxSSOUsers (capped on self-hosted by
+// default) and MaxChecksPerMinute (capped on SaaS). Extra fields that
+// previous versions stored (MaxChecks, retention, feature flags, …)
+// are silently ignored on read — encoding/json drops unknown keys.
 type EntitlementLimits struct {
-	MaxChecks               *int `json:"maxChecks,omitempty"`
-	MaxMembers              *int `json:"maxMembers,omitempty"`
-	MaxStatusPages          *int `json:"maxStatusPages,omitempty"`
-	MaxCheckGroups          *int `json:"maxCheckGroups,omitempty"`
-	MaxMaintenanceWindows   *int `json:"maxMaintenanceWindows,omitempty"`
-	MaxConnections          *int `json:"maxConnections,omitempty"`
-	MaxWorkers              *int `json:"maxWorkers,omitempty"`
-	MaxAPITokens            *int `json:"maxApiTokens,omitempty"`
-	RetentionDaysRaw        *int `json:"retentionDaysRaw,omitempty"`
-	RetentionDaysAggregated *int `json:"retentionDaysAggregated,omitempty"`
-	MinCheckPeriodSeconds   *int `json:"minCheckPeriodSeconds,omitempty"`
-}
-
-// EntitlementFeatures is the boolean half. nil = use default.
-type EntitlementFeatures struct {
-	SSO             *bool `json:"sso,omitempty"`
-	MCP             *bool `json:"mcp,omitempty"`
-	CustomBranding  *bool `json:"customBranding,omitempty"`
-	PrioritySupport *bool `json:"prioritySupport,omitempty"`
-	MultiRegion     *bool `json:"multiRegion,omitempty"`
-	AdvancedAlerts  *bool `json:"advancedAlerts,omitempty"`
+	MaxSSOUsers        *int `json:"maxSsoUsers,omitempty"`
+	MaxChecksPerMinute *int `json:"maxChecksPerMinute,omitempty"`
 }
 
 // EntitlementsPayload is the structured-by-OSS portion of an
@@ -49,12 +35,10 @@ type EntitlementFeatures struct {
 // extra keys are silently ignored for forward-compat. The Version
 // field gates shape-migrations at unmarshal time.
 type EntitlementsPayload struct {
-	Version           int                 `json:"version"`
-	Source            EntitlementSource   `json:"source,omitempty"`
-	Limits            EntitlementLimits   `json:"limits"`
-	Features          EntitlementFeatures `json:"features"`
-	AllowedCheckTypes []string            `json:"allowedCheckTypes,omitempty"`
-	DisplayName       *string             `json:"displayName,omitempty"`
+	Version     int               `json:"version"`
+	Source      EntitlementSource `json:"source,omitempty"`
+	Limits      EntitlementLimits `json:"limits"`
+	DisplayName *string           `json:"displayName,omitempty"`
 }
 
 // Value implements driver.Valuer so bun can write the payload as JSON
