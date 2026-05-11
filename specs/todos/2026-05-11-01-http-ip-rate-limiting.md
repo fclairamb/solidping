@@ -232,6 +232,85 @@ Both use the existing `base.HandlerBase` error format. Add two new error codes:
 
 ---
 
+## Limits introspection endpoint
+
+### `GET /api/mgmt/limits`
+
+Public, no authentication required. Returns the server-wide configured limits
+**and** the calling IP's current state, so API clients can discover the policy
+before hitting it and inspect their own budget without guessing.
+
+This endpoint is exempt from rate limiting (add `/api/mgmt/` to the exclusion
+list alongside `/api/mgmt/health`). A client that is already rate-limited must
+still be able to ask "how long until I recover?"
+
+**Response (200 OK):**
+
+```json
+{
+  "rateLimit": {
+    "enabled": true,
+    "requestsPerMinute": 300,
+    "burst": 60,
+    "callerRemaining": 248
+  },
+  "concurrency": {
+    "enabled": true,
+    "max": 20,
+    "callerInFlight": 3
+  }
+}
+```
+
+Fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `rateLimit.enabled` | bool | `false` when `RequestsPerMinute=0` |
+| `rateLimit.requestsPerMinute` | int | Configured refill rate |
+| `rateLimit.burst` | int | Configured burst size |
+| `rateLimit.callerRemaining` | float | Tokens available right now for the calling IP (from `rate.Limiter.Tokens()`); floor at 0. Absent when rate limiting is disabled. |
+| `concurrency.enabled` | bool | `false` when `MaxConcurrent=0` |
+| `concurrency.max` | int | Configured max concurrent per IP |
+| `concurrency.callerInFlight` | int | How many requests the calling IP currently has in flight. Absent when concurrency limiting is disabled. |
+
+`callerRemaining` is a continuous value (token bucket, not a fixed window), so
+there is no `resetAt` — the bucket refills at `requestsPerMinute/60` tokens per
+second continuously. Clients can compute "seconds until N tokens are available"
+as `(N - callerRemaining) / (requestsPerMinute / 60)`.
+
+When the calling IP has no entry yet (first ever request from that IP), both
+`callerRemaining` = burst and `callerInFlight` = 0.
+
+### Implementation note
+
+The `Server` struct holds a reference to the constructed `*middleware.RateLimiter`.
+The handler is a method on `Server` (matching the `healthCheck` / `getVersion`
+pattern) and calls `rl.StateFor(ip)` to retrieve per-IP state:
+
+```go
+type IPState struct {
+    Remaining  float64
+    InFlight   int
+}
+
+func (rl *RateLimiter) StateFor(ip string) IPState
+```
+
+`StateFor` is read-only — it must **not** consume a token or acquire the
+semaphore. It reads `rate.Limiter.Tokens()` and `cap(sem) - len(sem)` from the
+existing `ipEntry` without mutating it. If no entry exists, it returns the
+"fresh IP" defaults.
+
+The route is registered on `mainGroup` (not under `api`) so it sits alongside
+`/api/mgmt/health`:
+
+```go
+mgmt.GET("/limits", s.getLimits)
+```
+
+---
+
 ## Prometheus metrics
 
 Add two counters to `internal/prommetrics/`:
@@ -272,6 +351,9 @@ No integration test needed — unit tests with `httptest.NewRecorder` suffice.
 - [ ] Prometheus counters emitted per limit type
 - [ ] Cleanup goroutine evicts idle entries; no unbounded memory growth
 - [ ] `TrustedProxies` knob controls X-Forwarded-For parsing
+- [ ] `GET /api/mgmt/limits` returns configured limits + caller's current token balance and in-flight count
+- [ ] `/api/mgmt/limits` is exempt from both middlewares (no auth required, never returns 429)
+- [ ] `StateFor(ip)` is read-only — does not consume a token or touch the semaphore
 - [ ] All unit tests pass; `make lint` passes
 
 ## Files affected
@@ -282,4 +364,5 @@ No integration test needed — unit tests with `httptest.NewRecorder` suffice.
 - `server/internal/app/server.go` — wire middlewares into `mainGroup`
 - `server/internal/handlers/base/errors.go` (or wherever error codes live) — add `RATE_LIMITED`, `CONCURRENCY_LIMITED`
 - `server/internal/prommetrics/metrics.go` — add the rate-limit counter
+- `server/internal/app/server.go` — add `getLimits` handler method, register `GET /api/mgmt/limits`
 - `docs/` or `CLAUDE.md` — document the new env vars in the deployment section
