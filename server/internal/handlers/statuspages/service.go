@@ -867,16 +867,20 @@ func (s *Service) enrichWithAvailability(
 		resultsByCheck[result.CheckUID] = append(resultsByCheck[result.CheckUID], result)
 	}
 
-	// Fetch hourly results for today to synthesize current day's availability
-	now := time.Now()
+	// Fetch hourly results across the whole history window so we can synthesize daily
+	// buckets for any day where the rolled-up daily row hasn't been produced yet (the
+	// aggregator only rolls hour→day once hourly data is older than RetentionHour days
+	// — 30 days by default — so new installs have no daily rows for ~30 days).
+	now := time.Now().UTC()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	historyStartUTC := todayStart.AddDate(0, 0, -(page.HistoryDays - 1))
 
 	hourlyFilter := &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
 		CheckUIDs:        checkUIDs,
 		PeriodTypes:      []string{"hour"},
-		PeriodStartAfter: &todayStart,
-		Limit:            24 * len(checkUIDs),
+		PeriodStartAfter: &historyStartUTC,
+		Limit:            page.HistoryDays * hoursPerDay * len(checkUIDs),
 	}
 
 	hourlyResp, err := s.db.ListResults(ctx, hourlyFilter)
@@ -886,8 +890,13 @@ func (s *Service) enrichWithAvailability(
 			hourlyByCheck[r.CheckUID] = append(hourlyByCheck[r.CheckUID], r)
 		}
 
-		synthesizeTodayAvailability(resultsByCheck, hourlyByCheck, checkUIDs, todayStart)
+		synthesizeMissingDailyBuckets(resultsByCheck, hourlyByCheck, checkUIDs, todayStart, page.HistoryDays)
 	}
+
+	// Final fallback for today: hourly rollups lag 24h (RetentionRaw default), so
+	// today's bucket is empty for most of the day even on a healthy install.
+	// Sample the most recent raw rows for any check still missing a today bucket.
+	s.fillTodayFromRaw(ctx, orgUID, resultsByCheck, checkUIDs, todayStart)
 
 	// Fetch the last 100 results per check (any period type) for the response time chart
 	recentByCheck := make(map[string][]*models.Result)
@@ -925,33 +934,187 @@ func (s *Service) enrichWithAvailability(
 	}
 }
 
-// synthesizeTodayAvailability replaces today's stored daily row (if any) with a fresh
-// synthesis built from today's hourly results. This keeps today's availability bar live
-// even after the daily aggregator has computed today's row.
-func synthesizeTodayAvailability(
+// hoursPerDay caps how many hourly rows we ever expect per day per check.
+const hoursPerDay = 24
+
+// synthesizeMissingDailyBuckets fills any UTC day in the history window
+// [todayStart - (historyDays-1), todayStart] that lacks a stored daily row
+// with a synthetic daily row computed from hourly data for that UTC day. The
+// row for "today" is always rebuilt from hourly (today's stored daily, if
+// any, is in-progress and stale relative to live hourly buckets).
+//
+// This matters because the aggregator only rolls hour→day once hourly data
+// is older than RetentionHour days (30 by default), so on fresh installs the
+// status page would otherwise render an all-grey row for 30 days.
+func synthesizeMissingDailyBuckets(
 	resultsByCheck, hourlyByCheck map[string][]*models.Result,
+	checkUIDs []string,
+	todayStart time.Time,
+	historyDays int,
+) {
+	todayStr := todayStart.Format("2006-01-02")
+
+	for _, checkUID := range checkUIDs {
+		// Index existing daily rows by UTC date string.
+		existingByDate := make(map[string]*models.Result, len(resultsByCheck[checkUID]))
+		for _, r := range resultsByCheck[checkUID] {
+			existingByDate[r.PeriodStart.UTC().Format("2006-01-02")] = r
+		}
+
+		// Group hourly rows by UTC date string.
+		hourlyByDate := make(map[string][]*models.Result)
+		for _, h := range hourlyByCheck[checkUID] {
+			key := h.PeriodStart.UTC().Format("2006-01-02")
+			hourlyByDate[key] = append(hourlyByDate[key], h)
+		}
+
+		for dayOffset := 0; dayOffset < historyDays; dayOffset++ {
+			day := todayStart.AddDate(0, 0, -dayOffset)
+			dateStr := day.Format("2006-01-02")
+
+			_, hasDaily := existingByDate[dateStr]
+			if hasDaily && dateStr != todayStr {
+				continue
+			}
+
+			synth := aggregateHourlyToDaily(checkUID, hourlyByDate[dateStr], day)
+			if synth == nil {
+				continue
+			}
+
+			existingByDate[dateStr] = synth
+		}
+
+		// Rebuild the per-check slice from the merged map.
+		merged := make([]*models.Result, 0, len(existingByDate))
+		for _, r := range existingByDate {
+			merged = append(merged, r)
+		}
+		resultsByCheck[checkUID] = merged
+	}
+}
+
+// rawSamplesPerCheck caps how many raw rows we sample per check when synthesizing
+// today's availability from raw data. 500 evenly-spaced samples give a stable
+// percentage without loading the full day's raw firehose into memory.
+const rawSamplesPerCheck = 500
+
+// fillTodayFromRaw queries raw results for `today` and synthesizes a daily
+// bucket for any check that still lacks one (the hourly synth had nothing to
+// average — typical in the first 24h of a new install, or for today since the
+// raw→hour aggregator runs with RetentionRaw lag). Order DESC by period_start
+// means the sampled rows are the freshest available.
+func (s *Service) fillTodayFromRaw(
+	ctx context.Context, orgUID string,
+	resultsByCheck map[string][]*models.Result,
 	checkUIDs []string,
 	todayStart time.Time,
 ) {
 	todayStr := todayStart.Format("2006-01-02")
 
+	var missing []string
 	for _, checkUID := range checkUIDs {
-		synth := buildTodaySynth(checkUID, hourlyByCheck[checkUID], todayStart)
+		hasToday := false
+		for _, r := range resultsByCheck[checkUID] {
+			if r.PeriodStart.UTC().Format("2006-01-02") == todayStr {
+				hasToday = true
+
+				break
+			}
+		}
+
+		if !hasToday {
+			missing = append(missing, checkUID)
+		}
+	}
+
+	if len(missing) == 0 {
+		return
+	}
+
+	rawFilter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        missing,
+		PeriodTypes:      []string{"raw"},
+		PeriodStartAfter: &todayStart,
+		Limit:            rawSamplesPerCheck * len(missing),
+	}
+
+	rawResp, err := s.db.ListResults(ctx, rawFilter)
+	if err != nil || rawResp == nil {
+		return
+	}
+
+	rawByCheck := make(map[string][]*models.Result)
+	for _, r := range rawResp.Results {
+		if len(rawByCheck[r.CheckUID]) < rawSamplesPerCheck {
+			rawByCheck[r.CheckUID] = append(rawByCheck[r.CheckUID], r)
+		}
+	}
+
+	for _, checkUID := range missing {
+		synth := aggregateRawToDaily(checkUID, rawByCheck[checkUID], todayStart)
 		if synth == nil {
 			continue
 		}
 
-		filtered := resultsByCheck[checkUID][:0]
-		for _, r := range resultsByCheck[checkUID] {
-			if r.PeriodStart.Format("2006-01-02") != todayStr {
-				filtered = append(filtered, r)
-			}
-		}
-		resultsByCheck[checkUID] = append(filtered, synth)
+		resultsByCheck[checkUID] = append(resultsByCheck[checkUID], synth)
 	}
 }
 
-func buildTodaySynth(checkUID string, hourlyResults []*models.Result, todayStart time.Time) *models.Result {
+// aggregateRawToDaily derives a synthetic daily Result from raw rows.
+// Availability = (status==up count) / total; duration is averaged over
+// successful rows only (failures often have skewed/zero durations).
+func aggregateRawToDaily(checkUID string, rawResults []*models.Result, periodStart time.Time) *models.Result {
+	var (
+		upCount       int
+		total         int
+		durationSum   float64
+		durationCount int
+	)
+
+	for _, rawResult := range rawResults {
+		if rawResult.Status == nil {
+			continue
+		}
+
+		total++
+
+		if *rawResult.Status == int(models.ResultStatusUp) {
+			upCount++
+
+			if rawResult.Duration != nil {
+				durationSum += float64(*rawResult.Duration)
+				durationCount++
+			}
+		}
+	}
+
+	if total == 0 {
+		return nil
+	}
+
+	avail := 100.0 * float64(upCount) / float64(total)
+	out := &models.Result{
+		CheckUID:        checkUID,
+		PeriodStart:     periodStart,
+		AvailabilityPct: &avail,
+		TotalChecks:     &total,
+	}
+
+	if durationCount > 0 {
+		avgDur := float32(durationSum / float64(durationCount))
+		out.Duration = &avgDur
+		out.DurationP95 = &avgDur
+	}
+
+	return out
+}
+
+// aggregateHourlyToDaily averages a check's hourly rows into a synthetic
+// daily result anchored at periodStart. Returns nil if no hourly row has an
+// availability value (no signal to derive a day from).
+func aggregateHourlyToDaily(checkUID string, hourlyResults []*models.Result, periodStart time.Time) *models.Result {
 	var totalAvail, totalDuration, totalDurationP95 float64
 
 	var count int
@@ -981,7 +1144,7 @@ func buildTodaySynth(checkUID string, hourlyResults []*models.Result, todayStart
 
 	return &models.Result{
 		CheckUID:        checkUID,
-		PeriodStart:     todayStart,
+		PeriodStart:     periodStart,
 		AvailabilityPct: &avgAvail,
 		Duration:        &avgDuration,
 		DurationP95:     &avgP95,
@@ -994,15 +1157,17 @@ func buildAvailabilityData(
 ) *ResourceAvailabilityData {
 	data := &ResourceAvailabilityData{}
 
-	// Index daily results by date string
+	// Index daily results by UTC date string. The aggregator writes daily rows
+	// at midnight UTC; reading them back in local time would mis-bucket any row
+	// whose UTC date differs from the server's local date.
 	resultsByDate := make(map[string]*models.Result)
 	for _, result := range dailyResults {
-		dateStr := result.PeriodStart.Format("2006-01-02")
+		dateStr := result.PeriodStart.UTC().Format("2006-01-02")
 		resultsByDate[dateStr] = result
 	}
 
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	now := time.Now().UTC()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
 	if showAvailability {
 		daily := make([]DailyAvailabilityPoint, 0, historyDays)

@@ -1,11 +1,11 @@
-import { StrictMode } from "react";
+import { StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { routeTree } from "./routeTree.gen";
 import { ApiError, NetworkError } from "@/api/client";
-import "./i18n";
+import i18n from "./i18n";
 import "./index.css";
 
 const basepath = import.meta.env.VITE_BASE_URL || "";
@@ -45,7 +45,26 @@ declare module "@tanstack/react-router" {
   }
 }
 
+// Keep <html lang> in sync with the active i18n language. Without this, Chrome
+// sees an `lang="en"` page rendered in another language and offers to translate
+// it — auto-translate wraps text nodes in <font> tags, which clashes with React
+// reconciliation and throws "removeChild on Node" on the next re-render.
+function useSyncHtmlLang() {
+  useEffect(() => {
+    const sync = () => {
+      document.documentElement.lang =
+        i18n.resolvedLanguage || i18n.language || "en";
+    };
+    sync();
+    i18n.on("languageChanged", sync);
+    return () => {
+      i18n.off("languageChanged", sync);
+    };
+  }, []);
+}
+
 function App() {
+  useSyncHtmlLang();
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider delayDuration={300}>
