@@ -283,3 +283,19 @@ No integration test needed — unit tests with `httptest.NewRecorder` suffice.
 - `server/internal/handlers/base/errors.go` (or wherever error codes live) — add `RATE_LIMITED`, `CONCURRENCY_LIMITED`
 - `server/internal/prommetrics/metrics.go` — add the rate-limit counter
 - `docs/` or `CLAUDE.md` — document the new env vars in the deployment section
+
+## Implementation Plan
+
+1. **Config**: Add `RateLimitConfig` struct to `server/internal/config/config.go` and wire into `ServerConfig` with defaults (300 RPM, burst 60, 20 concurrent, 0 trusted proxies).
+2. **Error codes**: Add `ErrorCodeConcurrencyLimited` to `server/internal/handlers/base/base.go` (note: `ErrorCodeRateLimited` already exists).
+3. **Prometheus metric**: Add `HTTPRateLimited` counter vec with `reason` label to `server/internal/prommetrics/metrics.go`.
+4. **Middleware**: Create `server/internal/middleware/ratelimit.go` with:
+   - `ipEntry` struct holding rate limiter + semaphore + lastSeen
+   - `RateLimiter` struct with `sync.Map`, config, and context
+   - `extractIP()` helper respecting `TrustedProxies`
+   - `RateLimit()` middleware handler
+   - `ConcurrencyLimit()` middleware handler
+   - Background cleanup goroutine (evict entries idle >5 min, run every 2 min)
+5. **Tests**: Create `server/internal/middleware/ratelimit_test.go` with unit tests for rate limiting, concurrency limiting, excluded paths, and IP extraction.
+6. **Wire**: Update `server/internal/app/server.go` to instantiate and apply both middlewares on `mainGroup`.
+7. **Docs**: Document new env vars in `CLAUDE.md` deployment section.
