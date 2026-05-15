@@ -3,7 +3,7 @@ module github.com/fclairamb/solidping/server
 go 1.26
 
 require (
-	github.com/IBM/sarama v1.48.1
+	github.com/IBM/sarama v1.48.2
 	github.com/arran4/golang-ical v0.3.5
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
@@ -51,9 +51,9 @@ require (
 	github.com/uptrace/bun/driver/pgdriver v1.2.18
 	github.com/uptrace/bun/driver/sqliteshim v1.2.18
 	github.com/uptrace/bunrouter v1.0.23
-	github.com/urfave/cli/v3 v3.8.0
+	github.com/urfave/cli/v3 v3.9.0
 	github.com/vanng822/go-premailer v1.33.0
-	github.com/wneessen/go-mail v0.7.2
+	github.com/wneessen/go-mail v0.7.3
 	github.com/xdg-go/scram v1.2.0
 	go.mongodb.org/mongo-driver/v2 v2.6.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.18.0
@@ -74,7 +74,7 @@ require (
 	golang.org/x/sys v0.44.0
 	golang.org/x/term v0.43.0
 	golang.org/x/time v0.15.0
-	google.golang.org/grpc v1.81.0
+	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
 	nhooyr.io/websocket v1.8.17
 )
