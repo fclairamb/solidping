@@ -283,9 +283,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 // which the system-parameters table can override at runtime).
 //
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
-func (s *Server) SetupRoutes() {
+func (s *Server) SetupRoutes(ctx context.Context) {
 	router := bunrouter.New()
-	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware)
+	rl := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
+	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
+		Use(rl.RateLimit).
+		Use(rl.ConcurrencyLimit)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")
@@ -785,7 +788,7 @@ func (s *Server) SetupRoutes() {
 
 		mainGroup.GET(metricsPath, bunrouter.HTTPHandler(promhttp.Handler()))
 
-		slog.Info("Prometheus metrics endpoint enabled", "path", metricsPath)
+		slog.InfoContext(ctx, "Prometheus metrics endpoint enabled", "path", metricsPath)
 	}
 
 	// Test API routes (no authentication for development/testing)
