@@ -124,6 +124,7 @@ type Server struct {
 	mcpHandler  *mcp.Handler
 	profilerSrv *profiler.Server
 	jmapManager *jmap.Manager
+	rateLimiter *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
 	cancelCtx   context.CancelFunc
 	workersWg   sync.WaitGroup // Tracks workers
 }
@@ -286,6 +287,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 func (s *Server) SetupRoutes(ctx context.Context) {
 	router := bunrouter.New()
 	rl := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
+	s.rateLimiter = rl
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(rl.RateLimit).
 		Use(rl.ConcurrencyLimit)
@@ -775,6 +777,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mgmt := mainGroup.NewGroup("/api/mgmt")
 	mgmt.GET("/health", s.healthCheck)
 	mgmt.GET("/version", s.getVersion)
+	mgmt.GET("/limits", s.getLimits)
 	mgmt.POST("/report", feedbackHandler.SubmitReport)
 
 	// Prometheus metrics endpoint
@@ -926,6 +929,57 @@ func (s *Server) healthCheck(writer http.ResponseWriter, _ bunrouter.Request) er
 
 	_, err = writer.Write(data)
 
+	return err
+}
+
+// LimitsRateLimit is the rate-limit section of the /api/mgmt/limits response.
+type LimitsRateLimit struct {
+	Enabled           bool     `json:"enabled"`
+	RequestsPerMinute int      `json:"requestsPerMinute,omitempty"`
+	Burst             int      `json:"burst,omitempty"`
+	CallerRemaining   *float64 `json:"callerRemaining,omitempty"`
+}
+
+// LimitsConcurrency is the concurrency section of the /api/mgmt/limits response.
+type LimitsConcurrency struct {
+	Enabled        bool `json:"enabled"`
+	Max            int  `json:"max,omitempty"`
+	CallerInFlight *int `json:"callerInFlight,omitempty"`
+}
+
+// LimitsResponse is the body of GET /api/mgmt/limits.
+type LimitsResponse struct {
+	RateLimit   LimitsRateLimit   `json:"rateLimit"`
+	Concurrency LimitsConcurrency `json:"concurrency"`
+}
+
+func (s *Server) getLimits(writer http.ResponseWriter, req bunrouter.Request) error {
+	cfg := s.rateLimiter.Config()
+	state := s.rateLimiter.StateFor(s.rateLimiter.ExtractIP(req.Request))
+
+	resp := LimitsResponse{
+		RateLimit:   LimitsRateLimit{Enabled: cfg.RequestsPerMinute > 0},
+		Concurrency: LimitsConcurrency{Enabled: cfg.MaxConcurrent > 0},
+	}
+	if resp.RateLimit.Enabled {
+		resp.RateLimit.RequestsPerMinute = cfg.RequestsPerMinute
+		resp.RateLimit.Burst = cfg.Burst
+		remaining := state.Remaining
+		resp.RateLimit.CallerRemaining = &remaining
+	}
+	if resp.Concurrency.Enabled {
+		resp.Concurrency.Max = cfg.MaxConcurrent
+		inFlight := state.InFlight
+		resp.Concurrency.CallerInFlight = &inFlight
+	}
+
+	writer.Header().Set("Content-Type", "application/json")
+	writer.WriteHeader(http.StatusOK)
+	data, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	_, err = writer.Write(data)
 	return err
 }
 

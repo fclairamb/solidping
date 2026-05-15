@@ -71,6 +71,8 @@ func TestRateLimit_ExcludedPaths(t *testing.T) {
 
 	excludedPaths := []string{
 		"/api/mgmt/health",
+		"/api/mgmt/limits",
+		"/api/mgmt/version",
 		"/metrics",
 		"/api/v1/workers/heartbeat",
 		"/api/v1/heartbeat/org/identifier",
@@ -231,4 +233,81 @@ func TestRateLimit_RetryAfterHeader(t *testing.T) {
 		}
 	}
 	t.Fatal("expected a 429 response")
+}
+
+func TestStateFor_FreshIPReturnsBurst(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 300,
+		Burst:             60,
+		MaxConcurrent:     20,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+
+	state := rl.StateFor("6.6.6.6")
+	r.InDelta(60.0, state.Remaining, 0.0001, "fresh IP should have a full burst available")
+	r.Zero(state.InFlight, "fresh IP should report no in-flight")
+}
+
+func TestStateFor_ReflectsTokenConsumption(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 60,
+		Burst:             5,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+	handler := rl.RateLimit(okHandler())
+
+	for range 3 {
+		w := httptest.NewRecorder()
+		_ = handler(w, newBunRequest("7.7.7.7", "/api/v1/orgs/default/checks"))
+		r.Equal(http.StatusOK, w.Code)
+	}
+
+	state := rl.StateFor("7.7.7.7")
+	// 3 of 5 burst consumed; refill at 1/s is small over a test runtime.
+	r.LessOrEqual(state.Remaining, 2.5, "remaining tokens should reflect consumption")
+}
+
+func TestStateFor_ReflectsInFlight(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	cfg := config.RateLimitConfig{
+		RequestsPerMinute: 0,
+		MaxConcurrent:     3,
+	}
+	rl := middleware.NewRateLimiter(cfg, context.Background())
+
+	inside := make(chan struct{}, 2)
+	release := make(chan struct{})
+	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		inside <- struct{}{}
+		<-release
+		w.WriteHeader(http.StatusOK)
+		return nil
+	}
+	handler := rl.ConcurrencyLimit(blockingHandler)
+
+	var holders sync.WaitGroup
+	for range 2 {
+		holders.Add(1)
+		go func() {
+			defer holders.Done()
+			w := httptest.NewRecorder()
+			_ = handler(w, newBunRequest("8.8.8.8", "/api/v1/orgs/default/checks"))
+		}()
+	}
+	<-inside
+	<-inside
+
+	state := rl.StateFor("8.8.8.8")
+	r.Equal(2, state.InFlight, "two requests holding slots should show up")
+
+	close(release)
+	holders.Wait()
 }

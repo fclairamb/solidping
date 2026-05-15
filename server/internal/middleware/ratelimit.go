@@ -19,10 +19,12 @@ import (
 )
 
 // excludedPrefixes lists paths exempt from both rate and concurrency limiting.
+// /api/mgmt/ is exempt as a whole so a rate-limited client can still call
+// /api/mgmt/limits to discover how long until its bucket refills.
 var excludedPrefixes = []string{ //nolint:gochecknoglobals // package-level constant list
 	"/api/v1/workers/",
 	"/api/v1/heartbeat/",
-	"/api/mgmt/health",
+	"/api/mgmt/",
 	"/metrics",
 }
 
@@ -177,6 +179,61 @@ func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFu
 
 		return next(writer, req)
 	}
+}
+
+// IPState is a read-only snapshot of a single IP's rate-limit and concurrency
+// state, returned by StateFor for the /api/mgmt/limits introspection endpoint.
+type IPState struct {
+	// Remaining is the number of rate-limit tokens currently available for
+	// the IP (floored at 0). Equals Burst for an IP with no entry yet.
+	Remaining float64
+	// InFlight is the number of concurrent requests the IP currently holds.
+	// Zero for an IP with no entry yet.
+	InFlight int
+}
+
+// Config returns the limiter's configuration. Used by the introspection
+// handler to report the configured limits without re-reading config.
+func (rl *RateLimiter) Config() config.RateLimitConfig {
+	return rl.cfg
+}
+
+// ExtractIP returns the client IP for the request using the configured
+// TrustedProxies count. Exposed so handlers (e.g. /api/mgmt/limits) can use
+// the same logic as the middlewares.
+func (rl *RateLimiter) ExtractIP(req *http.Request) string {
+	return extractIP(req, rl.cfg.TrustedProxies)
+}
+
+// StateFor returns a snapshot of the per-IP rate-limit and concurrency state
+// without consuming a token or acquiring a semaphore slot. If the IP has no
+// entry yet, it returns the "fresh IP" defaults (full burst, zero in-flight).
+func (rl *RateLimiter) StateFor(ip string) IPState {
+	state := IPState{
+		Remaining: float64(rl.cfg.Burst),
+		InFlight:  0,
+	}
+
+	val, ok := rl.entries.Load(ip)
+	if !ok {
+		return state
+	}
+	entry, ok := val.(*ipEntry)
+	if !ok {
+		return state
+	}
+
+	if entry.limiter != nil {
+		tokens := entry.limiter.Tokens()
+		if tokens < 0 {
+			tokens = 0
+		}
+		state.Remaining = tokens
+	}
+	if entry.sem != nil {
+		state.InFlight = len(entry.sem)
+	}
+	return state
 }
 
 // ConcurrencyLimit is a bunrouter middleware that enforces the per-IP concurrency limit.
