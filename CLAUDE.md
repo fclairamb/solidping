@@ -73,6 +73,14 @@ previous binary running; check the dev log for the compiler error.
 ## Deployment mode
 - `SP_DEPLOYMENT_MODE` — `self-hosted` (default) or `saas`. Drives the per-org entitlement defaults: `self-hosted` caps `MaxSSOUsers` at 30; `saas` caps `MaxChecksPerMinute` at 6. Anything else is unlimited. The two limits are the only fields enforced — `MaxSSOUsers` at every OAuth callback (refusing the 31st new SSO membership for an org), `MaxChecksPerMinute` at the worker dispatch (rate-limited executions are skipped + counted in `solidping_checks_rate_limited_total`). Admins can override either cap per-org via `PUT/PATCH /api/v1/orgs/$org/entitlements`.
 
+## HTTP rate limiting (per-IP)
+- Two independent middlewares protect every route on `mainGroup`, with `/api/v1/workers/`, `/api/v1/heartbeat/`, `/api/mgmt/health`, and `/metrics` excluded by prefix. Over-limit responses are 429 immediately (no queuing); rate-limited responses include `Retry-After: 60`.
+- `SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE` — token-bucket refill per client IP (default `300`). Set `0` to disable the rate limiter.
+- `SP_SERVER_RATE_LIMITING_BURST` — instantaneous burst above the sustained rate (default `60`).
+- `SP_SERVER_RATE_LIMITING_MAX_CONCURRENT` — semaphore size for in-flight requests per IP (default `20`). Set `0` to disable the concurrency limiter.
+- `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES` — number of trusted reverse-proxy hops (default `0` = use `RemoteAddr` directly). Set `1` behind a single nginx/ingress that sets `X-Forwarded-For`; the middleware strips the last N hops to find the real client IP. Trusting the header without a configured proxy count is an IP-spoofing vector.
+- 429 counts are exposed as `solidping_http_rate_limited_total{reason="rate"|"concurrency"}` for operator alerting.
+
 ## Credentials encryption at rest
 - `SP_ENCRYPTION_MASTER_KEY` — base64-encoded 32-byte KEK. When set, secret keys in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column and an AES-256-GCM-encrypted private column (`*_private`). The dashboard never echoes secret values back; it gets a `configPrivateKeys: [...]` hint instead.
 - `SP_ENCRYPTION_MASTER_KEY_FILE` — file path containing the base64 key. Wins over the env var when both are set (k8s secret-mount pattern).
