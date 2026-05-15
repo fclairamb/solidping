@@ -92,46 +92,38 @@ func TestConcurrencyLimit_BlocksWhenFull(t *testing.T) {
 	}
 	rl := middleware.NewRateLimiter(cfg, context.Background())
 
-	// A handler that blocks until released.
+	// inside is signaled once the handler has acquired the semaphore.
+	// release lets the holders exit after we've confirmed the overflow 429.
+	inside := make(chan struct{}, 2)
 	release := make(chan struct{})
 	blockingHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		inside <- struct{}{}
 		<-release
 		w.WriteHeader(http.StatusOK)
 		return nil
 	}
 	handler := rl.ConcurrencyLimit(blockingHandler)
 
-	var wg sync.WaitGroup
-	results := make([]int, 3)
-	ready := make(chan struct{}, 3)
-
-	for i := range 3 {
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
+	var holders sync.WaitGroup
+	for range 2 {
+		holders.Add(1)
+		go func() {
+			defer holders.Done()
 			w := httptest.NewRecorder()
-			ready <- struct{}{}
 			_ = handler(w, newBunRequest("2.2.2.2", "/api/v1/orgs/default/checks"))
-			results[idx] = w.Code
-		}(i)
+		}()
 	}
+	// Wait until both holders have actually acquired the semaphore.
+	<-inside
+	<-inside
 
-	// Wait for all goroutines to start.
-	for range 3 {
-		<-ready
-	}
-	// Unblock the blocking ones.
+	// Now the third request must be rejected immediately with 429.
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequest("2.2.2.2", "/api/v1/orgs/default/checks"))
+	r.Equal(http.StatusTooManyRequests, w.Code, "third request should be rejected when sem is full")
+
 	close(release)
-	wg.Wait()
-
-	// At least one should be 429 (the overflow request).
-	has429 := false
-	for _, code := range results {
-		if code == http.StatusTooManyRequests {
-			has429 = true
-		}
-	}
-	r.True(has429, "at least one request should be rejected with 429 when concurrency limit is full")
+	holders.Wait()
 }
 
 func TestConcurrencyLimit_ExcludedPaths(t *testing.T) {
