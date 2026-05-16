@@ -28,4 +28,4 @@ logs/
 
 # Claude Code
 .claude/scheduled_tasks.lock
-.claude/worktrees/agent-*
+.claude/worktrees/

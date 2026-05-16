@@ -135,13 +135,16 @@ var (
 		[]string{labelOrganization},
 	)
 
-	// HTTPRateLimited counts requests rejected by the per-IP HTTP rate or
-	// concurrency limiters. The reason label distinguishes "rate" (token
-	// bucket exhausted) from "concurrency" (semaphore full).
+	// HTTPRateLimited counts requests intercepted by the per-IP HTTP rate or
+	// concurrency limiters. The reason label has four values:
+	//   "rate"               — rejected with 429: token bucket empty and slow lane full / waited out.
+	//   "rate_delayed"       — succeeded after waiting in the rate-limit slow lane.
+	//   "concurrency"        — rejected with 429: no slot free and waiting room full / waited out.
+	//   "concurrency_queued" — succeeded after waiting for a concurrency slot.
 	HTTPRateLimited = prometheus.NewCounterVec(
 		prometheus.CounterOpts{
 			Name: "solidping_http_rate_limited_total",
-			Help: "Total requests rejected by the per-IP HTTP rate or concurrency limiter",
+			Help: "Total requests rejected or queued by the per-IP HTTP rate or concurrency limiter",
 		},
 		[]string{"reason"},
 	)

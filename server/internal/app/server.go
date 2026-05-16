@@ -286,12 +286,17 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 //nolint:funlen,cyclop // Route registration function naturally grows with new routes
 func (s *Server) SetupRoutes(ctx context.Context) {
 	router := bunrouter.New()
-	rl := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
-	s.rateLimiter = rl
+	rateLimiter := middleware.NewRateLimiter(s.config.Server.RateLimiting, ctx)
+	s.rateLimiter = rateLimiter
+	// ctx for RequestTimeout is taken from each bunrouter.Request inside the
+	// middleware closure, not threaded through here; the contextcheck linter
+	// can't see that.
+	timeoutMW := middleware.RequestTimeout(s.config.Server.MaxRequestDuration) //nolint:contextcheck
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(middleware.HTTPMetrics).
-		Use(rl.RateLimit).
-		Use(rl.ConcurrencyLimit)
+		Use(timeoutMW).
+		Use(rateLimiter.RateLimit).
+		Use(rateLimiter.ConcurrencyLimit)
 
 	// API routes
 	api := mainGroup.NewGroup("/api/v1")

@@ -95,12 +95,16 @@ Each of the three telemetry surfaces is opt-out / opt-in via its own config knob
 - All existing product metrics (`solidping_check_executions_total`, `solidping_check_duration_seconds`, `solidping_check_scheduling_delay_seconds`, rate-limit counters) are unchanged.
 
 ## HTTP rate limiting (per-IP)
-- Two independent middlewares protect every route on `mainGroup`, with `/api/v1/workers/`, `/api/v1/heartbeat/`, `/api/mgmt/health`, and `/metrics` excluded by prefix. Over-limit responses are 429 immediately (no queuing); rate-limited responses include `Retry-After: 60`.
+- Two independent middlewares protect every route on `mainGroup`, with `/api/v1/workers/`, `/api/v1/heartbeat/`, `/api/mgmt/health`, and `/metrics` excluded by prefix. Both middlewares now run a bounded **slow lane / waiting room** before rejecting: a request that lost the fast path may wait for the next token (rate) or a freeing slot (concurrency) up to `MaxQueueWait` long, after which it gets `429` with `Retry-After: 60`. Waited-then-admitted requests get `X-Rate-Limit-Delayed-Ms` or `X-Concurrency-Queued-Ms` set to the wait time in milliseconds.
 - `SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE` — token-bucket refill per client IP (default `300`). Set `0` to disable the rate limiter.
 - `SP_SERVER_RATE_LIMITING_BURST` — instantaneous burst above the sustained rate (default `60`).
 - `SP_SERVER_RATE_LIMITING_MAX_CONCURRENT` — semaphore size for in-flight requests per IP (default `20`). Set `0` to disable the concurrency limiter.
+- `SP_SERVER_RATE_LIMITING_RATE_QUEUE` — per-IP slow-lane size for the rate limiter (default `10`). Requests that lose the fast-path token race wait here for the next refill. Set `0` to keep the legacy "fail fast" behavior.
+- `SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE` — per-IP waiting-room size for the concurrency limiter (default `10`). Requests that find all slots taken wait here for a slot to free. Set `0` to keep the legacy "fail fast" behavior.
+- `SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT` — hard ceiling on time spent in either queue (default `30s`, parsed by `time.ParseDuration`). Exceeded → `429`. `0` disables the ceiling and only the client cancellation ends the wait.
 - `SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES` — number of trusted reverse-proxy hops (default `0` = use `RemoteAddr` directly). Set `1` behind a single nginx/ingress that sets `X-Forwarded-For`; the middleware strips the last N hops to find the real client IP. Trusting the header without a configured proxy count is an IP-spoofing vector.
-- 429 counts are exposed as `solidping_http_rate_limited_total{reason="rate"|"concurrency"}` for operator alerting.
+- `SP_SERVER_MAX_REQUEST_DURATION` — server-wide max request budget (default `30s`). Covers slow-lane wait + concurrency-queue wait + handler execution. Exceeded → `504` with `REQUEST_TIMEOUT`. Same exclusion list as the rate limiters. `0` disables the timeout.
+- Counters: `solidping_http_rate_limited_total{reason="rate"|"rate_delayed"|"concurrency"|"concurrency_queued"}`. The `_delayed` / `_queued` reasons increment when a request was admitted after waiting; the bare reasons count hard rejects.
 
 ## Credentials encryption at rest
 - `SP_ENCRYPTION_MASTER_KEY` — base64-encoded 32-byte KEK. When set, secret keys in `checks.config`, `integration_connections.settings`, and `check_jobs.config` are split into a public column and an AES-256-GCM-encrypted private column (`*_private`). The dashboard never echoes secret values back; it gets a `configPrivateKeys: [...]` hint instead.
@@ -204,6 +208,8 @@ All errors should return:
 - `INVALID_AUTO_JOIN_REGEX` - Auto-join email pattern is missing or too permissive
 - `ALREADY_A_MEMBER` / `REQUEST_PENDING` / `REQUEST_NOT_FOUND` / `REQUEST_COOLDOWN_ACTIVE` - Membership request errors
 - `ENTITLEMENT_EXCEEDED` / `FEATURE_NOT_ENTITLED` / `ENTITLEMENTS_STALE` - Entitlements errors
+- `RATE_LIMITED` / `CONCURRENCY_LIMITED` - Per-IP rate / concurrency limit hit (429, with `Retry-After: 60`)
+- `REQUEST_TIMEOUT` - Server-wide `SP_SERVER_MAX_REQUEST_DURATION` exceeded (504)
 
 ### API Testing
 ```bash

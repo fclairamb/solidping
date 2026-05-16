@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -34,11 +35,26 @@ var excludedPrefixes = []string{ //nolint:gochecknoglobals // package-level cons
 	"/api/v1/heartbeat/",
 }
 
-// ipEntry holds per-IP rate-limiter and concurrency semaphore state.
+// Response headers set when a request was held in a waiting room before being
+// admitted. Both report the wait time in integer milliseconds. They are only
+// set on responses that ultimately succeeded — 429s set Retry-After instead.
+const (
+	HeaderRateLimitDelayedMs  = "X-Rate-Limit-Delayed-Ms"
+	HeaderConcurrencyQueuedMs = "X-Concurrency-Queued-Ms"
+)
+
+// ipEntry holds per-IP rate-limiter and concurrency state.
+//
+// sem is the active-slot semaphore (capacity = MaxConcurrent).
+// rateQueue and concurQueue are admission semaphores for the waiting rooms —
+// the goroutine of each waiting request *is* its queue slot, so the channels
+// only count occupancy, they never carry data.
 type ipEntry struct {
-	limiter  *rate.Limiter
-	sem      chan struct{}
-	lastSeen time.Time
+	limiter     *rate.Limiter
+	sem         chan struct{}
+	rateQueue   chan struct{}
+	concurQueue chan struct{}
+	lastSeen    time.Time
 }
 
 // RateLimiter provides per-IP rate limiting and concurrency limiting middleware.
@@ -76,10 +92,22 @@ func (rl *RateLimiter) getEntry(ip string) *ipEntry {
 		sem = make(chan struct{}, rl.cfg.MaxConcurrent)
 	}
 
+	var rateQueue chan struct{}
+	if rl.cfg.RequestsPerMinute > 0 && rl.cfg.RateQueue > 0 {
+		rateQueue = make(chan struct{}, rl.cfg.RateQueue)
+	}
+
+	var concurQueue chan struct{}
+	if rl.cfg.MaxConcurrent > 0 && rl.cfg.ConcurrencyQueue > 0 {
+		concurQueue = make(chan struct{}, rl.cfg.ConcurrencyQueue)
+	}
+
 	entry := &ipEntry{
-		limiter:  lim,
-		sem:      sem,
-		lastSeen: time.Now(),
+		limiter:     lim,
+		sem:         sem,
+		rateQueue:   rateQueue,
+		concurQueue: concurQueue,
+		lastSeen:    time.Now(),
 	}
 	actual, _ := rl.entries.LoadOrStore(ip, entry)
 	if typedEntry, ok := actual.(*ipEntry); ok {
@@ -167,7 +195,35 @@ func writeLimitError(writer http.ResponseWriter, code base.ErrorCode, title, det
 	}
 }
 
-// RateLimit is a bunrouter middleware that enforces the per-IP token-bucket rate limit.
+func rejectRate(writer http.ResponseWriter) {
+	prommetrics.HTTPRateLimited.WithLabelValues("rate").Inc()
+	writeLimitError(writer, base.ErrorCodeRateLimited,
+		"Too many requests",
+		"Rate limit exceeded, please slow down",
+	)
+}
+
+func rejectConcurrency(writer http.ResponseWriter) {
+	prommetrics.HTTPRateLimited.WithLabelValues("concurrency").Inc()
+	writeLimitError(writer, base.ErrorCodeConcurrencyLimited,
+		"Too many concurrent requests",
+		"Too many simultaneous requests from your IP",
+	)
+}
+
+// queueWaitContext derives a context that fires after MaxQueueWait, or returns
+// the request's own context unchanged when the ceiling is disabled.
+func (rl *RateLimiter) queueWaitContext(req bunrouter.Request) (context.Context, context.CancelFunc) {
+	if rl.cfg.MaxQueueWait <= 0 {
+		return req.Context(), func() {}
+	}
+	return context.WithTimeout(req.Context(), rl.cfg.MaxQueueWait)
+}
+
+// RateLimit is a bunrouter middleware that enforces the per-IP token-bucket
+// rate limit with a bounded slow-lane queue: a request that loses the
+// fast-path token race may wait for the next refill, up to RateQueue
+// requests deep and MaxQueueWait long, before being rejected with 429.
 func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(writer http.ResponseWriter, req bunrouter.Request) error {
 		if rl.cfg.RequestsPerMinute == 0 || isExcluded(req.URL.Path) {
@@ -177,16 +233,51 @@ func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFu
 		ip := extractIP(req.Request, rl.cfg.TrustedProxies)
 		entry := rl.getEntry(ip)
 
-		if !entry.limiter.Allow() {
-			prommetrics.HTTPRateLimited.WithLabelValues("rate").Inc()
-			writeLimitError(writer, base.ErrorCodeRateLimited,
-				"Too many requests",
-				"Rate limit exceeded, please slow down",
-			)
+		if entry.limiter.Allow() {
+			return next(writer, req)
+		}
+
+		if entry.rateQueue == nil {
+			rejectRate(writer)
 			return nil
 		}
 
-		return next(writer, req)
+		select {
+		case entry.rateQueue <- struct{}{}:
+		default:
+			rejectRate(writer)
+			return nil
+		}
+		defer func() { <-entry.rateQueue }()
+
+		reservation := entry.limiter.Reserve()
+		if !reservation.OK() {
+			rejectRate(writer)
+			return nil
+		}
+		wait := reservation.Delay()
+		if rl.cfg.MaxQueueWait > 0 && wait > rl.cfg.MaxQueueWait {
+			reservation.Cancel()
+			rejectRate(writer)
+			return nil
+		}
+
+		ctx, cancel := rl.queueWaitContext(req)
+		defer cancel()
+
+		timer := time.NewTimer(wait)
+		defer timer.Stop()
+
+		select {
+		case <-timer.C:
+			prommetrics.HTTPRateLimited.WithLabelValues("rate_delayed").Inc()
+			writer.Header().Set(HeaderRateLimitDelayedMs, strconv.FormatInt(wait.Milliseconds(), 10))
+			return next(writer, req)
+		case <-ctx.Done():
+			reservation.Cancel()
+			rejectRate(writer)
+			return nil
+		}
 	}
 }
 
@@ -245,7 +336,11 @@ func (rl *RateLimiter) StateFor(ip string) IPState {
 	return state
 }
 
-// ConcurrencyLimit is a bunrouter middleware that enforces the per-IP concurrency limit.
+// ConcurrencyLimit is a bunrouter middleware that enforces the per-IP
+// concurrency limit with a bounded waiting room: a request that finds the
+// semaphore full may wait for an active slot to free, up to
+// ConcurrencyQueue requests deep and MaxQueueWait long, before being
+// rejected with 429.
 func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(writer http.ResponseWriter, req bunrouter.Request) error {
 		if rl.cfg.MaxConcurrent == 0 || isExcluded(req.URL.Path) {
@@ -258,15 +353,37 @@ func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.Ha
 		select {
 		case entry.sem <- struct{}{}:
 			defer func() { <-entry.sem }()
+			return next(writer, req)
 		default:
-			prommetrics.HTTPRateLimited.WithLabelValues("concurrency").Inc()
-			writeLimitError(writer, base.ErrorCodeConcurrencyLimited,
-				"Too many concurrent requests",
-				"Too many simultaneous requests from your IP",
-			)
+		}
+
+		if entry.concurQueue == nil {
+			rejectConcurrency(writer)
 			return nil
 		}
 
-		return next(writer, req)
+		select {
+		case entry.concurQueue <- struct{}{}:
+		default:
+			rejectConcurrency(writer)
+			return nil
+		}
+		defer func() { <-entry.concurQueue }()
+
+		ctx, cancel := rl.queueWaitContext(req)
+		defer cancel()
+
+		start := time.Now()
+		select {
+		case entry.sem <- struct{}{}:
+			defer func() { <-entry.sem }()
+			waited := time.Since(start)
+			prommetrics.HTTPRateLimited.WithLabelValues("concurrency_queued").Inc()
+			writer.Header().Set(HeaderConcurrencyQueuedMs, strconv.FormatInt(waited.Milliseconds(), 10))
+			return next(writer, req)
+		case <-ctx.Done():
+			rejectConcurrency(writer)
+			return nil
+		}
 	}
 }
