@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -477,6 +478,31 @@ func Load() (*Config, error) {
 	if shutdownTimeout := os.Getenv("SP_SHUTDOWN_TIMEOUT"); shutdownTimeout != "" {
 		if d, err := time.ParseDuration(shutdownTimeout); err == nil {
 			cfg.Server.ShutdownTimeout = d
+		}
+	}
+
+	// Manually read SP_SERVER_RATE_LIMITING_* — koanf's env loader collapses every
+	// underscore to a dot, which would map these to server.rate.limiting.* and miss
+	// the snake_case koanf tags (rate_limiting, requests_per_minute, max_concurrent,
+	// trusted_proxies).
+	if v := os.Getenv("SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.RateLimiting.RequestsPerMinute = n
+		}
+	}
+	if v := os.Getenv("SP_SERVER_RATE_LIMITING_BURST"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.RateLimiting.Burst = n
+		}
+	}
+	if v := os.Getenv("SP_SERVER_RATE_LIMITING_MAX_CONCURRENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.RateLimiting.MaxConcurrent = n
+		}
+	}
+	if v := os.Getenv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.Server.RateLimiting.TrustedProxies = n
 		}
 	}
 
