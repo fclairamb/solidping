@@ -195,22 +195,20 @@ func writeLimitError(writer http.ResponseWriter, code base.ErrorCode, title, det
 	}
 }
 
-func rejectRate(writer http.ResponseWriter) error {
+func rejectRate(writer http.ResponseWriter) {
 	prommetrics.HTTPRateLimited.WithLabelValues("rate").Inc()
 	writeLimitError(writer, base.ErrorCodeRateLimited,
 		"Too many requests",
 		"Rate limit exceeded, please slow down",
 	)
-	return nil
 }
 
-func rejectConcurrency(writer http.ResponseWriter) error {
+func rejectConcurrency(writer http.ResponseWriter) {
 	prommetrics.HTTPRateLimited.WithLabelValues("concurrency").Inc()
 	writeLimitError(writer, base.ErrorCodeConcurrencyLimited,
 		"Too many concurrent requests",
 		"Too many simultaneous requests from your IP",
 	)
-	return nil
 }
 
 // queueWaitContext derives a context that fires after MaxQueueWait, or returns
@@ -240,24 +238,28 @@ func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFu
 		}
 
 		if entry.rateQueue == nil {
-			return rejectRate(writer)
+			rejectRate(writer)
+			return nil
 		}
 
 		select {
 		case entry.rateQueue <- struct{}{}:
 		default:
-			return rejectRate(writer)
+			rejectRate(writer)
+			return nil
 		}
 		defer func() { <-entry.rateQueue }()
 
 		reservation := entry.limiter.Reserve()
 		if !reservation.OK() {
-			return rejectRate(writer)
+			rejectRate(writer)
+			return nil
 		}
 		wait := reservation.Delay()
 		if rl.cfg.MaxQueueWait > 0 && wait > rl.cfg.MaxQueueWait {
 			reservation.Cancel()
-			return rejectRate(writer)
+			rejectRate(writer)
+			return nil
 		}
 
 		ctx, cancel := rl.queueWaitContext(req)
@@ -273,7 +275,8 @@ func (rl *RateLimiter) RateLimit(next bunrouter.HandlerFunc) bunrouter.HandlerFu
 			return next(writer, req)
 		case <-ctx.Done():
 			reservation.Cancel()
-			return rejectRate(writer)
+			rejectRate(writer)
+			return nil
 		}
 	}
 }
@@ -355,13 +358,15 @@ func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.Ha
 		}
 
 		if entry.concurQueue == nil {
-			return rejectConcurrency(writer)
+			rejectConcurrency(writer)
+			return nil
 		}
 
 		select {
 		case entry.concurQueue <- struct{}{}:
 		default:
-			return rejectConcurrency(writer)
+			rejectConcurrency(writer)
+			return nil
 		}
 		defer func() { <-entry.concurQueue }()
 
@@ -377,7 +382,8 @@ func (rl *RateLimiter) ConcurrencyLimit(next bunrouter.HandlerFunc) bunrouter.Ha
 			writer.Header().Set(HeaderConcurrencyQueuedMs, strconv.FormatInt(waited.Milliseconds(), 10))
 			return next(writer, req)
 		case <-ctx.Done():
-			return rejectConcurrency(writer)
+			rejectConcurrency(writer)
+			return nil
 		}
 	}
 }

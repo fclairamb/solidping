@@ -371,7 +371,7 @@ func TestRateLimit_QueuesUntilRefill(t *testing.T) {
 	wg.Wait()
 
 	r.Equal(int32(3), passed.Load(), "all 3 queued requests should pass")
-	r.Greater(maxDelay.Load(), int64(0), "at least one request should report a non-zero delay")
+	r.Positive(maxDelay.Load(), "at least one request should report a non-zero delay")
 }
 
 func TestRateLimit_RejectsBeyondQueue(t *testing.T) {
@@ -397,6 +397,7 @@ func TestRateLimit_RejectsBeyondQueue(t *testing.T) {
 	// the third can't even claim a queue slot and gets immediate 429.
 	var wg sync.WaitGroup
 	var ok429 atomic.Int32
+	var sawRetryAfter atomic.Int32
 	for range 3 {
 		wg.Add(1)
 		go func() {
@@ -405,12 +406,15 @@ func TestRateLimit_RejectsBeyondQueue(t *testing.T) {
 			_ = handler(w, newBunRequest("10.0.0.2", "/api/v1/orgs/default/checks"))
 			if w.Code == http.StatusTooManyRequests {
 				ok429.Add(1)
-				r.Equal("60", w.Header().Get("Retry-After"))
+				if w.Header().Get("Retry-After") == "60" {
+					sawRetryAfter.Add(1)
+				}
 			}
 		}()
 	}
 	wg.Wait()
 	r.Equal(int32(3), ok429.Load(), "all 3 should be rejected with 429")
+	r.Equal(int32(3), sawRetryAfter.Load(), "all rejections should carry Retry-After: 60")
 }
 
 func TestRateLimit_HonorsContextCancel(t *testing.T) {

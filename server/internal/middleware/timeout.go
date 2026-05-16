@@ -31,18 +31,18 @@ func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunro
 			defer cancel()
 
 			req.Request = req.Request.WithContext(ctx)
-			tw := &timeoutWriter{ResponseWriter: writer}
+			guarded := &timeoutWriter{ResponseWriter: writer}
 
 			done := make(chan error, 1)
 			go func() {
-				done <- next(tw, req)
+				done <- next(guarded, req)
 			}()
 
 			select {
 			case err := <-done:
 				return err
 			case <-ctx.Done():
-				if tw.tryClaim() {
+				if guarded.tryClaim() {
 					writeTimeoutError(writer)
 				}
 				// Drain the handler in the background — we cannot stop it,
@@ -85,17 +85,17 @@ func (w *timeoutWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
-func (w *timeoutWriter) Write(b []byte) (int, error) {
+func (w *timeoutWriter) Write(data []byte) (int, error) {
 	w.mu.Lock()
 	if w.claimed {
 		// Handler already lost the race; swallow the write so it doesn't
 		// corrupt the 504 we sent.
 		w.mu.Unlock()
-		return len(b), nil
+		return len(data), nil
 	}
 	w.claimed = true
 	w.mu.Unlock()
-	return w.ResponseWriter.Write(b)
+	return w.ResponseWriter.Write(data)
 }
 
 func writeTimeoutError(writer http.ResponseWriter) {
