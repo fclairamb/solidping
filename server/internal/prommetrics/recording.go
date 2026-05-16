@@ -56,3 +56,48 @@ func SetIncidentsActive(org string, count float64) {
 func RecordIncidentCreated(org, checkType string) {
 	IncidentsTotal.WithLabelValues(org, checkType).Inc()
 }
+
+// RecordHTTPRequest records the duration and outcome of an HTTP request,
+// keyed by the route pattern (not the raw path) to keep cardinality
+// bounded. Pass an empty route to skip recording — useful when the
+// request hit a 404 catch-all that doesn't correspond to a registered
+// route.
+func RecordHTTPRequest(method, route, status string, durationSeconds float64) {
+	if route == "" {
+		return
+	}
+	HTTPRequestDuration.WithLabelValues(method, route, status).Observe(durationSeconds)
+	HTTPRequestsTotal.WithLabelValues(method, route, status).Inc()
+}
+
+// RecordDBQuery records a SQL query observation. backend is "sqlite" or
+// "postgres"; operation is the bun-reported verb ("SELECT", "INSERT",
+// "UPDATE", "DELETE", "BEGIN", "COMMIT", "ROLLBACK"); ok=false means the
+// query returned a non-ErrNoRows error.
+func RecordDBQuery(operation, backend string, durationSeconds float64, ok bool) {
+	status := "ok"
+	if !ok {
+		status = "error"
+	}
+	DBQueryDuration.WithLabelValues(operation, backend, status).Observe(durationSeconds)
+}
+
+// RecordDBBusyRetry increments the busy-retry counter for the given
+// backend. Called when the bun hook spots a SQLITE_BUSY (SQLite) or a
+// serialization-failure (Postgres).
+func RecordDBBusyRetry(backend string) {
+	DBBusyRetries.WithLabelValues(backend).Inc()
+}
+
+// RecordCheckStage observes wall-clock duration for one stage of the
+// check-execution lifecycle. Stages: "fetch", "claim", "execute",
+// "save_result", "process_incident", "release_lease".
+func RecordCheckStage(stage string, durationSeconds float64) {
+	CheckStageDuration.WithLabelValues(stage).Observe(durationSeconds)
+}
+
+// RecordClaimJobsOutcome increments the claim-jobs outcome counter.
+// outcome ∈ {"jobs", "empty", "lock_conflict", "error"}.
+func RecordClaimJobsOutcome(outcome string) {
+	ClaimJobsResult.WithLabelValues(outcome).Inc()
+}

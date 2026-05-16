@@ -250,6 +250,24 @@ linters:
       - linters:
           - revive
         path: internal/version/version\.go
+      # cmd/loadgen is a developer benchmark tool, not production code.
+      # Most "production-only" rules don't apply to a single-file harness.
+      - linters:
+          - err113
+          - errcheck
+          - errchkjson
+          - forbidigo
+          - funlen
+          - gci
+          - gochecknoglobals
+          - gocognit
+          - gocritic
+          - govet
+          - cyclop
+          - protogetter
+          - varnamelen
+          - mnd
+        path: ^cmd/loadgen/
 formatters:
   enable:
     - gofmt

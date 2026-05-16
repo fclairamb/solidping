@@ -18,14 +18,20 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
-// excludedPrefixes lists paths exempt from both rate and concurrency limiting.
-// /api/mgmt/ is exempt as a whole so a rate-limited client can still call
-// /api/mgmt/limits to discover how long until its bucket refills.
+// limitedPrefix scopes rate/concurrency limiting to API traffic. Static assets
+// (dash, status0, embedded SPA files, /pub, /docs, /openapi.yaml) are served
+// from embedded FS and aren't an abuse surface — including them caused first
+// paint to 429 because a single page load fires more parallel asset requests
+// than the per-IP concurrency cap allows.
+const limitedPrefix = "/api/v1/"
+
+// excludedPrefixes lists /api/v1/ sub-paths exempt from both limits.
+// Workers and heartbeat have fundamentally different traffic patterns; /api/mgmt
+// stays unlimited as a whole (outside limitedPrefix) so a rate-limited client
+// can still call /api/mgmt/limits to discover how long until its bucket refills.
 var excludedPrefixes = []string{ //nolint:gochecknoglobals // package-level constant list
 	"/api/v1/workers/",
 	"/api/v1/heartbeat/",
-	"/api/mgmt/",
-	"/metrics",
 }
 
 // ipEntry holds per-IP rate-limiter and concurrency semaphore state.
@@ -103,6 +109,9 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 }
 
 func isExcluded(path string) bool {
+	if !strings.HasPrefix(path, limitedPrefix) {
+		return true
+	}
 	for _, prefix := range excludedPrefixes {
 		if strings.HasPrefix(path, prefix) {
 			return true

@@ -1,0 +1,12 @@
+{
+  "processes": [
+    {
+      "name": "dev",
+      "command": "make dev",
+      "cwd": "${workspaceRoot}"
+    }
+  ],
+  "preview": {
+    "url": "http://localhost:4000"
+  }
+}

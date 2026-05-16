@@ -69,9 +69,30 @@ previous binary running; check the dev log for the compiler error.
   - `make migrate` - Run database migrations
   - `make clean` - Remove built binaries and artifacts
   - `make clean-all` - Remove all generated files including node_modules
+- **Bench / load**:
+  - `make build-loadgen` - Build the loadgen client (`./bin/loadgen`)
+  - `make bench-checks-sqlite` - Run loadgen against a SQLite-backed test server, write report to `bench-results/`
+  - `make bench-checks-postgres` - Same, against an embedded PostgreSQL
+  - `make bench-checks` - Both, sequentially
+  - Knobs: `BENCH_CHECKS`, `BENCH_DURATION`, `BENCH_PERIOD`, `BENCH_PORT`, `BENCH_PG_PORT` (e.g. `make bench-checks BENCH_CHECKS=500 BENCH_DURATION=5m`)
 
 ## Deployment mode
 - `SP_DEPLOYMENT_MODE` — `self-hosted` (default) or `saas`. Drives the per-org entitlement defaults: `self-hosted` caps `MaxSSOUsers` at 30; `saas` caps `MaxChecksPerMinute` at 6. Anything else is unlimited. The two limits are the only fields enforced — `MaxSSOUsers` at every OAuth callback (refusing the 31st new SSO membership for an org), `MaxChecksPerMinute` at the worker dispatch (rate-limited executions are skipped + counted in `solidping_checks_rate_limited_total`). Admins can override either cap per-org via `PUT/PATCH /api/v1/orgs/$org/entitlements`.
+
+## Observability surfaces (independently toggleable)
+Each of the three telemetry surfaces is opt-out / opt-in via its own config knob; metric **collection** keeps running regardless, only the **export surface** is gated. The collected histograms (DB pool, query duration, check stages, HTTP per-route, claim outcomes, busy-retry counters) sit in package-level memory at near-zero cost, so leaving them on while the export endpoint is disabled is safe.
+- `SP_PROMETHEUS_ENABLED` — defaults `true`. Gates `/metrics` HTTP handler registration; path is `SP_PROMETHEUS_PATH` (default `/metrics`). Set `false` in regulated deployments that scrape metrics out-of-band.
+- `SP_PROFILER_ENABLED` — defaults `false`. When true, mounts `net/http/pprof` on a dedicated listener (`SP_PROFILER_LISTEN`, default `localhost:6060`). Use for CPU/heap profiling under load.
+- `SP_OTEL_ENABLED` — defaults `false`. When true, the OpenTelemetry SDK initializes a tracer/meter/logger provider and exports via OTLP (`SP_OTEL_ENDPOINT`, `SP_OTEL_PROTOCOL=http|grpc`, `SP_OTEL_INSECURE`). The check worker already emits a `check.execute` span per job ([server/internal/checkworker/worker.go:425](server/internal/checkworker/worker.go:425)); broader auto-instrumentation is opt-in via this flag.
+
+### Metric families (key ones for performance debugging)
+- `solidping_db_pool_*{backend}` — `sql.DB.Stats()` snapshot at scrape time (open/in_use/idle, wait_count, wait_duration). The single most important number on SQLite is `wait_duration_seconds_total` — non-zero ⇒ the pool is the bottleneck.
+- `solidping_db_query_duration_seconds{operation,backend,status}` — histogram per SQL verb (SELECT / INSERT / UPDATE / DELETE / BEGIN / COMMIT). Emitted from the Bun sloghook.
+- `solidping_db_busy_retries_total{backend}` — SQLITE_BUSY / PG serialization-failure errors. Non-zero rate = write contention.
+- `solidping_check_stage_duration_seconds{stage}` — per-stage timing inside `executeJob`. Stages: `fetch`, `claim`, `execute`, `save_result`, `process_incident`, `release_lease`.
+- `solidping_http_request_duration_seconds{method,route,status}` — per-route latency, keyed by the matched bunrouter pattern (low cardinality).
+- `solidping_claim_jobs_result_total{outcome}` — outcome of each ClaimJobs call: `jobs`, `empty`, `lock_conflict`, `error`. Distinguishes "no due jobs" from "due jobs were locked".
+- All existing product metrics (`solidping_check_executions_total`, `solidping_check_duration_seconds`, `solidping_check_scheduling_delay_seconds`, rate-limit counters) are unchanged.
 
 ## HTTP rate limiting (per-IP)
 - Two independent middlewares protect every route on `mainGroup`, with `/api/v1/workers/`, `/api/v1/heartbeat/`, `/api/mgmt/health`, and `/metrics` excluded by prefix. Over-limit responses are 429 immediately (no queuing); rate-limited responses include `Retry-After: 60`.

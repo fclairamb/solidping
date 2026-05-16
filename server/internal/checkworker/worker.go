@@ -268,6 +268,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 	}
 
 	cfg := r.config.Server.CheckWorker
+	fetchStart := time.Now()
 	jobs, err := r.checkJobSvc.ClaimJobs(
 		ctx,
 		r.worker.UID,
@@ -275,6 +276,17 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		available,
 		cfg.FetchMaxAhead,
 	)
+	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
+	switch {
+	case err != nil && errors.Is(err, context.Canceled):
+		// no-op: shutdown path
+	case err != nil:
+		prommetrics.RecordClaimJobsOutcome("error")
+	case len(jobs) == 0:
+		prommetrics.RecordClaimJobsOutcome("empty")
+	default:
+		prommetrics.RecordClaimJobsOutcome("jobs")
+	}
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.ErrorContext(ctx, "Failed to claim jobs", "error", err)
@@ -529,7 +541,9 @@ func (r *CheckWorker) executeJob(
 	execCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
+	execStart := time.Now()
 	result, err := checker.Execute(execCtx, checkConfig)
+	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
 	if err != nil {
 		duration := time.Since(startTime)
 
@@ -567,10 +581,30 @@ func (r *CheckWorker) executeJob(
 
 	r.stats.AddMetric(result.Status == checkerdef.StatusUp, result.Duration, delay)
 
+	// Wire up the long-standing Prometheus counter + duration histogram.
+	// They were defined in prommetrics but never observed in production
+	// before this; without these two lines the existing
+	// solidping_check_executions_total / _duration_seconds emit only
+	// from tests.
+	region := ""
+	if checkJob.Region != nil {
+		region = *checkJob.Region
+	}
+	prommetrics.RecordExecution(
+		checkJob.Type,
+		result.Status.String(),
+		region,
+		checkJob.OrganizationUID,
+		float64(result.Duration.Milliseconds()),
+	)
+	prommetrics.RecordSchedulingDelay(region, delay.Seconds())
+
+	saveStart := time.Now()
 	if err := r.saveResult(saveCtx, checkJob, *result); err != nil {
 		logger.ErrorContext(ctx, "Failed to save result", "error", err)
 		// Continue to release lease even if save failed
 	}
+	prommetrics.RecordCheckStage("save_result", time.Since(saveStart).Seconds())
 	r.logger.InfoContext(ctx, "Check result saved")
 
 	// 6. Release lease and reschedule
@@ -583,8 +617,11 @@ func (r *CheckWorker) executeJob(
 		defer cancel()
 	}
 
-	if err := r.releaseLease(releaseCtx, checkJob); err != nil {
-		return fmt.Errorf("failed to release lease: %w", err)
+	releaseStart := time.Now()
+	releaseErr := r.releaseLease(releaseCtx, checkJob)
+	prommetrics.RecordCheckStage("release_lease", time.Since(releaseStart).Seconds())
+	if releaseErr != nil {
+		return fmt.Errorf("failed to release lease: %w", releaseErr)
 	}
 
 	duration := time.Since(startTime)
@@ -627,7 +664,9 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 	}
 
 	// Process incidents
+	incStart := time.Now()
 	r.processIncidents(ctx, checkJob, result)
+	prommetrics.RecordCheckStage("process_incident", time.Since(incStart).Seconds())
 
 	return nil
 }

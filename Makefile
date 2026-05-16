@@ -1,6 +1,7 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
-	test test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons
+	test test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres
 .DEFAULT_GOAL := build
 
 APP_NAME := solidping
@@ -125,6 +126,64 @@ install-cli: ## Install standalone CLI to GOPATH
 	@cd $(BACK_DIR) && go install $(LDFLAGS) ./cmd/sp
 	@echo "CLI installed to GOPATH"
 	@echo "Note: CLI commands are also available via 'solidping client <command>'"
+
+build-loadgen: ## Build the loadgen benchmark client
+	@echo "Building loadgen..."
+	@cd $(BACK_DIR) && go build -o ../bin/loadgen ./cmd/loadgen
+	@echo "Binary created: ./bin/loadgen"
+
+# Bench knobs (override per invocation, e.g. `make bench-checks BENCH_CHECKS=500`).
+BENCH_CHECKS   ?= 200
+BENCH_DURATION ?= 2m
+BENCH_PERIOD   ?= 10s
+BENCH_PORT     ?= 4001
+BENCH_PG_PORT  ?= 5435
+BENCH_DATA     := bench-data
+BENCH_OUT      := bench-results
+
+bench-checks: bench-checks-sqlite bench-checks-postgres ## Run loadgen against SQLite and PostgreSQL backends (both)
+	@echo "Bench complete; reports under $(BENCH_OUT)/"
+
+bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed test server
+	@echo "==> Bench: SQLite"
+	@mkdir -p $(BENCH_DATA)/sqlite $(BENCH_OUT)
+	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
+	@SP_RUNMODE=test \
+		SP_DB_TYPE=sqlite \
+		SP_DB_DATA_DIR=$(BENCH_DATA)/sqlite \
+		SP_DB_RESET=true \
+		SP_SERVER_LISTEN_ADDR=127.0.0.1:$(BENCH_PORT) \
+		LOG_LEVEL=warn \
+		./$(APP_NAME) serve > $(BENCH_OUT)/server-sqlite.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
+	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
+	./bin/loadgen \
+		-api-url http://127.0.0.1:$(BENCH_PORT) \
+		-backend sqlite \
+		-checks $(BENCH_CHECKS) \
+		-duration $(BENCH_DURATION) \
+		-period $(BENCH_PERIOD) \
+		-output-dir $(BENCH_OUT)
+
+bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-backed test server (embedded PG)
+	@echo "==> Bench: PostgreSQL (embedded)"
+	@mkdir -p $(BENCH_DATA)/pg $(BENCH_OUT)
+	@lsof -ti :$(BENCH_PORT) | xargs kill 2>/dev/null || true
+	@SP_RUNMODE=test \
+		SP_DB_TYPE=postgres-embedded \
+		SP_DB_EMBEDDED_DIR=$(BENCH_DATA)/pg \
+		SP_DB_PORT=$(BENCH_PG_PORT) \
+		SP_DB_RESET=true \
+		SP_SERVER_LISTEN_ADDR=127.0.0.1:$(BENCH_PORT) \
+		LOG_LEVEL=warn \
+		./$(APP_NAME) serve > $(BENCH_OUT)/server-postgres.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
+	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
+	./bin/loadgen \
+		-api-url http://127.0.0.1:$(BENCH_PORT) \
+		-backend postgres \
+		-checks $(BENCH_CHECKS) \
+		-duration $(BENCH_DURATION) \
+		-period $(BENCH_PERIOD) \
+		-output-dir $(BENCH_OUT)
 
 run: build ## Build and run the application
 	@echo "Running application..."
