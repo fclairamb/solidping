@@ -418,15 +418,6 @@ function CheckDetailPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() =>
-              navigate({ to: "/orgs/$org/checks", params: { org } })
-            }
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <div className="flex items-center gap-3">
             <div className={`h-3 w-3 rounded-full ${statusColor}`} />
             <div>
@@ -512,6 +503,16 @@ function CheckDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("checks:detail.backToChecks") ?? "Back to checks"}
+            onClick={() =>
+              navigate({ to: "/orgs/$org/checks", params: { org } })
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
           <Link
             to="/orgs/$org/checks/$checkUid/edit"
             params={{ org, checkUid }}
