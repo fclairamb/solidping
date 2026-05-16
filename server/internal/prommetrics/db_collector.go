@@ -26,7 +26,7 @@ type dbStatsCollector struct {
 }
 
 // NewDBStatsCollector returns a Prometheus collector that emits the
-// fields of sql.DBStats as gauges labelled with the given backend
+// fields of sql.DBStats as gauges labeled with the given backend
 // ("sqlite" or "postgres").
 func NewDBStatsCollector(db *sql.DB, backend string) prometheus.Collector {
 	labels := prometheus.Labels{labelBackend: backend}
@@ -47,7 +47,10 @@ func NewDBStatsCollector(db *sql.DB, backend string) prometheus.Collector {
 	}
 }
 
-// Describe implements prometheus.Collector.
+// Describe implements prometheus.Collector. The `ch` parameter name
+// matches the upstream Collector interface signature.
+//
+//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.maxOpen
 	ch <- c.open
@@ -60,6 +63,8 @@ func (c *dbStatsCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 // Collect implements prometheus.Collector.
+//
+//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
 	stats := c.db.Stats()
 	ch <- prometheus.MustNewConstMetric(c.maxOpen, prometheus.GaugeValue, float64(stats.MaxOpenConnections))
@@ -74,7 +79,10 @@ func (c *dbStatsCollector) Collect(ch chan<- prometheus.Metric) {
 
 // dbRegistered guards against duplicate registration when the same
 // backend label is wired up more than once (e.g. tests opening a fresh
-// DB after the first one was already registered).
+// DB after the first one was already registered). Package-level state
+// is intentional: the Prometheus default registry is itself a singleton.
+//
+//nolint:gochecknoglobals // mirrors the default Prometheus registry singleton
 var (
 	dbRegisteredMu sync.Mutex
 	dbRegistered   = map[string]bool{}
