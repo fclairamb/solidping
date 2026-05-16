@@ -58,6 +58,7 @@ const (
 	ErrorCodeResultNotFound            ErrorCode = "RESULT_NOT_FOUND"
 	ErrorCodeRateLimited               ErrorCode = "RATE_LIMITED"
 	ErrorCodeConcurrencyLimited        ErrorCode = "CONCURRENCY_LIMITED"
+	ErrorCodeRequestTimeout            ErrorCode = "REQUEST_TIMEOUT"
 	ErrorCodeInvalidAutoJoinRegex      ErrorCode = "INVALID_AUTO_JOIN_REGEX"
 	ErrorCodeAlreadyAMember            ErrorCode = "ALREADY_A_MEMBER"
 	ErrorCodeRequestPending            ErrorCode = "REQUEST_PENDING"
