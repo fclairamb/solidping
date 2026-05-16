@@ -43,6 +43,29 @@ func TestRequestTimeout_FastUnaffected(t *testing.T) {
 	r.Equal(http.StatusOK, w.Code)
 }
 
+// Regression: handlers that call WriteHeader followed by Write (the pattern
+// every JSON response uses) must reach the wire intact. A previous version
+// of timeoutWriter shared one `claimed` flag between WriteHeader and Write,
+// which caused WriteHeader to claim and Write to be silently swallowed —
+// 200 OK with an empty body and no JSON.
+func TestRequestTimeout_WriteHeaderThenWriteBodyReachesWire(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	jsonHandler := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"accessToken":"abc"}`))
+		return nil
+	}
+	handler := middleware.RequestTimeout(500 * time.Millisecond)(jsonHandler)
+
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequest("30.0.0.5", "/api/v1/orgs/default/checks"))
+	r.Equal(http.StatusOK, w.Code)
+	r.JSONEq(`{"accessToken":"abc"}`, w.Body.String())
+}
+
 func TestRequestTimeout_Disabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

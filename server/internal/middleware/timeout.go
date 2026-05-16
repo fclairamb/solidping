@@ -55,45 +55,46 @@ func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunro
 }
 
 // timeoutWriter guards the underlying ResponseWriter so the middleware and the
-// handler cannot race on the first WriteHeader/Write. Whoever calls tryClaim()
-// (or implicitly via the first Write*) first wins; the other becomes a no-op.
+// handler cannot race on the first WriteHeader/Write. The two sides are
+// mutually exclusive: once the handler has started writing, tryClaim refuses
+// the 504 path; once the 504 has been claimed, subsequent handler writes are
+// swallowed so they cannot corrupt the response already on the wire.
 type timeoutWriter struct {
 	http.ResponseWriter
 
-	mu      sync.Mutex
-	claimed bool
+	mu             sync.Mutex
+	handlerStarted bool
+	timedOut       bool
 }
 
 func (w *timeoutWriter) tryClaim() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.claimed {
+	if w.handlerStarted || w.timedOut {
 		return false
 	}
-	w.claimed = true
+	w.timedOut = true
 	return true
 }
 
 func (w *timeoutWriter) WriteHeader(status int) {
 	w.mu.Lock()
-	if w.claimed {
+	if w.timedOut {
 		w.mu.Unlock()
 		return
 	}
-	w.claimed = true
+	w.handlerStarted = true
 	w.mu.Unlock()
 	w.ResponseWriter.WriteHeader(status)
 }
 
 func (w *timeoutWriter) Write(data []byte) (int, error) {
 	w.mu.Lock()
-	if w.claimed {
-		// Handler already lost the race; swallow the write so it doesn't
-		// corrupt the 504 we sent.
+	if w.timedOut {
 		w.mu.Unlock()
 		return len(data), nil
 	}
-	w.claimed = true
+	w.handlerStarted = true
 	w.mu.Unlock()
 	return w.ResponseWriter.Write(data)
 }
