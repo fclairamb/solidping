@@ -290,6 +290,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	s.rateLimiter = rl
 	mainGroup := router.Use(s.corsMiddleware).Use(middleware.SentryMiddleware()).Use(s.loggingMiddleware).
 		Use(middleware.HTTPMetrics).
+		Use(middleware.RequestTimeout(s.config.Server.MaxRequestDuration)).
 		Use(rl.RateLimit).
 		Use(rl.ConcurrencyLimit)
 
