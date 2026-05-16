@@ -330,7 +330,7 @@ type DatabaseConfig struct {
 
 // Load reads configuration from defaults, config file, and environment variables.
 //
-//nolint:funlen,cyclop // Configuration loading requires setting many defaults and has multiple branches
+//nolint:funlen,cyclop,gocognit // Configuration loading requires setting many defaults and has multiple branches
 func Load() (*Config, error) {
 	koanfInstance := koanf.New(".")
 
