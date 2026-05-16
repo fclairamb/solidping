@@ -250,6 +250,8 @@ jobs:
           SOLIDPING_LISTEN: ":4000"
           SP_RUNMODE: test
           SP_DB_RESET: "true"
+          SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
+          SP_SERVER_RATE_LIMITING_MAX_CONCURRENT: "0"
 
       - name: Wait for server
         run: |

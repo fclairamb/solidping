@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -280,6 +281,26 @@ type CheckWorkerConfig struct {
 	Region        string        `koanf:"region"`          // Worker region (e.g., "us-east-1", "eu-west-1")
 }
 
+// RateLimitConfig controls the per-IP HTTP rate and concurrency limiters.
+type RateLimitConfig struct {
+	// RequestsPerMinute is the token-bucket refill rate per IP per minute.
+	// 0 disables the rate limiter entirely.
+	RequestsPerMinute int `koanf:"requests_per_minute"`
+
+	// Burst is the maximum instantaneous burst above the sustained rate.
+	// Defaults to RequestsPerMinute / 5 (one-fifth of a minute's allowance).
+	Burst int `koanf:"burst"`
+
+	// MaxConcurrent is the maximum number of in-flight requests per IP.
+	// 0 disables the concurrency limiter entirely.
+	MaxConcurrent int `koanf:"max_concurrent"`
+
+	// TrustedProxies is the number of trusted reverse-proxy hops.
+	// 0 means use RemoteAddr directly (safe default for direct deployments).
+	// Set to 1 if behind a single nginx/ingress that sets X-Forwarded-For.
+	TrustedProxies int `koanf:"trusted_proxies"`
+}
+
 // ServerConfig contains HTTP server configuration.
 type ServerConfig struct {
 	Listen          string            `koanf:"listen"`
@@ -287,7 +308,8 @@ type ServerConfig struct {
 	JobWorker       JobWorkerConfig   `koanf:"job_worker"`   // TODO: Move it to Config
 	CheckWorker     CheckWorkerConfig `koanf:"check_worker"` // TODO: Move it to Config
 	ShutdownTimeout time.Duration     `koanf:"shutdown_timeout"`
-	Redirects       []RedirectRule    `koanf:"-"` // Parsed from SP_REDIRECTS env var
+	RateLimiting    RateLimitConfig   `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
+	Redirects       []RedirectRule    `koanf:"-"`             // Parsed from SP_REDIRECTS env var
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -325,6 +347,12 @@ func Load() (*Config, error) {
 			CheckWorker: CheckWorkerConfig{
 				FetchMaxAhead: 5 * time.Minute,
 				Nb:            3,
+			},
+			RateLimiting: RateLimitConfig{
+				RequestsPerMinute: 300,
+				Burst:             60,
+				MaxConcurrent:     20,
+				TrustedProxies:    0,
 			},
 		},
 		Database: DatabaseConfig{
@@ -453,6 +481,8 @@ func Load() (*Config, error) {
 		}
 	}
 
+	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
 		cfg.Database.Type = DatabaseTypeSQLiteMemory
@@ -482,6 +512,26 @@ func Load() (*Config, error) {
 	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
 
 	return &cfg, nil
+}
+
+// applyRateLimitingEnv reads SP_SERVER_RATE_LIMITING_* into cfg. The koanf env
+// loader collapses every underscore in SP_*-prefixed names to a dot, so it
+// would map these to server.rate.limiting.* and miss the snake_case koanf tags
+// (rate_limiting, requests_per_minute, max_concurrent, trusted_proxies).
+func applyRateLimitingEnv(cfg *RateLimitConfig) {
+	intEnv := func(name string, dst *int) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			*dst = n
+		}
+	}
+	intEnv("SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE", &cfg.RequestsPerMinute)
+	intEnv("SP_SERVER_RATE_LIMITING_BURST", &cfg.Burst)
+	intEnv("SP_SERVER_RATE_LIMITING_MAX_CONCURRENT", &cfg.MaxConcurrent)
+	intEnv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES", &cfg.TrustedProxies)
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.

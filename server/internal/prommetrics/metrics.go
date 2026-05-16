@@ -129,12 +129,24 @@ var (
 		[]string{labelOrganization},
 	)
 
+	// HTTPRateLimited counts requests rejected by the per-IP HTTP rate or
+	// concurrency limiters. The reason label distinguishes "rate" (token
+	// bucket exhausted) from "concurrency" (semaphore full).
+	HTTPRateLimited = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_http_rate_limited_total",
+			Help: "Total requests rejected by the per-IP HTTP rate or concurrency limiter",
+		},
+		[]string{"reason"},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
 		WorkersActive, WorkerFreeRunners, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
+		HTTPRateLimited,
 	}
 )
 

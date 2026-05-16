@@ -175,7 +175,7 @@ func serve(ctx context.Context, _ *cli.Command) error {
 	// the post-overlay config — e.g. PasskeyService picks up the
 	// system-parameter override of server.base_url and uses it to derive
 	// the WebAuthn RP ID.
-	server.SetupRoutes()
+	server.SetupRoutes(ctx)
 
 	// Auto-encrypt any plaintext secrets so existing self-hosted installs
 	// pick up encryption transparently when the operator first sets the
