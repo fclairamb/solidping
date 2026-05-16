@@ -76,6 +76,12 @@ func TestRateLimit_ExcludedPaths(t *testing.T) {
 		"/metrics",
 		"/api/v1/workers/heartbeat",
 		"/api/v1/heartbeat/org/identifier",
+		"/dash0/",
+		"/dash0/assets/index-abc.js",
+		"/status0/",
+		"/",
+		"/index.html",
+		"/openapi.yaml",
 	}
 	for _, path := range excludedPaths {
 		w := httptest.NewRecorder()
