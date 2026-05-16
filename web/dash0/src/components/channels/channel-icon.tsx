@@ -31,6 +31,10 @@ export function ChannelIcon({ type, className }: ChannelIconProps) {
   return <Icon className={className} aria-hidden="true" />;
 }
 
+export function channelIconComponent(type: ConnectionType) {
+  return ICONS[type] ?? Webhook;
+}
+
 export function channelLabel(type: ConnectionType): string {
   switch (type) {
     case "slack":

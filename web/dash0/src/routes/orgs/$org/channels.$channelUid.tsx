@@ -3,13 +3,6 @@ import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
-import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -19,14 +12,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useChannel,
   useUpdateChannel,
   useDeleteChannel,
 } from "@/api/hooks";
-import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
+import { channelIconComponent } from "@/components/channels/channel-icon";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   ChannelForm,
   type ChannelFormState,
@@ -82,71 +76,62 @@ function ChannelDetailPage() {
     }
   };
 
+  const saveLabel = t("save", "Save changes");
+  const deleteLabel = t("delete", "Delete channel");
+  const backLabel = t("backToList", "Back to channels");
+
   return (
-    <div className="space-y-4 max-w-xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <ChannelIcon type={channel.type} className="h-6 w-6" />
-            {channel.name}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {channelLabel(channel.type)}
-          </p>
-        </div>
-        <Button asChild variant="ghost" size="sm">
-          <Link to="/orgs/$org/channels" params={{ org }}>
-            {t("backToList", "Back to channels")}
-          </Link>
-        </Button>
+    <div className="space-y-6 max-w-2xl">
+      <PageHeader
+        icon={channelIconComponent(channel.type)}
+        title={channel.name}
+        iconClassName="bg-transparent"
+        actions={
+          <>
+            <Button asChild variant="ghost" size="icon" aria-label={backLabel}>
+              <Link to="/orgs/$org/channels" params={{ org }}>
+                <ArrowLeft />
+              </Link>
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+              aria-label={deleteLabel}
+            >
+              <Trash2 />
+              <span className="hidden sm:inline">{deleteLabel}</span>
+            </Button>
+          </>
+        }
+      />
+
+      <div className="rounded-md border bg-card p-4">
+        <p className="mb-4 text-sm text-muted-foreground">
+          {t(
+            "editSubtitle",
+            "Secret values are stored encrypted; updating them replaces the stored value.",
+          )}
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <ChannelForm type={channel.type} initial={channel} onChange={setForm} />
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={update.isPending || !form?.name}
+              aria-label={saveLabel}
+            >
+              {update.isPending ? (
+                <Loader2 className="animate-spin" />
+              ) : (
+                <Save />
+              )}
+              <span className="hidden sm:inline">
+                {update.isPending ? t("saving", "Saving…") : saveLabel}
+              </span>
+            </Button>
+          </div>
+        </form>
       </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("editTitle", "Edit channel")}</CardTitle>
-          <CardDescription>
-            {t(
-              "editSubtitle",
-              "Secret values are stored encrypted; updating them replaces the stored value.",
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <ChannelForm type={channel.type} initial={channel} onChange={setForm} />
-            <div className="flex justify-end">
-              <Button type="submit" disabled={update.isPending || !form?.name}>
-                {update.isPending ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                    {t("saving", "Saving…")}
-                  </>
-                ) : (
-                  t("save", "Save changes")
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
-
-      <Card className="border-destructive/30">
-        <CardHeader>
-          <CardTitle className="text-destructive text-base">
-            {t("dangerZone", "Danger zone")}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Button
-            variant="destructive"
-            size="sm"
-            onClick={() => setDeleteOpen(true)}
-          >
-            <Trash2 className="h-4 w-4 mr-1" />
-            {t("delete", "Delete channel")}
-          </Button>
-        </CardContent>
-      </Card>
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
@@ -167,7 +152,7 @@ function ChannelDetailPage() {
               onClick={handleDelete}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {t("delete", "Delete channel")}
+              {deleteLabel}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

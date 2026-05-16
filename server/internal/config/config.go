@@ -8,6 +8,7 @@ import (
 	"os"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -480,6 +481,8 @@ func Load() (*Config, error) {
 		}
 	}
 
+	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
 		cfg.Database.Type = DatabaseTypeSQLiteMemory
@@ -509,6 +512,26 @@ func Load() (*Config, error) {
 	cfg.App.EnableBugReport = ComputeBugReportEnabled(&cfg.App.GitHub)
 
 	return &cfg, nil
+}
+
+// applyRateLimitingEnv reads SP_SERVER_RATE_LIMITING_* into cfg. The koanf env
+// loader collapses every underscore in SP_*-prefixed names to a dot, so it
+// would map these to server.rate.limiting.* and miss the snake_case koanf tags
+// (rate_limiting, requests_per_minute, max_concurrent, trusted_proxies).
+func applyRateLimitingEnv(cfg *RateLimitConfig) {
+	intEnv := func(name string, dst *int) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			*dst = n
+		}
+	}
+	intEnv("SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE", &cfg.RequestsPerMinute)
+	intEnv("SP_SERVER_RATE_LIMITING_BURST", &cfg.Burst)
+	intEnv("SP_SERVER_RATE_LIMITING_MAX_CONCURRENT", &cfg.MaxConcurrent)
+	intEnv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES", &cfg.TrustedProxies)
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
