@@ -226,3 +226,45 @@ curl -s http://localhost:4000/metrics | grep solidping_http_rate_limited_total
 - **Server-wide max request duration**: `30 s` default — covers queue wait + handler execution as one budget.
 - **Timeout response from rate-limit middlewares**: `429` with `Retry-After: 60` (consistent with hard rejects).
 - **Timeout response from the new request-timeout middleware**: `504 Gateway Timeout` with new error code `REQUEST_TIMEOUT`.
+
+## Implementation Plan
+
+1. **Config additions** — `server/internal/config/config.go`
+   - Append `RateQueue`, `ConcurrencyQueue`, `MaxQueueWait` to `RateLimitConfig`.
+   - Append `MaxRequestDuration` to `ServerConfig`.
+   - Defaults in `Load()`: `RateQueue=10`, `ConcurrencyQueue=10`, `MaxQueueWait=30s`, `MaxRequestDuration=30s`.
+   - Extend `applyRateLimitingEnv` with int + duration helpers for the three new env vars.
+   - Add manual reader for `SP_SERVER_MAX_REQUEST_DURATION` near the existing `SP_SHUTDOWN_TIMEOUT` block.
+
+2. **Error code** — `server/internal/handlers/base/base.go`
+   - Add `ErrorCodeRequestTimeout ErrorCode = "REQUEST_TIMEOUT"` next to the existing rate-limited codes.
+
+3. **`RequestTimeout` middleware** — `server/internal/middleware/timeout.go` (new file)
+   - Skip when `MaxRequestDuration == 0` or path matches the existing `excludedPrefixes`.
+   - Wrap `req.Request` via `req.WithContext(ctx)` where `ctx, cancel = context.WithTimeout(req.Context(), d)`.
+   - Use a sentinel `responseWriter` wrapper to detect whether the handler already wrote a status; on timeout with no write, emit `504 REQUEST_TIMEOUT`.
+   - Export `NewRequestTimeout(d time.Duration) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc`.
+
+4. **Rate limiter rewrite** — `server/internal/middleware/ratelimit.go`
+   - Extend `ipEntry` with `rateQueue chan struct{}` and `concurQueue chan struct{}`; size them from cfg at `getEntry` creation time.
+   - Rewrite `RateLimit`: fast-path `Allow()`; otherwise non-blocking admission to `rateQueue` or 429 `rate`; reserve a token, wait up to `MaxQueueWait` (or `req.Context()` cancel), then admit (set `X-Rate-Limit-Delayed-Ms`) or 429.
+   - Rewrite `ConcurrencyLimit`: try sem; else non-blocking admission to `concurQueue` or 429 `concurrency`; wait for sem up to `MaxQueueWait`; on admit set `X-Concurrency-Queued-Ms` and defer release; on cancel 429.
+   - Helper `writeLimitError` already sets `Retry-After: 60` — reused.
+   - Keep `RateLimit` mounted before `ConcurrencyLimit`.
+
+5. **Metrics** — `server/internal/prommetrics/metrics.go`
+   - Update help text on `HTTPRateLimited` to note four `reason` values (`rate`, `rate_delayed`, `concurrency`, `concurrency_queued`).
+   - Increment counters from the middleware on admission-after-wait.
+
+6. **Router wiring** — `server/internal/app/server.go`
+   - Construct `RequestTimeout(s.config.Server.MaxRequestDuration)` and mount it on `mainGroup` **before** `rl.RateLimit`.
+
+7. **Tests** — `server/internal/middleware/ratelimit_test.go` + new `timeout_test.go`
+   - Cases listed in the Verification section. Use synthetic clocks where needed (small `MaxQueueWait` like `50ms`, small token-refill rates).
+
+8. **Docs** — `CLAUDE.md`
+   - Refresh "HTTP rate limiting (per-IP)" section: new env vars, new headers, server-wide max request duration, new `REQUEST_TIMEOUT` error code.
+
+9. **QA** — `make build-backend build-client lint-back test`, fix failures.
+10. **Completeness audit** — fresh Explore subagent, then re-iterate if anything is partial/missing.
+11. **Archive + merge**.
