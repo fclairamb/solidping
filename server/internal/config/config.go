@@ -299,6 +299,23 @@ type RateLimitConfig struct {
 	// 0 means use RemoteAddr directly (safe default for direct deployments).
 	// Set to 1 if behind a single nginx/ingress that sets X-Forwarded-For.
 	TrustedProxies int `koanf:"trusted_proxies"`
+
+	// RateQueue is the per-IP waiting-room size for requests that lost the
+	// fast-path token race. Up to this many requests may wait for the next
+	// token refill before being rejected with 429. 0 disables the slow lane
+	// (legacy behavior: 429 the moment the bucket is empty).
+	RateQueue int `koanf:"rate_queue"`
+
+	// ConcurrencyQueue is the per-IP waiting-room size for requests that
+	// did not acquire a concurrency slot. Up to this many requests may wait
+	// for an active slot to free before being rejected with 429. 0 disables
+	// the waiting room.
+	ConcurrencyQueue int `koanf:"concurrency_queue"`
+
+	// MaxQueueWait is the hard ceiling on how long a request may sit in
+	// either queue before being rejected with 429. 0 disables the ceiling
+	// (only client cancellation ends the wait).
+	MaxQueueWait time.Duration `koanf:"max_queue_wait"`
 }
 
 // ServerConfig contains HTTP server configuration.
@@ -308,8 +325,12 @@ type ServerConfig struct {
 	JobWorker       JobWorkerConfig   `koanf:"job_worker"`   // TODO: Move it to Config
 	CheckWorker     CheckWorkerConfig `koanf:"check_worker"` // TODO: Move it to Config
 	ShutdownTimeout time.Duration     `koanf:"shutdown_timeout"`
-	RateLimiting    RateLimitConfig   `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
-	Redirects       []RedirectRule    `koanf:"-"`             // Parsed from SP_REDIRECTS env var
+	// MaxRequestDuration is the total per-request budget covering rate-limit
+	// queue wait, concurrency-queue wait, and handler execution. 0 disables
+	// the timeout. Exceeded requests get a 504 REQUEST_TIMEOUT response.
+	MaxRequestDuration time.Duration   `koanf:"max_request_duration"`
+	RateLimiting       RateLimitConfig `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
+	Redirects          []RedirectRule  `koanf:"-"`             // Parsed from SP_REDIRECTS env var
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -337,9 +358,10 @@ func Load() (*Config, error) {
 	// Set defaults
 	defaults := Config{
 		Server: ServerConfig{
-			Listen:          ":4000",
-			BaseURL:         "http://localhost:4000",
-			ShutdownTimeout: 30 * time.Second,
+			Listen:             ":4000",
+			BaseURL:            "http://localhost:4000",
+			ShutdownTimeout:    30 * time.Second,
+			MaxRequestDuration: 30 * time.Second,
 			JobWorker: JobWorkerConfig{
 				FetchMaxAhead: 5 * time.Minute,
 				Nb:            2,
@@ -353,6 +375,9 @@ func Load() (*Config, error) {
 				Burst:             60,
 				MaxConcurrent:     20,
 				TrustedProxies:    0,
+				RateQueue:         10,
+				ConcurrencyQueue:  10,
+				MaxQueueWait:      30 * time.Second,
 			},
 		},
 		Database: DatabaseConfig{
@@ -481,6 +506,15 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// Manually read SP_SERVER_MAX_REQUEST_DURATION — koanf's env loader
+	// collapses every underscore in SP_*-prefixed names to a dot, so it
+	// would miss the snake_case koanf tag "max_request_duration".
+	if v := os.Getenv("SP_SERVER_MAX_REQUEST_DURATION"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.Server.MaxRequestDuration = d
+		}
+	}
+
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
@@ -528,10 +562,22 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 			*dst = n
 		}
 	}
+	durEnv := func(name string, dst *time.Duration) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if d, err := time.ParseDuration(v); err == nil {
+			*dst = d
+		}
+	}
 	intEnv("SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE", &cfg.RequestsPerMinute)
 	intEnv("SP_SERVER_RATE_LIMITING_BURST", &cfg.Burst)
 	intEnv("SP_SERVER_RATE_LIMITING_MAX_CONCURRENT", &cfg.MaxConcurrent)
 	intEnv("SP_SERVER_RATE_LIMITING_TRUSTED_PROXIES", &cfg.TrustedProxies)
+	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
+	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
+	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
