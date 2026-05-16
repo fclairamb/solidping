@@ -9,6 +9,7 @@ type PageHeaderProps = {
   description?: string;
   actions?: ReactNode;
   className?: string;
+  iconClassName?: string;
 };
 
 export function PageHeader({
@@ -17,10 +18,16 @@ export function PageHeader({
   description,
   actions,
   className,
+  iconClassName,
 }: PageHeaderProps) {
   return (
     <div className={cn("flex items-start gap-3", className)}>
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-foreground">
+      <div
+        className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-muted text-foreground",
+          iconClassName,
+        )}
+      >
         <Icon className="h-5 w-5" />
       </div>
       <div className="min-w-0 flex-1">
