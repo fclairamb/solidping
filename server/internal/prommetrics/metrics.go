@@ -12,6 +12,12 @@ const (
 	labelOrganization = "organization"
 	labelEnabled      = "enabled"
 	labelWorkerUID    = "worker_uid"
+	labelBackend      = "backend"
+	labelOperation    = "operation"
+	labelStage        = "stage"
+	labelMethod       = "method"
+	labelRoute        = "route"
+	labelOutcome      = "outcome"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
@@ -140,6 +146,73 @@ var (
 		[]string{"reason"},
 	)
 
+	// HTTPRequestDuration observes HTTP handler latency by route pattern.
+	HTTPRequestDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_http_request_duration_seconds",
+			Help:    "HTTP handler duration in seconds, keyed by route pattern (low cardinality)",
+			Buckets: []float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
+		},
+		[]string{labelMethod, labelRoute, labelStatus},
+	)
+
+	// HTTPRequestsTotal counts HTTP requests by route pattern and status.
+	HTTPRequestsTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_http_requests_total",
+			Help: "Total HTTP requests by route pattern and status",
+		},
+		[]string{labelMethod, labelRoute, labelStatus},
+	)
+
+	// DBQueryDuration observes SQL query latency by operation and backend.
+	// Recorded from the bun sloghook on every query (SELECT, INSERT, UPDATE,
+	// DELETE, BEGIN/COMMIT). Status is "ok" or "error".
+	DBQueryDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_db_query_duration_seconds",
+			Help:    "SQL query duration in seconds, by operation and backend",
+			Buckets: []float64{0.0005, 0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5},
+		},
+		[]string{labelOperation, labelBackend, labelStatus},
+	)
+
+	// DBBusyRetries counts SQLite SQLITE_BUSY and PostgreSQL
+	// serialization-failure errors observed by the sloghook. A non-zero
+	// rate indicates write contention; on SQLite it usually means the
+	// 30s busy_timeout is being hit.
+	DBBusyRetries = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_db_busy_retries_total",
+			Help: "Database busy / serialization-failure errors (SQLite SQLITE_BUSY, PG 40001)",
+		},
+		[]string{labelBackend},
+	)
+
+	// CheckStageDuration breaks the per-check lifecycle into named stages
+	// (claim, execute, save_result, process_incident, release_lease,
+	// fetch). Lets us see where wall-clock time actually goes when
+	// throughput plateaus.
+	CheckStageDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_check_stage_duration_seconds",
+			Help:    "Per-stage wall-clock duration inside the check execution lifecycle",
+			Buckets: []float64{0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 30},
+		},
+		[]string{labelStage},
+	)
+
+	// ClaimJobsResult counts the outcome of each ClaimJobs call from
+	// fetcherLoop. Distinguishes "jobs returned" from "no due jobs" and
+	// "due jobs were locked by another worker / optimistic conflict".
+	ClaimJobsResult = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_claim_jobs_result_total",
+			Help: "Outcome of ClaimJobs calls (jobs, empty, lock_conflict, error)",
+		},
+		[]string{labelOutcome},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -147,6 +220,9 @@ var (
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,
+		HTTPRequestDuration, HTTPRequestsTotal,
+		DBQueryDuration, DBBusyRetries,
+		CheckStageDuration, ClaimJobsResult,
 	}
 )
 

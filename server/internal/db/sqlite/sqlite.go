@@ -26,8 +26,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
+
+// backendLabel is the value used for the "backend" label on
+// SQLite-flavored Prometheus metrics.
+const backendLabel = "sqlite"
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
@@ -140,10 +145,15 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 
 	bunDB := bun.NewDB(sqldb, sqlitedialect.New())
 
-	// Add SQL logging hook if enabled
-	if cfg.LogSQL {
-		bunDB.AddQueryHook(sloghook.New(true))
-	}
+	// Query hook is always installed: it emits Prometheus histograms
+	// (solidping_db_query_duration_seconds) regardless of cfg.LogSQL.
+	// Verbose slog logging stays opt-in to avoid leaking secrets.
+	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel))
+
+	// Expose connection-pool stats via /metrics. Cheap — the collector
+	// only calls sql.DB.Stats() at scrape time. Idempotent per backend
+	// label, so a test re-opening the DB after a reset is safe.
+	prommetrics.RegisterDB(sqldb, backendLabel)
 
 	return &Service{
 		db:      bunDB,

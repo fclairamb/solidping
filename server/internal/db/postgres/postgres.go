@@ -25,8 +25,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sloghook"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
+
+// backendLabel is the value used for the "backend" label on
+// Postgres-flavored Prometheus metrics.
+const backendLabel = "postgres"
 
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
@@ -79,10 +84,12 @@ func New(ctx context.Context, cfg Config) (*Service, error) {
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
-	// Add SQL logging hook if enabled
-	if cfg.LogSQL {
-		bunDB.AddQueryHook(sloghook.New(true))
-	}
+	// Query hook is always installed: it emits Prometheus histograms
+	// (solidping_db_query_duration_seconds) regardless of cfg.LogSQL.
+	bunDB.AddQueryHook(sloghook.New(cfg.LogSQL, backendLabel))
+
+	// Expose connection-pool stats via /metrics. Idempotent per backend.
+	prommetrics.RegisterDB(sqldb, backendLabel)
 
 	return &Service{
 		db:      bunDB,
@@ -124,10 +131,11 @@ func NewEmbedded(
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
-	// Add SQL logging hook if enabled
-	if logSQL {
-		bunDB.AddQueryHook(sloghook.New(true))
-	}
+	// Query hook is always installed for metrics; verbose slog logging is opt-in.
+	bunDB.AddQueryHook(sloghook.New(logSQL, backendLabel))
+
+	// Expose connection-pool stats via /metrics. Idempotent per backend.
+	prommetrics.RegisterDB(sqldb, backendLabel)
 
 	return &Service{
 		db:       bunDB,
