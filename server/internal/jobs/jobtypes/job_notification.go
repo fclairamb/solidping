@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -155,12 +156,27 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	)
 
 	if err := sender.Send(ctx, jctx, payload); err != nil {
-		// Network errors should be retryable
+		// Network errors should be retryable — leave the audit row at pending
+		// so a subsequent retry can update it.
 		if notifications.IsNetworkError(err) {
+			_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+				ctx, jctx.Job.UID, time.Now(), err.Error(), true,
+			)
+
 			return jobdef.NewRetryableError(err)
 		}
+
+		_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+			ctx, jctx.Job.UID, time.Now(), err.Error(), false,
+		)
+
 		return err
 	}
+
+	// Non-email senders have no message_id; pass empty string.
+	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
+		ctx, jctx.Job.UID, time.Now(), "",
+	)
 
 	log.InfoContext(ctx, "Notification sent successfully")
 
