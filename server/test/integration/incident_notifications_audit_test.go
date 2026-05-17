@@ -466,6 +466,83 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 	r.Equal(models.IncidentNotificationSourceEscalationSchedule, skippedRow.Source)
 }
 
+// TestAuditNoAdminsSkipped verifies that an escalation step with an
+// all_admins target produces a skipped audit row when the org has no admins.
+func TestAuditNoAdminsSkipped(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	s := newNotificationAuditSetup(t)
+
+	// Org has no admin members by default, so pageAllAdmins returns 0.
+	policy := models.NewEscalationPolicy(s.org.UID, "admins-policy", "All Admins Policy")
+	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
+
+	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
+	steps := []*models.EscalationPolicyStep{step}
+	targetsByIdx := map[int][]*models.EscalationPolicyTarget{
+		0: {
+			models.NewEscalationPolicyTarget(step.UID, models.EscalationTargetAllAdmins, nil, 0),
+		},
+	}
+	r.NoError(s.dbSvc.ReplaceEscalationPolicySteps(ctx, policy.UID, steps, targetsByIdx))
+
+	persistedSteps, err := s.dbSvc.ListEscalationPolicySteps(ctx, policy.UID)
+	r.NoError(err)
+	r.Len(persistedSteps, 1)
+	persistedStep := persistedSteps[0]
+
+	incident := models.NewIncident(s.org.UID, s.check.UID, time.Now(), "check is down")
+	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
+
+	cfg := jobtypes.EscalationStepJobConfig{
+		IncidentUID: incident.UID,
+		StepUID:     persistedStep.UID,
+		PolicyUID:   policy.UID,
+		RepeatIndex: 0,
+	}
+	cfgBytes, err := json.Marshal(cfg)
+	r.NoError(err)
+
+	jobDef := &jobtypes.EscalationStepJobDefinition{}
+	jobRun, err := jobDef.CreateJobRun(cfgBytes)
+	r.NoError(err)
+
+	svcList := &services.Registry{
+		EmailSender: &mockEmailSender{},
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc),
+	}
+
+	fakeJob := models.NewJob(&s.org.UID, string(jobdef.JobTypeEscalationStep))
+	jctx := &jobdef.JobContext{
+		Job:       fakeJob,
+		DBService: s.dbSvc,
+		Services:  svcList,
+		Logger:    s.logger,
+	}
+
+	r.NoError(jobRun.Run(ctx, jctx))
+
+	// Audit row: status=skipped, source=escalation_all_admins, skip_reason=no_admins.
+	rows := auditRows(t, s.dbSvc, incident.UID)
+	r.NotEmpty(rows, "expected at least one audit row")
+
+	var skippedRow *models.IncidentNotification
+	for _, row := range rows {
+		if row.Status == models.IncidentNotificationStatusSkipped &&
+			row.Source == models.IncidentNotificationSourceEscalationAllAdmins {
+			skippedRow = row
+			break
+		}
+	}
+
+	r.NotNil(skippedRow, "expected a skipped audit row for no_admins")
+	r.NotNil(skippedRow.SkipReason)
+	r.Equal("no_admins", *skippedRow.SkipReason)
+}
+
 // TestAuditDeliveryFailure verifies that a non-retryable delivery error
 // flips the audit row to status=failed with the error column populated.
 func TestAuditDeliveryFailure(t *testing.T) {
