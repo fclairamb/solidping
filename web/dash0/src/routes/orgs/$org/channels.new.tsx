@@ -79,13 +79,20 @@ function NewChannelPage() {
   if (!type) {
     return (
       <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {t("newTitle", "Add a notification channel")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("newSubtitle", "Pick the channel type to configure.")}
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t("newTitle", "Add a notification channel")}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {t("newSubtitle", "Pick the channel type to configure.")}
+            </p>
+          </div>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/orgs/$org/channels" params={{ org }}>
+              {t("cancel", "Cancel")}
+            </Link>
+          </Button>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {ALL_TYPES.map((c) => (
@@ -106,13 +113,6 @@ function NewChannelPage() {
             </button>
           ))}
         </div>
-        <div>
-          <Button asChild variant="ghost" size="sm">
-            <Link to="/orgs/$org/channels" params={{ org }}>
-              {t("cancel", "Cancel")}
-            </Link>
-          </Button>
-        </div>
       </div>
     );
   }
@@ -120,10 +120,17 @@ function NewChannelPage() {
   return (
     <Card className="max-w-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ChannelIcon type={type} className="h-5 w-5" />
-          {channelLabel(type)}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-4">
+          <CardTitle className="flex items-center gap-2">
+            <ChannelIcon type={type} className="h-5 w-5" />
+            {channelLabel(type)}
+          </CardTitle>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/orgs/$org/channels" params={{ org }}>
+              {t("cancel", "Cancel")}
+            </Link>
+          </Button>
+        </div>
         <CardDescription>
           {t("newFormSubtitle", "Configure the channel and save.")}
         </CardDescription>
