@@ -25,7 +25,7 @@ type TargetDef struct {
 // returns the check UID and its heartbeat token. The check is configured with
 // confirmationPeriodSeconds=0 and escalationThreshold=1 so an incident opens
 // and escalates on the very first "down" heartbeat.
-func CreateHeartbeatCheck(t *testing.T, s *Scenario, slug string) (checkUID, heartbeatToken string) {
+func CreateHeartbeatCheck(t *testing.T, s *Scenario, slug string) (string, string) {
 	t.Helper()
 
 	r := require.New(t)
@@ -48,12 +48,12 @@ func CreateHeartbeatCheck(t *testing.T, s *Scenario, slug string) (checkUID, hea
 	)
 	r.Equal(http.StatusCreated, status, "CreateHeartbeatCheck: %v", body)
 
-	checkUID, _ = body["uid"].(string)
+	checkUID, _ := body["uid"].(string)
 	r.NotEmpty(checkUID, "check UID")
 
 	// The heartbeat token lives inside check.config.token.
 	cfgRaw, _ := body["config"].(map[string]any)
-	heartbeatToken, _ = cfgRaw["token"].(string)
+	heartbeatToken, _ := cfgRaw["token"].(string)
 	r.NotEmpty(heartbeatToken, "heartbeat token in check config")
 
 	return checkUID, heartbeatToken

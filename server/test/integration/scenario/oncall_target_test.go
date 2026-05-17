@@ -25,7 +25,7 @@ func TestOnCallScheduleTarget(t *testing.T) {
 	r := require.New(t)
 
 	// 1. Fetch the UID of the admin user created by seedScenario.
-	userUID := ScenarioUserUID(t, s)
+	userUID := UserUID(t, s)
 	r.NotEmpty(userUID)
 
 	// 2. Create an on-call schedule that rosters the test user.

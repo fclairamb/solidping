@@ -1,6 +1,8 @@
 package scenario
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"net"
@@ -9,6 +11,8 @@ import (
 
 	embeddedpostgres "github.com/fergusstrange/embedded-postgres"
 )
+
+var errUnexpectedAddrType = errors.New("unexpected listener address type")
 
 // TestMain boots one embedded-Postgres instance shared across all scenario
 // tests, then runs the test suite. Using a shared instance avoids the ~2s
@@ -84,25 +88,31 @@ func TestMain(m *testing.M) {
 // freePort finds an available TCP port on localhost.
 func freePort() (int, error) {
 	// Try random ports in a sensible range to avoid well-known conflicts.
-	//nolint:gosec // Random port selection, not a security concern.
 	base := 5450 + rand.Intn(500)
+
+	lc := &net.ListenConfig{}
 
 	for i := range 20 {
 		port := base + i
-		ln, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", port))
-		if err == nil {
+		ln, listenErr := lc.Listen(context.Background(), "tcp", fmt.Sprintf("localhost:%d", port))
+		if listenErr == nil {
 			_ = ln.Close()
 			return port, nil
 		}
 	}
 
 	// Fall back to OS-assigned port.
-	ln, err := net.Listen("tcp", "localhost:0")
+	ln, err := lc.Listen(context.Background(), "tcp", "localhost:0")
 	if err != nil {
 		return 0, err
 	}
 
 	defer func() { _ = ln.Close() }()
 
-	return ln.Addr().(*net.TCPAddr).Port, nil
+	addr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return 0, errUnexpectedAddrType
+	}
+
+	return addr.Port, nil
 }

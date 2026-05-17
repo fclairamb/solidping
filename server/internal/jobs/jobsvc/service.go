@@ -94,7 +94,7 @@ func NewService(bunDB *bun.DB, dbSvc db.Service) Service {
 }
 
 // NewServiceWithWakeup creates a new job service with an optional wakeup channel.
-// The wakeup channel is signalled when new jobs are inserted (e.g. via LISTEN/NOTIFY)
+// The wakeup channel is signaled when new jobs are inserted (e.g. via LISTEN/NOTIFY)
 // so that GetJobWait can return immediately instead of waiting for the poll ticker.
 func NewServiceWithWakeup(bunDB *bun.DB, dbSvc db.Service, wakeup <-chan string) Service {
 	return &serviceImpl{db: bunDB, dbSvc: dbSvc, wakeup: wakeup}

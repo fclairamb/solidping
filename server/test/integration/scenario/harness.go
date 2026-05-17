@@ -16,16 +16,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/fclairamb/solidping/server/internal/app"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobworker"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
-	"github.com/stretchr/testify/require"
 )
 
 // sharedDB holds the single shared embedded-Postgres connection string
 // booted by TestMain. Empty string means Postgres is unavailable.
+//
+//nolint:gochecknoglobals // intentional package-level state shared between TestMain and tests
 var sharedDB struct {
 	dbURL string
 }
@@ -99,9 +102,12 @@ func NewWebhookCollector(t *testing.T) (*WebhookCollector, *httptest.Server) {
 }
 
 // WaitForWebhook blocks until predicate(payload) returns true for some
-// received payload, or until the context is cancelled. Returns the matching
+// received payload, or until the context is canceled. Returns the matching
 // payload on success, or an error describing the timeout.
-func (wc *WebhookCollector) WaitForWebhook(ctx context.Context, predicate func(map[string]any) bool) (map[string]any, error) {
+func (wc *WebhookCollector) WaitForWebhook(
+	ctx context.Context,
+	predicate func(map[string]any) bool,
+) (map[string]any, error) {
 	// Periodically broadcast on cond so we recheck ctx even when no new payloads
 	// arrive (avoids spinning, deadlock on cond.Wait when ctx cancels externally).
 	done := make(chan struct{})
@@ -181,7 +187,7 @@ func runMigrationsOnce(dbURL string) error {
 }
 
 // NewPostgresScenario boots a full app.Server against the shared embedded-
-// Postgres instance initialised by TestMain and returns a ready-to-use
+// Postgres instance initialized by TestMain and returns a ready-to-use
 // Scenario. Each scenario creates its own org so tests are isolated and
 // parallel-safe.
 //
@@ -195,7 +201,7 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	r := require.New(t)
 
 	if sharedDB.dbURL == "" {
-		t.Skip("shared Postgres not initialised — Docker unavailable or TestMain skipped")
+		t.Skip("shared Postgres not initialized — Docker unavailable or TestMain skipped")
 	}
 
 	const refreshTokenExpiryHours = 24
@@ -270,7 +276,7 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 
 // seedScenario creates the org + admin user + PAT directly in the DB (avoids
 // registration email-confirmation flow). Returns the user UID and PAT token.
-func seedScenario(t *testing.T, server *app.Server, orgSlug string) (userUID, pat string) {
+func seedScenario(t *testing.T, server *app.Server, orgSlug string) (string, string) {
 	t.Helper()
 
 	r := require.New(t)
@@ -300,7 +306,6 @@ func seedScenario(t *testing.T, server *app.Server, orgSlug string) (userUID, pa
 	user.UpdatedAt = now
 
 	r.NoError(dbSvc.CreateUser(ctx, user), "create user")
-	userUID = user.UID
 
 	// 3. Add the user as admin of the org.
 	membership := &models.OrganizationMember{
@@ -332,7 +337,7 @@ func seedScenario(t *testing.T, server *app.Server, orgSlug string) (userUID, pa
 	}
 	r.NoError(dbSvc.CreateUserToken(ctx, token), "create PAT")
 
-	return userUID, patToken
+	return user.UID, patToken
 }
 
 // doJSON issues an HTTP request with an optional JSON body and optional Bearer
@@ -428,12 +433,11 @@ func (r *jsonReader) Read(p []byte) (int, error) {
 	return n, nil
 }
 
-// ScenarioUserUID returns the UID of the admin user created by seedScenario.
-func ScenarioUserUID(t *testing.T, s *Scenario) string {
+// UserUID returns the UID of the admin user created by seedScenario.
+func UserUID(t *testing.T, s *Scenario) string {
 	t.Helper()
 
 	require.NotEmpty(t, s.UserUID, "scenario user UID must not be empty")
 
 	return s.UserUID
 }
-
