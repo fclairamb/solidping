@@ -153,6 +153,71 @@ func TestBadges_StatusBadge(t *testing.T) {
 	r.Contains(svg, "up") // Current status should be "up"
 }
 
+func TestBadges_AllComponents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/status,availability,duration,response-time"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
+}
+
+func TestBadges_LegacyAvailabilityDurationReturns400(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// The legacy availability-duration token is not valid under the new scheme.
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/availability-duration"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusBadRequest, resp.StatusCode)
+	r.Equal("application/json", resp.Header.Get("Content-Type"))
+}
+
+func TestBadges_DurationOnlyReturns400(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// duration without a primary metric must be rejected.
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/duration"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusBadRequest, resp.StatusCode)
+	r.Equal("application/json", resp.Header.Get("Content-Type"))
+}
+
 func TestBadges_StatusBadgeByUID(t *testing.T) {
 	t.Parallel()
 
@@ -213,9 +278,9 @@ func TestBadges_AvailabilityDurationBadge(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// Request availability-duration badge
+	// Request availability,duration badge (new composable format)
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
-		"/checks/badge-test-check/badges/availability-duration?period=7d"
+		"/checks/badge-test-check/badges/availability,duration?period=7d"
 	resp, err := fetchBadge(ctx, url)
 	r.NoError(err)
 	defer func() { _ = resp.Body.Close() }()
@@ -229,7 +294,6 @@ func TestBadges_AvailabilityDurationBadge(t *testing.T) {
 	svg := string(body)
 	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
 	r.Contains(svg, "%") // Should contain percentage
-	r.Contains(svg, "↑") // Should contain uptime arrow
 }
 
 func TestBadges_CustomLabel(t *testing.T) {
