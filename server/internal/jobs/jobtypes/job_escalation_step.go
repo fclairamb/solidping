@@ -300,13 +300,32 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 		return false
 	}
 
-	if _, err := jctx.Services.Jobs.CreateJob(
+	job, err := jctx.Services.Jobs.CreateJob(
 		ctx, incident.OrganizationUID, string(jobdef.JobTypeNotification), cfg, nil,
-	); err != nil {
+	)
+	if err != nil {
 		log.WarnContext(ctx, "failed to create escalation notification job",
 			"connectionUid", connectionUID, "error", err)
 
 		return false
+	}
+
+	// Audit: record a pending row. Load the connection to get the channel type.
+	conn, connErr := jctx.DBService.GetChannel(ctx, connectionUID)
+	if connErr != nil {
+		log.WarnContext(ctx, "failed to load connection for audit row",
+			"connectionUid", connectionUID, "error", connErr)
+	} else {
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationConnection,
+			connectionUID, job.UID, string(conn.Type),
+			&stepUID, &repeatIndex,
+		)); auditErr != nil {
+			log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
+		}
 	}
 
 	return true
