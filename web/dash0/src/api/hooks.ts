@@ -2368,7 +2368,7 @@ export interface EscalationPolicyTarget {
 export interface EscalationPolicyStep {
   uid?: string;
   position: number;
-  delayMinutes: number;
+  delaySeconds: number;
   // severityUid points at the per-org Severity row that gates which
   // channel-types fire when this step pages. null/undefined means
   // "no severity filter — fall through to the target's own channel".
@@ -2478,7 +2478,7 @@ export interface EscalationPolicy {
   name: string;
   description?: string;
   repeatMax: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps?: EscalationPolicyStep[];
   createdAt?: string;
   updatedAt?: string;
@@ -2489,7 +2489,7 @@ export interface CreateEscalationPolicyRequest {
   name: string;
   description?: string;
   repeatMax: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps: EscalationPolicyStep[];
 }
 
@@ -2498,7 +2498,7 @@ export interface UpdateEscalationPolicyRequest {
   name?: string;
   description?: string;
   repeatMax?: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps?: EscalationPolicyStep[];
 }
 
