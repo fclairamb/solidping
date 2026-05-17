@@ -29,7 +29,7 @@ func setupRuntime(t *testing.T) (db.Service, jobsvc.Service, *models.Organizatio
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB())
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc)
 
 	org := models.NewOrganization("esc-runtime", "Escalation Runtime Test")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))

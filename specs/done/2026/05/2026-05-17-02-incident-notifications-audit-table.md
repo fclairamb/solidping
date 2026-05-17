@@ -462,17 +462,4 @@ Test cases:
 
 ## Implementation Plan
 
-1. Write both migration pairs (`023_incident_notifications.{up,down}.sql` for postgres + sqlite).
-2. Run `make migrate` to apply.
-3. Write `server/internal/db/models/incident_notification.go` with struct, constants, and constructors.
-4. Extend `server/internal/db/service.go` interface (6 new methods).
-5. Write `server/internal/db/postgres/incident_notification.go` + identical SQLite sibling.
-6. Add `JobUID` field to `NotificationJobConfig` (`job_notification.go:37`).
-7. Instrument Site 1 (`enqueueNotificationJob`).
-8. Instrument Site 2 (`enqueueNotificationFor`).
-9. Instrument Site 3 (`sendEscalationEmail`) — add `userUID`, `source` params; update callers.
-10. Instrument Site 4 (`pageSchedule` + `pageAllAdmins` skipped paths).
-11. Instrument Site 5 (`NotificationJobRun.Run`).
-12. Instrument Site 6 (`CancelPendingForIncident`) — inject `db.Service` if needed.
-13. Write `server/test/integration/incident_notifications_audit_test.go` (5 test cases).
-14. `make lint && make test` — fix any issues.
+Already in the spec — see above section. No additional notes needed.

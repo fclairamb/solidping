@@ -6,11 +6,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -81,12 +83,13 @@ type ListJobsOptions struct {
 
 // serviceImpl implements the Service interface.
 type serviceImpl struct {
-	db *bun.DB
+	db    *bun.DB
+	dbSvc db.Service
 }
 
 // NewService creates a new job service.
-func NewService(db *bun.DB) Service {
-	return &serviceImpl{db: db}
+func NewService(bunDB *bun.DB, dbSvc db.Service) Service {
+	return &serviceImpl{db: bunDB, dbSvc: dbSvc}
 }
 
 // CreateJob creates a new job and notifies waiting runners.
@@ -321,6 +324,18 @@ func (s *serviceImpl) CancelPendingForIncident(
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	// Also cancel any pending audit rows for this incident.
+	if s.dbSvc != nil {
+		canceledCount, auditErr := s.dbSvc.CancelIncidentNotificationsForIncident(ctx, incidentUID, now)
+		if auditErr != nil {
+			slog.WarnContext(ctx, "failed to cancel notification audit rows",
+				"incident_uid", incidentUID, "error", auditErr)
+		} else {
+			slog.DebugContext(ctx, "canceled notification audit rows",
+				"incident_uid", incidentUID, "count", canceledCount)
+		}
 	}
 
 	return rows, nil

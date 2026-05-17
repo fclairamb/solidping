@@ -220,6 +220,16 @@ type Service interface {
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
 
+	// --- IncidentNotifications ---
+	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error
+	MarkIncidentNotificationSentByUID(ctx context.Context, uid string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationFailedByUID(ctx context.Context, uid string, failedAt time.Time, errMsg string) error
+	MarkIncidentNotificationSentByJob(ctx context.Context, jobUID string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationFailedByJob(
+		ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
+	) error
+	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
+
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error
 	GetJob(ctx context.Context, uid string) (*models.Job, error)

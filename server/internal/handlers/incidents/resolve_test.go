@@ -36,7 +36,7 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB())
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc)
 	svc := incidents.NewService(dbSvc, jobs)
 
 	org := models.NewOrganization("resolve-test", "Resolve Test")

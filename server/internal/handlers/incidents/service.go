@@ -1138,7 +1138,7 @@ func (s *Service) queueGroupNotifications(
 			}
 
 			seen[conn.UID] = true
-			s.enqueueNotificationJob(ctx, orgUID, conn.UID, incidentUID, eventType)
+			s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
 		}
 	}
 }
@@ -1146,7 +1146,7 @@ func (s *Service) queueGroupNotifications(
 // enqueueNotificationJob marshals the config and creates a single job row.
 // Shared between per-check and group fan-out paths.
 func (s *Service) enqueueNotificationJob(
-	ctx context.Context, orgUID, connectionUID, incidentUID string, eventType models.EventType,
+	ctx context.Context, orgUID, connectionUID, channelType, incidentUID string, eventType models.EventType,
 ) {
 	config, err := json.Marshal(jobtypes.NotificationJobConfig{
 		ConnectionUID: connectionUID,
@@ -1163,12 +1163,25 @@ func (s *Service) enqueueNotificationJob(
 		return
 	}
 
-	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil); err != nil {
+	job, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
+	if err != nil {
 		slog.WarnContext(ctx, "Failed to create notification job",
 			"connectionUid", connectionUID,
 			"incidentUid", incidentUID,
 			"error", err,
 		)
+
+		return
+	}
+
+	// Audit: record a pending row so we can later track delivery outcome.
+	if auditErr := s.db.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
+		orgUID, incidentUID, string(eventType),
+		models.IncidentNotificationSourceCheckConnection,
+		connectionUID, job.UID, channelType,
+		nil, nil,
+	)); auditErr != nil {
+		slog.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 }
 
@@ -1188,28 +1201,7 @@ func (s *Service) queueNotifications(
 			continue
 		}
 
-		config, err := json.Marshal(jobtypes.NotificationJobConfig{
-			ConnectionUID: conn.UID,
-			IncidentUID:   incidentUID,
-			EventType:     string(eventType),
-		})
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to marshal notification config",
-				"connectionUid", conn.UID,
-				"incidentUid", incidentUID,
-				"error", err,
-			)
-			continue
-		}
-
-		_, err = s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to create notification job",
-				"connectionUid", conn.UID,
-				"incidentUid", incidentUID,
-				"error", err,
-			)
-		}
+		s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
 	}
 }
 

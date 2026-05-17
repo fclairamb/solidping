@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -38,6 +39,9 @@ type NotificationJobConfig struct {
 	ConnectionUID string `json:"connectionUid"`
 	IncidentUID   string `json:"incidentUid"`
 	EventType     string `json:"eventType"` // "incident.created", "incident.resolved", "incident.escalated"
+	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
+	// NotificationJobRun.Run can update the matching audit row by job_uid.
+	JobUID string `json:"jobUid,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
@@ -151,12 +155,8 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		"eventType", r.config.EventType,
 	)
 
-	if err := sender.Send(ctx, jctx, payload); err != nil {
-		// Network errors should be retryable
-		if notifications.IsNetworkError(err) {
-			return jobdef.NewRetryableError(err)
-		}
-		return err
+	if sendErr := r.sendAndAudit(ctx, jctx, sender, payload); sendErr != nil {
+		return sendErr
 	}
 
 	log.InfoContext(ctx, "Notification sent successfully")
@@ -166,6 +166,39 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
 		models.EventTypeOrgActivationFirstIncidentPaged,
 		activation.SourceSystem, "")
+
+	return nil
+}
+
+// sendAndAudit delivers the notification and updates the audit row by job UID.
+func (r *NotificationJobRun) sendAndAudit(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	sender notifications.Sender,
+	payload *notifications.Payload,
+) error {
+	if err := sender.Send(ctx, jctx, payload); err != nil {
+		// Network errors should be retryable — leave the audit row at pending
+		// so a subsequent retry can update it.
+		if notifications.IsNetworkError(err) {
+			_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+				ctx, jctx.Job.UID, time.Now(), err.Error(), true,
+			)
+
+			return jobdef.NewRetryableError(err)
+		}
+
+		_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+			ctx, jctx.Job.UID, time.Now(), err.Error(), false,
+		)
+
+		return err
+	}
+
+	// Non-email senders have no message_id; pass empty string.
+	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
+		ctx, jctx.Job.UID, time.Now(), "",
+	)
 
 	return nil
 }

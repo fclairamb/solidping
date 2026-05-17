@@ -1125,6 +1125,34 @@ func (m *mockDBService) CountSSOMembersForOrg(_ context.Context, _ string) (int,
 	return 0, nil
 }
 
+func (m *mockDBService) CreateIncidentNotification(_ context.Context, _ *models.IncidentNotification) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationSentByUID(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationFailedByUID(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationSentByJob(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationFailedByJob(
+	_ context.Context, _ string, _ time.Time, _ string, _ bool,
+) error {
+	return nil
+}
+
+func (m *mockDBService) CancelIncidentNotificationsForIncident(
+	_ context.Context, _ string, _ time.Time,
+) (int64, error) {
+	return 0, nil
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 
