@@ -349,7 +349,7 @@ func (r *EscalationStepJobRun) pageUser(
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email)
+	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email, *userUID, models.IncidentNotificationSourceEscalationUser)
 }
 
 // pageSchedule resolves who is on call right now and pages them via
@@ -374,10 +374,22 @@ func (r *EscalationStepJobRun) pageSchedule(
 			"scheduleUid", *scheduleUID, "error", err)
 		r.emitEscalationFailed(ctx, jctx, incident, "schedule_resolve_failed", err.Error())
 
+		// Audit: record a skipped row for this schedule target.
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		n := models.NewSkippedIncidentNotification(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationSchedule, "schedule_resolve_failed",
+			&stepUID, &repeatIndex,
+		)
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+			log.WarnContext(ctx, "failed to create skipped notification audit row", "error", auditErr)
+		}
+
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email)
+	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule)
 }
 
 // pageAllAdmins emails every admin member of the incident's org.
@@ -402,7 +414,21 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 			continue
 		}
 
-		count += r.sendEscalationEmail(ctx, jctx, log, incident, member.User.Email)
+		count += r.sendEscalationEmail(ctx, jctx, log, incident, member.User.Email, member.UserUID, models.IncidentNotificationSourceEscalationAllAdmins)
+	}
+
+	if count == 0 {
+		// Audit: record a skipped row when no admins were found to page.
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		n := models.NewSkippedIncidentNotification(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationAllAdmins, "no_admins",
+			&stepUID, &repeatIndex,
+		)
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+			log.WarnContext(ctx, "failed to create skipped notification audit row", "error", auditErr)
+		}
 	}
 
 	return count
@@ -414,10 +440,21 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 // per-user notification connection.
 func (r *EscalationStepJobRun) sendEscalationEmail(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, recipient string,
+	incident *models.Incident, recipient, userUID, source string,
 ) int {
 	if jctx.Services == nil || jctx.Services.EmailSender == nil || recipient == "" {
 		return 0
+	}
+
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	n := models.NewIncidentNotificationForUser(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		source, userUID, "email", &stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
 	subject := fmt.Sprintf("[escalation] incident %s requires attention", incident.UID)
@@ -431,12 +468,21 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		Subject:    subject,
 		Text:       body,
 	}
-	if _, err := jctx.Services.EmailSender.Send(ctx, msg); err != nil {
+
+	result, err := jctx.Services.EmailSender.Send(ctx, msg)
+	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation email",
 			"recipient", recipient, "error", err)
+		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
 
 		return 0
 	}
+
+	messageID := ""
+	if result != nil {
+		messageID = result.MessageID
+	}
+	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), messageID)
 
 	return 1
 }
