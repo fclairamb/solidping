@@ -1,6 +1,6 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
-	test test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+	test test-scenario test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres
 .DEFAULT_GOAL := build
 
@@ -231,6 +231,11 @@ test: ## Run all tests
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
+
+test-scenario: ## Run full-pipeline scenario tests (requires Docker / embedded Postgres)
+	@echo "Running scenario integration tests..."
+	@cd $(BACK_DIR) && go test -v -timeout 120s ./test/integration/scenario/...
+	@echo "Scenario tests complete"
 
 test-dash: ## Run dash tests
 	@echo "Running dash tests..."
