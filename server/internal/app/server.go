@@ -189,7 +189,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize services
 	svcList := services.NewRegistry()
-	jobService := jobsvc.NewService(dbService.DB())
+	jobService := jobsvc.NewService(dbService.DB(), dbService)
 	svcList.Jobs = jobService
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
