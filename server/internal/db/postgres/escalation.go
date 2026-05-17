@@ -111,16 +111,16 @@ func (s *Service) UpdateEscalationPolicy(
 		query = query.Set("repeat_max = ?", *update.RepeatMax)
 	}
 
-	if update.RepeatAfterMinutes != nil {
-		query = query.Set("repeat_after_minutes = ?", *update.RepeatAfterMinutes)
+	if update.RepeatAfterSeconds != nil {
+		query = query.Set("repeat_after_seconds = ?", *update.RepeatAfterSeconds)
 	}
 
 	if update.ClearDescription {
 		query = query.Set("description = NULL")
 	}
 
-	if update.ClearRepeatAfterMinutes {
-		query = query.Set("repeat_after_minutes = NULL")
+	if update.ClearRepeatAfterSeconds {
+		query = query.Set("repeat_after_seconds = NULL")
 	}
 
 	_, err := query.Exec(ctx)

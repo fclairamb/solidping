@@ -517,7 +517,7 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 	if policy.RepeatMax == 0 || r.config.RepeatIndex >= policy.RepeatMax {
 		return nil
 	}
-	if policy.RepeatAfterMinutes == nil {
+	if policy.RepeatAfterSeconds == nil {
 		return nil
 	}
 
@@ -526,7 +526,7 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 		return err
 	}
 
-	startAt := time.Now().Add(time.Duration(*policy.RepeatAfterMinutes) * time.Minute)
+	startAt := time.Now().Add(time.Duration(*policy.RepeatAfterSeconds) * time.Second)
 
 	return ScheduleEscalationCycle(
 		ctx, jctx.Services.Jobs, incident, policy, steps, startAt, r.config.RepeatIndex+1, log,
@@ -558,8 +558,8 @@ func (r *EscalationStepJobRun) emitEscalatedEvent(
 }
 
 // ScheduleEscalationCycle schedules every step in `steps` for the given
-// repeat cycle. Step 0's delay_minutes is applied to startAt; subsequent
-// steps stack their delay_minutes onto the previous fire time.
+// repeat cycle. Step 0's delay_seconds is applied to startAt; subsequent
+// steps stack their delay_seconds onto the previous fire time.
 //
 // Exported because the incident-open path also calls it (cycle 0).
 func ScheduleEscalationCycle(
@@ -575,7 +575,7 @@ func ScheduleEscalationCycle(
 	cumulative := startAt
 
 	for i, step := range steps {
-		cumulative = cumulative.Add(time.Duration(step.DelayMinutes) * time.Minute)
+		cumulative = cumulative.Add(time.Duration(step.DelaySeconds) * time.Second)
 		fireAt := cumulative
 		isLast := i == len(steps)-1
 
