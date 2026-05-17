@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 
@@ -285,13 +286,14 @@ func formatResponseTime(results []*models.Result) string {
 		return "n/a"
 	}
 
+	// mean is in milliseconds (Duration field stores ms, not seconds)
 	mean := sum / float64(count)
 
-	if mean < 1.0 {
-		return fmt.Sprintf("%dms", int(mean*1000))
+	if mean < 1000 {
+		return fmt.Sprintf("%dms", int(math.Round(mean)))
 	}
 
-	return fmt.Sprintf("%.1fs", mean)
+	return fmt.Sprintf("%.1fs", mean/1000)
 }
 
 // calculateStatusDuration returns the time since last status change, a
