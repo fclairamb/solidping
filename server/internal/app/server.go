@@ -55,6 +55,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
@@ -189,13 +190,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize services
 	svcList := services.NewRegistry()
-	jobService := jobsvc.NewService(dbService.DB())
-	svcList.Jobs = jobService
 
-	checkJobService := checkjobsvc.NewService(dbService.DB())
-	svcList.CheckJobs = checkJobService
-
-	// Create check notifier based on database type
+	// Create check notifier based on database type — must be created before the
+	// job service so its LISTEN channel can wake up GetJobWait immediately on
+	// Postgres when a job is inserted via NOTIFY jobs.
 	var connString string
 	switch cfg.Database.Type {
 	case "postgres":
@@ -213,6 +211,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create event notifier: %w", err)
 	}
 	svcList.EventNotifier = eventNotifier
+
+	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
+	// call, so no external wakeup channel is needed here.
+	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
+	svcList.Jobs = jobService
+
+	checkJobService := checkjobsvc.NewService(dbService.DB())
+	svcList.CheckJobs = checkJobService
 
 	// Create email services
 	emailSender := email.NewSender(&cfg.Email, slog.Default())
@@ -530,7 +536,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
-	api.GET("/orgs/:org/checks/:check/badges/:format", badgesHandler.GetBadge)
+	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
@@ -577,6 +583,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
 	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
+	// Incident notifications read API (authentication required)
+	incidentNotifService := incidentnotifications.NewService(s.dbService)
+	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
+	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
+	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
+		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
+	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
+		GET("/notifications", incidentNotifHandler.ListForMe)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
@@ -772,6 +787,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
+
+	// Slack destinations picker (authenticated, org-scoped)
+	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
+	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
@@ -1673,6 +1692,16 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// Services returns the services registry (used for testing).
+func (s *Server) Services() *services.Registry {
+	return s.services
+}
+
+// JobSvc returns the job service (used for testing).
+func (s *Server) JobSvc() jobsvc.Service {
+	return s.jobSvc
 }
 
 // BuildCredentialsService loads the KEK (env or file), constructs the
