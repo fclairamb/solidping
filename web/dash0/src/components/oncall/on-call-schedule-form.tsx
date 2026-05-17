@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { cn } from "@/lib/utils";
+import { cn, slugify } from "@/lib/utils";
 
 export interface OnCallScheduleFormValues {
   name: string;
@@ -88,6 +88,7 @@ export function OnCallScheduleForm({
 }: Props) {
   const { t } = useTranslation(["oncall", "common"]);
 
+  const [slugManuallyEdited, setSlugManuallyEdited] = useState(mode === "edit");
   const [values, setValues] = useState<OnCallScheduleFormValues>(() => ({
     ...buildDefaults(),
     ...(initialValues ?? {}),
@@ -137,7 +138,12 @@ export function OnCallScheduleForm({
         <Input
           id="oncall-name"
           value={values.name}
-          onChange={(e) => set("name", e.target.value)}
+          onChange={(e) => {
+            set("name", e.target.value);
+            if (!slugManuallyEdited && mode === "create") {
+              set("slug", slugify(e.target.value));
+            }
+          }}
           placeholder={t("oncall:form.namePlaceholder")}
           required
         />
@@ -148,7 +154,10 @@ export function OnCallScheduleForm({
         <Input
           id="oncall-slug"
           value={values.slug}
-          onChange={(e) => set("slug", e.target.value)}
+          onChange={(e) => {
+            set("slug", e.target.value);
+            setSlugManuallyEdited(true);
+          }}
           placeholder={t("oncall:form.slugPlaceholder")}
           required
           pattern="[a-z0-9-]+"

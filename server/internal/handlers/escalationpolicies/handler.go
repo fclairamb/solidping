@@ -147,7 +147,7 @@ func (h *Handler) ListPolicies(writer http.ResponseWriter, req bunrouter.Request
 // targetBody mirrors the request shape for one target.
 type targetBody struct {
 	Type string `json:"type"`
-	UID  string `json:"uid,omitempty"`
+	UID  string `json:"targetUid,omitempty"`
 }
 
 // stepBody mirrors the request shape for one step.

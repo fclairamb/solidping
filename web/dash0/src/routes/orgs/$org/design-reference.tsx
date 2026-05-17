@@ -504,32 +504,32 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
-        <h3 className="text-sm font-medium">Back button (top-right, icon only)</h3>
+        <h3 className="text-sm font-medium">Detail page header: back button + title + actions</h3>
         <p className="text-sm text-muted-foreground">
-          When a page has a back button, it sits next to the other top-right actions and is{" "}
-          <strong>always icon-only</strong> regardless of viewport — never paired with a
-          &quot;Back&quot; label. Use{" "}
+          On detail/edit pages, compose a single flex row:{" "}
+          <strong>icon-only back button on the far left</strong>, the page{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code> with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex-1</code> in the middle,
+          and action buttons (e.g. Delete) on the far right. The back button is{" "}
+          <strong>always icon-only</strong> — never paired with a &quot;Back&quot; label. Use{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code> with{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
           and an <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
         </p>
         <ExampleRow
           preview={
-            <div className="flex w-full items-center justify-end gap-2">
+            <div className="flex w-full items-center gap-3">
               <Button variant="ghost" size="icon" aria-label="Back">
                 <ArrowLeft />
               </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button aria-label="Save">
-                <Save />
-                <span className="hidden sm:inline">Save</span>
+              <h1 className="flex-1 text-xl font-bold tracking-tight">Page title</h1>
+              <Button variant="destructive" size="sm" aria-label="Delete">
+                <Trash2 />
+                <span className="hidden sm:inline">Delete</span>
               </Button>
             </div>
           }
-          importLine={`<Button variant="ghost" size="icon" aria-label="Back">\n  <ArrowLeft />\n</Button>`}
+          importLine={`<div className="flex items-center gap-3">\n  <Button variant="ghost" size="icon" aria-label="Back">\n    <ArrowLeft />\n  </Button>\n  <h1 className="flex-1 text-3xl font-bold tracking-tight">{title}</h1>\n  <Button variant="destructive" size="sm" onClick={handleDelete}>\n    <Trash2 />\n    Delete\n  </Button>\n</div>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>

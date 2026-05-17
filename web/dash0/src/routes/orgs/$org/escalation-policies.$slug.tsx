@@ -99,20 +99,18 @@ function EscalationPolicyDetailPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <div className="flex items-center justify-between">
-        <Button asChild variant="ghost" size="sm">
+      <div className="flex items-center gap-3">
+        <Button asChild variant="ghost" size="icon" aria-label={t("common:back")}>
           <a href={`/dash0/orgs/${org}/escalation-policies`}>
-            <ArrowLeft className="h-4 w-4 mr-1" />
-            {t("common:back")}
+            <ArrowLeft className="h-4 w-4" />
           </a>
         </Button>
+        <h1 className="text-3xl font-bold tracking-tight flex-1">{policy.name}</h1>
         <Button variant="destructive" size="sm" onClick={handleDelete}>
           <Trash2 className="h-4 w-4 mr-1" />
           {t("common:delete")}
         </Button>
       </div>
-
-      <h1 className="text-3xl font-bold tracking-tight">{policy.name}</h1>
 
       <Card>
         <CardHeader>
