@@ -159,12 +159,12 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const events = eventsQuery.data?.data || [];
 
   const isInitialLoading =
-    checksQuery.isLoading &&
-    incidentsQuery.isLoading &&
-    resultsQuery.isLoading &&
-    eventsQuery.isLoading;
+    checksQuery.isPending ||
+    incidentsQuery.isPending ||
+    resultsQuery.isPending ||
+    eventsQuery.isPending;
 
-  const isEmptyOrg = !checksQuery.isLoading && checks.length === 0;
+  const isEmptyOrg = !checksQuery.isPending && checks.length === 0;
 
   const enabledCount = checks.filter((c) => c.enabled !== false).length;
   const disabledCount = checks.length - enabledCount;
