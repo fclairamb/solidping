@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 )
 
 const incidentEventsCap = 50
@@ -109,6 +111,61 @@ func getIncidentDef() ToolDefinition {
 type IncidentWithEvents struct {
 	*incidents.IncidentResponse
 	Events []events.EventResponse `json:"events"`
+}
+
+func incidentNotificationsListDef() ToolDefinition {
+	return ToolDefinition{
+		Name:        "incident_notifications_list",
+		Description: "List who was notified for a given incident, with delivery status.",
+		InputSchema: objectSchema(map[string]any{
+			propUID: stringProp("Incident UID returned by list_incidents or get_incident."),
+			"status": stringProp(
+				"Optional: filter by delivery status. Allowed: pending, sent, failed, cancelled, skipped.",
+			),
+			propLimit: intProp("Max results (1-500, default 20)."),
+		}, []string{propUID}),
+	}
+}
+
+func (h *Handler) toolIncidentNotificationsList(
+	ctx context.Context, orgSlug string, args map[string]any,
+) ToolCallResult {
+	uid := getStringArg(args, "uid")
+	if uid == "" {
+		return errorResult("uid is required")
+	}
+
+	limit := getIntArg(args, "limit", 20)
+	if limit < 1 {
+		limit = 1
+	}
+
+	if limit > 500 {
+		limit = 500
+	}
+
+	orgUID, err := func() (string, error) {
+		org, orgErr := h.dbService.GetOrganizationBySlug(ctx, orgSlug)
+		if orgErr != nil || org == nil {
+			return "", incidentnotifications.ErrOrgNotFound
+		}
+
+		return org.UID, nil
+	}()
+	if err != nil {
+		return errorResult(err.Error())
+	}
+
+	rows, err := h.dbService.ListIncidentNotifications(ctx, orgUID, db.ListIncidentNotificationsFilter{
+		IncidentUID: uid,
+		Status:      getStringArg(args, "status"),
+		Limit:       limit,
+	})
+	if err != nil {
+		return errorResult(err.Error())
+	}
+
+	return marshalResult(rows)
 }
 
 func (h *Handler) toolGetIncident(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
