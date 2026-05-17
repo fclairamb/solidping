@@ -13,24 +13,22 @@ type workerChannelCollector struct {
 	depthDesc *prometheus.Desc
 }
 
-func newWorkerChannelCollector(w *CheckWorker) prometheus.Collector {
+func newWorkerChannelCollector(checkWorker *CheckWorker) prometheus.Collector {
 	return &workerChannelCollector{
-		worker: w,
+		worker: checkWorker,
 		depthDesc: prometheus.NewDesc(
 			"solidping_worker_jobs_channel_depth",
 			"Number of jobs currently buffered in the worker's jobsChan (sampled at scrape time)",
 			nil,
-			prometheus.Labels{"worker_uid": w.worker.UID},
+			prometheus.Labels{"worker_uid": checkWorker.worker.UID},
 		),
 	}
 }
 
-//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *workerChannelCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.depthDesc
 }
 
-//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *workerChannelCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(
 		c.depthDesc,
