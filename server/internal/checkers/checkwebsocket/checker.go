@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"nhooyr.io/websocket" //nolint:staticcheck // using nhooyr.io/websocket v1
+	"github.com/coder/websocket"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -100,7 +100,7 @@ func (c *WebSocketChecker) Execute(
 		return c.handleDialError(ctx, err, start), nil
 	}
 
-	defer func() { _ = conn.CloseNow() }() //nolint:staticcheck // using nhooyr.io/websocket v1
+	defer func() { _ = conn.CloseNow() }()
 
 	output := map[string]any{
 		configKeyURL: cfg.URL,
@@ -130,7 +130,7 @@ func (c *WebSocketChecker) Execute(
 	}
 
 	// Close cleanly
-	_ = conn.Close(websocket.StatusNormalClosure, "") //nolint:staticcheck // using nhooyr.io/websocket v1
+	_ = conn.Close(websocket.StatusNormalClosure, "")
 
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusUp,
@@ -140,7 +140,6 @@ func (c *WebSocketChecker) Execute(
 	}, nil
 }
 
-//nolint:staticcheck // using nhooyr.io/websocket v1
 func (c *WebSocketChecker) dial(
 	ctx context.Context, cfg *WebSocketConfig,
 ) (*websocket.Conn, *http.Response, error) {
@@ -160,13 +159,13 @@ func (c *WebSocketChecker) dial(
 			Transport: &http.Transport{
 				TLSClientConfig: &tls.Config{
 					MinVersion:         tls.VersionTLS12,
-					InsecureSkipVerify: true, //nolint:staticcheck // User-configured TLS skip
+					InsecureSkipVerify: true,
 				},
 			},
 		}
 	}
 
-	conn, resp, err := websocket.Dial(ctx, cfg.URL, opts) //nolint:staticcheck // using nhooyr.io/websocket v1
+	conn, resp, err := websocket.Dial(ctx, cfg.URL, opts)
 	if err != nil {
 		return nil, resp, fmt.Errorf("dial: %w", err)
 	}
@@ -174,12 +173,11 @@ func (c *WebSocketChecker) dial(
 	return conn, resp, nil
 }
 
-//nolint:staticcheck // using nhooyr.io/websocket v1
 func (c *WebSocketChecker) sendAndExpect(
 	ctx context.Context, conn *websocket.Conn, cfg *WebSocketConfig, output map[string]any,
 ) error {
 	if cfg.Send != "" {
-		if err := conn.Write(ctx, websocket.MessageText, []byte(cfg.Send)); err != nil { //nolint:staticcheck // v1
+		if err := conn.Write(ctx, websocket.MessageText, []byte(cfg.Send)); err != nil {
 			output["error"] = fmt.Sprintf("failed to send message: %v", err)
 
 			return fmt.Errorf("write: %w", err)
@@ -195,7 +193,7 @@ func (c *WebSocketChecker) sendAndExpect(
 	var last string
 
 	for attempt := 0; attempt < maxReadAttempts; attempt++ {
-		_, msg, err := conn.Read(ctx) //nolint:staticcheck // using nhooyr.io/websocket v1
+		_, msg, err := conn.Read(ctx)
 		if err != nil {
 			output["error"] = fmt.Sprintf("failed to read message: %v", err)
 			if last != "" {
