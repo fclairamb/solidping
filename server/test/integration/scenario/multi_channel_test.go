@@ -33,7 +33,7 @@ func TestMultiChannelFanout(t *testing.T) {
 	// 4. Create one escalation policy step targeting BOTH channels.
 	policyUID := CreateEscalationPolicy(t, s, "fanout-policy", []StepDef{
 		{
-			DelayMinutes: 0,
+			DelaySeconds: 0,
 			Targets: []TargetDef{
 				{Type: "connection", TargetUID: channelUID1},
 				{Type: "connection", TargetUID: channelUID2},

@@ -78,8 +78,8 @@ func TestScheduleEscalationCycleSchedulesAtCumulativeDelays(t *testing.T) {
 	// Each job's scheduled_at should match the cumulative delay.
 	expected := []time.Time{
 		startedAt,
-		startedAt.Add(5 * time.Minute),
-		startedAt.Add(15 * time.Minute),
+		startedAt.Add(5 * time.Second),
+		startedAt.Add(15 * time.Second),
 	}
 	gotAt := make([]time.Time, len(scheduled))
 	for i, job := range scheduled {

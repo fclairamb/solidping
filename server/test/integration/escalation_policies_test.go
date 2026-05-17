@@ -172,7 +172,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 
 			patchPolicySteps(t, ts, policySlug, []any{
 				map[string]any{
-					"delayMinutes": 0,
+					"delaySeconds": 0,
 					"targets": []any{
 						map[string]any{
 							"type":      tc.targetTyp,
@@ -192,7 +192,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 
 		patchPolicySteps(t, ts, "e2e-round-trip", []any{
 			map[string]any{
-				"delayMinutes": 0,
+				"delaySeconds": 0,
 				"targets": []any{
 					map[string]any{"type": "all_admins"},
 				},

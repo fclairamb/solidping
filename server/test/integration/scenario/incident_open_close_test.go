@@ -45,7 +45,7 @@ func TestIncidentOpenAndClose(t *testing.T) {
 	//    The escalation policy fires incident.escalated when the incident opens.
 	policyUID := CreateEscalationPolicy(t, s, "open-close-policy", []StepDef{
 		{
-			DelayMinutes: 0,
+			DelaySeconds: 0,
 			Targets: []TargetDef{
 				{Type: "connection", TargetUID: channelUID},
 			},
