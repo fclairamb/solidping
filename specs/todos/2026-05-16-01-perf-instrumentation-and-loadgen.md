@@ -163,6 +163,25 @@ End-to-end smoke (after implementation):
    - The PG report shows `db_pool.wait_count` ≥ 0 — even if zero, the field renders.
 7. **No regression in product metrics**: existing `solidping_check_executions_total` and `solidping_check_duration_seconds` still match expected counts in the loadgen runs.
 
+## Implementation Plan
+
+Much of Phase 1 and Phase 2 has already been implemented in prior work on this branch. The remaining gaps are:
+
+1. **`solidping_worker_jobs_channel_depth` gauge** — A Prometheus Collector that samples `len(jobsChan)` at scrape time. The metric is not yet defined or wired. Add a `workerCollector` struct in `server/internal/checkworker/worker.go` (or a new file) that implements `prometheus.Collector` and is registered by each Worker instance at startup.
+2. **`SP_METRICS_ENABLED` config toggle** — Add `MetricsEnabled bool` to `server/internal/config/config.go` with default `true`. Wire it to gate the `/metrics` handler registration in `server/internal/app/server.go` so the endpoint returns 404 when disabled.
+3. **CLAUDE.md documentation** — Add a section documenting `SP_METRICS_ENABLED`, `SP_PROFILER_ENABLED`, and `SP_OTEL_ENABLED` toggles alongside the existing rate-limiting block in `CLAUDE.md`.
+
+Already implemented (no action needed):
+- All new Prometheus metric definitions in `prommetrics/metrics.go`
+- `RecordDBQuery`, `RecordHTTPRequest`, `RecordCheckStage`, `RecordClaimJobsOutcome` helpers in `recording.go`
+- `NewDBStatsCollector` / `RegisterDB` in `db_collector.go`, wired in postgres.go and sqlite.go
+- DB sloghook → metrics in `sloghook/hook.go`
+- Stage timing in `checkworker/worker.go`
+- Claim outcome counter in `checkworker/worker.go`
+- HTTP metrics middleware in `middleware/metrics.go`, wired in `app/server.go`
+- Loadgen binary at `server/cmd/loadgen/main.go` (637 lines)
+- `bench-checks` Makefile target
+
 ## Out of scope (explicit follow-ups)
 
 - **Optimization spec.** Once we have one clean baseline report per backend, draft `specs/todos/YYYY-MM-DD-NN-throughput-fixes-{sqlite,postgres}.md` with concrete hypotheses and target deltas.
