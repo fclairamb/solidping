@@ -11,7 +11,7 @@ import (
 
 // StepDef describes one step of an escalation policy to create.
 type StepDef struct {
-	DelayMinutes int
+	DelaySeconds int
 	Targets      []TargetDef
 }
 
@@ -108,7 +108,7 @@ func CreateEscalationPolicy(t *testing.T, s *Scenario, policySlug string, steps 
 		}
 
 		stepsPayload = append(stepsPayload, map[string]any{
-			"delayMinutes": step.DelayMinutes,
+			"delaySeconds": step.DelaySeconds,
 			"targets":      targets,
 		})
 	}

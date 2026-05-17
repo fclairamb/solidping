@@ -45,7 +45,7 @@ func TestOnCallScheduleTarget(t *testing.T) {
 	//              connection target (fires webhook so we can assert delivery).
 	policyUID := CreateEscalationPolicy(t, s, "oncall-policy", []StepDef{
 		{
-			DelayMinutes: 0,
+			DelaySeconds: 0,
 			Targets: []TargetDef{
 				{Type: "schedule", TargetUID: scheduleUID},
 				{Type: "connection", TargetUID: webhookChannelUID},

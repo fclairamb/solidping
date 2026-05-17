@@ -22,9 +22,10 @@ var (
 	ErrInvalidTargetType   = errors.New("target type must be one of user|schedule|connection|all_admins")
 	ErrTargetUIDRequired   = errors.New("target UID is required for user/schedule/connection targets")
 	ErrTargetUIDForbidden  = errors.New("target UID must be empty for all_admins targets")
-	ErrRepeatRequiresAfter = errors.New("repeat_after_minutes is required when repeat_max > 0")
+	ErrRepeatRequiresAfter = errors.New("repeat_after_seconds is required when repeat_max > 0")
 	ErrRepeatMaxNegative   = errors.New("repeat_max must be >= 0")
 	ErrDelayNegative       = errors.New("step delay must be >= 0")
+	ErrDelayTooLarge       = errors.New("step delay must be <= 86400 seconds (24h)")
 )
 
 // Service exposes the escalation-policy operations.
@@ -61,7 +62,7 @@ type EscalationTargetType = models.EscalationTargetType
 
 // StepInput is the request shape for one step.
 type StepInput struct {
-	DelayMinutes int
+	DelaySeconds int
 	Targets      []TargetInput
 }
 
@@ -72,13 +73,13 @@ type CreatePolicyInput struct {
 	Name               string
 	Description        string
 	RepeatMax          int
-	RepeatAfterMinutes *int
+	RepeatAfterSeconds *int
 	Steps              []StepInput
 }
 
 // CreatePolicy validates and persists a policy together with its steps and targets.
 func (s *Service) CreatePolicy(ctx context.Context, input *CreatePolicyInput) (*models.EscalationPolicy, error) {
-	if err := validatePolicyShape(input.RepeatMax, input.RepeatAfterMinutes); err != nil {
+	if err := validatePolicyShape(input.RepeatMax, input.RepeatAfterSeconds); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +91,7 @@ func (s *Service) CreatePolicy(ctx context.Context, input *CreatePolicyInput) (*
 
 	policy := models.NewEscalationPolicy(input.OrganizationUID, input.Slug, input.Name)
 	policy.RepeatMax = input.RepeatMax
-	policy.RepeatAfterMinutes = input.RepeatAfterMinutes
+	policy.RepeatAfterSeconds = input.RepeatAfterSeconds
 
 	if input.Description != "" {
 		policy.Description = &input.Description
@@ -136,11 +137,11 @@ type UpdatePolicyInput struct {
 	Name               *string
 	Description        *string
 	RepeatMax          *int
-	RepeatAfterMinutes *int
+	RepeatAfterSeconds *int
 	Steps              *[]StepInput
 
 	ClearDescription        bool
-	ClearRepeatAfterMinutes bool
+	ClearRepeatAfterSeconds bool
 }
 
 // UpdatePolicy applies a partial update.
@@ -161,12 +162,12 @@ func (s *Service) UpdatePolicy(
 		repeatMax = *input.RepeatMax
 	}
 
-	repeatAfter := policy.RepeatAfterMinutes
-	if input.RepeatAfterMinutes != nil {
-		repeatAfter = input.RepeatAfterMinutes
+	repeatAfter := policy.RepeatAfterSeconds
+	if input.RepeatAfterSeconds != nil {
+		repeatAfter = input.RepeatAfterSeconds
 	}
 
-	if input.ClearRepeatAfterMinutes {
+	if input.ClearRepeatAfterSeconds {
 		repeatAfter = nil
 	}
 
@@ -188,9 +189,9 @@ func (s *Service) UpdatePolicy(
 		Name:                    input.Name,
 		Description:             input.Description,
 		RepeatMax:               input.RepeatMax,
-		RepeatAfterMinutes:      input.RepeatAfterMinutes,
+		RepeatAfterSeconds:      input.RepeatAfterSeconds,
 		ClearDescription:        input.ClearDescription,
-		ClearRepeatAfterMinutes: input.ClearRepeatAfterMinutes,
+		ClearRepeatAfterSeconds: input.ClearRepeatAfterSeconds,
 	}
 
 	if updErr := s.db.UpdateEscalationPolicy(ctx, policy.UID, update); updErr != nil {
@@ -323,7 +324,7 @@ func (s *Service) replaceSteps(ctx context.Context, policyUID string, inputs []S
 
 	for idx := range inputs {
 		input := &inputs[idx]
-		step := models.NewEscalationPolicyStep(policyUID, idx, input.DelayMinutes)
+		step := models.NewEscalationPolicyStep(policyUID, idx, input.DelaySeconds)
 		steps = append(steps, step)
 
 		targets := make([]*models.EscalationPolicyTarget, 0, len(input.Targets))
@@ -357,9 +358,15 @@ func validatePolicyShape(repeatMax int, repeatAfter *int) error {
 	return nil
 }
 
+const maxStepDelaySeconds = 86400 // 24h
+
 func validateStep(step *StepInput) error {
-	if step.DelayMinutes < 0 {
+	if step.DelaySeconds < 0 {
 		return ErrDelayNegative
+	}
+
+	if step.DelaySeconds > maxStepDelaySeconds {
+		return ErrDelayTooLarge
 	}
 
 	for i := range step.Targets {

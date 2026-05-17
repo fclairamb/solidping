@@ -30,7 +30,7 @@ type EscalationPolicy struct {
 	Name               string     `bun:"name,notnull"`
 	Description        *string    `bun:"description"`
 	RepeatMax          int        `bun:"repeat_max,notnull,default:0"`
-	RepeatAfterMinutes *int       `bun:"repeat_after_minutes"`
+	RepeatAfterSeconds *int       `bun:"repeat_after_seconds"`
 	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
 	DeletedAt          *time.Time `bun:"deleted_at"`
@@ -56,10 +56,10 @@ type EscalationPolicyUpdate struct {
 	Name               *string
 	Description        *string
 	RepeatMax          *int
-	RepeatAfterMinutes *int
+	RepeatAfterSeconds *int
 
 	ClearDescription        bool
-	ClearRepeatAfterMinutes bool
+	ClearRepeatAfterSeconds bool
 }
 
 // EscalationPolicyStep is one rung of a policy. Delays are between adjacent
@@ -69,7 +69,7 @@ type EscalationPolicyStep struct {
 	UID          string `bun:"uid,pk,type:varchar(36)"`
 	PolicyUID    string `bun:"policy_uid,notnull"`
 	Position     int    `bun:"position,notnull"`
-	DelayMinutes int    `bun:"delay_minutes,notnull"`
+	DelaySeconds int    `bun:"delay_seconds,notnull"`
 	// SeverityUID points to the severity that decides the channel-set
 	// for this step. NULL = "fall back to the org default severity for
 	// user/all_admins targets, or the connection's own channel for
@@ -80,14 +80,14 @@ type EscalationPolicyStep struct {
 }
 
 // NewEscalationPolicyStep builds a step row with a fresh UID.
-func NewEscalationPolicyStep(policyUID string, position, delayMinutes int) *EscalationPolicyStep {
+func NewEscalationPolicyStep(policyUID string, position, delaySeconds int) *EscalationPolicyStep {
 	now := time.Now()
 
 	return &EscalationPolicyStep{
 		UID:          uuid.New().String(),
 		PolicyUID:    policyUID,
 		Position:     position,
-		DelayMinutes: delayMinutes,
+		DelaySeconds: delaySeconds,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}

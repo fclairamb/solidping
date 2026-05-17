@@ -38,7 +38,7 @@ function EscalationPolicyDetailPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [repeatMax, setRepeatMax] = useState(0);
-  const [repeatAfterMinutes, setRepeatAfterMinutes] = useState<number>(30);
+  const [repeatAfterSeconds, setRepeatAfterSeconds] = useState<number>(30);
   const [steps, setSteps] = useState<EscalationPolicyStep[]>([]);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ function EscalationPolicyDetailPage() {
     setName(policy.name);
     setDescription(policy.description || "");
     setRepeatMax(policy.repeatMax);
-    setRepeatAfterMinutes(policy.repeatAfterMinutes || 30);
+    setRepeatAfterSeconds(policy.repeatAfterSeconds || 30);
     setSteps(policy.steps || []);
   }, [policy]);
 
@@ -59,7 +59,7 @@ function EscalationPolicyDetailPage() {
       ...prev,
       {
         position: prev.length,
-        delayMinutes: 5,
+        delaySeconds: 5,
         targets: [{ type: "all_admins" }],
       },
     ]);
@@ -74,10 +74,10 @@ function EscalationPolicyDetailPage() {
       name,
       description: description || undefined,
       repeatMax,
-      repeatAfterMinutes: repeatMax > 0 ? repeatAfterMinutes : null,
+      repeatAfterSeconds: repeatMax > 0 ? repeatAfterSeconds : null,
       steps: steps.map((s, i) => ({
         position: i,
-        delayMinutes: s.delayMinutes,
+        delaySeconds: s.delaySeconds,
         targets: s.targets.map((tar, ti) => ({
           ...tar,
           position: ti,
@@ -147,20 +147,20 @@ function EscalationPolicyDetailPage() {
                   {t("escalation:editor.step")} {idx + 1}
                 </span>
                 <Label className="text-xs">
-                  {t("escalation:editor.delayMinutes")}:
+                  {t("escalation:editor.delaySeconds")}:
                 </Label>
                 <Input
                   type="number"
                   min={0}
                   className="w-20 h-8"
-                  value={step.delayMinutes}
+                  value={step.delaySeconds}
                   onChange={(e) =>
                     setSteps((prev) =>
                       prev.map((s, i) =>
                         i === idx
                           ? {
                               ...s,
-                              delayMinutes: parseInt(e.target.value, 10) || 0,
+                              delaySeconds: parseInt(e.target.value, 10) || 0,
                             }
                           : s,
                       ),
@@ -229,13 +229,13 @@ function EscalationPolicyDetailPage() {
           </div>
           {repeatMax > 0 && (
             <div>
-              <Label>{t("escalation:editor.repeatAfterMinutes")}</Label>
+              <Label>{t("escalation:editor.repeatAfterSeconds")}</Label>
               <Input
                 type="number"
                 min={1}
-                value={repeatAfterMinutes}
+                value={repeatAfterSeconds}
                 onChange={(e) =>
-                  setRepeatAfterMinutes(parseInt(e.target.value, 10) || 1)
+                  setRepeatAfterSeconds(parseInt(e.target.value, 10) || 1)
                 }
               />
             </div>
