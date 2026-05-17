@@ -2630,3 +2630,35 @@ export function useSetCheckConnections(org: string, checkUid: string) {
     },
   });
 }
+
+// Slack destination picker types and hook
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+}
+
+export interface SlackUser {
+  id: string;
+  name: string;
+  realName: string;
+}
+
+export interface SlackDestinationsResponse {
+  channels: SlackChannel[];
+  users: SlackUser[];
+}
+
+export function useSlackDestinations(org: string, channelUid: string) {
+  return useQuery({
+    queryKey: ["slack-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<SlackDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/slack/destinations`,
+      ),
+    enabled: Boolean(org && channelUid),
+    staleTime: 60_000,
+  });
+}
