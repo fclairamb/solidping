@@ -3,7 +3,7 @@
 // Only the sidebar entry (nav:designReference) is translated.
 
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   AlertTriangle,
@@ -41,6 +41,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import {
   Dialog,
@@ -106,6 +112,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
   { id: "feedback", label: "Feedback" },
+  { id: "kpi-tiles", label: "KPI tiles" },
 ];
 
 function DesignReferencePage() {
@@ -127,6 +134,7 @@ function DesignReferencePage() {
       <FormsSection />
       <DataDisplaySection />
       <FeedbackSection />
+      <KpiTileSection />
     </div>
   );
 }
@@ -1087,6 +1095,67 @@ function BrandSection() {
           />
         </div>
       </div>
+    </Section>
+  );
+}
+
+function KpiTileSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { Link } from "@tanstack/react-router";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+// Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
+<Link to="/orgs/$org/checks" params={{ org }} className="block">
+  <Card className="transition-colors hover:bg-accent/40">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
+      <Icon className="h-4 w-4 text-muted-foreground" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-3xl font-bold">42</div>
+      <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
+    </CardContent>
+  </Card>
+</Link>`;
+  return (
+    <Section
+      id="kpi-tiles"
+      title="KPI tiles"
+      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Whole-card hover via transition-colors hover:bg-accent/40 — no nested interactive elements inside."
+    >
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          to="/orgs/$org/checks"
+          params={{ org }}
+          className="block"
+        >
+          <Card className="transition-colors hover:bg-accent/40">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Monitored
+              </CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">42</div>
+              <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Availability (static)
+            </CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">99.98%</div>
+            <p className="text-xs text-muted-foreground mt-1">24h window</p>
+          </CardContent>
+        </Card>
+      </div>
+      <CodeSnippet code={snippet} />
     </Section>
   );
 }

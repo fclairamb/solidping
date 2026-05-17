@@ -248,44 +248,72 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           />
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <KpiTile
-              label={t("kpi.monitored")}
-              value={enabledCount}
-              icon={<ListChecks className="h-4 w-4 text-muted-foreground" />}
-              sub={
-                disabledCount > 0
-                  ? t("kpi.monitoredDisabled", { count: disabledCount })
-                  : undefined
-              }
-            />
-            <KpiTile
-              label={t("kpi.down")}
-              value={downCount}
-              icon={
-                <AlertTriangle
-                  className={`h-4 w-4 ${downCount > 0 ? "text-red-600" : "text-muted-foreground"}`}
-                />
-              }
-              valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
-              sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-            />
-            <KpiTile
-              label={t("kpi.incidents")}
-              value={incidentsCount}
-              icon={
-                <Activity
-                  className={`h-4 w-4 ${incidentsCount > 0 ? "text-yellow-600" : "text-muted-foreground"}`}
-                />
-              }
-              valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
-              sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
-            />
-            <KpiTile
-              label={t("kpi.availability")}
-              value={availabilityPct === null ? "—" : `${availabilityPct.toFixed(2)}%`}
-              icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
-              sub={availabilityPct === null ? t("kpi.availabilityNoData") : undefined}
-            />
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              className="block"
+              data-testid="kpi-tile-monitored"
+            >
+              <KpiTile
+                label={t("kpi.monitored")}
+                value={enabledCount}
+                icon={<ListChecks className="h-4 w-4 text-muted-foreground" />}
+                sub={
+                  disabledCount > 0
+                    ? t("kpi.monitoredDisabled", { count: disabledCount })
+                    : undefined
+                }
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              search={{ status: "down" }}
+              className="block"
+              data-testid="kpi-tile-down"
+            >
+              <KpiTile
+                label={t("kpi.down")}
+                value={downCount}
+                icon={
+                  <AlertTriangle
+                    className={`h-4 w-4 ${downCount > 0 ? "text-red-600" : "text-muted-foreground"}`}
+                  />
+                }
+                valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
+                sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <Link
+              to="/orgs/$org/incidents"
+              params={{ org }}
+              search={{ state: "active" as const, showSuppressed: undefined }}
+              className="block"
+              data-testid="kpi-tile-incidents"
+            >
+              <KpiTile
+                label={t("kpi.incidents")}
+                value={incidentsCount}
+                icon={
+                  <Activity
+                    className={`h-4 w-4 ${incidentsCount > 0 ? "text-yellow-600" : "text-muted-foreground"}`}
+                  />
+                }
+                valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
+                sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <div data-testid="kpi-tile-availability">
+              <KpiTile
+                label={t("kpi.availability")}
+                value={availabilityPct === null ? "—" : `${availabilityPct.toFixed(2)}%`}
+                icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
+                sub={availabilityPct === null ? t("kpi.availabilityNoData") : undefined}
+              />
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -486,11 +514,12 @@ interface KpiTileProps {
   icon: React.ReactNode;
   sub?: string;
   valueClassName?: string;
+  className?: string;
 }
 
-function KpiTile({ label, value, icon, sub, valueClassName }: KpiTileProps) {
+function KpiTile({ label, value, icon, sub, valueClassName, className }: KpiTileProps) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {label}

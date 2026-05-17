@@ -88,4 +88,43 @@ test.describe("Dashboard", () => {
       fullPage: true,
     });
   });
+
+  test("KPI tiles navigate to the right list pages", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    // Monitored tile → checks list
+    await page.getByTestId("kpi-tile-monitored").click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/checks\/?$/);
+
+    await page.goBack();
+    await page.waitForLoadState("networkidle");
+
+    // Down tile → checks list filtered to failing statuses
+    await page.getByTestId("kpi-tile-down").click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toContain("/orgs/test/checks");
+    expect(page.url()).toContain("status=down");
+
+    await page.goBack();
+    await page.waitForLoadState("networkidle");
+
+    // Active incidents tile → incidents list with state=active
+    await page.getByTestId("kpi-tile-incidents").click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toContain("/orgs/test/incidents");
+    expect(page.url()).toContain("state=active");
+
+    await page.goBack();
+    await page.waitForLoadState("networkidle");
+
+    // Availability tile — must NOT navigate
+    const availabilityTile = page.getByTestId("kpi-tile-availability");
+    await expect(availabilityTile).toBeVisible();
+    const tag = await availabilityTile.evaluate((el) => el.tagName.toLowerCase());
+    expect(tag).not.toBe("a");
+  });
 });
