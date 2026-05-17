@@ -213,13 +213,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	svcList.EventNotifier = eventNotifier
 
 	// Wire LISTEN/NOTIFY wakeup into the job service for Postgres. On Postgres,
-	// CreateJob sends "NOTIFY jobs"; we subscribe here so GetJobWait wakes
+	// CreateJob sends "NOTIFY job_created"; we subscribe here so GetJobWait wakes
 	// immediately instead of waiting for the 1-minute poll ticker.
 	var jobService jobsvc.Service
-	if wakeupCh := eventNotifier.Listen("jobs"); wakeupCh != nil {
-		jobService = jobsvc.NewServiceWithWakeup(dbService.DB(), dbService, wakeupCh)
+	if wakeupCh := eventNotifier.Listen("job.created"); wakeupCh != nil {
+		jobService = jobsvc.NewServiceWithWakeup(dbService.DB(), dbService, eventNotifier, wakeupCh)
 	} else {
-		jobService = jobsvc.NewService(dbService.DB(), dbService)
+		jobService = jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
 	}
 	svcList.Jobs = jobService
 

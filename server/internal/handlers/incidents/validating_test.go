@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 // validatingSetup spins up the smallest world that can drive
@@ -41,7 +42,7 @@ func newValidatingSetup(t *testing.T, confirmationSeconds int) *validatingSetup 
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
 	svc := incidents.NewService(dbSvc, jobs)
 
 	org := models.NewOrganization("validating-test", "Validating Test")

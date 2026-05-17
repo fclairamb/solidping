@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 func setupRuntime(t *testing.T) (db.Service, jobsvc.Service, *models.Organization) {
@@ -29,7 +30,7 @@ func setupRuntime(t *testing.T) (db.Service, jobsvc.Service, *models.Organizatio
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
 
 	org := models.NewOrganization("esc-runtime", "Escalation Runtime Test")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
