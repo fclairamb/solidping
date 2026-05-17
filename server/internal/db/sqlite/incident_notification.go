@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -122,4 +123,94 @@ func (s *Service) CancelIncidentNotificationsForIncident(
 	}
 
 	return rows, nil
+}
+
+// incidentNotificationRawRow is used for scanning the JOIN query result.
+type incidentNotificationRawRow struct {
+	models.IncidentNotification `bun:",extend"`
+	UserName                    *string    `bun:"user_name"`
+	ConnectionName              *string    `bun:"connection_name"`
+	ConnectionType              *string    `bun:"connection_type"`
+	IncidentTitle               *string    `bun:"incident_title"`
+	IncidentState               *int       `bun:"incident_state"`
+	IncidentStartedAt           *time.Time `bun:"incident_started_at"`
+	CheckName                   *string    `bun:"check_name"`
+}
+
+// ListIncidentNotifications returns notification rows for an org, optionally
+// filtered by incident, user, connection, status, and a before-cursor.
+// Results are ordered newest first. User and connection names are joined inline.
+//
+//nolint:gocritic // filter is a value type passed by value intentionally
+func (s *Service) ListIncidentNotifications(
+	ctx context.Context, orgUID string, filter db.ListIncidentNotificationsFilter,
+) ([]*models.IncidentNotificationRow, error) {
+	limit := filter.Limit
+	if limit <= 0 {
+		limit = 100
+	}
+
+	if limit > 500 {
+		limit = 500
+	}
+
+	query := s.db.NewSelect().
+		TableExpr("incident_notifications AS n").
+		ColumnExpr("n.*").
+		ColumnExpr("u.name AS user_name").
+		ColumnExpr("ic.name AS connection_name").
+		ColumnExpr("ic.type AS connection_type").
+		ColumnExpr("i.title AS incident_title").
+		ColumnExpr("i.state AS incident_state").
+		ColumnExpr("i.started_at AS incident_started_at").
+		ColumnExpr("c.name AS check_name").
+		Join("LEFT JOIN users u ON u.uid = n.user_uid").
+		Join("LEFT JOIN integration_connections ic ON ic.uid = n.connection_uid").
+		Join("LEFT JOIN incidents i ON i.uid = n.incident_uid").
+		Join("LEFT JOIN checks c ON c.uid = i.check_uid").
+		Where("n.organization_uid = ?", orgUID)
+
+	if filter.IncidentUID != "" {
+		query = query.Where("n.incident_uid = ?", filter.IncidentUID)
+	}
+
+	if filter.UserUID != "" {
+		query = query.Where("n.user_uid = ?", filter.UserUID)
+	}
+
+	if filter.ConnectionUID != "" {
+		query = query.Where("n.connection_uid = ?", filter.ConnectionUID)
+	}
+
+	if filter.Status != "" {
+		query = query.Where("n.status = ?", filter.Status)
+	}
+
+	if !filter.Before.IsZero() {
+		query = query.Where("n.created_at < ?", filter.Before)
+	}
+
+	query = query.OrderExpr("n.created_at DESC").Limit(limit)
+
+	var raw []incidentNotificationRawRow
+
+	if err := query.Scan(ctx, &raw); err != nil {
+		return nil, fmt.Errorf("list incident notifications: %w", err)
+	}
+
+	out := make([]*models.IncidentNotificationRow, len(raw))
+	for i := range raw {
+		out[i] = &models.IncidentNotificationRow{
+			IncidentNotification: raw[i].IncidentNotification,
+			UserName:             raw[i].UserName,
+			ConnectionName:       raw[i].ConnectionName,
+			ConnectionType:       raw[i].ConnectionType,
+			IncidentTitle:        raw[i].IncidentTitle,
+			IncidentState:        raw[i].IncidentState,
+			IncidentStartedAt:    raw[i].IncidentStartedAt,
+			CheckName:            raw[i].CheckName,
+		}
+	}
+
+	return out, nil
 }

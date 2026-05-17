@@ -24,6 +24,7 @@ import { Route as OrgsOrgServerRouteImport } from './routes/orgs/$org/server'
 import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register'
 import { Route as OrgsOrgOrganizationRouteImport } from './routes/orgs/$org/organization'
 import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
+import { Route as OrgsOrgMeRouteImport } from './routes/orgs/$org/me'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgIncidentsRouteImport } from './routes/orgs/$org/incidents'
 import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
@@ -63,6 +64,7 @@ import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$o
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
+import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
 import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs/$org/escalation-policies.$slug'
@@ -155,6 +157,11 @@ const OrgsOrgOrganizationRoute = OrgsOrgOrganizationRouteImport.update({
 const OrgsOrgOnCallRoute = OrgsOrgOnCallRouteImport.update({
   id: '/on-call',
   path: '/on-call',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgMeRoute = OrgsOrgMeRouteImport.update({
+  id: '/me',
+  path: '/me',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgLoginRoute = OrgsOrgLoginRouteImport.update({
@@ -362,6 +369,11 @@ const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
+const OrgsOrgMeNotificationsRoute = OrgsOrgMeNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
+  getParentRoute: () => OrgsOrgMeRoute,
+} as any)
 const OrgsOrgIncidentsIncidentUidRoute =
   OrgsOrgIncidentsIncidentUidRouteImport.update({
     id: '/$incidentUid',
@@ -476,6 +488,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
@@ -493,6 +506,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -543,6 +557,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -554,6 +569,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -609,6 +625,7 @@ export interface FileRoutesById {
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
@@ -626,6 +643,7 @@ export interface FileRoutesById {
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
+  '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -684,6 +702,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
+    | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/register'
@@ -701,6 +720,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/me/notifications'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -751,6 +771,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/design-reference'
     | '/orgs/$org/events'
     | '/orgs/$org/login'
+    | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
     | '/orgs/$org/account/profile'
@@ -762,6 +783,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/me/notifications'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
@@ -816,6 +838,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
     | '/orgs/$org/login'
+    | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/register'
@@ -833,6 +856,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
+    | '/orgs/$org/me/notifications'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -988,6 +1012,13 @@ declare module '@tanstack/react-router' {
       path: '/on-call'
       fullPath: '/orgs/$org/on-call'
       preLoaderRoute: typeof OrgsOrgOnCallRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/me': {
+      id: '/orgs/$org/me'
+      path: '/me'
+      fullPath: '/orgs/$org/me'
+      preLoaderRoute: typeof OrgsOrgMeRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/login': {
@@ -1263,6 +1294,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
     }
+    '/orgs/$org/me/notifications': {
+      id: '/orgs/$org/me/notifications'
+      path: '/notifications'
+      fullPath: '/orgs/$org/me/notifications'
+      preLoaderRoute: typeof OrgsOrgMeNotificationsRouteImport
+      parentRoute: typeof OrgsOrgMeRoute
+    }
     '/orgs/$org/incidents/$incidentUid': {
       id: '/orgs/$org/incidents/$incidentUid'
       path: '/$incidentUid'
@@ -1484,6 +1522,18 @@ const OrgsOrgIncidentsRouteChildren: OrgsOrgIncidentsRouteChildren = {
 const OrgsOrgIncidentsRouteWithChildren =
   OrgsOrgIncidentsRoute._addFileChildren(OrgsOrgIncidentsRouteChildren)
 
+interface OrgsOrgMeRouteChildren {
+  OrgsOrgMeNotificationsRoute: typeof OrgsOrgMeNotificationsRoute
+}
+
+const OrgsOrgMeRouteChildren: OrgsOrgMeRouteChildren = {
+  OrgsOrgMeNotificationsRoute: OrgsOrgMeNotificationsRoute,
+}
+
+const OrgsOrgMeRouteWithChildren = OrgsOrgMeRoute._addFileChildren(
+  OrgsOrgMeRouteChildren,
+)
+
 interface OrgsOrgOnCallSlugRouteChildren {
   OrgsOrgOnCallSlugEditRoute: typeof OrgsOrgOnCallSlugEditRoute
   OrgsOrgOnCallSlugIndexRoute: typeof OrgsOrgOnCallSlugIndexRoute
@@ -1620,6 +1670,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgEventsRoute: typeof OrgsOrgEventsRoute
   OrgsOrgIncidentsRoute: typeof OrgsOrgIncidentsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
+  OrgsOrgMeRoute: typeof OrgsOrgMeRouteWithChildren
   OrgsOrgOnCallRoute: typeof OrgsOrgOnCallRouteWithChildren
   OrgsOrgOrganizationRoute: typeof OrgsOrgOrganizationRouteWithChildren
   OrgsOrgRegisterRoute: typeof OrgsOrgRegisterRoute
@@ -1640,6 +1691,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgEventsRoute: OrgsOrgEventsRoute,
   OrgsOrgIncidentsRoute: OrgsOrgIncidentsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,
+  OrgsOrgMeRoute: OrgsOrgMeRouteWithChildren,
   OrgsOrgOnCallRoute: OrgsOrgOnCallRouteWithChildren,
   OrgsOrgOrganizationRoute: OrgsOrgOrganizationRouteWithChildren,
   OrgsOrgRegisterRoute: OrgsOrgRegisterRoute,

@@ -869,6 +869,92 @@ export function useEvents(
   });
 }
 
+// Incident Notification types and hooks
+
+export interface IncidentNotificationUser {
+  uid: string;
+  name: string;
+}
+
+export interface IncidentNotificationConnection {
+  uid: string;
+  name: string;
+  type: string;
+}
+
+export interface IncidentNotificationIncident {
+  uid: string;
+  title: string;
+  state: "active" | "resolved";
+  startedAt: string;
+}
+
+export interface IncidentNotification {
+  uid: string;
+  incidentUid: string;
+  eventType: string;
+  source: string;
+  stepUid?: string;
+  repeatIndex?: number;
+  channelType: string;
+  status: "pending" | "sent" | "failed" | "cancelled" | "skipped";
+  skipReason?: string;
+  error?: string;
+  messageId?: string;
+  createdAt: string;
+  sentAt?: string;
+  user: IncidentNotificationUser | null;
+  connection: IncidentNotificationConnection | null;
+  incident?: IncidentNotificationIncident;
+}
+
+export function useIncidentNotifications(
+  org: string,
+  incidentUid: string,
+  options?: {
+    status?: string;
+    limit?: number;
+  }
+) {
+  return useQuery({
+    queryKey: ["incidentNotifications", org, incidentUid, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.status) params.set("status", options.status);
+      if (options?.limit) params.set("limit", options.limit.toString());
+      const query = params.toString();
+      const path = `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(path);
+      return response.data || [];
+    },
+    enabled: !!org && !!incidentUid,
+  });
+}
+
+export function useMyNotifications(
+  org: string,
+  options?: {
+    status?: string;
+    limit?: number;
+    before?: string;
+  }
+) {
+  return useQuery({
+    queryKey: ["myNotifications", org, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.status) params.set("status", options.status);
+      if (options?.limit) params.set("limit", options.limit.toString());
+      if (options?.before) params.set("before", options.before);
+      const query = params.toString();
+      const path = `/api/v1/orgs/${org}/me/notifications${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(path);
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
 // Token types
 export interface TokenInfo {
   uid: string;

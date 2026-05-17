@@ -11,6 +11,16 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
+type ListIncidentNotificationsFilter struct {
+	IncidentUID   string    // required for the per-incident endpoint; optional for user-scoped queries
+	UserUID       string    // optional: restrict to rows where user_uid = UserUID
+	ConnectionUID string    // optional: restrict to rows where connection_uid = ConnectionUID
+	Status        string    // optional: e.g. "sent", "failed"
+	Limit         int       // default 100, max 500
+	Before        time.Time // cursor: return rows created before this time (zero means no bound)
+}
+
 // Service defines the common interface for database operations.
 // Both PostgreSQL and SQLite implementations must satisfy this interface.
 //
@@ -229,6 +239,9 @@ type Service interface {
 		ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
 	) error
 	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
+	ListIncidentNotifications(
+		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
+	) ([]*models.IncidentNotificationRow, error)
 
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error

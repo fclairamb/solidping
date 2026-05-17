@@ -15,6 +15,7 @@ func (h *Handler) registerTools() {
 		{listResultsDef(), h.toolListResults},
 		{listIncidentsDef(), h.toolListIncidents},
 		{getIncidentDef(), h.toolGetIncident},
+		{incidentNotificationsListDef(), h.toolIncidentNotificationsList},
 		{listConnectionsDef(), h.toolListConnections},
 		{createConnectionDef(), h.toolCreateConnection},
 		{listCheckGroupsDef(), h.toolListCheckGroups},
