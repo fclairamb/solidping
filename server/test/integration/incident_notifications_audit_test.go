@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 // auditRow queries incident_notifications rows for an incident.
@@ -65,7 +66,7 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
 	svc := incidents.NewService(dbSvc, jobs)
 
 	org := models.NewOrganization("audit-test", "Audit Test Org")
@@ -304,7 +305,7 @@ func TestAuditEscalationUserSend(t *testing.T) {
 	mockSender := &mockEmailSender{}
 	svcList := &services.Registry{
 		EmailSender: mockSender,
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
 	}
 
 	// Build a fake job row for the context.
@@ -436,7 +437,7 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 
 	svcList := &services.Registry{
 		EmailSender: &mockEmailSender{},
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
 	}
 
 	fakeJob := models.NewJob(&s.org.UID, string(jobdef.JobTypeEscalationStep))
@@ -512,7 +513,7 @@ func TestAuditNoAdminsSkipped(t *testing.T) {
 
 	svcList := &services.Registry{
 		EmailSender: &mockEmailSender{},
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
 	}
 
 	fakeJob := models.NewJob(&s.org.UID, string(jobdef.JobTypeEscalationStep))

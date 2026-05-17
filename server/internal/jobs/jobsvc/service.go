@@ -14,11 +14,18 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 const (
 	// maxRetryCount is the maximum number of retries allowed for a job.
 	maxRetryCount = 2
+
+	// eventTypeJobCreated is the notifier event type emitted when a new job is
+	// created and ready to run soon. PgEventNotifier converts "." to "_" so the
+	// on-the-wire Postgres channel name becomes "job_created".
+	// dialect-agnostic — use s.notifier.Notify, never raw SQL.
+	eventTypeJobCreated = "job.created"
 )
 
 // JobOptions contains options for creating a job.
@@ -83,21 +90,22 @@ type ListJobsOptions struct {
 
 // serviceImpl implements the Service interface.
 type serviceImpl struct {
-	db     *bun.DB
-	dbSvc  db.Service
-	wakeup <-chan string // Optional wakeup channel (e.g. from LISTEN/NOTIFY)
+	db       *bun.DB
+	dbSvc    db.Service
+	notifier notifier.EventNotifier
+	wakeup   <-chan string // Optional wakeup channel (e.g. from LISTEN/NOTIFY)
 }
 
 // NewService creates a new job service.
-func NewService(bunDB *bun.DB, dbSvc db.Service) Service {
-	return &serviceImpl{db: bunDB, dbSvc: dbSvc}
+func NewService(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier) Service {
+	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n}
 }
 
 // NewServiceWithWakeup creates a new job service with an optional wakeup channel.
 // The wakeup channel is signaled when new jobs are inserted (e.g. via LISTEN/NOTIFY)
 // so that GetJobWait can return immediately instead of waiting for the poll ticker.
-func NewServiceWithWakeup(bunDB *bun.DB, dbSvc db.Service, wakeup <-chan string) Service {
-	return &serviceImpl{db: bunDB, dbSvc: dbSvc, wakeup: wakeup}
+func NewServiceWithWakeup(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier, wakeup <-chan string) Service {
+	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n, wakeup: wakeup}
 }
 
 // CreateJob creates a new job and notifies waiting runners.
@@ -226,11 +234,9 @@ func (s *serviceImpl) createNewJob(
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	// Send NOTIFY signal to wake up job runners if job is scheduled within 15 minutes
-	// This is PostgreSQL-specific and will be ignored on SQLite (polling fallback is used)
+	// Wake up waiting job runners when the job is due within 15 minutes.
 	if time.Until(job.ScheduledAt) <= 15*time.Minute {
-		_, _ = s.db.ExecContext(ctx, "NOTIFY jobs")
-		// Ignore errors - NOTIFY is not available on SQLite, which uses polling instead
+		_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
 	}
 
 	return job, nil
