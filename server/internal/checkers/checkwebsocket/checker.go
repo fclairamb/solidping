@@ -15,7 +15,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-const microsecondsPerMilli = 1000.0
+const (
+	microsecondsPerMilli = 1000.0
+	maxReadAttempts      = 8     // cap reads so a chatty server can't consume the full timeout
+	configKeyURL         = "url" // shared with config.go to avoid goconst
+)
 
 // WebSocketChecker implements the Checker interface for WebSocket checks.
 type WebSocketChecker struct{}
@@ -33,11 +37,11 @@ func (c *WebSocketChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.URL == "" {
-		return checkerdef.NewConfigError("url", "URL is required")
+		return checkerdef.NewConfigError(configKeyURL, "URL is required")
 	}
 
 	if !strings.HasPrefix(cfg.URL, "ws://") && !strings.HasPrefix(cfg.URL, "wss://") {
-		return checkerdef.NewConfigError("url", "must start with ws:// or wss://")
+		return checkerdef.NewConfigError(configKeyURL, "must start with ws:// or wss://")
 	}
 
 	if cfg.Expect != "" {
@@ -99,7 +103,7 @@ func (c *WebSocketChecker) Execute(
 	defer func() { _ = conn.CloseNow() }() //nolint:staticcheck // using nhooyr.io/websocket v1
 
 	output := map[string]any{
-		"url": cfg.URL,
+		configKeyURL: cfg.URL,
 	}
 
 	if resp != nil {
@@ -182,29 +186,46 @@ func (c *WebSocketChecker) sendAndExpect(
 		}
 	}
 
-	if cfg.Expect != "" {
+	if cfg.Expect == "" {
+		return nil
+	}
+
+	pattern, _ := regexp.Compile(cfg.Expect) // Already validated in Validate()
+
+	var last string
+
+	for attempt := 0; attempt < maxReadAttempts; attempt++ {
 		_, msg, err := conn.Read(ctx) //nolint:staticcheck // using nhooyr.io/websocket v1
 		if err != nil {
 			output["error"] = fmt.Sprintf("failed to read message: %v", err)
+			if last != "" {
+				output["received"] = last
+			}
+			if attempt > 0 {
+				output["received_skipped"] = attempt
+			}
 
 			return fmt.Errorf("read: %w", err)
 		}
 
-		received := string(msg)
-		output["received"] = received
+		last = string(msg)
+		if pattern.MatchString(last) {
+			output["received"] = last
+			if attempt > 0 {
+				output["received_skipped"] = attempt
+			}
 
-		pattern, _ := regexp.Compile(cfg.Expect) // Already validated in Validate()
-
-		if !pattern.MatchString(received) {
-			output["error"] = fmt.Sprintf(
-				"response did not match expected pattern %q", cfg.Expect,
-			)
-
-			return errPatternMismatch
+			return nil
 		}
 	}
 
-	return nil
+	output["received"] = last
+	output["received_skipped"] = maxReadAttempts
+	output["error"] = fmt.Sprintf(
+		"response did not match expected pattern %q after %d frames", cfg.Expect, maxReadAttempts,
+	)
+
+	return errPatternMismatch
 }
 
 func (c *WebSocketChecker) handleDialError(

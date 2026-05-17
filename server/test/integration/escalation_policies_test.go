@@ -166,7 +166,11 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
 
-			patchPolicySteps(t, ts, "e2e-round-trip", []any{
+			// Each parallel subtest uses its own policy slug to avoid write races.
+			policySlug := "e2e-round-trip-" + tc.name
+			createEscalationPolicyViaAPI(t, ts, policySlug, "E2E Round Trip "+tc.name)
+
+			patchPolicySteps(t, ts, policySlug, []any{
 				map[string]any{
 					"delayMinutes": 0,
 					"targets": []any{
@@ -178,7 +182,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 				},
 			})
 
-			got := getFirstTargetUID(t, ts, "e2e-round-trip")
+			got := getFirstTargetUID(t, ts, policySlug)
 			r.Equal(tc.targetUID, got, "targetUid must round-trip for type %q", tc.targetTyp)
 		})
 	}
