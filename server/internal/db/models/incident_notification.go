@@ -54,6 +54,28 @@ type IncidentNotification struct {
 	FailedAt        *time.Time `bun:"failed_at"`
 }
 
+// IncidentNotificationRow is the read-side DTO returned by ListIncidentNotifications.
+// It embeds the base notification row plus joined fields from users and
+// integration_connections that are populated when the respective FK is non-NULL.
+type IncidentNotificationRow struct {
+	IncidentNotification
+
+	// Joined from users (non-nil when user_uid IS NOT NULL)
+	UserName *string
+
+	// Joined from integration_connections (non-nil when connection_uid IS NOT NULL)
+	ConnectionName *string
+	ConnectionType *string
+
+	// Joined from incidents for user-scoped queries
+	IncidentTitle     *string
+	IncidentState     *int
+	IncidentStartedAt *time.Time
+
+	// Joined from checks for user-scoped queries
+	CheckName *string
+}
+
 // NewIncidentNotificationForJob builds a pending audit row for a
 // channel-based notification (check_connection or escalation_connection).
 func NewIncidentNotificationForJob(
