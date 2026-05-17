@@ -544,7 +544,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -565,7 +565,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)

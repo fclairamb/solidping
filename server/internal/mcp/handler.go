@@ -20,6 +20,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -104,7 +105,7 @@ func NewHandler(
 		checksSvc:      checks.NewService(dbService, eventNotifier, creds),
 		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
-		incidentsSvc:   incidents.NewService(dbService, jobSvc),
+		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}),
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),

@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
@@ -61,7 +62,7 @@ func NewHandler(dbService db.Service, jobSvc jobsvc.Service, logger *slog.Logger
 
 	return &Handler{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc),
+		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}),
 		logger:      logger,
 	}
 }

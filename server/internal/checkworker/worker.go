@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 )
@@ -91,7 +92,7 @@ func NewCheckWorker(
 		config:      cfg,
 		services:    svc,
 		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs),
+		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture

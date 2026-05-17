@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
 
@@ -42,7 +43,7 @@ func newValidatingSetup(t *testing.T, confirmationSeconds int) *validatingSetup 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	jobs := jobsvc.NewService(dbSvc.DB())
-	svc := incidents.NewService(dbSvc, jobs)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
 
 	org := models.NewOrganization("validating-test", "Validating Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
