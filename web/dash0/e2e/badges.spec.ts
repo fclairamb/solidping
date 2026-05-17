@@ -57,17 +57,26 @@ test.describe("Badges", () => {
 
     // Verify configuration panel is visible
     await expect(page.getByTestId("badge-check-select")).toBeVisible();
-    await expect(page.getByTestId("badge-format-select")).toBeVisible();
-    await expect(page.getByTestId("badge-style-select")).toBeVisible();
-    await expect(page.getByTestId("badge-custom-label")).toBeVisible();
+
+    // Verify component checkboxes are present (format select is gone)
+    await expect(page.getByTestId("badge-component-status")).toBeVisible();
+    await expect(page.getByTestId("badge-component-availability")).toBeVisible();
+    await expect(page.getByTestId("badge-component-duration")).toBeVisible();
+    await expect(page.getByTestId("badge-component-response-time")).toBeVisible();
+
+    // Status is checked by default
+    await expect(page.getByTestId("badge-component-status")).toBeChecked();
 
     // Verify placeholder text when no check is selected
     await expect(
       page.getByText("Select a check to preview and generate badges")
     ).toBeVisible();
+
+    // Download card must NOT exist
+    await expect(page.getByText("Download the badge in different formats")).not.toBeVisible();
   });
 
-  test("should select a check and sync to URL", async ({
+  test("should select a check and show preview with download buttons in header", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -104,15 +113,183 @@ test.describe("Badges", () => {
     await expect(page.getByTestId("badge-embed-markdown")).toBeVisible();
     await expect(page.getByTestId("badge-embed-html")).toBeVisible();
 
-    // Verify download buttons appear
+    // SVG and PNG download buttons are in the preview card header
     await expect(page.getByTestId("badge-download-svg")).toBeVisible();
     await expect(page.getByTestId("badge-download-png")).toBeVisible();
-    await expect(page.getByTestId("badge-download-jpg")).toBeVisible();
 
-    // Verify embed URL contains the check identifier and format
+    // No JPG button
+    await expect(page.getByTestId("badge-download-jpg")).not.toBeVisible();
+
+    // Verify embed URL contains the check identifier and default components
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain("/badges/status");
     expect(urlText).toContain("/orgs/test/checks/");
+  });
+
+  test("should toggle Availability checkbox on and update preview URL", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Avail ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Period selector should NOT be visible when only status is selected
+    await expect(page.getByTestId("badge-period-select")).not.toBeVisible();
+
+    // Toggle Availability on
+    await page.getByTestId("badge-component-availability").click();
+
+    // URL should now contain status,availability
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain("/badges/status,availability");
+
+    // Period selector should now be visible
+    await expect(page.getByTestId("badge-period-select")).toBeVisible();
+
+    // components param in page URL
+    const pageUrl = new URL(page.url());
+    expect(pageUrl.searchParams.get("components")).toBe("status,availability");
+  });
+
+  test("cannot uncheck Status when it is the sole primary", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Primary ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Status is the sole primary — the checkbox must be disabled
+    const statusCheckbox = page.getByTestId("badge-component-status");
+    await expect(statusCheckbox).toBeChecked();
+    await expect(statusCheckbox).toBeDisabled();
+  });
+
+  test("can switch primary from Status to Availability", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Switch ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Enable Availability
+    await page.getByTestId("badge-component-availability").click();
+
+    // Now Status is no longer sole primary — uncheck it
+    await page.getByTestId("badge-component-status").click();
+
+    // URL should contain only availability
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain("/badges/availability");
+    expect(urlText).not.toContain("status,availability");
+  });
+
+  test("SVG download button triggers download", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge DL SVG ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("badge-download-svg").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain(".svg");
+  });
+
+  test("PNG download button triggers download", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge DL PNG ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("badge-download-png").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain(".png");
+  });
+
+  test("no Download card exists in DOM", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge No Card ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The old Download card title and description must not be present
+    await expect(page.getByText("Download the badge in different formats")).not.toBeVisible();
+  });
+
+  test("period selector visible with Availability, hidden with only Status+Duration", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Period Vis ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Only status checked by default — period hidden
+    await expect(page.getByTestId("badge-period-select")).not.toBeVisible();
+
+    // Enable Duration — still hidden (no period-gated component)
+    await page.getByTestId("badge-component-duration").click();
+    await expect(page.getByTestId("badge-period-select")).not.toBeVisible();
+
+    // Enable Availability — period must appear
+    await page.getByTestId("badge-component-availability").click();
+    await expect(page.getByTestId("badge-period-select")).toBeVisible();
+
+    // Uncheck Availability — period hides again
+    await page.getByTestId("badge-component-availability").click();
+    await expect(page.getByTestId("badge-period-select")).not.toBeVisible();
   });
 
   test("should restore state from URL on page load", async ({
@@ -126,7 +303,7 @@ test.describe("Badges", () => {
 
     // Navigate directly with all params in URL
     await page.goto(
-      `/dash0/orgs/test/badges?check=${slug}&format=availability&period=7d&style=flat-square&label=My+Badge`
+      `/dash0/orgs/test/badges?check=${slug}&components=availability&period=7d&style=flat-square&label=My+Badge`
     );
     await page.waitForLoadState("networkidle");
 
@@ -136,115 +313,30 @@ test.describe("Badges", () => {
       { timeout: 10000 }
     );
 
-    // Verify format is set to availability
-    await expect(page.getByTestId("badge-format-select")).toContainText(
-      "Availability"
-    );
+    // Availability should be checked
+    await expect(page.getByTestId("badge-component-availability")).toBeChecked();
 
-    // Verify period selector is visible (availability format) and set to 7 days
+    // Period selector is visible and set to 7 days
     await expect(page.getByTestId("badge-period-select")).toBeVisible();
-    await expect(page.getByTestId("badge-period-select")).toContainText(
-      "7 days"
-    );
+    await expect(page.getByTestId("badge-period-select")).toContainText("7 days");
 
-    // Verify style is set to flat-square
-    await expect(page.getByTestId("badge-style-select")).toContainText(
-      "Flat Square"
-    );
+    // Style is flat-square
+    await expect(page.getByTestId("badge-style-select")).toContainText("Flat Square");
 
-    // Verify custom label is filled
-    await expect(page.getByTestId("badge-custom-label")).toHaveValue(
-      "My Badge"
-    );
+    // Custom label is filled
+    await expect(page.getByTestId("badge-custom-label")).toHaveValue("My Badge");
 
-    // Verify preview is showing
+    // Preview is showing
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
     });
 
-    // Verify embed URL reflects all params
+    // Embed URL reflects the components
     const urlText = await page.getByTestId("badge-embed-url").textContent();
     expect(urlText).toContain("/badges/availability");
     expect(urlText).toContain("period=7d");
     expect(urlText).toContain("style=flat-square");
     expect(urlText).toContain("label=My+Badge");
-  });
-
-  test("should change format and update URL", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const token = await getAuthToken(page);
-    const checkName = `Badge Format ${Date.now()}`;
-    const check = await createCheck(page, token, checkName);
-
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
-    await page.waitForLoadState("networkidle");
-
-    // Wait for check to load
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
-      timeout: 10000,
-    });
-
-    // Default format is "status" - period select should NOT be visible
-    await expect(page.getByTestId("badge-period-select")).not.toBeVisible();
-
-    // URL should not have format param (default is stripped)
-    expect(new URL(page.url()).searchParams.has("format")).toBe(false);
-
-    // Switch to availability format
-    await page.getByTestId("badge-format-select").click();
-    await page.getByRole("option", { name: /^AvailabilityUptime/ }).click();
-
-    // Period select should now be visible
-    await expect(page.getByTestId("badge-period-select")).toBeVisible();
-
-    // URL should now have format=availability
-    expect(new URL(page.url()).searchParams.get("format")).toBe("availability");
-
-    // Verify embed URL updated
-    const availUrl = await page.getByTestId("badge-embed-url").textContent();
-    expect(availUrl).toContain("/badges/availability");
-  });
-
-  test("should change period and style, updating URL", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const token = await getAuthToken(page);
-    const checkName = `Badge Options ${Date.now()}`;
-    const check = await createCheck(page, token, checkName);
-
-    // Start with availability format to have the period selector
-    await page.goto(
-      `/dash0/orgs/test/badges?check=${check.slug}&format=availability`
-    );
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
-      timeout: 10000,
-    });
-
-    // Change period to 7 days
-    await page.getByTestId("badge-period-select").click();
-    await page.getByRole("option", { name: "7 days" }).click();
-
-    // Verify URL updated
-    expect(new URL(page.url()).searchParams.get("period")).toBe("7d");
-
-    // Verify embed URL
-    const url7d = await page.getByTestId("badge-embed-url").textContent();
-    expect(url7d).toContain("period=7d");
-
-    // Change style to flat-square
-    await page.getByTestId("badge-style-select").click();
-    await page.getByRole("option", { name: "Flat Square" }).click();
-
-    // Verify URL updated
-    expect(new URL(page.url()).searchParams.get("style")).toBe("flat-square");
-
-    // Verify embed URL
-    const urlStyled = await page.getByTestId("badge-embed-url").textContent();
-    expect(urlStyled).toContain("style=flat-square");
   });
 
   test("should update custom label in URL", async ({
@@ -282,21 +374,21 @@ test.describe("Badges", () => {
     const checkName = `Badge Defaults ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
-    // Navigate with all explicit defaults
+    // Navigate with non-default components
     await page.goto(
-      `/dash0/orgs/test/badges?check=${check.slug}&format=availability&period=7d&style=flat-square`
+      `/dash0/orgs/test/badges?check=${check.slug}&components=availability&period=7d&style=flat-square`
     );
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("badge-preview-img")).toBeVisible({
       timeout: 10000,
     });
 
-    // Switch format back to status (default)
-    await page.getByTestId("badge-format-select").click();
-    await page.getByRole("option", { name: /^StatusCurrent/ }).click();
+    // Switch back to only status by enabling status and disabling availability
+    await page.getByTestId("badge-component-status").click();
+    await page.getByTestId("badge-component-availability").click();
 
-    // format should be stripped from URL (it's the default)
-    expect(new URL(page.url()).searchParams.has("format")).toBe(false);
+    // components param should be stripped (default "status")
+    expect(new URL(page.url()).searchParams.has("components")).toBe(false);
 
     // Switch style back to flat (default)
     await page.getByTestId("badge-style-select").click();
