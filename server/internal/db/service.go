@@ -11,6 +11,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// PublicStatusUpdate holds a status update row for public status page display.
+// This type is used by ListPublicStatusUpdates and is independent of the admin
+// models so the DB layer does not need to know about the full status_updates model.
+type PublicStatusUpdate struct {
+	UID          string
+	SectionUID   *string
+	CheckUID     *string
+	IncidentUID  *string
+	Title        string
+	BodyMarkdown string
+	LinkURL      *string
+	Kind         string
+	PublishedAt  time.Time
+}
+
 // ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
 type ListIncidentNotificationsFilter struct {
 	IncidentUID   string    // required for the per-incident endpoint; optional for user-scoped queries
@@ -341,6 +356,13 @@ type Service interface {
 	UpdateCheckGroup(ctx context.Context, orgUID, uid string, update *models.CheckGroupUpdate) error
 	DeleteCheckGroup(ctx context.Context, uid string) error
 
+	// StatusUpdate operations
+	ListStatusUpdates(ctx context.Context, orgUID string, filter models.StatusUpdatesFilter) ([]*models.StatusUpdate, error)
+	CreateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
+	GetStatusUpdateByUID(ctx context.Context, uid string) (*models.StatusUpdate, error)
+	UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
+	SoftDeleteStatusUpdate(ctx context.Context, uid string) error
+
 	// StatusPage operations
 	CreateStatusPage(ctx context.Context, page *models.StatusPage) error
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
@@ -369,6 +391,11 @@ type Service interface {
 	ReorderStatusPageSections(ctx context.Context, statusPageUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
+
+	// ListPublicStatusUpdates returns recent status updates for a status page within the given
+	// history window. Returns an empty slice (not an error) when the status_updates table does
+	// not yet exist (graceful degradation before the backend spec migration is applied).
+	ListPublicStatusUpdates(ctx context.Context, statusPageUID string, historyDays int) ([]*PublicStatusUpdate, error)
 
 	// MaintenanceWindow operations
 	CreateMaintenanceWindow(ctx context.Context, window *models.MaintenanceWindow) error
@@ -431,6 +458,34 @@ type Service interface {
 	ApproveMembershipRequest(
 		ctx context.Context, request *models.MembershipRequest, member *models.OrganizationMember,
 	) error
+
+	// --- UserContacts / UserNotificationRoutes ---
+
+	// ListUserContactsWithRoutes returns the ordered notification routes for a user in an org,
+	// with the Contact relation eagerly loaded. Soft-deleted contacts are excluded.
+	ListUserContactsWithRoutes(ctx context.Context, userUID, orgUID string) ([]*models.UserNotificationRoute, error)
+
+	// EnsureDefaultEmailRoute idempotently creates one email contact and one enabled route
+	// for the user in the org. Safe to call concurrently — uses INSERT … ON CONFLICT DO NOTHING.
+	EnsureDefaultEmailRoute(ctx context.Context, userUID, orgUID, email string) error
+
+	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
+	// it undeletes the row and updates the label.
+	UpsertUserContact(ctx context.Context, c *models.UserContact) error
+
+	// DeleteUserContact soft-deletes a contact by UID.
+	DeleteUserContact(ctx context.Context, uid string) error
+
+	// SetRouteEnabled toggles the enabled flag on a route.
+	SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error
+
+	// ReorderRoutes sets the position of each route to its index in routeUIDs.
+	// Only routes belonging to the given user+org are affected; unknown UIDs are ignored.
+	ReorderRoutes(ctx context.Context, userUID, orgUID string, routeUIDs []string) error
+
+	// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
+	// Returns nil, nil when no Slack channel is configured.
+	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
 
 	// Close closes the database connection and cleans up resources
 	io.Closer
