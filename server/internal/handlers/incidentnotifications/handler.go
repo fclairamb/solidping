@@ -1,0 +1,149 @@
+package incidentnotifications
+
+import (
+	"errors"
+	"net/http"
+	"strconv"
+	"time"
+
+	"github.com/uptrace/bunrouter"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/middleware"
+)
+
+const jsonDataKey = "data"
+
+// Handler exposes the incident notifications read API.
+type Handler struct {
+	base.HandlerBase
+	svc *Service
+}
+
+// NewHandler builds a handler.
+func NewHandler(svc *Service, cfg *config.Config) *Handler {
+	return &Handler{
+		HandlerBase: base.NewHandlerBase(cfg),
+		svc:         svc,
+	}
+}
+
+func (h *Handler) handleError(w http.ResponseWriter, err error) error {
+	switch {
+	case errors.Is(err, ErrOrgNotFound):
+		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+	case errors.Is(err, ErrIncidentNotFound):
+		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
+	case errors.Is(err, ErrForbidden):
+		return h.WriteError(w, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
+	default:
+		return h.WriteInternalError(w, err)
+	}
+}
+
+// parseListFilter parses shared query-string parameters into a ListFilter.
+func parseListFilter(q bunrouter.Request) ListFilter {
+	f := ListFilter{Limit: 100}
+
+	if v := q.URL.Query().Get("status"); v != "" {
+		f.Status = v
+	}
+
+	if v := q.URL.Query().Get("userUid"); v != "" {
+		f.UserUID = v
+	}
+
+	if v := q.URL.Query().Get("connectionUid"); v != "" {
+		f.ConnectionUID = v
+	}
+
+	if v := q.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			f.Limit = n
+		}
+	}
+
+	if v := q.URL.Query().Get("before"); v != "" {
+		if t, err := time.Parse(time.RFC3339, v); err == nil {
+			f.Before = t
+		}
+	}
+
+	return f
+}
+
+// ListForIncident handles GET /api/v1/orgs/:org/incidents/:uid/notifications.
+func (h *Handler) ListForIncident(w http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	incidentUID := req.Param("uid")
+	f := parseListFilter(req)
+
+	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, f)
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
+
+// ListForUser handles GET /api/v1/orgs/:org/users/:uid/notifications.
+// Admins can query any user; regular members can only query themselves.
+func (h *Handler) ListForUser(w http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	targetUID := req.Param("uid")
+
+	callerUser, ok := middleware.GetUserFromContext(req.Context())
+	if !ok {
+		return h.WriteError(w, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	// Authorization: self always allowed; other users require admin membership.
+	if callerUser.UID != targetUID {
+		member, memberErr := h.svc.db.GetMemberByUserAndOrg(req.Context(), callerUser.UID, orgUID)
+		if memberErr != nil || member.Role != models.MemberRoleAdmin {
+			return h.handleError(w, ErrForbidden)
+		}
+	}
+
+	f := parseListFilter(req)
+
+	rows, err := h.svc.ListForUser(req.Context(), orgUID, targetUID, f)
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
+
+// ListForMe handles GET /api/v1/orgs/:org/me/notifications.
+// Alias for ListForUser with the caller's own UID.
+func (h *Handler) ListForMe(w http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	callerUser, ok := middleware.GetUserFromContext(req.Context())
+	if !ok {
+		return h.WriteError(w, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+	}
+
+	f := parseListFilter(req)
+
+	rows, err := h.svc.ListForUser(req.Context(), orgUID, callerUser.UID, f)
+	if err != nil {
+		return h.handleError(w, err)
+	}
+
+	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
