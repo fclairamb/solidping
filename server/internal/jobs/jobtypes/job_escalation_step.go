@@ -104,7 +104,7 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		return fmt.Errorf("%w: %w", ErrIncidentNotFound, err)
 	}
 
-	if !incidentNeedsPaging(incident) {
+	if !incidentNeedsPaging(incident, jctx.Services.Clock.Now()) {
 		log.InfoContext(ctx, "escalation step skipped — incident already handled")
 
 		return nil
@@ -137,11 +137,11 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 
 // incidentNeedsPaging is the belt-and-braces guard: even if the cancel
 // sweep missed this row, we still skip if the incident has been handled.
-func incidentNeedsPaging(incident *models.Incident) bool {
+func incidentNeedsPaging(incident *models.Incident, now time.Time) bool {
 	if incident.AcknowledgedAt != nil || incident.ResolvedAt != nil {
 		return false
 	}
-	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(time.Now()) {
+	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(now) {
 		return false
 	}
 
@@ -349,7 +349,7 @@ func (r *EscalationStepJobRun) pageSchedule(
 		return 0
 	}
 
-	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, time.Now())
+	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, jctx.Services.Clock.Now())
 	if err != nil {
 		log.WarnContext(ctx, "on-call schedule resolution failed",
 			"scheduleUid", *scheduleUID, "error", err)
@@ -454,7 +454,7 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 		return err
 	}
 
-	startAt := time.Now().Add(time.Duration(*policy.RepeatAfterMinutes) * time.Minute)
+	startAt := jctx.Services.Clock.Now().Add(time.Duration(*policy.RepeatAfterMinutes) * time.Minute)
 
 	return ScheduleEscalationCycle(
 		ctx, jctx.Services.Jobs, incident, policy, steps, startAt, r.config.RepeatIndex+1, log,
