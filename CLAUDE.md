@@ -71,6 +71,18 @@ TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
 curl -s -H "Authorization: Bearer $TOKEN" 'http://localhost:4000/api/v1/orgs/default/checks'
 ```
 
+## Observability toggles
+
+Three independent env vars control which observability surfaces are active:
+
+| Env var | Default | Effect |
+|---|---|---|
+| `SP_PROMETHEUS_ENABLED` | `true` | Gates the `/metrics` HTTP handler. When `false`, the endpoint returns 404. Metric collection itself stays on — only the scrape endpoint is gated. |
+| `SP_PROFILER_ENABLED` | `false` | Starts the pprof HTTP server. Listen address controlled by `SP_PROFILER_LISTEN` (default `localhost:6060`). |
+| `SP_OTEL_ENABLED` | `false` | Enables OpenTelemetry span export. HTTP and DB instrumentation record spans only when this is `true`. |
+
+All three are independent — enabling one does not enable any other.
+
 ## Testing
 - **Backend**: table-driven tests + testcontainers for integration (see `server/CLAUDE.md`)
 - **Dash0**: Playwright E2E in `web/dash0/e2e/` (see `web/dash0/CLAUDE.md`)
