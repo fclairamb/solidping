@@ -38,6 +38,9 @@ type NotificationJobConfig struct {
 	ConnectionUID string `json:"connectionUid"`
 	IncidentUID   string `json:"incidentUid"`
 	EventType     string `json:"eventType"` // "incident.created", "incident.resolved", "incident.escalated"
+	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
+	// NotificationJobRun.Run can update the matching audit row by job_uid.
+	JobUID string `json:"jobUid,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
