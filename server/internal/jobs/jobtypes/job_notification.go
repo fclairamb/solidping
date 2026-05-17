@@ -155,6 +155,28 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		"eventType", r.config.EventType,
 	)
 
+	if sendErr := r.sendAndAudit(ctx, jctx, sender, payload); sendErr != nil {
+		return sendErr
+	}
+
+	log.InfoContext(ctx, "Notification sent successfully")
+
+	// Activation funnel: idempotent — fires once on the first successful
+	// incident notification dispatch for this org.
+	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
+		models.EventTypeOrgActivationFirstIncidentPaged,
+		activation.SourceSystem, "")
+
+	return nil
+}
+
+// sendAndAudit delivers the notification and updates the audit row by job UID.
+func (r *NotificationJobRun) sendAndAudit(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	sender notifications.Sender,
+	payload *notifications.Payload,
+) error {
 	if err := sender.Send(ctx, jctx, payload); err != nil {
 		// Network errors should be retryable — leave the audit row at pending
 		// so a subsequent retry can update it.
@@ -177,14 +199,6 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
 		ctx, jctx.Job.UID, time.Now(), "",
 	)
-
-	log.InfoContext(ctx, "Notification sent successfully")
-
-	// Activation funnel: idempotent — fires once on the first successful
-	// incident notification dispatch for this org.
-	activation.Emit(ctx, jctx.DBService, connection.OrganizationUID,
-		models.EventTypeOrgActivationFirstIncidentPaged,
-		activation.SourceSystem, "")
 
 	return nil
 }

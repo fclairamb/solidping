@@ -349,7 +349,9 @@ func (r *EscalationStepJobRun) pageUser(
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email, *userUID, models.IncidentNotificationSourceEscalationUser)
+	return r.sendEscalationEmail(
+		ctx, jctx, log, incident, user.Email, *userUID, models.IncidentNotificationSourceEscalationUser,
+	)
 }
 
 // pageSchedule resolves who is on call right now and pages them via
@@ -389,7 +391,9 @@ func (r *EscalationStepJobRun) pageSchedule(
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule)
+	return r.sendEscalationEmail(
+		ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+	)
 }
 
 // pageAllAdmins emails every admin member of the incident's org.
@@ -414,7 +418,10 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 			continue
 		}
 
-		count += r.sendEscalationEmail(ctx, jctx, log, incident, member.User.Email, member.UserUID, models.IncidentNotificationSourceEscalationAllAdmins)
+		count += r.sendEscalationEmail(
+			ctx, jctx, log, incident, member.User.Email, member.UserUID,
+			models.IncidentNotificationSourceEscalationAllAdmins,
+		)
 	}
 
 	if count == 0 {

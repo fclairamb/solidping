@@ -104,12 +104,12 @@ func (s *Service) MarkIncidentNotificationFailedByJob(
 // an incident. Filters on status=pending to avoid clobbering completed rows.
 // Returns the number of rows updated.
 func (s *Service) CancelIncidentNotificationsForIncident(
-	ctx context.Context, incidentUID string, cancelledAt time.Time,
+	ctx context.Context, incidentUID string, canceledAt time.Time,
 ) (int64, error) {
 	result, err := s.db.NewUpdate().
 		TableExpr("incident_notifications").
-		Set("status = ?", models.IncidentNotificationStatusCancelled).
-		Set("cancelled_at = ?", cancelledAt).
+		Set("status = ?", models.IncidentNotificationStatusCanceled).
+		Set("cancelled_at = ?", canceledAt). //nolint:misspell // DB column uses British English
 		Where("incident_uid = ? AND status = ?", incidentUID, models.IncidentNotificationStatusPending).
 		Exec(ctx)
 	if err != nil {

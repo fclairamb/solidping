@@ -328,13 +328,13 @@ func (s *serviceImpl) CancelPendingForIncident(
 
 	// Also cancel any pending audit rows for this incident.
 	if s.dbSvc != nil {
-		cancelled, auditErr := s.dbSvc.CancelIncidentNotificationsForIncident(ctx, incidentUID, now)
+		canceledCount, auditErr := s.dbSvc.CancelIncidentNotificationsForIncident(ctx, incidentUID, now)
 		if auditErr != nil {
 			slog.WarnContext(ctx, "failed to cancel notification audit rows",
 				"incident_uid", incidentUID, "error", auditErr)
 		} else {
-			slog.DebugContext(ctx, "cancelled notification audit rows",
-				"incident_uid", incidentUID, "count", cancelled)
+			slog.DebugContext(ctx, "canceled notification audit rows",
+				"incident_uid", incidentUID, "count", canceledCount)
 		}
 	}
 

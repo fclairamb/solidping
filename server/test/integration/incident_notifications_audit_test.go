@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/require"
-
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -46,7 +45,6 @@ func auditRows(
 // an in-memory SQLite, one org, one check, and one webhook connection
 // bound to the check.
 type notificationAuditSetup struct {
-	ctx    context.Context
 	dbSvc  *sqlite.Service
 	jobs   jobsvc.Service
 	svc    *incidents.Service
@@ -99,7 +97,6 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 	return &notificationAuditSetup{
-		ctx:    ctx,
 		dbSvc:  dbSvc,
 		jobs:   jobs,
 		svc:    svc,
@@ -115,11 +112,12 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 func (s *notificationAuditSetup) triggerIncident(t *testing.T) *models.Incident {
 	t.Helper()
 
+	ctx := t.Context()
 	r := require.New(t)
 	result := models.NewResult(s.org.UID, s.check.UID, models.ResultStatusDown, 0.5)
-	r.NoError(s.svc.ProcessCheckResult(s.ctx, s.check, result))
+	r.NoError(s.svc.ProcessCheckResult(ctx, s.check, result))
 
-	incident, err := s.dbSvc.FindActiveIncidentByCheckUID(s.ctx, s.check.UID)
+	incident, err := s.dbSvc.FindActiveIncidentByCheckUID(ctx, s.check.UID)
 	r.NoError(err)
 	r.NotNil(incident)
 
@@ -155,7 +153,9 @@ func pendingNotificationJobsForIncident(
 }
 
 // makeJobContext builds a minimal JobContext for running a notification job.
-func (s *notificationAuditSetup) makeJobContext(job *models.Job, svcList *services.Registry) *jobdef.JobContext {
+func (s *notificationAuditSetup) makeJobContext(
+	job *models.Job, svcList *services.Registry,
+) *jobdef.JobContext {
 	return &jobdef.JobContext{
 		Job:       job,
 		DBService: s.dbSvc,
@@ -171,6 +171,7 @@ func TestAuditCheckConnectionSend(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx := t.Context()
 
 	// Spin up a fake webhook server that accepts any POST.
 	webhookCalled := make(chan struct{}, 1)
@@ -192,7 +193,7 @@ func TestAuditCheckConnectionSend(t *testing.T) {
 		Model(s.conn).
 		Column("settings").
 		Where("uid = ?", s.conn.UID).
-		Exec(s.ctx)
+		Exec(ctx)
 	r.NoError(err)
 
 	incident := s.triggerIncident(t)
@@ -219,7 +220,7 @@ func TestAuditCheckConnectionSend(t *testing.T) {
 	r.NoError(err)
 
 	jctx := s.makeJobContext(jobRow, &services.Registry{})
-	r.NoError(jobRun.Run(s.ctx, jctx))
+	r.NoError(jobRun.Run(ctx, jctx))
 
 	// Webhook should have been called.
 	select {
@@ -255,16 +256,17 @@ func TestAuditEscalationUserSend(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx := t.Context()
 
 	s := newNotificationAuditSetup(t)
 
 	// Create a user to page.
 	user := models.NewUser("oncall@example.com")
-	r.NoError(s.dbSvc.CreateUser(s.ctx, user))
+	r.NoError(s.dbSvc.CreateUser(ctx, user))
 
 	// Create an escalation policy with a user target, delay 0.
 	policy := models.NewEscalationPolicy(s.org.UID, "pager", "Pager Policy")
-	r.NoError(s.dbSvc.CreateEscalationPolicy(s.ctx, policy))
+	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
 	steps := []*models.EscalationPolicyStep{step}
@@ -273,17 +275,17 @@ func TestAuditEscalationUserSend(t *testing.T) {
 			models.NewEscalationPolicyTarget(step.UID, models.EscalationTargetUser, &user.UID, 0),
 		},
 	}
-	r.NoError(s.dbSvc.ReplaceEscalationPolicySteps(s.ctx, policy.UID, steps, targetsByIdx))
+	r.NoError(s.dbSvc.ReplaceEscalationPolicySteps(ctx, policy.UID, steps, targetsByIdx))
 
 	// Reload the step to get its persisted UID.
-	persistedSteps, err := s.dbSvc.ListEscalationPolicySteps(s.ctx, policy.UID)
+	persistedSteps, err := s.dbSvc.ListEscalationPolicySteps(ctx, policy.UID)
 	r.NoError(err)
 	r.Len(persistedSteps, 1)
 	persistedStep := persistedSteps[0]
 
 	// Create an active incident directly.
 	incident := models.NewIncident(s.org.UID, s.check.UID, time.Now(), "check is down")
-	r.NoError(s.dbSvc.CreateIncident(s.ctx, incident))
+	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
 
 	// Build and run an escalation step job directly.
 	cfg := jobtypes.EscalationStepJobConfig{
@@ -314,7 +316,7 @@ func TestAuditEscalationUserSend(t *testing.T) {
 		Logger:    s.logger,
 	}
 
-	r.NoError(jobRun.Run(s.ctx, jctx))
+	r.NoError(jobRun.Run(ctx, jctx))
 
 	// Audit row: status=sent, user_uid=user.UID, channel_type=email.
 	rows := auditRows(t, s.dbSvc, incident.UID)
@@ -336,11 +338,12 @@ func TestAuditEscalationUserSend(t *testing.T) {
 }
 
 // TestAuditCancellation verifies that acknowledging an incident before the
-// escalation job fires flips all pending audit rows to cancelled.
+// escalation job fires flips all pending audit rows to canceled.
 func TestAuditCancellation(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx := t.Context()
 
 	s := newNotificationAuditSetup(t)
 	incident := s.triggerIncident(t)
@@ -353,17 +356,17 @@ func TestAuditCancellation(t *testing.T) {
 	}
 
 	// Cancel (simulates ack / resolve cancellation sweep).
-	cancelled, err := s.jobs.CancelPendingForIncident(s.ctx, incident.UID, nil)
+	canceledCount, err := s.jobs.CancelPendingForIncident(ctx, incident.UID, nil)
 	r.NoError(err)
-	r.Greater(cancelled, int64(0), "expected at least one job to be cancelled")
+	r.Positive(canceledCount, "expected at least one job to be canceled")
 
-	// All audit rows should now be cancelled.
+	// All audit rows should now be canceled.
 	rows = auditRows(t, s.dbSvc, incident.UID)
 	r.NotEmpty(rows)
 	for _, row := range rows {
-		r.Equal(models.IncidentNotificationStatusCancelled, row.Status,
-			"all audit rows should be cancelled after sweep")
-		r.NotNil(row.CancelledAt)
+		r.Equal(models.IncidentNotificationStatusCanceled, row.Status,
+			"all audit rows should be canceled after sweep")
+		r.NotNil(row.CanceledAt)
 	}
 }
 
@@ -373,6 +376,7 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx := t.Context()
 
 	s := newNotificationAuditSetup(t)
 
@@ -391,12 +395,12 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 		CreatedAt:       time.Now(),
 		UpdatedAt:       time.Now(),
 	}
-	r.NoError(s.dbSvc.CreateOnCallSchedule(s.ctx, schedule))
+	r.NoError(s.dbSvc.CreateOnCallSchedule(ctx, schedule))
 	// Empty roster: no users added.
 
 	// Create an escalation policy with a schedule target.
 	policy := models.NewEscalationPolicy(s.org.UID, "sched-policy", "Schedule Policy")
-	r.NoError(s.dbSvc.CreateEscalationPolicy(s.ctx, policy))
+	r.NoError(s.dbSvc.CreateEscalationPolicy(ctx, policy))
 
 	step := models.NewEscalationPolicyStep(policy.UID, 0, 0)
 	steps := []*models.EscalationPolicyStep{step}
@@ -405,16 +409,16 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 			models.NewEscalationPolicyTarget(step.UID, models.EscalationTargetSchedule, &schedule.UID, 0),
 		},
 	}
-	r.NoError(s.dbSvc.ReplaceEscalationPolicySteps(s.ctx, policy.UID, steps, targetsByIdx))
+	r.NoError(s.dbSvc.ReplaceEscalationPolicySteps(ctx, policy.UID, steps, targetsByIdx))
 
-	persistedSteps, err := s.dbSvc.ListEscalationPolicySteps(s.ctx, policy.UID)
+	persistedSteps, err := s.dbSvc.ListEscalationPolicySteps(ctx, policy.UID)
 	r.NoError(err)
 	r.Len(persistedSteps, 1)
 	persistedStep := persistedSteps[0]
 
 	// Create an incident.
 	incident := models.NewIncident(s.org.UID, s.check.UID, time.Now(), "check is down")
-	r.NoError(s.dbSvc.CreateIncident(s.ctx, incident))
+	r.NoError(s.dbSvc.CreateIncident(ctx, incident))
 
 	// Run the escalation step job.
 	cfg := jobtypes.EscalationStepJobConfig{
@@ -443,7 +447,7 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 		Logger:    s.logger,
 	}
 
-	r.NoError(jobRun.Run(s.ctx, jctx))
+	r.NoError(jobRun.Run(ctx, jctx))
 
 	// Audit row: status=skipped, skip_reason set (schedule_resolve_failed since no users).
 	rows := auditRows(t, s.dbSvc, incident.UID)
@@ -468,6 +472,7 @@ func TestAuditDeliveryFailure(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx := t.Context()
 
 	s := newNotificationAuditSetup(t)
 
@@ -477,7 +482,7 @@ func TestAuditDeliveryFailure(t *testing.T) {
 		Model(s.conn).
 		Column("settings").
 		Where("uid = ?", s.conn.UID).
-		Exec(s.ctx)
+		Exec(ctx)
 	r.NoError(err)
 
 	incident := s.triggerIncident(t)
@@ -496,7 +501,7 @@ func TestAuditDeliveryFailure(t *testing.T) {
 	jctx := s.makeJobContext(jobRow, &services.Registry{})
 
 	// The delivery will fail (connection refused); the job runner returns an error.
-	runErr := jobRun.Run(s.ctx, jctx)
+	runErr := jobRun.Run(ctx, jctx)
 	r.Error(runErr, "job run should return an error on delivery failure")
 
 	// Audit row should now be failed or still pending (if retryable).

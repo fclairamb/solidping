@@ -7,13 +7,16 @@ import (
 	"github.com/uptrace/bun"
 )
 
+// IncidentNotificationChannelTypeNone is used for skipped rows where no channel is involved.
+const IncidentNotificationChannelTypeNone = "none"
+
 // Status constants for IncidentNotification.
 const (
-	IncidentNotificationStatusPending   = "pending"
-	IncidentNotificationStatusSent      = "sent"
-	IncidentNotificationStatusFailed    = "failed"
-	IncidentNotificationStatusCancelled = "cancelled"
-	IncidentNotificationStatusSkipped   = "skipped"
+	IncidentNotificationStatusPending  = "pending"
+	IncidentNotificationStatusSent     = "sent"
+	IncidentNotificationStatusFailed   = "failed"
+	IncidentNotificationStatusCanceled = "cancelled" //nolint:misspell // DB column uses British English
+	IncidentNotificationStatusSkipped  = "skipped"
 )
 
 // Source constants for IncidentNotification.
@@ -26,7 +29,7 @@ const (
 )
 
 // IncidentNotification records one dispatch target per event, with full
-// lifecycle tracking (pending → sent | failed | cancelled | skipped).
+// lifecycle tracking (pending → sent | failed | canceled | skipped).
 type IncidentNotification struct {
 	bun.BaseModel `bun:"table:incident_notifications"`
 
@@ -47,7 +50,7 @@ type IncidentNotification struct {
 	MessageID       *string    `bun:"message_id"`
 	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	SentAt          *time.Time `bun:"sent_at"`
-	CancelledAt     *time.Time `bun:"cancelled_at"`
+	CanceledAt      *time.Time `bun:"cancelled_at"` //nolint:misspell // DB column uses British English
 	FailedAt        *time.Time `bun:"failed_at"`
 }
 
@@ -108,7 +111,7 @@ func NewSkippedIncidentNotification(
 		StepUID:         stepUID,
 		RepeatIndex:     repeatIndex,
 		Source:          source,
-		ChannelType:     "none",
+		ChannelType:     IncidentNotificationChannelTypeNone,
 		Status:          IncidentNotificationStatusSkipped,
 		SkipReason:      &skipReason,
 		CreatedAt:       time.Now(),
