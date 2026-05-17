@@ -426,4 +426,60 @@ test.describe("Checks", () => {
       fullPage: true,
     });
   });
+
+  test("should create a WebSocket check with send/expect fields and round-trip on edit", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Navigate to new check form
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Select WebSocket type
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /WebSocket/i }).click();
+
+    // Wait for websocket-specific fields
+    await expect(page.getByTestId("check-ws-send-input")).toBeVisible();
+    await expect(page.getByTestId("check-ws-expect-input")).toBeVisible();
+
+    const checkName = `E2E WS ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("wss://echo.websocket.org");
+    await page.getByTestId("check-ws-send-input").fill("hello");
+    await page.getByTestId("check-ws-expect-input").fill("hello");
+
+    // Take screenshot before submit
+    await page.screenshot({
+      path: "test-results/screenshots/checks-ws-form.png",
+      fullPage: true,
+    });
+
+    // Submit
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Navigate to edit page to verify fields round-trip
+    await page.getByRole("link", { name: /Edit/i }).click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-url-input")).toHaveValue("wss://echo.websocket.org");
+    await expect(page.getByTestId("check-ws-send-input")).toHaveValue("hello");
+    await expect(page.getByTestId("check-ws-expect-input")).toHaveValue("hello");
+
+    // Take screenshot of edit form with persisted values
+    await page.screenshot({
+      path: "test-results/screenshots/checks-ws-edit.png",
+      fullPage: true,
+    });
+  });
 });

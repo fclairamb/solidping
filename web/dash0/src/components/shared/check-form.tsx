@@ -377,6 +377,8 @@ export function CheckForm({
   const [community, setCommunity] = useState(getConfigField(initialData?.config, "community"));
   const [waitSelector, setWaitSelector] = useState(getConfigField(initialData?.config, "waitSelector"));
   const [keyword, setKeyword] = useState(getConfigField(initialData?.config, "keyword"));
+  const [wsSend, setWsSend] = useState(getConfigField(initialData?.config, "send"));
+  const [wsExpect, setWsExpect] = useState(getConfigField(initialData?.config, "expect"));
   const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
   const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
   const [thresholdDays, setThresholdDays] = useState(
@@ -478,21 +480,27 @@ export function CheckForm({
     setKeyword(getConfigField(cfg, "keyword"));
     setExpectedValue(getConfigField(cfg, "expectedValue"));
     setSnmpOperator(getConfigField(cfg, "operator") || "equals");
+    setWsSend(getConfigField(cfg, "send"));
+    setWsExpect(getConfigField(cfg, "expect"));
   }
 
   const currentConfig = useMemo(() => {
     const cfg: Record<string, unknown> = {};
     switch (type) {
       case "http":
-      case "websocket":
         if (url) cfg.url = url;
-        if (type === "http") {
-          if (method && method !== "GET") cfg.method = method;
+        if (method && method !== "GET") cfg.method = method;
+        {
           const statusCode = parseInt(expectedStatus, 10);
           if (!isNaN(statusCode) && statusCode !== 200) cfg.expectedStatus = statusCode;
-          if (username) cfg.username = username;
-          if (password) cfg.password = password;
         }
+        if (username) cfg.username = username;
+        if (password) cfg.password = password;
+        break;
+      case "websocket":
+        if (url) cfg.url = url;
+        if (wsSend) cfg.send = wsSend;
+        if (wsExpect) cfg.expect = wsExpect;
         break;
       case "ssl":
         if (host) cfg.host = host;
@@ -633,7 +641,7 @@ export function CheckForm({
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
-    waitSelector, keyword]);
+    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -651,16 +659,21 @@ export function CheckForm({
 
     switch (type) {
       case "http":
+        if (!url) { setError("URL is required"); return; }
+        config.url = url;
+        if (method && method !== "GET") config.method = method;
+        {
+          const statusCode = parseInt(expectedStatus, 10);
+          if (!isNaN(statusCode) && statusCode !== 200) config.expectedStatus = statusCode;
+        }
+        if (username) config.username = username;
+        if (password) config.password = password;
+        break;
       case "websocket":
         if (!url) { setError("URL is required"); return; }
         config.url = url;
-        if (type === "http") {
-          if (method && method !== "GET") config.method = method;
-          const statusCode = parseInt(expectedStatus, 10);
-          if (!isNaN(statusCode) && statusCode !== 200) config.expectedStatus = statusCode;
-          if (username) config.username = username;
-          if (password) config.password = password;
-        }
+        if (wsSend) config.send = wsSend;
+        if (wsExpect) config.expect = wsExpect;
         break;
       case "ssl":
         if (!host) { setError("Host is required"); return; }
@@ -959,12 +972,24 @@ export function CheckForm({
         );
       case "websocket":
         return (
-          <div className="space-y-2">
-            <Label htmlFor="url">URL</Label>
-            <Input id="url" type="url" placeholder="wss://example.com/ws" value={url} onChange={(e) => setUrl(e.target.value)}
-              className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
-            {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
-          </div>
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="url">URL</Label>
+              <Input id="url" type="url" placeholder="wss://example.com/ws" value={url} onChange={(e) => setUrl(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "url") && "border-destructive")} data-testid="check-url-input" />
+              {getFieldError(fieldErrors, "url") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "url")}</p>)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wsSend">Send (optional)</Label>
+              <Input id="wsSend" type="text" placeholder="hello" value={wsSend} onChange={(e) => setWsSend(e.target.value)}
+                data-testid="check-ws-send-input" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="wsExpect">Expected pattern (regex, optional)</Label>
+              <Input id="wsExpect" type="text" placeholder="hello" value={wsExpect} onChange={(e) => setWsExpect(e.target.value)}
+                data-testid="check-ws-expect-input" />
+            </div>
+          </>
         );
       case "tcp":
       case "udp":

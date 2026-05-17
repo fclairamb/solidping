@@ -190,13 +190,10 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize services
 	svcList := services.NewRegistry()
-	jobService := jobsvc.NewService(dbService.DB(), dbService)
-	svcList.Jobs = jobService
 
-	checkJobService := checkjobsvc.NewService(dbService.DB())
-	svcList.CheckJobs = checkJobService
-
-	// Create check notifier based on database type
+	// Create check notifier based on database type — must be created before the
+	// job service so its LISTEN channel can wake up GetJobWait immediately on
+	// Postgres when a job is inserted via NOTIFY jobs.
 	var connString string
 	switch cfg.Database.Type {
 	case "postgres":
@@ -214,6 +211,20 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create event notifier: %w", err)
 	}
 	svcList.EventNotifier = eventNotifier
+
+	// Wire LISTEN/NOTIFY wakeup into the job service for Postgres. On Postgres,
+	// CreateJob sends "NOTIFY jobs"; we subscribe here so GetJobWait wakes
+	// immediately instead of waiting for the 1-minute poll ticker.
+	var jobService jobsvc.Service
+	if wakeupCh := eventNotifier.Listen("jobs"); wakeupCh != nil {
+		jobService = jobsvc.NewServiceWithWakeup(dbService.DB(), dbService, wakeupCh)
+	} else {
+		jobService = jobsvc.NewService(dbService.DB(), dbService)
+	}
+	svcList.Jobs = jobService
+
+	checkJobService := checkjobsvc.NewService(dbService.DB())
+	svcList.CheckJobs = checkJobService
 
 	// Create email services
 	emailSender := email.NewSender(&cfg.Email, slog.Default())
@@ -1683,6 +1694,16 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// Services returns the services registry (used for testing).
+func (s *Server) Services() *services.Registry {
+	return s.services
+}
+
+// JobSvc returns the job service (used for testing).
+func (s *Server) JobSvc() jobsvc.Service {
+	return s.jobSvc
 }
 
 // BuildCredentialsService loads the KEK (env or file), constructs the

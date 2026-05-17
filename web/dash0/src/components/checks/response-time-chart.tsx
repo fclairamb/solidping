@@ -12,7 +12,7 @@ import {
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
 import { useNavigate } from "@tanstack/react-router";
-import { useResults } from "@/api/hooks";
+import { useAllResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -264,20 +264,19 @@ export function ResponseTimeChart({
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
-  // Pick exactly one tier per range so the chart fetches the smallest payload
-  // that still covers the window. The aggregator stores each timestamp in
-  // exactly one tier, so the trailing edge of the current bucket can be
-  // briefly missing on the right edge of the chart while the rollup runs —
-  // accept that visual gap rather than fetching the full raw timeline.
+  // Include raw as a co-tier so the current open bucket (which the aggregator
+  // never rolls up until it closes) is always represented. The aggregator
+  // deletes source rows after rollup, so raw + hour + day are disjoint in
+  // time — no duplicates. detectGaps() already handles tier transitions.
   const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
   const periodType =
     timeRange === "month"
-      ? "day"
+      ? "raw,hour,day"
       : timeRange === "week"
-        ? "hour"
+        ? "raw,hour"
         : timeRange === "day"
           ? denseEnoughForHourly
-            ? "hour"
+            ? "raw,hour"
             : "raw"
           : "raw";
 
@@ -290,12 +289,12 @@ export function ResponseTimeChart({
       ? Math.max(baseInterval, 5 * 60_000)
       : Math.max(baseInterval, 30_000);
 
-  const { data: results, isLoading } = useResults(org, {
+  const { data: results, isLoading } = useAllResults(org, {
     checkUid,
     periodStartAfter,
     periodType,
     with: "durationMs,region",
-    size: 500,
+    size: 1000,
     refetchInterval: chartRefetchInterval,
   });
 
