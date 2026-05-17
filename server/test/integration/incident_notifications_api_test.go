@@ -12,9 +12,8 @@ import (
 )
 
 // setupIncidentNotificationRows seeds an incident with notification audit rows
-// for one user and one connection, then returns the incident UID and the user
-// UID used as a target.
-func setupIncidentNotificationRows(t *testing.T, ts *TestServer) (incidentUID, userUID string) {
+// for one user and one connection, then returns the incident UID.
+func setupIncidentNotificationRows(t *testing.T, ts *TestServer) string {
 	t.Helper()
 
 	ctx := t.Context()
@@ -55,7 +54,7 @@ func setupIncidentNotificationRows(t *testing.T, ts *TestServer) (incidentUID, u
 	r.NoError(dbSvc.CreateIncident(ctx, incident))
 
 	// Use the test user (admin) as the notification target.
-	userUID = "10000000-0000-0000-0000-000000000002" // pre-seeded by testhelper
+	const testUserUID = "10000000-0000-0000-0000-000000000002" // pre-seeded by testhelper
 
 	// Create a channel (connection).
 	conn := models.NewChannel(orgUID, models.ConnectionTypeWebhook, "notif-test-conn")
@@ -65,7 +64,7 @@ func setupIncidentNotificationRows(t *testing.T, ts *TestServer) (incidentUID, u
 	userRow := models.NewIncidentNotificationForUser(
 		orgUID, incident.UID, "incident.triggered",
 		models.IncidentNotificationSourceEscalationUser,
-		userUID, "email", nil, nil,
+		testUserUID, "email", nil, nil,
 	)
 	sentAt := time.Now()
 	userRow.Status = models.IncidentNotificationStatusSent
@@ -82,7 +81,7 @@ func setupIncidentNotificationRows(t *testing.T, ts *TestServer) (incidentUID, u
 	connRow.SentAt = &sentAt
 	r.NoError(dbSvc.CreateIncidentNotification(ctx, connRow))
 
-	return incident.UID, userUID
+	return incident.UID
 }
 
 // TestListIncidentNotifications verifies the per-incident listing endpoint.
@@ -92,7 +91,7 @@ func TestListIncidentNotifications(t *testing.T) {
 	ts := NewTestServer(t)
 	t.Cleanup(ts.Close)
 
-	incidentUID, _ := setupIncidentNotificationRows(t, ts)
+	incidentUID := setupIncidentNotificationRows(t, ts)
 
 	path := "/api/v1/orgs/" + TestOrgSlug + "/incidents/" + incidentUID + "/notifications"
 	status, raw := authedRequest(t, ts, http.MethodGet, path)
@@ -115,7 +114,7 @@ func TestListIncidentNotificationsStatusFilter(t *testing.T) {
 	ts := NewTestServer(t)
 	t.Cleanup(ts.Close)
 
-	incidentUID, _ := setupIncidentNotificationRows(t, ts)
+	incidentUID := setupIncidentNotificationRows(t, ts)
 
 	path := "/api/v1/orgs/" + TestOrgSlug + "/incidents/" + incidentUID + "/notifications?status=sent"
 	status, raw := authedRequest(t, ts, http.MethodGet, path)
@@ -139,7 +138,7 @@ func TestListUserNotificationsForSelf(t *testing.T) {
 	ts := NewTestServer(t)
 	t.Cleanup(ts.Close)
 
-	_, _ = setupIncidentNotificationRows(t, ts)
+	setupIncidentNotificationRows(t, ts)
 
 	path := "/api/v1/orgs/" + TestOrgSlug + "/me/notifications"
 	status, raw := authedRequest(t, ts, http.MethodGet, path)

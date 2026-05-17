@@ -30,120 +30,120 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 	}
 }
 
-func (h *Handler) handleError(w http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrgNotFound):
-		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrIncidentNotFound):
-		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
 	case errors.Is(err, ErrForbidden):
-		return h.WriteError(w, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
 	default:
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 }
 
 // parseListFilter parses shared query-string parameters into a ListFilter.
-func parseListFilter(q bunrouter.Request) ListFilter {
-	f := ListFilter{Limit: 100}
+func parseListFilter(req bunrouter.Request) ListFilter {
+	filter := ListFilter{Limit: 100}
 
-	if v := q.URL.Query().Get("status"); v != "" {
-		f.Status = v
+	if v := req.URL.Query().Get("status"); v != "" {
+		filter.Status = v
 	}
 
-	if v := q.URL.Query().Get("userUid"); v != "" {
-		f.UserUID = v
+	if v := req.URL.Query().Get("userUid"); v != "" {
+		filter.UserUID = v
 	}
 
-	if v := q.URL.Query().Get("connectionUid"); v != "" {
-		f.ConnectionUID = v
+	if v := req.URL.Query().Get("connectionUid"); v != "" {
+		filter.ConnectionUID = v
 	}
 
-	if v := q.URL.Query().Get("limit"); v != "" {
+	if v := req.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			f.Limit = n
+			filter.Limit = n
 		}
 	}
 
-	if v := q.URL.Query().Get("before"); v != "" {
+	if v := req.URL.Query().Get("before"); v != "" {
 		if t, err := time.Parse(time.RFC3339, v); err == nil {
-			f.Before = t
+			filter.Before = t
 		}
 	}
 
-	return f
+	return filter
 }
 
 // ListForIncident handles GET /api/v1/orgs/:org/incidents/:uid/notifications.
-func (h *Handler) ListForIncident(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListForIncident(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
 	incidentUID := req.Param("uid")
-	f := parseListFilter(req)
+	filter := parseListFilter(req)
 
-	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, f)
+	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, filter)
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
 }
 
 // ListForUser handles GET /api/v1/orgs/:org/users/:uid/notifications.
 // Admins can query any user; regular members can only query themselves.
-func (h *Handler) ListForUser(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListForUser(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
 	targetUID := req.Param("uid")
 
 	callerUser, ok := middleware.GetUserFromContext(req.Context())
 	if !ok {
-		return h.WriteError(w, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
 	// Authorization: self always allowed; other users require admin membership.
 	if callerUser.UID != targetUID {
 		member, memberErr := h.svc.db.GetMemberByUserAndOrg(req.Context(), callerUser.UID, orgUID)
 		if memberErr != nil || member.Role != models.MemberRoleAdmin {
-			return h.handleError(w, ErrForbidden)
+			return h.handleError(writer, ErrForbidden)
 		}
 	}
 
-	f := parseListFilter(req)
+	filter := parseListFilter(req)
 
-	rows, err := h.svc.ListForUser(req.Context(), orgUID, targetUID, f)
+	rows, err := h.svc.ListForUser(req.Context(), orgUID, targetUID, filter)
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
 }
 
 // ListForMe handles GET /api/v1/orgs/:org/me/notifications.
 // Alias for ListForUser with the caller's own UID.
-func (h *Handler) ListForMe(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ListForMe(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
 	callerUser, ok := middleware.GetUserFromContext(req.Context())
 	if !ok {
-		return h.WriteError(w, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
 	}
 
-	f := parseListFilter(req)
+	filter := parseListFilter(req)
 
-	rows, err := h.svc.ListForUser(req.Context(), orgUID, callerUser.UID, f)
+	rows, err := h.svc.ListForUser(req.Context(), orgUID, callerUser.UID, filter)
 	if err != nil {
-		return h.handleError(w, err)
+		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(w, http.StatusOK, map[string]any{jsonDataKey: rows})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
 }

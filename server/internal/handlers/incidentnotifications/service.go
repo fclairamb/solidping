@@ -93,8 +93,10 @@ type ListFilter struct {
 }
 
 // ListForIncident returns notifications for a specific incident.
+//
+//nolint:gocritic // filter is passed by value intentionally; it is modified (IncidentUID set) inside this call
 func (s *Service) ListForIncident(
-	ctx context.Context, orgUID, incidentUID string, f ListFilter,
+	ctx context.Context, orgUID, incidentUID string, filter ListFilter,
 ) ([]*NotificationRow, error) {
 	_, err := s.db.GetIncident(ctx, orgUID, incidentUID)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -105,30 +107,32 @@ func (s *Service) ListForIncident(
 		return nil, err
 	}
 
-	f.IncidentUID = incidentUID
+	filter.IncidentUID = incidentUID
 
-	return s.list(ctx, orgUID, f)
+	return s.list(ctx, orgUID, filter)
 }
 
 // ListForUser returns notifications across all incidents for a specific user.
+//
+//nolint:gocritic // filter is passed by value intentionally; it is modified (UserUID set) inside this call
 func (s *Service) ListForUser(
-	ctx context.Context, orgUID, userUID string, f ListFilter,
+	ctx context.Context, orgUID, userUID string, filter ListFilter,
 ) ([]*NotificationRow, error) {
-	f.UserUID = userUID
+	filter.UserUID = userUID
 
-	return s.list(ctx, orgUID, f)
+	return s.list(ctx, orgUID, filter)
 }
 
 func (s *Service) list(
-	ctx context.Context, orgUID string, f ListFilter,
+	ctx context.Context, orgUID string, filter ListFilter, //nolint:gocritic // passed by value intentionally
 ) ([]*NotificationRow, error) {
 	dbFilter := db.ListIncidentNotificationsFilter{
-		IncidentUID:   f.IncidentUID,
-		UserUID:       f.UserUID,
-		ConnectionUID: f.ConnectionUID,
-		Status:        f.Status,
-		Limit:         f.Limit,
-		Before:        f.Before,
+		IncidentUID:   filter.IncidentUID,
+		UserUID:       filter.UserUID,
+		ConnectionUID: filter.ConnectionUID,
+		Status:        filter.Status,
+		Limit:         filter.Limit,
+		Before:        filter.Before,
 	}
 
 	rows, err := s.db.ListIncidentNotifications(ctx, orgUID, dbFilter)
@@ -145,54 +149,54 @@ func (s *Service) list(
 	return out, nil
 }
 
-func toNotificationRow(r *models.IncidentNotificationRow) *NotificationRow {
+func toNotificationRow(src *models.IncidentNotificationRow) *NotificationRow {
 	row := &NotificationRow{
-		UID:         r.UID,
-		IncidentUID: r.IncidentUID,
-		EventType:   r.EventType,
-		Source:      r.Source,
-		StepUID:     r.StepUID,
-		RepeatIndex: r.RepeatIndex,
-		ChannelType: r.ChannelType,
-		Status:      r.Status,
-		SkipReason:  r.SkipReason,
-		Error:       r.Error,
-		MessageID:   r.MessageID,
-		CreatedAt:   r.CreatedAt,
-		SentAt:      r.SentAt,
+		UID:         src.UID,
+		IncidentUID: src.IncidentUID,
+		EventType:   src.EventType,
+		Source:      src.Source,
+		StepUID:     src.StepUID,
+		RepeatIndex: src.RepeatIndex,
+		ChannelType: src.ChannelType,
+		Status:      src.Status,
+		SkipReason:  src.SkipReason,
+		Error:       src.Error,
+		MessageID:   src.MessageID,
+		CreatedAt:   src.CreatedAt,
+		SentAt:      src.SentAt,
 	}
 
-	if r.UserUID != nil && r.UserName != nil {
+	if src.UserUID != nil && src.UserName != nil {
 		row.User = &userSubObject{
-			UID:  *r.UserUID,
-			Name: *r.UserName,
+			UID:  *src.UserUID,
+			Name: *src.UserName,
 		}
 	}
 
-	if r.ConnectionUID != nil && r.ConnectionName != nil && r.ConnectionType != nil {
+	if src.ConnectionUID != nil && src.ConnectionName != nil && src.ConnectionType != nil {
 		row.Connection = &connectionSubObject{
-			UID:  *r.ConnectionUID,
-			Name: *r.ConnectionName,
-			Type: *r.ConnectionType,
+			UID:  *src.ConnectionUID,
+			Name: *src.ConnectionName,
+			Type: *src.ConnectionType,
 		}
 	}
 
-	if r.IncidentTitle != nil && r.IncidentState != nil && r.IncidentStartedAt != nil {
+	if src.IncidentTitle != nil && src.IncidentState != nil && src.IncidentStartedAt != nil {
 		title := ""
-		if r.IncidentTitle != nil {
-			title = *r.IncidentTitle
+		if src.IncidentTitle != nil {
+			title = *src.IncidentTitle
 		}
 
 		state := "active"
-		if r.IncidentState != nil && *r.IncidentState == int(models.IncidentStateResolved) {
+		if src.IncidentState != nil && *src.IncidentState == int(models.IncidentStateResolved) {
 			state = "resolved"
 		}
 
 		row.Incident = &incidentSubObject{
-			UID:       r.IncidentUID,
+			UID:       src.IncidentUID,
 			Title:     title,
 			State:     state,
-			StartedAt: *r.IncidentStartedAt,
+			StartedAt: *src.IncidentStartedAt,
 		}
 	}
 

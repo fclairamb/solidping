@@ -7,8 +7,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
-	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 )
 
 const incidentEventsCap = 50
@@ -120,7 +120,7 @@ func incidentNotificationsListDef() ToolDefinition {
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Incident UID returned by list_incidents or get_incident."),
 			"status": stringProp(
-				"Optional: filter by delivery status. Allowed: pending, sent, failed, cancelled, skipped.",
+				"Optional: filter by delivery status. Allowed: pending, sent, failed, canceled, skipped.",
 			),
 			propLimit: intProp("Max results (1-500, default 20)."),
 		}, []string{propUID}),

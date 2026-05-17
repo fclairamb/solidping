@@ -1153,6 +1153,12 @@ func (m *mockDBService) CancelIncidentNotificationsForIncident(
 	return 0, nil
 }
 
+func (m *mockDBService) ListIncidentNotifications(
+	_ context.Context, _ string, _ db.ListIncidentNotificationsFilter,
+) ([]*models.IncidentNotificationRow, error) {
+	return nil, nil
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

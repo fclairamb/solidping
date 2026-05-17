@@ -125,13 +125,27 @@ func (s *Service) CancelIncidentNotificationsForIncident(
 	return rows, nil
 }
 
+// incidentNotificationRawRow is used for scanning the JOIN query result.
+type incidentNotificationRawRow struct {
+	models.IncidentNotification `bun:",extend"`
+	UserName                    *string    `bun:"user_name"`
+	ConnectionName              *string    `bun:"connection_name"`
+	ConnectionType              *string    `bun:"connection_type"`
+	IncidentTitle               *string    `bun:"incident_title"`
+	IncidentState               *int       `bun:"incident_state"`
+	IncidentStartedAt           *time.Time `bun:"incident_started_at"`
+	CheckName                   *string    `bun:"check_name"`
+}
+
 // ListIncidentNotifications returns notification rows for an org, optionally
 // filtered by incident, user, connection, status, and a before-cursor.
 // Results are ordered newest first. User and connection names are joined inline.
+//
+//nolint:gocritic // filter is a value type passed by value intentionally
 func (s *Service) ListIncidentNotifications(
-	ctx context.Context, orgUID string, f db.ListIncidentNotificationsFilter,
+	ctx context.Context, orgUID string, filter db.ListIncidentNotificationsFilter,
 ) ([]*models.IncidentNotificationRow, error) {
-	limit := f.Limit
+	limit := filter.Limit
 	if limit <= 0 {
 		limit = 100
 	}
@@ -140,7 +154,7 @@ func (s *Service) ListIncidentNotifications(
 		limit = 500
 	}
 
-	q := s.db.NewSelect().
+	query := s.db.NewSelect().
 		TableExpr("incident_notifications AS n").
 		ColumnExpr("n.*").
 		ColumnExpr("u.name AS user_name").
@@ -156,43 +170,31 @@ func (s *Service) ListIncidentNotifications(
 		Join("LEFT JOIN checks c ON c.uid = i.check_uid").
 		Where("n.organization_uid = ?", orgUID)
 
-	if f.IncidentUID != "" {
-		q = q.Where("n.incident_uid = ?", f.IncidentUID)
+	if filter.IncidentUID != "" {
+		query = query.Where("n.incident_uid = ?", filter.IncidentUID)
 	}
 
-	if f.UserUID != "" {
-		q = q.Where("n.user_uid = ?", f.UserUID)
+	if filter.UserUID != "" {
+		query = query.Where("n.user_uid = ?", filter.UserUID)
 	}
 
-	if f.ConnectionUID != "" {
-		q = q.Where("n.connection_uid = ?", f.ConnectionUID)
+	if filter.ConnectionUID != "" {
+		query = query.Where("n.connection_uid = ?", filter.ConnectionUID)
 	}
 
-	if f.Status != "" {
-		q = q.Where("n.status = ?", f.Status)
+	if filter.Status != "" {
+		query = query.Where("n.status = ?", filter.Status)
 	}
 
-	if !f.Before.IsZero() {
-		q = q.Where("n.created_at < ?", f.Before)
+	if !filter.Before.IsZero() {
+		query = query.Where("n.created_at < ?", filter.Before)
 	}
 
-	q = q.OrderExpr("n.created_at DESC").Limit(limit)
+	query = query.OrderExpr("n.created_at DESC").Limit(limit)
 
-	// Scan into a flat struct using raw scan.
-	type rawRow struct {
-		models.IncidentNotification `bun:",extend"`
-		UserName                    *string    `bun:"user_name"`
-		ConnectionName              *string    `bun:"connection_name"`
-		ConnectionType              *string    `bun:"connection_type"`
-		IncidentTitle               *string    `bun:"incident_title"`
-		IncidentState               *int       `bun:"incident_state"`
-		IncidentStartedAt           *time.Time `bun:"incident_started_at"`
-		CheckName                   *string    `bun:"check_name"`
-	}
+	var raw []incidentNotificationRawRow
 
-	var raw []rawRow
-
-	if err := q.Scan(ctx, &raw); err != nil {
+	if err := query.Scan(ctx, &raw); err != nil {
 		return nil, fmt.Errorf("list incident notifications: %w", err)
 	}
 
