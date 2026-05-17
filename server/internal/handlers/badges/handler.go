@@ -29,7 +29,7 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkIdentifier := req.Param("check")
-	format := req.Param("format")
+	components := req.Param("components")
 
 	opts := BadgeOptions{
 		Period: req.URL.Query().Get("period"),
@@ -37,7 +37,7 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 		Style:  req.URL.Query().Get("style"),
 	}
 
-	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, format, opts)
+	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, components, opts)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
