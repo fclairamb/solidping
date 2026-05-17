@@ -56,6 +56,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
@@ -577,6 +578,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
 	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
+	// Incident notifications read API (authentication required)
+	incidentNotifService := incidentnotifications.NewService(s.dbService)
+	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
+	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
+	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
+		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
+	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
+		GET("/notifications", incidentNotifHandler.ListForMe)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
