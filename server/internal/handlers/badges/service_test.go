@@ -198,36 +198,36 @@ func TestFormatResponseTime(t *testing.T) {
 		r.Equal("n/a", formatResponseTime(results))
 	})
 
-	t.Run("mean under 1s formatted as ms", func(t *testing.T) {
+	t.Run("sub-second response time formatted as ms", func(t *testing.T) {
 		t.Parallel()
 
-		d1 := float32(0.1) // 100ms
-		d2 := float32(0.3) // 300ms
+		d1 := float32(63.0) // 63ms
+		d2 := float32(65.0) // 65ms
 		results := []*models.Result{
 			{Duration: &d1},
 			{Duration: &d2},
 		}
-		// mean = 0.2s = 200ms
-		r.Equal("200ms", formatResponseTime(results))
+		// mean = 64ms
+		r.Equal("64ms", formatResponseTime(results))
 	})
 
-	t.Run("mean over 1s formatted with one decimal", func(t *testing.T) {
+	t.Run("over-second response time formatted with one decimal", func(t *testing.T) {
 		t.Parallel()
 
-		d1 := float32(1.5)
-		d2 := float32(2.5)
+		d1 := float32(1500.0) // 1500ms = 1.5s
+		d2 := float32(2500.0) // 2500ms = 2.5s
 		results := []*models.Result{
 			{Duration: &d1},
 			{Duration: &d2},
 		}
-		// mean = 2.0s
+		// mean = 2000ms = 2.0s
 		r.Equal("2.0s", formatResponseTime(results))
 	})
 
 	t.Run("nil durations are skipped", func(t *testing.T) {
 		t.Parallel()
 
-		d := float32(0.25) // 250ms
+		d := float32(250.0) // 250ms
 		results := []*models.Result{
 			{Duration: nil},
 			{Duration: &d},
