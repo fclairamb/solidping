@@ -163,6 +163,7 @@ func TestEscalationPolicyTargetUIDRoundTrip(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 			r := require.New(t)
 
 			patchPolicySteps(t, ts, "e2e-round-trip", []any{

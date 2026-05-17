@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -114,6 +115,9 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 		"worker_uid", r.worker.UID,
 		"worker_slug", r.worker.Slug,
 		"pool_size", r.poolSize)
+
+	// 1b. Register per-worker Prometheus channel-depth collector
+	prometheus.DefaultRegisterer.MustRegister(newWorkerChannelCollector(r))
 
 	// 2. Setup self-stats reporting
 	if err := r.setupSelfStats(ctx); err != nil {
