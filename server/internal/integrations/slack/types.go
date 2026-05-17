@@ -174,8 +174,19 @@ type User struct {
 
 // Channel represents a Slack channel.
 type Channel struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsPrivate bool   `json:"is_private"`
+	IsMember  bool   `json:"is_member"`
+}
+
+// SlackUser represents a workspace member returned by users.list.
+type SlackUser struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	RealName string `json:"real_name"` //nolint:tagliatelle
+	IsBot    bool   `json:"is_bot"`    //nolint:tagliatelle
+	Deleted  bool   `json:"deleted"`
 }
 
 // View represents a Slack modal view.
