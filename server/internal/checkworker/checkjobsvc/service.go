@@ -12,6 +12,7 @@ import (
 	"github.com/uptrace/bun/dialect/pgdialect"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
 
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
@@ -69,6 +70,7 @@ func (s *serviceImpl) ClaimJobs(
 ) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
 	now := time.Now()
+	claimStart := time.Now()
 
 	// Check if database is PostgreSQL
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
@@ -86,6 +88,8 @@ func (s *serviceImpl) ClaimJobs(
 		// Update each job with lease info
 		return s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres)
 	})
+	prommetrics.RecordCheckStage("claim", time.Since(claimStart).Seconds())
+
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No jobs available
