@@ -9,6 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/chromedp/chromedp v0.15.1
+	github.com/coder/websocket v1.8.14
 	github.com/docker/docker v28.5.2+incompatible
 	github.com/dop251/goja v0.0.0-20260311135729-065cd970411c
 	github.com/dreamscached/minequery/v2 v2.5.0
@@ -78,7 +79,6 @@ require (
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
 	gopkg.in/yaml.v3 v3.0.1
-	nhooyr.io/websocket v1.8.17
 )
 
 require (

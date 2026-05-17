@@ -8,23 +8,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
-	"nhooyr.io/websocket" //nolint:staticcheck // using nhooyr.io/websocket v1
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
 // startWSServer starts an in-process WebSocket server and returns its ws:// URL.
-func startWSServer(t *testing.T, handler func(*websocket.Conn)) string { //nolint:staticcheck
+func startWSServer(t *testing.T, handler func(*websocket.Conn)) string {
 	t.Helper()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		conn, err := websocket.Accept(w, r, nil) //nolint:staticcheck
+		conn, err := websocket.Accept(w, r, nil)
 		if err != nil {
 			return
 		}
 
-		defer func() { _ = conn.CloseNow() }() //nolint:staticcheck
+		defer func() { _ = conn.CloseNow() }()
 
 		handler(conn)
 	}))
@@ -135,10 +135,10 @@ func TestWebSocketChecker_Execute_HandshakeOnly(t *testing.T) {
 	r := require.New(t)
 	checker := &WebSocketChecker{}
 
-	wsURL := startWSServer(t, func(conn *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(conn *websocket.Conn) {
 		// hold open; client will close
 		ctx := context.Background()
-		_, _, _ = conn.Read(ctx) //nolint:staticcheck
+		_, _, _ = conn.Read(ctx)
 	})
 
 	result, err := checker.Execute(context.Background(), &WebSocketConfig{URL: wsURL})
@@ -154,14 +154,14 @@ func TestWebSocketChecker_Execute_SendAndEcho(t *testing.T) {
 	r := require.New(t)
 	checker := &WebSocketChecker{}
 
-	wsURL := startWSServer(t, func(conn *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(conn *websocket.Conn) {
 		ctx := context.Background()
-		_, msg, err := conn.Read(ctx) //nolint:staticcheck
+		_, msg, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
 
-		_ = conn.Write(ctx, websocket.MessageText, msg) //nolint:staticcheck
+		_ = conn.Write(ctx, websocket.MessageText, msg)
 	})
 
 	cfg := &WebSocketConfig{URL: wsURL, Send: echoMessage, Expect: echoMessage}
@@ -181,19 +181,19 @@ func TestWebSocketChecker_Execute_BannerThenEcho(t *testing.T) {
 	r := require.New(t)
 	checker := &WebSocketChecker{}
 
-	wsURL := startWSServer(t, func(conn *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(conn *websocket.Conn) {
 		ctx := context.Background()
 
 		// Simulate the echo.websocket.org greeting frame
-		_ = conn.Write(ctx, websocket.MessageText, []byte("Request served by server-1")) //nolint:staticcheck
+		_ = conn.Write(ctx, websocket.MessageText, []byte("Request served by server-1"))
 
 		// Then act as an echo
-		_, msg, err := conn.Read(ctx) //nolint:staticcheck
+		_, msg, err := conn.Read(ctx)
 		if err != nil {
 			return
 		}
 
-		_ = conn.Write(ctx, websocket.MessageText, msg) //nolint:staticcheck
+		_ = conn.Write(ctx, websocket.MessageText, msg)
 	})
 
 	cfg := &WebSocketConfig{URL: wsURL, Send: echoMessage, Expect: echoMessage}
@@ -212,11 +212,11 @@ func TestWebSocketChecker_Execute_AllBanners(t *testing.T) {
 	r := require.New(t)
 	checker := &WebSocketChecker{}
 
-	wsURL := startWSServer(t, func(conn *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(conn *websocket.Conn) {
 		ctx := context.Background()
 
 		for i := 0; i < maxReadAttempts+5; i++ {
-			if err := conn.Write(ctx, websocket.MessageText, []byte("not-what-you-want")); err != nil { //nolint:staticcheck
+			if err := conn.Write(ctx, websocket.MessageText, []byte("not-what-you-want")); err != nil {
 				return
 			}
 		}
@@ -237,12 +237,12 @@ func TestWebSocketChecker_Execute_Mismatch(t *testing.T) {
 	checker := &WebSocketChecker{}
 
 	// Server sends a non-matching frame for each of the 8 attempts.
-	wsURL := startWSServer(t, func(conn *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(conn *websocket.Conn) {
 		ctx := context.Background()
-		_, _, _ = conn.Read(ctx) //nolint:staticcheck
+		_, _, _ = conn.Read(ctx)
 
 		for i := 0; i < maxReadAttempts; i++ {
-			if err := conn.Write(ctx, websocket.MessageText, []byte("goodbye")); err != nil { //nolint:staticcheck
+			if err := conn.Write(ctx, websocket.MessageText, []byte("goodbye")); err != nil {
 				return
 			}
 		}
@@ -276,7 +276,7 @@ func TestWebSocketChecker_Execute_ContextTimeout(t *testing.T) {
 	r := require.New(t)
 	checker := &WebSocketChecker{}
 
-	wsURL := startWSServer(t, func(_ *websocket.Conn) { //nolint:staticcheck
+	wsURL := startWSServer(t, func(_ *websocket.Conn) {
 		// Server accepts but never writes — forces the client read to time out
 		time.Sleep(5 * time.Second)
 	})
