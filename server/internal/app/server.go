@@ -1677,6 +1677,16 @@ func (s *Server) DBService() db.Service {
 	return s.dbService
 }
 
+// Services returns the services registry (used for testing).
+func (s *Server) Services() *services.Registry {
+	return s.services
+}
+
+// JobSvc returns the job service (used for testing).
+func (s *Server) JobSvc() jobsvc.Service {
+	return s.jobSvc
+}
+
 // BuildCredentialsService loads the KEK (env or file), constructs the
 // credentials service, and wires the per-org DEK store against the
 // existing parameters table. Returns a disabled service (no error) when
