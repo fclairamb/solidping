@@ -1,0 +1,145 @@
+import { createFileRoute, Link } from "@tanstack/react-router";
+import { Bell } from "lucide-react";
+import { useMyNotifications, type IncidentNotification } from "@/api/hooks";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+
+export const Route = createFileRoute("/orgs/$org/me/notifications")({
+  component: MyNotificationsPage,
+});
+
+function statusVariant(
+  status: IncidentNotification["status"],
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case "sent":
+      return "default";
+    case "failed":
+      return "destructive";
+    case "pending":
+      return "outline";
+    case "skipped":
+    case "cancelled":
+    default:
+      return "secondary";
+  }
+}
+
+function MyNotificationsPage() {
+  const { org } = Route.useParams();
+  const { data: rows, isLoading } = useMyNotifications(org, { limit: 100 });
+
+  return (
+    <div className="space-y-6" data-testid="my-notifications-page">
+      <div className="flex items-center gap-3">
+        <Bell className="h-6 w-6 text-muted-foreground" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">My pages</h1>
+          <p className="text-muted-foreground text-sm">
+            Incidents you were paged for, in reverse chronological order.
+          </p>
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notifications</CardTitle>
+          <CardDescription>
+            Every time you were paged for an incident.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {isLoading && <Skeleton className="h-32 w-full" />}
+
+          {!isLoading && (!rows || rows.length === 0) && (
+            <p className="text-sm text-muted-foreground py-6 text-center">
+              You have not been paged for any incidents yet.
+            </p>
+          )}
+
+          {!isLoading && rows && rows.length > 0 && (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Time</TableHead>
+                  <TableHead>Incident</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Channel</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.uid}>
+                    <TableCell
+                      className="text-sm whitespace-nowrap text-muted-foreground"
+                      title={row.createdAt}
+                    >
+                      {new Date(row.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {row.incident ? (
+                        <Link
+                          to="/orgs/$org/incidents/$incidentUid"
+                          params={{ org, incidentUid: row.incidentUid }}
+                          className="text-primary hover:underline"
+                        >
+                          {row.incident.title || row.incidentUid}
+                        </Link>
+                      ) : (
+                        <Link
+                          to="/orgs/$org/incidents/$incidentUid"
+                          params={{ org, incidentUid: row.incidentUid }}
+                          className="text-primary hover:underline"
+                        >
+                          {row.incidentUid}
+                        </Link>
+                      )}
+                      {row.incident && (
+                        <Badge
+                          variant={
+                            row.incident.state === "active"
+                              ? "destructive"
+                              : "secondary"
+                          }
+                          className="ml-2 text-xs"
+                        >
+                          {row.incident.state}
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={statusVariant(row.status)}
+                        className="text-xs capitalize"
+                      >
+                        {row.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm capitalize">
+                      {row.channelType}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-route
 import {
   ArrowUpRight,
   Bell,
+  BellRing,
   Bug,
   LayoutDashboard,
   ListChecks,
@@ -96,6 +97,11 @@ const navItems = [
     titleKey: "badges",
     path: "/orgs/$org/badges" as const,
     icon: BadgeCheck,
+  },
+  {
+    titleKey: "myPages",
+    path: "/orgs/$org/me/notifications" as const,
+    icon: BellRing,
   },
 ];
 

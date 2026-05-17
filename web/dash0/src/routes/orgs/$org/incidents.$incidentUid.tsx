@@ -22,8 +22,10 @@ import {
   useUnsnoozeIncident,
   useResolveIncident,
   useEvents,
+  useIncidentNotifications,
   type Event,
   type IncidentDetail,
+  type IncidentNotification,
 } from "@/api/hooks";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -474,6 +476,8 @@ function IncidentDetailPage() {
         />
       )}
 
+      <NotificationsCard org={org} incidentUid={incidentUid} />
+
       {events?.data && events.data.length > 0 && (
         <Card>
           <CardHeader>
@@ -649,6 +653,135 @@ function BlastRadiusCard({
     </Card>
   );
 }
+
+// ─── Notifications card ───────────────────────────────────────────────────────
+
+function notificationStatusVariant(
+  status: IncidentNotification["status"],
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case "sent":
+      return "default";
+    case "failed":
+      return "destructive";
+    case "pending":
+      return "outline";
+    case "skipped":
+    case "cancelled":
+    default:
+      return "secondary";
+  }
+}
+
+function sourceLabel(source: string, repeatIndex?: number): string {
+  const cycle = repeatIndex !== undefined && repeatIndex > 0 ? ` (cycle ${repeatIndex + 1})` : "";
+  switch (source) {
+    case "check_connection":
+      return "Check connection";
+    case "escalation_user":
+      return `Escalation step${cycle}`;
+    case "escalation_schedule":
+      return `On-call schedule${cycle}`;
+    case "escalation_all_admins":
+      return `All admins${cycle}`;
+    case "escalation_connection":
+      return `Escalation connection${cycle}`;
+    default:
+      return source;
+  }
+}
+
+function NotificationsCard({
+  org,
+  incidentUid,
+}: {
+  org: string;
+  incidentUid: string;
+}) {
+  const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
+
+  const hasErrors = rows?.some((r) => r.error);
+
+  return (
+    <Card data-testid="notifications-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Notifications
+          {rows && rows.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {rows.length}
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>Who was notified and the delivery status.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && <Skeleton className="h-24 w-full" />}
+        {!isLoading && (!rows || rows.length === 0) && (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No notifications recorded for this incident yet.
+          </p>
+        )}
+        {!isLoading && rows && rows.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Time</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Channel</TableHead>
+                {hasErrors && <TableHead>Error</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.uid}>
+                  <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
+                    {new Date(row.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={notificationStatusVariant(row.status)} className="text-xs capitalize">
+                      {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.user ? (
+                      <span className="font-medium">
+                        {row.user.name || row.user.uid}
+                      </span>
+                    ) : row.connection ? (
+                      <span className="flex items-center gap-1">
+                        <span className="capitalize text-muted-foreground text-xs">{row.connection.type}</span>
+                        {row.connection.name}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {sourceLabel(row.source, row.repeatIndex)}
+                  </TableCell>
+                  <TableCell className="text-sm capitalize">{row.channelType}</TableCell>
+                  {hasErrors && (
+                    <TableCell
+                      className="text-sm text-destructive max-w-[200px] truncate"
+                      title={row.error ?? undefined}
+                    >
+                      {row.error ?? ""}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Escalation timeline card ─────────────────────────────────────────────────
 
 interface EscalationTimelineCardProps {
   events: Event[];
