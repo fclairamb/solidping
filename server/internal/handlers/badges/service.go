@@ -18,6 +18,17 @@ var (
 	ErrInvalidFormat        = errors.New("invalid badge format")
 )
 
+// Component token constants.
+const (
+	componentStatus       = "status"
+	componentAvailability = "availability"
+	componentDuration     = "duration"
+	componentResponseTime = "response-time"
+	statusUp              = "up"
+	statusDown            = "down"
+	statusUnknown         = "unknown"
+)
+
 // BadgeOptions contains options for badge generation.
 type BadgeOptions struct {
 	Period string // "1h", "24h", "7d", "30d"
@@ -35,12 +46,13 @@ func NewService(dbSvc db.Service) *Service {
 	return &Service{dbSvc: dbSvc}
 }
 
-// allowedComponents is the set of valid component tokens.
-var allowedComponents = map[string]bool{
-	"status":        true,
-	"availability":  true,
-	"duration":      true,
-	"response-time": true,
+func isAllowedComponent(token string) bool {
+	switch token {
+	case componentStatus, componentAvailability, componentDuration, componentResponseTime:
+		return true
+	default:
+		return false
+	}
 }
 
 // parseComponents validates and returns the ordered list of component tokens.
@@ -51,7 +63,7 @@ func parseComponents(raw string) ([]string, error) {
 
 	for _, part := range parts {
 		token := strings.TrimSpace(part)
-		if !allowedComponents[token] {
+		if !isAllowedComponent(token) {
 			return nil, ErrInvalidFormat
 		}
 
@@ -64,7 +76,7 @@ func parseComponents(raw string) ([]string, error) {
 	}
 
 	// At least one primary metric (status or availability) is required.
-	if !seen["status"] && !seen["availability"] {
+	if !seen[componentStatus] && !seen[componentAvailability] {
 		return nil, ErrInvalidFormat
 	}
 
@@ -96,62 +108,80 @@ func (s *Service) GenerateBadge(
 	// 4. Set defaults.
 	opts = s.applyDefaults(opts, check)
 
-	// 5. Determine what data to fetch.
+	// 5. Fetch results.
+	results, err := s.fetchResults(ctx, org.UID, check.UID, tokens, opts.Period)
+	if err != nil {
+		return "", err
+	}
+
+	// 6. Compose value substrings in URL order.
+	value := s.composeValue(tokens, results)
+
+	// 7. Resolve color.
+	color := resolveColor(tokens, results)
+
+	return GenerateSVG(opts.Label, value, color, opts.Style), nil
+}
+
+// fetchResults fetches the results needed for the given tokens.
+func (s *Service) fetchResults(
+	ctx context.Context, orgUID, checkUID string, tokens []string, period string,
+) ([]*models.Result, error) {
 	needsPeriod := false
 
-	for _, t := range tokens {
-		if t == "availability" || t == "response-time" {
+	for _, token := range tokens {
+		if token == componentAvailability || token == componentResponseTime {
 			needsPeriod = true
 
 			break
 		}
 	}
 
-	var results []*models.Result
-
 	if needsPeriod {
-		periodDuration := parsePeriod(opts.Period)
+		periodDuration := parsePeriod(period)
 		startTime := time.Now().Add(-periodDuration)
 		filter := &models.ListResultsFilter{
-			OrganizationUID:  org.UID,
-			CheckUIDs:        []string{check.UID},
+			OrganizationUID:  orgUID,
+			CheckUIDs:        []string{checkUID},
 			PeriodTypes:      []string{"raw"},
 			PeriodStartAfter: &startTime,
 		}
 
-		res, ferr := s.dbSvc.ListResults(ctx, filter)
-		if ferr != nil {
-			return "", ferr
+		res, err := s.dbSvc.ListResults(ctx, filter)
+		if err != nil {
+			return nil, err
 		}
 
-		results = res.Results
-	} else {
-		// Only status / duration — fetch latest 1 raw result.
-		filter := &models.ListResultsFilter{
-			OrganizationUID: org.UID,
-			CheckUIDs:       []string{check.UID},
-			PeriodTypes:     []string{"raw"},
-			Limit:           1,
-		}
-
-		res, ferr := s.dbSvc.ListResults(ctx, filter)
-		if ferr != nil {
-			return "", ferr
-		}
-
-		results = res.Results
+		return res.Results, nil
 	}
 
-	// 6. Compose value substrings in URL order.
+	// Only status / duration — fetch latest 1 raw result.
+	filter := &models.ListResultsFilter{
+		OrganizationUID: orgUID,
+		CheckUIDs:       []string{checkUID},
+		PeriodTypes:     []string{"raw"},
+		Limit:           1,
+	}
+
+	res, err := s.dbSvc.ListResults(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	return res.Results, nil
+}
+
+// composeValue builds the badge value string from the selected tokens.
+func (s *Service) composeValue(tokens []string, results []*models.Result) string {
 	parts := make([]string, 0, len(tokens))
 
 	for _, token := range tokens {
 		switch token {
-		case "status":
+		case componentStatus:
 			parts = append(parts, formatStatus(results))
-		case "availability":
+		case componentAvailability:
 			parts = append(parts, formatAvailability(calculateAvailability(results)))
-		case "duration":
+		case componentDuration:
 			dur, isUp, ok := calculateStatusDuration(results)
 			if ok {
 				if isUp {
@@ -161,17 +191,12 @@ func (s *Service) GenerateBadge(
 				}
 			}
 			// When unknown (ok=false), omit the duration component.
-		case "response-time":
+		case componentResponseTime:
 			parts = append(parts, formatResponseTime(results))
 		}
 	}
 
-	value := strings.Join(parts, " ")
-
-	// 7. Resolve color.
-	color := resolveColor(tokens, results)
-
-	return GenerateSVG(opts.Label, value, color, opts.Style), nil
+	return strings.Join(parts, " ")
 }
 
 func (s *Service) applyDefaults(opts BadgeOptions, check *models.Check) BadgeOptions {
@@ -193,20 +218,20 @@ func (s *Service) applyDefaults(opts BadgeOptions, check *models.Check) BadgeOpt
 // formatStatus returns the status string for the most recent result.
 func formatStatus(results []*models.Result) string {
 	if len(results) == 0 {
-		return "unknown"
+		return statusUnknown
 	}
 
 	if results[0].Status == nil {
-		return "unknown"
+		return statusUnknown
 	}
 
 	switch *results[0].Status {
 	case int(models.ResultStatusUp):
-		return "up"
+		return statusUp
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
-		return "down"
+		return statusDown
 	default:
-		return "unknown"
+		return statusUnknown
 	}
 }
 
@@ -215,23 +240,21 @@ func resolveColor(tokens []string, results []*models.Result) string {
 	hasStatus := false
 	hasAvailability := false
 
-	for _, t := range tokens {
-		if t == "status" {
+	for _, token := range tokens {
+		if token == componentStatus {
 			hasStatus = true
 		}
 
-		if t == "availability" {
+		if token == componentAvailability {
 			hasAvailability = true
 		}
 	}
 
 	if hasStatus {
-		// Green/red/gray based on current status.
-		s := formatStatus(results)
-		switch s {
-		case "up":
+		switch formatStatus(results) {
+		case statusUp:
 			return ColorGreen
-		case "down":
+		case statusDown:
 			return ColorRed
 		default:
 			return ColorGray
@@ -251,9 +274,9 @@ func formatResponseTime(results []*models.Result) string {
 
 	count := 0
 
-	for _, r := range results {
-		if r.Duration != nil {
-			sum += float64(*r.Duration)
+	for _, result := range results {
+		if result.Duration != nil {
+			sum += float64(*result.Duration)
 			count++
 		}
 	}
@@ -274,21 +297,21 @@ func formatResponseTime(results []*models.Result) string {
 // calculateStatusDuration returns the time since last status change, a
 // boolean indicating whether the current status is up, and a third boolean
 // indicating whether the status is known at all.
-func calculateStatusDuration(results []*models.Result) (duration time.Duration, isUp bool, ok bool) {
+func calculateStatusDuration(results []*models.Result) (time.Duration, bool, bool) {
 	// Find the most recent actionable status.
 	currentStatus := -1
 
-	for _, r := range results {
-		if r.Status == nil {
+	for _, res := range results {
+		if res.Status == nil {
 			continue
 		}
 
-		s := models.ResultStatus(*r.Status)
+		s := models.ResultStatus(*res.Status)
 		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
 			continue
 		}
 
-		currentStatus = *r.Status
+		currentStatus = *res.Status
 
 		break
 	}
@@ -297,32 +320,29 @@ func calculateStatusDuration(results []*models.Result) (duration time.Duration, 
 		return 0, false, false
 	}
 
-	isUp = currentStatus == int(models.ResultStatusUp)
+	isUp := currentStatus == int(models.ResultStatusUp)
 
-	// Walk oldest-to-newest to find the last status-change boundary.
-	// results is ordered newest-first; we iterate from the end.
+	// Walk newest→oldest, stopping at the first transition away from currentStatus.
+	// Record the period_start of the oldest consecutive result with currentStatus.
 	lastChangeTime := time.Time{}
-
-	// Scan forward (newest→oldest), stopping at the first transition away from currentStatus.
 	seenCount := 0
 
-	for _, r := range results {
-		if r.Status == nil {
+	for _, res := range results {
+		if res.Status == nil {
 			continue
 		}
 
-		s := models.ResultStatus(*r.Status)
+		s := models.ResultStatus(*res.Status)
 		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
 			continue
 		}
 
-		if *r.Status != currentStatus {
-			// This is the first result that differs — the status changed at the NEXT result we saw.
-			// lastChangeTime is set to the period_start of the previous result.
+		if *res.Status != currentStatus {
+			// First result that differs — stop here.
 			break
 		}
 
-		lastChangeTime = r.PeriodStart
+		lastChangeTime = res.PeriodStart
 		seenCount++
 	}
 
@@ -394,14 +414,6 @@ func formatAvailability(pct float64) string {
 	}
 
 	return fmt.Sprintf("%.1f%%", pct)
-}
-
-// calculateUptimeDuration is kept for backward-compatibility with existing tests.
-// Deprecated: use calculateStatusDuration instead.
-func (s *Service) calculateUptimeDuration(results []*models.Result) time.Duration {
-	dur, _, _ := calculateStatusDuration(results)
-
-	return dur
 }
 
 func formatDuration(duration time.Duration) string {
