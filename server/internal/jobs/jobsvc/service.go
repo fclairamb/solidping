@@ -93,19 +93,11 @@ type serviceImpl struct {
 	db       *bun.DB
 	dbSvc    db.Service
 	notifier notifier.EventNotifier
-	wakeup   <-chan string // Optional wakeup channel (e.g. from LISTEN/NOTIFY)
 }
 
 // NewService creates a new job service.
 func NewService(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier) Service {
 	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n}
-}
-
-// NewServiceWithWakeup creates a new job service with an optional wakeup channel.
-// The wakeup channel is signaled when new jobs are inserted (e.g. via LISTEN/NOTIFY)
-// so that GetJobWait can return immediately instead of waiting for the poll ticker.
-func NewServiceWithWakeup(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier, wakeup <-chan string) Service {
-	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n, wakeup: wakeup}
 }
 
 // CreateJob creates a new job and notifies waiting runners.
@@ -383,52 +375,34 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 	return nil
 }
 
-// GetJobWait waits for and claims the next available job.
-// When a wakeup channel is configured (e.g. via NewServiceWithWakeup with a
-// LISTEN/NOTIFY-backed channel), new-job insertions wake the runner immediately.
-// Without a wakeup channel, falls back to a 1-minute poll ticker.
+// GetJobWait waits for and claims the next available job. It subscribes to
+// job.created events via the EventNotifier so new-job insertions wake the
+// runner within milliseconds on both SQLite (LocalEventNotifier channels)
+// and Postgres (LISTEN/NOTIFY). A 5-minute fallback ticker handles missed
+// signals and jobs whose scheduled_at passed without a signal.
 func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
-	// Try to claim a job immediately
-	job, err := s.claimNextJob(ctx)
-	if err == nil {
-		return job, nil
-	}
+	wakeup := s.notifier.Listen(eventTypeJobCreated)
 
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
-	// Build a unified wakeup channel: use the configured one when available.
-	var wakeup <-chan string
-	if s.wakeup != nil {
-		wakeup = s.wakeup
-	}
-
 	for {
+		job, err := s.claimNextJob(ctx)
+		if err == nil {
+			return job, nil
+		}
+
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		case <-wakeup:
-			job, err := s.claimNextJob(ctx)
-			if err == nil {
-				return job, nil
-			}
-
-			if !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
+			// Wake-up signal from CreateJob — try to claim immediately.
 		case <-ticker.C:
-			job, err := s.claimNextJob(ctx)
-			if err == nil {
-				return job, nil
-			}
-
-			if !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
+			// Fallback poll: handles missed signals and past-due jobs.
 		}
 	}
 }
