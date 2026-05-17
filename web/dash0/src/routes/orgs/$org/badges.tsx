@@ -5,9 +5,7 @@ import {
   BadgeCheck,
   Copy,
   Check as CheckIcon,
-  Download,
-  Image,
-  FileImage,
+  FileDown,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,47 +22,59 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 
-type BadgeFormat = "status" | "availability" | "availability-duration";
 type BadgePeriod = "1h" | "24h" | "7d" | "30d";
 type BadgeStyle = "flat" | "flat-square";
 
-const validFormats: BadgeFormat[] = ["status", "availability", "availability-duration"];
+const validComponentTokens = new Set(["status", "availability", "duration", "response-time"]);
 const validPeriods: BadgePeriod[] = ["1h", "24h", "7d", "30d"];
 const validStyles: BadgeStyle[] = ["flat", "flat-square"];
 
 interface BadgeSearch {
   check?: string;
-  format?: BadgeFormat;
+  components?: string;
   period?: BadgePeriod;
   style?: BadgeStyle;
   label?: string;
 }
 
+function parseComponentsString(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => validComponentTokens.has(t));
+}
+
+function hasPrimary(tokens: string[]): boolean {
+  return tokens.includes("status") || tokens.includes("availability");
+}
+
 export const Route = createFileRoute("/orgs/$org/badges")({
-  validateSearch: (search: Record<string, unknown>): BadgeSearch => ({
-    check: typeof search.check === "string" ? search.check : undefined,
-    format: validFormats.includes(search.format as BadgeFormat)
-      ? (search.format as BadgeFormat)
-      : undefined,
-    period: validPeriods.includes(search.period as BadgePeriod)
-      ? (search.period as BadgePeriod)
-      : undefined,
-    style: validStyles.includes(search.style as BadgeStyle)
-      ? (search.style as BadgeStyle)
-      : undefined,
-    label: typeof search.label === "string" && search.label
-      ? search.label
-      : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): BadgeSearch => {
+    let components = "status";
+    if (typeof search.components === "string" && search.components) {
+      const tokens = parseComponentsString(search.components);
+      if (tokens.length > 0 && hasPrimary(tokens)) {
+        components = tokens.join(",");
+      }
+    }
+    return {
+      check: typeof search.check === "string" ? search.check : undefined,
+      components,
+      period: validPeriods.includes(search.period as BadgePeriod)
+        ? (search.period as BadgePeriod)
+        : undefined,
+      style: validStyles.includes(search.style as BadgeStyle)
+        ? (search.style as BadgeStyle)
+        : undefined,
+      label: typeof search.label === "string" && search.label
+        ? search.label
+        : undefined,
+    };
+  },
   component: BadgesPage,
 });
-
-const badgeFormats: { value: BadgeFormat; labelKey: string; descriptionKey: string }[] = [
-  { value: "status", labelKey: "formats.status", descriptionKey: "formats.statusDescription" },
-  { value: "availability", labelKey: "formats.availability", descriptionKey: "formats.availabilityDescription" },
-  { value: "availability-duration", labelKey: "formats.availabilityDuration", descriptionKey: "formats.availabilityDurationDescription" },
-];
 
 const badgePeriods: { value: BadgePeriod; labelKey: string }[] = [
   { value: "1h", labelKey: "periods.1h" },
@@ -77,6 +87,13 @@ const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
   { value: "flat", labelKey: "styles.flat" },
   { value: "flat-square", labelKey: "styles.flatSquare" },
 ];
+
+const componentDefs = [
+  { token: "status", labelKey: "components.status", descKey: "components.statusDescription" },
+  { token: "availability", labelKey: "components.availability", descKey: "components.availabilityDescription" },
+  { token: "duration", labelKey: "components.duration", descKey: "components.durationDescription" },
+  { token: "response-time", labelKey: "components.responseTime", descKey: "components.responseTimeDescription" },
+] as const;
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const { t } = useTranslation("badges");
@@ -100,14 +117,14 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 function BadgePreview({
   org,
   check,
-  format,
+  components,
   period,
   style,
   customLabel,
 }: {
   org: string;
   check: Check;
-  format: BadgeFormat;
+  components: string;
   period: BadgePeriod;
   style: BadgeStyle;
   customLabel: string;
@@ -123,14 +140,14 @@ function BadgePreview({
   if (customLabel) params.set("label", customLabel);
   const query = params.toString();
 
-  const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${format}${query ? `?${query}` : ""}`;
+  const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${components}${query ? `?${query}` : ""}`;
   const badgeUrl = `${window.location.origin}${badgePath}`;
 
-  const markdownCode = `![${check.name || identifier} ${format}](${badgeUrl})`;
-  const htmlCode = `<img src="${badgeUrl}" alt="${check.name || identifier} ${format}" />`;
+  const markdownCode = `![${check.name || identifier} badge](${badgeUrl})`;
+  const htmlCode = `<img src="${badgeUrl}" alt="${check.name || identifier} badge" />`;
 
   const downloadBadge = useCallback(
-    async (downloadFormat: "svg" | "png" | "jpg") => {
+    async (downloadFormat: "svg" | "png") => {
       try {
         const response = await fetch(badgePath);
         const svgText = await response.text();
@@ -140,7 +157,7 @@ function BadgePreview({
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = `${identifier}-${format}.svg`;
+          a.download = `${identifier}-${components.replace(/,/g, "-")}.svg`;
           a.click();
           URL.revokeObjectURL(url);
           return;
@@ -157,25 +174,20 @@ function BadgePreview({
           canvas.height = img.naturalHeight * scale;
           const ctx = canvas.getContext("2d")!;
           ctx.scale(scale, scale);
-          if (downloadFormat === "jpg") {
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
           ctx.drawImage(img, 0, 0);
           URL.revokeObjectURL(svgUrl);
 
-          const mimeType = downloadFormat === "png" ? "image/png" : "image/jpeg";
           canvas.toBlob(
             (blob) => {
               if (!blob) return;
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `${identifier}-${format}.${downloadFormat}`;
+              a.download = `${identifier}-${components.replace(/,/g, "-")}.png`;
               a.click();
               URL.revokeObjectURL(url);
             },
-            mimeType,
+            "image/png",
             0.95
           );
         };
@@ -184,7 +196,7 @@ function BadgePreview({
         toast.error(t("downloadFailed"));
       }
     },
-    [badgePath, identifier, format, t]
+    [badgePath, identifier, components, t]
   );
 
   const previewUrl = `${badgePath}${query ? "&" : "?"}t=${cacheBust}`;
@@ -194,15 +206,35 @@ function BadgePreview({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t("preview")}</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCacheBust(Date.now())}
-            data-testid="badge-refresh-preview"
-          >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadBadge("svg")}
+              data-testid="badge-download-svg"
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+              {t("downloadSvg")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadBadge("png")}
+              data-testid="badge-download-png"
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+              {t("downloadPng")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCacheBust(Date.now())}
+              data-testid="badge-refresh-preview"
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              {t("refresh")}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
@@ -213,29 +245,6 @@ function BadgePreview({
               className="h-5"
               data-testid="badge-preview-img"
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("download")}</CardTitle>
-          <CardDescription>{t("downloadDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("svg")} data-testid="badge-download-svg">
-              <Image className="mr-1.5 h-3.5 w-3.5" />
-              SVG
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("png")} data-testid="badge-download-png">
-              <FileImage className="mr-1.5 h-3.5 w-3.5" />
-              PNG
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("jpg")} data-testid="badge-download-jpg">
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              JPG
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -286,10 +295,14 @@ function BadgesPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const { data: checks = [], isLoading, error } = useChecks(org);
 
-  const format = search.format ?? "status";
+  const components = search.components ?? "status";
   const period = search.period ?? "24h";
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
+
+  const activeTokens = parseComponentsString(components);
+  const primaryCount = activeTokens.filter((t) => t === "status" || t === "availability").length;
+  const showPeriod = activeTokens.includes("availability") || activeTokens.includes("response-time");
 
   const selectedCheck = search.check
     ? checks.find((c) => c.uid === search.check) ??
@@ -300,7 +313,7 @@ function BadgesPage() {
     navigate({
       search: (prev: BadgeSearch) => {
         const next = { ...prev, ...updates };
-        if (next.format === "status") delete next.format;
+        if (next.components === "status") delete next.components;
         if (next.period === "24h") delete next.period;
         if (next.style === "flat") delete next.style;
         if (!next.label) delete next.label;
@@ -313,6 +326,32 @@ function BadgesPage() {
   const handleCheckChange = (uid: string) => {
     const check = checks.find((c) => c.uid === uid);
     updateSearch({ check: check?.slug || uid });
+  };
+
+  const handleComponentToggle = (token: string, checked: boolean) => {
+    let tokens = [...activeTokens];
+    if (checked) {
+      if (!tokens.includes(token)) {
+        // Insert in canonical order.
+        const order = ["status", "availability", "duration", "response-time"];
+        const newTokens: string[] = [];
+        for (const t of order) {
+          if (tokens.includes(t) || t === token) {
+            newTokens.push(t);
+          }
+        }
+        tokens = newTokens;
+      }
+    } else {
+      tokens = tokens.filter((t) => t !== token);
+    }
+
+    // Ensure we always have at least one primary.
+    if (!hasPrimary(tokens)) {
+      tokens = ["status", ...tokens.filter((t) => t !== "status")];
+    }
+
+    updateSearch({ components: tokens.join(",") });
   };
 
   return (
@@ -357,28 +396,41 @@ function BadgesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t("format")}</Label>
-              <Select
-                value={format}
-                onValueChange={(v) => updateSearch({ format: v as BadgeFormat })}
-              >
-                <SelectTrigger data-testid="badge-format-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {badgeFormats.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>
-                      <div>
-                        <span>{t(f.labelKey)}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{t(f.descriptionKey)}</span>
+              <Label>{t("components")}</Label>
+              <div className="space-y-3">
+                {componentDefs.map(({ token, labelKey, descKey }) => {
+                  const checked = activeTokens.includes(token);
+                  const isPrimary = token === "status" || token === "availability";
+                  // Disable unchecking the last primary.
+                  const disabled = checked && isPrimary && primaryCount === 1;
+                  return (
+                    <div key={token} className="flex items-start gap-3">
+                      <Checkbox
+                        id={`component-${token}`}
+                        checked={checked}
+                        disabled={disabled}
+                        onCheckedChange={(v) =>
+                          handleComponentToggle(token, v === true)
+                        }
+                        data-testid={`badge-component-${token}`}
+                      />
+                      <div className="grid gap-0.5">
+                        <label
+                          htmlFor={`component-${token}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {t(labelKey)}
+                        </label>
+                        <p className="text-xs text-muted-foreground">{t(descKey)}</p>
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted-foreground">{t("components.required")}</p>
             </div>
 
-            {format !== "status" && (
+            {showPeriod && (
               <div className="space-y-2">
                 <Label>{t("period")}</Label>
                 <Select
@@ -435,7 +487,7 @@ function BadgesPage() {
             <BadgePreview
               org={org}
               check={selectedCheck}
-              format={format}
+              components={components}
               period={period}
               style={style}
               customLabel={customLabel}
