@@ -13,6 +13,34 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
+// GetDestinations returns the list of Slack channels and DM targets available
+// for the given integration connection (identified by :uid within :org).
+//
+// GET /api/v1/orgs/:org/channels/:uid/slack/destinations
+func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	channelUID := req.Param("uid")
+
+	resp, err := h.svc.GetDestinations(req.Context(), orgSlug, channelUID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrConnectionNotFound), errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeChannelNotFound,
+				"Channel not found")
+		case errors.Is(err, ErrNotSlackChannel):
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				"Channel is not of type slack")
+		default:
+			// Wrap Slack API failures as 502 so callers can distinguish bot-token
+			// issues from general server errors.
+			return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError,
+				"Could not connect to Slack workspace")
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // Handler provides HTTP handlers for Slack integration endpoints.
 type Handler struct {
 	base.HandlerBase

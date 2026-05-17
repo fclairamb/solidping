@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -36,6 +38,8 @@ var (
 	ErrConnectionNotFound = errors.New("connection not found")
 	// ErrOrganizationNotFound is returned when an organization is not found.
 	ErrOrganizationNotFound = errors.New("organization not found")
+	// ErrNotSlackChannel is returned when the channel is not of type slack.
+	ErrNotSlackChannel = errors.New("channel is not of type slack")
 	// ErrInvalidState is returned when the OAuth state is invalid.
 	ErrInvalidState = errors.New("invalid OAuth state")
 	// ErrOAuthFailed is returned when OAuth exchange fails.
@@ -732,4 +736,120 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 	}
 
 	return nil
+}
+
+// SlackChannel is the DTO returned by GetDestinations for a channel entry.
+type SlackChannel struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IsPrivate bool   `json:"isPrivate"`
+	IsMember  bool   `json:"isMember"`
+}
+
+// SlackDestinationUser is the DTO returned by GetDestinations for a user entry.
+type SlackDestinationUser struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	RealName string `json:"realName"`
+}
+
+// SlackDestinationsResponse is returned by GetDestinations.
+type SlackDestinationsResponse struct {
+	Channels []SlackChannel        `json:"channels"`
+	Users    []SlackDestinationUser `json:"users"`
+}
+
+// GetDestinations fetches the list of Slack channels and users available
+// as notification destinations for the given channel (integration connection).
+func (s *Service) GetDestinations(
+	ctx context.Context, orgSlug, channelUID string,
+) (*SlackDestinationsResponse, error) {
+	// Resolve org slug to UID.
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, fmt.Errorf("get organization: %w", err)
+	}
+
+	// Load the channel row, asserting it belongs to this org and is of type slack.
+	conn, err := s.db.GetChannel(ctx, channelUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, fmt.Errorf("get channel: %w", err)
+	}
+
+	if conn.OrganizationUID != org.UID || conn.DeletedAt != nil {
+		return nil, ErrConnectionNotFound
+	}
+
+	if conn.Type != models.ConnectionTypeSlack {
+		return nil, ErrNotSlackChannel
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return nil, fmt.Errorf("parse slack settings: %w", err)
+	}
+
+	client := NewClient(settings.AccessToken)
+
+	// Fetch channels and users in parallel.
+	var (
+		rawChannels []Channel
+		rawUsers    []SlackUser
+	)
+
+	eg, egCtx := errgroup.WithContext(ctx)
+
+	eg.Go(func() error {
+		var fetchErr error
+		rawChannels, fetchErr = client.ListChannels(egCtx)
+
+		return fetchErr
+	})
+
+	eg.Go(func() error {
+		var fetchErr error
+		rawUsers, fetchErr = client.ListUsers(egCtx)
+
+		return fetchErr
+	})
+
+	if err := eg.Wait(); err != nil {
+		return nil, fmt.Errorf("slack API error: %w", err)
+	}
+
+	channels := make([]SlackChannel, 0, len(rawChannels))
+
+	for i := range rawChannels {
+		ch := rawChannels[i]
+		channels = append(channels, SlackChannel{
+			ID:        ch.ID,
+			Name:      ch.Name,
+			IsPrivate: ch.IsPrivate,
+			IsMember:  ch.IsMember,
+		})
+	}
+
+	users := make([]SlackDestinationUser, 0, len(rawUsers))
+
+	for i := range rawUsers {
+		u := rawUsers[i]
+		users = append(users, SlackDestinationUser{
+			ID:       u.ID,
+			Name:     u.Name,
+			RealName: u.RealName,
+		})
+	}
+
+	return &SlackDestinationsResponse{
+		Channels: channels,
+		Users:    users,
+	}, nil
 }
