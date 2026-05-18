@@ -2748,3 +2748,119 @@ export function useSlackDestinations(org: string, channelUid: string) {
     staleTime: 60_000,
   });
 }
+
+// --- Status Update types and hooks ---
+
+export interface StatusUpdate {
+  uid: string;
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: "investigating" | "identified" | "monitoring" | "resolved" | "maintenance" | "info";
+  publishedAt: string;
+  authorUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStatusUpdateRequest {
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: string;
+  publishedAt?: string;
+}
+
+export interface UpdateStatusUpdateRequest {
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title?: string;
+  bodyMarkdown?: string;
+  linkUrl?: string;
+  kind?: string;
+  publishedAt?: string;
+}
+
+export function useStatusUpdates(
+  org: string,
+  params: {
+    statusPage?: string;
+    section?: string;
+    check?: string;
+    incident?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+) {
+  return useQuery({
+    queryKey: ["statusUpdates", org, params],
+    queryFn: async () => {
+      const query = new URLSearchParams();
+      if (params.statusPage) query.set("statusPage", params.statusPage);
+      if (params.section) query.set("section", params.section);
+      if (params.check) query.set("check", params.check);
+      if (params.incident) query.set("incident", params.incident);
+      if (params.limit) query.set("limit", params.limit.toString());
+      if (params.offset) query.set("offset", params.offset.toString());
+      const qs = query.toString();
+      const response = await apiFetch<{ data?: StatusUpdate[] }>(
+        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useCreateStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useUpdateStatusUpdate(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useDeleteStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}

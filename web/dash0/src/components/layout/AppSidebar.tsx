@@ -20,6 +20,7 @@ import {
   User2,
   Building,
   Server,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -92,6 +93,11 @@ const navItems = [
     titleKey: "statusPages",
     path: "/orgs/$org/status-pages" as const,
     icon: Globe,
+  },
+  {
+    titleKey: "statusUpdates",
+    path: "/orgs/$org/status-updates" as const,
+    icon: MessageSquare,
   },
   {
     titleKey: "badges",
