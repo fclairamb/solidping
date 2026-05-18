@@ -829,6 +829,8 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
+      <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
+
       <BlastRadiusCard org={org} incident={incident} />
 
       {events?.data && (

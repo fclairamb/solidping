@@ -375,9 +375,7 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 }
 
 // SecretFields declares which top-level config keys carry secrets and must
-// be encrypted at rest. Implements credentials.SecretFielder. V1 covers the
-// basic-auth password only; Authorization headers and bearer tokens passed
-// inside `headers` are a known V2 follow-up (see credentials-encryption spec).
+// be encrypted at rest. Implements credentials.SecretFielder.
 func (c *HTTPConfig) SecretFields() []string {
-	return []string{"password"}
+	return []string{"password", "secretHeaders"}
 }
