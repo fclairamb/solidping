@@ -25,6 +25,7 @@ const (
 	StatusUpdateKindInfo StatusUpdateKind = "info"
 )
 
+//nolint:gochecknoglobals // package-level lookup table for valid kinds.
 var validStatusUpdateKinds = map[StatusUpdateKind]struct{}{
 	StatusUpdateKindInvestigating: {},
 	StatusUpdateKindIdentified:    {},
@@ -45,9 +46,9 @@ type StatusUpdate struct {
 	UID             string           `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string           `bun:"organization_uid,notnull"`
 	StatusPageUID   string           `bun:"status_page_uid,notnull"`
-	SectionUID      *string          `bun:"section_uid"`   // optional: scope to section
-	CheckUID        *string          `bun:"check_uid"`     // optional: scope to check
-	IncidentUID     *string          `bun:"incident_uid"`  // optional: thread under incident
+	SectionUID      *string          `bun:"section_uid"`
+	CheckUID        *string          `bun:"check_uid"`
+	IncidentUID     *string          `bun:"incident_uid"`
 	Title           string           `bun:"title,notnull"`
 	BodyMarkdown    string           `bun:"body_markdown,notnull"`
 	LinkURL         *string          `bun:"link_url"`
@@ -62,6 +63,7 @@ type StatusUpdate struct {
 // NewStatusUpdate creates a new StatusUpdate with generated UID and timestamps.
 func NewStatusUpdate(orgUID, statusPageUID, authorUID string) *StatusUpdate {
 	now := time.Now()
+
 	return &StatusUpdate{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,

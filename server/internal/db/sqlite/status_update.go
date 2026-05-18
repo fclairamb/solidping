@@ -59,18 +59,18 @@ func (s *Service) ListStatusUpdates(
 }
 
 // CreateStatusUpdate inserts a new status update.
-func (s *Service) CreateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error {
-	_, err := s.db.NewInsert().Model(su).Exec(ctx)
+func (s *Service) CreateStatusUpdate(ctx context.Context, update *models.StatusUpdate) error {
+	_, err := s.db.NewInsert().Model(update).Exec(ctx)
 
 	return err
 }
 
 // GetStatusUpdateByUID retrieves a status update by UID.
 func (s *Service) GetStatusUpdateByUID(ctx context.Context, uid string) (*models.StatusUpdate, error) {
-	su := new(models.StatusUpdate)
+	update := new(models.StatusUpdate)
 
 	err := s.db.NewSelect().
-		Model(su).
+		Model(update).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
@@ -78,15 +78,15 @@ func (s *Service) GetStatusUpdateByUID(ctx context.Context, uid string) (*models
 		return nil, err
 	}
 
-	return su, nil
+	return update, nil
 }
 
 // UpdateStatusUpdate updates an existing status update row.
-func (s *Service) UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error {
-	su.UpdatedAt = time.Now()
+func (s *Service) UpdateStatusUpdate(ctx context.Context, update *models.StatusUpdate) error {
+	update.UpdatedAt = time.Now()
 
 	_, err := s.db.NewUpdate().
-		Model(su).
+		Model(update).
 		WherePK().
 		Exec(ctx)
 
@@ -114,7 +114,7 @@ func (s *Service) ListPublicStatusUpdates(
 		return []*db.PublicStatusUpdate{}, nil
 	}
 
-	type row struct {
+	type rowResult struct {
 		UID          string    `bun:"uid"`
 		SectionUID   *string   `bun:"section_uid"`
 		CheckUID     *string   `bun:"check_uid"`
@@ -126,9 +126,9 @@ func (s *Service) ListPublicStatusUpdates(
 		PublishedAt  time.Time `bun:"published_at"`
 	}
 
-	var rows []row
+	var rowResults []rowResult
 
-	query := fmt.Sprintf(
+	rawQuery := fmt.Sprintf(
 		`SELECT uid, section_uid, check_uid, incident_uid, title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = ?
@@ -139,7 +139,7 @@ func (s *Service) ListPublicStatusUpdates(
 		historyDays,
 	)
 
-	err := s.db.NewRaw(query, statusPageUID).Scan(ctx, &rows)
+	err := s.db.NewRaw(rawQuery, statusPageUID).Scan(ctx, &rowResults)
 	if err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			return []*db.PublicStatusUpdate{}, nil
@@ -148,18 +148,18 @@ func (s *Service) ListPublicStatusUpdates(
 		return nil, err
 	}
 
-	result := make([]*db.PublicStatusUpdate, len(rows))
-	for i, r := range rows {
-		result[i] = &db.PublicStatusUpdate{
-			UID:          r.UID,
-			SectionUID:   r.SectionUID,
-			CheckUID:     r.CheckUID,
-			IncidentUID:  r.IncidentUID,
-			Title:        r.Title,
-			BodyMarkdown: r.BodyMarkdown,
-			LinkURL:      r.LinkURL,
-			Kind:         r.Kind,
-			PublishedAt:  r.PublishedAt,
+	result := make([]*db.PublicStatusUpdate, len(rowResults))
+	for idx, entry := range rowResults {
+		result[idx] = &db.PublicStatusUpdate{
+			UID:          entry.UID,
+			SectionUID:   entry.SectionUID,
+			CheckUID:     entry.CheckUID,
+			IncidentUID:  entry.IncidentUID,
+			Title:        entry.Title,
+			BodyMarkdown: entry.BodyMarkdown,
+			LinkURL:      entry.LinkURL,
+			Kind:         entry.Kind,
+			PublishedAt:  entry.PublishedAt,
 		}
 	}
 
