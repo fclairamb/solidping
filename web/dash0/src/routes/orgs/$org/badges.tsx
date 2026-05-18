@@ -37,6 +37,7 @@ interface BadgeSearch {
   period?: BadgePeriod;
   style?: BadgeStyle;
   label?: string;
+  minWidth?: number;
 }
 
 function parseComponentsString(raw: string): string[] {
@@ -59,6 +60,7 @@ export const Route = createFileRoute("/orgs/$org/badges")({
         components = tokens.join(",");
       }
     }
+    const rawMinWidth = Number(search.minWidth);
     return {
       check: typeof search.check === "string" ? search.check : undefined,
       components,
@@ -70,6 +72,9 @@ export const Route = createFileRoute("/orgs/$org/badges")({
         : undefined,
       label: typeof search.label === "string" && search.label
         ? search.label
+        : undefined,
+      minWidth: !isNaN(rawMinWidth) && rawMinWidth >= 1 && rawMinWidth <= 800
+        ? rawMinWidth
         : undefined,
     };
   },
@@ -121,6 +126,7 @@ function BadgePreview({
   period,
   style,
   customLabel,
+  minWidth,
 }: {
   org: string;
   check: Check;
@@ -128,6 +134,7 @@ function BadgePreview({
   period: BadgePeriod;
   style: BadgeStyle;
   customLabel: string;
+  minWidth: number;
 }) {
   const { t } = useTranslation("badges");
   const imgRef = useRef<HTMLImageElement>(null);
@@ -138,6 +145,7 @@ function BadgePreview({
   if (period !== "24h") params.set("period", period);
   if (style !== "flat") params.set("style", style);
   if (customLabel) params.set("label", customLabel);
+  if (minWidth > 0) params.set("minWidth", String(minWidth));
   const query = params.toString();
 
   const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${components}${query ? `?${query}` : ""}`;
@@ -299,6 +307,7 @@ function BadgesPage() {
   const period = search.period ?? "24h";
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
+  const minWidth = search.minWidth ?? 0;
 
   const activeTokens = parseComponentsString(components);
   const primaryCount = activeTokens.filter((t) => t === "status" || t === "availability").length;
@@ -317,6 +326,7 @@ function BadgesPage() {
         if (next.period === "24h") delete next.period;
         if (next.style === "flat") delete next.style;
         if (!next.label) delete next.label;
+        if (!next.minWidth || next.minWidth <= 0) delete next.minWidth;
         return next;
       },
       replace: true,
@@ -471,6 +481,20 @@ function BadgesPage() {
             </div>
 
             <div className="space-y-2">
+              <Label>{t("minWidth")}</Label>
+              <Input
+                data-testid="badge-min-width"
+                type="number"
+                min={0}
+                max={800}
+                step={10}
+                value={minWidth}
+                onChange={(e) => updateSearch({ minWidth: Number(e.target.value) || undefined })}
+              />
+              <p className="text-xs text-muted-foreground">{t("minWidthDescription")}</p>
+            </div>
+
+            <div className="space-y-2">
               <Label>{t("customLabel")}</Label>
               <Input
                 data-testid="badge-custom-label"
@@ -491,6 +515,7 @@ function BadgesPage() {
               period={period}
               style={style}
               customLabel={customLabel}
+              minWidth={minWidth}
             />
           ) : (
             <Card>

@@ -9,6 +9,8 @@
   "style": "Style",
   "customLabel": "Libellé personnalisé",
   "customLabelPlaceholder": "Laisser vide pour utiliser le nom de la vérification",
+  "minWidth": "Largeur minimale (px)",
+  "minWidthDescription": "Élargit le badge jusqu'à cette largeur au minimum. Utilisez 0 pour automatique.",
   "preview": "Aperçu",
   "refresh": "Actualiser",
   "selectCheckPrompt": "Sélectionnez une vérification pour prévisualiser et générer les badges",

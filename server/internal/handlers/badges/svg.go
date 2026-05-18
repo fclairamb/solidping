@@ -16,11 +16,16 @@ const (
 )
 
 // GenerateSVG creates a shields.io-style badge SVG.
-func GenerateSVG(label, value, valueColor, style string) string {
+func GenerateSVG(label, value, valueColor, style string, minWidth int) string {
 	// Calculate widths (approximate: 6px per character + padding)
 	labelWidth := len(label)*6 + 10
 	valueWidth := len(value)*6 + 10
 	totalWidth := labelWidth + valueWidth
+
+	if minWidth > 0 && totalWidth < minWidth {
+		valueWidth += minWidth - totalWidth
+		totalWidth = minWidth
+	}
 
 	// Escape XML special characters
 	label = escapeXML(label)

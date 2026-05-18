@@ -4,6 +4,7 @@ package badges
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/uptrace/bunrouter"
 
@@ -35,6 +36,20 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 		Period: req.URL.Query().Get("period"),
 		Label:  req.URL.Query().Get("label"),
 		Style:  req.URL.Query().Get("style"),
+	}
+
+	if raw := req.URL.Query().Get("minWidth"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 0 {
+				v = 0
+			}
+
+			if v > 800 {
+				v = 800
+			}
+
+			opts.MinWidth = v
+		}
 	}
 
 	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, components, opts)

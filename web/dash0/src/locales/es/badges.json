@@ -9,6 +9,8 @@
   "style": "Estilo",
   "customLabel": "Etiqueta personalizada",
   "customLabelPlaceholder": "Déjelo vacío para usar el nombre de la comprobación",
+  "minWidth": "Ancho mínimo (px)",
+  "minWidthDescription": "Amplía la insignia hasta al menos este ancho. Use 0 para automático.",
   "preview": "Vista previa",
   "refresh": "Actualizar",
   "selectCheckPrompt": "Seleccione una comprobación para previsualizar y generar insignias",
