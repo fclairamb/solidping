@@ -19,6 +19,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ConfirmRegistrationTokenRouteImport } from './routes/confirm-registration.$token'
 import { Route as OrgsOrgIndexRouteImport } from './routes/orgs/$org/index'
 import { Route as OrgsOrgTestRouteImport } from './routes/orgs/$org/test'
+import { Route as OrgsOrgStatusUpdatesRouteImport } from './routes/orgs/$org/status-updates'
 import { Route as OrgsOrgStatusPagesRouteImport } from './routes/orgs/$org/status-pages'
 import { Route as OrgsOrgServerRouteImport } from './routes/orgs/$org/server'
 import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register'
@@ -132,6 +133,11 @@ const OrgsOrgIndexRoute = OrgsOrgIndexRouteImport.update({
 const OrgsOrgTestRoute = OrgsOrgTestRouteImport.update({
   id: '/test',
   path: '/test',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
+const OrgsOrgStatusUpdatesRoute = OrgsOrgStatusUpdatesRouteImport.update({
+  id: '/status-updates',
+  path: '/status-updates',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
 const OrgsOrgStatusPagesRoute = OrgsOrgStatusPagesRouteImport.update({
@@ -494,6 +500,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -559,6 +566,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
@@ -631,6 +639,7 @@ export interface FileRoutesById {
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
@@ -708,6 +717,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/register'
     | '/orgs/$org/server'
     | '/orgs/$org/status-pages'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
     | '/orgs/$org/account/profile'
@@ -773,6 +783,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/login'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
@@ -844,6 +855,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/register'
     | '/orgs/$org/server'
     | '/orgs/$org/status-pages'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
     | '/orgs/$org/account/profile'
@@ -977,6 +989,13 @@ declare module '@tanstack/react-router' {
       path: '/test'
       fullPath: '/orgs/$org/test'
       preLoaderRoute: typeof OrgsOrgTestRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/status-updates': {
+      id: '/orgs/$org/status-updates'
+      path: '/status-updates'
+      fullPath: '/orgs/$org/status-updates'
+      preLoaderRoute: typeof OrgsOrgStatusUpdatesRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/status-pages': {
@@ -1676,6 +1695,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgRegisterRoute: typeof OrgsOrgRegisterRoute
   OrgsOrgServerRoute: typeof OrgsOrgServerRouteWithChildren
   OrgsOrgStatusPagesRoute: typeof OrgsOrgStatusPagesRouteWithChildren
+  OrgsOrgStatusUpdatesRoute: typeof OrgsOrgStatusUpdatesRoute
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
@@ -1697,6 +1717,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgRegisterRoute: OrgsOrgRegisterRoute,
   OrgsOrgServerRoute: OrgsOrgServerRouteWithChildren,
   OrgsOrgStatusPagesRoute: OrgsOrgStatusPagesRouteWithChildren,
+  OrgsOrgStatusUpdatesRoute: OrgsOrgStatusUpdatesRoute,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
   OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,

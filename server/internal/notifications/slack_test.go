@@ -1461,5 +1461,71 @@ func TestSlackSender_DMChannelID(t *testing.T) {
 	r.Equal("U0345CDEFG", channel, "DM channel_id must be passed through to PostMessage unchanged")
 }
 
+// --- UserContact / UserNotificationRoute stubs ---
+
+func (m *mockDBService) ListUserContactsWithRoutes(
+	_ context.Context, _, _ string,
+) ([]*models.UserNotificationRoute, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) EnsureDefaultEmailRoute(
+	_ context.Context, _, _, _ string,
+) error {
+	return nil
+}
+
+func (m *mockDBService) UpsertUserContact(_ context.Context, _ *models.UserContact) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteUserContact(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) SetRouteEnabled(_ context.Context, _ string, _ bool) error {
+	return nil
+}
+
+func (m *mockDBService) ReorderRoutes(_ context.Context, _, _ string, _ []string) error {
+	return nil
+}
+
+func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*models.Channel, error) {
+	return nil, nil //nolint:nilnil
+}
+
+// --- StatusUpdate stubs ---
+
+func (m *mockDBService) ListStatusUpdates(
+	_ context.Context, _ string, _ models.StatusUpdatesFilter,
+) ([]*models.StatusUpdate, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) CreateStatusUpdate(_ context.Context, _ *models.StatusUpdate) error {
+	return nil
+}
+
+func (m *mockDBService) GetStatusUpdateByUID(
+	_ context.Context, _ string,
+) (*models.StatusUpdate, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) UpdateStatusUpdate(_ context.Context, _ *models.StatusUpdate) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteStatusUpdate(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListPublicStatusUpdates(
+	_ context.Context, _ string, _ int,
+) ([]*db.PublicStatusUpdate, error) {
+	return nil, nil
+}
+
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)
