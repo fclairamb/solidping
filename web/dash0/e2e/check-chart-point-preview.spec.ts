@@ -10,11 +10,7 @@ import { test, expect } from "./fixtures";
 test.describe("Chart point preview", () => {
   // Helper: navigate to a check detail page with mocked results data so the
   // chart renders at least one dot we can interact with.
-  async function gotoCheckDetailWithResults(
-    page: Parameters<typeof test>[0] extends { authenticatedPage: infer P }
-      ? P
-      : never,
-  ) {
+  async function gotoCheckDetailWithResults(page: Parameters<Parameters<typeof test.extend>[0]["authenticatedPage"]>[0]) {
     const now = Date.now();
     const resultUid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 
