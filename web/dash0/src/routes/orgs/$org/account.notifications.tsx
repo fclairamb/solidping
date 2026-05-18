@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useTranslation } from "react-i18next";
 import {
   Card,
   CardContent,
@@ -74,7 +73,6 @@ function RouteRow({
   org: string;
   onTestSent: () => void;
 }) {
-  const { t: tc } = useTranslation("common");
   const deleteContact = useDeleteNotificationContact(org);
   const patchRoute = usePatchNotificationRoute(org);
   const testRoute = useTestNotificationRoute(org);
@@ -234,7 +232,6 @@ function AddContactForm({
   org: string;
   onSuccess: () => void;
 }) {
-  const { t: tc } = useTranslation("common");
   const [type, setType] = useState<"email" | "phone">("email");
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -317,7 +314,6 @@ function AddContactForm({
 }
 
 function NotificationsPage() {
-  const { t } = useTranslation("account");
   const { org } = Route.useParams();
   const [dismissedSlack, setDismissedSlack] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
