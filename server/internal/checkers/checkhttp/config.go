@@ -1,6 +1,7 @@
 package checkhttp
 
 import (
+	"encoding/json"
 	"errors"
 	"regexp"
 	"strconv"
@@ -58,6 +59,10 @@ type HTTPConfig struct {
 	// Basic auth credentials
 	Username string `json:"username,omitempty"`
 	Password string `json:"password,omitempty"`
+
+	// SecretHeaders holds header values that are encrypted at rest.
+	// Use for API keys, Bearer tokens, and other sensitive header values.
+	SecretHeaders map[string]string `json:"secretHeaders,omitempty"`
 
 	// JSONPath assertions (AST-based validation of JSON response bodies)
 	JSONPathAssertions *AssertionNode `json:"json_path_assertions,omitempty"` //nolint:tagliatelle // API uses snake_case
@@ -224,6 +229,22 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("password", "must be a string")
 	}
 
+	// Extract SecretHeaders (optional)
+	if secretHeaders, ok := configMap["secretHeaders"].(map[string]string); ok {
+		c.SecretHeaders = secretHeaders
+	} else if secretHeadersAny, ok := configMap["secretHeaders"].(map[string]any); ok {
+		c.SecretHeaders = make(map[string]string, len(secretHeadersAny))
+		for k, v := range secretHeadersAny {
+			if strVal, ok := v.(string); ok {
+				c.SecretHeaders[k] = strVal
+			} else {
+				return checkerdef.NewConfigErrorf("secretHeaders", "%s must be a string", k)
+			}
+		}
+	} else if configMap["secretHeaders"] != nil {
+		return checkerdef.NewConfigError("secretHeaders", "must be a map[string]string")
+	}
+
 	// Extract JSONPathAssertions (optional)
 	if v, key, ok := resolveKey(configMap, "jsonPathAssertions", "json_path_assertions"); ok {
 		node, err := parseAssertionNode(v)
@@ -336,17 +357,25 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 		cfg["password"] = c.Password
 	}
 
+	if len(c.SecretHeaders) > 0 {
+		cfg["secretHeaders"] = c.SecretHeaders
+	}
+
 	if c.JSONPathAssertions != nil {
-		cfg["jsonPathAssertions"] = c.JSONPathAssertions
+		// Serialize via JSON to produce map[string]any so that FromMap can parse it back.
+		if b, err := json.Marshal(c.JSONPathAssertions); err == nil {
+			var m any
+			if err := json.Unmarshal(b, &m); err == nil {
+				cfg["jsonPathAssertions"] = m
+			}
+		}
 	}
 
 	return cfg
 }
 
 // SecretFields declares which top-level config keys carry secrets and must
-// be encrypted at rest. Implements credentials.SecretFielder. V1 covers the
-// basic-auth password only; Authorization headers and bearer tokens passed
-// inside `headers` are a known V2 follow-up (see credentials-encryption spec).
+// be encrypted at rest. Implements credentials.SecretFielder.
 func (c *HTTPConfig) SecretFields() []string {
-	return []string{"password"}
+	return []string{"password", "secretHeaders"}
 }
