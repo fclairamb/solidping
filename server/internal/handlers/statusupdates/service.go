@@ -44,6 +44,11 @@ var (
 	ErrCheckUIDMismatch = errors.New("check does not match the incident's check")
 )
 
+const (
+	maxTitleLen = 200
+	maxBodyLen  = 16384
+)
+
 // Service provides business logic for status update management.
 type Service struct {
 	db db.Service
@@ -73,14 +78,14 @@ type StatusUpdateResponse struct {
 
 // CreateStatusUpdateRequest represents a request to create a status update.
 type CreateStatusUpdateRequest struct {
-	StatusPageUID string    `json:"statusPageUid"`
-	SectionUID    *string   `json:"sectionUid,omitempty"`
-	CheckUID      *string   `json:"checkUid,omitempty"`
-	IncidentUID   *string   `json:"incidentUid,omitempty"`
-	Title         string    `json:"title"`
-	BodyMarkdown  string    `json:"bodyMarkdown"`
-	LinkURL       *string   `json:"linkUrl,omitempty"`
-	Kind          string    `json:"kind"`
+	StatusPageUID string     `json:"statusPageUid"`
+	SectionUID    *string    `json:"sectionUid,omitempty"`
+	CheckUID      *string    `json:"checkUid,omitempty"`
+	IncidentUID   *string    `json:"incidentUid,omitempty"`
+	Title         string     `json:"title"`
+	BodyMarkdown  string     `json:"bodyMarkdown"`
+	LinkURL       *string    `json:"linkUrl,omitempty"`
+	Kind          string     `json:"kind"`
 	PublishedAt   *time.Time `json:"publishedAt,omitempty"`
 }
 
@@ -106,32 +111,54 @@ type ListStatusUpdatesOptions struct {
 	Offset     int
 }
 
-func toResponse(su *models.StatusUpdate) StatusUpdateResponse {
+func toResponse(update *models.StatusUpdate) StatusUpdateResponse {
 	return StatusUpdateResponse{
-		UID:           su.UID,
-		StatusPageUID: su.StatusPageUID,
-		SectionUID:    su.SectionUID,
-		CheckUID:      su.CheckUID,
-		IncidentUID:   su.IncidentUID,
-		Title:         su.Title,
-		BodyMarkdown:  su.BodyMarkdown,
-		LinkURL:       su.LinkURL,
-		Kind:          string(su.Kind),
-		PublishedAt:   su.PublishedAt,
-		AuthorUID:     su.AuthorUID,
-		CreatedAt:     su.CreatedAt,
-		UpdatedAt:     su.UpdatedAt,
+		UID:           update.UID,
+		StatusPageUID: update.StatusPageUID,
+		SectionUID:    update.SectionUID,
+		CheckUID:      update.CheckUID,
+		IncidentUID:   update.IncidentUID,
+		Title:         update.Title,
+		BodyMarkdown:  update.BodyMarkdown,
+		LinkURL:       update.LinkURL,
+		Kind:          string(update.Kind),
+		PublishedAt:   update.PublishedAt,
+		AuthorUID:     update.AuthorUID,
+		CreatedAt:     update.CreatedAt,
+		UpdatedAt:     update.UpdatedAt,
 	}
 }
 
-func validateLinkURL(linkURL *string) error {
-	if linkURL == nil || *linkURL == "" {
+func validateLinkURL(rawURL *string) error {
+	if rawURL == nil || *rawURL == "" {
 		return nil
 	}
 
-	u, err := url.Parse(*linkURL)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+	parsed, err := url.Parse(*rawURL)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return ErrInvalidLinkURL
+	}
+
+	return nil
+}
+
+func validateTitle(title string) error {
+	if title == "" {
+		return ErrTitleRequired
+	}
+	if len(title) > maxTitleLen {
+		return ErrTitleTooLong
+	}
+
+	return nil
+}
+
+func validateBody(body string) error {
+	if body == "" {
+		return ErrBodyRequired
+	}
+	if len(body) > maxBodyLen {
+		return ErrBodyTooLong
 	}
 
 	return nil
@@ -170,40 +197,30 @@ func (s *Service) ListStatusUpdates(
 	}
 
 	responses := make([]StatusUpdateResponse, len(updates))
-	for i, u := range updates {
-		responses[i] = toResponse(u)
+	for idx, update := range updates {
+		responses[idx] = toResponse(update)
 	}
 
 	return responses, nil
 }
 
 // CreateStatusUpdate creates a new status update after validation.
-func (s *Service) CreateStatusUpdate(
+func (s *Service) CreateStatusUpdate( //nolint:cyclop,gocognit // validation requires checking multiple fields
 	ctx context.Context, orgSlug, authorUID string, req *CreateStatusUpdateRequest,
 ) (StatusUpdateResponse, error) {
-	// Validate kind
 	kind := models.StatusUpdateKind(req.Kind)
 	if !kind.IsValid() {
 		return StatusUpdateResponse{}, ErrInvalidKind
 	}
 
-	// Validate title
-	if req.Title == "" {
-		return StatusUpdateResponse{}, ErrTitleRequired
-	}
-	if len(req.Title) > 200 {
-		return StatusUpdateResponse{}, ErrTitleTooLong
+	if err := validateTitle(req.Title); err != nil {
+		return StatusUpdateResponse{}, err
 	}
 
-	// Validate body
-	if req.BodyMarkdown == "" {
-		return StatusUpdateResponse{}, ErrBodyRequired
-	}
-	if len(req.BodyMarkdown) > 16384 {
-		return StatusUpdateResponse{}, ErrBodyTooLong
+	if err := validateBody(req.BodyMarkdown); err != nil {
+		return StatusUpdateResponse{}, err
 	}
 
-	// Validate linkUrl
 	if err := validateLinkURL(req.LinkURL); err != nil {
 		return StatusUpdateResponse{}, err
 	}
@@ -213,12 +230,12 @@ func (s *Service) CreateStatusUpdate(
 		return StatusUpdateResponse{}, ErrOrganizationNotFound
 	}
 
-	// Validate statusPage exists and belongs to org
 	page, err := s.db.GetStatusPage(ctx, org.UID, req.StatusPageUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return StatusUpdateResponse{}, ErrStatusPageNotFound
 		}
+
 		return StatusUpdateResponse{}, err
 	}
 
@@ -226,7 +243,6 @@ func (s *Service) CreateStatusUpdate(
 		return StatusUpdateResponse{}, ErrStatusPageForbidden
 	}
 
-	// Validate sectionUID
 	if req.SectionUID != nil && *req.SectionUID != "" {
 		section, sectErr := s.db.GetStatusPageSection(ctx, page.UID, *req.SectionUID)
 		if sectErr != nil || section == nil {
@@ -234,7 +250,6 @@ func (s *Service) CreateStatusUpdate(
 		}
 	}
 
-	// Validate checkUID (must be a resource on this status page)
 	checkUID := req.CheckUID
 	if checkUID != nil && *checkUID != "" {
 		if err := s.validateCheckOnPage(ctx, page.UID, *checkUID); err != nil {
@@ -242,54 +257,70 @@ func (s *Service) CreateStatusUpdate(
 		}
 	}
 
-	// Resolve incidentUID — auto-fill checkUID if not set
 	if req.IncidentUID != nil && *req.IncidentUID != "" {
-		incident, incErr := s.db.GetIncident(ctx, org.UID, *req.IncidentUID)
-		if incErr != nil {
-			if errors.Is(incErr, sql.ErrNoRows) {
-				return StatusUpdateResponse{}, ErrIncidentNotFound
-			}
-			return StatusUpdateResponse{}, incErr
+		resolved, err := s.resolveIncidentCheck(ctx, org.UID, *req.IncidentUID, checkUID)
+		if err != nil {
+			return StatusUpdateResponse{}, err
 		}
 
-		if incident.CheckUID != "" {
-			incidentCheckUID := incident.CheckUID
-			if checkUID != nil && *checkUID != "" && *checkUID != incidentCheckUID {
-				return StatusUpdateResponse{}, ErrCheckUIDMismatch
-			}
-			if checkUID == nil || *checkUID == "" {
-				checkUID = &incidentCheckUID
-			}
-		}
+		checkUID = resolved
 	}
 
-	su := models.NewStatusUpdate(org.UID, page.UID, authorUID)
-	su.Kind = kind
-	su.Title = req.Title
-	su.BodyMarkdown = req.BodyMarkdown
-	su.LinkURL = req.LinkURL
-	su.CheckUID = checkUID
-	su.IncidentUID = req.IncidentUID
+	update := models.NewStatusUpdate(org.UID, page.UID, authorUID)
+	update.Kind = kind
+	update.Title = req.Title
+	update.BodyMarkdown = req.BodyMarkdown
+	update.LinkURL = req.LinkURL
+	update.CheckUID = checkUID
+	update.IncidentUID = req.IncidentUID
 
 	if req.SectionUID != nil && *req.SectionUID != "" {
-		su.SectionUID = req.SectionUID
+		update.SectionUID = req.SectionUID
 	}
 
 	if req.PublishedAt != nil {
-		su.PublishedAt = *req.PublishedAt
+		update.PublishedAt = *req.PublishedAt
 	}
 
-	if err := s.db.CreateStatusUpdate(ctx, su); err != nil {
+	if err := s.db.CreateStatusUpdate(ctx, update); err != nil {
 		return StatusUpdateResponse{}, err
 	}
 
-	// Emit audit event
 	event := models.NewEvent(org.UID, models.EventTypeStatusUpdateCreated, models.ActorTypeUser)
 	event.ActorUID = &authorUID
-	event.Payload["status_update_uid"] = su.UID
+	event.Payload["status_update_uid"] = update.UID
 	_ = s.db.CreateEvent(ctx, event)
 
-	return toResponse(su), nil
+	return toResponse(update), nil
+}
+
+// resolveIncidentCheck looks up the incident and returns the check UID to use,
+// auto-filling from the incident when checkUID is not set.
+func (s *Service) resolveIncidentCheck(
+	ctx context.Context, orgUID, incidentUID string, checkUID *string,
+) (*string, error) {
+	incident, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrIncidentNotFound
+		}
+
+		return nil, err
+	}
+
+	if incident.CheckUID == "" {
+		return checkUID, nil
+	}
+
+	if checkUID != nil && *checkUID != "" && *checkUID != incident.CheckUID {
+		return nil, ErrCheckUIDMismatch
+	}
+
+	if checkUID == nil || *checkUID == "" {
+		return &incident.CheckUID, nil
+	}
+
+	return checkUID, nil
 }
 
 // GetStatusUpdate retrieves a single status update by UID, scoped to the org.
@@ -301,23 +332,24 @@ func (s *Service) GetStatusUpdate(
 		return StatusUpdateResponse{}, ErrOrganizationNotFound
 	}
 
-	su, err := s.db.GetStatusUpdateByUID(ctx, uid)
+	update, err := s.db.GetStatusUpdateByUID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return StatusUpdateResponse{}, ErrStatusUpdateNotFound
 		}
+
 		return StatusUpdateResponse{}, err
 	}
 
-	if su.OrganizationUID != org.UID {
+	if update.OrganizationUID != org.UID {
 		return StatusUpdateResponse{}, ErrStatusUpdateNotFound
 	}
 
-	return toResponse(su), nil
+	return toResponse(update), nil
 }
 
 // UpdateStatusUpdate applies a partial update to a status update.
-func (s *Service) UpdateStatusUpdate(
+func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional fields requires checking each
 	ctx context.Context, orgSlug, uid, actorUID string, req *UpdateStatusUpdateRequest,
 ) (StatusUpdateResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -325,15 +357,16 @@ func (s *Service) UpdateStatusUpdate(
 		return StatusUpdateResponse{}, ErrOrganizationNotFound
 	}
 
-	su, err := s.db.GetStatusUpdateByUID(ctx, uid)
+	update, err := s.db.GetStatusUpdateByUID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return StatusUpdateResponse{}, ErrStatusUpdateNotFound
 		}
+
 		return StatusUpdateResponse{}, err
 	}
 
-	if su.OrganizationUID != org.UID {
+	if update.OrganizationUID != org.UID {
 		return StatusUpdateResponse{}, ErrStatusUpdateNotFound
 	}
 
@@ -342,62 +375,60 @@ func (s *Service) UpdateStatusUpdate(
 		if !kind.IsValid() {
 			return StatusUpdateResponse{}, ErrInvalidKind
 		}
-		su.Kind = kind
+
+		update.Kind = kind
 	}
 
 	if req.Title != nil {
-		if *req.Title == "" {
-			return StatusUpdateResponse{}, ErrTitleRequired
+		if err := validateTitle(*req.Title); err != nil {
+			return StatusUpdateResponse{}, err
 		}
-		if len(*req.Title) > 200 {
-			return StatusUpdateResponse{}, ErrTitleTooLong
-		}
-		su.Title = *req.Title
+
+		update.Title = *req.Title
 	}
 
 	if req.BodyMarkdown != nil {
-		if *req.BodyMarkdown == "" {
-			return StatusUpdateResponse{}, ErrBodyRequired
+		if err := validateBody(*req.BodyMarkdown); err != nil {
+			return StatusUpdateResponse{}, err
 		}
-		if len(*req.BodyMarkdown) > 16384 {
-			return StatusUpdateResponse{}, ErrBodyTooLong
-		}
-		su.BodyMarkdown = *req.BodyMarkdown
+
+		update.BodyMarkdown = *req.BodyMarkdown
 	}
 
 	if req.LinkURL != nil {
 		if err := validateLinkURL(req.LinkURL); err != nil {
 			return StatusUpdateResponse{}, err
 		}
-		su.LinkURL = req.LinkURL
+
+		update.LinkURL = req.LinkURL
 	}
 
 	if req.SectionUID != nil {
-		su.SectionUID = req.SectionUID
+		update.SectionUID = req.SectionUID
 	}
 
 	if req.CheckUID != nil {
-		su.CheckUID = req.CheckUID
+		update.CheckUID = req.CheckUID
 	}
 
 	if req.IncidentUID != nil {
-		su.IncidentUID = req.IncidentUID
+		update.IncidentUID = req.IncidentUID
 	}
 
 	if req.PublishedAt != nil {
-		su.PublishedAt = *req.PublishedAt
+		update.PublishedAt = *req.PublishedAt
 	}
 
-	if err := s.db.UpdateStatusUpdate(ctx, su); err != nil {
+	if err := s.db.UpdateStatusUpdate(ctx, update); err != nil {
 		return StatusUpdateResponse{}, err
 	}
 
 	event := models.NewEvent(org.UID, models.EventTypeStatusUpdateUpdated, models.ActorTypeUser)
 	event.ActorUID = &actorUID
-	event.Payload["status_update_uid"] = su.UID
+	event.Payload["status_update_uid"] = update.UID
 	_ = s.db.CreateEvent(ctx, event)
 
-	return toResponse(su), nil
+	return toResponse(update), nil
 }
 
 // DeleteStatusUpdate soft-deletes a status update.
@@ -409,15 +440,16 @@ func (s *Service) DeleteStatusUpdate(
 		return ErrOrganizationNotFound
 	}
 
-	su, err := s.db.GetStatusUpdateByUID(ctx, uid)
+	update, err := s.db.GetStatusUpdateByUID(ctx, uid)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return ErrStatusUpdateNotFound
 		}
+
 		return err
 	}
 
-	if su.OrganizationUID != org.UID {
+	if update.OrganizationUID != org.UID {
 		return ErrStatusUpdateNotFound
 	}
 
@@ -435,7 +467,6 @@ func (s *Service) DeleteStatusUpdate(
 
 // validateCheckOnPage checks that a check UID is registered as a resource on the given status page.
 func (s *Service) validateCheckOnPage(ctx context.Context, pageUID, checkUID string) error {
-	// List all sections on the page and check each for the resource
 	sections, err := s.db.ListStatusPageSections(ctx, pageUID)
 	if err != nil {
 		return err
@@ -446,8 +477,9 @@ func (s *Service) validateCheckOnPage(ctx context.Context, pageUID, checkUID str
 		if resErr != nil {
 			continue
 		}
-		for _, r := range resources {
-			if r.CheckUID == checkUID {
+
+		for _, resource := range resources {
+			if resource.CheckUID == checkUID {
 				return nil
 			}
 		}

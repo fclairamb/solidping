@@ -47,22 +47,24 @@ func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req bunrouter.Re
 	query := req.URL.Query()
 
 	limit := 50
-	if v := query.Get("limit"); v != "" {
-		parsed, err := strconv.Atoi(v)
+	if rawLimit := query.Get("limit"); rawLimit != "" {
+		parsed, err := strconv.Atoi(rawLimit)
 		if err != nil || parsed <= 0 || parsed > 200 {
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "limit must be 1–200")
 		}
+
 		limit = parsed
 	}
 
 	offset := 0
-	if v := query.Get("offset"); v != "" {
-		parsed, err := strconv.Atoi(v)
+	if rawOffset := query.Get("offset"); rawOffset != "" {
+		parsed, err := strconv.Atoi(rawOffset)
 		if err != nil || parsed < 0 {
 			return h.WriteError(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, "offset must be non-negative")
 		}
+
 		offset = parsed
 	}
 
@@ -96,12 +98,12 @@ func (h *Handler) CreateStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 		})
 	}
 
-	su, err := h.svc.CreateStatusUpdate(req.Context(), orgSlug, h.actorUID(req), &createReq)
+	update, err := h.svc.CreateStatusUpdate(req.Context(), orgSlug, h.actorUID(req), &createReq)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusCreated, su)
+	return h.WriteJSON(writer, http.StatusCreated, update)
 }
 
 // GetStatusUpdate handles GET /api/v1/orgs/:org/status-updates/:uid.
@@ -109,12 +111,12 @@ func (h *Handler) GetStatusUpdate(writer http.ResponseWriter, req bunrouter.Requ
 	orgSlug := req.Param("org")
 	uid := req.Param("uid")
 
-	su, err := h.svc.GetStatusUpdate(req.Context(), orgSlug, uid)
+	update, err := h.svc.GetStatusUpdate(req.Context(), orgSlug, uid)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, su)
+	return h.WriteJSON(writer, http.StatusOK, update)
 }
 
 // UpdateStatusUpdate handles PATCH /api/v1/orgs/:org/status-updates/:uid.
@@ -129,12 +131,12 @@ func (h *Handler) UpdateStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 		})
 	}
 
-	su, err := h.svc.UpdateStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req), &updateReq)
+	update, err := h.svc.UpdateStatusUpdate(req.Context(), orgSlug, uid, h.actorUID(req), &updateReq)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, su)
+	return h.WriteJSON(writer, http.StatusOK, update)
 }
 
 // DeleteStatusUpdate handles DELETE /api/v1/orgs/:org/status-updates/:uid → 204.
@@ -151,7 +153,7 @@ func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 	return nil
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
+func (h *Handler) handleError(writer http.ResponseWriter, err error) error { //nolint:cyclop // error taxonomy requires all cases
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
@@ -160,9 +162,15 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrStatusPageNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageNotFound, "Status page not found")
 	case errors.Is(err, ErrStatusPageForbidden):
-		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Status page belongs to a different organization")
+		return h.WriteError(
+			writer, http.StatusForbidden, base.ErrorCodeForbidden,
+			"Status page belongs to a different organization",
+		)
 	case errors.Is(err, ErrSectionNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound, "Section not found on status page")
+		return h.WriteError(
+			writer, http.StatusNotFound, base.ErrorCodeStatusPageSectionNotFound,
+			"Section not found on status page",
+		)
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found on status page")
 	case errors.Is(err, ErrIncidentNotFound):
