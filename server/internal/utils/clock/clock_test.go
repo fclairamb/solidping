@@ -63,7 +63,7 @@ func TestFakeAfterFires(t *testing.T) {
 
 	select {
 	case fired := <-ch:
-		r.True(!fired.IsZero(), "fired time should be non-zero")
+		r.False(fired.IsZero(), "fired time should be non-zero")
 	case <-time.After(1 * time.Second):
 		r.Fail("After did not fire after Advance")
 	}
@@ -79,6 +79,6 @@ func TestRealImplementsClock(t *testing.T) {
 	now := clk.Now()
 	after := time.Now()
 
-	r.True(!now.Before(before))
-	r.True(!now.After(after))
+	r.False(now.Before(before))
+	r.False(now.After(after))
 }
