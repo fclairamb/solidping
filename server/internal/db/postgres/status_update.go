@@ -59,18 +59,18 @@ func (s *Service) ListStatusUpdates(
 }
 
 // CreateStatusUpdate inserts a new status update.
-func (s *Service) CreateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error {
-	_, err := s.db.NewInsert().Model(su).Exec(ctx)
+func (s *Service) CreateStatusUpdate(ctx context.Context, update *models.StatusUpdate) error {
+	_, err := s.db.NewInsert().Model(update).Exec(ctx)
 
 	return err
 }
 
 // GetStatusUpdateByUID retrieves a status update by UID.
 func (s *Service) GetStatusUpdateByUID(ctx context.Context, uid string) (*models.StatusUpdate, error) {
-	su := new(models.StatusUpdate)
+	update := new(models.StatusUpdate)
 
 	err := s.db.NewSelect().
-		Model(su).
+		Model(update).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
@@ -78,15 +78,15 @@ func (s *Service) GetStatusUpdateByUID(ctx context.Context, uid string) (*models
 		return nil, err
 	}
 
-	return su, nil
+	return update, nil
 }
 
 // UpdateStatusUpdate updates an existing status update row.
-func (s *Service) UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error {
-	su.UpdatedAt = time.Now()
+func (s *Service) UpdateStatusUpdate(ctx context.Context, update *models.StatusUpdate) error {
+	update.UpdatedAt = time.Now()
 
 	_, err := s.db.NewUpdate().
-		Model(su).
+		Model(update).
 		WherePK().
 		Exec(ctx)
 
@@ -115,7 +115,7 @@ func (s *Service) ListPublicStatusUpdates(
 		return []*db.PublicStatusUpdate{}, nil
 	}
 
-	query := fmt.Sprintf(
+	rawQuery := fmt.Sprintf(
 		`SELECT uid, section_uid, check_uid, incident_uid, title, body_markdown, link_url, kind, published_at
 		 FROM status_updates
 		 WHERE status_page_uid = $1
@@ -126,7 +126,7 @@ func (s *Service) ListPublicStatusUpdates(
 		historyDays,
 	)
 
-	rows, err := s.db.QueryContext(ctx, query, statusPageUID)
+	rows, err := s.db.QueryContext(ctx, rawQuery, statusPageUID)
 	if err != nil {
 		// Graceful degradation: table may not exist yet.
 		if strings.Contains(err.Error(), "does not exist") ||
@@ -141,15 +141,15 @@ func (s *Service) ListPublicStatusUpdates(
 	var updates []*db.PublicStatusUpdate
 
 	for rows.Next() {
-		u := &db.PublicStatusUpdate{}
+		entry := &db.PublicStatusUpdate{}
 		if scanErr := rows.Scan(
-			&u.UID, &u.SectionUID, &u.CheckUID, &u.IncidentUID,
-			&u.Title, &u.BodyMarkdown, &u.LinkURL, &u.Kind, &u.PublishedAt,
+			&entry.UID, &entry.SectionUID, &entry.CheckUID, &entry.IncidentUID,
+			&entry.Title, &entry.BodyMarkdown, &entry.LinkURL, &entry.Kind, &entry.PublishedAt,
 		); scanErr != nil {
 			return nil, scanErr
 		}
 
-		updates = append(updates, u)
+		updates = append(updates, entry)
 	}
 
 	if rowsErr := rows.Err(); rowsErr != nil {

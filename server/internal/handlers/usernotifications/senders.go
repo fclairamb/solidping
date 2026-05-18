@@ -22,7 +22,7 @@ func NewEmailSenderAdapter(s email.Sender) *EmailSenderAdapter {
 // SendTestEmail sends a plain "Test notification" email.
 func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, to string) error {
 	if a == nil || a.inner == nil {
-		return fmt.Errorf("email sender not configured")
+		return ErrEmailSenderNotConfigured
 	}
 
 	msg := &email.Message{
@@ -56,7 +56,7 @@ func (a *SlackDMSenderAdapter) SendDMTest(
 	}
 
 	if settings.AccessToken == "" {
-		return fmt.Errorf("slack access token not configured")
+		return ErrSlackClientNotConfigured
 	}
 
 	client := slackclient.NewClient(settings.AccessToken)

@@ -1,6 +1,7 @@
 package statusupdates_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -130,10 +131,7 @@ func TestTitleValidation(t *testing.T) {
 	r.ErrorIs(err, statusupdates.ErrTitleRequired)
 
 	// Too long title (201 chars)
-	longTitle := ""
-	for range 201 {
-		longTitle += "x"
-	}
+	longTitle := strings.Repeat("x", 201)
 
 	_, err = s.svc.CreateStatusUpdate(ctx, s.org.Slug, s.user.UID,
 		makeCreate(s.pageID, "info", longTitle, "body"))
@@ -154,10 +152,7 @@ func TestBodyValidation(t *testing.T) {
 	r.ErrorIs(err, statusupdates.ErrBodyRequired)
 
 	// Too long body (16385 chars)
-	longBody := ""
-	for range 16385 {
-		longBody += "x"
-	}
+	longBody := strings.Repeat("x", 16385)
 
 	_, err = s.svc.CreateStatusUpdate(ctx, s.org.Slug, s.user.UID,
 		makeCreate(s.pageID, "info", "title", longBody))

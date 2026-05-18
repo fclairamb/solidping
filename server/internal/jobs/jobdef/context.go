@@ -4,6 +4,7 @@ package jobdef
 import (
 	"encoding/json"
 	"log/slog"
+	"time"
 
 	"github.com/uptrace/bun"
 
@@ -42,4 +43,15 @@ type JobContext struct {
 	// Logger is the structured logger for this job execution
 	// It includes a "jobUid" attribute for log correlation
 	Logger *slog.Logger
+}
+
+// ClockNow returns the current time using the injected clock if available,
+// or falls back to time.Now(). This prevents nil-pointer panics when Services
+// is not wired (e.g. in unit tests).
+func (jctx *JobContext) ClockNow() time.Time {
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		return jctx.Services.Clock.Now()
+	}
+
+	return time.Now()
 }
