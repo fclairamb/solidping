@@ -25,4 +25,7 @@ const (
 	// Canceled via the same incidentUid match the notification job uses, so
 	// ack/snooze/resolve drops the rest of the policy without extra wiring.
 	JobTypeEscalationStep JobType = "escalation_step"
+	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
+	// records them in the discovered_hosts table for operator review and promotion.
+	JobTypeNetworkDiscovery JobType = "network_discovery"
 )
