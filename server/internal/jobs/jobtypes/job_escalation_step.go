@@ -105,7 +105,12 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		return fmt.Errorf("%w: %w", ErrIncidentNotFound, err)
 	}
 
-	if !incidentNeedsPaging(incident, jctx.Services.Clock.Now()) {
+	pagingNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		pagingNow = jctx.Services.Clock.Now()
+	}
+
+	if !incidentNeedsPaging(incident, pagingNow) {
 		log.InfoContext(ctx, "escalation step skipped — incident already handled")
 
 		return nil

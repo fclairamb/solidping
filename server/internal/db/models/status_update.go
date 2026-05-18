@@ -45,9 +45,9 @@ type StatusUpdate struct {
 	UID             string           `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string           `bun:"organization_uid,notnull"`
 	StatusPageUID   string           `bun:"status_page_uid,notnull"`
-	SectionUID      *string          `bun:"section_uid"`   // optional: scope to section
-	CheckUID        *string          `bun:"check_uid"`     // optional: scope to check
-	IncidentUID     *string          `bun:"incident_uid"`  // optional: thread under incident
+	SectionUID      *string          `bun:"section_uid"`  // optional: scope to section
+	CheckUID        *string          `bun:"check_uid"`    // optional: scope to check
+	IncidentUID     *string          `bun:"incident_uid"` // optional: thread under incident
 	Title           string           `bun:"title,notnull"`
 	BodyMarkdown    string           `bun:"body_markdown,notnull"`
 	LinkURL         *string          `bun:"link_url"`

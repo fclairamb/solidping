@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 )
 
 // EmailSenderAdapter wraps the core email.Sender to implement EmailSender.

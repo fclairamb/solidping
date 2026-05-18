@@ -62,8 +62,8 @@ type CreateContactRequest struct {
 
 // PatchRouteRequest is the body for PATCH /notification-routes/:routeUid.
 type PatchRouteRequest struct {
-	Enabled   *bool     `json:"enabled,omitempty"`
-	RouteUIDs []string  `json:"routeUids,omitempty"` // full ordered list for reorder
+	Enabled   *bool    `json:"enabled,omitempty"`
+	RouteUIDs []string `json:"routeUids,omitempty"` // full ordered list for reorder
 }
 
 // Service provides business logic for the usernotifications domain.

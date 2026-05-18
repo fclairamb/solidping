@@ -73,14 +73,14 @@ type StatusUpdateResponse struct {
 
 // CreateStatusUpdateRequest represents a request to create a status update.
 type CreateStatusUpdateRequest struct {
-	StatusPageUID string    `json:"statusPageUid"`
-	SectionUID    *string   `json:"sectionUid,omitempty"`
-	CheckUID      *string   `json:"checkUid,omitempty"`
-	IncidentUID   *string   `json:"incidentUid,omitempty"`
-	Title         string    `json:"title"`
-	BodyMarkdown  string    `json:"bodyMarkdown"`
-	LinkURL       *string   `json:"linkUrl,omitempty"`
-	Kind          string    `json:"kind"`
+	StatusPageUID string     `json:"statusPageUid"`
+	SectionUID    *string    `json:"sectionUid,omitempty"`
+	CheckUID      *string    `json:"checkUid,omitempty"`
+	IncidentUID   *string    `json:"incidentUid,omitempty"`
+	Title         string     `json:"title"`
+	BodyMarkdown  string     `json:"bodyMarkdown"`
+	LinkURL       *string    `json:"linkUrl,omitempty"`
+	Kind          string     `json:"kind"`
 	PublishedAt   *time.Time `json:"publishedAt,omitempty"`
 }
 

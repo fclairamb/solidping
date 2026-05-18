@@ -16,11 +16,16 @@ const (
 )
 
 // GenerateSVG creates a shields.io-style badge SVG.
-func GenerateSVG(label, value, valueColor, style string) string {
+func GenerateSVG(label, value, valueColor, style string, minWidth int) string {
 	// Calculate widths (approximate: 6px per character + padding)
 	labelWidth := len(label)*6 + 10
 	valueWidth := len(value)*6 + 10
 	totalWidth := labelWidth + valueWidth
+
+	if minWidth > 0 && totalWidth < minWidth {
+		valueWidth += minWidth - totalWidth
+		totalWidth = minWidth
+	}
 
 	// Escape XML special characters
 	label = escapeXML(label)
@@ -61,6 +66,49 @@ func GenerateSVG(label, value, valueColor, style string) string {
 		labelWidth+valueWidth/2, value,
 		labelWidth+valueWidth/2, value,
 	)
+}
+
+// GenerateUptimeBarSVG creates an SVG strip of N colored segments representing
+// availability per time bucket. segments is a slice of hex color strings in
+// chronological order (oldest → newest).
+func GenerateUptimeBarSVG(segments []string, width, height int, style string) string {
+	n := len(segments)
+	if n == 0 {
+		return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d"></svg>`, width, height)
+	}
+
+	rx := "3"
+	if style == "flat-square" {
+		rx = "0"
+	}
+
+	// Segment width: integer division, last segment gets remaining pixels.
+	gaps := n - 1
+	availableWidth := width - gaps
+	segW := availableWidth / n
+	lastSegW := availableWidth - segW*(n-1)
+
+	var rects strings.Builder
+
+	x := 0
+	for i, color := range segments {
+		w := segW
+		if i == n-1 {
+			w = lastSegW
+		}
+
+		rects.WriteString(fmt.Sprintf(`    <rect x="%d" width="%d" height="%d" fill="%s"/>`, x, w, height, color))
+		rects.WriteString("\n")
+		x += w + 1
+	}
+
+	return fmt.Sprintf(`<svg xmlns="http://www.w3.org/2000/svg" width="%d" height="%d">
+  <clipPath id="a">
+    <rect width="%d" height="%d" rx="%s" fill="#fff"/>
+  </clipPath>
+  <g clip-path="url(#a)">
+%s  </g>
+</svg>`, width, height, width, height, rx, rects.String())
 }
 
 func escapeXML(input string) string {

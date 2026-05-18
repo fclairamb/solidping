@@ -63,7 +63,6 @@ func (h *handlerSetup) do(t *testing.T, method, path string, body interface{}) *
 	return rec
 }
 
-
 // TestHandlerList checks that the list endpoint returns 200 with data key.
 func TestHandlerList(t *testing.T) {
 	t.Parallel()

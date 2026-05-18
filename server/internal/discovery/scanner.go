@@ -36,10 +36,10 @@ type Config struct {
 
 // DiscoveredHost is a host discovered during a scan.
 type DiscoveredHost struct {
-	IP            string         `json:"ip"`
-	Hostname      string         `json:"hostname,omitempty"`
-	ICMPReachable bool           `json:"icmpReachable"`
-	OpenPorts     []int          `json:"openPorts"`
+	IP              string           `json:"ip"`
+	Hostname        string           `json:"hostname,omitempty"`
+	ICMPReachable   bool             `json:"icmpReachable"`
+	OpenPorts       []int            `json:"openPorts"`
 	SuggestedChecks []SuggestedCheck `json:"suggestedChecks"`
 }
 

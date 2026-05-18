@@ -755,7 +755,7 @@ type SlackDestinationUser struct {
 
 // SlackDestinationsResponse is returned by GetDestinations.
 type SlackDestinationsResponse struct {
-	Channels []SlackChannel        `json:"channels"`
+	Channels []SlackChannel         `json:"channels"`
 	Users    []SlackDestinationUser `json:"users"`
 }
 

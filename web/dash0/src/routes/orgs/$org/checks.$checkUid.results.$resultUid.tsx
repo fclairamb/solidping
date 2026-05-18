@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import {
   Card,
   CardContent,
@@ -19,18 +20,6 @@ export const Route = createFileRoute(
   component: ResultDetailPage,
 });
 
-function statusBadgeClass(status?: string): string {
-  switch (status) {
-    case "up":
-      return "bg-green-500/10 text-green-500";
-    case "down":
-      return "bg-red-500/10 text-red-500";
-    case "created":
-      return "bg-blue-500/10 text-blue-500";
-    default:
-      return "";
-  }
-}
 
 function formatPercent(v?: number): string {
   if (v === undefined || v === null) return "-";
@@ -153,9 +142,7 @@ function ResultDetailPage() {
           {t("checks:resultDetail.title")} {data.uid?.slice(0, 8) ?? ""}
         </h1>
         {data.status && (
-          <Badge variant="secondary" className={statusBadgeClass(data.status)}>
-            {data.status}
-          </Badge>
+          <StatusBadge status={data.status} />
         )}
         {data.periodType && (
           <Badge variant="outline">{data.periodType}</Badge>

@@ -112,32 +112,6 @@ function StatusDot({ status }: { status?: string | null }) {
   return <div className={`h-2.5 w-2.5 rounded-full ${color}`} />;
 }
 
-function StatusBadge({ status }: { status?: string | null }) {
-  const { t } = useTranslation("checks");
-  const label = status || "unknown";
-  const className =
-    label === "up"
-      ? "bg-green-500/10 text-green-500"
-      : label === "down" || label === "error"
-        ? "bg-red-500/10 text-red-500"
-        : label === "validating"
-          ? "bg-yellow-500/10 text-yellow-500"
-          : label === "created"
-            ? "bg-blue-500/10 text-blue-500"
-            : "";
-
-  // The validating status is operator-shorthand for "we've seen a failure
-  // but haven't crossed the confirmation threshold yet" — show the
-  // localized label rather than the raw enum string.
-  const displayLabel = label === "validating" ? t("status.validating") : label;
-
-  return (
-    <Badge variant="secondary" className={className}>
-      {displayLabel}
-    </Badge>
-  );
-}
-
 function CheckRow({
   check,
   org,
