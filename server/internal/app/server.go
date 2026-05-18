@@ -824,6 +824,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
 
+	// Slack destinations picker (authenticated, org-scoped)
+	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
+	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
+
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
 

@@ -1422,5 +1422,44 @@ func TestSlackSender_buildMessage(t *testing.T) {
 	}
 }
 
+// TestSlackSender_DMChannelID verifies that a destination_type="dm" setting
+// with a Slack user ID (U…) is passed to PostMessage unchanged. This ensures
+// the sender does not try to look up or transform user IDs — Slack's
+// chat.postMessage API accepts user IDs directly for DMs.
+func TestSlackSender_DMChannelID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Build a settings map with destination_type="dm" and a user-ID channel.
+	settings := models.SlackSettings{
+		AccessToken:     "xoxb-test-token",
+		ChannelID:       "U0345CDEFG",
+		DestinationType: "dm",
+		DisplayName:     "@alice",
+	}
+
+	settingsMap, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	// determineChannel should return the user ID unchanged.
+	payload := &Payload{
+		Connection: &models.Channel{
+			Settings: settingsMap,
+		},
+	}
+
+	parsed, err := models.SlackSettingsFromJSONMap(payload.Connection.Settings)
+	r.NoError(err)
+	r.Equal("U0345CDEFG", parsed.ChannelID, "channel_id must be the user ID for DMs")
+	r.Equal("dm", parsed.DestinationType)
+	r.Equal("@alice", parsed.DisplayName)
+
+	// Verify determineChannel returns the user ID as-is (no transformation).
+	sender := &SlackSender{}
+	channel := sender.determineChannel(parsed, payload)
+	r.Equal("U0345CDEFG", channel, "DM channel_id must be passed through to PostMessage unchanged")
+}
+
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)
