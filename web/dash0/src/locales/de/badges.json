@@ -45,5 +45,10 @@
     "flatSquare": "Flach quadratisch"
   },
   "availability": "Verfügbarkeit",
-  "status": "Status"
+  "status": "Status",
+  "uptimeBar": "Verfügbarkeitsbalken",
+  "uptimeBarDescription": "Ein horizontaler Streifen, der die Verfügbarkeit pro Zeitbereich zeigt",
+  "uptimeBarPreview": "Vorschau des Verfügbarkeitsbalkens",
+  "uptimeBarEmbed": "Einbettungscode des Verfügbarkeitsbalkens",
+  "barWidth": "Balkenbreite (px)"
 }

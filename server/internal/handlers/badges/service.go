@@ -30,6 +30,14 @@ const (
 	statusUnknown         = "unknown"
 )
 
+// UptimeBarOptions contains options for uptime bar generation.
+type UptimeBarOptions struct {
+	Period string // "24h", "7d", "30d", "90d"
+	Width  int    // px, default 300, range 60-800
+	Height int    // px, default 20, range 10-40
+	Style  string // "flat", "flat-square"
+}
+
 // BadgeOptions contains options for badge generation.
 type BadgeOptions struct {
 	Period   string // "1h", "24h", "7d", "30d"
@@ -354,6 +362,93 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 	}
 
 	return time.Since(lastChangeTime), isUp, true
+}
+
+// uptimeBarPeriodInfo returns the periodType, number of segments, and bucket
+// duration for the given period string.
+func uptimeBarPeriodInfo(period string) (periodType string, n int, bucketDuration time.Duration) {
+	switch period {
+	case "24h":
+		return models.PeriodTypeHour, 24, time.Hour
+	case "7d":
+		return models.PeriodTypeDay, 7, 24 * time.Hour
+	case "90d":
+		return models.PeriodTypeDay, 90, 24 * time.Hour
+	default: // "30d"
+		return models.PeriodTypeDay, 30, 24 * time.Hour
+	}
+}
+
+// uptimeBarColor returns the SVG hex color for the given availability percentage.
+func uptimeBarColor(pct float64) string {
+	switch {
+	case pct >= 99.9:
+		return ColorGreen
+	case pct >= 99:
+		return ColorYellow
+	case pct >= 98:
+		return ColorOrange
+	default:
+		return ColorRed
+	}
+}
+
+// GenerateUptimeBar generates an SVG uptime bar for a check.
+func (s *Service) GenerateUptimeBar(
+	ctx context.Context, orgSlug, checkIdentifier string, opts UptimeBarOptions,
+) (string, error) {
+	// 1. Resolve organization.
+	org, err := s.dbSvc.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return "", ErrOrganizationNotFound
+	}
+
+	// 2. Resolve check by UID or slug (auto-detected).
+	check, err := s.dbSvc.GetCheckByUidOrSlug(ctx, org.UID, checkIdentifier)
+	if err != nil || check == nil {
+		return "", ErrCheckNotFound
+	}
+
+	// 3. Determine period info.
+	periodType, n, bucketDuration := uptimeBarPeriodInfo(opts.Period)
+
+	// 4. Compute bucket start: go back N full buckets from the current bucket boundary.
+	now := time.Now().UTC()
+	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
+
+	// 5. Fetch aggregated results.
+	filter := &models.ListResultsFilter{
+		OrganizationUID:  org.UID,
+		CheckUIDs:        []string{check.UID},
+		PeriodTypes:      []string{periodType},
+		PeriodStartAfter: &bucketStart,
+	}
+
+	res, err := s.dbSvc.ListResults(ctx, filter)
+	if err != nil {
+		return "", err
+	}
+
+	// 6. Build map of period_start → availability_pct.
+	availMap := make(map[time.Time]float64, len(res.Results))
+	for _, r := range res.Results {
+		if r.AvailabilityPct != nil {
+			availMap[r.PeriodStart.UTC().Truncate(bucketDuration)] = *r.AvailabilityPct
+		}
+	}
+
+	// 7. Iterate N buckets and resolve colors.
+	segments := make([]string, n)
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			segments[i] = uptimeBarColor(pct)
+		} else {
+			segments[i] = ColorGray
+		}
+	}
+
+	return GenerateUptimeBarSVG(segments, opts.Width, opts.Height, opts.Style), nil
 }
 
 func parsePeriod(period string) time.Duration {

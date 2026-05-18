@@ -45,5 +45,10 @@
     "flatSquare": "Plano cuadrado"
   },
   "availability": "Disponibilidad",
-  "status": "Estado"
+  "status": "Estado",
+  "uptimeBar": "Barra de disponibilidad",
+  "uptimeBarDescription": "Una franja horizontal que muestra la disponibilidad por intervalo de tiempo",
+  "uptimeBarPreview": "Vista previa de la barra de disponibilidad",
+  "uptimeBarEmbed": "Código de integración de la barra de disponibilidad",
+  "barWidth": "Ancho de la barra (px)"
 }

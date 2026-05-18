@@ -65,6 +65,59 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 	return nil
 }
 
+// GetUptimeBar handles GET requests for uptime bar SVG images.
+func (h *Handler) GetUptimeBar(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	checkIdentifier := req.Param("check")
+
+	opts := UptimeBarOptions{
+		Period: req.URL.Query().Get("period"),
+		Style:  req.URL.Query().Get("style"),
+		Width:  300,
+		Height: 20,
+	}
+
+	if raw := req.URL.Query().Get("width"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 60 {
+				v = 60
+			}
+
+			if v > 800 {
+				v = 800
+			}
+
+			opts.Width = v
+		}
+	}
+
+	if raw := req.URL.Query().Get("height"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			if v < 10 {
+				v = 10
+			}
+
+			if v > 40 {
+				v = 40
+			}
+
+			opts.Height = v
+		}
+	}
+
+	svg, err := h.svc.GenerateUptimeBar(req.Context(), orgSlug, checkIdentifier, opts)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	writer.Header().Set("Content-Type", "image/svg+xml")
+	writer.Header().Set("Cache-Control", "public, max-age=300")
+	writer.WriteHeader(http.StatusOK)
+	_, _ = writer.Write([]byte(svg))
+
+	return nil
+}
+
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrCheckNotFound):
