@@ -25,6 +25,7 @@
     "timeout": "Zeitüberschreitung",
     "error": "Fehler",
     "created": "Erstellt",
-    "running": "Läuft"
+    "running": "Läuft",
+    "recentUpdates": "Aktuelle Updates"
   }
 }

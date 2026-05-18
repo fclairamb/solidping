@@ -25,6 +25,7 @@
     "timeout": "Délai dépassé",
     "error": "Erreur",
     "created": "Créé",
-    "running": "En cours"
+    "running": "En cours",
+    "recentUpdates": "Mises à jour récentes"
   }
 }
