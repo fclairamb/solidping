@@ -11,7 +11,6 @@ import {
   ReferenceArea,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
-import { useNavigate } from "@tanstack/react-router";
 import { useAllResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -212,7 +211,6 @@ export function ResponseTimeChart({
   onSettingsChange,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
-  const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
@@ -253,10 +251,7 @@ export function ResponseTimeChart({
 
   const handleDotClick = (uid: string) => {
     if (selectedUid === uid) {
-      navigate({
-        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-        params: { org, checkUid, resultUid: uid },
-      });
+      setSelectedUid(null);
       return;
     }
     setSelectedUid(uid);
@@ -654,7 +649,7 @@ export function ResponseTimeChart({
                           >
                             <title>
                               {isSelected
-                                ? t("detail.chart.dotClickAgain")
+                                ? t("detail.chart.dotClickToClose")
                                 : t("detail.chart.dotClickForDetails")}
                             </title>
                           </circle>

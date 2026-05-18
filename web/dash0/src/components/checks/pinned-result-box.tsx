@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
 import { X } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 import { useResult } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -80,6 +81,7 @@ export function PinnedResultBox({
   return (
     <div
       ref={boxRef}
+      data-testid="pinned-result-box"
       className="absolute z-10 rounded-md border bg-popover p-3 text-sm shadow-md"
       style={{ left: leftPx, top: topPx, width: BOX_WIDTH }}
       onClick={(e) => e.stopPropagation()}
@@ -157,9 +159,16 @@ export function PinnedResultBox({
         </div>
       )}
 
-      <p className="mt-2 text-xs text-muted-foreground">
-        {t("detail.resultBox.clickAgain")}
-      </p>
+      <div className="mt-2">
+        <Button asChild variant="link" size="sm" className="h-auto p-0 text-xs">
+          <Link
+            to="/orgs/$org/checks/$checkUid/results/$resultUid"
+            params={{ org, checkUid, resultUid }}
+          >
+            {t("detail.resultBox.moreDetails")}
+          </Link>
+        </Button>
+      </div>
     </div>
   );
 }
