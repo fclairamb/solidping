@@ -1422,5 +1422,11 @@ func TestSlackSender_buildMessage(t *testing.T) {
 	}
 }
 
+func (m *mockDBService) ListPublicStatusUpdates(
+	_ context.Context, _ string, _ int,
+) ([]*db.PublicStatusUpdate, error) {
+	return nil, nil
+}
+
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)

@@ -11,7 +11,7 @@ import (
 // Goroutines blocked on After or Sleep will be woken when their deadline
 // is passed by Advance.
 type Fake struct {
-	fake clockwork.FakeClock
+	fake *clockwork.FakeClock
 }
 
 // NewFake creates a new Fake clock starting at start.
