@@ -209,3 +209,4 @@ func (h *Handler) DismissHost(w http.ResponseWriter, req bunrouter.Request) erro
 
 	return nil
 }
+

@@ -36,10 +36,10 @@ type Config struct {
 
 // DiscoveredHost is a host discovered during a scan.
 type DiscoveredHost struct {
-	IP              string           `json:"ip"`
-	Hostname        string           `json:"hostname,omitempty"`
-	ICMPReachable   bool             `json:"icmpReachable"`
-	OpenPorts       []int            `json:"openPorts"`
+	IP            string         `json:"ip"`
+	Hostname      string         `json:"hostname,omitempty"`
+	ICMPReachable bool           `json:"icmpReachable"`
+	OpenPorts     []int          `json:"openPorts"`
 	SuggestedChecks []SuggestedCheck `json:"suggestedChecks"`
 }
 
@@ -239,20 +239,14 @@ func pingHost(conn *icmp.PacketConn, ipStr string, timeout time.Duration) bool {
 // dialTCP attempts a TCP connection to the given host:port within the timeout.
 func dialTCP(ctx context.Context, ipStr string, port int, timeout time.Duration) bool {
 	addr := fmt.Sprintf("%s:%d", ipStr, port)
-	conn, err := (&net.Dialer{}).DialContext(timeoutCtx(ctx, timeout), "tcp", addr)
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return false
 	}
 	conn.Close()
 	return true
-}
-
-// timeoutCtx returns a context that expires after the given duration, bounded
-// by the parent context.
-func timeoutCtx(parent context.Context, d time.Duration) context.Context {
-	ctx, cancel := context.WithTimeout(parent, d)
-	_ = cancel // The caller controls the parent context; the deadline will fire automatically.
-	return ctx
 }
 
 // resolveHostname performs a best-effort reverse DNS lookup with a bounded timeout.
