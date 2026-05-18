@@ -175,6 +175,13 @@ func (c *HTTPChecker) Validate(spec *checkerdef.CheckSpec) error {
 		}
 	}
 
+	// Validate SecretHeaders names
+	for k := range cfg.SecretHeaders {
+		if k == "" {
+			return checkerdef.NewConfigError("secretHeaders", "header name must not be empty")
+		}
+	}
+
 	return nil
 }
 
@@ -230,6 +237,11 @@ func (c *HTTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	// Add custom headers (can override User-Agent and Authorization)
 	for key, value := range cfg.Headers {
+		req.Header.Set(key, value)
+	}
+
+	// Add secret headers last so they always win over plain headers on conflict
+	for key, value := range cfg.SecretHeaders {
 		req.Header.Set(key, value)
 	}
 
