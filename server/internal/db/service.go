@@ -11,6 +11,21 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// PublicStatusUpdate holds a status update row for public status page display.
+// It is a lightweight projection — the full status_updates admin model lives in
+// the backend spec. Using a separate type here keeps this spec independent.
+type PublicStatusUpdate struct {
+	UID          string
+	SectionUID   *string
+	CheckUID     *string
+	IncidentUID  *string
+	Title        string
+	BodyMarkdown string
+	LinkURL      *string
+	Kind         string
+	PublishedAt  time.Time
+}
+
 // ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
 type ListIncidentNotificationsFilter struct {
 	IncidentUID   string    // required for the per-incident endpoint; optional for user-scoped queries
@@ -369,6 +384,11 @@ type Service interface {
 	ReorderStatusPageSections(ctx context.Context, statusPageUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
+
+	// ListPublicStatusUpdates returns recent status updates for a status page within the given
+	// history window. Returns an empty slice (not an error) when the status_updates table does
+	// not yet exist (graceful degradation before the backend spec migration is applied).
+	ListPublicStatusUpdates(ctx context.Context, statusPageUID string, historyDays int) ([]*PublicStatusUpdate, error)
 
 	// MaintenanceWindow operations
 	CreateMaintenanceWindow(ctx context.Context, window *models.MaintenanceWindow) error
