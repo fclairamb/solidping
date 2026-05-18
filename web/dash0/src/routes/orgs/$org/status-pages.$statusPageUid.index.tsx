@@ -46,6 +46,7 @@ import {
   type StatusPageResource,
 } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -515,18 +516,7 @@ function ResourceRow({
         </Badge>
       )}
       {resource.check?.status && (
-        <Badge
-          variant="secondary"
-          className={
-            resource.check.status === "up"
-              ? "bg-green-500/10 text-green-500"
-              : resource.check.status === "down"
-                ? "bg-red-500/10 text-red-500"
-                : ""
-          }
-        >
-          {resource.check.status}
-        </Badge>
+        <StatusBadge status={resource.check.status} />
       )}
       <Link
         to="/orgs/$org/checks/$checkUid"

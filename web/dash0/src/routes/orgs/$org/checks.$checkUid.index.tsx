@@ -54,6 +54,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
@@ -686,22 +687,7 @@ function CheckDetailPage() {
                 {t("checks:detail.statusLabel")}
               </div>
               <div className="flex items-center gap-2">
-                <Badge
-                  variant="secondary"
-                  className={
-                    headerStatus === "up"
-                      ? "bg-green-500/10 text-green-500"
-                      : headerStatus === "down" || headerStatus === "error"
-                        ? "bg-red-500/10 text-red-500"
-                        : headerStatus === "validating"
-                          ? "bg-yellow-500/10 text-yellow-500"
-                          : ""
-                  }
-                >
-                  {headerStatus === "validating"
-                    ? t("checks:status.validating")
-                    : headerStatus || t("checks:detail.unknown").toLowerCase()}
-                </Badge>
+                <StatusBadge status={headerStatus || t("checks:detail.unknown").toLowerCase()} />
                 {check.enabled === false && (
                   <Badge variant="outline">{t("checks:detail.disabled")}</Badge>
                 )}
@@ -870,20 +856,7 @@ function CheckDetailPage() {
                         : "-"}
                     </TableCell>
                     <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          result.status === "up"
-                            ? "bg-green-500/10 text-green-500"
-                            : result.status === "down"
-                              ? "bg-red-500/10 text-red-500"
-                              : result.status === "created"
-                                ? "bg-blue-500/10 text-blue-500"
-                                : ""
-                        }
-                      >
-                        {result.status}
-                      </Badge>
+                      <StatusBadge status={result.status} />
                     </TableCell>
                     <TableCell className="text-sm">
                       {result.durationMs !== undefined
