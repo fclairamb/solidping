@@ -334,5 +334,8 @@
   "expectedValue": "Valeur attendue",
   "actualValue": "Valeur réelle",
   "passed": "Réussi",
-  "failed": "Échoué"
+  "failed": "Échoué",
+  "secretHeaders": "En-têtes secrets",
+  "secretHeadersDescription": "Valeurs d'en-têtes stockées chiffrées — utilisez pour les clés API et les tokens Bearer.",
+  "addSecretHeader": "Ajouter un en-tête secret"
 }

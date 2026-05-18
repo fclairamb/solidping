@@ -56,7 +56,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
-	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"

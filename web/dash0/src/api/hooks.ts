@@ -40,6 +40,7 @@ export interface Check {
   checkGroupUid?: string;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
   config?: Record<string, unknown>;
+  configPrivateKeys?: string[];
   regions?: string[];
   labels?: Record<string, string>;
   enabled?: boolean;

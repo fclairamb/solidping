@@ -484,7 +484,12 @@ func (r *EscalationStepJobRun) pageSchedule(
 		return 0
 	}
 
-	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, jctx.Services.Clock.Now())
+	resolveNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		resolveNow = jctx.Services.Clock.Now()
+	}
+
+	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, resolveNow)
 	if err != nil {
 		log.WarnContext(ctx, "on-call schedule resolution failed",
 			"scheduleUid", *scheduleUID, "error", err)
@@ -640,7 +645,12 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 		return err
 	}
 
-	startAt := jctx.Services.Clock.Now().Add(time.Duration(*policy.RepeatAfterSeconds) * time.Second)
+	scheduleNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		scheduleNow = jctx.Services.Clock.Now()
+	}
+
+	startAt := scheduleNow.Add(time.Duration(*policy.RepeatAfterSeconds) * time.Second)
 
 	return ScheduleEscalationCycle(
 		ctx, jctx.Services.Jobs, incident, policy, steps, startAt, r.config.RepeatIndex+1, log,

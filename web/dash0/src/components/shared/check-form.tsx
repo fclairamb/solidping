@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
+import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search, Plus, Trash2 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
@@ -389,6 +389,14 @@ export function CheckForm({
     getConfigField(initialData?.config, "serverName") ||
       getConfigField(initialData?.config, "server_name"),
   );
+  // secretHeaders: array of {key, value} rows for the HTTP secret headers form section
+  const [secretHeaders, setSecretHeaders] = useState<{ key: string; value: string }[]>(() => {
+    const raw = initialData?.config?.secretHeaders;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return Object.entries(raw as Record<string, string>).map(([key, value]) => ({ key, value }));
+    }
+    return [];
+  });
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
@@ -496,6 +504,13 @@ export function CheckForm({
         }
         if (username) cfg.username = username;
         if (password) cfg.password = password;
+        {
+          const shMap: Record<string, string> = {};
+          for (const { key, value } of secretHeaders) {
+            if (key) shMap[key] = value;
+          }
+          if (Object.keys(shMap).length > 0) cfg.secretHeaders = shMap;
+        }
         break;
       case "websocket":
         if (url) cfg.url = url;
@@ -637,7 +652,7 @@ export function CheckForm({
         break;
     }
     return cfg;
-  }, [type, url, host, port, domain, method, expectedStatus, username, password,
+  }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
@@ -668,6 +683,14 @@ export function CheckForm({
         }
         if (username) config.username = username;
         if (password) config.password = password;
+        {
+          const shMap: Record<string, string> = {};
+          for (const { key, value } of secretHeaders) {
+            if (key) shMap[key] = value;
+          }
+          if (Object.keys(shMap).length > 0) config.secretHeaders = shMap;
+          else config.secretHeaders = {};
+        }
         break;
       case "websocket":
         if (!url) { setError("URL is required"); return; }
@@ -941,6 +964,67 @@ export function CheckForm({
                 <Label htmlFor="password">Password (optional)</Label>
                 <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
               </div>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <Label>{t("secretHeaders")}</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("secretHeadersDescription")}</p>
+              </div>
+              {initialData?.configPrivateKeys?.includes("secretHeaders") && secretHeaders.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono tracking-widest">••••</span>
+                  {" "}
+                  <span className="italic">(encrypted — enter new values to replace)</span>
+                </p>
+              )}
+              {secretHeaders.map((row, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Input
+                    type="text"
+                    placeholder="Header-Name"
+                    value={row.key}
+                    onChange={(e) => {
+                      const updated = [...secretHeaders];
+                      updated[idx] = { ...updated[idx], key: e.target.value };
+                      setSecretHeaders(updated);
+                    }}
+                    className="flex-1"
+                    data-testid={`secret-header-key-${idx}`}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="value"
+                    value={row.value}
+                    onChange={(e) => {
+                      const updated = [...secretHeaders];
+                      updated[idx] = { ...updated[idx], value: e.target.value };
+                      setSecretHeaders(updated);
+                    }}
+                    className="flex-1"
+                    data-testid={`secret-header-value-${idx}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive shrink-0"
+                    onClick={() => setSecretHeaders(secretHeaders.filter((_, i) => i !== idx))}
+                    data-testid={`secret-header-remove-${idx}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSecretHeaders([...secretHeaders, { key: "", value: "" }])}
+                data-testid="add-secret-header-button"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                {t("addSecretHeader")}
+              </Button>
             </div>
           </>
         );

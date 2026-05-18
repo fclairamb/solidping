@@ -334,5 +334,8 @@
   "expectedValue": "Expected value",
   "actualValue": "Actual value",
   "passed": "Passed",
-  "failed": "Failed"
+  "failed": "Failed",
+  "secretHeaders": "Secret headers",
+  "secretHeadersDescription": "Header values stored encrypted — use for API keys and Bearer tokens.",
+  "addSecretHeader": "Add secret header"
 }

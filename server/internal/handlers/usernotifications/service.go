@@ -166,6 +166,17 @@ func (s *Service) buildSlackSuggestion(
 	}
 }
 
+// findRouteByContact returns the route matching contactType/contactValue or nil.
+func findRouteByContact(routes []*models.UserNotificationRoute, contactType, contactValue string) *RouteResponse {
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == contactType && r.Contact.Value == contactValue {
+			return toRouteResponse(r)
+		}
+	}
+
+	return nil
+}
+
 // CreateContact creates a new contact + route.
 func (s *Service) CreateContact(
 	ctx context.Context, orgSlug string, user *models.User, req CreateContactRequest,
@@ -182,7 +193,6 @@ func (s *Service) CreateContact(
 	}
 
 	position := len(existing)
-
 	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
 
 	if req.Type == models.UserContactTypeEmail {
@@ -194,37 +204,39 @@ func (s *Service) CreateContact(
 		return nil, fmt.Errorf("create contact: %w", err)
 	}
 
-	// Reload to get the actual UID after upsert.
+	return s.ensureRouteAfterUpsert(ctx, user, orgUID, contact, req.Type, req.Value, position)
+}
+
+// ensureRouteAfterUpsert reloads routes after an upsert and returns the matching route,
+// creating the route row if it doesn't exist yet.
+func (s *Service) ensureRouteAfterUpsert(
+	ctx context.Context, user *models.User, orgUID string,
+	contact *models.UserContact, contactType, contactValue string, position int,
+) (*RouteResponse, error) {
 	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
 	if err != nil {
 		return nil, fmt.Errorf("reload routes: %w", err)
 	}
 
-	// Find the route for our new contact (may already exist after upsert).
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
-			return toRouteResponse(r), nil
-		}
+	if resp := findRouteByContact(routes, contactType, contactValue); resp != nil {
+		return resp, nil
 	}
 
 	// No route yet — create it.
 	route := models.NewUserNotificationRoute(user.UID, orgUID, contact.UID, position)
-	if _, err := s.db.DB().NewInsert().Model(route).
+	if _, insertErr := s.db.DB().NewInsert().Model(route).
 		On("CONFLICT (contact_uid) DO NOTHING").
-		Exec(ctx); err != nil {
-		return nil, fmt.Errorf("create route: %w", err)
+		Exec(ctx); insertErr != nil {
+		return nil, fmt.Errorf("create route: %w", insertErr)
 	}
 
-	// Reload again.
 	routes, err = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
 	if err != nil {
 		return nil, fmt.Errorf("reload routes after create: %w", err)
 	}
 
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
-			return toRouteResponse(r), nil
-		}
+	if resp := findRouteByContact(routes, contactType, contactValue); resp != nil {
+		return resp, nil
 	}
 
 	return nil, errors.New("route not found after creation")
