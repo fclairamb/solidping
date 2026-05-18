@@ -55,6 +55,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
+	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
@@ -448,9 +449,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
-	// Job routes
+	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	jobHandler.RegisterRoutes(api)
+	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgJobsGroup.POST("", jobHandler.CreateJob)
+	orgJobsGroup.GET("", jobHandler.ListJobs)
+	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
+	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
@@ -473,6 +478,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+
+	// Network discovery routes (authentication + org access required)
+	discoverySvc := discovery.NewService(s.dbService.DB(), s.dbService, checksService, s.jobSvc)
+	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
+	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
 	labelsService := labels.NewService(s.dbService)
