@@ -531,6 +531,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	badgesService := badges.NewService(s.dbService)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	api.GET("/orgs/:org/checks/:check/badges/:format", badgesHandler.GetBadge)
+	api.GET("/orgs/:org/checks/:check/uptime-bar", badgesHandler.GetUptimeBar)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)

@@ -42,5 +42,10 @@
     "flatSquare": "Flat Square"
   },
   "availability": "Availability",
-  "status": "Status"
+  "status": "Status",
+  "uptimeBar": "Uptime Bar",
+  "uptimeBarDescription": "A horizontal strip showing availability per time bucket",
+  "uptimeBarPreview": "Uptime Bar Preview",
+  "uptimeBarEmbed": "Uptime Bar Embed Code",
+  "barWidth": "Bar width (px)"
 }

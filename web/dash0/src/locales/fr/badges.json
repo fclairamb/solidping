@@ -42,5 +42,10 @@
     "flatSquare": "Plat carré"
   },
   "availability": "Disponibilité",
-  "status": "Statut"
+  "status": "Statut",
+  "uptimeBar": "Barre de disponibilité",
+  "uptimeBarDescription": "Une bande horizontale montrant la disponibilité par tranche de temps",
+  "uptimeBarPreview": "Aperçu de la barre de disponibilité",
+  "uptimeBarEmbed": "Code d'intégration de la barre de disponibilité",
+  "barWidth": "Largeur de la barre (px)"
 }
