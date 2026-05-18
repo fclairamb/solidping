@@ -2716,3 +2716,137 @@ export function useSetCheckConnections(org: string, checkUid: string) {
     },
   });
 }
+
+// ── Discovery ─────────────────────────────────────────────────────────────────
+
+export interface DiscoveryScan {
+  uid: string;
+  type: string;
+  status: string;
+  config: Record<string, unknown>;
+  scheduledAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SuggestedCheck {
+  type: string;
+  config: Record<string, unknown>;
+}
+
+export interface DiscoveredHost {
+  uid: string;
+  organizationUid: string;
+  jobUid: string;
+  ip: string;
+  hostname?: string;
+  openPorts: number[];
+  icmpReachable: boolean;
+  suggestedChecks: SuggestedCheck[];
+  promotedToCheckUid?: string;
+  discoveredAt: string;
+}
+
+export interface StartDiscoveryScanRequest {
+  cidrs: string[];
+  ports?: number[];
+  timeout?: string;
+  concurrency?: number;
+}
+
+export interface PromoteCandidateRequest {
+  checkType: string;
+  name?: string;
+  slug?: string;
+  period?: string;
+  extraConfig?: Record<string, unknown>;
+}
+
+export function useStartDiscoveryScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: StartDiscoveryScanRequest) =>
+      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
+        method: "POST",
+        body: JSON.stringify(req),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useListDiscoveryScans(org: string) {
+  return useQuery({
+    queryKey: ["discoveryScans", org],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+export function useDiscoveryScan(org: string, jobUid: string) {
+  return useQuery({
+    queryKey: ["discoveryScan", org, jobUid],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/scans/${jobUid}`,
+      ),
+    select: (res) => res?.data,
+    enabled: !!jobUid,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+      return status === "pending" || status === "running" ? 3000 : false;
+    },
+  });
+}
+
+export function useListCandidateHosts(
+  org: string,
+  opts?: { jobUid?: string; promoted?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ["discoveryHosts", org, opts],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveredHost[] }>(
+        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      ),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+export function usePromoteCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+      apiFetch<{ data: Check }>(
+        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        {
+          method: "POST",
+          body: JSON.stringify(req),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
+export function useDismissCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+    },
+  });
+}
