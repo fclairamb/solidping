@@ -32,10 +32,10 @@ var (
 
 // ListHostsOptions configures which hosts to return.
 type ListHostsOptions struct {
-	JobUID    string
-	Promoted  *bool
-	Limit     int
-	Offset    int
+	JobUID   string
+	Promoted *bool
+	Limit    int
+	Offset   int
 }
 
 // PromoteRequest is the request body for promoting a discovered host to a check.
@@ -49,11 +49,11 @@ type PromoteRequest struct {
 
 // Service provides business logic for network discovery operations.
 type Service struct {
-	db          *bun.DB
-	dbSvc       db.Service
-	checksSvc   *checks.Service
-	jobSvc      jobsvc.Service
-	isPostgres  bool
+	db         *bun.DB
+	dbSvc      db.Service
+	checksSvc  *checks.Service
+	jobSvc     jobsvc.Service
+	isPostgres bool
 }
 
 // NewService creates a new discovery service.
