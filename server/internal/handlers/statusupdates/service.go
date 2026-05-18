@@ -253,11 +253,12 @@ func (s *Service) CreateStatusUpdate(
 		}
 
 		if incident.CheckUID != "" {
-			if checkUID != nil && *checkUID != "" && *checkUID != incident.CheckUID {
+			incidentCheckUID := incident.CheckUID
+			if checkUID != nil && *checkUID != "" && *checkUID != incidentCheckUID {
 				return StatusUpdateResponse{}, ErrCheckUIDMismatch
 			}
 			if checkUID == nil || *checkUID == "" {
-				checkUID = &incident.CheckUID
+				checkUID = &incidentCheckUID
 			}
 		}
 	}
