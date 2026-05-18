@@ -25,6 +25,8 @@ func GetJobDefinition(jobType jobdef.JobType) (jobdef.JobDefinition, bool) {
 		return &SnoozeSweepJobDefinition{}, true
 	case jobdef.JobTypeEscalationStep:
 		return &EscalationStepJobDefinition{}, true
+	case jobdef.JobTypeNetworkDiscovery:
+		return &NetworkDiscoveryJobDefinition{}, true
 	}
 
 	return nil, false

@@ -45,6 +45,7 @@ If the server is running on port 4000, apply code changes directly — `make dev
 > It renders every shipped primitive (buttons, alerts, dialogs, tables, forms, name+slug pairs…) with the exact import line alongside it. **Reuse those components and patterns** — don't reach for a raw Radix primitive or a custom implementation if the design reference already ships what you need.
 
 Additional frontend rules:
+- **All pages must be fully usable on mobile** — use responsive layouts, avoid fixed widths, ensure touch targets are large enough.
 - **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `docs/conventions/frontend-errors.md`.
 - Editing always navigates to a dedicated route (`/<resource>/new`, `/<resource>/$id`) — never in a modal dialog.
 - Row actions: prefer two ghost icon buttons (`Pencil` / `Trash2`) over a `MoreVertical` menu.

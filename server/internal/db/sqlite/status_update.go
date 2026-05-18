@@ -18,24 +18,24 @@ func (s *Service) ListStatusUpdates(
 
 	query := s.db.NewSelect().
 		Model(&updates).
-		Where("su.organization_uid = ?", orgUID).
-		Where("su.deleted_at IS NULL").
-		OrderExpr("su.published_at DESC")
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Order("published_at DESC")
 
 	if filter.StatusPageUID != "" {
-		query = query.Where("su.status_page_uid = ?", filter.StatusPageUID)
+		query = query.Where("status_page_uid = ?", filter.StatusPageUID)
 	}
 
 	if filter.SectionUID != nil {
-		query = query.Where("su.section_uid = ?", *filter.SectionUID)
+		query = query.Where("section_uid = ?", *filter.SectionUID)
 	}
 
 	if filter.CheckUID != nil {
-		query = query.Where("su.check_uid = ?", *filter.CheckUID)
+		query = query.Where("check_uid = ?", *filter.CheckUID)
 	}
 
 	if filter.IncidentUID != nil {
-		query = query.Where("su.incident_uid = ?", *filter.IncidentUID)
+		query = query.Where("incident_uid = ?", *filter.IncidentUID)
 	}
 
 	limit := filter.Limit
