@@ -9,9 +9,14 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
   RefreshCw,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   useIncident,
@@ -23,12 +28,47 @@ import {
   useResolveIncident,
   useEvents,
   useIncidentNotifications,
+  useStatusUpdates,
+  useStatusPages,
+  useCreateStatusUpdate,
+  useUpdateStatusUpdate,
+  useDeleteStatusUpdate,
   type Event,
   type IncidentDetail,
   type IncidentNotification,
+  type StatusUpdate,
+  type CreateStatusUpdateRequest,
 } from "@/api/hooks";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
