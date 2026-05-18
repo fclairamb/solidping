@@ -12,7 +12,6 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
-	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 )

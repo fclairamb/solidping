@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
@@ -100,4 +103,58 @@ func (s *Service) SoftDeleteStatusUpdate(ctx context.Context, uid string) error 
 		Exec(ctx)
 
 	return err
+}
+
+// ListPublicStatusUpdates returns recent non-deleted status updates for a status page
+// ordered by published_at DESC within the given history window (in days).
+// Returns an empty slice when the table does not yet exist (graceful degradation).
+func (s *Service) ListPublicStatusUpdates(
+	ctx context.Context, statusPageUID string, historyDays int,
+) ([]*db.PublicStatusUpdate, error) {
+	if historyDays <= 0 {
+		return []*db.PublicStatusUpdate{}, nil
+	}
+
+	query := fmt.Sprintf(
+		`SELECT uid, section_uid, check_uid, incident_uid, title, body_markdown, link_url, kind, published_at
+		 FROM status_updates
+		 WHERE status_page_uid = $1
+		   AND deleted_at IS NULL
+		   AND published_at >= NOW() - INTERVAL '%d days'
+		 ORDER BY published_at DESC
+		 LIMIT 100`,
+		historyDays,
+	)
+
+	rows, err := s.db.QueryContext(ctx, query, statusPageUID)
+	if err != nil {
+		// Graceful degradation: table may not exist yet.
+		if strings.Contains(err.Error(), "does not exist") ||
+			strings.Contains(err.Error(), "undefined_table") {
+			return []*db.PublicStatusUpdate{}, nil
+		}
+
+		return nil, err
+	}
+	defer rows.Close() //nolint:errcheck
+
+	var updates []*db.PublicStatusUpdate
+
+	for rows.Next() {
+		u := &db.PublicStatusUpdate{}
+		if scanErr := rows.Scan(
+			&u.UID, &u.SectionUID, &u.CheckUID, &u.IncidentUID,
+			&u.Title, &u.BodyMarkdown, &u.LinkURL, &u.Kind, &u.PublishedAt,
+		); scanErr != nil {
+			return nil, scanErr
+		}
+
+		updates = append(updates, u)
+	}
+
+	if rowsErr := rows.Err(); rowsErr != nil {
+		return nil, rowsErr
+	}
+
+	return updates, nil
 }
