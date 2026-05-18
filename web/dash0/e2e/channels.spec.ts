@@ -22,6 +22,91 @@ async function deleteCheck(page: Page, token: string, uid: string) {
   });
 }
 
+test.describe("Slack destination picker", () => {
+  test("selects a Slack channel via mocked destinations endpoint", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Create a fake Slack channel via API (type=slack, minimal settings)
+    const channelResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/channels`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "slack",
+          name: `E2E Slack Picker ${Date.now()}`,
+          settings: {
+            team_id: "T0123",
+            team_name: "Test Workspace",
+            bot_user_id: "B0123",
+            access_token: "xoxb-fake",
+            installed_by_user_id: "U0001",
+            scopes: [],
+          },
+        },
+      },
+    );
+    const channel = await channelResp.json();
+    const channelUid: string = channel.uid;
+
+    // Mock the /slack/destinations endpoint before navigating
+    await page.route(
+      `**/api/v1/orgs/test/channels/${channelUid}/slack/destinations`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            channels: [
+              { id: "C0123ABCDE", name: "alerts", isPrivate: false, isMember: true },
+              { id: "C9999", name: "ops", isPrivate: false, isMember: false },
+            ],
+            users: [],
+          }),
+        });
+      },
+    );
+
+    // Intercept the PATCH request to capture the body
+    let patchBody: Record<string, unknown> = {};
+    await page.route(
+      `**/api/v1/orgs/test/channels/${channelUid}`,
+      async (route) => {
+        if (route.request().method() === "PATCH") {
+          const body = route.request().postDataJSON() as Record<string, unknown>;
+          patchBody = body;
+        }
+        await route.continue();
+      },
+    );
+
+    // Navigate to the channel edit page
+    await page.goto(`orgs/test/channels/${channelUid}`);
+    await page.waitForLoadState("networkidle");
+
+    // Open the channel combobox and pick "alerts"
+    const combobox = page.getByTestId("slack-channel-combobox");
+    await combobox.click();
+
+    const option = page.getByTestId("slack-channel-option-C0123ABCDE");
+    await option.click();
+
+    // Save
+    await page.getByRole("button", { name: /save/i }).click();
+    await page.waitForLoadState("networkidle");
+
+    // Verify the PATCH body contains the expected fields
+    const settings = patchBody.settings as Record<string, unknown> | undefined;
+    expect(settings?.channel_id).toBe("C0123ABCDE");
+    expect(settings?.destination_type).toBe("channel");
+
+    // Cleanup
+    await deleteConnection(page, token, channelUid);
+  });
+});
+
 test.describe("Notification Channels", () => {
   test("create webhook channel, bind to check, unbind, delete", async ({
     authenticatedPage,
