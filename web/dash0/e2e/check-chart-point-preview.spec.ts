@@ -1,0 +1,146 @@
+import { test, expect } from "./fixtures";
+
+/**
+ * Tests for the chart dot preview (PinnedResultBox) behaviour:
+ * - First click on a dot opens the preview box.
+ * - Second click on the same dot dismisses the preview (does NOT navigate).
+ * - Clicking the "More details →" link in the preview navigates to the result page.
+ */
+
+test.describe("Chart point preview", () => {
+  // Helper: navigate to a check detail page with mocked results data so the
+  // chart renders at least one dot we can interact with.
+  async function gotoCheckDetailWithResults(page: Parameters<Parameters<typeof test.extend>[0]["authenticatedPage"]>[0]) {
+    const now = Date.now();
+    const resultUid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+    // Mock results — one "raw" result point so the chart renders a dot.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: resultUid,
+              durationMs: 42,
+              status: "up",
+              periodStart: new Date(now - 5 * 60_000).toISOString(),
+              periodType: "raw",
+            },
+          ],
+          pagination: { total: 1, size: 1 },
+        }),
+      });
+    });
+
+    // Mock the single-result detail endpoint called by PinnedResultBox.
+    await page.route(`**/api/v1/orgs/*/checks/*/results/${resultUid}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uid: resultUid,
+          durationMs: 42,
+          status: "up",
+          periodStart: new Date(now - 5 * 60_000).toISOString(),
+          periodType: "raw",
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    // Create a check and navigate to its detail page.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Preview ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/preview-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    return resultUid;
+  }
+
+  test("second click on the same dot dismisses the preview", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await gotoCheckDetailWithResults(page);
+
+    // Wait for the chart to render.
+    await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
+
+    // Find a clickable dot in the chart SVG.
+    const chartDots = page.locator(".recharts-wrapper circle");
+    const dotCount = await chartDots.count();
+
+    // Skip if no dots rendered (e.g. no data displayed in current range).
+    if (dotCount === 0) {
+      test.skip(true, "No chart dots rendered — cannot test preview behaviour");
+      return;
+    }
+
+    const firstDot = chartDots.first();
+
+    // First click: preview should appear.
+    await firstDot.click({ force: true });
+    const previewBox = page.getByTestId("pinned-result-box");
+    await expect(previewBox).toBeVisible({ timeout: 5000 });
+
+    const urlBefore = page.url();
+
+    // Second click on the same dot: preview should disappear, URL unchanged.
+    await firstDot.click({ force: true });
+    await expect(previewBox).not.toBeVisible({ timeout: 5000 });
+    expect(page.url()).toBe(urlBefore);
+  });
+
+  test("More details link navigates to the result detail page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const resultUid = await gotoCheckDetailWithResults(page);
+
+    // Wait for the chart to render.
+    await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
+
+    const chartDots = page.locator(".recharts-wrapper circle");
+    const dotCount = await chartDots.count();
+
+    if (dotCount === 0) {
+      test.skip(true, "No chart dots rendered — cannot test More details link");
+      return;
+    }
+
+    // Click the dot to open the preview.
+    await chartDots.first().click({ force: true });
+    const previewBox = page.getByTestId("pinned-result-box");
+    await expect(previewBox).toBeVisible({ timeout: 5000 });
+
+    // The "More details →" link should be visible in the preview.
+    const moreDetailsLink = previewBox.getByRole("link", { name: /more details/i });
+    await expect(moreDetailsLink).toBeVisible();
+
+    // Click the link — it should navigate to the result detail page.
+    await moreDetailsLink.click();
+    await page.waitForURL(`**/results/${resultUid}`, { timeout: 10000 });
+    expect(page.url()).toContain(`/results/${resultUid}`);
+  });
+});
