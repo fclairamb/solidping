@@ -32,9 +32,10 @@ const (
 
 // BadgeOptions contains options for badge generation.
 type BadgeOptions struct {
-	Period string // "1h", "24h", "7d", "30d"
-	Label  string // Custom label (default: check name)
-	Style  string // "flat", "flat-square"
+	Period   string // "1h", "24h", "7d", "30d"
+	Label    string // Custom label (default: check name)
+	Style    string // "flat", "flat-square"
+	MinWidth int    // 0 = no minimum
 }
 
 // Service provides badge generation functionality.
@@ -121,7 +122,7 @@ func (s *Service) GenerateBadge(
 	// 7. Resolve color.
 	color := resolveColor(tokens, results)
 
-	return GenerateSVG(opts.Label, value, color, opts.Style), nil
+	return GenerateSVG(opts.Label, value, color, opts.Style, opts.MinWidth), nil
 }
 
 // fetchResults fetches the results needed for the given tokens.

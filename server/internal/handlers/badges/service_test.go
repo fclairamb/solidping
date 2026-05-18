@@ -63,7 +63,7 @@ func TestGenerateSVG(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svg := GenerateSVG("Test", "up", ColorGreen, "flat")
+	svg := GenerateSVG("Test", "up", ColorGreen, "flat", 0)
 	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
 	r.Contains(svg, "Test")
 	r.Contains(svg, "up")
@@ -74,8 +74,37 @@ func TestGenerateSVGFlatSquare(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svg := GenerateSVG("Test", "up", ColorGreen, "flat-square")
+	svg := GenerateSVG("Test", "up", ColorGreen, "flat-square", 0)
 	r.Contains(svg, `rx="0"`)
+}
+
+func TestGenerateSVGMinWidth(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("minWidth=200 pads narrow badge", func(t *testing.T) {
+		t.Parallel()
+
+		svg := GenerateSVG("check", "up", ColorGreen, "flat", 200)
+		r.Contains(svg, `width="200"`)
+	})
+
+	t.Run("minWidth=50 has no effect on wider badge", func(t *testing.T) {
+		t.Parallel()
+
+		// "check name" label (10 chars) = 10*6+10 = 70; "up" value = 2*6+10 = 22; total = 92 > 50
+		svg := GenerateSVG("check name", "up", ColorGreen, "flat", 50)
+		r.Contains(svg, `width="92"`)
+	})
+
+	t.Run("minWidth=0 behaves like default", func(t *testing.T) {
+		t.Parallel()
+
+		svgDefault := GenerateSVG("check", "up", ColorGreen, "flat", 0)
+		svgMinZero := GenerateSVG("check", "up", ColorGreen, "flat", 0)
+		r.Equal(svgDefault, svgMinZero)
+	})
 }
 
 func TestEscapeXML(t *testing.T) {
