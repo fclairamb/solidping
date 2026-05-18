@@ -228,7 +228,7 @@
       "showingAllRegions": "Mostrando todas las regiones ({{regions}})",
       "tooltipClickPoint": "Haga clic en un punto para ver detalles",
       "dotClickForDetails": "Haga clic para ver detalles",
-      "dotClickAgain": "Haga clic de nuevo para abrir la página completa"
+      "dotClickToClose": "Haga clic para cerrar"
     },
     "resultBox": {
       "close": "Cerrar",
@@ -239,7 +239,7 @@
       "region": "Región",
       "status": "Estado",
       "period": "Período",
-      "clickAgain": "Haga clic de nuevo para abrir la página completa"
+      "moreDetails": "Más detalles →"
     },
     "availability": {
       "title": "Disponibilidad",
