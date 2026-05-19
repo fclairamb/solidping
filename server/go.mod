@@ -35,7 +35,7 @@ require (
 	github.com/likexian/whois-parser v1.24.21
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.0
-	github.com/oapi-codegen/runtime v1.4.0
+	github.com/oapi-codegen/runtime v1.4.1
 	github.com/ohler55/ojg v1.28.1
 	github.com/pkg/sftp v1.13.10
 	github.com/pquerna/otp v1.5.0
