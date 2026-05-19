@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as OrgRouteImport } from './routes/$org'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as OrgIndexRouteImport } from './routes/$org.index'
 import { Route as OrgSlugRouteImport } from './routes/$org.$slug'
 
 const OrgRoute = OrgRouteImport.update({
@@ -23,6 +24,11 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const OrgIndexRoute = OrgIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgRoute,
+} as any)
 const OrgSlugRoute = OrgSlugRouteImport.update({
   id: '/$slug',
   path: '/$slug',
@@ -33,24 +39,26 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/$org': typeof OrgRouteWithChildren
   '/$org/$slug': typeof OrgSlugRoute
+  '/$org/': typeof OrgIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/$org': typeof OrgRouteWithChildren
   '/$org/$slug': typeof OrgSlugRoute
+  '/$org': typeof OrgIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/$org': typeof OrgRouteWithChildren
   '/$org/$slug': typeof OrgSlugRoute
+  '/$org/': typeof OrgIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/$org' | '/$org/$slug'
+  fullPaths: '/' | '/$org' | '/$org/$slug' | '/$org/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/$org' | '/$org/$slug'
-  id: '__root__' | '/' | '/$org' | '/$org/$slug'
+  to: '/' | '/$org/$slug' | '/$org'
+  id: '__root__' | '/' | '/$org' | '/$org/$slug' | '/$org/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -74,6 +82,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/$org/': {
+      id: '/$org/'
+      path: '/'
+      fullPath: '/$org/'
+      preLoaderRoute: typeof OrgIndexRouteImport
+      parentRoute: typeof OrgRoute
+    }
     '/$org/$slug': {
       id: '/$org/$slug'
       path: '/$slug'
@@ -86,10 +101,12 @@ declare module '@tanstack/react-router' {
 
 interface OrgRouteChildren {
   OrgSlugRoute: typeof OrgSlugRoute
+  OrgIndexRoute: typeof OrgIndexRoute
 }
 
 const OrgRouteChildren: OrgRouteChildren = {
   OrgSlugRoute: OrgSlugRoute,
+  OrgIndexRoute: OrgIndexRoute,
 }
 
 const OrgRouteWithChildren = OrgRoute._addFileChildren(OrgRouteChildren)
