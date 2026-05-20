@@ -228,7 +228,7 @@
       "showingAllRegions": "Toutes les régions affichées ({{regions}})",
       "tooltipClickPoint": "Cliquer sur un point pour les détails",
       "dotClickForDetails": "Cliquer pour les détails",
-      "dotClickAgain": "Cliquer à nouveau pour ouvrir la page complète"
+      "dotClickToClose": "Cliquer pour fermer"
     },
     "resultBox": {
       "close": "Fermer",
@@ -239,7 +239,7 @@
       "region": "Région",
       "status": "Statut",
       "period": "Période",
-      "clickAgain": "Cliquer à nouveau pour ouvrir la page complète"
+      "moreDetails": "Plus de détails →"
     },
     "availability": {
       "title": "Disponibilité",
@@ -334,5 +334,8 @@
   "expectedValue": "Valeur attendue",
   "actualValue": "Valeur réelle",
   "passed": "Réussi",
-  "failed": "Échoué"
+  "failed": "Échoué",
+  "secretHeaders": "En-têtes secrets",
+  "secretHeadersDescription": "Valeurs d'en-têtes stockées chiffrées — utilisez pour les clés API et les tokens Bearer.",
+  "addSecretHeader": "Ajouter un en-tête secret"
 }

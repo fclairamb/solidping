@@ -30,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // Errors returned by the check runner.
@@ -92,7 +93,7 @@ func NewCheckWorker(
 		config:      cfg,
 		services:    svc,
 		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs),
+		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture

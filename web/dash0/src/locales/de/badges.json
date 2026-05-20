@@ -9,6 +9,8 @@
   "style": "Stil",
   "customLabel": "Benutzerdefinierte Beschriftung",
   "customLabelPlaceholder": "Leer lassen, um den Prüfungsnamen zu verwenden",
+  "minWidth": "Mindestbreite (px)",
+  "minWidthDescription": "Verbreitert das Abzeichen auf mindestens diese Breite. 0 für automatisch.",
   "preview": "Vorschau",
   "refresh": "Aktualisieren",
   "selectCheckPrompt": "Wählen Sie eine Prüfung, um eine Vorschau zu sehen und Abzeichen zu erstellen",
@@ -43,5 +45,10 @@
     "flatSquare": "Flach quadratisch"
   },
   "availability": "Verfügbarkeit",
-  "status": "Status"
+  "status": "Status",
+  "uptimeBar": "Verfügbarkeitsbalken",
+  "uptimeBarDescription": "Ein horizontaler Streifen, der die Verfügbarkeit pro Zeitbereich zeigt",
+  "uptimeBarPreview": "Vorschau des Verfügbarkeitsbalkens",
+  "uptimeBarEmbed": "Einbettungscode des Verfügbarkeitsbalkens",
+  "barWidth": "Balkenbreite (px)"
 }

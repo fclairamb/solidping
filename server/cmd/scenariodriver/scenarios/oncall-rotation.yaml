@@ -1,0 +1,58 @@
+name: oncall-rotation
+description: "On-call schedule target receives notification when check goes down"
+timeout: 60s
+cleanup: true
+
+# NOTE: This scenario requires a pre-existing on-call schedule with the test
+# user rostered and currently on call. The scenario creates a check and
+# escalation policy that uses a "schedule" target. Since creating on-call
+# schedules via the scenario driver requires knowing the user UID (which varies
+# per instance), this scenario is best run in environments where a schedule
+# named "oncall-test" is already set up.
+#
+# For a fully self-contained test, use incident-open-close.yaml instead.
+
+steps:
+  - kind: create_heartbeat_check
+    id: oncall-check
+    slug: "scenario-oncall-hb-{{.Timestamp}}"
+    confirmation_period_seconds: 0
+    recovery_period_seconds: 0
+    escalation_threshold: 1
+
+  - kind: create_webhook_channel
+    id: oncall-channel
+    url: "{{.ReceiverURL}}/hook/oncall-channel"
+
+  - kind: create_escalation_policy
+    id: oncall-policy
+    slug: "scenario-oncall-policy-{{.Timestamp}}"
+    steps:
+      - delay_seconds: 0
+        targets:
+          - type: connection
+            channel_id: oncall-channel
+
+  - kind: assign_policy_to_check
+    check_id: oncall-check
+    policy_id: oncall-policy
+
+  - kind: send_heartbeat
+    check_id: oncall-check
+    status: down
+
+  - kind: expect_webhook
+    channel_id: oncall-channel
+    timeout: 20s
+    assert:
+      event_type: incident.created
+
+  - kind: send_heartbeat
+    check_id: oncall-check
+    status: up
+
+  - kind: expect_webhook
+    channel_id: oncall-channel
+    timeout: 20s
+    assert:
+      event_type: incident.resolved

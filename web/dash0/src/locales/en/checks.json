@@ -228,7 +228,7 @@
       "showingAllRegions": "Showing all regions ({{regions}})",
       "tooltipClickPoint": "Click point for details",
       "dotClickForDetails": "Click for details",
-      "dotClickAgain": "Click again to open full page"
+      "dotClickToClose": "Click to close"
     },
     "resultBox": {
       "close": "Close",
@@ -239,7 +239,7 @@
       "region": "Region",
       "status": "Status",
       "period": "Period",
-      "clickAgain": "Click again to open full page"
+      "moreDetails": "More details →"
     },
     "availability": {
       "title": "Availability",
@@ -334,5 +334,8 @@
   "expectedValue": "Expected value",
   "actualValue": "Actual value",
   "passed": "Passed",
-  "failed": "Failed"
+  "failed": "Failed",
+  "secretHeaders": "Secret headers",
+  "secretHeadersDescription": "Header values stored encrypted — use for API keys and Bearer tokens.",
+  "addSecretHeader": "Add secret header"
 }

@@ -45,6 +45,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
+	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
@@ -66,8 +67,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
+	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -82,6 +85,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
@@ -190,6 +194,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize services
 	svcList := services.NewRegistry()
+	svcList.Clock = clock.Real{}
 
 	// Create check notifier based on database type — must be created before the
 	// job service so its LISTEN channel can wake up GetJobWait immediately on
@@ -448,9 +453,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
-	// Job routes
+	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	jobHandler.RegisterRoutes(api)
+	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgJobsGroup.POST("", jobHandler.CreateJob)
+	orgJobsGroup.GET("", jobHandler.ListJobs)
+	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
+	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
@@ -473,6 +482,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+
+	// Network discovery routes (authentication + org access required)
+	discoverySvc := discovery.NewService(s.dbService.DB(), s.dbService, checksService, s.jobSvc)
+	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
+	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
 	labelsService := labels.NewService(s.dbService)
@@ -537,6 +552,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	badgesService := badges.NewService(s.dbService)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
+	api.GET("/orgs/:org/checks/:check/uptime-bar", badgesHandler.GetUptimeBar)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
@@ -548,7 +564,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -569,7 +585,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -633,6 +649,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
 	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
 	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
+
+	// User notification routes (authentication required)
+	userNotifService := usernotifications.NewService(s.dbService)
+	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
+	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
+	userNotifHandler := usernotifications.NewHandler(userNotifService, s.config, emailAdapter, slackAdapter)
+	orgUserNotif := api.NewGroup("/orgs/:org/users/me").Use(authMiddleware.RequireAuth)
+	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
+	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)
+	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
+	orgUserNotif.DELETE("/notification-contacts/:contactUid", userNotifHandler.DeleteContact)
+	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -739,6 +767,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.DELETE("/:uid", channelsHandler.DeleteChannel)
 	}
 
+	// Status updates routes (authentication required)
+	statusUpdatesService := statusupdates.NewService(s.dbService)
+	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
+	orgStatusUpdates := api.NewGroup("/orgs/:org/status-updates").Use(authMiddleware.RequireAuth)
+	orgStatusUpdates.GET("", statusUpdatesHandler.ListStatusUpdates)
+	orgStatusUpdates.POST("", statusUpdatesHandler.CreateStatusUpdate)
+	orgStatusUpdates.GET("/:uid", statusUpdatesHandler.GetStatusUpdate)
+	orgStatusUpdates.PATCH("/:uid", statusUpdatesHandler.UpdateStatusUpdate)
+	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
+
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService)
 	statusPagesHandler := statuspages.NewHandler(statusPagesService, s.config)
@@ -787,6 +825,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
+
+	// Slack destinations picker (authenticated, org-scoped)
+	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
+	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)

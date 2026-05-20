@@ -1,0 +1,393 @@
+// Package usernotifications provides HTTP handlers and business logic for
+// per-user notification contact management and route configuration.
+package usernotifications
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
+
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+)
+
+// Service errors.
+var (
+	ErrOrgNotFound              = errors.New("organization not found")
+	ErrRouteNotFound            = errors.New("notification route not found")
+	ErrContactNotFound          = errors.New("notification contact not found")
+	ErrUserNotFound             = errors.New("user not found")
+	ErrRouteNotFoundAfterCreate = errors.New("route not found after creation")
+	ErrEmailSenderNotConfigured = errors.New("email sender not configured")
+	ErrNoSlackChannelForOrg     = errors.New("no Slack channel configured for this organization")
+	ErrSlackClientNotConfigured = errors.New("slack client not configured")
+)
+
+// ContactResponse is the API representation of a UserContact.
+type ContactResponse struct {
+	UID        string     `json:"uid"`
+	Type       string     `json:"type"`
+	Value      string     `json:"value"`
+	Label      string     `json:"label"`
+	VerifiedAt *time.Time `json:"verifiedAt,omitempty"`
+}
+
+// RouteResponse is the API representation of a UserNotificationRoute.
+type RouteResponse struct {
+	UID       string          `json:"uid"`
+	Enabled   bool            `json:"enabled"`
+	Position  int             `json:"position"`
+	Contact   ContactResponse `json:"contact"`
+	CreatedAt time.Time       `json:"createdAt"`
+}
+
+// SlackSuggestion carries the Slack DM hint when the user has a Slack provider
+// and the org has a Slack channel, but no Slack DM contact yet.
+type SlackSuggestion struct {
+	SlackUserID   string `json:"slackUserId"`
+	WorkspaceName string `json:"workspaceName"`
+	ChannelUID    string `json:"channelUid"`
+}
+
+// ListRoutesResponse wraps the list response with the optional Slack suggestion.
+type ListRoutesResponse struct {
+	Data            []*RouteResponse `json:"data"`
+	SlackSuggestion *SlackSuggestion `json:"slackSuggestion,omitempty"`
+}
+
+// CreateContactRequest is the body for POST /notification-contacts.
+type CreateContactRequest struct {
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// PatchRouteRequest is the body for PATCH /notification-routes/:routeUid.
+type PatchRouteRequest struct {
+	Enabled   *bool    `json:"enabled,omitempty"`
+	RouteUIDs []string `json:"routeUids,omitempty"` // full ordered list for reorder
+}
+
+// Service provides business logic for the usernotifications domain.
+type Service struct {
+	db db.Service
+}
+
+// NewService builds a service.
+func NewService(dbService db.Service) *Service {
+	return &Service{db: dbService}
+}
+
+// resolveOrgUID maps an org slug to its UID.
+func (s *Service) resolveOrgUID(ctx context.Context, orgSlug string) (string, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil || org == nil {
+		return "", ErrOrgNotFound
+	}
+
+	return org.UID, nil
+}
+
+// ListRoutes seeds the default email route then returns all routes + Slack suggestion.
+func (s *Service) ListRoutes(
+	ctx context.Context, orgSlug string, user *models.User,
+) (*ListRoutesResponse, error) {
+	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	// Auto-seed default email route on first visit.
+	if seedErr := s.db.EnsureDefaultEmailRoute(ctx, user.UID, orgUID, user.Email); seedErr != nil {
+		return nil, fmt.Errorf("seed default email route: %w", seedErr)
+	}
+
+	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("list routes: %w", err)
+	}
+
+	resp := &ListRoutesResponse{
+		Data: toRouteResponses(routes),
+	}
+
+	resp.SlackSuggestion = s.buildSlackSuggestion(ctx, user, orgUID, routes)
+
+	return resp, nil
+}
+
+// buildSlackSuggestion returns a suggestion if all conditions are met.
+func (s *Service) buildSlackSuggestion(
+	ctx context.Context, user *models.User, orgUID string,
+	existing []*models.UserNotificationRoute,
+) *SlackSuggestion {
+	// Does the user have a Slack provider?
+	providers, err := s.db.ListUserProvidersByUser(ctx, user.UID)
+	if err != nil {
+		return nil
+	}
+
+	var slackProvider *models.UserProvider
+
+	for _, p := range providers {
+		if p.ProviderType == models.ProviderTypeSlack {
+			slackProvider = p
+
+			break
+		}
+	}
+
+	if slackProvider == nil {
+		return nil
+	}
+
+	// Does the org have a Slack channel?
+	slackChannel, err := s.db.GetSlackChannelForOrg(ctx, orgUID)
+	if err != nil {
+		return nil
+	}
+
+	// Is there already a slack_user contact for this provider ID?
+	for _, route := range existing {
+		if route.Contact != nil &&
+			route.Contact.Type == models.UserContactTypeSlackUser &&
+			route.Contact.Value == slackProvider.ProviderID {
+			return nil // already added
+		}
+	}
+
+	settings, err := models.SlackSettingsFromJSONMap(slackChannel.Settings)
+	if err != nil {
+		return nil
+	}
+
+	return &SlackSuggestion{
+		SlackUserID:   slackProvider.ProviderID,
+		WorkspaceName: settings.TeamName,
+		ChannelUID:    slackChannel.UID,
+	}
+}
+
+// CreateContact creates a new contact + route.
+//
+//nolint:cyclop // inherent complexity: upsert + reload + conditional route creation
+func (s *Service) CreateContact(
+	ctx context.Context, orgSlug string, user *models.User, req CreateContactRequest,
+) (*RouteResponse, error) {
+	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the current max position.
+	existing, listErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if listErr != nil {
+		return nil, fmt.Errorf("list existing routes: %w", listErr)
+	}
+
+	position := len(existing)
+
+	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
+
+	if req.Type == models.UserContactTypeEmail {
+		now := time.Now()
+		contact.VerifiedAt = &now
+	}
+
+	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return nil, fmt.Errorf("create contact: %w", upsertErr)
+	}
+
+	// Reload to get the actual UID after upsert.
+	routes, reloadErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes: %w", reloadErr)
+	}
+
+	// Find the route for our new contact (may already exist after upsert).
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			return toRouteResponse(r), nil
+		}
+	}
+
+	// No route yet — create it.
+	route := models.NewUserNotificationRoute(user.UID, orgUID, contact.UID, position)
+	if _, insertErr := s.db.DB().NewInsert().Model(route).
+		On("CONFLICT (contact_uid) DO NOTHING").
+		Exec(ctx); insertErr != nil {
+		return nil, fmt.Errorf("create route: %w", insertErr)
+	}
+
+	// Reload again.
+	routes, reloadErr = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes after create: %w", reloadErr)
+	}
+
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			return toRouteResponse(r), nil
+		}
+	}
+
+	return nil, ErrRouteNotFoundAfterCreate
+}
+
+// PatchRoute updates enabled flag and/or reorders.
+func (s *Service) PatchRoute(
+	ctx context.Context, orgSlug string, user *models.User,
+	routeUID string, req PatchRouteRequest,
+) (*RouteResponse, error) {
+	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.Enabled != nil {
+		if enableErr := s.db.SetRouteEnabled(ctx, routeUID, *req.Enabled); enableErr != nil {
+			return nil, fmt.Errorf("set route enabled: %w", enableErr)
+		}
+	}
+
+	if len(req.RouteUIDs) > 0 {
+		if reorderErr := s.db.ReorderRoutes(ctx, user.UID, orgUID, req.RouteUIDs); reorderErr != nil {
+			return nil, fmt.Errorf("reorder routes: %w", reorderErr)
+		}
+	}
+
+	// Return the updated route.
+	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("reload routes: %w", err)
+	}
+
+	for _, r := range routes {
+		if r.UID == routeUID {
+			return toRouteResponse(r), nil
+		}
+	}
+
+	return nil, ErrRouteNotFound
+}
+
+// DeleteContact soft-deletes a contact (the route cascades via the DB constraint).
+func (s *Service) DeleteContact(
+	ctx context.Context, orgSlug string, user *models.User, contactUID string,
+) error {
+	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
+	if err != nil {
+		return err
+	}
+
+	// Verify the contact belongs to this user + org before deleting.
+	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if err != nil {
+		return fmt.Errorf("list routes for ownership check: %w", err)
+	}
+
+	found := false
+
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.UID == contactUID {
+			found = true
+
+			break
+		}
+	}
+
+	if !found {
+		return ErrContactNotFound
+	}
+
+	return s.db.DeleteUserContact(ctx, contactUID)
+}
+
+// toRouteResponse converts a DB model to an API response.
+func toRouteResponse(route *models.UserNotificationRoute) *RouteResponse {
+	contactResp := ContactResponse{}
+	if route.Contact != nil {
+		contactResp = ContactResponse{
+			UID:        route.Contact.UID,
+			Type:       route.Contact.Type,
+			Value:      route.Contact.Value,
+			Label:      route.Contact.Label,
+			VerifiedAt: route.Contact.VerifiedAt,
+		}
+	}
+
+	return &RouteResponse{
+		UID:       route.UID,
+		Enabled:   route.Enabled,
+		Position:  route.Position,
+		Contact:   contactResp,
+		CreatedAt: route.CreatedAt,
+	}
+}
+
+func toRouteResponses(routes []*models.UserNotificationRoute) []*RouteResponse {
+	out := make([]*RouteResponse, len(routes))
+	for i, route := range routes {
+		out[i] = toRouteResponse(route)
+	}
+
+	return out
+}
+
+// SendTestNotification dispatches a test notification for the given route.
+func (s *Service) SendTestNotification(
+	ctx context.Context, orgSlug string, user *models.User, routeUID string,
+	emailSender EmailSender, slackClient SlackDMSender,
+) error {
+	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
+	if err != nil {
+		return err
+	}
+
+	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if err != nil {
+		return fmt.Errorf("list routes: %w", err)
+	}
+
+	var target *models.UserNotificationRoute
+
+	for _, ro := range routes {
+		if ro.UID == routeUID {
+			target = ro
+
+			break
+		}
+	}
+
+	if target == nil || target.Contact == nil {
+		return ErrRouteNotFound
+	}
+
+	switch target.Contact.Type {
+	case models.UserContactTypeEmail:
+		if emailSender == nil {
+			return ErrEmailSenderNotConfigured
+		}
+
+		return emailSender.SendTestEmail(ctx, target.Contact.Value)
+	case models.UserContactTypeSlackUser:
+		slackChannel, chErr := s.db.GetSlackChannelForOrg(ctx, orgUID)
+		if chErr != nil {
+			if errors.Is(chErr, sql.ErrNoRows) {
+				return ErrNoSlackChannelForOrg
+			}
+
+			return fmt.Errorf("load slack channel: %w", chErr)
+		}
+
+		if slackClient == nil {
+			return ErrSlackClientNotConfigured
+		}
+
+		return slackClient.SendDMTest(ctx, slackChannel, target.Contact.Value)
+	default:
+		return fmt.Errorf("provider not configured for contact type %q", target.Contact.Type) //nolint:err113
+	}
+}

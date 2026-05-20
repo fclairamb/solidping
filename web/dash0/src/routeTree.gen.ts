@@ -19,6 +19,7 @@ import { Route as InviteTokenRouteImport } from './routes/invite.$token'
 import { Route as ConfirmRegistrationTokenRouteImport } from './routes/confirm-registration.$token'
 import { Route as OrgsOrgIndexRouteImport } from './routes/orgs/$org/index'
 import { Route as OrgsOrgTestRouteImport } from './routes/orgs/$org/test'
+import { Route as OrgsOrgStatusUpdatesRouteImport } from './routes/orgs/$org/status-updates'
 import { Route as OrgsOrgStatusPagesRouteImport } from './routes/orgs/$org/status-pages'
 import { Route as OrgsOrgServerRouteImport } from './routes/orgs/$org/server'
 import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register'
@@ -29,6 +30,7 @@ import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgIncidentsRouteImport } from './routes/orgs/$org/incidents'
 import { Route as OrgsOrgEventsRouteImport } from './routes/orgs/$org/events'
 import { Route as OrgsOrgEscalationPoliciesRouteImport } from './routes/orgs/$org/escalation-policies'
+import { Route as OrgsOrgDiscoveryRouteImport } from './routes/orgs/$org/discovery'
 import { Route as OrgsOrgDesignReferenceRouteImport } from './routes/orgs/$org/design-reference'
 import { Route as OrgsOrgChecksRouteImport } from './routes/orgs/$org/checks'
 import { Route as OrgsOrgChannelsRouteImport } from './routes/orgs/$org/channels'
@@ -42,6 +44,7 @@ import { Route as OrgsOrgOrganizationIndexRouteImport } from './routes/orgs/$org
 import { Route as OrgsOrgOnCallIndexRouteImport } from './routes/orgs/$org/on-call.index'
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
 import { Route as OrgsOrgEscalationPoliciesIndexRouteImport } from './routes/orgs/$org/escalation-policies.index'
+import { Route as OrgsOrgDiscoveryIndexRouteImport } from './routes/orgs/$org/discovery.index'
 import { Route as OrgsOrgDependenciesIndexRouteImport } from './routes/orgs/$org/dependencies.index'
 import { Route as OrgsOrgChecksIndexRouteImport } from './routes/orgs/$org/checks.index'
 import { Route as OrgsOrgChannelsIndexRouteImport } from './routes/orgs/$org/channels.index'
@@ -68,6 +71,8 @@ import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/m
 import { Route as OrgsOrgIncidentsIncidentUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid'
 import { Route as OrgsOrgEscalationPoliciesNewRouteImport } from './routes/orgs/$org/escalation-policies.new'
 import { Route as OrgsOrgEscalationPoliciesSlugRouteImport } from './routes/orgs/$org/escalation-policies.$slug'
+import { Route as OrgsOrgDiscoveryNewRouteImport } from './routes/orgs/$org/discovery.new'
+import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/discovery.$jobUid'
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgChannelsNewRouteImport } from './routes/orgs/$org/channels.new'
@@ -75,12 +80,14 @@ import { Route as OrgsOrgChannelsChannelUidRouteImport } from './routes/orgs/$or
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
+import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
+import { Route as OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport } from './routes/orgs/$org/discovery.$jobUid.$hostUid.promote'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
 const NoOrgRoute = NoOrgRouteImport.update({
@@ -134,6 +141,11 @@ const OrgsOrgTestRoute = OrgsOrgTestRouteImport.update({
   path: '/test',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
+const OrgsOrgStatusUpdatesRoute = OrgsOrgStatusUpdatesRouteImport.update({
+  id: '/status-updates',
+  path: '/status-updates',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
 const OrgsOrgStatusPagesRoute = OrgsOrgStatusPagesRouteImport.update({
   id: '/status-pages',
   path: '/status-pages',
@@ -185,6 +197,11 @@ const OrgsOrgEscalationPoliciesRoute =
     path: '/escalation-policies',
     getParentRoute: () => OrgsOrgRoute,
   } as any)
+const OrgsOrgDiscoveryRoute = OrgsOrgDiscoveryRouteImport.update({
+  id: '/discovery',
+  path: '/discovery',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
 const OrgsOrgDesignReferenceRoute = OrgsOrgDesignReferenceRouteImport.update({
   id: '/design-reference',
   path: '/design-reference',
@@ -252,6 +269,11 @@ const OrgsOrgEscalationPoliciesIndexRoute =
     path: '/',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
+const OrgsOrgDiscoveryIndexRoute = OrgsOrgDiscoveryIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => OrgsOrgDiscoveryRoute,
+} as any)
 const OrgsOrgDependenciesIndexRoute =
   OrgsOrgDependenciesIndexRouteImport.update({
     id: '/dependencies/',
@@ -392,6 +414,16 @@ const OrgsOrgEscalationPoliciesSlugRoute =
     path: '/$slug',
     getParentRoute: () => OrgsOrgEscalationPoliciesRoute,
   } as any)
+const OrgsOrgDiscoveryNewRoute = OrgsOrgDiscoveryNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => OrgsOrgDiscoveryRoute,
+} as any)
+const OrgsOrgDiscoveryJobUidRoute = OrgsOrgDiscoveryJobUidRouteImport.update({
+  id: '/$jobUid',
+  path: '/$jobUid',
+  getParentRoute: () => OrgsOrgDiscoveryRoute,
+} as any)
 const OrgsOrgChecksNewRoute = OrgsOrgChecksNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -428,6 +460,12 @@ const OrgsOrgAccountProfileRoute = OrgsOrgAccountProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountNotificationsRoute =
+  OrgsOrgAccountNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => OrgsOrgAccountRoute,
+  } as any)
 const OrgsOrgStatusPagesStatusPageUidIndexRoute =
   OrgsOrgStatusPagesStatusPageUidIndexRouteImport.update({
     id: '/',
@@ -462,6 +500,12 @@ const OrgsOrgChecksCheckUidEditRoute =
     path: '/edit',
     getParentRoute: () => OrgsOrgChecksCheckUidRoute,
   } as any)
+const OrgsOrgDiscoveryJobUidHostUidPromoteRoute =
+  OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport.update({
+    id: '/$hostUid/promote',
+    path: '/$hostUid/promote',
+    getParentRoute: () => OrgsOrgDiscoveryJobUidRoute,
+  } as any)
 const OrgsOrgChecksCheckUidResultsResultUidRoute =
   OrgsOrgChecksCheckUidResultsResultUidRouteImport.update({
     id: '/results/$resultUid',
@@ -484,6 +528,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/channels': typeof OrgsOrgChannelsRouteWithChildren
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
+  '/orgs/$org/discovery': typeof OrgsOrgDiscoveryRouteWithChildren
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
@@ -494,8 +539,10 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
@@ -503,6 +550,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
+  '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
@@ -529,6 +578,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/channels/': typeof OrgsOrgChannelsIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/discovery/': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
@@ -543,6 +593,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
+  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -559,13 +610,17 @@ export interface FileRoutesByTo {
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/channels/$channelUid': typeof OrgsOrgChannelsChannelUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
+  '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
@@ -590,6 +645,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/channels': typeof OrgsOrgChannelsIndexRoute
   '/orgs/$org/checks': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/discovery': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call': typeof OrgsOrgOnCallIndexRoute
@@ -604,6 +660,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
+  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -621,6 +678,7 @@ export interface FileRoutesById {
   '/orgs/$org/channels': typeof OrgsOrgChannelsRouteWithChildren
   '/orgs/$org/checks': typeof OrgsOrgChecksRouteWithChildren
   '/orgs/$org/design-reference': typeof OrgsOrgDesignReferenceRoute
+  '/orgs/$org/discovery': typeof OrgsOrgDiscoveryRouteWithChildren
   '/orgs/$org/escalation-policies': typeof OrgsOrgEscalationPoliciesRouteWithChildren
   '/orgs/$org/events': typeof OrgsOrgEventsRoute
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsRouteWithChildren
@@ -631,8 +689,10 @@ export interface FileRoutesById {
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org/server': typeof OrgsOrgServerRouteWithChildren
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
+  '/orgs/$org/status-updates': typeof OrgsOrgStatusUpdatesRoute
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
@@ -640,6 +700,8 @@ export interface FileRoutesById {
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
+  '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
+  '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
   '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
@@ -666,6 +728,7 @@ export interface FileRoutesById {
   '/orgs/$org/channels/': typeof OrgsOrgChannelsIndexRoute
   '/orgs/$org/checks/': typeof OrgsOrgChecksIndexRoute
   '/orgs/$org/dependencies/': typeof OrgsOrgDependenciesIndexRoute
+  '/orgs/$org/discovery/': typeof OrgsOrgDiscoveryIndexRoute
   '/orgs/$org/escalation-policies/': typeof OrgsOrgEscalationPoliciesIndexRoute
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
@@ -680,6 +743,7 @@ export interface FileRoutesById {
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
+  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -698,6 +762,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels'
     | '/orgs/$org/checks'
     | '/orgs/$org/design-reference'
+    | '/orgs/$org/discovery'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
@@ -708,8 +773,10 @@ export interface FileRouteTypes {
     | '/orgs/$org/register'
     | '/orgs/$org/server'
     | '/orgs/$org/status-pages'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
@@ -717,6 +784,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/discovery/$jobUid'
+    | '/orgs/$org/discovery/new'
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
@@ -743,6 +812,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels/'
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
+    | '/orgs/$org/discovery/'
     | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/on-call/'
@@ -757,6 +827,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
+    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -773,13 +844,17 @@ export interface FileRouteTypes {
     | '/orgs/$org/login'
     | '/orgs/$org/me'
     | '/orgs/$org/register'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/channels/$channelUid'
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/discovery/$jobUid'
+    | '/orgs/$org/discovery/new'
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
@@ -804,6 +879,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels'
     | '/orgs/$org/checks'
     | '/orgs/$org/dependencies'
+    | '/orgs/$org/discovery'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/incidents'
     | '/orgs/$org/on-call'
@@ -818,6 +894,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
+    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
   id:
     | '__root__'
     | '/'
@@ -834,6 +911,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels'
     | '/orgs/$org/checks'
     | '/orgs/$org/design-reference'
+    | '/orgs/$org/discovery'
     | '/orgs/$org/escalation-policies'
     | '/orgs/$org/events'
     | '/orgs/$org/incidents'
@@ -844,8 +922,10 @@ export interface FileRouteTypes {
     | '/orgs/$org/register'
     | '/orgs/$org/server'
     | '/orgs/$org/status-pages'
+    | '/orgs/$org/status-updates'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
@@ -853,6 +933,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
+    | '/orgs/$org/discovery/$jobUid'
+    | '/orgs/$org/discovery/new'
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
     | '/orgs/$org/incidents/$incidentUid'
@@ -879,6 +961,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels/'
     | '/orgs/$org/checks/'
     | '/orgs/$org/dependencies/'
+    | '/orgs/$org/discovery/'
     | '/orgs/$org/escalation-policies/'
     | '/orgs/$org/incidents/'
     | '/orgs/$org/on-call/'
@@ -893,6 +976,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
+    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -979,6 +1063,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgTestRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/orgs/$org/status-updates': {
+      id: '/orgs/$org/status-updates'
+      path: '/status-updates'
+      fullPath: '/orgs/$org/status-updates'
+      preLoaderRoute: typeof OrgsOrgStatusUpdatesRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
     '/orgs/$org/status-pages': {
       id: '/orgs/$org/status-pages'
       path: '/status-pages'
@@ -1047,6 +1138,13 @@ declare module '@tanstack/react-router' {
       path: '/escalation-policies'
       fullPath: '/orgs/$org/escalation-policies'
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
+    '/orgs/$org/discovery': {
+      id: '/orgs/$org/discovery'
+      path: '/discovery'
+      fullPath: '/orgs/$org/discovery'
+      preLoaderRoute: typeof OrgsOrgDiscoveryRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/design-reference': {
@@ -1139,6 +1237,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/escalation-policies/'
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesIndexRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
+    }
+    '/orgs/$org/discovery/': {
+      id: '/orgs/$org/discovery/'
+      path: '/'
+      fullPath: '/orgs/$org/discovery/'
+      preLoaderRoute: typeof OrgsOrgDiscoveryIndexRouteImport
+      parentRoute: typeof OrgsOrgDiscoveryRoute
     }
     '/orgs/$org/dependencies/': {
       id: '/orgs/$org/dependencies/'
@@ -1322,6 +1427,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgEscalationPoliciesSlugRouteImport
       parentRoute: typeof OrgsOrgEscalationPoliciesRoute
     }
+    '/orgs/$org/discovery/new': {
+      id: '/orgs/$org/discovery/new'
+      path: '/new'
+      fullPath: '/orgs/$org/discovery/new'
+      preLoaderRoute: typeof OrgsOrgDiscoveryNewRouteImport
+      parentRoute: typeof OrgsOrgDiscoveryRoute
+    }
+    '/orgs/$org/discovery/$jobUid': {
+      id: '/orgs/$org/discovery/$jobUid'
+      path: '/$jobUid'
+      fullPath: '/orgs/$org/discovery/$jobUid'
+      preLoaderRoute: typeof OrgsOrgDiscoveryJobUidRouteImport
+      parentRoute: typeof OrgsOrgDiscoveryRoute
+    }
     '/orgs/$org/checks/new': {
       id: '/orgs/$org/checks/new'
       path: '/new'
@@ -1371,6 +1490,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountProfileRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/notifications': {
+      id: '/orgs/$org/account/notifications'
+      path: '/notifications'
+      fullPath: '/orgs/$org/account/notifications'
+      preLoaderRoute: typeof OrgsOrgAccountNotificationsRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/status-pages/$statusPageUid/': {
       id: '/orgs/$org/status-pages/$statusPageUid/'
       path: '/'
@@ -1413,6 +1539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksCheckUidEditRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
     }
+    '/orgs/$org/discovery/$jobUid/$hostUid/promote': {
+      id: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
+      path: '/$hostUid/promote'
+      fullPath: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
+      preLoaderRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport
+      parentRoute: typeof OrgsOrgDiscoveryJobUidRoute
+    }
     '/orgs/$org/checks/$checkUid/results/$resultUid': {
       id: '/orgs/$org/checks/$checkUid/results/$resultUid'
       path: '/results/$resultUid'
@@ -1424,6 +1557,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface OrgsOrgAccountRouteChildren {
+  OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
   OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
   OrgsOrgAccountTokensRoute: typeof OrgsOrgAccountTokensRoute
@@ -1431,6 +1565,7 @@ interface OrgsOrgAccountRouteChildren {
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
+  OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
   OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
   OrgsOrgAccountTokensRoute: OrgsOrgAccountTokensRoute,
@@ -1490,6 +1625,36 @@ const OrgsOrgChecksRouteChildren: OrgsOrgChecksRouteChildren = {
 const OrgsOrgChecksRouteWithChildren = OrgsOrgChecksRoute._addFileChildren(
   OrgsOrgChecksRouteChildren,
 )
+
+interface OrgsOrgDiscoveryJobUidRouteChildren {
+  OrgsOrgDiscoveryJobUidHostUidPromoteRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
+}
+
+const OrgsOrgDiscoveryJobUidRouteChildren: OrgsOrgDiscoveryJobUidRouteChildren =
+  {
+    OrgsOrgDiscoveryJobUidHostUidPromoteRoute:
+      OrgsOrgDiscoveryJobUidHostUidPromoteRoute,
+  }
+
+const OrgsOrgDiscoveryJobUidRouteWithChildren =
+  OrgsOrgDiscoveryJobUidRoute._addFileChildren(
+    OrgsOrgDiscoveryJobUidRouteChildren,
+  )
+
+interface OrgsOrgDiscoveryRouteChildren {
+  OrgsOrgDiscoveryJobUidRoute: typeof OrgsOrgDiscoveryJobUidRouteWithChildren
+  OrgsOrgDiscoveryNewRoute: typeof OrgsOrgDiscoveryNewRoute
+  OrgsOrgDiscoveryIndexRoute: typeof OrgsOrgDiscoveryIndexRoute
+}
+
+const OrgsOrgDiscoveryRouteChildren: OrgsOrgDiscoveryRouteChildren = {
+  OrgsOrgDiscoveryJobUidRoute: OrgsOrgDiscoveryJobUidRouteWithChildren,
+  OrgsOrgDiscoveryNewRoute: OrgsOrgDiscoveryNewRoute,
+  OrgsOrgDiscoveryIndexRoute: OrgsOrgDiscoveryIndexRoute,
+}
+
+const OrgsOrgDiscoveryRouteWithChildren =
+  OrgsOrgDiscoveryRoute._addFileChildren(OrgsOrgDiscoveryRouteChildren)
 
 interface OrgsOrgEscalationPoliciesRouteChildren {
   OrgsOrgEscalationPoliciesSlugRoute: typeof OrgsOrgEscalationPoliciesSlugRoute
@@ -1666,6 +1831,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgChannelsRoute: typeof OrgsOrgChannelsRouteWithChildren
   OrgsOrgChecksRoute: typeof OrgsOrgChecksRouteWithChildren
   OrgsOrgDesignReferenceRoute: typeof OrgsOrgDesignReferenceRoute
+  OrgsOrgDiscoveryRoute: typeof OrgsOrgDiscoveryRouteWithChildren
   OrgsOrgEscalationPoliciesRoute: typeof OrgsOrgEscalationPoliciesRouteWithChildren
   OrgsOrgEventsRoute: typeof OrgsOrgEventsRoute
   OrgsOrgIncidentsRoute: typeof OrgsOrgIncidentsRouteWithChildren
@@ -1676,6 +1842,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgRegisterRoute: typeof OrgsOrgRegisterRoute
   OrgsOrgServerRoute: typeof OrgsOrgServerRouteWithChildren
   OrgsOrgStatusPagesRoute: typeof OrgsOrgStatusPagesRouteWithChildren
+  OrgsOrgStatusUpdatesRoute: typeof OrgsOrgStatusUpdatesRoute
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
@@ -1687,6 +1854,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgChannelsRoute: OrgsOrgChannelsRouteWithChildren,
   OrgsOrgChecksRoute: OrgsOrgChecksRouteWithChildren,
   OrgsOrgDesignReferenceRoute: OrgsOrgDesignReferenceRoute,
+  OrgsOrgDiscoveryRoute: OrgsOrgDiscoveryRouteWithChildren,
   OrgsOrgEscalationPoliciesRoute: OrgsOrgEscalationPoliciesRouteWithChildren,
   OrgsOrgEventsRoute: OrgsOrgEventsRoute,
   OrgsOrgIncidentsRoute: OrgsOrgIncidentsRouteWithChildren,
@@ -1697,6 +1865,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgRegisterRoute: OrgsOrgRegisterRoute,
   OrgsOrgServerRoute: OrgsOrgServerRouteWithChildren,
   OrgsOrgStatusPagesRoute: OrgsOrgStatusPagesRouteWithChildren,
+  OrgsOrgStatusUpdatesRoute: OrgsOrgStatusUpdatesRoute,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
   OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,

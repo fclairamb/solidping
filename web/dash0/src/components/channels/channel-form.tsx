@@ -1,10 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import type { Channel, ConnectionType } from "@/api/hooks";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
+import type { Channel, ConnectionType, SlackChannel, SlackUser } from "@/api/hooks";
+import { useSlackDestinations } from "@/api/hooks";
 
 export interface ChannelFormState {
   name: string;
@@ -18,13 +23,17 @@ interface ChannelFormProps {
   initial?: Channel | null;
   initialName?: string;
   onChange: (state: ChannelFormState) => void;
+  /** Org slug — passed through to the Slack destination picker */
+  org?: string;
+  /** Channel UID — if provided, enables the live Slack destination picker */
+  channelUid?: string;
 }
 
 // ChannelForm is the type-dispatched edit surface. Common fields render
 // once; a per-type panel slots in below for the channel-specific
 // settings. Each panel keeps its own narrow shape — no anything-goes
 // JSON editor.
-export function ChannelForm({ type, initial, initialName, onChange }: ChannelFormProps) {
+export function ChannelForm({ type, initial, initialName, onChange, org, channelUid }: ChannelFormProps) {
   const { t } = useTranslation("channels");
   const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
@@ -50,7 +59,7 @@ export function ChannelForm({ type, initial, initialName, onChange }: ChannelFor
         />
       </div>
 
-      <PerTypePanel type={type} settings={settings} onChange={setSettings} />
+      <PerTypePanel type={type} settings={settings} onChange={setSettings} org={org} channelUid={channelUid} />
 
       <div className="flex items-center justify-between rounded border p-3">
         <div>
@@ -90,9 +99,11 @@ interface PerTypePanelProps {
   type: ConnectionType;
   settings: Record<string, unknown>;
   onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  channelUid?: string;
 }
 
-function PerTypePanel({ type, settings, onChange }: PerTypePanelProps) {
+function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePanelProps) {
   const { t } = useTranslation("channels");
 
   const update = (key: string, value: unknown) =>
@@ -211,28 +222,343 @@ function PerTypePanel({ type, settings, onChange }: PerTypePanelProps) {
       );
     case "slack":
       return (
-        <div className="rounded border bg-muted/30 p-3 text-sm space-y-2">
-          <p>
-            {t(
-              "form.slackOauthHint",
-              "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
-            )}
-          </p>
-          {typeof settings.team_name === "string" && settings.team_name !== "" && (
-            <p>
-              <strong>Workspace:</strong> {settings.team_name}
-            </p>
-          )}
-          {typeof settings.channel_name === "string" && settings.channel_name !== "" && (
-            <p>
-              <strong>Channel:</strong> #{settings.channel_name}
-            </p>
-          )}
-        </div>
+        <SlackDestinationPanel
+          settings={settings}
+          onChange={onChange}
+          org={org}
+          channelUid={channelUid}
+        />
       );
     default:
       return null;
   }
+}
+
+// ---- Slack destination picker ----
+
+type SlackTab = "channel" | "dm";
+
+interface SlackDestinationPanelProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  channelUid?: string;
+}
+
+function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDestinationPanelProps) {
+  const { t } = useTranslation("channels");
+
+  // If no org/channelUid, we're on the new-channel page (Slack OAuth not yet complete).
+  const isEditMode = Boolean(org && channelUid);
+
+  // Derive current tab from existing settings; default to "channel".
+  const [activeTab, setActiveTab] = useState<SlackTab>(() => {
+    const dt = settings.destination_type;
+    return dt === "dm" ? "dm" : "channel";
+  });
+
+  const { data, isLoading, isError } = useSlackDestinations(
+    org ?? "",
+    channelUid ?? "",
+  );
+
+  // Current selection from settings
+  const currentId = (settings.channel_id as string) || "";
+
+  function handleSelect(tab: SlackTab, id: string, name: string) {
+    const displayName = tab === "channel" ? `#${name}` : `@${name}`;
+    onChange({
+      ...settings,
+      channel_id: id,
+      channel_name: name,
+      destination_type: tab,
+      display_name: displayName,
+    });
+  }
+
+  function handleTabSwitch(tab: SlackTab) {
+    setActiveTab(tab);
+    // Clear selection when switching tabs so the UI is consistent
+    onChange({
+      ...settings,
+      channel_id: "",
+      channel_name: "",
+      destination_type: tab,
+      display_name: "",
+    });
+  }
+
+  // Show the workspace name if present
+  const teamName = typeof settings.team_name === "string" ? settings.team_name : "";
+
+  if (!isEditMode) {
+    return (
+      <div className="rounded border bg-muted/30 p-3 text-sm space-y-2">
+        <p>
+          {t(
+            "form.slackOauthHint",
+            "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
+          )}
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded border bg-muted/30 p-3 text-sm space-y-3">
+      {teamName && (
+        <p className="text-muted-foreground">
+          <strong>Workspace:</strong> {teamName}
+        </p>
+      )}
+
+      {/* Tab strip */}
+      <div className="flex gap-1 rounded-md border bg-background p-0.5 w-fit">
+        {(["channel", "dm"] as SlackTab[]).map((tab) => (
+          <button
+            key={tab}
+            type="button"
+            onClick={() => handleTabSwitch(tab)}
+            className={cn(
+              "rounded px-3 py-1 text-xs font-medium transition-colors",
+              activeTab === tab
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground",
+            )}
+            data-testid={`slack-tab-${tab}`}
+          >
+            {tab === "channel" ? "Channel" : "Direct message"}
+          </button>
+        ))}
+      </div>
+
+      {/* Combobox or states */}
+      {isLoading ? (
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          <span>{t("form.slackLoading", "Loading…")}</span>
+        </div>
+      ) : isError ? (
+        <p className="text-destructive text-xs">
+          {t(
+            "form.slackError",
+            "Could not connect to Slack workspace — re-install the bot.",
+          )}
+        </p>
+      ) : activeTab === "channel" ? (
+        <SlackChannelCombobox
+          channels={data?.channels ?? []}
+          currentId={currentId}
+          onSelect={(ch) => handleSelect("channel", ch.id, ch.name)}
+        />
+      ) : (
+        <SlackUserCombobox
+          users={data?.users ?? []}
+          currentId={currentId}
+          onSelect={(u) => handleSelect("dm", u.id, u.realName || u.name)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---- Channel combobox ----
+
+interface SlackChannelComboboxProps {
+  channels: SlackChannel[];
+  currentId: string;
+  onSelect: (ch: SlackChannel) => void;
+}
+
+function SlackChannelCombobox({ channels, currentId, onSelect }: SlackChannelComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = channels.filter((ch) =>
+    ch.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const selected = channels.find((ch) => ch.id === currentId);
+  const label = selected ? `#${selected.name}` : "Pick a channel…";
+
+  if (channels.length === 0) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Invite the bot to a channel first with{" "}
+        <code className="font-mono">/invite @solidping</code>.
+      </p>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal text-sm"
+          data-testid="slack-channel-combobox"
+        >
+          <span className={cn(!selected && "text-muted-foreground")}>{label}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[280px]" align="start">
+        <div className="flex items-center border-b px-3 py-2">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search channels…"
+            className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            data-testid="slack-channel-search"
+          />
+        </div>
+        <div className="max-h-56 overflow-y-auto p-1">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-muted-foreground">No channels found</div>
+          ) : (
+            filtered.map((ch) => (
+              <button
+                key={ch.id}
+                type="button"
+                role="option"
+                aria-selected={ch.id === currentId}
+                className={cn(
+                  "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                  ch.id === currentId && "bg-accent",
+                )}
+                onClick={() => {
+                  onSelect(ch);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                data-testid={`slack-channel-option-${ch.id}`}
+              >
+                <Check
+                  className={cn(
+                    "mt-0.5 h-4 w-4 shrink-0",
+                    ch.id === currentId ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <div>
+                  <div className="font-medium">#{ch.name}</div>
+                  {ch.isPrivate && (
+                    <div className="text-xs text-muted-foreground">Private</div>
+                  )}
+                  {!ch.isMember && (
+                    <div className="text-xs text-amber-600">
+                      Bot not in channel — run /invite @solidping first
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+// ---- User (DM) combobox ----
+
+interface SlackUserComboboxProps {
+  users: SlackUser[];
+  currentId: string;
+  onSelect: (u: SlackUser) => void;
+}
+
+function SlackUserCombobox({ users, currentId, onSelect }: SlackUserComboboxProps) {
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (open) {
+      setTimeout(() => searchRef.current?.focus(), 0);
+    }
+  }, [open]);
+
+  const filtered = users.filter(
+    (u) =>
+      (u.realName || u.name).toLowerCase().includes(search.toLowerCase()) ||
+      u.name.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const selected = users.find((u) => u.id === currentId);
+  const label = selected ? `@${selected.realName || selected.name}` : "Pick a person…";
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal text-sm"
+          data-testid="slack-user-combobox"
+        >
+          <span className={cn(!selected && "text-muted-foreground")}>{label}</span>
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="p-0 w-[280px]" align="start">
+        <div className="flex items-center border-b px-3 py-2">
+          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+          <input
+            ref={searchRef}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search people…"
+            className="flex h-8 w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            data-testid="slack-user-search"
+          />
+        </div>
+        <div className="max-h-56 overflow-y-auto p-1">
+          {filtered.length === 0 ? (
+            <div className="px-3 py-2 text-sm text-muted-foreground">No people found</div>
+          ) : (
+            filtered.map((u) => (
+              <button
+                key={u.id}
+                type="button"
+                role="option"
+                aria-selected={u.id === currentId}
+                className={cn(
+                  "flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm hover:bg-accent cursor-pointer",
+                  u.id === currentId && "bg-accent",
+                )}
+                onClick={() => {
+                  onSelect(u);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                data-testid={`slack-user-option-${u.id}`}
+              >
+                <Check
+                  className={cn(
+                    "mt-0.5 h-4 w-4 shrink-0",
+                    u.id === currentId ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <div className="font-medium">@{u.realName || u.name}</div>
+              </button>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 function UrlPanel({

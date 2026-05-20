@@ -14,12 +14,14 @@ import {
   BadgeCheck,
   LogOut,
   Moon,
+  Network,
   Palette,
   Sun,
   ChevronUp,
   User2,
   Building,
   Server,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -92,6 +94,11 @@ const navItems = [
     titleKey: "statusPages",
     path: "/orgs/$org/status-pages" as const,
     icon: Globe,
+  },
+  {
+    titleKey: "statusUpdates",
+    path: "/orgs/$org/status-updates" as const,
+    icon: MessageSquare,
   },
   {
     titleKey: "badges",
@@ -226,6 +233,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user?.isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith(`/orgs/${org}/discovery`)}
+                    tooltip={tNav("discovery")}
+                  >
+                    <Link to="/orgs/$org/discovery" params={{ org }}>
+                      <Network />
+                      <span>{tNav("discovery")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {isTestMode && (
           <SidebarGroup>
             <SidebarGroupContent>

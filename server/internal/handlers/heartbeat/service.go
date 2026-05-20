@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 var (
@@ -72,7 +73,7 @@ type Service struct {
 func NewService(dbService db.Service, jobSvc jobsvc.Service) *Service {
 	return &Service{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc),
+		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}),
 	}
 }
 

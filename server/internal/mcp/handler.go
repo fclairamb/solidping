@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 const (
@@ -104,7 +105,7 @@ func NewHandler(
 		checksSvc:      checks.NewService(dbService, eventNotifier, creds),
 		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
-		incidentsSvc:   incidents.NewService(dbService, jobSvc),
+		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}),
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),

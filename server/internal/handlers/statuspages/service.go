@@ -66,21 +66,35 @@ func NewService(dbService db.Service) *Service {
 
 // --- Response types ---
 
+// StatusUpdatePublicResponse represents a status update for public display.
+type StatusUpdatePublicResponse struct {
+	UID          string    `json:"uid"`
+	SectionUID   *string   `json:"sectionUid,omitempty"`
+	CheckUID     *string   `json:"checkUid,omitempty"`
+	IncidentUID  *string   `json:"incidentUid,omitempty"`
+	Title        string    `json:"title"`
+	BodyMarkdown string    `json:"bodyMarkdown"`
+	LinkURL      *string   `json:"linkUrl,omitempty"`
+	Kind         string    `json:"kind"`
+	PublishedAt  time.Time `json:"publishedAt"`
+}
+
 // StatusPageResponse represents a status page in API responses.
 type StatusPageResponse struct {
-	UID              string                      `json:"uid"`
-	Name             string                      `json:"name"`
-	Slug             string                      `json:"slug"`
-	Description      *string                     `json:"description,omitempty"`
-	Visibility       string                      `json:"visibility"`
-	IsDefault        bool                        `json:"isDefault"`
-	Enabled          bool                        `json:"enabled"`
-	ShowAvailability bool                        `json:"showAvailability"`
-	ShowResponseTime bool                        `json:"showResponseTime"`
-	HistoryDays      int                         `json:"historyDays"`
-	Language         *string                     `json:"language,omitempty"`
-	Sections         []StatusPageSectionResponse `json:"sections,omitempty"`
-	CreatedAt        *time.Time                  `json:"createdAt,omitempty"`
+	UID              string                       `json:"uid"`
+	Name             string                       `json:"name"`
+	Slug             string                       `json:"slug"`
+	Description      *string                      `json:"description,omitempty"`
+	Visibility       string                       `json:"visibility"`
+	IsDefault        bool                         `json:"isDefault"`
+	Enabled          bool                         `json:"enabled"`
+	ShowAvailability bool                         `json:"showAvailability"`
+	ShowResponseTime bool                         `json:"showResponseTime"`
+	HistoryDays      int                          `json:"historyDays"`
+	Language         *string                      `json:"language,omitempty"`
+	Sections         []StatusPageSectionResponse  `json:"sections,omitempty"`
+	RecentUpdates    []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
+	CreatedAt        *time.Time                   `json:"createdAt,omitempty"`
 }
 
 // StatusPageSectionResponse represents a section in API responses.
@@ -807,6 +821,29 @@ func (s *Service) ViewStatusPage(
 	}
 
 	response.Sections = sections
+
+	// Populate recent status updates (graceful — empty when table doesn't exist yet)
+	if page.HistoryDays > 0 {
+		updates, updErr := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
+		if updErr == nil && len(updates) > 0 {
+			recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
+			for i, u := range updates {
+				recentUpdates[i] = StatusUpdatePublicResponse{
+					UID:          u.UID,
+					SectionUID:   u.SectionUID,
+					CheckUID:     u.CheckUID,
+					IncidentUID:  u.IncidentUID,
+					Title:        u.Title,
+					BodyMarkdown: u.BodyMarkdown,
+					LinkURL:      u.LinkURL,
+					Kind:         u.Kind,
+					PublishedAt:  u.PublishedAt,
+				}
+			}
+
+			response.RecentUpdates = recentUpdates
+		}
+	}
 
 	return response, nil
 }

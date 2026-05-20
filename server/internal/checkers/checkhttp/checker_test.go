@@ -1390,3 +1390,58 @@ func TestHTTPChecker_Execute_ExpectedStatusCodes(t *testing.T) {
 		})
 	}
 }
+
+func TestHTTPChecker_Execute_SecretHeaderSent(t *testing.T) {
+	t.Parallel()
+
+	// Ensure UserAgent is set
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	r := require.New(t)
+	var receivedAPIKey string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		receivedAPIKey = req.Header.Get("X-Api-Key")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &HTTPConfig{
+		URL:           server.URL,
+		SecretHeaders: map[string]string{"X-Api-Key": "sk-secret"},
+	}
+	checker := &HTTPChecker{}
+	result, err := checker.Execute(context.Background(), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status)
+	r.Equal("sk-secret", receivedAPIKey)
+}
+
+func TestHTTPChecker_Execute_SecretHeaderWinsOnConflict(t *testing.T) {
+	t.Parallel()
+
+	// Ensure UserAgent is set
+	if version.UserAgent == "" {
+		version.UserAgent = version.DefaultUserAgent()
+	}
+
+	r := require.New(t)
+	var receivedAuth string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		receivedAuth = req.Header.Get("Authorization")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	cfg := &HTTPConfig{
+		URL:           server.URL,
+		Headers:       map[string]string{"Authorization": "Bearer plain"},
+		SecretHeaders: map[string]string{"Authorization": "Bearer secret"},
+	}
+	checker := &HTTPChecker{}
+	result, err := checker.Execute(context.Background(), cfg)
+	r.NoError(err)
+	r.Equal(checkerdef.StatusUp, result.Status)
+	r.Equal("Bearer secret", receivedAuth)
+}

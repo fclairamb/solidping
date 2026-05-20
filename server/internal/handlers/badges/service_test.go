@@ -1,6 +1,7 @@
 package badges
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func TestGenerateSVG(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svg := GenerateSVG("Test", "up", ColorGreen, "flat")
+	svg := GenerateSVG("Test", "up", ColorGreen, "flat", 0)
 	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
 	r.Contains(svg, "Test")
 	r.Contains(svg, "up")
@@ -74,8 +75,37 @@ func TestGenerateSVGFlatSquare(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svg := GenerateSVG("Test", "up", ColorGreen, "flat-square")
+	svg := GenerateSVG("Test", "up", ColorGreen, "flat-square", 0)
 	r.Contains(svg, `rx="0"`)
+}
+
+func TestGenerateSVGMinWidth(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("minWidth=200 pads narrow badge", func(t *testing.T) {
+		t.Parallel()
+
+		svg := GenerateSVG("check", "up", ColorGreen, "flat", 200)
+		r.Contains(svg, `width="200"`)
+	})
+
+	t.Run("minWidth=50 has no effect on wider badge", func(t *testing.T) {
+		t.Parallel()
+
+		// "check name" label (10 chars) = 10*6+10 = 70; "up" value = 2*6+10 = 22; total = 92 > 50
+		svg := GenerateSVG("check name", "up", ColorGreen, "flat", 50)
+		r.Contains(svg, `width="92"`)
+	})
+
+	t.Run("minWidth=0 behaves like default", func(t *testing.T) {
+		t.Parallel()
+
+		svgDefault := GenerateSVG("check", "up", ColorGreen, "flat", 0)
+		svgMinZero := GenerateSVG("check", "up", ColorGreen, "flat", 0)
+		r.Equal(svgDefault, svgMinZero)
+	})
 }
 
 func TestEscapeXML(t *testing.T) {
@@ -198,36 +228,36 @@ func TestFormatResponseTime(t *testing.T) {
 		r.Equal("n/a", formatResponseTime(results))
 	})
 
-	t.Run("mean under 1s formatted as ms", func(t *testing.T) {
+	t.Run("sub-second response time formatted as ms", func(t *testing.T) {
 		t.Parallel()
 
-		d1 := float32(0.1) // 100ms
-		d2 := float32(0.3) // 300ms
+		d1 := float32(63.0) // 63ms
+		d2 := float32(65.0) // 65ms
 		results := []*models.Result{
 			{Duration: &d1},
 			{Duration: &d2},
 		}
-		// mean = 0.2s = 200ms
-		r.Equal("200ms", formatResponseTime(results))
+		// mean = 64ms
+		r.Equal("64ms", formatResponseTime(results))
 	})
 
-	t.Run("mean over 1s formatted with one decimal", func(t *testing.T) {
+	t.Run("over-second response time formatted with one decimal", func(t *testing.T) {
 		t.Parallel()
 
-		d1 := float32(1.5)
-		d2 := float32(2.5)
+		d1 := float32(1500.0) // 1500ms = 1.5s
+		d2 := float32(2500.0) // 2500ms = 2.5s
 		results := []*models.Result{
 			{Duration: &d1},
 			{Duration: &d2},
 		}
-		// mean = 2.0s
+		// mean = 2000ms = 2.0s
 		r.Equal("2.0s", formatResponseTime(results))
 	})
 
 	t.Run("nil durations are skipped", func(t *testing.T) {
 		t.Parallel()
 
-		d := float32(0.25) // 250ms
+		d := float32(250.0) // 250ms
 		results := []*models.Result{
 			{Duration: nil},
 			{Duration: &d},
@@ -302,5 +332,155 @@ func TestCalculateStatusDuration(t *testing.T) {
 		r.True(isUp)
 		// Duration should be approximately 6 minutes (since oldest up result)
 		r.Greater(dur, 5*time.Minute)
+	})
+}
+
+func TestUptimeBarColor(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	tests := []struct {
+		pct   float64
+		color string
+	}{
+		{100.0, ColorGreen},
+		{99.95, ColorGreen},
+		{99.9, ColorGreen},
+		{99.5, ColorYellow},
+		{99.0, ColorYellow},
+		{98.5, ColorOrange},
+		{98.0, ColorOrange},
+		{97.0, ColorRed},
+		{0.0, ColorRed},
+	}
+
+	for _, tt := range tests {
+		r.Equal(tt.color, uptimeBarColor(tt.pct))
+	}
+}
+
+func TestUptimeBarPeriodInfo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("24h produces 24 hourly segments", func(t *testing.T) {
+		t.Parallel()
+
+		pt, n, d := uptimeBarPeriodInfo("24h")
+		r.Equal(models.PeriodTypeHour, pt)
+		r.Equal(24, n)
+		r.Equal(time.Hour, d)
+	})
+
+	t.Run("7d produces 7 daily segments", func(t *testing.T) {
+		t.Parallel()
+
+		pt, n, d := uptimeBarPeriodInfo("7d")
+		r.Equal(models.PeriodTypeDay, pt)
+		r.Equal(7, n)
+		r.Equal(24*time.Hour, d)
+	})
+
+	t.Run("30d produces 30 daily segments", func(t *testing.T) {
+		t.Parallel()
+
+		pt, n, d := uptimeBarPeriodInfo("30d")
+		r.Equal(models.PeriodTypeDay, pt)
+		r.Equal(30, n)
+		r.Equal(24*time.Hour, d)
+	})
+
+	t.Run("90d produces 90 daily segments", func(t *testing.T) {
+		t.Parallel()
+
+		pt, n, d := uptimeBarPeriodInfo("90d")
+		r.Equal(models.PeriodTypeDay, pt)
+		r.Equal(90, n)
+		r.Equal(24*time.Hour, d)
+	})
+
+	t.Run("unknown defaults to 30d", func(t *testing.T) {
+		t.Parallel()
+
+		pt, n, d := uptimeBarPeriodInfo("invalid")
+		r.Equal(models.PeriodTypeDay, pt)
+		r.Equal(30, n)
+		r.Equal(24*time.Hour, d)
+	})
+}
+
+func TestGenerateUptimeBarSVG(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("all green segments", func(t *testing.T) {
+		t.Parallel()
+
+		segments := []string{ColorGreen, ColorGreen, ColorGreen}
+		svg := GenerateUptimeBarSVG(segments, 300, 20, "flat")
+		r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
+		r.Equal(3, strings.Count(svg, `<rect x=`))
+		r.Contains(svg, ColorGreen)
+		r.Contains(svg, `rx="3"`)
+	})
+
+	t.Run("flat-square style has rx=0", func(t *testing.T) {
+		t.Parallel()
+
+		segments := []string{ColorGreen}
+		svg := GenerateUptimeBarSVG(segments, 100, 20, "flat-square")
+		r.Contains(svg, `rx="0"`)
+	})
+
+	t.Run("missing bucket shows gray", func(t *testing.T) {
+		t.Parallel()
+
+		segments := []string{ColorGreen, ColorGray, ColorGreen}
+		svg := GenerateUptimeBarSVG(segments, 300, 20, "flat")
+		r.Contains(svg, ColorGray)
+	})
+
+	t.Run("empty segments returns minimal SVG", func(t *testing.T) {
+		t.Parallel()
+
+		svg := GenerateUptimeBarSVG(nil, 300, 20, "flat")
+		r.Contains(svg, `<svg`)
+		r.NotContains(svg, `<rect`)
+	})
+
+	t.Run("correct segment count for 30 buckets", func(t *testing.T) {
+		t.Parallel()
+
+		segments := make([]string, 30)
+		for i := range 30 {
+			segments[i] = ColorGreen
+		}
+
+		svg := GenerateUptimeBarSVG(segments, 300, 20, "flat")
+		r.Equal(30, strings.Count(svg, `<rect x=`))
+	})
+
+	t.Run("correct segment count for 90 buckets", func(t *testing.T) {
+		t.Parallel()
+
+		segments := make([]string, 90)
+		for i := range 90 {
+			segments[i] = ColorGreen
+		}
+
+		svg := GenerateUptimeBarSVG(segments, 300, 20, "flat")
+		r.Equal(90, strings.Count(svg, `<rect x=`))
+	})
+
+	t.Run("width and height are reflected in SVG", func(t *testing.T) {
+		t.Parallel()
+
+		segments := []string{ColorGreen}
+		svg := GenerateUptimeBarSVG(segments, 600, 30, "flat")
+		r.Contains(svg, `width="600"`)
+		r.Contains(svg, `height="30"`)
 	})
 }

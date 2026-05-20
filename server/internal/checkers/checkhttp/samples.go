@@ -102,5 +102,21 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 				ExpectedStatus: sampleExpectedStatus,
 			}).GetConfig(),
 		},
+		{
+			Name:   "Claude API",
+			Slug:   "http-claude-api",
+			Period: time.Minute,
+			Config: (&HTTPConfig{
+				URL:                 "https://status.claude.com/api/v2/status.json",
+				Method:              methodGET,
+				ExpectedStatusCodes: []string{"2XX"},
+				JSONPathAssertions: &AssertionNode{
+					Type:     NodeTypeAssertion,
+					Path:     "$.status.indicator",
+					Operator: "eq",
+					Value:    "none",
+				},
+			}).GetConfig(),
+		},
 	}
 }

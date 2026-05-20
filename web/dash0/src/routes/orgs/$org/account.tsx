@@ -14,6 +14,7 @@ function AccountLayout() {
     { label: t("nav:profile"), path: "/orgs/$org/account/profile" },
     { label: t("nav:security"), path: "/orgs/$org/account/security" },
     { label: t("nav:tokens"), path: "/orgs/$org/account/tokens" },
+    { label: "Notifications", path: "/orgs/$org/account/notifications" },
   ];
 
   return (

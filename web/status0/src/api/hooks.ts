@@ -45,6 +45,18 @@ export interface StatusPageSection {
   createdAt?: string;
 }
 
+export interface StatusUpdatePublicResponse {
+  uid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: string;
+  publishedAt: string;
+}
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -58,6 +70,7 @@ export interface StatusPage {
   historyDays: number;
   language?: string;
   sections?: StatusPageSection[];
+  recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;
 }
 

@@ -40,6 +40,7 @@ export interface Check {
   checkGroupUid?: string;
   type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
   config?: Record<string, unknown>;
+  configPrivateKeys?: string[];
   regions?: string[];
   labels?: Record<string, string>;
   enabled?: boolean;
@@ -2713,6 +2714,288 @@ export function useSetCheckConnections(org: string, checkUid: string) {
       queryClient.invalidateQueries({
         queryKey: ["checkConnections", org, checkUid],
       });
+    },
+  });
+}
+
+// Slack destination picker types and hook
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+}
+
+export interface SlackUser {
+  id: string;
+  name: string;
+  realName: string;
+}
+
+export interface SlackDestinationsResponse {
+  channels: SlackChannel[];
+  users: SlackUser[];
+}
+
+export function useSlackDestinations(org: string, channelUid: string) {
+  return useQuery({
+    queryKey: ["slack-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<SlackDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/slack/destinations`,
+      ),
+    enabled: Boolean(org && channelUid),
+    staleTime: 60_000,
+  });
+}
+
+// --- Status Update types and hooks ---
+
+export interface StatusUpdate {
+  uid: string;
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: "investigating" | "identified" | "monitoring" | "resolved" | "maintenance" | "info";
+  publishedAt: string;
+  authorUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStatusUpdateRequest {
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: string;
+  publishedAt?: string;
+}
+
+export interface UpdateStatusUpdateRequest {
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title?: string;
+  bodyMarkdown?: string;
+  linkUrl?: string;
+  kind?: string;
+  publishedAt?: string;
+}
+
+export function useStatusUpdates(
+  org: string,
+  params: {
+    statusPage?: string;
+    section?: string;
+    check?: string;
+    incident?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+) {
+  return useQuery({
+    queryKey: ["statusUpdates", org, params],
+    queryFn: async () => {
+      const query = new URLSearchParams();
+      if (params.statusPage) query.set("statusPage", params.statusPage);
+      if (params.section) query.set("section", params.section);
+      if (params.check) query.set("check", params.check);
+      if (params.incident) query.set("incident", params.incident);
+      if (params.limit) query.set("limit", params.limit.toString());
+      if (params.offset) query.set("offset", params.offset.toString());
+      const qs = query.toString();
+      const response = await apiFetch<{ data?: StatusUpdate[] }>(
+        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useCreateStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useUpdateStatusUpdate(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useDeleteStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+// ── Discovery ─────────────────────────────────────────────────────────────────
+
+export interface DiscoveryScan {
+  uid: string;
+  type: string;
+  status: string;
+  config: Record<string, unknown>;
+  scheduledAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SuggestedCheck {
+  type: string;
+  config: Record<string, unknown>;
+}
+
+export interface DiscoveredHost {
+  uid: string;
+  organizationUid: string;
+  jobUid: string;
+  ip: string;
+  hostname?: string;
+  openPorts: number[];
+  icmpReachable: boolean;
+  suggestedChecks: SuggestedCheck[];
+  promotedToCheckUid?: string;
+  discoveredAt: string;
+}
+
+export interface StartDiscoveryScanRequest {
+  cidrs: string[];
+  ports?: number[];
+  timeout?: string;
+  concurrency?: number;
+}
+
+export interface PromoteCandidateRequest {
+  checkType: string;
+  name?: string;
+  slug?: string;
+  period?: string;
+  extraConfig?: Record<string, unknown>;
+}
+
+export function useStartDiscoveryScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: StartDiscoveryScanRequest) =>
+      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
+        method: "POST",
+        body: JSON.stringify(req),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useListDiscoveryScans(org: string) {
+  return useQuery({
+    queryKey: ["discoveryScans", org],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+export function useDiscoveryScan(org: string, jobUid: string) {
+  return useQuery({
+    queryKey: ["discoveryScan", org, jobUid],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/scans/${jobUid}`,
+      ),
+    select: (res) => res?.data,
+    enabled: !!jobUid,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+      return status === "pending" || status === "running" ? 3000 : false;
+    },
+  });
+}
+
+export function useListCandidateHosts(
+  org: string,
+  opts?: { jobUid?: string; promoted?: boolean },
+) {
+  const params = new URLSearchParams();
+  if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ["discoveryHosts", org, opts],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveredHost[] }>(
+        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      ),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+export function usePromoteCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+      apiFetch<{ data: Check }>(
+        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        {
+          method: "POST",
+          body: JSON.stringify(req),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
+export function useDismissCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
     },
   });
 }

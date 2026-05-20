@@ -9,6 +9,8 @@
   "style": "Style",
   "customLabel": "Custom Label",
   "customLabelPlaceholder": "Leave empty for check name",
+  "minWidth": "Minimum width (px)",
+  "minWidthDescription": "Pads the badge to at least this width. Use 0 for auto.",
   "preview": "Preview",
   "refresh": "Refresh",
   "selectCheckPrompt": "Select a check to preview and generate badges",
@@ -43,5 +45,10 @@
     "flatSquare": "Flat Square"
   },
   "availability": "Availability",
-  "status": "Status"
+  "status": "Status",
+  "uptimeBar": "Uptime Bar",
+  "uptimeBarDescription": "A horizontal strip showing availability per time bucket",
+  "uptimeBarPreview": "Uptime Bar Preview",
+  "uptimeBarEmbed": "Uptime Bar Embed Code",
+  "barWidth": "Bar width (px)"
 }

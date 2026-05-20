@@ -25,6 +25,7 @@
     "timeout": "Timeout",
     "error": "Error",
     "created": "Created",
-    "running": "Running"
+    "running": "Running",
+    "recentUpdates": "Recent updates"
   }
 }

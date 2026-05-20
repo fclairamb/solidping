@@ -1,0 +1,50 @@
+name: incident-open-close
+description: "Heartbeat goes down → webhook received → heartbeat recovers → resolved webhook received"
+timeout: 30s
+cleanup: true
+
+steps:
+  - kind: create_heartbeat_check
+    id: my-check
+    slug: "scenario-hb-{{.Timestamp}}"
+    confirmation_period_seconds: 0
+    recovery_period_seconds: 0
+    escalation_threshold: 1
+
+  - kind: create_webhook_channel
+    id: my-channel
+    url: "{{.ReceiverURL}}/hook/my-channel"
+
+  - kind: create_escalation_policy
+    id: my-policy
+    slug: "scenario-policy-{{.Timestamp}}"
+    steps:
+      - delay_seconds: 0
+        targets:
+          - type: connection
+            channel_id: my-channel
+
+  - kind: assign_policy_to_check
+    check_id: my-check
+    policy_id: my-policy
+
+  - kind: send_heartbeat
+    check_id: my-check
+    status: down
+
+  - kind: expect_webhook
+    channel_id: my-channel
+    timeout: 15s
+    assert:
+      event_type: incident.created
+
+  - kind: send_heartbeat
+    check_id: my-check
+    status: up
+
+  - kind: expect_webhook
+    channel_id: my-channel
+    timeout: 15s
+    assert:
+      event_type: incident.resolved
+      resolved_at_present: true

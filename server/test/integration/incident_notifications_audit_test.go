@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // auditRow queries incident_notifications rows for an incident.
@@ -67,7 +68,7 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
 
 	org := models.NewOrganization("audit-test", "Audit Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

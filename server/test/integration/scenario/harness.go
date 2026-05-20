@@ -22,6 +22,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobworker"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -44,6 +45,9 @@ type Scenario struct {
 
 	WebhookURL string // URL of the in-test httptest webhook receiver
 	Webhooks   *WebhookCollector
+	// Clock is the fake clock injected into this scenario's server.
+	// Tests call Clock.Advance to simulate time passage without sleeping.
+	Clock *clock.Fake
 
 	server     *app.Server
 	httpServer *httptest.Server
@@ -229,6 +233,10 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	server, err := app.NewServer(ctx, cfg)
 	r.NoError(err, "NewServer")
 
+	// Wire a fake clock so tests can advance time without real sleeps.
+	fakeClock := clock.NewFake(time.Now())
+	server.Services().Clock = fakeClock
+
 	// Migrations were already run by TestMain. SetupRoutes only.
 	server.SetupRoutes(ctx)
 
@@ -269,6 +277,7 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 		UserUID:    userUID,
 		WebhookURL: whSrv.URL,
 		Webhooks:   webhooks,
+		Clock:      fakeClock,
 		server:     server,
 		httpServer: httpSrv,
 	}

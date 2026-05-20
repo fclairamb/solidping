@@ -16,6 +16,7 @@ import { useTranslation } from "react-i18next";
 import { AvailabilityBar } from "./availability-bar";
 import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
+import { StatusUpdatesTimeline } from "./status-updates-timeline";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -261,6 +262,16 @@ export function StatusPageView({ page }: { page: StatusPage }) {
               ))
           )}
         </div>
+
+        {/* Recent updates timeline */}
+        {page.recentUpdates && page.recentUpdates.length > 0 && (
+          <section aria-label="Recent updates" className="mt-8">
+            <h2 className="text-lg font-semibold mb-4">
+              {t("status.recentUpdates")}
+            </h2>
+            <StatusUpdatesTimeline updates={page.recentUpdates} />
+          </section>
+        )}
 
         {/* Footer — outbound brand link to solidping.io. text-brand
             (pink) signals "leaves this page" vs internal nav which

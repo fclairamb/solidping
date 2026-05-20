@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -728,12 +729,6 @@ const MOCK_ROWS: MockRow[] = [
   { id: "4", name: "auth.example.com", status: "down", latency: "—" },
   { id: "5", name: "static.example.com", status: "up", latency: "42 ms" },
 ];
-
-function StatusBadge({ status }: { status: MockRow["status"] }) {
-  if (status === "up") return <Badge variant="success">up</Badge>;
-  if (status === "warning") return <Badge variant="warning">warning</Badge>;
-  return <Badge variant="destructive">down</Badge>;
-}
 
 function MockTableHeader() {
   return (

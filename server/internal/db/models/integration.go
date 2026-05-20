@@ -100,6 +100,8 @@ type SlackSettings struct {
 	AccessToken       string   `json:"access_token"`
 	ChannelID         string   `json:"channel_id,omitempty"`
 	ChannelName       string   `json:"channel_name,omitempty"`
+	DestinationType   string   `json:"destination_type,omitempty"` // "channel" | "dm" | ""
+	DisplayName       string   `json:"display_name,omitempty"`     // "#alerts" or "@alice"
 	InstalledByUserID string   `json:"installed_by_user_id"`
 	Scopes            []string `json:"scopes"`
 }

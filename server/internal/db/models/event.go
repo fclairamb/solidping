@@ -38,6 +38,13 @@ const (
 	// EventTypeIncidentUnsnoozed indicates an incident's snooze was cleared.
 	EventTypeIncidentUnsnoozed EventType = "incident.unsnoozed"
 
+	// EventTypeStatusUpdateCreated indicates a status update was created.
+	EventTypeStatusUpdateCreated EventType = "status_update.created"
+	// EventTypeStatusUpdateUpdated indicates a status update was modified.
+	EventTypeStatusUpdateUpdated EventType = "status_update.updated"
+	// EventTypeStatusUpdateDeleted indicates a status update was soft-deleted.
+	EventTypeStatusUpdateDeleted EventType = "status_update.deleted"
+
 	// EventTypeOrgActivationSignupCompleted fires once per org when its
 	// initial member is created (the user who provisioned the org).
 	EventTypeOrgActivationSignupCompleted EventType = "org.activation.signup_completed"
