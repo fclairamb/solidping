@@ -358,3 +358,45 @@ New IDs added by this spec (no E2E coverage required in this iteration):
      'http://localhost:4000/api/v1/orgs/default/status-updates' | jq '{sectionUid,checkUid}'
    # Expect both fields non-null in the response
    ```
+
+## Implementation Plan
+
+### Step 1: Add `useStatusUpdate` (singular) hook to `hooks.ts`
+The breadcrumb needs to fetch a single status update by UID to display its title. Add a `useStatusUpdate(org, uid)` hook that calls `GET /api/v1/orgs/{org}/status-updates/{uid}`.
+
+### Step 2: Convert `status-updates.tsx` to a layout shell
+Replace the monolithic single-file implementation with a TanStack Router file-based routing structure:
+- `status-updates.tsx` → layout shell (just `<Outlet />`)
+- `status-updates.index.tsx` → redesigned list page
+- `status-updates.new.tsx` → new update route
+- `status-updates.$updateUid.edit.tsx` → edit update route
+
+### Step 3: Create `components/shared/status-update-form.tsx`
+Extract the create/edit form into a shared component with:
+- `StatusUpdateFormData` interface (adding `sectionUid`, `checkUid`)
+- `StatusUpdateForm` component with cascading page → section → check dropdowns
+- Card-based layout with `CardHeader` (Details) and `CardContent`
+- No inline header/back arrow (those move to the route level)
+
+### Step 4: Implement `status-updates.index.tsx`
+Full redesign following the Status Pages / On-Call list pattern:
+- `<div className="space-y-6">` root (no container/Card wrapper)
+- Header: Megaphone icon + title + subtitle + "New update" button
+- Filters row: search input, Page select, Section select (cascading), Check select (cascading), Kind select, Refresh button
+- `<Table>` in `<div className="rounded-md border">` with `<TableHeader>` (Kind / Title / Date / actions)
+- Absolute dates via `toLocaleString()`
+- Ghost `Pencil` + `Trash2` icon row actions (links to routes, not modal)
+- Empty state with CTA
+- DeleteAlertDialog
+
+### Step 5: Implement `status-updates.new.tsx`
+Route-level header (h1 left + ArrowLeft ghost button right) + `<StatusUpdateForm mode="create" />`
+
+### Step 6: Implement `status-updates.$updateUid.edit.tsx`
+Route-level header (h1 left + ArrowLeft ghost button right) + `<StatusUpdateForm mode="edit" initialData={update} />`
+
+### Step 7: Update `$org.tsx` Breadcrumbs
+- Import `Megaphone` from lucide-react and `useStatusUpdate` from `@/api/hooks`
+- Add `isStatusUpdates` detection flag
+- Add `statusUpdate` data hook call
+- Add the `status-updates` breadcrumb branch (after `isStatusPages`, before `isBadges`)
