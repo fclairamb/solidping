@@ -16,7 +16,7 @@ import (
 // GetDestinations returns the list of Slack channels and DM targets available
 // for the given integration connection (identified by :uid within :org).
 //
-// GET /api/v1/orgs/:org/channels/:uid/slack/destinations
+// Route: GET /api/v1/orgs/:org/channels/:uid/slack/destinations.
 func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	channelUID := req.Param("uid")

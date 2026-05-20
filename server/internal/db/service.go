@@ -357,7 +357,9 @@ type Service interface {
 	DeleteCheckGroup(ctx context.Context, uid string) error
 
 	// StatusUpdate operations
-	ListStatusUpdates(ctx context.Context, orgUID string, filter models.StatusUpdatesFilter) ([]*models.StatusUpdate, error)
+	ListStatusUpdates(
+		ctx context.Context, orgUID string, filter models.StatusUpdatesFilter,
+	) ([]*models.StatusUpdate, error)
 	CreateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
 	GetStatusUpdateByUID(ctx context.Context, uid string) (*models.StatusUpdate, error)
 	UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error

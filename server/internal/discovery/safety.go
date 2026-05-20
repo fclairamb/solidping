@@ -20,11 +20,20 @@ const (
 // ErrRangeTooLarge is returned when the total address count across all CIDRs exceeds MaxAddresses.
 var ErrRangeTooLarge = errors.New("discovery range too large")
 
+// errNoCIDRs is returned when no CIDRs are provided.
+var errNoCIDRs = errors.New("at least one CIDR is required")
+
+// errInvalidMask is returned when the IP network has an invalid mask.
+var errInvalidMask = errors.New("invalid mask")
+
+// errIPv6NotSupported is returned when a non-IPv4 CIDR is provided.
+var errIPv6NotSupported = errors.New("only IPv4 networks are supported in v1")
+
 // ValidateCIDRs validates that the given CIDRs are valid and that the total
 // address count does not exceed MaxAddresses.
 func ValidateCIDRs(cidrs []string) error {
 	if len(cidrs) == 0 {
-		return errors.New("at least one CIDR is required")
+		return errNoCIDRs
 	}
 
 	total := 0
@@ -44,7 +53,7 @@ func ValidateCIDRs(cidrs []string) error {
 	}
 
 	if total > MaxAddresses {
-		return fmt.Errorf("%w: %d addresses across CIDRs (max %d, use a /20 or smaller)", ErrRangeTooLarge, total, MaxAddresses)
+		return fmt.Errorf("%w: %d addresses (max %d, use /20 or smaller)", ErrRangeTooLarge, total, MaxAddresses)
 	}
 
 	return nil
@@ -54,7 +63,7 @@ func ValidateCIDRs(cidrs []string) error {
 func cidrSize(ipNet *net.IPNet) (int, error) {
 	ones, bits := ipNet.Mask.Size()
 	if bits == 0 {
-		return 0, errors.New("invalid mask")
+		return 0, errInvalidMask
 	}
 
 	// For IPv6 we don't support scanning, but we'll count anyway to reject.
@@ -79,7 +88,7 @@ func expandCIDR(cidr string) ([]net.IP, error) {
 	// Convert to 4-byte representation.
 	ip4 := ipNet.IP.To4()
 	if ip4 == nil {
-		return nil, fmt.Errorf("CIDR %q is not an IPv4 network; only IPv4 is supported in v1", cidr)
+		return nil, fmt.Errorf("CIDR %q: %w", cidr, errIPv6NotSupported)
 	}
 
 	start := binary.BigEndian.Uint32(ip4)

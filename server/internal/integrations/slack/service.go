@@ -739,7 +739,8 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 }
 
 // SlackChannel is the DTO returned by GetDestinations for a channel entry.
-type SlackChannel struct {
+// The Slack prefix disambiguates from Channel (API response type) in the same package.
+type SlackChannel struct { //nolint:revive // prefix is intentional disambiguation
 	ID        string `json:"id"`
 	Name      string `json:"name"`
 	IsPrivate bool   `json:"isPrivate"`
@@ -747,20 +748,24 @@ type SlackChannel struct {
 }
 
 // SlackDestinationUser is the DTO returned by GetDestinations for a user entry.
-type SlackDestinationUser struct {
+// The Slack prefix disambiguates from other user types in the same package.
+type SlackDestinationUser struct { //nolint:revive // prefix is intentional disambiguation
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	RealName string `json:"realName"`
 }
 
 // SlackDestinationsResponse is returned by GetDestinations.
-type SlackDestinationsResponse struct {
+// The Slack prefix disambiguates from other response types in the same package.
+type SlackDestinationsResponse struct { //nolint:revive // prefix is intentional disambiguation
 	Channels []SlackChannel         `json:"channels"`
 	Users    []SlackDestinationUser `json:"users"`
 }
 
 // GetDestinations fetches the list of Slack channels and users available
 // as notification destinations for the given channel (integration connection).
+//
+//nolint:funlen // resolving org, channel, and fetching both channels and users is inherently verbose
 func (s *Service) GetDestinations(
 	ctx context.Context, orgSlug, channelUID string,
 ) (*SlackDestinationsResponse, error) {
@@ -805,36 +810,30 @@ func (s *Service) GetDestinations(
 		rawUsers    []SlackUser
 	)
 
-	eg, egCtx := errgroup.WithContext(ctx)
+	group, groupCtx := errgroup.WithContext(ctx)
 
-	eg.Go(func() error {
+	group.Go(func() error {
 		var fetchErr error
-		rawChannels, fetchErr = client.ListChannels(egCtx)
+		rawChannels, fetchErr = client.ListChannels(groupCtx)
 
 		return fetchErr
 	})
 
-	eg.Go(func() error {
+	group.Go(func() error {
 		var fetchErr error
-		rawUsers, fetchErr = client.ListUsers(egCtx)
+		rawUsers, fetchErr = client.ListUsers(groupCtx)
 
 		return fetchErr
 	})
 
-	if err := eg.Wait(); err != nil {
+	if err := group.Wait(); err != nil {
 		return nil, fmt.Errorf("slack API error: %w", err)
 	}
 
 	channels := make([]SlackChannel, 0, len(rawChannels))
 
 	for i := range rawChannels {
-		ch := rawChannels[i]
-		channels = append(channels, SlackChannel{
-			ID:        ch.ID,
-			Name:      ch.Name,
-			IsPrivate: ch.IsPrivate,
-			IsMember:  ch.IsMember,
-		})
+		channels = append(channels, SlackChannel(rawChannels[i]))
 	}
 
 	users := make([]SlackDestinationUser, 0, len(rawUsers))

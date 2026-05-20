@@ -27,6 +27,8 @@ var (
 	// a schedule target fires before the on-call resolver has been wired.
 	// In practice this only happens if the server boot order is broken.
 	ErrOnCallResolverNotWired = errors.New("on-call resolver not wired")
+	// errEmptySlackToken is returned when the Slack access token is empty.
+	errEmptySlackToken = errors.New("empty slack access token")
 )
 
 // EscalationStepJobConfig configures one fired step of an escalation
@@ -338,7 +340,7 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 }
 
 // pageUser fans out over a user's notification routes. Falls back to a direct
-// email when no routes exist in the DB (preserves V1 behaviour for users who
+// email when no routes exist in the DB (preserves V1 behavior for users who
 // have not visited Account → Notifications yet).
 func (r *EscalationStepJobRun) pageUser(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
@@ -399,17 +401,17 @@ func (r *EscalationStepJobRun) dispatchRoute(
 			models.IncidentNotificationSourceEscalationUser,
 		)
 	case models.UserContactTypeSlackUser:
-		ch, chErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
-		if chErr != nil {
+		slackConn, connErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
+		if connErr != nil {
 			log.WarnContext(ctx, "slack channel not found for org; skipping route",
 				"orgUID", incident.OrganizationUID,
 				"contactUID", route.Contact.UID,
-				"error", chErr)
+				"error", connErr)
 
 			return 0
 		}
 
-		settings, parseErr := models.SlackSettingsFromJSONMap(ch.Settings)
+		settings, parseErr := models.SlackSettingsFromJSONMap(slackConn.Settings)
 		if parseErr != nil || settings.AccessToken == "" {
 			log.WarnContext(ctx, "slack access token not configured; skipping route",
 				"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
@@ -453,7 +455,7 @@ func (r *EscalationStepJobRun) dispatchRoute(
 // here is safe (no import cycle).
 func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) error {
 	if accessToken == "" {
-		return fmt.Errorf("empty slack access token")
+		return errEmptySlackToken
 	}
 
 	client := slackclient.NewClient(accessToken)

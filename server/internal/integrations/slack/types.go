@@ -181,7 +181,8 @@ type Channel struct {
 }
 
 // SlackUser represents a workspace member returned by users.list.
-type SlackUser struct {
+// The Slack prefix disambiguates from User (generic auth user) in the same package.
+type SlackUser struct { //nolint:revive // prefix is intentional disambiguation
 	ID       string `json:"id"`
 	Name     string `json:"name"`
 	RealName string `json:"real_name"` //nolint:tagliatelle

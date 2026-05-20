@@ -77,7 +77,7 @@ func (h *Handler) ListStatusUpdates(writer http.ResponseWriter, req bunrouter.Re
 		Offset:     offset,
 	}
 
-	updates, err := h.svc.ListStatusUpdates(req.Context(), orgSlug, opts)
+	updates, err := h.svc.ListStatusUpdates(req.Context(), orgSlug, &opts)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -153,7 +153,8 @@ func (h *Handler) DeleteStatusUpdate(writer http.ResponseWriter, req bunrouter.R
 	return nil
 }
 
-func (h *Handler) handleError(writer http.ResponseWriter, err error) error { //nolint:cyclop // error taxonomy requires all cases
+//nolint:cyclop // error taxonomy requires all cases
+func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")

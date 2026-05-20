@@ -166,7 +166,7 @@ func validateBody(body string) error {
 
 // ListStatusUpdates returns status updates for an org with filtering.
 func (s *Service) ListStatusUpdates(
-	ctx context.Context, orgSlug string, opts ListStatusUpdatesOptions,
+	ctx context.Context, orgSlug string, opts *ListStatusUpdatesOptions,
 ) ([]StatusUpdateResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -205,7 +205,9 @@ func (s *Service) ListStatusUpdates(
 }
 
 // CreateStatusUpdate creates a new status update after validation.
-func (s *Service) CreateStatusUpdate( //nolint:cyclop,gocognit // validation requires checking multiple fields
+//
+//nolint:funlen // validation of optional fields requires many checks
+func (s *Service) CreateStatusUpdate( //nolint:cyclop // validation requires checking multiple fields
 	ctx context.Context, orgSlug, authorUID string, req *CreateStatusUpdateRequest,
 ) (StatusUpdateResponse, error) {
 	kind := models.StatusUpdateKind(req.Kind)
@@ -349,6 +351,8 @@ func (s *Service) GetStatusUpdate(
 }
 
 // UpdateStatusUpdate applies a partial update to a status update.
+//
+//nolint:funlen // patching optional fields requires many checks
 func (s *Service) UpdateStatusUpdate( //nolint:cyclop // patching optional fields requires checking each
 	ctx context.Context, orgSlug, uid, actorUID string, req *UpdateStatusUpdateRequest,
 ) (StatusUpdateResponse, error) {

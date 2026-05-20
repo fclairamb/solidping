@@ -25,19 +25,16 @@ const (
 	StatusUpdateKindInfo StatusUpdateKind = "info"
 )
 
-var validStatusUpdateKinds = map[StatusUpdateKind]struct{}{
-	StatusUpdateKindInvestigating: {},
-	StatusUpdateKindIdentified:    {},
-	StatusUpdateKindMonitoring:    {},
-	StatusUpdateKindResolved:      {},
-	StatusUpdateKindMaintenance:   {},
-	StatusUpdateKindInfo:          {},
-}
-
-// IsValid returns true if the kind is one of the recognised values.
+// IsValid returns true if the kind is one of the recognized values.
 func (k StatusUpdateKind) IsValid() bool {
-	_, ok := validStatusUpdateKinds[k]
-	return ok
+	switch k {
+	case StatusUpdateKindInvestigating, StatusUpdateKindIdentified,
+		StatusUpdateKindMonitoring, StatusUpdateKindResolved,
+		StatusUpdateKindMaintenance, StatusUpdateKindInfo:
+		return true
+	default:
+		return false
+	}
 }
 
 // StatusUpdate is an operator-written narrative post anchored to a status page.
