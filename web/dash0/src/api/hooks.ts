@@ -2716,3 +2716,116 @@ export function useSetCheckConnections(org: string, checkUid: string) {
     },
   });
 }
+
+// ─── User Notification Routes ───────────────────────────────────────────────
+
+export interface NotificationContact {
+  uid: string;
+  type: string;
+  value: string;
+  label: string;
+  verifiedAt?: string;
+}
+
+export interface NotificationRoute {
+  uid: string;
+  enabled: boolean;
+  position: number;
+  contact: NotificationContact;
+  createdAt: string;
+}
+
+export interface SlackSuggestion {
+  slackUserId: string;
+  workspaceName: string;
+  channelUid: string;
+}
+
+export interface NotificationRoutesResponse {
+  data: NotificationRoute[];
+  slackSuggestion?: SlackSuggestion;
+}
+
+export interface CreateNotificationContactRequest {
+  type: string;
+  value: string;
+  label?: string;
+}
+
+export interface PatchNotificationRouteRequest {
+  enabled?: boolean;
+  routeUids?: string[];
+}
+
+export function useNotificationRoutes(org: string) {
+  return useQuery({
+    queryKey: ["notificationRoutes", org],
+    queryFn: () =>
+      apiFetch<NotificationRoutesResponse>(
+        `/api/v1/orgs/${org}/users/me/notification-routes`
+      ),
+    staleTime: 30_000,
+    enabled: !!org,
+  });
+}
+
+export function useCreateNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (req: CreateNotificationContactRequest) =>
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts`,
+        { method: "POST", body: JSON.stringify(req) }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useDeleteNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (contactUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`,
+        { method: "DELETE" }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function usePatchNotificationRoute(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      routeUid,
+      patch,
+    }: {
+      routeUid: string;
+      patch: PatchNotificationRouteRequest;
+    }) =>
+      apiFetch<NotificationRoute>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`,
+        { method: "PATCH", body: JSON.stringify(patch) }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useTestNotificationRoute(org: string) {
+  return useMutation({
+    mutationFn: (routeUid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`,
+        { method: "POST" }
+      ),
+  });
+}

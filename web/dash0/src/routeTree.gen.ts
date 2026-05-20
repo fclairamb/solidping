@@ -75,6 +75,7 @@ import { Route as OrgsOrgChannelsChannelUidRouteImport } from './routes/orgs/$or
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
+import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
@@ -428,6 +429,12 @@ const OrgsOrgAccountProfileRoute = OrgsOrgAccountProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountNotificationsRoute =
+  OrgsOrgAccountNotificationsRouteImport.update({
+    id: '/notifications',
+    path: '/notifications',
+    getParentRoute: () => OrgsOrgAccountRoute,
+  } as any)
 const OrgsOrgStatusPagesStatusPageUidIndexRoute =
   OrgsOrgStatusPagesStatusPageUidIndexRouteImport.update({
     id: '/',
@@ -496,6 +503,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
@@ -560,6 +568,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/register': typeof OrgsOrgRegisterRoute
   '/orgs/$org': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
@@ -633,6 +642,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages': typeof OrgsOrgStatusPagesRouteWithChildren
   '/orgs/$org/test': typeof OrgsOrgTestRouteWithChildren
   '/orgs/$org/': typeof OrgsOrgIndexRoute
+  '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
@@ -710,6 +720,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
@@ -774,6 +785,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/me'
     | '/orgs/$org/register'
     | '/orgs/$org'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
@@ -846,6 +858,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages'
     | '/orgs/$org/test'
     | '/orgs/$org/'
+    | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
     | '/orgs/$org/account/tokens'
@@ -1371,6 +1384,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountProfileRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/notifications': {
+      id: '/orgs/$org/account/notifications'
+      path: '/notifications'
+      fullPath: '/orgs/$org/account/notifications'
+      preLoaderRoute: typeof OrgsOrgAccountNotificationsRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/status-pages/$statusPageUid/': {
       id: '/orgs/$org/status-pages/$statusPageUid/'
       path: '/'
@@ -1424,6 +1444,7 @@ declare module '@tanstack/react-router' {
 }
 
 interface OrgsOrgAccountRouteChildren {
+  OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
   OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
   OrgsOrgAccountTokensRoute: typeof OrgsOrgAccountTokensRoute
@@ -1431,6 +1452,7 @@ interface OrgsOrgAccountRouteChildren {
 }
 
 const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
+  OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
   OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
   OrgsOrgAccountTokensRoute: OrgsOrgAccountTokensRoute,
