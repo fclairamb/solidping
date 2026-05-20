@@ -15,10 +15,14 @@ import (
 
 // Service errors.
 var (
-	ErrOrgNotFound     = errors.New("organization not found")
-	ErrRouteNotFound   = errors.New("notification route not found")
-	ErrContactNotFound = errors.New("notification contact not found")
-	ErrUserNotFound    = errors.New("user not found")
+	ErrOrgNotFound              = errors.New("organization not found")
+	ErrRouteNotFound            = errors.New("notification route not found")
+	ErrContactNotFound          = errors.New("notification contact not found")
+	ErrUserNotFound             = errors.New("user not found")
+	ErrRouteNotFoundAfterCreate = errors.New("route not found after creation")
+	ErrEmailSenderNotConfigured = errors.New("email sender not configured")
+	ErrNoSlackChannelForOrg     = errors.New("no Slack channel configured for this organization")
+	ErrSlackClientNotConfigured = errors.New("slack client not configured")
 )
 
 // ContactResponse is the API representation of a UserContact.
@@ -140,21 +144,21 @@ func (s *Service) buildSlackSuggestion(
 	}
 
 	// Does the org have a Slack channel?
-	ch, err := s.db.GetSlackChannelForOrg(ctx, orgUID)
+	slackChannel, err := s.db.GetSlackChannelForOrg(ctx, orgUID)
 	if err != nil {
 		return nil
 	}
 
 	// Is there already a slack_user contact for this provider ID?
-	for _, r := range existing {
-		if r.Contact != nil &&
-			r.Contact.Type == models.UserContactTypeSlackUser &&
-			r.Contact.Value == slackProvider.ProviderID {
+	for _, route := range existing {
+		if route.Contact != nil &&
+			route.Contact.Type == models.UserContactTypeSlackUser &&
+			route.Contact.Value == slackProvider.ProviderID {
 			return nil // already added
 		}
 	}
 
-	settings, err := models.SlackSettingsFromJSONMap(ch.Settings)
+	settings, err := models.SlackSettingsFromJSONMap(slackChannel.Settings)
 	if err != nil {
 		return nil
 	}
@@ -162,22 +166,13 @@ func (s *Service) buildSlackSuggestion(
 	return &SlackSuggestion{
 		SlackUserID:   slackProvider.ProviderID,
 		WorkspaceName: settings.TeamName,
-		ChannelUID:    ch.UID,
+		ChannelUID:    slackChannel.UID,
 	}
-}
-
-// findRouteByContact returns the route matching contactType/contactValue or nil.
-func findRouteByContact(routes []*models.UserNotificationRoute, contactType, contactValue string) *RouteResponse {
-	for _, r := range routes {
-		if r.Contact != nil && r.Contact.Type == contactType && r.Contact.Value == contactValue {
-			return toRouteResponse(r)
-		}
-	}
-
-	return nil
 }
 
 // CreateContact creates a new contact + route.
+//
+//nolint:cyclop // inherent complexity: upsert + reload + conditional route creation
 func (s *Service) CreateContact(
 	ctx context.Context, orgSlug string, user *models.User, req CreateContactRequest,
 ) (*RouteResponse, error) {
@@ -193,6 +188,7 @@ func (s *Service) CreateContact(
 	}
 
 	position := len(existing)
+
 	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
 
 	if req.Type == models.UserContactTypeEmail {
@@ -200,26 +196,21 @@ func (s *Service) CreateContact(
 		contact.VerifiedAt = &now
 	}
 
-	if err := s.db.UpsertUserContact(ctx, contact); err != nil {
-		return nil, fmt.Errorf("create contact: %w", err)
+	if upsertErr := s.db.UpsertUserContact(ctx, contact); upsertErr != nil {
+		return nil, fmt.Errorf("create contact: %w", upsertErr)
 	}
 
-	return s.ensureRouteAfterUpsert(ctx, user, orgUID, contact, req.Type, req.Value, position)
-}
-
-// ensureRouteAfterUpsert reloads routes after an upsert and returns the matching route,
-// creating the route row if it doesn't exist yet.
-func (s *Service) ensureRouteAfterUpsert(
-	ctx context.Context, user *models.User, orgUID string,
-	contact *models.UserContact, contactType, contactValue string, position int,
-) (*RouteResponse, error) {
-	routes, err := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("reload routes: %w", err)
+	// Reload to get the actual UID after upsert.
+	routes, reloadErr := s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes: %w", reloadErr)
 	}
 
-	if resp := findRouteByContact(routes, contactType, contactValue); resp != nil {
-		return resp, nil
+	// Find the route for our new contact (may already exist after upsert).
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			return toRouteResponse(r), nil
+		}
 	}
 
 	// No route yet — create it.
@@ -230,16 +221,19 @@ func (s *Service) ensureRouteAfterUpsert(
 		return nil, fmt.Errorf("create route: %w", insertErr)
 	}
 
-	routes, err = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
-	if err != nil {
-		return nil, fmt.Errorf("reload routes after create: %w", err)
+	// Reload again.
+	routes, reloadErr = s.db.ListUserContactsWithRoutes(ctx, user.UID, orgUID)
+	if reloadErr != nil {
+		return nil, fmt.Errorf("reload routes after create: %w", reloadErr)
 	}
 
-	if resp := findRouteByContact(routes, contactType, contactValue); resp != nil {
-		return resp, nil
+	for _, r := range routes {
+		if r.Contact != nil && r.Contact.Type == req.Type && r.Contact.Value == req.Value {
+			return toRouteResponse(r), nil
+		}
 	}
 
-	return nil, errors.New("route not found after creation")
+	return nil, ErrRouteNotFoundAfterCreate
 }
 
 // PatchRoute updates enabled flag and/or reorders.
@@ -253,14 +247,14 @@ func (s *Service) PatchRoute(
 	}
 
 	if req.Enabled != nil {
-		if err := s.db.SetRouteEnabled(ctx, routeUID, *req.Enabled); err != nil {
-			return nil, fmt.Errorf("set route enabled: %w", err)
+		if enableErr := s.db.SetRouteEnabled(ctx, routeUID, *req.Enabled); enableErr != nil {
+			return nil, fmt.Errorf("set route enabled: %w", enableErr)
 		}
 	}
 
 	if len(req.RouteUIDs) > 0 {
-		if err := s.db.ReorderRoutes(ctx, user.UID, orgUID, req.RouteUIDs); err != nil {
-			return nil, fmt.Errorf("reorder routes: %w", err)
+		if reorderErr := s.db.ReorderRoutes(ctx, user.UID, orgUID, req.RouteUIDs); reorderErr != nil {
+			return nil, fmt.Errorf("reorder routes: %w", reorderErr)
 		}
 	}
 
@@ -312,31 +306,31 @@ func (s *Service) DeleteContact(
 }
 
 // toRouteResponse converts a DB model to an API response.
-func toRouteResponse(r *models.UserNotificationRoute) *RouteResponse {
-	cr := ContactResponse{}
-	if r.Contact != nil {
-		cr = ContactResponse{
-			UID:        r.Contact.UID,
-			Type:       r.Contact.Type,
-			Value:      r.Contact.Value,
-			Label:      r.Contact.Label,
-			VerifiedAt: r.Contact.VerifiedAt,
+func toRouteResponse(route *models.UserNotificationRoute) *RouteResponse {
+	contactResp := ContactResponse{}
+	if route.Contact != nil {
+		contactResp = ContactResponse{
+			UID:        route.Contact.UID,
+			Type:       route.Contact.Type,
+			Value:      route.Contact.Value,
+			Label:      route.Contact.Label,
+			VerifiedAt: route.Contact.VerifiedAt,
 		}
 	}
 
 	return &RouteResponse{
-		UID:       r.UID,
-		Enabled:   r.Enabled,
-		Position:  r.Position,
-		Contact:   cr,
-		CreatedAt: r.CreatedAt,
+		UID:       route.UID,
+		Enabled:   route.Enabled,
+		Position:  route.Position,
+		Contact:   contactResp,
+		CreatedAt: route.CreatedAt,
 	}
 }
 
 func toRouteResponses(routes []*models.UserNotificationRoute) []*RouteResponse {
 	out := make([]*RouteResponse, len(routes))
-	for i, r := range routes {
-		out[i] = toRouteResponse(r)
+	for i, route := range routes {
+		out[i] = toRouteResponse(route)
 	}
 
 	return out
@@ -359,9 +353,9 @@ func (s *Service) SendTestNotification(
 
 	var target *models.UserNotificationRoute
 
-	for _, r := range routes {
-		if r.UID == routeUID {
-			target = r
+	for _, ro := range routes {
+		if ro.UID == routeUID {
+			target = ro
 
 			break
 		}
@@ -374,26 +368,26 @@ func (s *Service) SendTestNotification(
 	switch target.Contact.Type {
 	case models.UserContactTypeEmail:
 		if emailSender == nil {
-			return errors.New("email sender not configured")
+			return ErrEmailSenderNotConfigured
 		}
 
 		return emailSender.SendTestEmail(ctx, target.Contact.Value)
 	case models.UserContactTypeSlackUser:
-		ch, chErr := s.db.GetSlackChannelForOrg(ctx, orgUID)
+		slackChannel, chErr := s.db.GetSlackChannelForOrg(ctx, orgUID)
 		if chErr != nil {
 			if errors.Is(chErr, sql.ErrNoRows) {
-				return errors.New("no Slack channel configured for this organization")
+				return ErrNoSlackChannelForOrg
 			}
 
 			return fmt.Errorf("load slack channel: %w", chErr)
 		}
 
 		if slackClient == nil {
-			return errors.New("slack client not configured")
+			return ErrSlackClientNotConfigured
 		}
 
-		return slackClient.SendDMTest(ctx, ch, target.Contact.Value)
+		return slackClient.SendDMTest(ctx, slackChannel, target.Contact.Value)
 	default:
-		return fmt.Errorf("provider not configured for contact type %q", target.Contact.Type)
+		return fmt.Errorf("provider not configured for contact type %q", target.Contact.Type) //nolint:err113
 	}
 }
