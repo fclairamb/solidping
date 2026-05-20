@@ -1159,6 +1159,36 @@ func (m *mockDBService) ListIncidentNotifications(
 	return nil, nil
 }
 
+func (m *mockDBService) ListUserContactsWithRoutes(
+	_ context.Context, _, _ string,
+) ([]*models.UserNotificationRoute, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) EnsureDefaultEmailRoute(_ context.Context, _, _, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) UpsertUserContact(_ context.Context, _ *models.UserContact) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) DeleteUserContact(_ context.Context, _ string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) SetRouteEnabled(_ context.Context, _ string, _ bool) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) ReorderRoutes(_ context.Context, _, _ string, _ []string) error {
+	panic("not implemented")
+}
+
+func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*models.Channel, error) {
+	panic("not implemented")
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 

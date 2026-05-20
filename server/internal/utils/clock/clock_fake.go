@@ -11,12 +11,13 @@ import (
 // Goroutines blocked on After or Sleep will be woken when their deadline
 // is passed by Advance.
 type Fake struct {
-	fake clockwork.FakeClock
+	fake *clockwork.FakeClock
 }
 
 // NewFake creates a new Fake clock starting at start.
 func NewFake(start time.Time) *Fake {
-	return &Fake{fake: clockwork.NewFakeClockAt(start)}
+	c := clockwork.NewFakeClockAt(start)
+	return &Fake{fake: c}
 }
 
 // Advance moves the fake clock forward by d, waking any goroutines
