@@ -2822,6 +2822,15 @@ export function useStatusUpdates(
   });
 }
 
+export function useStatusUpdate(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["statusUpdate", org, uid],
+    queryFn: async () =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
 export function useCreateStatusUpdate(org: string) {
   const queryClient = useQueryClient();
 

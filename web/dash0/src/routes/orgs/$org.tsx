@@ -22,6 +22,7 @@ import {
   Globe,
   LayoutDashboard,
   ListChecks,
+  Megaphone,
   Palette,
   Server,
   User2,
@@ -44,6 +45,7 @@ import {
   useOnCallSchedule,
   useResult,
   useStatusPage,
+  useStatusUpdate,
 } from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
@@ -102,6 +104,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
+  const isStatusUpdates = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-updates"));
   const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
@@ -134,6 +137,11 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: escalationPolicy } = useEscalationPolicy(
     org,
     isEscalation ? (params.slug ?? "") : "",
+  );
+  // Status updates section
+  const { data: statusUpdate } = useStatusUpdate(
+    org,
+    isStatusUpdates ? (params.updateUid ?? "") : "",
   );
 
   if (isDashboard) {
@@ -331,6 +339,45 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{pageName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isStatusUpdates) {
+    const updateUid = params.updateUid;
+    const isNew = routeIds.has("/orgs/$org/status-updates/new");
+    const isEdit = routeIds.has("/orgs/$org/status-updates/$updateUid/edit");
+    const label = statusUpdate?.title ?? updateUid?.slice(0, 8);
+
+    return (
+      <>
+        {updateUid || isNew ? (
+          <Link to="/orgs/$org/status-updates" params={{ org }} className={linkClass}>
+            <Megaphone className={iconClass} />{t("statusUpdates")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Megaphone className={iconClass} />{t("statusUpdates")}
+          </span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {updateUid && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{label}</span>
+          </>
+        )}
+        {isEdit && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("edit")}</span>
           </>
         )}
       </>
