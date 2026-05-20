@@ -171,9 +171,8 @@ export function StatusUpdateForm({
               value={form.sectionUid}
               onValueChange={handleSectionChange}
               disabled={!form.statusPageUid}
-              data-testid="status-update-form-section"
             >
-              <SelectTrigger id="section">
+              <SelectTrigger id="section" data-testid="status-update-form-section">
                 <SelectValue placeholder="No section" />
               </SelectTrigger>
               <SelectContent>
@@ -194,9 +193,8 @@ export function StatusUpdateForm({
               value={form.checkUid}
               onValueChange={(v) => setForm((f) => ({ ...f, checkUid: v }))}
               disabled={!form.statusPageUid}
-              data-testid="status-update-form-check"
             >
-              <SelectTrigger id="check">
+              <SelectTrigger id="check" data-testid="status-update-form-check">
                 <SelectValue placeholder="No check" />
               </SelectTrigger>
               <SelectContent>

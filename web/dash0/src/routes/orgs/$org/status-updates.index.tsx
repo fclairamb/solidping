@@ -237,9 +237,8 @@ function StatusUpdatesIndexPage() {
         <Select
           value={filterPageUid}
           onValueChange={handlePageChange}
-          data-testid="status-updates-page-filter"
         >
-          <SelectTrigger className="w-44">
+          <SelectTrigger className="w-44" data-testid="status-updates-page-filter">
             <SelectValue placeholder="All pages" />
           </SelectTrigger>
           <SelectContent>
@@ -256,9 +255,8 @@ function StatusUpdatesIndexPage() {
           <Select
             value={filterSectionUid}
             onValueChange={handleSectionChange}
-            data-testid="status-updates-section-filter"
           >
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44" data-testid="status-updates-section-filter">
               <SelectValue placeholder="All sections" />
             </SelectTrigger>
             <SelectContent>
@@ -276,9 +274,8 @@ function StatusUpdatesIndexPage() {
           <Select
             value={filterCheckUid}
             onValueChange={setFilterCheckUid}
-            data-testid="status-updates-check-filter"
           >
-            <SelectTrigger className="w-44">
+            <SelectTrigger className="w-44" data-testid="status-updates-check-filter">
               <SelectValue placeholder="All checks" />
             </SelectTrigger>
             <SelectContent>
@@ -295,9 +292,8 @@ function StatusUpdatesIndexPage() {
         <Select
           value={filterKind}
           onValueChange={setFilterKind}
-          data-testid="status-updates-kind-filter"
         >
-          <SelectTrigger className="w-36">
+          <SelectTrigger className="w-36" data-testid="status-updates-kind-filter">
             <SelectValue placeholder="All kinds" />
           </SelectTrigger>
           <SelectContent>
