@@ -10,6 +10,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// configKeySecretHeaders is the config map key for secret headers.
+const configKeySecretHeaders = "secretHeaders"
+
 // MatchStatusCode checks if the actual status code matches any of the given patterns.
 // Patterns can be exact codes like "200" or wildcards like "2XX" (matches 200-299).
 func MatchStatusCode(actual int, patterns []string) bool {
@@ -230,19 +233,19 @@ func (c *HTTPConfig) FromMap(configMap map[string]any) error {
 	}
 
 	// Extract SecretHeaders (optional)
-	if secretHeaders, ok := configMap["secretHeaders"].(map[string]string); ok {
+	if secretHeaders, ok := configMap[configKeySecretHeaders].(map[string]string); ok {
 		c.SecretHeaders = secretHeaders
-	} else if secretHeadersAny, ok := configMap["secretHeaders"].(map[string]any); ok {
+	} else if secretHeadersAny, ok := configMap[configKeySecretHeaders].(map[string]any); ok {
 		c.SecretHeaders = make(map[string]string, len(secretHeadersAny))
 		for k, v := range secretHeadersAny {
 			if strVal, ok := v.(string); ok {
 				c.SecretHeaders[k] = strVal
 			} else {
-				return checkerdef.NewConfigErrorf("secretHeaders", "%s must be a string", k)
+				return checkerdef.NewConfigErrorf(configKeySecretHeaders, "%s must be a string", k)
 			}
 		}
-	} else if configMap["secretHeaders"] != nil {
-		return checkerdef.NewConfigError("secretHeaders", "must be a map[string]string")
+	} else if configMap[configKeySecretHeaders] != nil {
+		return checkerdef.NewConfigError(configKeySecretHeaders, "must be a map[string]string")
 	}
 
 	// Extract JSONPathAssertions (optional)
@@ -304,6 +307,8 @@ func parseAssertionNode(raw any) (*AssertionNode, error) {
 }
 
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
+//
+//nolint:cyclop // HTTP config has many optional fields; branching is inherently verbose
 func (c *HTTPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyURL: c.URL,
@@ -358,7 +363,7 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 	}
 
 	if len(c.SecretHeaders) > 0 {
-		cfg["secretHeaders"] = c.SecretHeaders
+		cfg[configKeySecretHeaders] = c.SecretHeaders
 	}
 
 	if c.JSONPathAssertions != nil {
@@ -377,5 +382,5 @@ func (c *HTTPConfig) GetConfig() map[string]any {
 // SecretFields declares which top-level config keys carry secrets and must
 // be encrypted at rest. Implements credentials.SecretFielder.
 func (c *HTTPConfig) SecretFields() []string {
-	return []string{"password", "secretHeaders"}
+	return []string{"password", configKeySecretHeaders}
 }

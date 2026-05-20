@@ -3,6 +3,7 @@ package jobtypes
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -12,6 +13,9 @@ import (
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
+
+// errNoOrganizationUID is returned when a job requires an org UID but none is set.
+var errNoOrganizationUID = errors.New("network discovery job requires an organization UID")
 
 // NetworkDiscoveryJobDefinition is the factory for network discovery jobs.
 type NetworkDiscoveryJobDefinition struct{}
@@ -45,7 +49,7 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 	log := jctx.Logger
 
 	if jctx.OrganizationUID == nil {
-		return fmt.Errorf("network discovery job requires an organization UID")
+		return errNoOrganizationUID
 	}
 
 	orgUID := *jctx.OrganizationUID
@@ -84,20 +88,21 @@ func (r *NetworkDiscoveryJobRun) persistHosts(
 	hosts []disc.DiscoveredHost,
 	log *slog.Logger,
 ) error {
-	for _, h := range hosts {
-		openPortsJSON, err := json.Marshal(h.OpenPorts)
+	for idx := range hosts {
+		discovered := &hosts[idx]
+		openPortsJSON, err := json.Marshal(discovered.OpenPorts)
 		if err != nil {
-			return fmt.Errorf("marshal open_ports for %s: %w", h.IP, err)
+			return fmt.Errorf("marshal open_ports for %s: %w", discovered.IP, err)
 		}
 
-		suggestedJSON, err := json.Marshal(h.SuggestedChecks)
+		suggestedJSON, err := json.Marshal(discovered.SuggestedChecks)
 		if err != nil {
-			return fmt.Errorf("marshal suggested_checks for %s: %w", h.IP, err)
+			return fmt.Errorf("marshal suggested_checks for %s: %w", discovered.IP, err)
 		}
 
-		host := models.NewDiscoveredHost(orgUID, jobUID, h.IP)
-		host.Hostname = h.Hostname
-		host.ICMPReachable = h.ICMPReachable
+		host := models.NewDiscoveredHost(orgUID, jobUID, discovered.IP)
+		host.Hostname = discovered.Hostname
+		host.ICMPReachable = discovered.ICMPReachable
 		host.OpenPorts = openPortsJSON
 		host.SuggestedChecks = suggestedJSON
 
@@ -113,7 +118,7 @@ func (r *NetworkDiscoveryJobRun) persistHosts(
 			Exec(ctx)
 		if err != nil {
 			log.WarnContext(ctx, "failed to upsert discovered host",
-				"ip", h.IP, "error", err)
+				"ip", discovered.IP, "error", err)
 			// Continue with other hosts; don't abort the whole scan.
 		}
 	}

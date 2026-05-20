@@ -135,7 +135,7 @@ func (s *Service) GenerateBadge(
 
 // uptimeBarPeriodInfo returns the periodType, number of segments, and bucket
 // duration for the given period string.
-func uptimeBarPeriodInfo(period string) (periodType string, n int, bucketDuration time.Duration) {
+func uptimeBarPeriodInfo(period string) (string, int, time.Duration) {
 	switch period {
 	case "24h":
 		return models.PeriodTypeHour, 24, time.Hour

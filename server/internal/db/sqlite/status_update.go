@@ -149,7 +149,8 @@ func (s *Service) ListPublicStatusUpdates(
 	}
 
 	result := make([]*db.PublicStatusUpdate, len(rowResults))
-	for idx, entry := range rowResults {
+	for idx := range rowResults {
+		entry := &rowResults[idx]
 		result[idx] = &db.PublicStatusUpdate{
 			UID:          entry.UID,
 			SectionUID:   entry.SectionUID,

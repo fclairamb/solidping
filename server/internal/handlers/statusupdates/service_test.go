@@ -231,7 +231,7 @@ func TestSoftDeleteMakesInvisible(t *testing.T) {
 
 	// Appears in list
 	list, err := s.svc.ListStatusUpdates(ctx, s.org.Slug,
-		statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
+		&statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
 	r.NoError(err)
 	r.Len(list, 1)
 
@@ -240,7 +240,7 @@ func TestSoftDeleteMakesInvisible(t *testing.T) {
 
 	// No longer in list
 	list, err = s.svc.ListStatusUpdates(ctx, s.org.Slug,
-		statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
+		&statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
 	r.NoError(err)
 	r.Empty(list)
 }
@@ -264,7 +264,7 @@ func TestListFilter(t *testing.T) {
 
 	// List all
 	list, err := s.svc.ListStatusUpdates(ctx, s.org.Slug,
-		statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
+		&statusupdates.ListStatusUpdatesOptions{StatusPage: s.pageID})
 	r.NoError(err)
 	r.Len(list, 2)
 }

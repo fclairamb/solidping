@@ -140,10 +140,10 @@ func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.Discove
 	host.OpenPorts = openPortsJSON
 	host.SuggestedChecks = suggestedJSON
 
-	var q *bun.InsertQuery
+	var insertQuery *bun.InsertQuery
 
 	if s.isPostgres {
-		q = s.db.NewInsert().
+		insertQuery = s.db.NewInsert().
 			Model(host).
 			On("CONFLICT (organization_uid, ip) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = EXCLUDED.job_uid").
@@ -154,7 +154,7 @@ func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.Discove
 			Set("discovered_at = EXCLUDED.discovered_at")
 	} else {
 		// SQLite: INSERT OR REPLACE semantics via conflict handling.
-		q = s.db.NewInsert().
+		insertQuery = s.db.NewInsert().
 			Model(host).
 			On("CONFLICT (organization_uid, ip) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = excluded.job_uid").
@@ -165,7 +165,7 @@ func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.Discove
 			Set("discovered_at = excluded.discovered_at")
 	}
 
-	_, err = q.Exec(ctx)
+	_, err = insertQuery.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("upsert discovered host: %w", err)
 	}
@@ -192,36 +192,38 @@ func (s *Service) ListByJob(ctx context.Context, orgUID, jobUID string) ([]*mode
 }
 
 // ListHosts returns discovered hosts for an org with optional filters.
-func (s *Service) ListHosts(ctx context.Context, orgUID string, opts ListHostsOptions) ([]*models.DiscoveredHost, error) {
+func (s *Service) ListHosts(
+	ctx context.Context, orgUID string, opts ListHostsOptions,
+) ([]*models.DiscoveredHost, error) {
 	var hosts []*models.DiscoveredHost
 
-	q := s.db.NewSelect().
+	query := s.db.NewSelect().
 		Model(&hosts).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Order("discovered_at DESC")
 
 	if opts.JobUID != "" {
-		q = q.Where("job_uid = ?", opts.JobUID)
+		query = query.Where("job_uid = ?", opts.JobUID)
 	}
 
 	if opts.Promoted != nil {
 		if *opts.Promoted {
-			q = q.Where("promoted_to_check_uid IS NOT NULL")
+			query = query.Where("promoted_to_check_uid IS NOT NULL")
 		} else {
-			q = q.Where("promoted_to_check_uid IS NULL")
+			query = query.Where("promoted_to_check_uid IS NULL")
 		}
 	}
 
 	if opts.Limit > 0 {
-		q = q.Limit(opts.Limit)
+		query = query.Limit(opts.Limit)
 	}
 
 	if opts.Offset > 0 {
-		q = q.Offset(opts.Offset)
+		query = query.Offset(opts.Offset)
 	}
 
-	err := q.Scan(ctx)
+	err := query.Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list hosts: %w", err)
 	}
@@ -250,7 +252,9 @@ func (s *Service) GetHost(ctx context.Context, orgUID, hostUID string) (*models.
 
 // PromoteHost creates a Check from the discovered host and marks the host as promoted.
 // The whole operation runs in a transaction.
-func (s *Service) PromoteHost(ctx context.Context, orgUID, orgSlug, hostUID string, req PromoteRequest) (*checks.CheckResponse, error) {
+func (s *Service) PromoteHost(
+	ctx context.Context, orgUID, orgSlug, hostUID string, req PromoteRequest,
+) (*checks.CheckResponse, error) {
 	host, err := s.GetHost(ctx, orgUID, hostUID)
 	if err != nil {
 		return nil, err

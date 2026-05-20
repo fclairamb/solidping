@@ -47,8 +47,10 @@ func authedDelete(t *testing.T, ts *TestServer, path string) int {
 	return resp.StatusCode
 }
 
-const notifRoutesPath = "/api/v1/orgs/" + TestOrgSlug + "/users/me/notification-routes"
-const notifContactsPath = "/api/v1/orgs/" + TestOrgSlug + "/users/me/notification-contacts"
+const (
+	notifRoutesPath   = "/api/v1/orgs/" + TestOrgSlug + "/users/me/notification-routes"
+	notifContactsPath = "/api/v1/orgs/" + TestOrgSlug + "/users/me/notification-contacts"
+)
 
 // TestAutoSeed verifies that calling EnsureDefaultEmailRoute twice results in
 // exactly one contact row and one route row.
@@ -135,7 +137,7 @@ func TestPatchRouteEnabled(t *testing.T) {
 	dataRaw, _ := listBody["data"].([]any)
 	r.NotEmpty(dataRaw)
 
-	row := dataRaw[0].(map[string]any)
+	row, _ := dataRaw[0].(map[string]any)
 	routeUID, _ := row["uid"].(string)
 	r.NotEmpty(routeUID)
 
@@ -178,7 +180,7 @@ func TestDeleteContact(t *testing.T) {
 	dataRaw, _ := listBody["data"].([]any)
 
 	for _, item := range dataRaw {
-		row := item.(map[string]any)
+		row, _ := item.(map[string]any)
 		if c, ok := row["contact"].(map[string]any); ok {
 			if c["uid"] == uid {
 				r.Fail("deleted contact still present in routes list")
@@ -237,7 +239,7 @@ func TestPhoneRouteSkipped(t *testing.T) {
 }
 
 // TestFallbackToDirectEmail verifies that when a user has no DB routes, the
-// fallback to direct email still fires (V1 behaviour preserved).
+// fallback to direct email still fires (V1 behavior preserved).
 func TestFallbackToDirectEmail(t *testing.T) {
 	t.Parallel()
 

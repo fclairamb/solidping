@@ -39,8 +39,9 @@ export function LanguageSwitcher() {
         <button
           className="text-xl leading-none p-1 rounded transition-colors hover:bg-accent"
           title={currentLang.toUpperCase()}
+          aria-label={currentLang.toUpperCase()}
         >
-          {currentFlag}
+          <span>{currentFlag}</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
@@ -50,7 +51,7 @@ export function LanguageSwitcher() {
             onClick={() => switchLanguage(code)}
           >
             <span className="text-base">{flag}</span>
-            {label}
+            <span>{label}</span>
             {currentLang === code && <span className="ml-auto">&#10003;</span>}
           </DropdownMenuItem>
         ))}

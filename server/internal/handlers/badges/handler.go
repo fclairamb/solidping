@@ -26,6 +26,29 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// parseIntParam parses an integer query parameter, clamping it within [min, max].
+// Returns 0 if the parameter is empty or invalid.
+func parseIntParam(raw string, minVal, maxVal int) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+
+	if parsed < minVal {
+		parsed = minVal
+	}
+
+	if parsed > maxVal {
+		parsed = maxVal
+	}
+
+	return parsed, true
+}
+
 // GetBadge handles GET requests for badge images.
 func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
@@ -38,18 +61,8 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 		Style:  req.URL.Query().Get("style"),
 	}
 
-	if raw := req.URL.Query().Get("minWidth"); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil {
-			if v < 0 {
-				v = 0
-			}
-
-			if v > 800 {
-				v = 800
-			}
-
-			opts.MinWidth = v
-		}
+	if minWidth, ok := parseIntParam(req.URL.Query().Get("minWidth"), 0, 800); ok {
+		opts.MinWidth = minWidth
 	}
 
 	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, components, opts)
@@ -77,32 +90,12 @@ func (h *Handler) GetUptimeBar(writer http.ResponseWriter, req bunrouter.Request
 		Height: 20,
 	}
 
-	if raw := req.URL.Query().Get("width"); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil {
-			if v < 60 {
-				v = 60
-			}
-
-			if v > 800 {
-				v = 800
-			}
-
-			opts.Width = v
-		}
+	if barWidth, ok := parseIntParam(req.URL.Query().Get("width"), 60, 800); ok {
+		opts.Width = barWidth
 	}
 
-	if raw := req.URL.Query().Get("height"); raw != "" {
-		if v, err := strconv.Atoi(raw); err == nil {
-			if v < 10 {
-				v = 10
-			}
-
-			if v > 40 {
-				v = 40
-			}
-
-			opts.Height = v
-		}
+	if barHeight, ok := parseIntParam(req.URL.Query().Get("height"), 10, 40); ok {
+		opts.Height = barHeight
 	}
 
 	svg, err := h.svc.GenerateUptimeBar(req.Context(), orgSlug, checkIdentifier, opts)

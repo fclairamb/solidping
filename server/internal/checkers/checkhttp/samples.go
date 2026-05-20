@@ -10,6 +10,7 @@ const (
 	sampleExpectedStatus = 200 // HTTP 200 OK for sample checks
 	defaultBaseURL       = "http://localhost:4000"
 	methodGET            = "GET"
+	statusCodePattern2XX = "2XX" // matches any 2xx response code
 )
 
 func baseURL(opts *checkerdef.ListSampleOptions) string {
@@ -21,6 +22,8 @@ func baseURL(opts *checkerdef.ListSampleOptions) string {
 }
 
 // GetSampleConfigs returns sample HTTP check configurations.
+//
+//nolint:funlen // enumerating many sample configs is inherently verbose
 func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
 	base := baseURL(opts)
 
@@ -109,7 +112,7 @@ func (c *HTTPChecker) GetSampleConfigs(opts *checkerdef.ListSampleOptions) []che
 			Config: (&HTTPConfig{
 				URL:                 "https://status.claude.com/api/v2/status.json",
 				Method:              methodGET,
-				ExpectedStatusCodes: []string{"2XX"},
+				ExpectedStatusCodes: []string{statusCodePattern2XX},
 				JSONPathAssertions: &AssertionNode{
 					Type:     NodeTypeAssertion,
 					Path:     "$.status.indicator",

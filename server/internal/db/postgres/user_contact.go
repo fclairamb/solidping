@@ -51,14 +51,16 @@ func (s *Service) EnsureDefaultEmailRoute(
 
 	// Fetch the canonical UID (either just-inserted or the pre-existing one).
 	var existing models.UserContact
-	if err := s.db.NewSelect().
+
+	err = s.db.NewSelect().
 		Model(&existing).
 		Where("user_uid = ?", userUID).
 		Where("organization_uid = ?", orgUID).
 		Where("type = ?", models.UserContactTypeEmail).
 		Where("value = ?", email).
 		Limit(1).
-		Scan(ctx); err != nil {
+		Scan(ctx)
+	if err != nil {
 		return fmt.Errorf("load default email contact: %w", err)
 	}
 
@@ -145,10 +147,10 @@ func (s *Service) ReorderRoutes(ctx context.Context, userUID, orgUID string, rou
 
 // GetSlackChannelForOrg returns the first enabled Slack channel for the org.
 func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error) {
-	var ch models.Channel
+	var channel models.Channel
 
 	err := s.db.NewSelect().
-		Model(&ch).
+		Model(&channel).
 		Where("organization_uid = ?", orgUID).
 		Where("type = ?", models.ConnectionTypeSlack).
 		Where("enabled = true").
@@ -159,5 +161,5 @@ func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*mo
 		return nil, fmt.Errorf("get slack channel for org: %w", err)
 	}
 
-	return &ch, nil
+	return &channel, nil
 }

@@ -1,6 +1,10 @@
 package discovery
 
-import "fmt"
+const (
+	checkTypePing = "ping"
+	checkTypeHTTP = "http"
+	checkTypeTCP  = "tcp"
+)
 
 // SuggestedCheck is a suggested check type and config for a discovered host.
 type SuggestedCheck struct {
@@ -14,7 +18,7 @@ func SuggestChecks(ip string, icmpReachable bool, openPorts []int) []SuggestedCh
 
 	if icmpReachable {
 		suggestions = append(suggestions, SuggestedCheck{
-			Type:   "ping",
+			Type:   checkTypePing,
 			Config: map[string]any{"host": ip},
 		})
 	}
@@ -34,17 +38,17 @@ func suggestForPort(ip string, port int) *SuggestedCheck {
 	switch port {
 	case 80:
 		return &SuggestedCheck{
-			Type:   "http",
-			Config: map[string]any{"url": fmt.Sprintf("http://%s", ip)},
+			Type:   checkTypeHTTP,
+			Config: map[string]any{"url": "http://" + ip},
 		}
 	case 443:
 		return &SuggestedCheck{
-			Type:   "http",
-			Config: map[string]any{"url": fmt.Sprintf("https://%s", ip)},
+			Type:   checkTypeHTTP,
+			Config: map[string]any{"url": "https://" + ip},
 		}
 	case 22, 25, 53, 110, 143, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443:
 		return &SuggestedCheck{
-			Type:   "tcp",
+			Type:   checkTypeTCP,
 			Config: map[string]any{"host": ip, "port": port},
 		}
 	}
