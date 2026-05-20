@@ -52,3 +52,21 @@ Key differences:
 - [ ] The button still navigates to the new-channel form on click.
 - [ ] No other channels-page behaviour is changed.
 - [ ] `aria-label` is present on the button element.
+
+## Implementation Plan
+
+1. **Replace dual-button pattern with canonical single-button pattern** in
+   `web/dash0/src/routes/orgs/$org/channels.index.tsx` (lines ~100–113).
+
+   - Remove the two separate `<Button>` elements (one with `sm:hidden`, one with
+     `hidden sm:flex`).
+   - Replace with a single `<Button asChild aria-label={t("new", "New channel")}>` that
+     contains:
+     - `<Plus className="h-4 w-4" />` (no `mr-1` — spacing is automatic when span visible)
+     - `<span className="hidden sm:inline">{t("new", "New channel")}</span>`
+
+2. **Format** with `make fmt`.
+
+3. **QA**: run `make build-backend build-client lint-back test`.
+
+4. **Audit**: confirm every acceptance criterion maps to code.

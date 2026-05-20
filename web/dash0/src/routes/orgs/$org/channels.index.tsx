@@ -97,17 +97,10 @@ function ChannelsListPage() {
             )}
           </p>
         </div>
-        {/* Mobile: icon only */}
-        <Button asChild className="sm:hidden" aria-label={t("new", "New channel")}>
+        <Button asChild aria-label={t("new", "New channel")}>
           <Link to="/orgs/$org/channels/new" params={{ org }}>
             <Plus className="h-4 w-4" />
-          </Link>
-        </Button>
-        {/* Desktop: full label */}
-        <Button asChild className="hidden sm:flex">
-          <Link to="/orgs/$org/channels/new" params={{ org }}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t("new", "New channel")}
+            <span className="hidden sm:inline">{t("new", "New channel")}</span>
           </Link>
         </Button>
       </div>
