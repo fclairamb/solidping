@@ -68,6 +68,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -633,6 +634,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
 	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
 	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
+
+	// User notification routes (authentication required)
+	userNotifService := usernotifications.NewService(s.dbService)
+	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
+	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
+	userNotifHandler := usernotifications.NewHandler(userNotifService, s.config, emailAdapter, slackAdapter)
+	orgUserNotif := api.NewGroup("/orgs/:org/users/me").Use(authMiddleware.RequireAuth)
+	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
+	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)
+	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
+	orgUserNotif.DELETE("/notification-contacts/:contactUid", userNotifHandler.DeleteContact)
+	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)

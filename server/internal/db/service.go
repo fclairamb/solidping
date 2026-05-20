@@ -432,6 +432,34 @@ type Service interface {
 		ctx context.Context, request *models.MembershipRequest, member *models.OrganizationMember,
 	) error
 
+	// --- UserContacts / UserNotificationRoutes ---
+
+	// ListUserContactsWithRoutes returns the ordered notification routes for a user in an org,
+	// with the Contact relation eagerly loaded. Soft-deleted contacts are excluded.
+	ListUserContactsWithRoutes(ctx context.Context, userUID, orgUID string) ([]*models.UserNotificationRoute, error)
+
+	// EnsureDefaultEmailRoute idempotently creates one email contact and one enabled route
+	// for the user in the org. Safe to call concurrently — uses INSERT … ON CONFLICT DO NOTHING.
+	EnsureDefaultEmailRoute(ctx context.Context, userUID, orgUID, email string) error
+
+	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
+	// it undeletes the row and updates the label.
+	UpsertUserContact(ctx context.Context, c *models.UserContact) error
+
+	// DeleteUserContact soft-deletes a contact by UID.
+	DeleteUserContact(ctx context.Context, uid string) error
+
+	// SetRouteEnabled toggles the enabled flag on a route.
+	SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error
+
+	// ReorderRoutes sets the position of each route to its index in routeUIDs.
+	// Only routes belonging to the given user+org are affected; unknown UIDs are ignored.
+	ReorderRoutes(ctx context.Context, userUID, orgUID string, routeUIDs []string) error
+
+	// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
+	// Returns nil, nil when no Slack channel is configured.
+	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
+
 	// Close closes the database connection and cleans up resources
 	io.Closer
 }
