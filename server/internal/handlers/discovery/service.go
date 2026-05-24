@@ -283,7 +283,7 @@ func (s *Service) ListHosts(
 			sources = append(sources, string(src))
 		}
 
-		query = query.Where("source IN (?)", bun.In(sources))
+		query = query.Where("source IN (?)", bun.List(sources))
 	}
 
 	if opts.Limit > 0 {

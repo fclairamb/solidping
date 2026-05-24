@@ -109,7 +109,8 @@ func runFreeboxJob(t *testing.T, f *fbDiscoveryFixture) error {
 	t.Helper()
 
 	def := &jobtypes.FreeboxLanDiscoveryJobDefinition{}
-	cfg, _ := json.Marshal(jobtypes.FreeboxLanDiscoveryConfig{ChannelUID: f.channelUID})
+	cfg, err := json.Marshal(jobtypes.FreeboxLanDiscoveryConfig{ChannelUID: f.channelUID})
+	require.NoError(t, err)
 
 	runner, err := def.CreateJobRun(cfg)
 	require.NoError(t, err)

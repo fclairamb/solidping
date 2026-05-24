@@ -270,7 +270,7 @@ func (s *serviceImpl) ListJobs(
 		Order("created_at DESC")
 
 	if len(opts.Types) > 0 {
-		query = query.Where("type IN (?)", bun.In(opts.Types))
+		query = query.Where("type IN (?)", bun.List(opts.Types))
 	} else if opts.Type != "" {
 		query = query.Where("type = ?", opts.Type)
 	}
