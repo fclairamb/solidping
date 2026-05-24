@@ -6,7 +6,7 @@ require (
 	github.com/IBM/sarama v1.49.0
 	github.com/arran4/golang-ical v0.3.5
 	github.com/aws/aws-sdk-go-v2 v1.41.7
-	github.com/aws/aws-sdk-go-v2/config v1.32.17
+	github.com/aws/aws-sdk-go-v2/config v1.32.18
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
 	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.14
@@ -18,7 +18,7 @@ require (
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-sql-driver/mysql v1.10.0
-	github.com/go-webauthn/webauthn v0.17.3
+	github.com/go-webauthn/webauthn v0.17.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/gookit/color v1.6.1
@@ -72,9 +72,9 @@ require (
 	go.opentelemetry.io/otel/sdk/log v0.19.0
 	go.opentelemetry.io/otel/sdk/metric v1.43.0
 	go.opentelemetry.io/otel/trace v1.43.0
-	golang.org/x/crypto v0.51.0
-	golang.org/x/net v0.54.0
-	golang.org/x/sys v0.44.0
+	golang.org/x/crypto v0.52.0
+	golang.org/x/net v0.55.0
+	golang.org/x/sys v0.45.0
 	golang.org/x/term v0.43.0
 	golang.org/x/time v0.15.0
 	google.golang.org/grpc v1.81.1
@@ -88,7 +88,7 @@ require (
 	github.com/andybalholm/cascadia v1.3.3 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.10 // indirect
-	github.com/aws/aws-sdk-go-v2/credentials v1.19.16 // indirect
+	github.com/aws/aws-sdk-go-v2/credentials v1.19.17 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.23 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.23 // indirect
@@ -99,7 +99,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.23 // indirect
 	github.com/aws/aws-sdk-go-v2/service/signin v1.0.11 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.30.17 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.35.21 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.36.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.42.1 // indirect
 	github.com/aws/smithy-go v1.25.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
@@ -134,7 +134,7 @@ require (
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/go-webauthn/x v0.2.5 // indirect
+	github.com/go-webauthn/x v0.2.6 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
