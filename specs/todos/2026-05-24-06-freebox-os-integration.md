@@ -333,3 +333,62 @@ Manual flow (requires a physical Freebox on the same network):
 
 For remote-access path: configure Freebox remote API manually, use the custom hostname in the
 base URL field, confirm pairing and API access still work.
+
+## Implementation Plan
+
+The work is organized into small, independently-committable steps. Each step compiles and
+keeps `make lint test` green.
+
+1. **Backend: connection type + secret registry**
+   - Add `ConnectionTypeFreebox` to `server/internal/db/models/integration.go` and
+     `FreeboxSettings` / `FreeboxPrivateSettings` structs with `ToJSONMap` / `FromJSONMap`
+     helpers mirroring the existing Slack/Discord pattern.
+   - Register the `app_token` secret key in
+     `server/internal/crypto/credentials/conn_secrets.go`.
+   - Accept the new type in `channels.Service.CreateChannel` validation list.
+   - Update the handler validation error message to mention `freebox`.
+
+2. **Backend: freebox client + service package**
+   - Create `server/internal/integrations/freebox/types.go` with API request/response
+     shapes (`AuthorizeRequest`, `AuthorizeResult`, `LoginChallenge`, `SessionResponse`,
+     `APIResponse[T]`, plus the `FreeboxSettings` / `FreeboxPrivateSettings` re-exports).
+   - Create `server/internal/integrations/freebox/client.go` with `NewClient`, `Authorize`,
+     `PollPairing`, and `Get` methods. Implement directly against the documented
+     `/api/v4/` endpoints — no third-party vendor lock-in needed for the foundation; the
+     spec's vendor recommendation is deferred to the line-quality check spec where the
+     broader API surface actually matters.
+   - Session-management: HMAC-SHA1(app_token, challenge); transparent re-open on
+     `auth_required` error responses.
+   - Create `server/internal/integrations/freebox/service.go` exposing `StartPairing`,
+     `CheckPairingStatus`, `ValidateConnection` plus shared status string constants.
+   - Unit-test the HMAC computation, the pairing-state mapping, and the
+     transparent-session-renewal path with `httptest.NewServer`.
+
+3. **Backend: pairing HTTP endpoints**
+   - Extend `server/internal/handlers/channels/handler.go` (and `service.go`) with
+     `StartFreeboxPairing` (POST) and `GetFreeboxPairingStatus` (GET) handlers. Reuse
+     the existing encryption helpers to persist the `app_token`.
+   - Wire the routes in `server/internal/app/server.go` under
+     `/orgs/:org/integrations/freebox/...`.
+   - Add handler-level tests using the in-memory db harness plus an `httptest` mock
+     Freebox.
+
+4. **Frontend: types, icon, locales**
+   - Extend `ConnectionType` in `web/dash0/src/api/hooks.ts` with `"freebox"`.
+   - Add a freebox case to `web/dash0/src/components/channels/channel-icon.tsx`
+     (use the lucide `Router` icon — closest fit) and to `channelLabel`.
+   - Add `freebox.*` keys + `hint.freebox` to `web/dash0/src/locales/en/channels.json`
+     and `fr/channels.json`.
+
+5. **Frontend: pairing form**
+   - Create `web/dash0/src/components/channels/freebox-form.tsx` implementing the
+     two-phase UX (Phase 1 base-URL input + pair button, Phase 2 LCD prompt + polling).
+   - Add a thin React-Query hook pair (`useStartFreeboxPairing`,
+     `useFreeboxPairingStatus`) to `web/dash0/src/api/hooks.ts`.
+   - Wire the new form into `channel-form.tsx`'s `PerTypePanel` switch.
+
+6. **QA loop**
+   - `make build-backend build-client lint-back test`. Fix anything that breaks until
+     green.
+
+7. **Completeness audit + archive + merge** (handled by the runbook).
