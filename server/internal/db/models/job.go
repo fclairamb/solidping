@@ -24,18 +24,18 @@ const (
 
 // Job represents a background task that can be scheduled and executed.
 type Job struct {
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID *string    `bun:"organization_uid"`
-	Type            string     `bun:"type,notnull"`
-	Config          JSONMap    `bun:"config,type:jsonb,nullzero"`
-	RetryCount      int        `bun:"retry_count,notnull,default:0"`
-	ScheduledAt     time.Time  `bun:"scheduled_at,notnull,default:current_timestamp"`
-	Status          JobStatus  `bun:"status,notnull,default:'pending'"`
-	Output          JSONMap    `bun:"output,type:jsonb,nullzero"`
-	PreviousJobUID  *string    `bun:"previous_job_uid"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
-	DeletedAt       *time.Time `bun:"deleted_at"`
+	UID             string     `bun:"uid,pk,type:varchar(36)"                        json:"uid"`
+	OrganizationUID *string    `bun:"organization_uid"                               json:"organizationUid"`
+	Type            string     `bun:"type,notnull"                                   json:"type"`
+	Config          JSONMap    `bun:"config,type:jsonb,nullzero"                     json:"config"`
+	RetryCount      int        `bun:"retry_count,notnull,default:0"                  json:"retryCount"`
+	ScheduledAt     time.Time  `bun:"scheduled_at,notnull,default:current_timestamp" json:"scheduledAt"`
+	Status          JobStatus  `bun:"status,notnull,default:'pending'"               json:"status"`
+	Output          JSONMap    `bun:"output,type:jsonb,nullzero"                     json:"output"`
+	PreviousJobUID  *string    `bun:"previous_job_uid"                               json:"previousJobUid"`
+	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"   json:"createdAt"`
+	UpdatedAt       time.Time  `bun:"updated_at,notnull,default:current_timestamp"   json:"updatedAt"`
+	DeletedAt       *time.Time `bun:"deleted_at"                                     json:"deletedAt,omitempty"`
 }
 
 // NewJob creates a new job with generated UID.

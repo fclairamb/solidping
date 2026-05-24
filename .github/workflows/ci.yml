@@ -30,7 +30,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
-          cache: false
+          cache-dependency-path: server/go.sum
 
       - name: Create embed placeholders for lint/test
         run: |
@@ -46,9 +46,6 @@ jobs:
           install-mode: goinstall
           working-directory: server
           # only-new-issues: true
-
-      - name: Clear Go build cache before tests
-        run: go clean -cache
 
       - name: Run tests
         run: go test -count=1 ./... -short
@@ -154,11 +151,7 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version: "1.26"
-          cache: false
-
-      - name: Clear local Go build cache
-        working-directory: server
-        run: go clean -cache
+          cache-dependency-path: server/go.sum
 
       - name: Download dash dist
         uses: actions/download-artifact@v8

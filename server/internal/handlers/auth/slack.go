@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/url"
 
@@ -173,6 +174,8 @@ func (h *SlackOAuthHandler) handleOAuthError(
 	writer http.ResponseWriter, req bunrouter.Request,
 	redirectURI string, err error,
 ) error {
+	slog.WarnContext(req.Context(), "Slack sign-in OAuth callback failed", "error", err)
+
 	var code, description string
 
 	switch {

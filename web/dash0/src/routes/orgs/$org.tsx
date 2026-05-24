@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Bell,
+  Loader2,
   Bug,
   Building,
   Calendar,
@@ -550,21 +551,23 @@ function OrgLayout() {
 
   // Show nothing while processing OAuth callback
   if (oauthProcessing || hasOAuthTokenInURL()) {
-    return null;
+    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
   // Redirect to login once auth finishes loading and user is not authenticated.
   // This covers the case where beforeLoad allowed through while auth was still loading.
-  if (!auth.isLoading && !auth.isAuthenticated) {
-    const basepath = import.meta.env.VITE_BASE_URL || "";
-    const returnTo = basepath + location.pathname + (location.searchStr || "");
-    navigate({
-      to: "/orgs/$org/login",
-      params: { org },
-      search: { session_expired: false, returnTo },
-      replace: true,
-    });
-    return null;
+  if (auth.isLoading || !auth.isAuthenticated) {
+    if (!auth.isLoading) {
+      const basepath = import.meta.env.VITE_BASE_URL || "";
+      const returnTo = basepath + location.pathname + (location.searchStr || "");
+      navigate({
+        to: "/orgs/$org/login",
+        params: { org },
+        search: { session_expired: false, returnTo },
+        replace: true,
+      });
+    }
+    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
   return (

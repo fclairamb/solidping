@@ -6,7 +6,7 @@ import { routeTree } from "./routeTree.gen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
-import { ApiError, NetworkError } from "@/api/client";
+import { ApiError, NetworkError, setToken } from "@/api/client";
 import { installErrorCollector } from "@/components/feedback/errorCollector";
 import "./i18n";
 import "./index.css";
@@ -15,6 +15,30 @@ installErrorCollector();
 
 // Get base URL from Vite config (empty string means root "/")
 const basepath = import.meta.env.VITE_BASE_URL || "";
+
+// OAuth sign-in handoff. External providers (Slack, Google, …) redirect back to
+// `/orgs/<slug>?access_token=…&org=<slug>`. We persist the token synchronously
+// here — before the router or any React Query mounts. Doing it later (in a
+// component effect) loses a race: org-scoped queries fire un-authenticated,
+// 401, and apiFetch's global handler redirects to /login before the token is
+// stored, bouncing the user straight back out of the sign-in they just
+// completed.
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  const accessToken = params.get("access_token");
+  if (!accessToken) return;
+
+  setToken(accessToken);
+
+  const orgSlug = params.get("org");
+  if (orgSlug) {
+    localStorage.setItem("solidping_org", orgSlug);
+  }
+
+  // Drop the token from the URL and land on the resolved org dashboard.
+  const dest = orgSlug ? `${basepath}/orgs/${orgSlug}` : window.location.pathname;
+  window.history.replaceState(null, "", dest);
+})();
 
 const queryClient = new QueryClient({
   defaultOptions: {

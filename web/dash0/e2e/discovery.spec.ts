@@ -4,10 +4,10 @@ test.describe("Network Discovery", () => {
   test.beforeEach(async ({ page }) => {
     // Log in with test credentials.
     await page.goto("/dash0/orgs/test/login");
-    await page.fill('input[name="email"]', "test@test.com");
-    await page.fill('input[name="password"]', "test");
-    await page.click('button[type="submit"]');
-    await page.waitForURL(/\/orgs\/test\//);
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+    await page.waitForURL((url) => !url.pathname.includes("login"));
   });
 
   test("discovery sidebar link is visible for admin", async ({ page }) => {
@@ -59,5 +59,37 @@ test.describe("Network Discovery", () => {
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
+  });
+
+  // Regression guard: the scan list rendered `scan.uid.slice(0, 8)`, which threw
+  // "Cannot read properties of undefined (reading 'slice')" when the API serialized
+  // the job model with Go field casing (`UID`) instead of camelCase (`uid`).
+  test("renders the scan list without crashing after a scan is created", async ({ page }) => {
+    const pageErrors: Error[] = [];
+    page.on("pageerror", (err) => pageErrors.push(err));
+
+    // Create a scan through the form; on success it navigates to the detail page.
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.fill("textarea", "127.0.0.1/32");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /start scan/i }).click();
+
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+    const jobUid = page.url().split("/").pop() as string;
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+    // The uid is rendered on the detail page — blank if the API used the wrong casing.
+    await expect(page.getByText(jobUid)).toBeVisible();
+
+    // Back on the index, the row must render the truncated uid without throwing.
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
+    const table = page.getByRole("table");
+    await expect(table).toBeVisible();
+    await expect(table.getByText(jobUid.slice(0, 8))).toBeVisible();
+
+    expect(
+      pageErrors,
+      `unexpected page errors: ${pageErrors.map((e) => e.message).join(", ")}`,
+    ).toHaveLength(0);
   });
 });

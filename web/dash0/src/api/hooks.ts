@@ -3147,3 +3147,90 @@ export function useDismissCandidate(org: string) {
     },
   });
 }
+
+// Notification routes & contacts
+
+export interface NotificationContact {
+  uid: string;
+  type: string;
+  value: string;
+  label: string;
+  verifiedAt?: string;
+}
+
+export interface NotificationRoute {
+  uid: string;
+  enabled: boolean;
+  position: number;
+  contact: NotificationContact;
+  createdAt: string;
+}
+
+export interface SlackSuggestion {
+  slackUserId: string;
+  workspaceName: string;
+  channelUid: string;
+}
+
+export interface NotificationRoutesResponse {
+  data: NotificationRoute[];
+  slackSuggestion?: SlackSuggestion;
+}
+
+export function useNotificationRoutes(org: string) {
+  return useQuery({
+    queryKey: ["notificationRoutes", org],
+    queryFn: () =>
+      apiFetch<NotificationRoutesResponse>(`/api/v1/orgs/${org}/users/me/notification-routes`),
+  });
+}
+
+export function useCreateNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { type: string; value: string; label?: string }) =>
+      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-contacts`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useDeleteNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (contactUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function usePatchNotificationRoute(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ routeUid, patch }: { routeUid: string; patch: { enabled?: boolean } }) =>
+      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useTestNotificationRoute(org: string) {
+  return useMutation({
+    mutationFn: (routeUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`, {
+        method: "POST",
+      }),
+  });
+}
