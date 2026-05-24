@@ -116,9 +116,12 @@
   "command": {
     "searchPlaceholder": "Search pages and checks...",
     "noResults": "No results found.",
+    "groupActions": "Actions",
     "groupPages": "Pages",
     "groupAccount": "Account",
     "groupOrganization": "Organization",
-    "groupChecks": "Checks"
+    "groupChecks": "Checks",
+    "newCheck": "New Check",
+    "newCheckDescription": "Create a new monitoring check"
   }
 }
