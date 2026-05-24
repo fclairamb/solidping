@@ -545,6 +545,22 @@ func (s *Service) ensureOrganizationMembership(
 	return member, nil
 }
 
+// CountInstalledTeams returns the number of distinct organisations that
+// currently have a Slack integration connection. Used by the Socket Mode
+// supervisor's status snapshot. Best-effort: returns (0, err) on failure.
+func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
+	slackType := models.ConnectionTypeSlack
+
+	channels, err := s.db.ListChannels(ctx, &models.ListChannelsFilter{
+		Type: &slackType,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("list slack channels: %w", err)
+	}
+
+	return len(channels), nil
+}
+
 // HandleAppUninstalled handles the app_uninstalled event.
 func (s *Service) HandleAppUninstalled(ctx context.Context, teamID string) error {
 	conn, err := s.db.GetChannelByProperty(

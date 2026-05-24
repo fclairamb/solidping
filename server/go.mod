@@ -48,6 +48,7 @@ require (
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/rumblefrog/go-a2s v1.0.3
 	github.com/sijms/go-ora/v2 v2.9.0
+	github.com/slack-go/slack v0.23.1
 	github.com/stretchr/testify v1.11.1
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
@@ -135,7 +136,6 @@ require (
 	github.com/go-openapi/jsonpointer v0.22.5 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.5 // indirect
 	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
-	github.com/go-test/deep v1.1.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.2.5 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
