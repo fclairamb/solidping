@@ -269,7 +269,7 @@ func newFTTHResponse(link, hasSignal bool, pwrRx, pwrTx int) map[string]any {
 	}
 }
 
-func runChecker(t *testing.T, ctx context.Context, cfg *checkfreeboxline.FreeboxLineConfig) *checkerdef.Result {
+func runChecker(ctx context.Context, t *testing.T, cfg *checkfreeboxline.FreeboxLineConfig) *checkerdef.Result {
 	t.Helper()
 
 	r := require.New(t)
@@ -387,7 +387,7 @@ func TestChecker_Execute_ResolverError(t *testing.T) {
 	cfg := &checkfreeboxline.FreeboxLineConfig{
 		ConnectionUID: "missing", LinkType: "xdsl",
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 	require.New(t).Equal(checkerdef.StatusError, result.Status)
 }
 
@@ -407,7 +407,7 @@ func TestChecker_Execute_WANDown(t *testing.T) {
 	cfg := &checkfreeboxline.FreeboxLineConfig{
 		ConnectionUID: "conn-1", LinkType: "xdsl",
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
@@ -439,7 +439,7 @@ func TestChecker_Execute_XDSLUp(t *testing.T) {
 		MaxAttenuationDb:    30,
 		MaxCrcErrorsPerRun:  10,
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusUp, result.Status)
@@ -470,7 +470,7 @@ func TestChecker_Execute_XDSLDegradedLowSnr(t *testing.T) {
 		LinkType:           "xdsl",
 		MinSnrMarginDownDb: 6,
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
@@ -495,7 +495,7 @@ func TestChecker_Execute_XDSLDownNotShowtime(t *testing.T) {
 	cfg := &checkfreeboxline.FreeboxLineConfig{
 		ConnectionUID: "conn-1", LinkType: "xdsl",
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
@@ -521,11 +521,65 @@ func TestChecker_Execute_XDSLCRCErrorsAboveThreshold(t *testing.T) {
 		LinkType:           "xdsl",
 		MaxCrcErrorsPerRun: 100,
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
 	r.Contains(result.Output[checkfreeboxline.OutputKeyDegradedReason], "CRC")
+}
+
+func TestChecker_Execute_XDSLLowSyncRate(t *testing.T) {
+	t.Parallel()
+
+	fb := &fakeFreebox{
+		t:         t,
+		appToken:  "token-low-rate",
+		challenge: "ch-low-rate",
+		session:   "sess-low-rate",
+		wanResp:   map[string]any{"state": "up", "type": "xdsl"},
+		// Only 1 Mbps — well below the 5 Mbps floor configured below.
+		xdslResp: newXDSLResponse("showtime", 1000, 100, 250, 0),
+	}
+	url := startFakeFreebox(t, fb)
+	ctx := ctxWithResolver(resolverFor(url, fb.appToken))
+
+	cfg := &checkfreeboxline.FreeboxLineConfig{
+		ConnectionUID:       "conn-1",
+		LinkType:            "xdsl",
+		MinSyncRateDownKbps: 5000,
+	}
+	result := runChecker(ctx, t, cfg)
+
+	r := require.New(t)
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output[checkfreeboxline.OutputKeyDegradedReason], "sync rate")
+}
+
+func TestChecker_Execute_XDSLHighAttenuation(t *testing.T) {
+	t.Parallel()
+
+	fb := &fakeFreebox{
+		t:         t,
+		appToken:  "token-attn",
+		challenge: "ch-attn",
+		session:   "sess-attn",
+		wanResp:   map[string]any{"state": "up", "type": "xdsl"},
+		// 60 dB attenuation (tenths of a dB) — above the 40 dB ceiling.
+		xdslResp: newXDSLResponse("showtime", 80000, 100, 600, 0),
+	}
+	url := startFakeFreebox(t, fb)
+	ctx := ctxWithResolver(resolverFor(url, fb.appToken))
+
+	cfg := &checkfreeboxline.FreeboxLineConfig{
+		ConnectionUID:    "conn-1",
+		LinkType:         "xdsl",
+		MaxAttenuationDb: 40,
+	}
+	result := runChecker(ctx, t, cfg)
+
+	r := require.New(t)
+	r.Equal(checkerdef.StatusDown, result.Status)
+	r.Contains(result.Output[checkfreeboxline.OutputKeyDegradedReason], "attenuation")
 }
 
 func TestChecker_Execute_FTTHUp(t *testing.T) {
@@ -549,7 +603,7 @@ func TestChecker_Execute_FTTHUp(t *testing.T) {
 		MinRxPowerMw:  0.05,
 		MaxRxPowerMw:  0.5,
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusUp, result.Status)
@@ -576,7 +630,7 @@ func TestChecker_Execute_FTTHDownNoSignal(t *testing.T) {
 	cfg := &checkfreeboxline.FreeboxLineConfig{
 		ConnectionUID: "conn-1", LinkType: "ftth",
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
@@ -602,7 +656,7 @@ func TestChecker_Execute_FTTHDegradedLowRxPower(t *testing.T) {
 		ConnectionUID: "conn-1", LinkType: "ftth",
 		MinRxPowerMw: 0.05,
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusDown, result.Status)
@@ -628,7 +682,7 @@ func TestChecker_Execute_SessionRefresh(t *testing.T) {
 	cfg := &checkfreeboxline.FreeboxLineConfig{
 		ConnectionUID: "conn-1", LinkType: "xdsl",
 	}
-	result := runChecker(t, ctx, cfg)
+	result := runChecker(ctx, t, cfg)
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusUp, result.Status)

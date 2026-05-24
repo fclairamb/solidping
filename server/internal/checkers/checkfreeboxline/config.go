@@ -6,7 +6,7 @@
 package checkfreeboxline
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
@@ -54,8 +54,6 @@ const (
 
 // FromMap populates the configuration from a map (typically the JSONB
 // `config` column shape).
-//
-//nolint:cyclop // straightforward sequential field extraction
 func (c *FreeboxLineConfig) FromMap(configMap map[string]any) error {
 	if v, ok := configMap[keyConnectionUID].(string); ok {
 		c.ConnectionUID = v
@@ -133,8 +131,6 @@ func (c *FreeboxLineConfig) GetConfig() map[string]any {
 
 // Validate ensures the configuration is well-formed. Performed without
 // any network call — wire validation happens during Execute.
-//
-//nolint:cyclop // a flat threshold-by-threshold validator is the clearest form
 func (c *FreeboxLineConfig) Validate() error {
 	if c.ConnectionUID == "" {
 		return checkerdef.NewConfigError(keyConnectionUID, "is required")
@@ -195,12 +191,12 @@ func (c *FreeboxLineConfig) SecretFields() []string {
 // extractInt pulls an int-valued field from the config map, tolerating
 // both JSON-number (float64) and direct int representations.
 func extractInt(m map[string]any, key string, out *int) error {
-	v, present := m[key]
-	if !present || v == nil {
+	raw, present := m[key]
+	if !present || raw == nil {
 		return nil
 	}
 
-	switch n := v.(type) {
+	switch n := raw.(type) {
 	case int:
 		*out = n
 	case int64:
@@ -208,7 +204,7 @@ func extractInt(m map[string]any, key string, out *int) error {
 	case float64:
 		*out = int(n)
 	default:
-		return checkerdef.NewConfigErrorf(key, "must be a number, got %T", v)
+		return checkerdef.NewConfigErrorf(key, "must be a number, got %T", raw)
 	}
 
 	return nil
@@ -216,12 +212,12 @@ func extractInt(m map[string]any, key string, out *int) error {
 
 // extractFloat pulls a float-valued field from the config map.
 func extractFloat(m map[string]any, key string, out *float64) error {
-	v, present := m[key]
-	if !present || v == nil {
+	raw, present := m[key]
+	if !present || raw == nil {
 		return nil
 	}
 
-	switch n := v.(type) {
+	switch n := raw.(type) {
 	case float64:
 		*out = n
 	case float32:
@@ -231,7 +227,7 @@ func extractFloat(m map[string]any, key string, out *float64) error {
 	case int64:
 		*out = float64(n)
 	default:
-		return checkerdef.NewConfigErrorf(key, "must be a number, got %T", v)
+		return checkerdef.NewConfigErrorf(key, "must be a number, got %T", raw)
 	}
 
 	return nil
@@ -242,4 +238,4 @@ var _ checkerdef.Config = (*FreeboxLineConfig)(nil)
 
 // ErrResolverNotConfigured is returned when Execute is called without a
 // ConnectionResolver wired up — typically a unit-test misconfiguration.
-var ErrResolverNotConfigured = fmt.Errorf("freebox_line: ConnectionResolver is not set")
+var ErrResolverNotConfigured = errors.New("freebox_line: ConnectionResolver is not set")

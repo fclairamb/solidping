@@ -1790,6 +1790,17 @@ func (s *Server) JobSvc() jobsvc.Service {
 	return s.jobSvc
 }
 
+// Sentinel errors surfaced by newFreeboxConnectionResolver. Defining
+// them statically lets callers branch on them and keeps err113 happy
+// without spelling out every formatted variant.
+var (
+	errFreeboxWrongType          = errors.New("connection is not a freebox connection")
+	errFreeboxEncryptionDisabled = errors.New(
+		"connection has encrypted settings but credentials service is disabled",
+	)
+	errFreeboxNoAppToken = errors.New("connection has no app_token")
+)
+
 // newFreeboxConnectionResolver returns a ConnectionResolver closure that
 // looks up an IntegrationConnection by UID, asserts the type is
 // `freebox`, and merges the decrypted app_token from settings_private
@@ -1807,8 +1818,8 @@ func newFreeboxConnectionResolver(
 
 		if conn.Type != models.ConnectionTypeFreebox {
 			return nil, fmt.Errorf(
-				"connection %s is %q, expected %q",
-				connectionUID, conn.Type, models.ConnectionTypeFreebox,
+				"%w: connection %s is %q, expected %q",
+				errFreeboxWrongType, connectionUID, conn.Type, models.ConnectionTypeFreebox,
 			)
 		}
 
@@ -1824,10 +1835,7 @@ func newFreeboxConnectionResolver(
 
 		if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
 			if !credSvc.Enabled() {
-				return nil, fmt.Errorf(
-					"connection %s has encrypted settings but credentials service is disabled",
-					connectionUID,
-				)
+				return nil, fmt.Errorf("%w: %s", errFreeboxEncryptionDisabled, connectionUID)
 			}
 
 			privMap, decErr := credSvc.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
@@ -1851,8 +1859,8 @@ func newFreeboxConnectionResolver(
 
 		if appToken == "" {
 			return nil, fmt.Errorf(
-				"connection %s has no app_token (pairing status: %s)",
-				connectionUID, settings.Status,
+				"%w: connection %s (pairing status: %s)",
+				errFreeboxNoAppToken, connectionUID, settings.Status,
 			)
 		}
 

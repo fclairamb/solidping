@@ -116,22 +116,18 @@ type connectionResponse struct {
 }
 
 // xdslResponse models GET /api/v4/connection/xdsl/.
-//
-//nolint:tagliatelle // JSON tags must match Freebox API field names
 type xdslResponse struct {
 	Status xdslStatus `json:"status"`
 	Down   xdslLane   `json:"down"`
 	Up     xdslLane   `json:"up"`
 }
 
-//nolint:tagliatelle // JSON tags must match Freebox API field names
 type xdslStatus struct {
 	Status     string `json:"status"`
 	Modulation string `json:"modulation"`
 	Uptime     int64  `json:"uptime"`
 }
 
-//nolint:tagliatelle // JSON tags must match Freebox API field names
 type xdslLane struct {
 	MaxRate int   `json:"maxrate"`
 	Rate    int   `json:"rate"`
@@ -248,7 +244,7 @@ func (c *FreeboxLineChecker) Execute(
 	case LinkTypeFTTH:
 		return c.executeFTTH(ctx, client, cfg, &wan, start), nil
 	default:
-		return errorResult(start, fmt.Errorf("unknown linkType: %s", cfg.LinkType)), nil
+		return errorResult(start, fmt.Errorf("%w: %s", ErrUnknownLinkType, cfg.LinkType)), nil
 	}
 }
 
@@ -480,15 +476,15 @@ func mwToDbm(mw float64) float64 {
 	return 10 * math.Log10(mw)
 }
 
-// emptyAsUnknown reports `s` as-is unless it is empty, in which case
+// emptyAsUnknown reports `value` as-is unless it is empty, in which case
 // "unknown" is returned. Avoids noisy "WAN state is" messages.
-func emptyAsUnknown(s string) string {
-	s = strings.TrimSpace(s)
-	if s == "" {
+func emptyAsUnknown(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
 		return "unknown"
 	}
 
-	return s
+	return value
 }
 
 // mergeMaps returns a new map composed of all keys from base + extras.
@@ -534,7 +530,13 @@ func errorResult(start time.Time, err error) *checkerdef.Result {
 // Ensure FreeboxLineChecker satisfies the Checker interface.
 var _ checkerdef.Checker = (*FreeboxLineChecker)(nil)
 
-// Sentinel — only used in tests today, but useful for callers that want
-// to distinguish "resolver returned a known not-found" from any other
-// error chain.
+// ErrConnectionNotFound is a sentinel returned by ConnectionResolver
+// implementations (and inspected in tests) when no Freebox connection
+// matches the supplied UID. Production callers wrap this rather than
+// returning it bare so the error chain carries the original UID.
 var ErrConnectionNotFound = errors.New("freebox: connection not found")
+
+// ErrUnknownLinkType is returned when the configured LinkType made it
+// past validation but doesn't match a supported branch — e.g. a future
+// "4g" link type the checker hasn't grown support for yet.
+var ErrUnknownLinkType = errors.New("freebox_line: unknown link type")
