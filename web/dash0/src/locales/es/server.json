@@ -8,7 +8,8 @@
     "mail": "Correo",
     "emailInbox": "Bandeja de entrada",
     "authentication": "Autenticación",
-    "performance": "Rendimiento"
+    "performance": "Rendimiento",
+    "slack": "Slack"
   },
   "web": {
     "title": "Web",
@@ -131,6 +132,32 @@
       "testFailed": "Prueba fallida",
       "syncFailed": "Sincronización fallida",
       "connectedMailboxes": "Conectado. Buzones: {{mailboxes}}"
+    }
+  },
+  "slack": {
+    "title": "Slack",
+    "subtitle": "Configure la conectividad Socket Mode de Slack para la entrega saliente de eventos.",
+    "socketMode": {
+      "title": "Modo Socket",
+      "description": "Conéctese a Slack mediante un WebSocket saliente en lugar de webhooks públicos. Requiere un App-Level Token (xapp-…) desde la configuración de la aplicación de Slack.",
+      "enableLabel": "Activar Modo Socket",
+      "appTokenLabel": "App-Level Token",
+      "appTokenPlaceholder": "xapp-…",
+      "saveButton": "Guardar",
+      "notEnabledHint": "La integración de Slack no está activada. Configúrela en los ajustes de autenticación o establezca SP_SLACK_ENABLED=true."
+    },
+    "status": {
+      "title": "Estado de la conexión",
+      "description": "Estado en directo del supervisor Slack Socket Mode.",
+      "connection": "Estado:",
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "teams": "{{count}} espacio de trabajo conectado",
+      "teams_other": "{{count}} espacios de trabajo conectados",
+      "lastConnected": "Última conexión:",
+      "lastError": "Último error:",
+      "noError": "—",
+      "never": "nunca"
     }
   }
 }
