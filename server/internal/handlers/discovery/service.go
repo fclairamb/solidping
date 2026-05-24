@@ -359,7 +359,7 @@ func (s *Service) PromoteHost(
 		}
 
 		createReq := checks.CreateCheckRequest{
-			Type:   spec.CheckType,
+			Type:   normalizeCheckType(spec.CheckType),
 			Name:   spec.Name,
 			Slug:   spec.Slug,
 			Period: spec.Period,
@@ -423,6 +423,17 @@ func (s *Service) SoftDeleteHost(ctx context.Context, orgUID, hostUID string) er
 	}
 
 	return nil
+}
+
+// normalizeCheckType maps the discovery scan engine's check-type aliases to the
+// registered check types accepted by the checks service. The suggest engine emits
+// "ping" (matching the urlparse alias), which the registry knows only as "icmp".
+func normalizeCheckType(checkType string) string {
+	if checkType == "ping" {
+		return "icmp"
+	}
+
+	return checkType
 }
 
 // buildCheckConfig constructs the check config merging suggested config with override.

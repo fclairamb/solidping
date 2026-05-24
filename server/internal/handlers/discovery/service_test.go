@@ -12,6 +12,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
@@ -105,6 +106,134 @@ func (f *discoveryFixture) insertHost(t *testing.T, ip string, source models.Dis
 	host := models.NewDiscoveredHost(f.org.UID, job.UID, ip, source)
 	_, err := f.dbSvc.DB().NewInsert().Model(host).Exec(ctx)
 	r.NoError(err)
+}
+
+// insertPromotableHost inserts a host with the given suggested checks and
+// returns its UID and org slug for promotion tests.
+func (f *discoveryFixture) insertPromotableHost(
+	t *testing.T, ip string, suggested []disc.SuggestedCheck,
+) string {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	job := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscovery))
+	r.NoError(f.dbSvc.CreateJob(ctx, job))
+
+	host := models.NewDiscoveredHost(f.org.UID, job.UID, ip, models.DiscoverySourceLAN)
+	raw, err := json.Marshal(suggested)
+	r.NoError(err)
+	host.SuggestedChecks = raw
+	_, err = f.dbSvc.DB().NewInsert().Model(host).Exec(ctx)
+	r.NoError(err)
+
+	return host.UID
+}
+
+func TestPromoteHostSingleCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	hostUID := f.insertPromotableHost(t, "192.168.1.5", []disc.SuggestedCheck{
+		{Type: "tcp", Config: map[string]any{"host": "192.168.1.5", "port": 22}},
+	})
+
+	resp, err := f.svc.PromoteHost(ctx, f.org.UID, f.org.Slug, hostUID, discovery.PromoteRequest{
+		Checks: []discovery.PromoteCheckSpec{
+			{CheckType: "tcp", Name: "host5", Slug: "host5"},
+		},
+	})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.NotNil(resp[0].Type)
+	r.Equal("tcp", *resp[0].Type)
+
+	// Host is now promoted, pointing at the created check.
+	host, err := f.svc.GetHost(ctx, f.org.UID, hostUID)
+	r.NoError(err)
+	r.NotNil(host.PromotedToCheckUID)
+	r.Equal(resp[0].UID, *host.PromotedToCheckUID)
+}
+
+func TestPromoteHostMultiCheckDistinctSlugs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	hostUID := f.insertPromotableHost(t, "192.168.1.6", []disc.SuggestedCheck{
+		{Type: "http", Config: map[string]any{"url": "http://192.168.1.6"}},
+		{Type: "ping", Config: map[string]any{"host": "192.168.1.6"}},
+	})
+
+	// "ping" mirrors the suggest engine output and must be normalized to a
+	// valid "icmp" check at promotion time.
+	resp, err := f.svc.PromoteHost(ctx, f.org.UID, f.org.Slug, hostUID, discovery.PromoteRequest{
+		Checks: []discovery.PromoteCheckSpec{
+			{CheckType: "http", Name: "host6 (http)", Slug: "host6-http"},
+			{CheckType: "ping", Name: "host6 (ping)", Slug: "host6-ping"},
+		},
+	})
+	r.NoError(err)
+	r.Len(resp, 2)
+	r.NotNil(resp[0].Slug)
+	r.NotNil(resp[1].Slug)
+	r.NotEqual(*resp[0].Slug, *resp[1].Slug)
+
+	// promoted_to_check_uid points at the first created check.
+	host, err := f.svc.GetHost(ctx, f.org.UID, hostUID)
+	r.NoError(err)
+	r.NotNil(host.PromotedToCheckUID)
+	r.Equal(resp[0].UID, *host.PromotedToCheckUID)
+}
+
+func TestPromoteHostAlreadyPromoted(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	hostUID := f.insertPromotableHost(t, "192.168.1.7", []disc.SuggestedCheck{
+		{Type: "tcp", Config: map[string]any{"host": "192.168.1.7", "port": 22}},
+	})
+
+	_, err := f.svc.PromoteHost(ctx, f.org.UID, f.org.Slug, hostUID, discovery.PromoteRequest{
+		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "host7"}},
+	})
+	r.NoError(err)
+
+	_, err = f.svc.PromoteHost(ctx, f.org.UID, f.org.Slug, hostUID, discovery.PromoteRequest{
+		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "host7-again"}},
+	})
+	r.ErrorIs(err, discovery.ErrAlreadyPromoted)
+}
+
+func TestPromoteHostDefaultsNameToIP(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	hostUID := f.insertPromotableHost(t, "192.168.1.8", nil)
+
+	// No suggested checks → manual fallback uses host IP as config base; supply
+	// the port that the tcp checker requires via ExtraConfig.
+	resp, err := f.svc.PromoteHost(ctx, f.org.UID, f.org.Slug, hostUID, discovery.PromoteRequest{
+		Checks: []discovery.PromoteCheckSpec{
+			{CheckType: "tcp", Slug: "host8", ExtraConfig: map[string]any{"port": 22}},
+		},
+	})
+	r.NoError(err)
+	r.Len(resp, 1)
+	r.NotNil(resp[0].Name)
+	r.Equal("192.168.1.8", *resp[0].Name)
 }
 
 func TestStartFreeboxScanGranted(t *testing.T) {
