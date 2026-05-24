@@ -114,3 +114,55 @@ func TestMigrationCreatesCheckDependencies(t *testing.T) {
 		assert.Contains(t, colNames, expected, "%s column must exist", expected)
 	}
 }
+
+// TestMigrationDiscoveredHostsSource verifies migration 030 adds the source
+// column and backfills existing rows to 'lan'.
+func TestMigrationDiscoveredHostsSource(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	svc, err := New(ctx, Config{InMemory: true})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	err = svc.Initialize(ctx)
+	require.NoError(t, err, "Initialize must succeed")
+
+	// The source column must exist after migration 030.
+	type columnInfo struct {
+		Name    string `bun:"name"`
+		Notnull int    `bun:"notnull"`
+	}
+	var columns []columnInfo
+	err = svc.db.NewRaw(`SELECT name, "notnull" FROM pragma_table_info('discovered_hosts')`).Scan(ctx, &columns)
+	require.NoError(t, err)
+
+	var sourceCol *columnInfo
+	for i := range columns {
+		if columns[i].Name == "source" {
+			sourceCol = &columns[i]
+		}
+	}
+	require.NotNil(t, sourceCol, "source column must exist after migration 030")
+	require.Equal(t, 1, sourceCol.Notnull, "source column must be NOT NULL")
+
+	// The per-source unique index must exist; the old per-ip one must be gone.
+	type indexInfo struct {
+		Name string `bun:"name"`
+	}
+	var indexes []indexInfo
+	err = svc.db.NewRaw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discovered_hosts'",
+	).Scan(ctx, &indexes)
+	require.NoError(t, err)
+
+	idxNames := make([]string, 0, len(indexes))
+	for _, i := range indexes {
+		idxNames = append(idxNames, i.Name)
+	}
+	assert.Contains(t, idxNames, "idx_discovered_hosts_org_ip_source_active",
+		"per-source unique index must exist")
+	assert.NotContains(t, idxNames, "idx_discovered_hosts_org_ip_active",
+		"old per-ip unique index must be dropped")
+}
