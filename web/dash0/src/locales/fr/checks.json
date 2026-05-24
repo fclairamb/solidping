@@ -162,7 +162,25 @@
     "docker": "Docker",
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
     "browser": "Navigateur",
-    "browserDescription": "Surveiller les pages avec Chrome headless"
+    "browserDescription": "Surveiller les pages avec Chrome headless",
+    "freebox_line": "Qualité de ligne Freebox",
+    "freebox_lineDescription": "Surveiller la qualité de la ligne xDSL/FTTH via Freebox OS"
+  },
+  "freeboxLine": {
+    "connectionUid": "Connexion Freebox",
+    "connectionUidHelp": "Sélectionnez une connexion Freebox appairée. Si vous n'en avez aucune, appairez-en une depuis les Canaux.",
+    "noConnections": "Aucune connexion Freebox appairée. Appairez-en une pour commencer.",
+    "linkType": "Type de lien",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "linkTypeFtth": "FTTH Fibre",
+    "advancedThresholds": "Seuils avancés",
+    "thresholdsHelp": "Solidping signale le contrôle comme \"down\" si un seuil configuré est franchi. Laissez 0 pour désactiver un seuil.",
+    "minSyncRateDownKbps": "Débit de synchronisation minimum (Kbps)",
+    "minSnrMarginDownDb": "Marge SNR minimum (dB)",
+    "maxAttenuationDb": "Atténuation maximum (dB)",
+    "maxCrcErrorsPerRun": "Erreurs CRC max par contrôle",
+    "minRxPowerMw": "Puissance Rx min (mW)",
+    "maxRxPowerMw": "Puissance Rx max (mW)"
   },
   "intervals": {
     "10s": "10 secondes",

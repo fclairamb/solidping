@@ -43,7 +43,7 @@ import { Badge } from "@/components/ui/badge";
 import { CheckPicker } from "@/components/shared/check-picker";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -87,6 +87,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
+  { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -381,6 +382,33 @@ export function CheckForm({
   const [wsExpect, setWsExpect] = useState(getConfigField(initialData?.config, "expect"));
   const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
   const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
+  // freebox_line state — connectionUid + linkType + per-link-type thresholds.
+  // Threshold fields are kept as strings to allow empty inputs (treated as "skip").
+  const [freeboxConnectionUid, setFreeboxConnectionUid] = useState(
+    getConfigField(initialData?.config, "connectionUid"),
+  );
+  const [freeboxLinkType, setFreeboxLinkType] = useState(
+    getConfigField(initialData?.config, "linkType") || "xdsl",
+  );
+  const [freeboxMinSyncRate, setFreeboxMinSyncRate] = useState(
+    getConfigField(initialData?.config, "minSyncRateDownKbps"),
+  );
+  const [freeboxMinSnrDb, setFreeboxMinSnrDb] = useState(
+    getConfigField(initialData?.config, "minSnrMarginDownDb"),
+  );
+  const [freeboxMaxAttnDb, setFreeboxMaxAttnDb] = useState(
+    getConfigField(initialData?.config, "maxAttenuationDb"),
+  );
+  const [freeboxMaxCrcErrors, setFreeboxMaxCrcErrors] = useState(
+    getConfigField(initialData?.config, "maxCrcErrorsPerRun"),
+  );
+  const [freeboxMinRxMw, setFreeboxMinRxMw] = useState(
+    getConfigField(initialData?.config, "minRxPowerMw"),
+  );
+  const [freeboxMaxRxMw, setFreeboxMaxRxMw] = useState(
+    getConfigField(initialData?.config, "maxRxPowerMw"),
+  );
+  const [freeboxThresholdsOpen, setFreeboxThresholdsOpen] = useState(false);
   const [thresholdDays, setThresholdDays] = useState(
     getConfigField(initialData?.config, "thresholdDays") ||
       getConfigField(initialData?.config, "threshold_days"),
@@ -650,13 +678,25 @@ export function CheckForm({
         if (waitSelector) cfg.waitSelector = waitSelector;
         if (keyword) cfg.keyword = keyword;
         break;
+      case "freebox_line":
+        if (freeboxConnectionUid) cfg.connectionUid = freeboxConnectionUid;
+        if (freeboxLinkType) cfg.linkType = freeboxLinkType;
+        if (freeboxMinSyncRate) cfg.minSyncRateDownKbps = parseInt(freeboxMinSyncRate, 10);
+        if (freeboxMinSnrDb) cfg.minSnrMarginDownDb = parseInt(freeboxMinSnrDb, 10);
+        if (freeboxMaxAttnDb) cfg.maxAttenuationDb = parseInt(freeboxMaxAttnDb, 10);
+        if (freeboxMaxCrcErrors) cfg.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
+        if (freeboxMinRxMw) cfg.minRxPowerMw = parseFloat(freeboxMinRxMw);
+        if (freeboxMaxRxMw) cfg.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
-    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays]);
+    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays,
+    freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
+    freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -849,6 +889,20 @@ export function CheckForm({
         config.url = url;
         if (waitSelector) config.waitSelector = waitSelector;
         if (keyword) config.keyword = keyword;
+        break;
+      case "freebox_line":
+        if (!freeboxConnectionUid) { setError("Freebox connection is required"); return; }
+        if (freeboxLinkType !== "xdsl" && freeboxLinkType !== "ftth") {
+          setError("Link type must be xdsl or ftth"); return;
+        }
+        config.connectionUid = freeboxConnectionUid;
+        config.linkType = freeboxLinkType;
+        if (freeboxMinSyncRate) config.minSyncRateDownKbps = parseInt(freeboxMinSyncRate, 10);
+        if (freeboxMinSnrDb) config.minSnrMarginDownDb = parseInt(freeboxMinSnrDb, 10);
+        if (freeboxMaxAttnDb) config.maxAttenuationDb = parseInt(freeboxMaxAttnDb, 10);
+        if (freeboxMaxCrcErrors) config.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
+        if (freeboxMinRxMw) config.minRxPowerMw = parseFloat(freeboxMinRxMw);
+        if (freeboxMaxRxMw) config.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
         break;
       case "heartbeat":
       case "email":
@@ -1472,6 +1526,96 @@ export function CheckForm({
             </div>
           </>
         );
+      case "freebox_line": {
+        const freeboxConnections = (connections ?? []).filter((c) => c.type === "freebox");
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="freeboxConnectionUid">{t("freeboxLine.connectionUid")}</Label>
+              {freeboxConnections.length === 0 ? (
+                <Alert>
+                  <AlertDescription>
+                    {t("freeboxLine.noConnections")}{" "}
+                    <Link to="/orgs/$org/channels" params={{ org }} className="underline">Channels</Link>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Select value={freeboxConnectionUid} onValueChange={setFreeboxConnectionUid}>
+                  <SelectTrigger id="freeboxConnectionUid" data-testid="check-freebox-connection-select">
+                    <SelectValue placeholder={t("freeboxLine.connectionUid")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {freeboxConnections.map((c) => (
+                      <SelectItem key={c.uid} value={c.uid}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">{t("freeboxLine.connectionUidHelp")}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="freeboxLinkType">{t("freeboxLine.linkType")}</Label>
+              <Select value={freeboxLinkType} onValueChange={setFreeboxLinkType}>
+                <SelectTrigger id="freeboxLinkType" data-testid="check-freebox-linktype-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="xdsl">{t("freeboxLine.linkTypeXdsl")}</SelectItem>
+                  <SelectItem value="ftth">{t("freeboxLine.linkTypeFtth")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <button type="button" className="text-sm underline" onClick={() => setFreeboxThresholdsOpen((v) => !v)}>
+                {freeboxThresholdsOpen ? "▼ " : "▶ "}{t("freeboxLine.advancedThresholds")}
+              </button>
+              {freeboxThresholdsOpen && (
+                <div className="space-y-2 pl-4 border-l">
+                  <p className="text-xs text-muted-foreground">{t("freeboxLine.thresholdsHelp")}</p>
+                  {freeboxLinkType === "xdsl" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinSyncRate">{t("freeboxLine.minSyncRateDownKbps")}</Label>
+                        <Input id="freeboxMinSyncRate" type="number" min="0" placeholder="0" value={freeboxMinSyncRate}
+                          onChange={(e) => setFreeboxMinSyncRate(e.target.value)} data-testid="check-freebox-minsync-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinSnr">{t("freeboxLine.minSnrMarginDownDb")}</Label>
+                        <Input id="freeboxMinSnr" type="number" min="0" placeholder="0" value={freeboxMinSnrDb}
+                          onChange={(e) => setFreeboxMinSnrDb(e.target.value)} data-testid="check-freebox-minsnr-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxAttn">{t("freeboxLine.maxAttenuationDb")}</Label>
+                        <Input id="freeboxMaxAttn" type="number" min="0" placeholder="0" value={freeboxMaxAttnDb}
+                          onChange={(e) => setFreeboxMaxAttnDb(e.target.value)} data-testid="check-freebox-maxattn-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxCrc">{t("freeboxLine.maxCrcErrorsPerRun")}</Label>
+                        <Input id="freeboxMaxCrc" type="number" min="0" placeholder="0" value={freeboxMaxCrcErrors}
+                          onChange={(e) => setFreeboxMaxCrcErrors(e.target.value)} data-testid="check-freebox-maxcrc-input" />
+                      </div>
+                    </>
+                  )}
+                  {freeboxLinkType === "ftth" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinRxMw">{t("freeboxLine.minRxPowerMw")}</Label>
+                        <Input id="freeboxMinRxMw" type="number" min="0" step="0.001" placeholder="0" value={freeboxMinRxMw}
+                          onChange={(e) => setFreeboxMinRxMw(e.target.value)} data-testid="check-freebox-minrx-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxRxMw">{t("freeboxLine.maxRxPowerMw")}</Label>
+                        <Input id="freeboxMaxRxMw" type="number" min="0" step="0.001" placeholder="0" value={freeboxMaxRxMw}
+                          onChange={(e) => setFreeboxMaxRxMw(e.target.value)} data-testid="check-freebox-maxrx-input" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      }
       case "heartbeat":
         return (
           <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>

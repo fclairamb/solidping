@@ -25,6 +25,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -253,6 +254,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		slog.Warn("credentials encryption disabled — secrets stored in plaintext",
 			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
 	}
+
+	// Wire the freebox_line checker's connection resolver. The resolver
+	// owns the DB lookup + app_token decrypt so the checker package stays
+	// importable from unit tests without a live database. Mirrors the
+	// checkjs.ResolveChecker indirection pattern set up by the registry.
+	checkfreeboxline.ConnectionResolverFunc = newFreeboxConnectionResolver(dbService, credSvc)
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
@@ -1781,6 +1788,88 @@ func (s *Server) Services() *services.Registry {
 // JobSvc returns the job service (used for testing).
 func (s *Server) JobSvc() jobsvc.Service {
 	return s.jobSvc
+}
+
+// Sentinel errors surfaced by newFreeboxConnectionResolver. Defining
+// them statically lets callers branch on them and keeps err113 happy
+// without spelling out every formatted variant.
+var (
+	errFreeboxWrongType          = errors.New("connection is not a freebox connection")
+	errFreeboxEncryptionDisabled = errors.New(
+		"connection has encrypted settings but credentials service is disabled",
+	)
+	errFreeboxNoAppToken = errors.New("connection has no app_token")
+)
+
+// newFreeboxConnectionResolver returns a ConnectionResolver closure that
+// looks up an IntegrationConnection by UID, asserts the type is
+// `freebox`, and merges the decrypted app_token from settings_private
+// with the public base URL / app_id fields. Returns an error when the
+// connection is missing, of the wrong type, or has no app_token (a
+// connection still in the pairing state).
+func newFreeboxConnectionResolver(
+	dbService db.Service, credSvc credentials.Service,
+) checkfreeboxline.ConnectionResolver {
+	return func(ctx context.Context, connectionUID string) (*checkfreeboxline.ResolvedConnection, error) {
+		conn, err := dbService.GetChannel(ctx, connectionUID)
+		if err != nil {
+			return nil, fmt.Errorf("get channel %s: %w", connectionUID, err)
+		}
+
+		if conn.Type != models.ConnectionTypeFreebox {
+			return nil, fmt.Errorf(
+				"%w: connection %s is %q, expected %q",
+				errFreeboxWrongType, connectionUID, conn.Type, models.ConnectionTypeFreebox,
+			)
+		}
+
+		settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
+		if err != nil {
+			return nil, fmt.Errorf("parse freebox settings: %w", err)
+		}
+
+		// The app_token lives in the encrypted private side. With no
+		// encryption configured the channel handler stores plaintext in
+		// the public settings under the same key — we honor both paths.
+		appToken := ""
+
+		if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
+			if !credSvc.Enabled() {
+				return nil, fmt.Errorf("%w: %s", errFreeboxEncryptionDisabled, connectionUID)
+			}
+
+			privMap, decErr := credSvc.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+			if decErr != nil {
+				return nil, fmt.Errorf("decrypt freebox app_token: %w", decErr)
+			}
+
+			if v, ok := privMap["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			// Plaintext-fallback path: pre-encryption installs and tests
+			// with credentials disabled keep the app_token under the same
+			// key in the public Settings map.
+			if v, ok := conn.Settings["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			return nil, fmt.Errorf(
+				"%w: connection %s (pairing status: %s)",
+				errFreeboxNoAppToken, connectionUID, settings.Status,
+			)
+		}
+
+		return &checkfreeboxline.ResolvedConnection{
+			BaseURL:  settings.BaseURL,
+			AppID:    settings.AppID,
+			AppToken: appToken,
+		}, nil
+	}
 }
 
 // BuildCredentialsService loads the KEK (env or file), constructs the
