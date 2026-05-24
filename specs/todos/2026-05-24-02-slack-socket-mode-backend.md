@@ -295,3 +295,63 @@ curl -s 'http://localhost:4000/api/v1/integrations/slack/socket/status' | jq .
 | Two API nodes both run the supervisor → Slack delivers each event once, but both nodes ack → possible double-handling | Slack delivers to one connection at a time (socket mode is connection-scoped). Document that multi-API-node deployments should designate one Socket Mode node; add leader election as V2. |
 | `app_token` (xapp-…) leaks via logs or status endpoint | `GetStatus()` must never include the token. Ensure `slog` attribute logging in the reconnect loop does not log the token. Store in `system_parameters` with `secret=true`. |
 | Slack socket handshake requires specific ack timing (3 s) | Use `slack-go`'s built-in ack; the library handles this. Do not implement a custom ack path. |
+
+## Implementation Plan
+
+1. **Config extension** — add `SocketModeEnabled bool` (`koanf:"socket_mode_enabled"`)
+   and `AppToken string` (`koanf:"app_token"`) to `SlackConfig` in
+   `server/internal/config/config.go`. Register matching keys in
+   `server/internal/systemconfig/systemconfig.go`
+   (`auth.slack.socket_mode_enabled`, `auth.slack.app_token`) so the env-var and
+   system-parameters reader applies them at startup, matching the existing
+   `auth.slack.*` convention used for `signing_secret` / `client_secret`.
+2. **Handler refactor** — extract transport-agnostic dispatch entry points so
+   HTTP handlers and the Socket Mode supervisor share business logic:
+   - `events.go`: add `DispatchEvent(ctx, svc, teamID, event *Event) error`
+     and route HTTP `handleEvent` through it.
+   - `commands.go`: add `DispatchCommand(ctx, svc, cmd *Command) (*MessageResponse, error)`.
+   - `interactions.go`: add `DispatchInteraction(ctx, svc, interaction *Interaction) (*MessageResponse, error)`.
+   Existing `*Handler` methods become thin wrappers — they still verify the
+   request and decode the payload, then delegate to the new functions.
+3. **Add slack-go dependency** — `go get github.com/slack-go/slack` and
+   `go mod tidy`. Only the root and `socketmode` sub-packages are needed.
+4. **Supervisor** — new file
+   `server/internal/integrations/slack/socketmode.go` with `SocketStatus`
+   and `SlackSocketSupervisor`. Implements `Run(ctx)` modeled on
+   `jmap.Manager`:
+   - Builds `socketmode.Client` from `cfg.Slack.AppToken`.
+   - Goroutine pumps events from `Client.Events`; each event is acked then
+     translated into our internal `Event` / `Command` / `Interaction`
+     types and routed through `DispatchEvent` / `DispatchCommand` /
+     `DispatchInteraction`.
+   - Reconnect-on-error with 5s backoff; updates `connected` / `lastError`
+     / `lastConnectedAt` under `sync.RWMutex`.
+   - `GetStatus()` returns `SocketStatus` snapshot; never leaks
+     `app_token`.
+5. **Wiring** — in `server/internal/app/server.go`:
+   - Add `slackSocketSupervisor *slack.SlackSocketSupervisor` field on
+     `Server`.
+   - After the JMAP wiring block in `Start()`, when
+     `cfg.Slack.Enabled && cfg.Slack.SocketModeEnabled && cfg.ShouldRunAPI()`,
+     instantiate the supervisor and launch it under `s.workersWg` with
+     `runnerCtx`.
+6. **Status endpoint** — add
+   `GET /api/v1/integrations/slack/socket/status` returning the supervisor's
+   `SocketStatus` (or `{"enabled":false}` when nil). Handler method
+   `GetSocketStatus` on `*slack.Handler`, accepting the supervisor via a new
+   constructor parameter (kept optional; tests still call `NewHandler` with
+   nil).
+7. **Tests**:
+   - `dispatch_test.go` — unit tests calling `DispatchEvent` /
+     `DispatchCommand` / `DispatchInteraction` directly with mocks; pins
+     transport-agnostic contract.
+   - `socketmode_test.go` — supervisor unit tests using a fake WebSocket
+     server speaking enough of the Slack Socket Mode protocol to assert
+     connect → ack → disconnect → reconnect transitions and the
+     `GetStatus()` snapshot semantics.
+   - The existing HTTP handler tests continue to pass unmodified
+     (regression guard for the refactor).
+8. **QA** — `make build-backend build-client lint-back test`, fix anything
+   that breaks.
+9. **Audit + archive** — spawn an Explore subagent for the completeness
+   audit, then move the spec into `specs/done/2026/05/`.
