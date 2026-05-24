@@ -18,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // IncidentService defines the interface for incident operations needed by Slack integration.
@@ -233,14 +234,14 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, ErrEmailRequired
 	}
 
-	// Find or create organization by Slack Team ID
-	org, err := s.findOrCreateOrganizationByTeamID(ctx, oauthResp.Team.ID, oauthResp.Team.Name)
+	// Find or create organization from the Slack workspace identity.
+	org, orgName, err := s.resolveOrganization(ctx, oauthResp, userInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find or create organization: %w", err)
+		return nil, err
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, oauthResp.Team.Name)
+	user, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find or create user: %w", err)
 	}
@@ -279,6 +280,36 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		OrgSlug:       org.Slug,
 		UserUID:       user.UID,
 	}, nil
+}
+
+// resolveOrganization derives the org display name and slug candidates from
+// the Slack workspace identity, then finds or creates the organization. It
+// returns the organization and the resolved display name (also used for the
+// user-provider metadata). Slug candidates are tried in priority order:
+// workspace subdomain → workspace team_name → OAuth Team.Name → "org".
+func (s *Service) resolveOrganization(
+	ctx context.Context, oauthResp *OAuthResponse, userInfo *OpenIDUserInfo,
+) (*models.Organization, string, error) {
+	// Prefer the workspace team_name claim for the org display name; fall
+	// back to the OAuth response's Team.Name.
+	orgName := userInfo.SlackTeamName
+	if orgName == "" {
+		orgName = oauthResp.Team.Name
+	}
+
+	org, err := s.findOrCreateOrganizationByTeamID(
+		ctx,
+		oauthResp.Team.ID,
+		orgName,
+		userInfo.SlackTeamDomain,
+		userInfo.SlackTeamName,
+		oauthResp.Team.Name,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to find or create organization: %w", err)
+	}
+
+	return org, orgName, nil
 }
 
 // createOrUpdateConnection creates or updates an integration connection for the Slack team.
@@ -334,9 +365,11 @@ func (s *Service) createOrUpdateConnection(
 	return conn.UID, nil
 }
 
-// findOrCreateOrganizationByTeamID finds an existing organization by Slack Team ID or creates a new one.
+// findOrCreateOrganizationByTeamID finds an existing organization by Slack Team
+// ID or creates a new one. orgName is the display name; slugCandidates are
+// tried in priority order by the shared slug generator.
 func (s *Service) findOrCreateOrganizationByTeamID(
-	ctx context.Context, teamID, teamName string,
+	ctx context.Context, teamID, orgName string, slugCandidates ...string,
 ) (*models.Organization, error) {
 	// Primary lookup: check organization_providers table (single source of truth)
 	orgProvider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, teamID)
@@ -354,8 +387,8 @@ func (s *Service) findOrCreateOrganizationByTeamID(
 	}
 
 	// Create new organization from Slack team
-	slug := s.generateUniqueSlug(ctx, teamName)
-	org := models.NewOrganization(slug, teamName)
+	slug := orgslug.GenerateUnique(ctx, s.db, slugCandidates...)
+	org := models.NewOrganization(slug, orgName)
 
 	if err := s.db.CreateOrganization(ctx, org); err != nil {
 		return nil, fmt.Errorf("failed to create organization: %w", err)
@@ -363,7 +396,7 @@ func (s *Service) findOrCreateOrganizationByTeamID(
 
 	// Create organization provider to link org to Slack team (single source of truth)
 	orgProvider = models.NewOrganizationProvider(org.UID, models.ProviderTypeSlack, teamID)
-	orgProvider.ProviderName = teamName
+	orgProvider.ProviderName = orgName
 
 	if err := s.db.CreateOrganizationProvider(ctx, orgProvider); err != nil {
 		return nil, fmt.Errorf("failed to create organization provider: %w", err)
@@ -373,55 +406,10 @@ func (s *Service) findOrCreateOrganizationByTeamID(
 		"org_uid", org.UID,
 		"org_slug", org.Slug,
 		"team_id", teamID,
-		"team_name", teamName,
+		"team_name", orgName,
 	)
 
 	return org, nil
-}
-
-// generateUniqueSlug generates a unique organization slug from a team name.
-func (s *Service) generateUniqueSlug(ctx context.Context, teamName string) string {
-	// Normalize: lowercase and replace spaces with hyphens
-	base := strings.ToLower(teamName)
-	base = strings.ReplaceAll(base, " ", "-")
-
-	// Filter: keep only [a-z0-9-]
-	var filtered strings.Builder
-
-	for _, r := range base {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			filtered.WriteRune(r)
-		}
-	}
-
-	base = filtered.String()
-
-	// Trim: remove leading/trailing hyphens, collapse multiple hyphens
-	base = strings.Trim(base, "-")
-
-	for strings.Contains(base, "--") {
-		base = strings.ReplaceAll(base, "--", "-")
-	}
-
-	// Fallback if empty
-	if base == "" {
-		base = "org"
-	}
-
-	// Check uniqueness, append number if needed
-	slug := base
-	suffix := 2
-
-	for {
-		_, err := s.db.GetOrganizationBySlug(ctx, slug)
-		if err != nil {
-			// Slug is available (not found)
-			return slug
-		}
-
-		slug = fmt.Sprintf("%s%d", base, suffix)
-		suffix++
-	}
 }
 
 // findOrCreateUser finds an existing user by email or creates a new one.

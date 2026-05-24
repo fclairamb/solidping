@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/oauthstate"
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // Slack OAuth specific errors.
@@ -76,7 +77,13 @@ type OpenIDUserInfo struct {
 	EmailVerified bool   `json:"email_verified"`
 	Name          string `json:"name"`
 	Picture       string `json:"picture"`
-	Error         string `json:"error,omitempty"`
+	// SlackTeamName / SlackTeamDomain are workspace-identity custom claims
+	// returned by openid.connect.userInfo with the profile scope. TeamDomain
+	// is the workspace subdomain (e.g. "acme" for acme.slack.com) and makes
+	// an ideal org slug.
+	SlackTeamName   string `json:"https://slack.com/team_name"`
+	SlackTeamDomain string `json:"https://slack.com/team_domain"`
+	Error           string `json:"error,omitempty"`
 }
 
 // OAuthState represents the state stored during OAuth flow.
@@ -298,14 +305,30 @@ func (s *SlackOAuthService) HandleCallback(ctx context.Context, code string) (*S
 		return nil, ErrEmailNotVerified
 	}
 
-	// Find or create organization by Slack Team ID
-	org, err := s.findOrCreateOrganization(ctx, oauthResp.Team.ID, oauthResp.Team.Name)
+	// Prefer the workspace team_name claim for the org display name; fall
+	// back to the OAuth response's Team.Name (often empty in this flow).
+	orgName := userInfo.SlackTeamName
+	if orgName == "" {
+		orgName = oauthResp.Team.Name
+	}
+
+	// Find or create organization by Slack Team ID. Slug candidates are tried
+	// in priority order: workspace subdomain → workspace team_name →
+	// OAuth Team.Name → "org".
+	org, err := s.findOrCreateOrganization(
+		ctx,
+		oauthResp.Team.ID,
+		orgName,
+		userInfo.SlackTeamDomain,
+		userInfo.SlackTeamName,
+		oauthResp.Team.Name,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create organization: %w", err)
 	}
 
 	// Find or create user
-	user, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, oauthResp.Team.Name)
+	user, err := s.findOrCreateUser(ctx, userInfo, oauthResp.Team.ID, orgName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find/create user: %w", err)
 	}
@@ -339,8 +362,10 @@ func (s *SlackOAuthService) getCallbackURL() string {
 }
 
 // findOrCreateOrganization finds or creates an org linked to the Slack team.
+// orgName is the display name; slugCandidates are tried in priority order by
+// the shared slug generator.
 func (s *SlackOAuthService) findOrCreateOrganization(
-	ctx context.Context, teamID, teamName string,
+	ctx context.Context, teamID, orgName string, slugCandidates ...string,
 ) (*models.Organization, error) {
 	// Check organization_providers table for existing Slack team link
 	orgProvider, err := s.db.GetOrganizationProviderByProviderID(ctx, models.ProviderTypeSlack, teamID)
@@ -353,8 +378,8 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 	}
 
 	// Create new organization
-	slug := s.generateUniqueSlug(ctx, teamName)
-	org := models.NewOrganization(slug, teamName)
+	slug := orgslug.GenerateUnique(ctx, s.db, slugCandidates...)
+	org := models.NewOrganization(slug, orgName)
 
 	if err := s.db.CreateOrganization(ctx, org); err != nil {
 		return nil, fmt.Errorf("failed to create organization: %w", err)
@@ -362,66 +387,13 @@ func (s *SlackOAuthService) findOrCreateOrganization(
 
 	// Create organization provider to link org to Slack team
 	orgProvider = models.NewOrganizationProvider(org.UID, models.ProviderTypeSlack, teamID)
-	orgProvider.ProviderName = teamName
+	orgProvider.ProviderName = orgName
 
 	if err := s.db.CreateOrganizationProvider(ctx, orgProvider); err != nil {
 		return nil, fmt.Errorf("failed to create organization provider: %w", err)
 	}
 
 	return org, nil
-}
-
-// generateUniqueSlug generates a unique organization slug from a team name.
-func (s *SlackOAuthService) generateUniqueSlug(ctx context.Context, teamName string) string {
-	// Normalize: lowercase and replace spaces with hyphens
-	base := strings.ToLower(teamName)
-	base = strings.ReplaceAll(base, " ", "-")
-
-	// Filter: keep only [a-z0-9-]
-	var filtered strings.Builder
-
-	for _, r := range base {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			filtered.WriteRune(r)
-		}
-	}
-
-	base = filtered.String()
-
-	// Trim: remove leading/trailing hyphens, collapse multiple hyphens
-	base = strings.Trim(base, "-")
-
-	for strings.Contains(base, "--") {
-		base = strings.ReplaceAll(base, "--", "-")
-	}
-
-	// Ensure minimum length
-	if len(base) < 3 {
-		base = "org"
-	}
-
-	// Ensure maximum length
-	if len(base) > 20 {
-		base = base[:20]
-	}
-
-	// Trim trailing hyphens again
-	base = strings.TrimRight(base, "-")
-
-	// Check uniqueness, append number if needed
-	slug := base
-	suffix := 2
-
-	for {
-		_, err := s.db.GetOrganizationBySlug(ctx, slug)
-		if err != nil {
-			// Slug is available (not found)
-			return slug
-		}
-
-		slug = fmt.Sprintf("%s%d", base, suffix)
-		suffix++
-	}
 }
 
 // findOrCreateUser finds or creates user by Slack identity.
