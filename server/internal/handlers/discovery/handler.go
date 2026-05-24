@@ -238,8 +238,18 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "invalid request body")
 	}
 
-	if promoteReq.CheckType == "" {
-		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "checkType is required")
+	if len(promoteReq.Checks) == 0 {
+		return h.WriteError(
+			writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "at least one check is required",
+		)
+	}
+
+	for _, spec := range promoteReq.Checks {
+		if spec.CheckType == "" {
+			return h.WriteError(
+				writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "checkType is required",
+			)
+		}
 	}
 
 	// Need org slug for check creation.
@@ -248,7 +258,7 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 		return h.WriteInternalError(writer, err)
 	}
 
-	checkResp, err := h.svc.PromoteHost(req.Context(), org.UID, org2.Slug, hostUID, promoteReq)
+	checkResps, err := h.svc.PromoteHost(req.Context(), org.UID, org2.Slug, hostUID, promoteReq)
 
 	switch {
 	case errors.Is(err, ErrHostNotFound):
@@ -259,7 +269,7 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 		return h.WriteInternalErrorR(writer, req.Request, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: checkResp})
+	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: checkResps})
 }
 
 // DismissHost handles DELETE /orgs/:org/discovery/hosts/:uid.

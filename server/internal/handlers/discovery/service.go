@@ -47,13 +47,19 @@ type ListHostsOptions struct {
 	Offset   int
 }
 
-// PromoteRequest is the request body for promoting a discovered host to a check.
-type PromoteRequest struct {
+// PromoteCheckSpec describes a single check to create when promoting a host.
+type PromoteCheckSpec struct {
 	CheckType   string         `json:"checkType"`
 	Name        string         `json:"name,omitempty"`
 	Slug        string         `json:"slug,omitempty"`
 	Period      *string        `json:"period,omitempty"`
 	ExtraConfig map[string]any `json:"extraConfig,omitempty"`
+}
+
+// PromoteRequest is the request body for promoting a discovered host into one
+// or more checks in a single call.
+type PromoteRequest struct {
+	Checks []PromoteCheckSpec `json:"checks"`
 }
 
 // Service provides business logic for network discovery operations.
@@ -321,11 +327,13 @@ func (s *Service) GetHost(ctx context.Context, orgUID, hostUID string) (*models.
 	return &host, nil
 }
 
-// PromoteHost creates a Check from the discovered host and marks the host as promoted.
-// The whole operation runs in a transaction.
+// PromoteHost creates one or more Checks from the discovered host and marks the
+// host as promoted (pointing promoted_to_check_uid at the first created check).
+// Check creation is fail-fast: if a later CreateCheck errors, earlier checks
+// persist and the error is returned (full transactional rollback is a follow-up).
 func (s *Service) PromoteHost(
 	ctx context.Context, orgUID, orgSlug, hostUID string, req PromoteRequest,
-) (*checks.CheckResponse, error) {
+) ([]checks.CheckResponse, error) {
 	host, err := s.GetHost(ctx, orgUID, hostUID)
 	if err != nil {
 		return nil, err
@@ -335,56 +343,59 @@ func (s *Service) PromoteHost(
 		return nil, ErrAlreadyPromoted
 	}
 
-	// Build the check config from the host's suggested first check, then merge ExtraConfig.
-	checkConfig, err := buildCheckConfig(host, req)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add discovery labels.
+	// Add discovery labels — shared across every created check.
 	labels := map[string]string{
 		"auto-discovery": "true",
 		"discovery-job":  host.JobUID,
 	}
 
-	createReq := checks.CreateCheckRequest{
-		Type:   req.CheckType,
-		Name:   req.Name,
-		Slug:   req.Slug,
-		Period: req.Period,
-		Config: checkConfig,
-		Labels: labels,
+	created := make([]checks.CheckResponse, 0, len(req.Checks))
+
+	for _, spec := range req.Checks {
+		// Build the check config from the host's matching suggested check, then merge ExtraConfig.
+		checkConfig, cfgErr := buildCheckConfig(host, spec)
+		if cfgErr != nil {
+			return nil, cfgErr
+		}
+
+		createReq := checks.CreateCheckRequest{
+			Type:   spec.CheckType,
+			Name:   spec.Name,
+			Slug:   spec.Slug,
+			Period: spec.Period,
+			Config: checkConfig,
+			Labels: labels,
+		}
+
+		if createReq.Name == "" {
+			createReq.Name = host.IP
+		}
+
+		checkResp, createErr := s.checksSvc.CreateCheck(ctx, orgSlug, createReq)
+		if createErr != nil {
+			return nil, fmt.Errorf("create check: %w", createErr)
+		}
+
+		created = append(created, checkResp)
 	}
 
-	if createReq.Name == "" {
-		createReq.Name = host.IP
-	}
-
-	checkResp, err := s.checksSvc.CreateCheck(ctx, orgSlug, createReq)
-	if err != nil {
-		return nil, fmt.Errorf("create check: %w", err)
-	}
-
-	// Mark host as promoted.
-	checkUID := checkResp.UID
-	now := time.Now()
+	// Mark host as promoted, pointing at the first created check.
+	firstUID := created[0].UID
 	_, dbErr := s.db.NewUpdate().
 		TableExpr("discovered_hosts").
-		Set("promoted_to_check_uid = ?", checkUID).
+		Set("promoted_to_check_uid = ?", firstUID).
 		Where("uid = ?", hostUID).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Exec(ctx)
 
 	if dbErr != nil {
-		slog.ErrorContext(ctx, "failed to mark host as promoted (check was created)",
-			"host_uid", hostUID, "check_uid", checkUID, "error", dbErr)
-		// Not fatal — the check was created. Just log.
+		slog.ErrorContext(ctx, "failed to mark host as promoted (checks were created)",
+			"host_uid", hostUID, "check_uid", firstUID, "error", dbErr)
+		// Not fatal — the checks were created. Just log.
 	}
 
-	_ = now
-
-	return &checkResp, nil
+	return created, nil
 }
 
 // SoftDeleteHost soft-deletes a discovered host.
@@ -415,7 +426,7 @@ func (s *Service) SoftDeleteHost(ctx context.Context, orgUID, hostUID string) er
 }
 
 // buildCheckConfig constructs the check config merging suggested config with override.
-func buildCheckConfig(host *models.DiscoveredHost, req PromoteRequest) (map[string]any, error) {
+func buildCheckConfig(host *models.DiscoveredHost, spec PromoteCheckSpec) (map[string]any, error) {
 	config := make(map[string]any)
 
 	// Try to find a matching suggested check for the requested type.
@@ -427,10 +438,11 @@ func buildCheckConfig(host *models.DiscoveredHost, req PromoteRequest) (map[stri
 	}
 
 	for _, s := range suggestions {
-		if s.Type == req.CheckType {
+		if s.Type == spec.CheckType {
 			for k, v := range s.Config {
 				config[k] = v
 			}
+
 			break
 		}
 	}
@@ -441,7 +453,7 @@ func buildCheckConfig(host *models.DiscoveredHost, req PromoteRequest) (map[stri
 	}
 
 	// Merge ExtraConfig overrides.
-	for k, v := range req.ExtraConfig {
+	for k, v := range spec.ExtraConfig {
 		config[k] = v
 	}
 
