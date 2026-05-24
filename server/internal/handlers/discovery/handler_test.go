@@ -18,8 +18,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 )
 
-// newHandler builds an HTTP handler + router wired to the fixture's service.
-func (f *discoveryFixture) newHandler(t *testing.T) (*discovery.Handler, *bunrouter.Router) {
+// newRouter builds an HTTP router wired to the fixture's discovery handler.
+func (f *discoveryFixture) newRouter(t *testing.T) *bunrouter.Router {
 	t.Helper()
 
 	handler := discovery.NewHandler(f.svc, &config.Config{})
@@ -28,7 +28,7 @@ func (f *discoveryFixture) newHandler(t *testing.T) (*discovery.Handler, *bunrou
 	group := router.NewGroup("/api/v1/orgs/:org/discovery")
 	handler.RegisterRoutes(group)
 
-	return handler, router
+	return router
 }
 
 // doPromote issues a POST .../hosts/:uid/promote with admin claims + org context.
@@ -68,7 +68,7 @@ func TestHandlerPromoteMultiCheck(t *testing.T) {
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
-	_, router := f.newHandler(t)
+	router := f.newRouter(t)
 
 	hostUID := f.insertPromotableHost(t, "10.0.0.1", []disc.SuggestedCheck{
 		{Type: "http", Config: map[string]any{"url": "http://10.0.0.1"}},
@@ -95,7 +95,7 @@ func TestHandlerPromoteEmptyChecks(t *testing.T) {
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
-	_, router := f.newHandler(t)
+	router := f.newRouter(t)
 
 	hostUID := f.insertPromotableHost(t, "10.0.0.2", nil)
 
@@ -108,7 +108,7 @@ func TestHandlerPromoteMissingCheckType(t *testing.T) {
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
-	_, router := f.newHandler(t)
+	router := f.newRouter(t)
 
 	hostUID := f.insertPromotableHost(t, "10.0.0.3", nil)
 
@@ -123,7 +123,7 @@ func TestHandlerPromoteAlreadyPromoted(t *testing.T) {
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
-	_, router := f.newHandler(t)
+	router := f.newRouter(t)
 
 	hostUID := f.insertPromotableHost(t, "10.0.0.4", []disc.SuggestedCheck{
 		{Type: "tcp", Config: map[string]any{"host": "10.0.0.4", "port": 22}},
@@ -145,7 +145,7 @@ func TestHandlerPromoteHostNotFound(t *testing.T) {
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
-	_, router := f.newHandler(t)
+	router := f.newRouter(t)
 
 	rec := f.doPromote(t, router, "00000000-0000-0000-0000-000000000000", discovery.PromoteRequest{
 		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "ghost-check"}},

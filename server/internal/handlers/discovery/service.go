@@ -351,7 +351,8 @@ func (s *Service) PromoteHost(
 
 	created := make([]checks.CheckResponse, 0, len(req.Checks))
 
-	for _, spec := range req.Checks {
+	for i := range req.Checks {
+		spec := req.Checks[i]
 		// Build the check config from the host's matching suggested check, then merge ExtraConfig.
 		checkConfig, cfgErr := buildCheckConfig(host, spec)
 		if cfgErr != nil {

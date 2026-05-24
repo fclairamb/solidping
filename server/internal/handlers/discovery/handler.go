@@ -244,8 +244,8 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 		)
 	}
 
-	for _, spec := range promoteReq.Checks {
-		if spec.CheckType == "" {
+	for i := range promoteReq.Checks {
+		if promoteReq.Checks[i].CheckType == "" {
 			return h.WriteError(
 				writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "checkType is required",
 			)
