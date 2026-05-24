@@ -136,7 +136,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeChannelNotFound, "Connection not found")
 	case errors.Is(err, ErrInvalidConnectionType):
 		return h.WriteValidationError(writer, "Invalid connection type", []base.ValidationErrorField{
-			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email"},
+			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox"},
 		})
 	default:
 		return h.WriteInternalError(writer, err)

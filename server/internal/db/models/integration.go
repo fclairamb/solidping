@@ -22,6 +22,7 @@ const (
 	ConnectionTypeNtfy       ConnectionType = "ntfy"
 	ConnectionTypeOpsgenie   ConnectionType = "opsgenie"
 	ConnectionTypePushover   ConnectionType = "pushover"
+	ConnectionTypeFreebox    ConnectionType = "freebox"
 )
 
 // Channel represents a notification target — a Slack channel, Discord
@@ -171,4 +172,64 @@ func DiscordSettingsFromJSONMap(m JSONMap) (*DiscordSettings, error) {
 	}
 
 	return &ds, nil
+}
+
+// Freebox pairing status values that live in FreeboxSettings.Status. They are
+// declared here (rather than in the integrations/freebox package) so model
+// callers — channel forms, list responses, audit logs — can branch on them
+// without importing the higher-level integration package.
+const (
+	FreeboxStatusPairing = "pairing"
+	FreeboxStatusGranted = "granted"
+	FreeboxStatusDenied  = "denied"
+	FreeboxStatusTimeout = "timeout"
+)
+
+// FreeboxSettings represents the public (queryable) side of a Freebox
+// integration connection's Settings JSONB. The matching secret — the
+// permanent app_token granted by the Freebox after LCD approval — lives
+// encrypted in SettingsPrivate under the "appToken" key.
+type FreeboxSettings struct {
+	BaseURL    string `json:"baseUrl"`              // e.g. "http://mafreebox.freebox.fr"
+	AppID      string `json:"appId"`                // "io.solidping"
+	DeviceName string `json:"deviceName,omitempty"` // user-visible label on the Freebox admin
+	TrackID    int    `json:"trackId,omitempty"`    // only set while pairing; cleared on grant
+	Status     string `json:"status,omitempty"`     // pairing | granted | denied | timeout
+}
+
+// ToJSONMap converts FreeboxSettings to JSONMap for storage.
+func (fs *FreeboxSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(fs)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// FreeboxSettingsFromJSONMap parses FreeboxSettings from a JSONMap.
+func FreeboxSettingsFromJSONMap(m JSONMap) (*FreeboxSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var fs FreeboxSettings
+	if err := json.Unmarshal(data, &fs); err != nil {
+		return nil, err
+	}
+
+	return &fs, nil
+}
+
+// FreeboxPrivateSettings carries the encrypted secret half of a Freebox
+// connection. The app_token is permanent across Freebox reboots; we only
+// ever store it once, on a successful pairing grant.
+type FreeboxPrivateSettings struct {
+	AppToken string `json:"appToken"`
 }
