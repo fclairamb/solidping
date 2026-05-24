@@ -2603,7 +2603,8 @@ export type ConnectionType =
   | "mattermost"
   | "ntfy"
   | "opsgenie"
-  | "pushover";
+  | "pushover"
+  | "freebox";
 
 export interface Channel {
   uid: string;
@@ -2692,6 +2693,63 @@ export function useDeleteChannel(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["channels", org] });
     },
+  });
+}
+
+// Freebox pairing helpers. The Freebox API requires a one-time
+// LCD-approval step, so the pairing flow is split across two endpoints
+// rather than mapped onto the generic CRUD: POST asks the Freebox for
+// an app_token (which we encrypt and store immediately), GET polls the
+// LCD-approval status every ~2 s until it terminates.
+
+export interface StartFreeboxPairingRequest {
+  name?: string;
+  baseUrl?: string;
+}
+
+export interface FreeboxPairingResponse {
+  connectionUid: string;
+  trackId: number;
+  status: string;
+}
+
+export interface FreeboxPairingStatusResponse {
+  status: string;
+}
+
+export function useStartFreeboxPairing(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: StartFreeboxPairingRequest) =>
+      apiFetch<FreeboxPairingResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+    },
+  });
+}
+
+// useFreeboxPairingStatus polls the status endpoint while `enabled`
+// is true. The dashboard switches `enabled` off once the status
+// becomes terminal (granted/denied/timeout).
+export function useFreeboxPairingStatus(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxPairingStatus", org, connectionUid],
+    queryFn: () =>
+      apiFetch<FreeboxPairingStatusResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair/${connectionUid}/status`,
+      ),
+    enabled: enabled && !!org && !!connectionUid,
+    refetchInterval: 2000,
   });
 }
 
