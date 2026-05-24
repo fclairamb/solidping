@@ -18,7 +18,9 @@ import (
 // after a connection error / clean disconnect. Slack's Socket Mode endpoint
 // itself reconnects automatically inside slack-go's Run loop; this backoff
 // only applies when Run() returns an error.
-const reconnectBackoff = 5 * time.Second
+//
+//nolint:gochecknoglobals // overridden by tests to keep the reconnect loop fast.
+var reconnectBackoff = 5 * time.Second
 
 // SocketStatus is the snapshot returned by the operator status endpoint.
 // Notably it never contains the App-Level Token — the token must never
