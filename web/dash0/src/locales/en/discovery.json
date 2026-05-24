@@ -64,5 +64,8 @@
   "selectFreeboxChannel": "Select Freebox channel",
   "noFreeboxChannels": "No paired Freebox channels",
   "freeboxScanStarted": "Freebox discovery started",
-  "freeboxScanFailed": "Failed to start Freebox discovery"
+  "freeboxScanFailed": "Failed to start Freebox discovery",
+  "selectChecks": "Checks to create",
+  "createChecks": "Create checks",
+  "noSuggestedChecks": "No suggested checks — pick a type"
 }
