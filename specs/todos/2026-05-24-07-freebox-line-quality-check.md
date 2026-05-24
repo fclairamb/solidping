@@ -373,3 +373,85 @@ curl -s -X POST \
 
 To verify threshold triggering: temporarily set `minSyncRateDownKbps` to a value above your
 current sync rate and confirm the check enters `warning` state.
+
+## Implementation Plan
+
+The existing checker architecture is stateless: `Execute(ctx, config)` only sees a
+`checkerdef.Config`, with no DB or services access. The spec's pseudocode shows a
+`resolveConnection(ctx, jctx, …)` call but there is no `jctx`. We follow the pattern
+already established by `checkjs.ResolveChecker`: expose a package-level
+`ConnectionResolver` function variable, set from the API server's startup wiring with a
+closure that owns the DB + `credentials.Service`. The checker calls it during `Execute`
+to look up the referenced Freebox connection and pull the decrypted `app_token`.
+
+Status mapping note: the spec mentions `warning` status, but the existing `Status` enum
+is `Up / Down / Timeout / Error / Running` only — there is no `Warning`. We map "warning"
+(threshold crossed but link technically up) to `Down` with a clear `Output.error` message
+explaining which threshold was crossed, matching how the SNMP checker handles its
+threshold-driven outcomes. The check result's structured `Output` map carries `state`,
+`type`, and all readings so the UI can render the line-quality context without depending
+on the binary up/down for nuance.
+
+Solidping uses no `warning` status state internally, but the spec lists one. The cleanest
+v1 mapping: `up` (all clear), `down` (WAN down / FTTH signal lost / xDSL not at showtime),
+and `down` with a `degraded: true` marker in Output for threshold breaches. We mark the
+status as `Down` so on-call alerts fire on degradations too — the user can lower
+thresholds if false positives are noisy.
+
+### Steps
+
+1. **Add `CheckTypeFreeboxLine` constant.** Edit `server/internal/checkers/checkerdef/types.go`
+   to add the new check type constant, register it in `checkTypesRegistry` (labels:
+   `safe`, `standalone`, `category:infrastructure`), and include it in `ListCheckTypes`.
+
+2. **Implement the checker package.** Create `server/internal/checkers/checkfreeboxline/`
+   with `config.go`, `checker.go`, `samples.go`, and `secret_fields.go`:
+   - `FreeboxLineConfig` struct + `FromMap`, `GetConfig`, `Validate` mirroring other
+     checkers. Fields per spec.
+   - `SecretFields()` returns `[]string{}` (connection-side, no secrets in the check itself).
+   - `FreeboxLineChecker` implementing `checkerdef.Checker`. `Execute` calls the
+     package-level `ConnectionResolver`, builds a freebox client, hits
+     `/api/v4/connection/`, branches to xDSL or FTTH, evaluates thresholds, returns a
+     `Result` with structured `Output` and `Metrics`.
+   - Define `ConnectionResolver func(ctx, connectionUID string) (baseURL, appID, appToken string, err error)`
+     as the indirection that the API package wires up at startup.
+   - A `GetSampleConfigs` returning a single placeholder sample for the registry.
+
+3. **Register in the registry.** Edit `server/internal/checkers/registry/registry.go`
+   to add `CheckTypeFreeboxLine` cases in both `GetChecker` and `ParseConfig`.
+
+4. **Wire the connection resolver.** In `server/internal/app/server.go`, add a single
+   assignment to `checkfreeboxline.ConnectionResolver` that closes over `s.dbService` +
+   `s.services.Credentials`. The resolver fetches the connection, asserts type ==
+   `freebox`, decrypts `settings_private`, and returns the merged base URL + app token.
+
+5. **Backend tests.** `checkfreeboxline/checker_test.go` and `config_test.go`:
+   - `TestValidateConfig`: missing `connectionUid`, invalid `linkType`, negative
+     thresholds — all surface validation errors.
+   - `TestXDSLUp`, `TestXDSLDegradedLowSnr`, `TestXDSLDownNotShowtime` —
+     `httptest.NewServer` mocks the Freebox API, the resolver returns a stub
+     `baseURL+appToken`; an end-to-end Execute returns the expected status.
+   - `TestFTTHUp`, `TestFTTHDownNoSignal`, `TestFTTHDegradedRxPower`.
+   - `TestWANDown`: when WAN state is not "up", we return `Down` without calling line-stat
+     endpoints.
+   - `TestSessionRefresh`: server returns `auth_required` once then succeeds — verifies
+     the client retries through the freebox package's session refresh.
+
+6. **Frontend i18n.** Add the keys from the spec to `web/dash0/src/locales/en/checks.json`
+   and `fr/checks.json`. Mirror existing channel-based check types where applicable.
+
+7. **Frontend form.** Extend the type-specific form router with a `freebox_line` section
+   showing connection dropdown, link-type radio, and collapsible advanced thresholds.
+   Reuse design-reference primitives.
+
+8. **QA.** Run `make build-backend build-client lint-back test`; fix any failures.
+
+### Out-of-scope (deferred / dropped)
+
+- The spec hints at a `warning` status; we map degraded → `down` because the enum has no
+  `warning`. Documented in the result's `Output.degraded` field.
+- Auto-detect xDSL vs FTTH — explicitly deferred to v2 per the spec.
+- "Last reading" check-detail panel — this requires custom rendering and is intentionally
+  out of scope for the backend-centric v1; the structured Output map is enough for the
+  generic JSON viewer the dashboard already ships.
+
