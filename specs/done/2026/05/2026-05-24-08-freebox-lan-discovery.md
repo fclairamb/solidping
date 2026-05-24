@@ -195,3 +195,63 @@ curl -s -H "Authorization: Bearer $TOKEN" \
 
 Confirm the router itself does not appear in the list. Confirm a phone on the network appears with
 `reachable: true` when it is active and `false` when it is asleep.
+
+## Implementation Plan
+
+1. **Backend types**: Add `LanHost` plus the Freebox `lan/browser` response types
+   (`FreeboxLanHost`, `FreeboxLanL3Conn`, `FreeboxLanName`) to
+   `server/internal/integrations/freebox/types.go`. Keep `tagliatelle` exemptions like
+   the rest of the file — JSON tags mirror the Freebox API exactly.
+
+2. **Backend service helper**: Add `ListLanHosts(ctx, client) ([]LanHost, error)` to
+   `server/internal/integrations/freebox/service.go`. It calls `GET /api/v4/lan/browser/pub/`,
+   maps the raw hosts to the simplified `LanHost` shape, applies the spec filter rules
+   (no router, must have at least one active IPv4, prefer most-recent IPv4 address),
+   and sorts (reachable first, then by name).
+
+3. **Backend handler**: Create
+   `server/internal/handlers/channels/freebox_lan.go` with a `LanHostsHandler` method that
+   resolves the org + Freebox channel, builds a `freebox.Client` from the decrypted
+   app_token (mirroring `newFreeboxConnectionResolver`'s split-private/plaintext logic),
+   calls `freebox.ListLanHosts`, and returns `{ "data": [...] }`. Surface a 404 when the
+   channel is missing, 400 when it is not a Freebox channel, and 409 when the channel
+   has no app_token yet (still in pairing).
+
+4. **Route wiring**: Register `GET /api/v1/orgs/:org/integrations/freebox/:uid/lan-hosts`
+   on `orgFreebox` in `server/internal/app/server.go`. Wire a small client-factory option
+   onto the channels service so tests can swap in a fake Freebox HTTP server — keeping
+   `channels.Service` itself free of net/http details.
+
+5. **Backend tests**:
+   - `server/internal/integrations/freebox/lan_test.go` for the LAN-host parsing,
+     filtering and sort rules (table-driven, no HTTP).
+   - `server/internal/handlers/channels/freebox_lan_test.go` for the handler with a fake
+     Freebox `/api/v4/login/...` + `/api/v4/lan/browser/pub/` server.
+
+6. **Frontend API hook**: Add `useFreeboxLanHosts(org, connectionUid, enabled)` (and
+   `LanHost`/`ListLanHostsResponse` types) to `web/dash0/src/api/hooks.ts`.
+
+7. **Frontend "Discover from Freebox" picker**: Extend the ICMP branch in
+   `web/dash0/src/components/shared/check-form.tsx` with a "Discover from Freebox"
+   secondary button (visible only when the org has at least one `granted` Freebox
+   channel). Clicking it opens a `Dialog` containing:
+   - an optional connection selector (when more than one Freebox channel exists)
+   - a search input over name + IP
+   - a single-select list of hosts (reachable rendered with a green dot, unreachable
+     dimmed); router/unreachable hosts may still be shown but only reachable can be
+     picked? — spec says single-select pre-fills, no special blocking, so show all but
+     keep reachable highlighted.
+   - "Cancel" + "Create check" footer.
+   Selecting a host pre-fills `name` (from `primary_name`) and `host` (from `ip`) on the
+   form. No backend writes happen until the user submits the normal form.
+
+8. **i18n**: Add the `freebox.discover*` and `freebox.hostType.*` keys to
+   `web/dash0/src/locales/en/checks.json` and `fr/checks.json`.
+
+9. **Playwright**: extend `web/dash0/e2e/` with a check-form discovery test that mocks
+   the `/api/v1/orgs/.../lan-hosts` endpoint and asserts that picking a host pre-fills
+   the ICMP form. Use the existing route-mock pattern from the freebox-line tests if
+   present; otherwise fall back to a unit-test of the picker component.
+
+10. **QA**: `make build-backend build-client lint-back test` until clean. Skip the
+    pre-existing main failures noted in the spec preamble.

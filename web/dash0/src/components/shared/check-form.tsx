@@ -41,6 +41,8 @@ import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { CheckPicker } from "@/components/shared/check-picker";
+import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
+import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
 type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
@@ -409,6 +411,10 @@ export function CheckForm({
     getConfigField(initialData?.config, "maxRxPowerMw"),
   );
   const [freeboxThresholdsOpen, setFreeboxThresholdsOpen] = useState(false);
+  // ICMP "Discover from Freebox" picker — opens a modal that lists hosts
+  // currently seen by a paired Freebox so the user can pre-fill an ICMP
+  // check without typing an IP.
+  const [discoverOpen, setDiscoverOpen] = useState(false);
   const [thresholdDays, setThresholdDays] = useState(
     getConfigField(initialData?.config, "thresholdDays") ||
       getConfigField(initialData?.config, "threshold_days"),
@@ -1210,15 +1216,48 @@ export function CheckForm({
             </div>
           </>
         );
-      case "icmp":
+      case "icmp": {
+        const freeboxChannels = (connections ?? []).filter(
+          (c) =>
+            c.type === "freebox" &&
+            (c.settings?.status as string | undefined) === "granted",
+        );
         return (
           <div className="space-y-2">
-            <Label htmlFor="host">Host</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="host">Host</Label>
+              {freeboxChannels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDiscoverOpen(true)}
+                  data-testid="check-freebox-discover-button"
+                >
+                  {t("freebox.discover")}
+                </Button>
+              )}
+            </div>
             <Input id="host" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
               className={cn(getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
             {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+            {freeboxChannels.length > 0 && (
+              <FreeboxLanDiscovery
+                org={org}
+                open={discoverOpen}
+                onOpenChange={setDiscoverOpen}
+                channels={freeboxChannels}
+                onSelect={(picked: FreeboxLanHost) => {
+                  setHost(picked.ip);
+                  if (!name) {
+                    setName(picked.name);
+                  }
+                }}
+              />
+            )}
           </div>
         );
+      }
       case "dns":
       case "domain":
         return (

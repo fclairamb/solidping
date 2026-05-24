@@ -103,3 +103,68 @@ type APIResponse struct {
 	// shapes here.
 	Result json.RawMessage `json:"result,omitempty"`
 }
+
+// RawLanHost mirrors the raw payload returned by the Freebox's
+// `GET /api/v4/lan/browser/{interface}/` endpoint. We only decode the
+// fields we actually use to keep the parser robust to future schema
+// additions. Field names match the Freebox API verbatim (snake_case) —
+// the dashboard never sees this shape, it consumes LanHost via the
+// channels handler.
+//
+//nolint:tagliatelle // JSON tags must match Freebox API field names
+type RawLanHost struct {
+	ID                string         `json:"id"`
+	PrimaryName       string         `json:"primary_name"`
+	HostType          string         `json:"host_type"`
+	Active            bool           `json:"active"`
+	Reachable         bool           `json:"reachable"`
+	LastTimeReachable int64          `json:"last_time_reachable"`
+	L3Connectivities  []RawLanL3Conn `json:"l3connectivities"`
+	Names             []RawLanName   `json:"names"`
+}
+
+// RawLanL3Conn is one network-layer endpoint exposed by a host. A
+// single host can have many — IPv4 + IPv6, wired + Wi-Fi, etc.
+//
+//nolint:tagliatelle // JSON tags must match Freebox API field names
+type RawLanL3Conn struct {
+	Addr         string `json:"addr"`
+	Af           string `json:"af"`
+	Active       bool   `json:"active"`
+	Reachable    bool   `json:"reachable"`
+	LastActivity int64  `json:"last_activity"`
+}
+
+// RawLanName is one of the names known for a host (DHCP hostname,
+// mDNS service, NetBIOS, etc.). We currently only surface the
+// primary_name to the dashboard; this is here so future tweaks (e.g.
+// preferring mDNS over DHCP) don't need a fresh round of parser work.
+type RawLanName struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+// LAN address-family + host-type constants. Exported so callers can use
+// them in switches and tests without literal strings.
+const (
+	LanAfIPv4 = "ipv4"
+	LanAfIPv6 = "ipv6"
+
+	LanHostTypeRouter = "router"
+)
+
+// LanHost is the simplified host shape the channels handler returns to
+// the dashboard. It is intentionally minimal: name + IP for the picker
+// to pre-fill an ICMP check, host_type + reachability for UX flair.
+//
+// The `LastSeen` field is a derived RFC3339 timestamp built from the
+// most-recent activity across the host's connectivities — handy for
+// "device seen 2 minutes ago" tooltips on the frontend.
+type LanHost struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	IP        string `json:"ip"`
+	HostType  string `json:"hostType"`
+	Reachable bool   `json:"reachable"`
+	LastSeen  string `json:"lastSeen,omitempty"`
+}

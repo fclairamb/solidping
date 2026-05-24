@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -110,4 +112,165 @@ func ValidateConnection(
 	}
 
 	return nil
+}
+
+// lanBrowserPath is the path of the LAN browser endpoint. The "pub"
+// interface is the main wired/Wi-Fi LAN — there are also "guest" and
+// per-VLAN interfaces, but we only surface the main one in V1.
+const lanBrowserPath = apiV4Prefix + "/lan/browser/pub/"
+
+// ListLanHosts queries the Freebox LAN browser and returns a simplified,
+// filtered list of hosts suitable for the dashboard's "Discover from
+// Freebox" picker.
+//
+// Filter rules (mirror the spec):
+//
+//   - hosts with no active IPv4 connectivity are dropped (we can't ping
+//     them anyway, and a check would be useless);
+//   - hosts of type "router" are dropped — that's the Freebox itself,
+//     and a Freebox→Freebox ICMP check is pointless;
+//   - the most-recently-active IPv4 address is preferred when a host
+//     exposes several;
+//   - results are sorted reachable-first, then by name (case-insensitive
+//     stable order, so the dashboard's display stays predictable
+//     between polls).
+//
+// The client argument lets callers swap in a custom HTTP base (used by
+// the channels handler, which constructs a per-channel client from the
+// decrypted app_token).
+func ListLanHosts(ctx context.Context, client *Client) ([]LanHost, error) {
+	if client == nil {
+		return nil, fmt.Errorf("%w: nil client", ErrNilSettings)
+	}
+
+	var raw []RawLanHost
+	if err := client.Get(ctx, lanBrowserPath, &raw); err != nil {
+		return nil, fmt.Errorf("freebox: list lan hosts: %w", err)
+	}
+
+	hosts := make([]LanHost, 0, len(raw))
+
+	for i := range raw {
+		host, ok := simplifyLanHost(&raw[i])
+		if !ok {
+			continue
+		}
+
+		hosts = append(hosts, host)
+	}
+
+	sortLanHosts(hosts)
+
+	return hosts, nil
+}
+
+// simplifyLanHost converts one Freebox LAN-host record to the
+// dashboard-facing LanHost shape. Returns (_, false) when the host
+// must be filtered out (router, no active IPv4, …).
+func simplifyLanHost(raw *RawLanHost) (LanHost, bool) {
+	if raw.HostType == LanHostTypeRouter {
+		return LanHost{}, false
+	}
+
+	addr, lastActivity, ok := pickBestIPv4(raw.L3Connectivities)
+	if !ok {
+		return LanHost{}, false
+	}
+
+	name := raw.PrimaryName
+	if name == "" {
+		// Fall back to the first named entry — better than an empty
+		// label in the picker.
+		for i := range raw.Names {
+			if raw.Names[i].Name != "" {
+				name = raw.Names[i].Name
+
+				break
+			}
+		}
+	}
+
+	// Pick the latest "seen" timestamp: prefer the host's own
+	// last_time_reachable when set, fall back to the chosen IPv4's
+	// last_activity. Both are unix-seconds from the Freebox.
+	lastSeen := raw.LastTimeReachable
+	if lastActivity > lastSeen {
+		lastSeen = lastActivity
+	}
+
+	var lastSeenStr string
+	if lastSeen > 0 {
+		lastSeenStr = time.Unix(lastSeen, 0).UTC().Format(time.RFC3339)
+	}
+
+	return LanHost{
+		ID:        raw.ID,
+		Name:      name,
+		IP:        addr,
+		HostType:  raw.HostType,
+		Reachable: raw.Reachable,
+		LastSeen:  lastSeenStr,
+	}, true
+}
+
+// pickBestIPv4 returns the most-recently-active IPv4 address from a
+// host's connectivity list, plus its last_activity timestamp. Inactive
+// IPv4 entries are skipped: an active=false entry typically corresponds
+// to a stale DHCP lease the Freebox is still tracking.
+func pickBestIPv4(conns []RawLanL3Conn) (string, int64, bool) {
+	var (
+		bestAddr  string
+		bestStamp int64
+		found     bool
+	)
+
+	for i := range conns {
+		conn := &conns[i]
+		if conn.Af != LanAfIPv4 || !conn.Active || conn.Addr == "" {
+			continue
+		}
+
+		if !found || conn.LastActivity > bestStamp {
+			bestAddr = conn.Addr
+			bestStamp = conn.LastActivity
+			found = true
+		}
+	}
+
+	return bestAddr, bestStamp, found
+}
+
+// sortLanHosts sorts hosts in place: reachable first, then by name
+// (case-insensitive), then by ID as a final tiebreaker so the order is
+// stable across polls of the same Freebox.
+func sortLanHosts(hosts []LanHost) {
+	sort.SliceStable(hosts, func(i, j int) bool {
+		if hosts[i].Reachable != hosts[j].Reachable {
+			return hosts[i].Reachable
+		}
+
+		ni, nj := lowerName(hosts[i].Name), lowerName(hosts[j].Name)
+		if ni != nj {
+			return ni < nj
+		}
+
+		return hosts[i].ID < hosts[j].ID
+	})
+}
+
+// lowerName lowercases a name for case-insensitive sorting without
+// pulling in the unicode/strings cost on every comparison. ASCII-only
+// is enough — Freebox hostnames are DNS-bound.
+func lowerName(s string) string {
+	buf := make([]byte, len(s))
+	for i := range len(s) {
+		c := s[i]
+		if c >= 'A' && c <= 'Z' {
+			c += 'a' - 'A'
+		}
+
+		buf[i] = c
+	}
+
+	return string(buf)
 }
