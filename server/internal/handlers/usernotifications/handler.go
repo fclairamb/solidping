@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/uptrace/bunrouter"
@@ -16,7 +15,7 @@ import (
 
 // EmailSender is the minimal interface needed to send a test email.
 type EmailSender interface {
-	SendTestEmail(ctx context.Context, to string) error
+	SendTestEmail(ctx context.Context, recipient string) error
 }
 
 // SlackDMSender is the minimal interface needed to send a Slack DM test.
@@ -161,7 +160,8 @@ func (h *Handler) TestRoute(writer http.ResponseWriter, req bunrouter.Request) e
 	err := h.svc.SendTestNotification(req.Context(), req.Param("org"), user, routeUID, h.emailSender, h.slackSender)
 	if err != nil {
 		// 422 for "provider not configured" style errors.
-		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, fmt.Sprintf("test failed: %s", err.Error()))
+		errMsg := "test failed: " + err.Error()
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, errMsg)
 	}
 
 	writer.WriteHeader(http.StatusNoContent)

@@ -10,6 +10,7 @@
   "statusPages": "Statusseiten",
   "statusUpdates": "Statusaktualisierungen",
   "badges": "Abzeichen",
+  "discovery": "Entdeckung",
   "myPages": "Meine Benachrichtigungen",
   "testTools": "Testwerkzeuge",
   "designReference": "Design-Referenz",
@@ -114,10 +115,13 @@
   "command": {
     "searchPlaceholder": "Seiten und Prüfungen durchsuchen...",
     "noResults": "Keine Ergebnisse gefunden.",
+    "groupActions": "Aktionen",
     "groupPages": "Seiten",
     "groupAccount": "Konto",
     "groupOrganization": "Organisation",
-    "groupChecks": "Prüfungen"
+    "groupChecks": "Prüfungen",
+    "newCheck": "Neue Prüfung",
+    "newCheckDescription": "Eine neue Monitoring-Prüfung erstellen"
   },
   "security": "Sicherheit"
 }

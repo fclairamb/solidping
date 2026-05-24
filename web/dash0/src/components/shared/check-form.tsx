@@ -1,6 +1,6 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search } from "lucide-react";
+import { ArrowLeft, Loader2, ChevronsUpDown, Check, Search, Plus, Trash2 } from "lucide-react";
 import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
@@ -41,9 +41,11 @@ import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { CheckPicker } from "@/components/shared/check-picker";
+import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
+import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -87,6 +89,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "snmp", label: "SNMP", description: "Monitor devices via SNMP" },
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
+  { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -381,6 +384,37 @@ export function CheckForm({
   const [wsExpect, setWsExpect] = useState(getConfigField(initialData?.config, "expect"));
   const [expectedValue, setExpectedValue] = useState(getConfigField(initialData?.config, "expectedValue"));
   const [snmpOperator, setSnmpOperator] = useState(getConfigField(initialData?.config, "operator") || "equals");
+  // freebox_line state — connectionUid + linkType + per-link-type thresholds.
+  // Threshold fields are kept as strings to allow empty inputs (treated as "skip").
+  const [freeboxConnectionUid, setFreeboxConnectionUid] = useState(
+    getConfigField(initialData?.config, "connectionUid"),
+  );
+  const [freeboxLinkType, setFreeboxLinkType] = useState(
+    getConfigField(initialData?.config, "linkType") || "xdsl",
+  );
+  const [freeboxMinSyncRate, setFreeboxMinSyncRate] = useState(
+    getConfigField(initialData?.config, "minSyncRateDownKbps"),
+  );
+  const [freeboxMinSnrDb, setFreeboxMinSnrDb] = useState(
+    getConfigField(initialData?.config, "minSnrMarginDownDb"),
+  );
+  const [freeboxMaxAttnDb, setFreeboxMaxAttnDb] = useState(
+    getConfigField(initialData?.config, "maxAttenuationDb"),
+  );
+  const [freeboxMaxCrcErrors, setFreeboxMaxCrcErrors] = useState(
+    getConfigField(initialData?.config, "maxCrcErrorsPerRun"),
+  );
+  const [freeboxMinRxMw, setFreeboxMinRxMw] = useState(
+    getConfigField(initialData?.config, "minRxPowerMw"),
+  );
+  const [freeboxMaxRxMw, setFreeboxMaxRxMw] = useState(
+    getConfigField(initialData?.config, "maxRxPowerMw"),
+  );
+  const [freeboxThresholdsOpen, setFreeboxThresholdsOpen] = useState(false);
+  // ICMP "Discover from Freebox" picker — opens a modal that lists hosts
+  // currently seen by a paired Freebox so the user can pre-fill an ICMP
+  // check without typing an IP.
+  const [discoverOpen, setDiscoverOpen] = useState(false);
   const [thresholdDays, setThresholdDays] = useState(
     getConfigField(initialData?.config, "thresholdDays") ||
       getConfigField(initialData?.config, "threshold_days"),
@@ -389,6 +423,14 @@ export function CheckForm({
     getConfigField(initialData?.config, "serverName") ||
       getConfigField(initialData?.config, "server_name"),
   );
+  // secretHeaders: array of {key, value} rows for the HTTP secret headers form section
+  const [secretHeaders, setSecretHeaders] = useState<{ key: string; value: string }[]>(() => {
+    const raw = initialData?.config?.secretHeaders;
+    if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+      return Object.entries(raw as Record<string, string>).map(([key, value]) => ({ key, value }));
+    }
+    return [];
+  });
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
   const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
@@ -496,6 +538,13 @@ export function CheckForm({
         }
         if (username) cfg.username = username;
         if (password) cfg.password = password;
+        {
+          const shMap: Record<string, string> = {};
+          for (const { key, value } of secretHeaders) {
+            if (key) shMap[key] = value;
+          }
+          if (Object.keys(shMap).length > 0) cfg.secretHeaders = shMap;
+        }
         break;
       case "websocket":
         if (url) cfg.url = url;
@@ -635,13 +684,25 @@ export function CheckForm({
         if (waitSelector) cfg.waitSelector = waitSelector;
         if (keyword) cfg.keyword = keyword;
         break;
+      case "freebox_line":
+        if (freeboxConnectionUid) cfg.connectionUid = freeboxConnectionUid;
+        if (freeboxLinkType) cfg.linkType = freeboxLinkType;
+        if (freeboxMinSyncRate) cfg.minSyncRateDownKbps = parseInt(freeboxMinSyncRate, 10);
+        if (freeboxMinSnrDb) cfg.minSnrMarginDownDb = parseInt(freeboxMinSnrDb, 10);
+        if (freeboxMaxAttnDb) cfg.maxAttenuationDb = parseInt(freeboxMaxAttnDb, 10);
+        if (freeboxMaxCrcErrors) cfg.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
+        if (freeboxMinRxMw) cfg.minRxPowerMw = parseFloat(freeboxMinRxMw);
+        if (freeboxMaxRxMw) cfg.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
+        break;
     }
     return cfg;
-  }, [type, url, host, port, domain, method, expectedStatus, username, password,
+  }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
-    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays]);
+    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays,
+    freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
+    freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -668,6 +729,14 @@ export function CheckForm({
         }
         if (username) config.username = username;
         if (password) config.password = password;
+        {
+          const shMap: Record<string, string> = {};
+          for (const { key, value } of secretHeaders) {
+            if (key) shMap[key] = value;
+          }
+          if (Object.keys(shMap).length > 0) config.secretHeaders = shMap;
+          else config.secretHeaders = {};
+        }
         break;
       case "websocket":
         if (!url) { setError("URL is required"); return; }
@@ -827,6 +896,20 @@ export function CheckForm({
         if (waitSelector) config.waitSelector = waitSelector;
         if (keyword) config.keyword = keyword;
         break;
+      case "freebox_line":
+        if (!freeboxConnectionUid) { setError("Freebox connection is required"); return; }
+        if (freeboxLinkType !== "xdsl" && freeboxLinkType !== "ftth") {
+          setError("Link type must be xdsl or ftth"); return;
+        }
+        config.connectionUid = freeboxConnectionUid;
+        config.linkType = freeboxLinkType;
+        if (freeboxMinSyncRate) config.minSyncRateDownKbps = parseInt(freeboxMinSyncRate, 10);
+        if (freeboxMinSnrDb) config.minSnrMarginDownDb = parseInt(freeboxMinSnrDb, 10);
+        if (freeboxMaxAttnDb) config.maxAttenuationDb = parseInt(freeboxMaxAttnDb, 10);
+        if (freeboxMaxCrcErrors) config.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
+        if (freeboxMinRxMw) config.minRxPowerMw = parseFloat(freeboxMinRxMw);
+        if (freeboxMaxRxMw) config.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
+        break;
       case "heartbeat":
       case "email":
         // No config fields needed - token is auto-generated by the backend
@@ -941,6 +1024,67 @@ export function CheckForm({
                 <Label htmlFor="password">Password (optional)</Label>
                 <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
               </div>
+            </div>
+            <div className="space-y-2">
+              <div>
+                <Label>{t("secretHeaders")}</Label>
+                <p className="text-xs text-muted-foreground mt-0.5">{t("secretHeadersDescription")}</p>
+              </div>
+              {initialData?.configPrivateKeys?.includes("secretHeaders") && secretHeaders.length === 0 && (
+                <p className="text-xs text-muted-foreground">
+                  <span className="font-mono tracking-widest">••••</span>
+                  {" "}
+                  <span className="italic">(encrypted — enter new values to replace)</span>
+                </p>
+              )}
+              {secretHeaders.map((row, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <Input
+                    type="text"
+                    placeholder="Header-Name"
+                    value={row.key}
+                    onChange={(e) => {
+                      const updated = [...secretHeaders];
+                      updated[idx] = { ...updated[idx], key: e.target.value };
+                      setSecretHeaders(updated);
+                    }}
+                    className="flex-1"
+                    data-testid={`secret-header-key-${idx}`}
+                  />
+                  <Input
+                    type="password"
+                    placeholder="value"
+                    value={row.value}
+                    onChange={(e) => {
+                      const updated = [...secretHeaders];
+                      updated[idx] = { ...updated[idx], value: e.target.value };
+                      setSecretHeaders(updated);
+                    }}
+                    className="flex-1"
+                    data-testid={`secret-header-value-${idx}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="text-destructive shrink-0"
+                    onClick={() => setSecretHeaders(secretHeaders.filter((_, i) => i !== idx))}
+                    data-testid={`secret-header-remove-${idx}`}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setSecretHeaders([...secretHeaders, { key: "", value: "" }])}
+                data-testid="add-secret-header-button"
+              >
+                <Plus className="h-4 w-4 mr-1" />
+                {t("addSecretHeader")}
+              </Button>
             </div>
           </>
         );
@@ -1072,15 +1216,48 @@ export function CheckForm({
             </div>
           </>
         );
-      case "icmp":
+      case "icmp": {
+        const freeboxChannels = (connections ?? []).filter(
+          (c) =>
+            c.type === "freebox" &&
+            (c.settings?.status as string | undefined) === "granted",
+        );
         return (
           <div className="space-y-2">
-            <Label htmlFor="host">Host</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="host">Host</Label>
+              {freeboxChannels.length > 0 && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setDiscoverOpen(true)}
+                  data-testid="check-freebox-discover-button"
+                >
+                  {t("freebox.discover")}
+                </Button>
+              )}
+            </div>
             <Input id="host" type="text" placeholder="example.com" value={host} onChange={(e) => setHost(e.target.value)}
               className={cn(getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
             {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+            {freeboxChannels.length > 0 && (
+              <FreeboxLanDiscovery
+                org={org}
+                open={discoverOpen}
+                onOpenChange={setDiscoverOpen}
+                channels={freeboxChannels}
+                onSelect={(picked: FreeboxLanHost) => {
+                  setHost(picked.ip);
+                  if (!name) {
+                    setName(picked.name);
+                  }
+                }}
+              />
+            )}
           </div>
         );
+      }
       case "dns":
       case "domain":
         return (
@@ -1388,6 +1565,96 @@ export function CheckForm({
             </div>
           </>
         );
+      case "freebox_line": {
+        const freeboxConnections = (connections ?? []).filter((c) => c.type === "freebox");
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="freeboxConnectionUid">{t("freeboxLine.connectionUid")}</Label>
+              {freeboxConnections.length === 0 ? (
+                <Alert>
+                  <AlertDescription>
+                    {t("freeboxLine.noConnections")}{" "}
+                    <Link to="/orgs/$org/channels" params={{ org }} className="underline">Channels</Link>
+                  </AlertDescription>
+                </Alert>
+              ) : (
+                <Select value={freeboxConnectionUid} onValueChange={setFreeboxConnectionUid}>
+                  <SelectTrigger id="freeboxConnectionUid" data-testid="check-freebox-connection-select">
+                    <SelectValue placeholder={t("freeboxLine.connectionUid")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {freeboxConnections.map((c) => (
+                      <SelectItem key={c.uid} value={c.uid}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <p className="text-xs text-muted-foreground">{t("freeboxLine.connectionUidHelp")}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="freeboxLinkType">{t("freeboxLine.linkType")}</Label>
+              <Select value={freeboxLinkType} onValueChange={setFreeboxLinkType}>
+                <SelectTrigger id="freeboxLinkType" data-testid="check-freebox-linktype-select">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="xdsl">{t("freeboxLine.linkTypeXdsl")}</SelectItem>
+                  <SelectItem value="ftth">{t("freeboxLine.linkTypeFtth")}</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <button type="button" className="text-sm underline" onClick={() => setFreeboxThresholdsOpen((v) => !v)}>
+                {freeboxThresholdsOpen ? "▼ " : "▶ "}{t("freeboxLine.advancedThresholds")}
+              </button>
+              {freeboxThresholdsOpen && (
+                <div className="space-y-2 pl-4 border-l">
+                  <p className="text-xs text-muted-foreground">{t("freeboxLine.thresholdsHelp")}</p>
+                  {freeboxLinkType === "xdsl" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinSyncRate">{t("freeboxLine.minSyncRateDownKbps")}</Label>
+                        <Input id="freeboxMinSyncRate" type="number" min="0" placeholder="0" value={freeboxMinSyncRate}
+                          onChange={(e) => setFreeboxMinSyncRate(e.target.value)} data-testid="check-freebox-minsync-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinSnr">{t("freeboxLine.minSnrMarginDownDb")}</Label>
+                        <Input id="freeboxMinSnr" type="number" min="0" placeholder="0" value={freeboxMinSnrDb}
+                          onChange={(e) => setFreeboxMinSnrDb(e.target.value)} data-testid="check-freebox-minsnr-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxAttn">{t("freeboxLine.maxAttenuationDb")}</Label>
+                        <Input id="freeboxMaxAttn" type="number" min="0" placeholder="0" value={freeboxMaxAttnDb}
+                          onChange={(e) => setFreeboxMaxAttnDb(e.target.value)} data-testid="check-freebox-maxattn-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxCrc">{t("freeboxLine.maxCrcErrorsPerRun")}</Label>
+                        <Input id="freeboxMaxCrc" type="number" min="0" placeholder="0" value={freeboxMaxCrcErrors}
+                          onChange={(e) => setFreeboxMaxCrcErrors(e.target.value)} data-testid="check-freebox-maxcrc-input" />
+                      </div>
+                    </>
+                  )}
+                  {freeboxLinkType === "ftth" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMinRxMw">{t("freeboxLine.minRxPowerMw")}</Label>
+                        <Input id="freeboxMinRxMw" type="number" min="0" step="0.001" placeholder="0" value={freeboxMinRxMw}
+                          onChange={(e) => setFreeboxMinRxMw(e.target.value)} data-testid="check-freebox-minrx-input" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label htmlFor="freeboxMaxRxMw">{t("freeboxLine.maxRxPowerMw")}</Label>
+                        <Input id="freeboxMaxRxMw" type="number" min="0" step="0.001" placeholder="0" value={freeboxMaxRxMw}
+                          onChange={(e) => setFreeboxMaxRxMw(e.target.value)} data-testid="check-freebox-maxrx-input" />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      }
       case "heartbeat":
         return (
           <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>

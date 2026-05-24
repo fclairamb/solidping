@@ -37,7 +37,7 @@ func (p *OutputPrinter) PrintScenario(name string, elapsed time.Duration, err er
 
 // JUnitTestSuites is the root XML element for JUnit output.
 type JUnitTestSuites struct {
-	XMLName  xml.Name        `xml:"testsuites"`
+	XMLName   xml.Name       `xml:"testsuites"`
 	TestSuite JUnitTestSuite `xml:"testsuite"`
 }
 
@@ -66,9 +66,9 @@ type JUnitFailure struct {
 // WriteJUnit writes JUnit XML results to path.
 func WriteJUnit(path, suiteName string, steps []stepResult, totalElapsed time.Duration) error {
 	suite := JUnitTestSuite{
-		Name:     suiteName,
-		Tests:    len(steps),
-		Time:     totalElapsed.Seconds(),
+		Name:  suiteName,
+		Tests: len(steps),
+		Time:  totalElapsed.Seconds(),
 	}
 
 	for _, s := range steps {

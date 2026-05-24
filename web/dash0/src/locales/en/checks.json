@@ -162,7 +162,52 @@
     "docker": "Docker",
     "dockerDescription": "Monitor Docker container health",
     "browser": "Browser",
-    "browserDescription": "Monitor pages with headless Chrome"
+    "browserDescription": "Monitor pages with headless Chrome",
+    "freebox_line": "Freebox Line Quality",
+    "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS"
+  },
+  "freebox": {
+    "discover": "Discover from Freebox",
+    "discoverTitle": "Discover hosts from Freebox",
+    "discoverDescription": "Pick a host visible to your Freebox to pre-fill an ICMP check.",
+    "searchPlaceholder": "Search by name or IP…",
+    "loading": "Loading hosts…",
+    "error": "Could not load hosts from the Freebox.",
+    "retry": "Retry",
+    "noHosts": "No hosts visible on this Freebox.",
+    "noMatches": "No hosts match your search.",
+    "reachable": "Reachable",
+    "unreachable": "Unreachable",
+    "cancel": "Cancel",
+    "useSelected": "Use selected host",
+    "hostType": {
+      "workstation": "Desktop",
+      "laptop": "Laptop",
+      "smartphone": "Phone",
+      "tablet": "Tablet",
+      "nas": "NAS",
+      "printer": "Printer",
+      "player": "Media player",
+      "ip_camera": "Camera",
+      "router": "Router",
+      "other": "Device"
+    }
+  },
+  "freeboxLine": {
+    "connectionUid": "Freebox connection",
+    "connectionUidHelp": "Pick a paired Freebox connection. If you have none, pair one in Channels.",
+    "noConnections": "No paired Freebox connections. Pair one to start.",
+    "linkType": "Link type",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "linkTypeFtth": "FTTH Fiber",
+    "advancedThresholds": "Advanced thresholds",
+    "thresholdsHelp": "Solidping reports the check as down if any configured threshold is crossed. Leave a field at 0 to skip that threshold.",
+    "minSyncRateDownKbps": "Minimum sync rate (Kbps)",
+    "minSnrMarginDownDb": "Minimum SNR margin (dB)",
+    "maxAttenuationDb": "Max attenuation (dB)",
+    "maxCrcErrorsPerRun": "Max CRC errors per check",
+    "minRxPowerMw": "Min Rx power (mW)",
+    "maxRxPowerMw": "Max Rx power (mW)"
   },
   "intervals": {
     "10s": "10 seconds",
@@ -334,5 +379,8 @@
   "expectedValue": "Expected value",
   "actualValue": "Actual value",
   "passed": "Passed",
-  "failed": "Failed"
+  "failed": "Failed",
+  "secretHeaders": "Secret headers",
+  "secretHeadersDescription": "Header values stored encrypted — use for API keys and Bearer tokens.",
+  "addSecretHeader": "Add secret header"
 }

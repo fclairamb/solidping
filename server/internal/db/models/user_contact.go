@@ -9,11 +9,11 @@ import (
 
 // UserContact type vocabulary.
 const (
-	UserContactTypeEmail    = "email"
-	UserContactTypePhone    = "phone"
+	UserContactTypeEmail     = "email"
+	UserContactTypePhone     = "phone"
 	UserContactTypeSlackUser = "slack_user"
-	UserContactTypePushover = "pushover_user"
-	UserContactTypeNtfy     = "ntfy_topic"
+	UserContactTypePushover  = "pushover_user"
+	UserContactTypeNtfy      = "ntfy_topic"
 )
 
 // UserContact is one addressable endpoint for a user (email, phone, Slack DM, …).

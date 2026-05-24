@@ -1,8 +1,15 @@
 import { useState } from "react";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { useStatusPages, useStatusPage, type StatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
@@ -11,13 +18,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { useStatusPages, type StatusUpdate } from "@/api/hooks";
 
 const STATUS_UPDATE_KINDS = [
   { value: "investigating", label: "Investigating" },
@@ -30,11 +30,48 @@ const STATUS_UPDATE_KINDS = [
 
 export interface StatusUpdateFormData {
   statusPageUid: string;
+  sectionUid: string; // "none" = not set
+  checkUid: string;   // "none" = not set
   kind: string;
   title: string;
   bodyMarkdown: string;
   linkUrl: string;
   publishedAt: string;
+}
+
+export function emptyFormData(defaultPageUid = ""): StatusUpdateFormData {
+  return {
+    statusPageUid: defaultPageUid,
+    sectionUid: "none",
+    checkUid: "none",
+    kind: "info",
+    title: "",
+    bodyMarkdown: "",
+    linkUrl: "",
+    publishedAt: new Date().toISOString().slice(0, 16),
+  };
+}
+
+export function formDataFromUpdate(update: StatusUpdate): StatusUpdateFormData {
+  return {
+    statusPageUid: update.statusPageUid,
+    sectionUid: update.sectionUid ?? "none",
+    checkUid: update.checkUid ?? "none",
+    kind: update.kind,
+    title: update.title,
+    bodyMarkdown: update.bodyMarkdown,
+    linkUrl: update.linkUrl ?? "",
+    publishedAt: new Date(update.publishedAt).toISOString().slice(0, 16),
+  };
+}
+
+interface StatusUpdateFormProps {
+  org: string;
+  mode: "create" | "edit";
+  initialData?: StatusUpdate;
+  isPending: boolean;
+  onSubmit: (data: StatusUpdateFormData) => Promise<void>;
+  onCancel: () => void;
 }
 
 export function StatusUpdateForm({
@@ -44,76 +81,60 @@ export function StatusUpdateForm({
   isPending,
   onSubmit,
   onCancel,
-}: {
-  org: string;
-  mode: "create" | "edit";
-  initialData?: StatusUpdate;
-  isPending: boolean;
-  onSubmit: (data: StatusUpdateFormData) => Promise<void>;
-  onCancel: () => void;
-}) {
+}: StatusUpdateFormProps) {
   const { data: pages } = useStatusPages(org);
 
-  const defaultPageUid =
-    pages?.find((p) => p.isDefault)?.uid ?? pages?.[0]?.uid ?? "";
-
   const [form, setForm] = useState<StatusUpdateFormData>(() =>
-    initialData
-      ? {
-          statusPageUid: initialData.statusPageUid,
-          kind: initialData.kind,
-          title: initialData.title,
-          bodyMarkdown: initialData.bodyMarkdown,
-          linkUrl: initialData.linkUrl ?? "",
-          publishedAt: new Date(initialData.publishedAt)
-            .toISOString()
-            .slice(0, 16),
-        }
-      : {
-          statusPageUid: defaultPageUid,
-          kind: "info",
-          title: "",
-          bodyMarkdown: "",
-          linkUrl: "",
-          publishedAt: new Date().toISOString().slice(0, 16),
-        }
+    initialData ? formDataFromUpdate(initialData) : emptyFormData()
   );
 
-  // Once pages load, seed statusPageUid if still empty (create mode)
-  const statusPageUid =
-    form.statusPageUid || defaultPageUid;
+  // Fetch the selected page with sections for cascading dropdowns
+  const { data: selectedPage } = useStatusPage(
+    org,
+    form.statusPageUid,
+    { with: "sections" }
+  );
+
+  const sections = selectedPage?.sections ?? [];
+
+  // Build check options based on selected section
+  const checkOptions =
+    form.sectionUid !== "none"
+      ? (sections.find((s) => s.uid === form.sectionUid)?.resources ?? [])
+      : sections.flatMap((s) => s.resources ?? []);
+
+  const handlePageChange = (v: string) => {
+    setForm((f) => ({ ...f, statusPageUid: v, sectionUid: "none", checkUid: "none" }));
+  };
+
+  const handleSectionChange = (v: string) => {
+    setForm((f) => ({ ...f, sectionUid: v, checkUid: "none" }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ ...form, statusPageUid });
+    await onSubmit(form);
   };
 
-  const title = mode === "create" ? "New status update" : "Edit status update";
+  const cardDescription =
+    mode === "create"
+      ? "Publish a new update on your status page."
+      : (initialData?.title ?? "Edit this status update.");
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6 max-w-2xl">
-      <div className="flex items-center gap-4">
-        <Button type="button" variant="ghost" size="icon" onClick={onCancel}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <h1 className="text-3xl font-bold tracking-tight">{title}</h1>
-      </div>
-
+    <form onSubmit={handleSubmit} className="space-y-4">
       <Card>
         <CardHeader>
           <CardTitle>Details</CardTitle>
+          <CardDescription>{cardDescription}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {mode === "create" && (
-            <div className="space-y-1">
-              <Label htmlFor="statusPage">Status page</Label>
-              <Select
-                value={statusPageUid}
-                onValueChange={(v) =>
-                  setForm((f) => ({ ...f, statusPageUid: v }))
-                }
-              >
-                <SelectTrigger id="statusPage" data-testid="status-update-form-page">
+          {/* Status Page field */}
+          <div className="space-y-1">
+            <Label htmlFor="statusPage">Status page</Label>
+            {mode === "create" ? (
+              <Select value={form.statusPageUid} onValueChange={handlePageChange}>
+                <SelectTrigger id="statusPage">
                   <SelectValue placeholder="Select a status page" />
                 </SelectTrigger>
                 <SelectContent>
@@ -124,16 +145,77 @@ export function StatusUpdateForm({
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
+            ) : (
+              <Select value={form.statusPageUid} disabled>
+                <SelectTrigger id="statusPage">
+                  <SelectValue>
+                    {pages?.find((p) => p.uid === form.statusPageUid)?.name ??
+                      form.statusPageUid}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {(pages ?? []).map((p) => (
+                    <SelectItem key={p.uid} value={p.uid}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
 
+          {/* Section field (optional) */}
+          <div className="space-y-1">
+            <Label htmlFor="section">Section (optional)</Label>
+            <Select
+              value={form.sectionUid}
+              onValueChange={handleSectionChange}
+              disabled={!form.statusPageUid}
+            >
+              <SelectTrigger id="section" data-testid="status-update-form-section">
+                <SelectValue placeholder="No section" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No section</SelectItem>
+                {sections.map((s) => (
+                  <SelectItem key={s.uid} value={s.uid}>
+                    {s.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Check field (optional) */}
+          <div className="space-y-1">
+            <Label htmlFor="check">Check (optional)</Label>
+            <Select
+              value={form.checkUid}
+              onValueChange={(v) => setForm((f) => ({ ...f, checkUid: v }))}
+              disabled={!form.statusPageUid}
+            >
+              <SelectTrigger id="check" data-testid="status-update-form-check">
+                <SelectValue placeholder="No check" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">No check</SelectItem>
+                {checkOptions.map((r) => (
+                  <SelectItem key={r.checkUid} value={r.checkUid}>
+                    {r.check?.name ?? r.checkUid.slice(0, 8)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Kind field */}
           <div className="space-y-1">
             <Label htmlFor="kind">Kind</Label>
             <Select
               value={form.kind}
               onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}
             >
-              <SelectTrigger id="kind" data-testid="status-update-form-kind">
+              <SelectTrigger id="kind">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -146,78 +228,66 @@ export function StatusUpdateForm({
             </Select>
           </div>
 
+          {/* Title field */}
           <div className="space-y-1">
             <Label htmlFor="title">Title</Label>
             <Input
               id="title"
-              data-testid="status-update-form-title"
               value={form.title}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, title: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
               maxLength={200}
               required
               placeholder="Investigating elevated error rates"
+              data-testid="status-update-form-title"
             />
           </div>
 
+          {/* Body field */}
           <div className="space-y-1">
             <Label htmlFor="body">Body</Label>
             <Textarea
               id="body"
-              data-testid="status-update-form-body"
               value={form.bodyMarkdown}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))}
               required
               rows={4}
               placeholder="We are investigating an issue with..."
+              data-testid="status-update-form-body"
             />
           </div>
 
+          {/* Link URL field */}
           <div className="space-y-1">
             <Label htmlFor="linkUrl">Link URL (optional)</Label>
             <Input
               id="linkUrl"
               type="url"
               value={form.linkUrl}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, linkUrl: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
               placeholder="https://status.example.com/incident/123"
             />
           </div>
 
+          {/* Published at field */}
           <div className="space-y-1">
             <Label htmlFor="publishedAt">Published at</Label>
             <Input
               id="publishedAt"
               type="datetime-local"
               value={form.publishedAt}
-              onChange={(e) =>
-                setForm((f) => ({ ...f, publishedAt: e.target.value }))
-              }
+              onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
             />
           </div>
         </CardContent>
       </Card>
 
-      <div className="flex gap-2">
+      {/* Submit row */}
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="outline" onClick={onCancel}>
           Cancel
         </Button>
         <Button type="submit" disabled={isPending} data-testid="status-update-form-submit">
-          {isPending ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving…
-            </>
-          ) : mode === "create" ? (
-            "Create"
-          ) : (
-            "Save changes"
-          )}
+          {isPending ? "Saving…" : mode === "create" ? "Create" : "Save changes"}
         </Button>
       </div>
     </form>

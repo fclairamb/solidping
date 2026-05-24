@@ -25,20 +25,16 @@ const (
 	StatusUpdateKindInfo StatusUpdateKind = "info"
 )
 
-//nolint:gochecknoglobals // package-level lookup table for valid kinds.
-var validStatusUpdateKinds = map[StatusUpdateKind]struct{}{
-	StatusUpdateKindInvestigating: {},
-	StatusUpdateKindIdentified:    {},
-	StatusUpdateKindMonitoring:    {},
-	StatusUpdateKindResolved:      {},
-	StatusUpdateKindMaintenance:   {},
-	StatusUpdateKindInfo:          {},
-}
-
-// IsValid returns true if the kind is one of the recognised values.
+// IsValid returns true if the kind is one of the recognized values.
 func (k StatusUpdateKind) IsValid() bool {
-	_, ok := validStatusUpdateKinds[k]
-	return ok
+	switch k {
+	case StatusUpdateKindInvestigating, StatusUpdateKindIdentified,
+		StatusUpdateKindMonitoring, StatusUpdateKindResolved,
+		StatusUpdateKindMaintenance, StatusUpdateKindInfo:
+		return true
+	default:
+		return false
+	}
 }
 
 // StatusUpdate is an operator-written narrative post anchored to a status page.
@@ -46,9 +42,9 @@ type StatusUpdate struct {
 	UID             string           `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string           `bun:"organization_uid,notnull"`
 	StatusPageUID   string           `bun:"status_page_uid,notnull"`
-	SectionUID      *string          `bun:"section_uid"`
-	CheckUID        *string          `bun:"check_uid"`
-	IncidentUID     *string          `bun:"incident_uid"`
+	SectionUID      *string          `bun:"section_uid"`  // optional: scope to section
+	CheckUID        *string          `bun:"check_uid"`    // optional: scope to check
+	IncidentUID     *string          `bun:"incident_uid"` // optional: thread under incident
 	Title           string           `bun:"title,notnull"`
 	BodyMarkdown    string           `bun:"body_markdown,notnull"`
 	LinkURL         *string          `bun:"link_url"`
@@ -63,7 +59,6 @@ type StatusUpdate struct {
 // NewStatusUpdate creates a new StatusUpdate with generated UID and timestamps.
 func NewStatusUpdate(orgUID, statusPageUID, authorUID string) *StatusUpdate {
 	now := time.Now()
-
 	return &StatusUpdate{
 		UID:             uuid.New().String(),
 		OrganizationUID: orgUID,

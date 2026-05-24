@@ -26,9 +26,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 type BadgePeriod = "1h" | "24h" | "7d" | "30d";
 type BadgeStyle = "flat" | "flat-square";
+type BarPeriod = "24h" | "7d" | "30d" | "90d";
 
 const validComponentTokens = new Set(["status", "availability", "duration", "response-time"]);
 const validPeriods: BadgePeriod[] = ["1h", "24h", "7d", "30d"];
+const validBarPeriods: BarPeriod[] = ["24h", "7d", "30d", "90d"];
 const validStyles: BadgeStyle[] = ["flat", "flat-square"];
 
 interface BadgeSearch {
@@ -38,6 +40,8 @@ interface BadgeSearch {
   style?: BadgeStyle;
   label?: string;
   minWidth?: number;
+  barPeriod?: BarPeriod;
+  barWidth?: number;
 }
 
 function parseComponentsString(raw: string): string[] {
@@ -60,6 +64,7 @@ export const Route = createFileRoute("/orgs/$org/badges")({
         components = tokens.join(",");
       }
     }
+    const rawBarWidth = Number(search.barWidth);
     const rawMinWidth = Number(search.minWidth);
     return {
       check: typeof search.check === "string" ? search.check : undefined,
@@ -76,6 +81,12 @@ export const Route = createFileRoute("/orgs/$org/badges")({
       minWidth: !isNaN(rawMinWidth) && rawMinWidth >= 1 && rawMinWidth <= 800
         ? rawMinWidth
         : undefined,
+      barPeriod: validBarPeriods.includes(search.barPeriod as BarPeriod)
+        ? (search.barPeriod as BarPeriod)
+        : undefined,
+      barWidth: !isNaN(rawBarWidth) && rawBarWidth >= 60 && rawBarWidth <= 800
+        ? rawBarWidth
+        : undefined,
     };
   },
   component: BadgesPage,
@@ -91,6 +102,13 @@ const badgePeriods: { value: BadgePeriod; labelKey: string }[] = [
 const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
   { value: "flat", labelKey: "styles.flat" },
   { value: "flat-square", labelKey: "styles.flatSquare" },
+];
+
+const barPeriodOptions: { value: BarPeriod; label: string }[] = [
+  { value: "24h", label: "24 hours" },
+  { value: "7d", label: "7 days" },
+  { value: "30d", label: "30 days" },
+  { value: "90d", label: "90 days" },
 ];
 
 const componentDefs = [
@@ -296,6 +314,101 @@ function BadgePreview({
   );
 }
 
+function UptimeBarPreview({
+  org,
+  check,
+  barPeriod,
+  barWidth,
+  style,
+}: {
+  org: string;
+  check: Check;
+  barPeriod: BarPeriod;
+  barWidth: number;
+  style: BadgeStyle;
+}) {
+  const { t } = useTranslation("badges");
+  const [cacheBust, setCacheBust] = useState(() => Date.now());
+
+  const identifier = check.slug || check.uid;
+  const params = new URLSearchParams();
+  if (barPeriod !== "30d") params.set("period", barPeriod);
+  if (barWidth !== 300) params.set("width", String(barWidth));
+  if (style !== "flat") params.set("style", style);
+  const query = params.toString();
+
+  const barPath = `/api/v1/orgs/${org}/checks/${identifier}/uptime-bar${query ? `?${query}` : ""}`;
+  const barUrl = `${window.location.origin}${barPath}`;
+
+  const markdownCode = `![${check.name || identifier} uptime bar](${barUrl})`;
+  const htmlCode = `<img src="${barUrl}" alt="${check.name || identifier} uptime bar" />`;
+
+  const previewUrl = `${barPath}${query ? "&" : "?"}t=${cacheBust}`;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">{t("uptimeBarPreview")}</CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setCacheBust(Date.now())}
+            data-testid="uptime-bar-refresh-preview"
+          >
+            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+            {t("refresh")}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
+            <img
+              src={previewUrl}
+              alt={`${check.name || identifier} uptime bar`}
+              data-testid="uptime-bar-preview-img"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">{t("uptimeBarEmbed")}</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">{t("url")}</Label>
+              <CopyButton text={barUrl} label={t("url")} />
+            </div>
+            <code data-testid="uptime-bar-embed-url" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
+              {barUrl}
+            </code>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">{t("markdown")}</Label>
+              <CopyButton text={markdownCode} label={t("markdown")} />
+            </div>
+            <code data-testid="uptime-bar-embed-markdown" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
+              {markdownCode}
+            </code>
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs text-muted-foreground">{t("html")}</Label>
+              <CopyButton text={htmlCode} label={t("html")} />
+            </div>
+            <code data-testid="uptime-bar-embed-html" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
+              {htmlCode}
+            </code>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function BadgesPage() {
   const { t } = useTranslation("badges");
   const { org } = Route.useParams();
@@ -308,6 +421,8 @@ function BadgesPage() {
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
   const minWidth = search.minWidth ?? 0;
+  const barPeriod = search.barPeriod ?? "30d";
+  const barWidth = search.barWidth ?? 300;
 
   const activeTokens = parseComponentsString(components);
   const primaryCount = activeTokens.filter((t) => t === "status" || t === "availability").length;
@@ -327,6 +442,8 @@ function BadgesPage() {
         if (next.style === "flat") delete next.style;
         if (!next.label) delete next.label;
         if (!next.minWidth || next.minWidth <= 0) delete next.minWidth;
+        if (next.barPeriod === "30d") delete next.barPeriod;
+        if (!next.barWidth || next.barWidth === 300) delete next.barWidth;
         return next;
       },
       replace: true,
@@ -503,20 +620,70 @@ function BadgesPage() {
                 onChange={(e) => updateSearch({ label: e.target.value })}
               />
             </div>
+
+            {selectedCheck && (
+              <>
+                <div className="border-t pt-4">
+                  <p className="text-sm font-semibold mb-3">{t("uptimeBar")}</p>
+                  <p className="text-xs text-muted-foreground mb-4">{t("uptimeBarDescription")}</p>
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>{t("period")}</Label>
+                      <Select
+                        value={barPeriod}
+                        onValueChange={(v) => updateSearch({ barPeriod: v as BarPeriod })}
+                      >
+                        <SelectTrigger data-testid="uptime-bar-period-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {barPeriodOptions.map((p) => (
+                            <SelectItem key={p.value} value={p.value}>
+                              {p.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>{t("barWidth")}</Label>
+                      <Input
+                        data-testid="uptime-bar-width"
+                        type="number"
+                        min={60}
+                        max={800}
+                        step={10}
+                        value={barWidth}
+                        onChange={(e) => updateSearch({ barWidth: Number(e.target.value) || undefined })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
 
         <div>
           {selectedCheck ? (
-            <BadgePreview
-              org={org}
-              check={selectedCheck}
-              components={components}
-              period={period}
-              style={style}
-              customLabel={customLabel}
-              minWidth={minWidth}
-            />
+            <div className="space-y-6">
+              <BadgePreview
+                org={org}
+                check={selectedCheck}
+                components={components}
+                period={period}
+                style={style}
+                customLabel={customLabel}
+                minWidth={minWidth}
+              />
+              <UptimeBarPreview
+                org={org}
+                check={selectedCheck}
+                barPeriod={barPeriod}
+                barWidth={barWidth}
+                style={style}
+              />
+            </div>
           ) : (
             <Card>
               <CardContent className="flex items-center justify-center py-16">

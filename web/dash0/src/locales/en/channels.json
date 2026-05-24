@@ -72,6 +72,23 @@
     "opsgenieTeam": "Team (optional)",
     "slackOauthHint": "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion."
   },
+  "freebox": {
+    "name": "Freebox",
+    "description": "Monitor your Freebox line quality and network status",
+    "baseUrl": "Freebox base URL",
+    "baseUrlHint": "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
+    "deviceName": "Device label",
+    "deviceNameHint": "Shown on the Freebox admin under Authorized apps. Pick something you'll recognise later.",
+    "pairButton": "Pair with Freebox",
+    "pairing": "Starting pairing…",
+    "waitingApproval": "Waiting for LCD approval…",
+    "pressArrow": "Go to your Freebox and press → on the LCD within 30 seconds",
+    "pairingTimeout": "The Freebox LCD prompt expired before approval. Try again.",
+    "pairingDenied": "The pairing was rejected on the Freebox.",
+    "pairingFailed": "Could not reach the Freebox. Double-check the base URL.",
+    "paired": "Paired — connection ready",
+    "cancel": "Cancel"
+  },
   "hint": {
     "slack": "Connect a Slack workspace via OAuth",
     "discord": "Send to a Discord webhook URL",
@@ -81,6 +98,7 @@
     "mattermost": "Post to a Mattermost channel via incoming webhook",
     "ntfy": "Push notifications via ntfy.sh",
     "opsgenie": "Page on-call engineers via Opsgenie",
-    "pushover": "Mobile push notifications via Pushover"
+    "pushover": "Mobile push notifications via Pushover",
+    "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)"
   }
 }

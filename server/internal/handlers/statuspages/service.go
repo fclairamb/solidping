@@ -781,6 +781,8 @@ func (s *Service) DeleteResource(
 // --- Public view ---
 
 // ViewStatusPage returns a public view of a status page with sections, resources, and live check status.
+//
+//nolint:cyclop // building the composite response requires checking many optional fields
 func (s *Service) ViewStatusPage(
 	ctx context.Context, orgSlug, slug string,
 ) (StatusPageResponse, error) {
@@ -827,17 +829,17 @@ func (s *Service) ViewStatusPage(
 		updates, updErr := s.db.ListPublicStatusUpdates(ctx, page.UID, page.HistoryDays)
 		if updErr == nil && len(updates) > 0 {
 			recentUpdates := make([]StatusUpdatePublicResponse, len(updates))
-			for i, u := range updates {
+			for i, upd := range updates {
 				recentUpdates[i] = StatusUpdatePublicResponse{
-					UID:          u.UID,
-					SectionUID:   u.SectionUID,
-					CheckUID:     u.CheckUID,
-					IncidentUID:  u.IncidentUID,
-					Title:        u.Title,
-					BodyMarkdown: u.BodyMarkdown,
-					LinkURL:      u.LinkURL,
-					Kind:         u.Kind,
-					PublishedAt:  u.PublishedAt,
+					UID:          upd.UID,
+					SectionUID:   upd.SectionUID,
+					CheckUID:     upd.CheckUID,
+					IncidentUID:  upd.IncidentUID,
+					Title:        upd.Title,
+					BodyMarkdown: upd.BodyMarkdown,
+					LinkURL:      upd.LinkURL,
+					Kind:         upd.Kind,
+					PublishedAt:  upd.PublishedAt,
 				}
 			}
 

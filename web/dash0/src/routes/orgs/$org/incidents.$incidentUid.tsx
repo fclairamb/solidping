@@ -155,6 +155,8 @@ function TimelineItem({
   );
 }
 
+// --- Status Updates Panel ---
+
 const STATUS_UPDATE_KINDS = [
   { value: "investigating", label: "Investigating" },
   { value: "identified", label: "Identified" },

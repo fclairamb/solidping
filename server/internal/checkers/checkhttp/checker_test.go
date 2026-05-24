@@ -1394,6 +1394,7 @@ func TestHTTPChecker_Execute_ExpectedStatusCodes(t *testing.T) {
 func TestHTTPChecker_Execute_SecretHeaderSent(t *testing.T) {
 	t.Parallel()
 
+	// Ensure UserAgent is set
 	if version.UserAgent == "" {
 		version.UserAgent = version.DefaultUserAgent()
 	}
@@ -1420,6 +1421,7 @@ func TestHTTPChecker_Execute_SecretHeaderSent(t *testing.T) {
 func TestHTTPChecker_Execute_SecretHeaderWinsOnConflict(t *testing.T) {
 	t.Parallel()
 
+	// Ensure UserAgent is set
 	if version.UserAgent == "" {
 		version.UserAgent = version.DefaultUserAgent()
 	}

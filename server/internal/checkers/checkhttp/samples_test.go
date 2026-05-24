@@ -11,19 +11,16 @@ import (
 func TestAllDefaultSamplesValidate(t *testing.T) {
 	t.Parallel()
 
-	r := require.New(t)
-
 	checker := &HTTPChecker{}
 
 	for _, spec := range checker.GetSampleConfigs(nil) {
-		spec := spec // capture loop variable
 		t.Run(spec.Slug, func(t *testing.T) {
 			t.Parallel()
 
-			r := require.New(t)
+			rt := require.New(t)
 
 			cfg := &HTTPConfig{}
-			r.NoError(cfg.FromMap(spec.Config), "spec: %s", spec.Slug)
+			rt.NoError(cfg.FromMap(spec.Config), "spec: %s", spec.Slug)
 
 			specCopy := &checkerdef.CheckSpec{
 				Name:   spec.Name,
@@ -31,9 +28,7 @@ func TestAllDefaultSamplesValidate(t *testing.T) {
 				Period: spec.Period,
 				Config: spec.Config,
 			}
-			r.NoError(checker.Validate(specCopy), "spec: %s", spec.Slug)
+			rt.NoError(checker.Validate(specCopy), "spec: %s", spec.Slug)
 		})
 	}
-
-	_ = r // r used for top-level assertions if needed
 }

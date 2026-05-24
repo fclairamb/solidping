@@ -37,9 +37,9 @@ type StepYAML struct {
 	URL string `yaml:"url"`
 
 	// create_escalation_policy
-	RepeatMax          int            `yaml:"repeat_max"`
-	RepeatAfterSeconds *int           `yaml:"repeat_after_seconds"`
-	Steps              []PolicyStep   `yaml:"steps"`
+	RepeatMax          int          `yaml:"repeat_max"`
+	RepeatAfterSeconds *int         `yaml:"repeat_after_seconds"`
+	Steps              []PolicyStep `yaml:"steps"`
 
 	// assign_policy_to_check
 	CheckID  string `yaml:"check_id"`
@@ -59,7 +59,7 @@ type StepYAML struct {
 
 // PolicyStep mirrors the YAML shape for one escalation policy step.
 type PolicyStep struct {
-	DelaySeconds int               `yaml:"delay_seconds"`
+	DelaySeconds int                `yaml:"delay_seconds"`
 	Targets      []PolicyStepTarget `yaml:"targets"`
 }
 
@@ -182,7 +182,7 @@ type scenarioRunner struct {
 	client   *apiClient
 	receiver *WebhookReceiver
 	ids      map[string]resolvedID // step id → {uid, slug}
-	cleanup  []cleanupFn            // LIFO cleanup stack
+	cleanup  []cleanupFn           // LIFO cleanup stack
 }
 
 // resolveID looks up an id previously registered by a create step.

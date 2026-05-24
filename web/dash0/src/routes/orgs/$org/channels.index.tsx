@@ -97,10 +97,10 @@ function ChannelsListPage() {
             )}
           </p>
         </div>
-        <Button asChild>
+        <Button asChild aria-label={t("new", "New channel")}>
           <Link to="/orgs/$org/channels/new" params={{ org }}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t("new", "New channel")}
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">{t("new", "New channel")}</span>
           </Link>
         </Button>
       </div>

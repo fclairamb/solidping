@@ -659,6 +659,33 @@ Submit a check execution result. Auth: worker token
 
 ---
 
+## Network Discovery
+
+On-demand host discovery. Found hosts land in `discovered_hosts` and can be listed, promoted to a check, or dismissed. Each host carries a `source` discriminator (`"lan"` for the CIDR scanner, `"freebox"` for Freebox LAN discovery). All routes are under `/api/v1/orgs/:org/discovery` and require auth + org access.
+
+### POST /api/v1/orgs/:org/discovery/scans
+Launch a CIDR network-discovery scan. Body `{ "cidrs": [...], "ports": [...] }`. Auth: admin. Returns `{ "data": <job> }`. `409 DISCOVERY_ALREADY_RUNNING` if a scan is already in flight for the org.
+
+### POST /api/v1/orgs/:org/discovery/freebox-scans
+Launch a Freebox LAN-discovery run against a paired Freebox channel. Body `{ "channelUid": "..." }`. Auth: admin. Validates the channel is a paired Freebox channel before queueing. Returns `{ "data": <job> }` (same shape as `/scans`). Errors: `409 FREEBOX_NOT_GRANTED` (channel not paired), `404 NOT_FOUND` (no such Freebox channel), `409 DISCOVERY_ALREADY_RUNNING`.
+
+### GET /api/v1/orgs/:org/discovery/scans
+List discovery runs (both `network_discovery` and `freebox_lan_discovery`), newest first. Auth: required. Returns `{ "data": [<job>, ...] }`.
+
+### GET /api/v1/orgs/:org/discovery/scans/:jobUid
+Get one discovery run. Auth: required.
+
+### GET /api/v1/orgs/:org/discovery/hosts
+List discovered hosts for the org. Auth: required. Query params: `jobUid`, `promoted` (`true`/`false`), `source` (singular, comma-separated, e.g. `?source=lan,freebox`). Returns `{ "data": [<discoveredHost>, ...] }`. Each `discoveredHost` includes a `source` field.
+
+### POST /api/v1/orgs/:org/discovery/hosts/:uid/promote
+Promote a discovered host to a check. Body `{ "checkType": "...", ... }`. Auth: admin.
+
+### DELETE /api/v1/orgs/:org/discovery/hosts/:uid
+Dismiss (soft-delete) a discovered host. Auth: admin.
+
+---
+
 ## Jobs
 
 Job management for background tasks. Routes are registered without authentication middleware at the router level (auth may be checked in handlers).

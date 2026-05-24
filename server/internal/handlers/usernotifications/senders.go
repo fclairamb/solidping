@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 )
 
 // EmailSenderAdapter wraps the core email.Sender to implement EmailSender.
@@ -20,13 +20,13 @@ func NewEmailSenderAdapter(s email.Sender) *EmailSenderAdapter {
 }
 
 // SendTestEmail sends a plain "Test notification" email.
-func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, to string) error {
+func (a *EmailSenderAdapter) SendTestEmail(ctx context.Context, recipient string) error {
 	if a == nil || a.inner == nil {
 		return ErrEmailSenderNotConfigured
 	}
 
 	msg := &email.Message{
-		Recipients: email.Recipients{To: []string{to}},
+		Recipients: email.Recipients{To: []string{recipient}},
 		Subject:    "Test notification from SolidPing",
 		Text:       "This is a test notification from SolidPing. Your email delivery is working correctly.",
 	}

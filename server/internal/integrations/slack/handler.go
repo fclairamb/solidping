@@ -16,7 +16,7 @@ import (
 // GetDestinations returns the list of Slack channels and DM targets available
 // for the given integration connection (identified by :uid within :org).
 //
-// GET /api/v1/orgs/:org/channels/:uid/slack/destinations
+// Route: GET /api/v1/orgs/:org/channels/:uid/slack/destinations.
 func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	channelUID := req.Param("uid")
@@ -44,8 +44,9 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Requ
 // Handler provides HTTP handlers for Slack integration endpoints.
 type Handler struct {
 	base.HandlerBase
-	svc *Service
-	cfg *config.Config
+	svc        *Service
+	cfg        *config.Config
+	supervisor *SlackSocketSupervisor
 }
 
 // NewHandler creates a new Slack handler.
@@ -55,6 +56,24 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 		svc:         service,
 		cfg:         cfg,
 	}
+}
+
+// SetSocketSupervisor attaches a running Socket Mode supervisor so the
+// GetSocketStatus endpoint can surface its state. Optional — call only on
+// nodes that actually run the supervisor.
+func (h *Handler) SetSocketSupervisor(s *SlackSocketSupervisor) {
+	h.supervisor = s
+}
+
+// GetSocketStatus returns the current Slack Socket Mode supervisor status.
+//
+// Route: GET /api/v1/integrations/slack/socket/status.
+func (h *Handler) GetSocketStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
+	if h.supervisor == nil {
+		return h.WriteJSON(writer, http.StatusOK, SocketStatus{Enabled: false})
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, h.supervisor.GetStatus())
 }
 
 // installErrorPage is where we send the user when an install fails. The

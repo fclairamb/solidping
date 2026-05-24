@@ -25,6 +25,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -45,6 +46,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
+	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
@@ -57,7 +59,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
-	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
@@ -120,18 +121,19 @@ var openAPIFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService   db.Service
-	jobSvc      jobsvc.Service
-	services    *services.Registry
-	router      *bunrouter.Router
-	config      *config.Config
-	authService *auth.Service
-	mcpHandler  *mcp.Handler
-	profilerSrv *profiler.Server
-	jmapManager *jmap.Manager
-	rateLimiter *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
-	cancelCtx   context.CancelFunc
-	workersWg   sync.WaitGroup // Tracks workers
+	dbService             db.Service
+	jobSvc                jobsvc.Service
+	services              *services.Registry
+	router                *bunrouter.Router
+	config                *config.Config
+	authService           *auth.Service
+	mcpHandler            *mcp.Handler
+	profilerSrv           *profiler.Server
+	jmapManager           *jmap.Manager
+	slackSocketSupervisor *slack.SlackSocketSupervisor
+	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	cancelCtx             context.CancelFunc
+	workersWg             sync.WaitGroup // Tracks workers
 }
 
 // NewServer creates a new HTTP server instance.
@@ -252,6 +254,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		slog.Warn("credentials encryption disabled — secrets stored in plaintext",
 			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
 	}
+
+	// Wire the freebox_line checker's connection resolver. The resolver
+	// owns the DB lookup + app_token decrypt so the checker package stays
+	// importable from unit tests without a live database. Mirrors the
+	// checkjs.ResolveChecker indirection pattern set up by the registry.
+	checkfreeboxline.ConnectionResolverFunc = newFreeboxConnectionResolver(dbService, credSvc)
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
@@ -484,7 +492,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
 
 	// Network discovery routes (authentication + org access required)
-	discoverySvc := discovery.NewService(s.dbService.DB(), s.dbService, checksService, s.jobSvc)
+	discoverySvc := discovery.NewService(
+		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	discoveryHandler.RegisterRoutes(orgDiscovery)
@@ -767,6 +777,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.DELETE("/:uid", channelsHandler.DeleteChannel)
 	}
 
+	// Freebox pairing endpoints — separate from the generic CRUD because
+	// they wrap the multi-step LCD-approval handshake. POST creates the
+	// connection in `pairing` status and asks the Freebox for an
+	// app_token; GET polls until the user approves the prompt.
+	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
+	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
+	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+	// LAN discovery: returns the list of hosts currently visible to the
+	// Freebox so the dashboard can pre-fill ICMP checks without typing.
+	// Requires a `granted` connection — see Service.ListFreeboxLanHosts.
+	orgFreebox.GET("/:uid/lan-hosts", channelsHandler.LanHostsHandler)
+
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
@@ -818,9 +840,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
 	slackHandler := slack.NewHandler(slackService, s.config)
+
+	// Build the Socket Mode supervisor up-front when enabled so its status is
+	// readable via GET /integrations/slack/socket/status even before Start().
+	// The actual Run() goroutine is launched from Start() under workersWg.
+	if s.config.Slack.Enabled && s.config.Slack.SocketModeEnabled && s.config.ShouldRunAPI() {
+		s.slackSocketSupervisor = slack.NewSlackSocketSupervisor(slackService, s.config, slog.Default())
+		slackHandler.SetSocketSupervisor(s.slackSocketSupervisor)
+	}
+
 	slackIntegration := api.NewGroup("/integrations/slack")
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
+	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
 	// Apply signature verification middleware to Slack webhooks
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
@@ -1407,6 +1439,18 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runJMAPManager(runnerCtx)
 	}
 
+	// Start Slack Socket Mode supervisor when configured. The supervisor
+	// dials Slack's outgoing WebSocket and dispatches events through the
+	// shared Dispatch* functions; the HTTPS webhook handlers stay registered
+	// but receive no traffic while Socket Mode is active (Slack picks one
+	// transport per app at configuration time).
+	if s.slackSocketSupervisor != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runSlackSocketSupervisor(runnerCtx)
+	}
+
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
@@ -1518,6 +1562,16 @@ func (s *Server) runJMAPManager(ctx context.Context) {
 
 	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
+	}
+}
+
+// runSlackSocketSupervisor wraps SlackSocketSupervisor.Run for the goroutine
+// launched in Start.
+func (s *Server) runSlackSocketSupervisor(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.slackSocketSupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "Slack Socket Mode supervisor exited", "error", err)
 	}
 }
 
@@ -1740,6 +1794,88 @@ func (s *Server) Services() *services.Registry {
 // JobSvc returns the job service (used for testing).
 func (s *Server) JobSvc() jobsvc.Service {
 	return s.jobSvc
+}
+
+// Sentinel errors surfaced by newFreeboxConnectionResolver. Defining
+// them statically lets callers branch on them and keeps err113 happy
+// without spelling out every formatted variant.
+var (
+	errFreeboxWrongType          = errors.New("connection is not a freebox connection")
+	errFreeboxEncryptionDisabled = errors.New(
+		"connection has encrypted settings but credentials service is disabled",
+	)
+	errFreeboxNoAppToken = errors.New("connection has no app_token")
+)
+
+// newFreeboxConnectionResolver returns a ConnectionResolver closure that
+// looks up an IntegrationConnection by UID, asserts the type is
+// `freebox`, and merges the decrypted app_token from settings_private
+// with the public base URL / app_id fields. Returns an error when the
+// connection is missing, of the wrong type, or has no app_token (a
+// connection still in the pairing state).
+func newFreeboxConnectionResolver(
+	dbService db.Service, credSvc credentials.Service,
+) checkfreeboxline.ConnectionResolver {
+	return func(ctx context.Context, connectionUID string) (*checkfreeboxline.ResolvedConnection, error) {
+		conn, err := dbService.GetChannel(ctx, connectionUID)
+		if err != nil {
+			return nil, fmt.Errorf("get channel %s: %w", connectionUID, err)
+		}
+
+		if conn.Type != models.ConnectionTypeFreebox {
+			return nil, fmt.Errorf(
+				"%w: connection %s is %q, expected %q",
+				errFreeboxWrongType, connectionUID, conn.Type, models.ConnectionTypeFreebox,
+			)
+		}
+
+		settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
+		if err != nil {
+			return nil, fmt.Errorf("parse freebox settings: %w", err)
+		}
+
+		// The app_token lives in the encrypted private side. With no
+		// encryption configured the channel handler stores plaintext in
+		// the public settings under the same key — we honor both paths.
+		appToken := ""
+
+		if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
+			if !credSvc.Enabled() {
+				return nil, fmt.Errorf("%w: %s", errFreeboxEncryptionDisabled, connectionUID)
+			}
+
+			privMap, decErr := credSvc.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+			if decErr != nil {
+				return nil, fmt.Errorf("decrypt freebox app_token: %w", decErr)
+			}
+
+			if v, ok := privMap["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			// Plaintext-fallback path: pre-encryption installs and tests
+			// with credentials disabled keep the app_token under the same
+			// key in the public Settings map.
+			if v, ok := conn.Settings["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			return nil, fmt.Errorf(
+				"%w: connection %s (pairing status: %s)",
+				errFreeboxNoAppToken, connectionUID, settings.Status,
+			)
+		}
+
+		return &checkfreeboxline.ResolvedConnection{
+			BaseURL:  settings.BaseURL,
+			AppID:    settings.AppID,
+			AppToken: appToken,
+		}, nil
+	}
 }
 
 // BuildCredentialsService loads the KEK (env or file), constructs the

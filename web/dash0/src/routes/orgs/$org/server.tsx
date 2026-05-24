@@ -18,6 +18,7 @@ function ServerLayout() {
     { label: t("tabs.mail"), path: "/orgs/$org/server/mail" },
     { label: t("tabs.emailInbox"), path: "/orgs/$org/server/email-inbox" },
     { label: t("tabs.authentication"), path: "/orgs/$org/server/auth" },
+    { label: t("tabs.slack"), path: "/orgs/$org/server/slack" },
     { label: t("tabs.performance"), path: "/orgs/$org/server/performance" },
     { label: t("tabs.activation", "Activation"), path: "/orgs/$org/server/activation" },
   ];

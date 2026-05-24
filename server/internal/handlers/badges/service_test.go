@@ -1,6 +1,7 @@
 package badges
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -332,8 +333,6 @@ func TestCalculateStatusDuration(t *testing.T) {
 		// Duration should be approximately 6 minutes (since oldest up result)
 		r.Greater(dur, 5*time.Minute)
 	})
-}
-	r.Equal("98.5%", formatAvailability(98.5))
 }
 
 func TestUptimeBarColor(t *testing.T) {

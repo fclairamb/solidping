@@ -162,7 +162,52 @@
     "docker": "Docker",
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
     "browser": "Navigateur",
-    "browserDescription": "Surveiller les pages avec Chrome headless"
+    "browserDescription": "Surveiller les pages avec Chrome headless",
+    "freebox_line": "Qualité de ligne Freebox",
+    "freebox_lineDescription": "Surveiller la qualité de la ligne xDSL/FTTH via Freebox OS"
+  },
+  "freebox": {
+    "discover": "Découvrir depuis Freebox",
+    "discoverTitle": "Découvrir des hôtes depuis Freebox",
+    "discoverDescription": "Choisissez un hôte visible par votre Freebox pour pré-remplir un contrôle ICMP.",
+    "searchPlaceholder": "Rechercher par nom ou IP…",
+    "loading": "Chargement des hôtes…",
+    "error": "Impossible de charger les hôtes depuis la Freebox.",
+    "retry": "Réessayer",
+    "noHosts": "Aucun hôte visible sur cette Freebox.",
+    "noMatches": "Aucun hôte ne correspond à la recherche.",
+    "reachable": "Joignable",
+    "unreachable": "Injoignable",
+    "cancel": "Annuler",
+    "useSelected": "Utiliser l'hôte sélectionné",
+    "hostType": {
+      "workstation": "Ordinateur",
+      "laptop": "Portable",
+      "smartphone": "Téléphone",
+      "tablet": "Tablette",
+      "nas": "NAS",
+      "printer": "Imprimante",
+      "player": "Lecteur multimédia",
+      "ip_camera": "Caméra",
+      "router": "Routeur",
+      "other": "Appareil"
+    }
+  },
+  "freeboxLine": {
+    "connectionUid": "Connexion Freebox",
+    "connectionUidHelp": "Sélectionnez une connexion Freebox appairée. Si vous n'en avez aucune, appairez-en une depuis les Canaux.",
+    "noConnections": "Aucune connexion Freebox appairée. Appairez-en une pour commencer.",
+    "linkType": "Type de lien",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "linkTypeFtth": "FTTH Fibre",
+    "advancedThresholds": "Seuils avancés",
+    "thresholdsHelp": "Solidping signale le contrôle comme \"down\" si un seuil configuré est franchi. Laissez 0 pour désactiver un seuil.",
+    "minSyncRateDownKbps": "Débit de synchronisation minimum (Kbps)",
+    "minSnrMarginDownDb": "Marge SNR minimum (dB)",
+    "maxAttenuationDb": "Atténuation maximum (dB)",
+    "maxCrcErrorsPerRun": "Erreurs CRC max par contrôle",
+    "minRxPowerMw": "Puissance Rx min (mW)",
+    "maxRxPowerMw": "Puissance Rx max (mW)"
   },
   "intervals": {
     "10s": "10 secondes",
@@ -334,5 +379,8 @@
   "expectedValue": "Valeur attendue",
   "actualValue": "Valeur réelle",
   "passed": "Réussi",
-  "failed": "Échoué"
+  "failed": "Échoué",
+  "secretHeaders": "En-têtes secrets",
+  "secretHeadersDescription": "Valeurs d'en-têtes stockées chiffrées — utilisez pour les clés API et les tokens Bearer.",
+  "addSecretHeader": "Ajouter un en-tête secret"
 }

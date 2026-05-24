@@ -229,9 +229,42 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
           channelUid={channelUid}
         />
       );
+    case "freebox":
+      return <FreeboxStatusPanel settings={settings} />;
     default:
       return null;
   }
+}
+
+// FreeboxStatusPanel is a read-only summary shown on the edit page —
+// the actual pairing happens on the dedicated create flow and cannot
+// be retried from here (re-pairing creates a new channel row).
+function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> }) {
+  const { t } = useTranslation("channels");
+  const status = typeof settings.status === "string" ? settings.status : "";
+  const baseUrl = typeof settings.baseUrl === "string" ? settings.baseUrl : "";
+
+  return (
+    <div className="rounded border bg-muted/30 p-3 text-sm space-y-2">
+      {baseUrl && (
+        <p>
+          <strong>{t("freebox.baseUrl", "Freebox base URL")}:</strong> {baseUrl}
+        </p>
+      )}
+      {status && (
+        <p>
+          <strong>{t("col.status", "Status")}:</strong>{" "}
+          <span data-testid="freebox-status">{status}</span>
+        </p>
+      )}
+      <p className="text-xs text-muted-foreground">
+        {t(
+          "freebox.baseUrlHint",
+          "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
+        )}
+      </p>
+    </div>
+  );
 }
 
 // ---- Slack destination picker ----

@@ -91,6 +91,7 @@ func TestHTTPConfigSecretHeaders_RoundTrip(t *testing.T) {
 	}
 	m := cfg.GetConfig()
 
+	// SecretHeaders should be present in GetConfig output
 	r.Contains(m, "secretHeaders")
 
 	cfg2 := &HTTPConfig{}

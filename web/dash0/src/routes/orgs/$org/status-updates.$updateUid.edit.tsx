@@ -1,53 +1,68 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { useStatusUpdate, useUpdateStatusUpdate } from "@/api/hooks";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { StatusUpdateForm } from "@/components/shared/status-update-form";
+import {
+  StatusUpdateForm,
+  type StatusUpdateFormData,
+} from "@/components/shared/status-update-form";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-updates/$updateUid/edit"
 )({
-  component: StatusUpdateEditPage,
+  component: EditStatusUpdatePage,
 });
 
-function StatusUpdateEditPage() {
+function EditStatusUpdatePage() {
   const { org, updateUid } = Route.useParams();
   const navigate = useNavigate();
+
   const { data: update, isLoading, error, refetch } = useStatusUpdate(org, updateUid);
   const updateMutation = useUpdateStatusUpdate(org, updateUid);
 
-  if (isLoading) {
-    return (
-      <div className="container mx-auto p-6 space-y-6 max-w-2xl">
-        <div className="flex items-center gap-4">
-          <Skeleton className="h-10 w-10 rounded" />
-          <Skeleton className="h-8 w-48" />
-        </div>
-        <Skeleton className="h-96 rounded-lg" />
-      </div>
-    );
-  }
+  const handleSubmit = async (data: StatusUpdateFormData) => {
+    await updateMutation.mutateAsync({
+      kind: data.kind,
+      title: data.title,
+      bodyMarkdown: data.bodyMarkdown,
+      linkUrl: data.linkUrl || undefined,
+      publishedAt: data.publishedAt
+        ? new Date(data.publishedAt).toISOString()
+        : undefined,
+      sectionUid: data.sectionUid !== "none" ? data.sectionUid : undefined,
+      checkUid: data.checkUid !== "none" ? data.checkUid : undefined,
+    });
+    toast.success("Status update saved");
+    navigate({ to: "/orgs/$org/status-updates", params: { org } });
+  };
 
   if (error) {
     return (
-      <div className="container mx-auto p-6">
-        <QueryErrorView
-          error={error}
-          org={org}
-          resource="Status Update"
-          backTo="/orgs/$org/status-updates"
-          backLabel="Back to Status Updates"
-          onRetry={() => refetch()}
-        />
-      </div>
+      <QueryErrorView
+        error={error}
+        org={org}
+        resource="status update"
+        onRetry={() => refetch()}
+      />
     );
   }
 
-  if (!update) return null;
+  if (isLoading || !update) {
+    return <div className="p-6 text-muted-foreground">Loading…</div>;
+  }
 
   return (
-    <div className="container mx-auto p-6">
+    <div className="space-y-6 max-w-2xl">
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-3xl font-bold tracking-tight">Edit status update</h1>
+        <Button asChild variant="ghost" size="icon" aria-label="Back">
+          <Link to="/orgs/$org/status-updates" params={{ org }}>
+            <ArrowLeft />
+          </Link>
+        </Button>
+      </div>
       <StatusUpdateForm
         org={org}
         mode="edit"
@@ -56,20 +71,7 @@ function StatusUpdateEditPage() {
         onCancel={() =>
           navigate({ to: "/orgs/$org/status-updates", params: { org } })
         }
-        onSubmit={async (data) => {
-          const publishedAt = data.publishedAt
-            ? new Date(data.publishedAt).toISOString()
-            : undefined;
-          await updateMutation.mutateAsync({
-            kind: data.kind,
-            title: data.title,
-            bodyMarkdown: data.bodyMarkdown,
-            linkUrl: data.linkUrl || undefined,
-            publishedAt,
-          });
-          toast.success("Status update saved");
-          navigate({ to: "/orgs/$org/status-updates", params: { org } });
-        }}
+        onSubmit={handleSubmit}
       />
     </div>
   );

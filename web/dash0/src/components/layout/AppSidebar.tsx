@@ -14,6 +14,7 @@ import {
   BadgeCheck,
   LogOut,
   Moon,
+  Network,
   Palette,
   Sun,
   ChevronUp,
@@ -232,6 +233,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user?.isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith(`/orgs/${org}/discovery`)}
+                    tooltip={tNav("discovery")}
+                  >
+                    <Link to="/orgs/$org/discovery" params={{ org }}>
+                      <Network />
+                      <span>{tNav("discovery")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {isTestMode && (
           <SidebarGroup>
             <SidebarGroupContent>

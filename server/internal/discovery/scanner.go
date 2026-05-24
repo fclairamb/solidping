@@ -23,8 +23,10 @@ const (
 	icmpProtocol = 1
 )
 
-// DefaultPorts is the default set of ports to scan when none are specified.
-var DefaultPorts = []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
+// defaultPortList returns the default set of ports to scan when none are specified.
+func defaultPortList() []int {
+	return []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
+}
 
 // Config is the configuration for a discovery scan.
 type Config struct {
@@ -36,16 +38,18 @@ type Config struct {
 
 // DiscoveredHost is a host discovered during a scan.
 type DiscoveredHost struct {
-	IP            string         `json:"ip"`
-	Hostname      string         `json:"hostname,omitempty"`
-	ICMPReachable bool           `json:"icmpReachable"`
-	OpenPorts     []int          `json:"openPorts"`
+	IP              string           `json:"ip"`
+	Hostname        string           `json:"hostname,omitempty"`
+	ICMPReachable   bool             `json:"icmpReachable"`
+	OpenPorts       []int            `json:"openPorts"`
 	SuggestedChecks []SuggestedCheck `json:"suggestedChecks"`
 }
 
 // Scan performs a network discovery scan based on the given configuration.
 // It expands all CIDRs, probes each address with ICMP and TCP, and returns
 // a list of responsive hosts.
+//
+//nolint:funlen // scan setup and concurrency boilerplate is inherently verbose
 func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 	if err := ValidateCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
@@ -53,7 +57,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 
 	ports := cfg.Ports
 	if len(ports) == 0 {
-		ports = DefaultPorts
+		ports = defaultPortList()
 	}
 
 	concurrency := cfg.Concurrency
@@ -67,6 +71,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		if err != nil {
 			return nil, fmt.Errorf("invalid timeout %q: %w", cfg.Timeout, err)
 		}
+
 		probeTimeout = d
 	}
 
@@ -77,6 +82,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		if err != nil {
 			return nil, err
 		}
+
 		allIPs = append(allIPs, ips...)
 	}
 
@@ -86,27 +92,25 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		slog.WarnContext(ctx, "ICMP unavailable, TCP-only liveness probing will be used",
 			"error", icmpErr)
 	} else {
-		defer icmpConn.Close()
+		defer func() { _ = icmpConn.Close() }()
 	}
 
 	sem := make(chan struct{}, concurrency)
-	var mu sync.Mutex
+	var hostsMu sync.Mutex
 	hosts := make([]DiscoveredHost, 0)
 
-	var wg sync.WaitGroup
+	var wgroup sync.WaitGroup
 
 	for _, ip := range allIPs {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			break
-		default:
 		}
 
-		wg.Add(1)
+		wgroup.Add(1)
 		ipStr := ip.String()
 
 		go func(ipStr string) {
-			defer wg.Done()
+			defer wgroup.Done()
 
 			sem <- struct{}{}
 			defer func() { <-sem }()
@@ -116,13 +120,13 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 				return
 			}
 
-			mu.Lock()
+			hostsMu.Lock()
 			hosts = append(hosts, *host)
-			mu.Unlock()
+			hostsMu.Unlock()
 		}(ipStr)
 	}
 
-	wg.Wait()
+	wgroup.Wait()
 
 	return hosts, nil
 }
@@ -139,45 +143,45 @@ func probeHost(
 	var (
 		icmpReachable bool
 		openPorts     []int
-		wg            sync.WaitGroup
-		mu            sync.Mutex
+		wgroup        sync.WaitGroup
+		portsMu       sync.Mutex
 	)
 
 	// ICMP probe.
 	if icmpConn != nil {
-		wg.Add(1)
+		wgroup.Add(1)
 		go func() {
-			defer wg.Done()
+			defer wgroup.Done()
 			if pingHost(icmpConn, ipStr, timeout) {
-				mu.Lock()
+				portsMu.Lock()
 				icmpReachable = true
-				mu.Unlock()
+				portsMu.Unlock()
 			}
 		}()
 	}
 
 	// TCP probes (concurrent per port).
 	for _, port := range ports {
-		wg.Add(1)
+		wgroup.Add(1)
 		p := port
 		go func() {
-			defer wg.Done()
+			defer wgroup.Done()
 			if dialTCP(ctx, ipStr, p, timeout) {
-				mu.Lock()
+				portsMu.Lock()
 				openPorts = append(openPorts, p)
-				mu.Unlock()
+				portsMu.Unlock()
 			}
 		}()
 	}
 
-	wg.Wait()
+	wgroup.Wait()
 
 	if !icmpReachable && len(openPorts) == 0 {
 		return nil
 	}
 
 	// Best-effort reverse DNS.
-	hostname := resolveHostname(ipStr)
+	hostname := resolveHostname(ctx, ipStr)
 
 	// Sort open ports for consistent output.
 	sortPorts(openPorts)
@@ -210,20 +214,22 @@ func pingHost(conn *icmp.PacketConn, ipStr string, timeout time.Duration) bool {
 
 	dst := &net.IPAddr{IP: net.ParseIP(ipStr)}
 
-	if err := conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
+	if err = conn.SetWriteDeadline(time.Now().Add(timeout)); err != nil {
 		return false
 	}
 
-	if _, err := conn.WriteTo(data, dst); err != nil {
+	if _, err = conn.WriteTo(data, dst); err != nil {
 		return false
 	}
 
-	if err := conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
+	if err = conn.SetReadDeadline(time.Now().Add(timeout)); err != nil {
 		return false
 	}
 
 	buf := make([]byte, 1500)
-	n, _, err := conn.ReadFrom(buf)
+
+	var n int
+	n, _, err = conn.ReadFrom(buf)
 	if err != nil {
 		return false
 	}
@@ -239,28 +245,25 @@ func pingHost(conn *icmp.PacketConn, ipStr string, timeout time.Duration) bool {
 // dialTCP attempts a TCP connection to the given host:port within the timeout.
 func dialTCP(ctx context.Context, ipStr string, port int, timeout time.Duration) bool {
 	addr := fmt.Sprintf("%s:%d", ipStr, port)
-	conn, err := (&net.Dialer{}).DialContext(timeoutCtx(ctx, timeout), "tcp", addr)
+	dialCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	conn, err := (&net.Dialer{}).DialContext(dialCtx, "tcp", addr)
 	if err != nil {
 		return false
 	}
-	conn.Close()
+
+	_ = conn.Close()
+
 	return true
 }
 
-// timeoutCtx returns a context that expires after the given duration, bounded
-// by the parent context.
-func timeoutCtx(parent context.Context, d time.Duration) context.Context {
-	ctx, cancel := context.WithTimeout(parent, d)
-	_ = cancel // The caller controls the parent context; the deadline will fire automatically.
-	return ctx
-}
-
 // resolveHostname performs a best-effort reverse DNS lookup with a bounded timeout.
-func resolveHostname(ipStr string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), reverseDNSTimeout)
+func resolveHostname(ctx context.Context, ipStr string) string {
+	lookupCtx, cancel := context.WithTimeout(ctx, reverseDNSTimeout)
 	defer cancel()
 
-	names, err := net.DefaultResolver.LookupAddr(ctx, ipStr)
+	names, err := net.DefaultResolver.LookupAddr(lookupCtx, ipStr)
 	if err != nil || len(names) == 0 {
 		return ""
 	}

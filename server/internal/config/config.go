@@ -266,6 +266,11 @@ type SlackConfig struct {
 	ClientSecret     string `koanf:"client_secret"`
 	SigningSecret    string `koanf:"signing_secret"`
 	OAuthCallbackURL string `koanf:"oauth_callback_url"` // OAuth callback URL for user authentication
+	// SocketModeEnabled toggles Slack Socket Mode (outgoing WebSocket) in
+	// place of HTTPS webhook delivery. Mutually exclusive at the Slack App
+	// configuration level — Slack delivers to exactly one transport.
+	SocketModeEnabled bool   `koanf:"socket_mode_enabled"`
+	AppToken          string `koanf:"app_token"` // xapp-... App-Level Token used for Socket Mode connection
 }
 
 // JobWorkerConfig contains job worker configuration.

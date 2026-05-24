@@ -38,8 +38,9 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
   config?: Record<string, unknown>;
+  configPrivateKeys?: string[];
   regions?: string[];
   labels?: Record<string, string>;
   enabled?: boolean;
@@ -77,7 +78,7 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
   config: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -2009,6 +2010,27 @@ export function useSetSystemParameter() {
   });
 }
 
+// Slack Socket Mode status hook
+export interface SlackSocketStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  lastError?: string;
+  teamCount?: number;
+}
+
+export function useSlackSocketStatus() {
+  return useQuery({
+    queryKey: ["slack-socket-status"],
+    queryFn: async () =>
+      apiFetch<SlackSocketStatus>(
+        "/api/v1/integrations/slack/socket/status",
+      ),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useTestEmail() {
   return useMutation({
     mutationFn: (recipient: string) =>
@@ -2581,7 +2603,8 @@ export type ConnectionType =
   | "mattermost"
   | "ntfy"
   | "opsgenie"
-  | "pushover";
+  | "pushover"
+  | "freebox";
 
 export interface Channel {
   uid: string;
@@ -2670,6 +2693,102 @@ export function useDeleteChannel(org: string) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["channels", org] });
     },
+  });
+}
+
+// Freebox pairing helpers. The Freebox API requires a one-time
+// LCD-approval step, so the pairing flow is split across two endpoints
+// rather than mapped onto the generic CRUD: POST asks the Freebox for
+// an app_token (which we encrypt and store immediately), GET polls the
+// LCD-approval status every ~2 s until it terminates.
+
+export interface StartFreeboxPairingRequest {
+  name?: string;
+  baseUrl?: string;
+}
+
+export interface FreeboxPairingResponse {
+  connectionUid: string;
+  trackId: number;
+  status: string;
+}
+
+export interface FreeboxPairingStatusResponse {
+  status: string;
+}
+
+export function useStartFreeboxPairing(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: StartFreeboxPairingRequest) =>
+      apiFetch<FreeboxPairingResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+    },
+  });
+}
+
+// useFreeboxPairingStatus polls the status endpoint while `enabled`
+// is true. The dashboard switches `enabled` off once the status
+// becomes terminal (granted/denied/timeout).
+export function useFreeboxPairingStatus(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxPairingStatus", org, connectionUid],
+    queryFn: () =>
+      apiFetch<FreeboxPairingStatusResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair/${connectionUid}/status`,
+      ),
+    enabled: enabled && !!org && !!connectionUid,
+    refetchInterval: 2000,
+  });
+}
+
+// Freebox LAN-discovery types and hooks. The endpoint surfaces hosts
+// currently visible to a paired Freebox so the operator can pre-fill
+// an ICMP check without typing an IP — see spec
+// `2026-05-24-08-freebox-lan-discovery.md`.
+
+export interface FreeboxLanHost {
+  id: string;
+  name: string;
+  ip: string;
+  hostType: string;
+  reachable: boolean;
+  lastSeen?: string;
+}
+
+export interface ListFreeboxLanHostsResponse {
+  data: FreeboxLanHost[];
+}
+
+// useFreeboxLanHosts polls the LAN-browser endpoint on demand. We do
+// not auto-refresh — the dashboard opens the picker, gets a snapshot,
+// and the user moves on. A manual refetch is one click away.
+export function useFreeboxLanHosts(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxLanHosts", org, connectionUid],
+    queryFn: async () => {
+      const response = await apiFetch<ListFreeboxLanHostsResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/${connectionUid}/lan-hosts`,
+      );
+      return response.data || [];
+    },
+    enabled: enabled && !!org && !!connectionUid,
+    staleTime: 30_000,
   });
 }
 
@@ -2824,7 +2943,7 @@ export function useStatusUpdates(
 export function useStatusUpdate(org: string, uid: string) {
   return useQuery({
     queryKey: ["statusUpdate", org, uid],
-    queryFn: () =>
+    queryFn: async () =>
       apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`),
     enabled: !!org && !!uid,
   });
@@ -2874,115 +2993,157 @@ export function useDeleteStatusUpdate(org: string) {
   });
 }
 
-// ─── User Notification Routes ───────────────────────────────────────────────
+// ── Discovery ─────────────────────────────────────────────────────────────────
 
-export interface NotificationContact {
+export interface DiscoveryScan {
   uid: string;
   type: string;
-  value: string;
-  label: string;
-  verifiedAt?: string;
-}
-
-export interface NotificationRoute {
-  uid: string;
-  enabled: boolean;
-  position: number;
-  contact: NotificationContact;
+  status: string;
+  config: Record<string, unknown>;
+  scheduledAt: string;
   createdAt: string;
+  updatedAt: string;
 }
 
-export interface SlackSuggestion {
-  slackUserId: string;
-  workspaceName: string;
-  channelUid: string;
-}
-
-export interface NotificationRoutesResponse {
-  data: NotificationRoute[];
-  slackSuggestion?: SlackSuggestion;
-}
-
-export interface CreateNotificationContactRequest {
+export interface SuggestedCheck {
   type: string;
-  value: string;
-  label?: string;
+  config: Record<string, unknown>;
 }
 
-export interface PatchNotificationRouteRequest {
-  enabled?: boolean;
-  routeUids?: string[];
+export type DiscoverySource = "lan" | "freebox";
+
+export interface DiscoveredHost {
+  uid: string;
+  organizationUid: string;
+  jobUid: string;
+  ip: string;
+  hostname?: string;
+  openPorts: number[];
+  icmpReachable: boolean;
+  suggestedChecks: SuggestedCheck[];
+  source: DiscoverySource;
+  promotedToCheckUid?: string;
+  discoveredAt: string;
 }
 
-export function useNotificationRoutes(org: string) {
+export interface StartDiscoveryScanRequest {
+  cidrs: string[];
+  ports?: number[];
+  timeout?: string;
+  concurrency?: number;
+}
+
+export interface PromoteCandidateRequest {
+  checkType: string;
+  name?: string;
+  slug?: string;
+  period?: string;
+  extraConfig?: Record<string, unknown>;
+}
+
+export function useStartDiscoveryScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: StartDiscoveryScanRequest) =>
+      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
+        method: "POST",
+        body: JSON.stringify(req),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useStartFreeboxScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (channelUid: string) =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/freebox-scans`,
+        {
+          method: "POST",
+          body: JSON.stringify({ channelUid }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useListDiscoveryScans(org: string) {
   return useQuery({
-    queryKey: ["notificationRoutes", org],
+    queryKey: ["discoveryScans", org],
     queryFn: () =>
-      apiFetch<NotificationRoutesResponse>(
-        `/api/v1/orgs/${org}/users/me/notification-routes`
-      ),
-    staleTime: 30_000,
-    enabled: !!org,
+      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+    select: (res) => res?.data ?? [],
   });
 }
 
-export function useCreateNotificationContact(org: string) {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: (req: CreateNotificationContactRequest) =>
-      apiFetch<NotificationRoute>(
-        `/api/v1/orgs/${org}/users/me/notification-contacts`,
-        { method: "POST", body: JSON.stringify(req) }
+export function useDiscoveryScan(org: string, jobUid: string) {
+  return useQuery({
+    queryKey: ["discoveryScan", org, jobUid],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/scans/${jobUid}`,
       ),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    select: (res) => res?.data,
+    enabled: !!jobUid,
+    refetchInterval: (query) => {
+      const status = query.state.data?.data?.status;
+      return status === "pending" || status === "running" ? 3000 : false;
     },
   });
 }
 
-export function useDeleteNotificationContact(org: string) {
-  const queryClient = useQueryClient();
+export function useListCandidateHosts(
+  org: string,
+  opts?: { jobUid?: string; promoted?: boolean; source?: string },
+) {
+  const params = new URLSearchParams();
+  if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  if (opts?.source) params.set("source", opts.source);
+  const qs = params.toString();
 
+  return useQuery({
+    queryKey: ["discoveryHosts", org, opts],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveredHost[] }>(
+        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      ),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+export function usePromoteCandidate(org: string) {
+  const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (contactUid: string) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`,
-        { method: "DELETE" }
+    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+      apiFetch<{ data: Check }>(
+        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        {
+          method: "POST",
+          body: JSON.stringify(req),
+        },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
 
-export function usePatchNotificationRoute(org: string) {
+export function useDismissCandidate(org: string) {
   const queryClient = useQueryClient();
-
   return useMutation({
-    mutationFn: ({
-      routeUid,
-      patch,
-    }: {
-      routeUid: string;
-      patch: PatchNotificationRouteRequest;
-    }) =>
-      apiFetch<NotificationRoute>(
-        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`,
-        { method: "PATCH", body: JSON.stringify(patch) }
-      ),
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+        method: "DELETE",
+      }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
     },
-  });
-}
-
-export function useTestNotificationRoute(org: string) {
-  return useMutation({
-    mutationFn: (routeUid: string) =>
-      apiFetch<void>(
-        `/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`,
-        { method: "POST" }
-      ),
   });
 }
