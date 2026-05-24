@@ -67,14 +67,14 @@ func NewService(dbService db.Service, creds credentials.Service) *Service {
 
 // SetFreeboxClientFactory overrides the Freebox-client builder. Exposed
 // for tests; the default constructor wires the production factory.
-func (s *Service) SetFreeboxClientFactory(f FreeboxClientFactory) {
-	if f == nil {
+func (s *Service) SetFreeboxClientFactory(factory FreeboxClientFactory) {
+	if factory == nil {
 		s.freeboxClient = freebox.NewClientWithAppID
 
 		return
 	}
 
-	s.freeboxClient = f
+	s.freeboxClient = factory
 }
 
 // ChannelResponse represents a connection in API responses.

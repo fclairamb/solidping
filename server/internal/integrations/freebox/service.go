@@ -143,7 +143,7 @@ func ListLanHosts(ctx context.Context, client *Client) ([]LanHost, error) {
 		return nil, fmt.Errorf("%w: nil client", ErrNilSettings)
 	}
 
-	var raw []FreeboxLanHost
+	var raw []RawLanHost
 	if err := client.Get(ctx, lanBrowserPath, &raw); err != nil {
 		return nil, fmt.Errorf("freebox: list lan hosts: %w", err)
 	}
@@ -167,7 +167,7 @@ func ListLanHosts(ctx context.Context, client *Client) ([]LanHost, error) {
 // simplifyLanHost converts one Freebox LAN-host record to the
 // dashboard-facing LanHost shape. Returns (_, false) when the host
 // must be filtered out (router, no active IPv4, …).
-func simplifyLanHost(raw *FreeboxLanHost) (LanHost, bool) {
+func simplifyLanHost(raw *RawLanHost) (LanHost, bool) {
 	if raw.HostType == LanHostTypeRouter {
 		return LanHost{}, false
 	}
@@ -181,9 +181,9 @@ func simplifyLanHost(raw *FreeboxLanHost) (LanHost, bool) {
 	if name == "" {
 		// Fall back to the first named entry — better than an empty
 		// label in the picker.
-		for _, n := range raw.Names {
-			if n.Name != "" {
-				name = n.Name
+		for i := range raw.Names {
+			if raw.Names[i].Name != "" {
+				name = raw.Names[i].Name
 
 				break
 			}
@@ -217,21 +217,22 @@ func simplifyLanHost(raw *FreeboxLanHost) (LanHost, bool) {
 // host's connectivity list, plus its last_activity timestamp. Inactive
 // IPv4 entries are skipped: an active=false entry typically corresponds
 // to a stale DHCP lease the Freebox is still tracking.
-func pickBestIPv4(conns []FreeboxLanL3Conn) (string, int64, bool) {
+func pickBestIPv4(conns []RawLanL3Conn) (string, int64, bool) {
 	var (
 		bestAddr  string
 		bestStamp int64
 		found     bool
 	)
 
-	for _, c := range conns {
-		if c.Af != LanAfIPv4 || !c.Active || c.Addr == "" {
+	for i := range conns {
+		conn := &conns[i]
+		if conn.Af != LanAfIPv4 || !conn.Active || conn.Addr == "" {
 			continue
 		}
 
-		if !found || c.LastActivity > bestStamp {
-			bestAddr = c.Addr
-			bestStamp = c.LastActivity
+		if !found || conn.LastActivity > bestStamp {
+			bestAddr = conn.Addr
+			bestStamp = conn.LastActivity
 			found = true
 		}
 	}
@@ -261,15 +262,15 @@ func sortLanHosts(hosts []LanHost) {
 // pulling in the unicode/strings cost on every comparison. ASCII-only
 // is enough — Freebox hostnames are DNS-bound.
 func lowerName(s string) string {
-	b := make([]byte, len(s))
+	buf := make([]byte, len(s))
 	for i := range len(s) {
 		c := s[i]
 		if c >= 'A' && c <= 'Z' {
 			c += 'a' - 'A'
 		}
 
-		b[i] = c
+		buf[i] = c
 	}
 
-	return string(b)
+	return string(buf)
 }

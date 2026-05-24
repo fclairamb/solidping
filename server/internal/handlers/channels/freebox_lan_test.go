@@ -17,7 +17,7 @@ import (
 // pairing exchange plus the LAN-browser endpoint with the supplied
 // hosts. Reuses the freebox-pairing setup so we get realistic
 // challenge/session flow.
-func startFakeFreeboxWithLAN(t *testing.T, hosts []freebox.FreeboxLanHost) *httptest.Server {
+func startFakeFreeboxWithLAN(t *testing.T, hosts []freebox.RawLanHost) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
@@ -57,14 +57,14 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 
 	r := require.New(t)
 	f := newFreeboxFixture(t)
-	srv := startFakeFreeboxWithLAN(t, []freebox.FreeboxLanHost{
+	srv := startFakeFreeboxWithLAN(t, []freebox.RawLanHost{
 		{
 			ID:          "router",
 			PrimaryName: "freebox",
 			HostType:    freebox.LanHostTypeRouter,
 			Active:      true,
 			Reachable:   true,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.254", Af: freebox.LanAfIPv4, Active: true, Reachable: true},
 			},
 		},
@@ -75,7 +75,7 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 			Active:            true,
 			Reachable:         true,
 			LastTimeReachable: 1700,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.10", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 1700},
 			},
 		},

@@ -49,14 +49,14 @@ func TestListLanHostsFiltersAndSorts(t *testing.T) {
 	//   - reachable workstation → kept, comes first
 	//   - unreachable laptop → kept, second
 	//   - multi-IPv4 host → keeps the most-recent IPv4
-	raw := []freebox.FreeboxLanHost{
+	raw := []freebox.RawLanHost{
 		{
 			ID:          "router-id",
 			PrimaryName: "freebox",
 			HostType:    freebox.LanHostTypeRouter,
 			Active:      true,
 			Reachable:   true,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.254", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 1000},
 			},
 		},
@@ -66,7 +66,7 @@ func TestListLanHostsFiltersAndSorts(t *testing.T) {
 			HostType:    "other",
 			Active:      true,
 			Reachable:   true,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "fe80::1", Af: freebox.LanAfIPv6, Active: true, Reachable: true, LastActivity: 1000},
 			},
 		},
@@ -76,7 +76,7 @@ func TestListLanHostsFiltersAndSorts(t *testing.T) {
 			HostType:    "other",
 			Active:      false,
 			Reachable:   false,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.50", Af: freebox.LanAfIPv4, Active: false, Reachable: false, LastActivity: 1},
 			},
 		},
@@ -87,7 +87,7 @@ func TestListLanHostsFiltersAndSorts(t *testing.T) {
 			Active:            true,
 			Reachable:         true,
 			LastTimeReachable: 1700,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.10", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 1700},
 				{Addr: "192.168.1.11", Af: freebox.LanAfIPv4, Active: true, Reachable: true, LastActivity: 1500},
 			},
@@ -99,7 +99,7 @@ func TestListLanHostsFiltersAndSorts(t *testing.T) {
 			Active:            true,
 			Reachable:         false,
 			LastTimeReachable: 500,
-			L3Connectivities: []freebox.FreeboxLanL3Conn{
+			L3Connectivities: []freebox.RawLanL3Conn{
 				{Addr: "192.168.1.20", Af: freebox.LanAfIPv4, Active: true, Reachable: false, LastActivity: 500},
 			},
 		},
@@ -135,7 +135,7 @@ func TestListLanHostsEmpty(t *testing.T) {
 	t.Parallel()
 
 	client := newFreeboxStub(t, func(w http.ResponseWriter, _ *http.Request) {
-		body, _ := json.Marshal([]freebox.FreeboxLanHost{})
+		body, _ := json.Marshal([]freebox.RawLanHost{})
 		_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: body})
 	})
 
@@ -161,7 +161,7 @@ func TestListLanHostsNilClient(t *testing.T) {
 func TestListLanHostsSortIsCaseInsensitive(t *testing.T) {
 	t.Parallel()
 
-	raw := []freebox.FreeboxLanHost{
+	raw := []freebox.RawLanHost{
 		mkHost("a", "Zeta", true),
 		mkHost("b", "alpha", true),
 		mkHost("c", "Beta", true),
@@ -183,14 +183,14 @@ func TestListLanHostsSortIsCaseInsensitive(t *testing.T) {
 	r.Equal("Zeta", hosts[2].Name)
 }
 
-func mkHost(id, name string, reachable bool) freebox.FreeboxLanHost {
-	return freebox.FreeboxLanHost{
+func mkHost(id, name string, reachable bool) freebox.RawLanHost {
+	return freebox.RawLanHost{
 		ID:          id,
 		PrimaryName: name,
 		HostType:    "workstation",
 		Active:      true,
 		Reachable:   reachable,
-		L3Connectivities: []freebox.FreeboxLanL3Conn{
+		L3Connectivities: []freebox.RawLanL3Conn{
 			{Addr: "10.0.0." + id, Af: freebox.LanAfIPv4, Active: true, Reachable: reachable, LastActivity: 1000},
 		},
 	}

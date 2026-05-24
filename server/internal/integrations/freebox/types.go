@@ -104,31 +104,30 @@ type APIResponse struct {
 	Result json.RawMessage `json:"result,omitempty"`
 }
 
-// LAN browser host types — `GET /api/v4/lan/browser/{interface}/`.
-//
-// FreeboxLanHost mirrors the raw payload returned by the Freebox; we
-// only decode the fields we actually use to keep the parser robust to
-// future schema additions. Field names match the Freebox API verbatim
-// (snake_case) — the dashboard never sees this shape, it consumes
-// LanHost via the channels handler.
+// RawLanHost mirrors the raw payload returned by the Freebox's
+// `GET /api/v4/lan/browser/{interface}/` endpoint. We only decode the
+// fields we actually use to keep the parser robust to future schema
+// additions. Field names match the Freebox API verbatim (snake_case) —
+// the dashboard never sees this shape, it consumes LanHost via the
+// channels handler.
 //
 //nolint:tagliatelle // JSON tags must match Freebox API field names
-type FreeboxLanHost struct {
-	ID                string             `json:"id"`
-	PrimaryName       string             `json:"primary_name"`
-	HostType          string             `json:"host_type"`
-	Active            bool               `json:"active"`
-	Reachable         bool               `json:"reachable"`
-	LastTimeReachable int64              `json:"last_time_reachable"`
-	L3Connectivities  []FreeboxLanL3Conn `json:"l3connectivities"`
-	Names             []FreeboxLanName   `json:"names"`
+type RawLanHost struct {
+	ID                string         `json:"id"`
+	PrimaryName       string         `json:"primary_name"`
+	HostType          string         `json:"host_type"`
+	Active            bool           `json:"active"`
+	Reachable         bool           `json:"reachable"`
+	LastTimeReachable int64          `json:"last_time_reachable"`
+	L3Connectivities  []RawLanL3Conn `json:"l3connectivities"`
+	Names             []RawLanName   `json:"names"`
 }
 
-// FreeboxLanL3Conn is one network-layer endpoint exposed by a host. A
+// RawLanL3Conn is one network-layer endpoint exposed by a host. A
 // single host can have many — IPv4 + IPv6, wired + Wi-Fi, etc.
 //
 //nolint:tagliatelle // JSON tags must match Freebox API field names
-type FreeboxLanL3Conn struct {
+type RawLanL3Conn struct {
 	Addr         string `json:"addr"`
 	Af           string `json:"af"`
 	Active       bool   `json:"active"`
@@ -136,11 +135,11 @@ type FreeboxLanL3Conn struct {
 	LastActivity int64  `json:"last_activity"`
 }
 
-// FreeboxLanName is one of the names known for a host (DHCP hostname,
+// RawLanName is one of the names known for a host (DHCP hostname,
 // mDNS service, NetBIOS, etc.). We currently only surface the
 // primary_name to the dashboard; this is here so future tweaks (e.g.
 // preferring mDNS over DHCP) don't need a fresh round of parser work.
-type FreeboxLanName struct {
+type RawLanName struct {
 	Name   string `json:"name"`
 	Source string `json:"source"`
 }
