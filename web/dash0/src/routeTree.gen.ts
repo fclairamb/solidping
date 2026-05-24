@@ -59,6 +59,7 @@ import { Route as OrgsOrgStatusUpdatesUpdateUidRouteImport } from './routes/orgs
 import { Route as OrgsOrgStatusPagesNewRouteImport } from './routes/orgs/$org/status-pages.new'
 import { Route as OrgsOrgStatusPagesStatusPageUidRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid'
 import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.web'
+import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
@@ -352,6 +353,11 @@ const OrgsOrgServerWebRoute = OrgsOrgServerWebRouteImport.update({
   path: '/web',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerSlackRoute = OrgsOrgServerSlackRouteImport.update({
+  id: '/slack',
+  path: '/slack',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerPerformanceRoute =
   OrgsOrgServerPerformanceRouteImport.update({
     id: '/performance',
@@ -594,6 +600,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
+  '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidRouteWithChildren
   '/orgs/$org/status-pages/new': typeof OrgsOrgStatusPagesNewRoute
@@ -665,6 +672,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
+  '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/status-pages/new': typeof OrgsOrgStatusPagesNewRoute
   '/orgs/$org/status-updates/$updateUid': typeof OrgsOrgStatusUpdatesUpdateUidRouteWithChildren
@@ -751,6 +759,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
+  '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
   '/orgs/$org/server/web': typeof OrgsOrgServerWebRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidRouteWithChildren
   '/orgs/$org/status-pages/new': typeof OrgsOrgStatusPagesNewRoute
@@ -839,6 +848,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
+    | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/status-pages/new'
@@ -910,6 +920,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
+    | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
     | '/orgs/$org/status-pages/new'
     | '/orgs/$org/status-updates/$updateUid'
@@ -995,6 +1006,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/email-inbox'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
+    | '/orgs/$org/server/slack'
     | '/orgs/$org/server/web'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/status-pages/new'
@@ -1390,6 +1402,13 @@ declare module '@tanstack/react-router' {
       path: '/web'
       fullPath: '/orgs/$org/server/web'
       preLoaderRoute: typeof OrgsOrgServerWebRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/slack': {
+      id: '/orgs/$org/server/slack'
+      path: '/slack'
+      fullPath: '/orgs/$org/server/slack'
+      preLoaderRoute: typeof OrgsOrgServerSlackRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/performance': {
@@ -1830,6 +1849,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
+  OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
   OrgsOrgServerWebRoute: typeof OrgsOrgServerWebRoute
   OrgsOrgServerIndexRoute: typeof OrgsOrgServerIndexRoute
 }
@@ -1840,6 +1860,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
+  OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
   OrgsOrgServerWebRoute: OrgsOrgServerWebRoute,
   OrgsOrgServerIndexRoute: OrgsOrgServerIndexRoute,
 }
