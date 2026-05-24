@@ -115,10 +115,13 @@
   "command": {
     "searchPlaceholder": "Rechercher pages et contrôles...",
     "noResults": "Aucun résultat.",
+    "groupActions": "Actions",
     "groupPages": "Pages",
     "groupAccount": "Compte",
     "groupOrganization": "Organisation",
-    "groupChecks": "Contrôles"
+    "groupChecks": "Contrôles",
+    "newCheck": "Nouveau contrôle",
+    "newCheckDescription": "Créer un nouveau contrôle de monitoring"
   },
   "security": "Sécurité"
 }

@@ -115,10 +115,13 @@
   "command": {
     "searchPlaceholder": "Buscar páginas y comprobaciones...",
     "noResults": "Sin resultados.",
+    "groupActions": "Acciones",
     "groupPages": "Páginas",
     "groupAccount": "Cuenta",
     "groupOrganization": "Organización",
-    "groupChecks": "Comprobaciones"
+    "groupChecks": "Comprobaciones",
+    "newCheck": "Nueva comprobación",
+    "newCheckDescription": "Crear una nueva comprobación de monitorización"
   },
   "security": "Seguridad"
 }
