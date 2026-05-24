@@ -17,6 +17,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/orgslug"
 )
 
 // Discord OAuth specific errors.
@@ -374,8 +375,10 @@ func (s *DiscordOAuthService) findOrCreateOrganization(
 		return nil, fmt.Errorf("failed to get organization provider: %w", err)
 	}
 
-	// Create new organization
-	slug := s.generateUniqueSlug(ctx, guildName)
+	// Create new organization. Discord has no workspace-subdomain equivalent,
+	// so the guild name is the only slug source. The shared generator applies
+	// the same normalization/collision rules as the Slack flows.
+	slug := orgslug.GenerateUnique(ctx, s.db, guildName)
 	org := models.NewOrganization(slug, guildName)
 
 	if err := s.db.CreateOrganization(ctx, org); err != nil {
@@ -391,59 +394,6 @@ func (s *DiscordOAuthService) findOrCreateOrganization(
 	}
 
 	return org, nil
-}
-
-// generateUniqueSlug generates a unique organization slug from a guild name.
-func (s *DiscordOAuthService) generateUniqueSlug(ctx context.Context, guildName string) string {
-	// Normalize: lowercase and replace spaces with hyphens
-	base := strings.ToLower(guildName)
-	base = strings.ReplaceAll(base, " ", "-")
-
-	// Filter: keep only [a-z0-9-]
-	var filtered strings.Builder
-
-	for _, r := range base {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			filtered.WriteRune(r)
-		}
-	}
-
-	base = filtered.String()
-
-	// Trim: remove leading/trailing hyphens, collapse multiple hyphens
-	base = strings.Trim(base, "-")
-
-	for strings.Contains(base, "--") {
-		base = strings.ReplaceAll(base, "--", "-")
-	}
-
-	// Ensure minimum length
-	if len(base) < 3 {
-		base = "org"
-	}
-
-	// Ensure maximum length
-	if len(base) > 20 {
-		base = base[:20]
-	}
-
-	// Trim trailing hyphens again
-	base = strings.TrimRight(base, "-")
-
-	// Check uniqueness, append number if needed
-	slug := base
-	suffix := 2
-
-	for {
-		_, err := s.db.GetOrganizationBySlug(ctx, slug)
-		if err != nil {
-			// Slug is available (not found)
-			return slug
-		}
-
-		slug = fmt.Sprintf("%s%d", base, suffix)
-		suffix++
-	}
 }
 
 // findOrCreateUser finds or creates a user by Discord identity.
