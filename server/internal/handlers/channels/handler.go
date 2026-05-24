@@ -12,6 +12,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
+// Validation-error field/message constants. Kept as constants to satisfy
+// goconst and to keep the messages consistent across endpoints.
+const (
+	invalidJSONField   = "body"
+	invalidJSONMessage = "Invalid JSON format"
+)
+
 // Handler provides HTTP handlers for connection management endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -64,7 +71,7 @@ func (h *Handler) CreateChannel(writer http.ResponseWriter, req bunrouter.Reques
 	var createReq CreateChannelRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -102,7 +109,7 @@ func (h *Handler) UpdateChannel(writer http.ResponseWriter, req bunrouter.Reques
 	var updateReq UpdateChannelRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 
@@ -138,7 +145,7 @@ func (h *Handler) StartFreeboxPairing(writer http.ResponseWriter, req bunrouter.
 	var body StartFreeboxPairingRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
-			{Name: "body", Message: "Invalid JSON format"},
+			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 

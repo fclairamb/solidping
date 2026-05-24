@@ -91,6 +91,8 @@ type SessionResult struct {
 // returns. When Success is false, ErrorCode is set to a machine-readable
 // constant ("auth_required", "invalid_token", …) and Msg holds the
 // human-readable French/English message.
+//
+//nolint:tagliatelle // JSON tags must match Freebox API field names
 type APIResponse struct {
 	Success   bool   `json:"success"`
 	Msg       string `json:"msg,omitempty"`

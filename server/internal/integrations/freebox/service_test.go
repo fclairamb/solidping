@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -16,18 +18,29 @@ import (
 func TestStartPairing(t *testing.T) {
 	t.Parallel()
 
+	var (
+		gotMethod atomic.Value // string
+		gotAppID  atomic.Value // string
+		gotDevice atomic.Value // string
+	)
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v4/login/authorize/", func(w http.ResponseWriter, r *http.Request) {
-		require.Equal(t, http.MethodPost, r.Method)
+		gotMethod.Store(r.Method)
 
 		var body freebox.AuthorizeRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Logf("decode body: %v", err)
+		}
 
-		require.NoError(t, json.NewDecoder(r.Body).Decode(&body))
-		require.Equal(t, freebox.DefaultAppID, body.AppID)
-		require.Equal(t, "Floor1-Box", body.DeviceName)
+		gotAppID.Store(body.AppID)
+		gotDevice.Store(body.DeviceName)
 
 		raw, _ := json.Marshal(freebox.AuthorizeResult{AppToken: "token-x", TrackID: 11})
-		_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+		if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+			t.Logf("encode envelope: %v", err)
+		}
 	})
 
 	srv := httptest.NewServer(mux)
@@ -43,6 +56,10 @@ func TestStartPairing(t *testing.T) {
 	r.NoError(err)
 	r.Equal("token-x", res.AppToken)
 	r.Equal(11, res.TrackID)
+
+	assert.Equal(t, http.MethodPost, gotMethod.Load())
+	assert.Equal(t, freebox.DefaultAppID, gotAppID.Load())
+	assert.Equal(t, "Floor1-Box", gotDevice.Load())
 }
 
 func TestCheckPairingStatusMapsTerminalErrors(t *testing.T) {
@@ -67,7 +84,10 @@ func TestCheckPairingStatusMapsTerminalErrors(t *testing.T) {
 			mux := http.NewServeMux()
 			mux.HandleFunc("/api/v4/login/authorize/", func(w http.ResponseWriter, _ *http.Request) {
 				raw, _ := json.Marshal(freebox.PairingStatus{Status: tc.status})
-				_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+				if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+					t.Logf("encode envelope: %v", err)
+				}
 			})
 
 			srv := httptest.NewServer(mux)
@@ -106,11 +126,17 @@ func TestValidateConnectionOpensSession(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v4/login/", func(w http.ResponseWriter, _ *http.Request) {
 		raw, _ := json.Marshal(freebox.LoginChallenge{Challenge: "ch"})
-		_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+		if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+			t.Logf("encode envelope: %v", err)
+		}
 	})
 	mux.HandleFunc("/api/v4/login/session/", func(w http.ResponseWriter, _ *http.Request) {
 		raw, _ := json.Marshal(freebox.SessionResult{SessionToken: "ok"})
-		_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+		if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+			t.Logf("encode envelope: %v", err)
+		}
 	})
 
 	srv := httptest.NewServer(mux)

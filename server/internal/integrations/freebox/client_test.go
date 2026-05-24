@@ -3,16 +3,15 @@ package freebox_test
 import (
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec // HMAC-SHA1 is the algorithm the Freebox API requires
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
@@ -51,6 +50,18 @@ type fakeFreebox struct {
 	authorizeTrackID   int
 	connectionHit      atomic.Int32
 	authChallengeCount atomic.Int32
+	// sessionAssertErr captures assertion failures that happen on the
+	// /login/session/ HTTP-handler goroutine — testify's require.* is
+	// banned in handlers because it calls t.FailNow on the wrong
+	// goroutine, so we record the error and let the main test goroutine
+	// surface it via flush().
+	sessionAssertErr atomic.Value // string
+}
+
+func (f *fakeFreebox) flush() {
+	if v, ok := f.sessionAssertErr.Load().(string); ok && v != "" {
+		f.t.Fatal(v)
+	}
 }
 
 func (f *fakeFreebox) handler() http.Handler {
@@ -59,47 +70,59 @@ func (f *fakeFreebox) handler() http.Handler {
 	mux.HandleFunc("/api/v4/login/authorize/", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodPost:
-			writeOK(w, freebox.AuthorizeResult{
+			writeOK(f.t, w, freebox.AuthorizeResult{
 				AppToken: f.appToken,
 				TrackID:  f.authorizeTrackID,
 			})
 		case http.MethodGet:
-			writeOK(w, freebox.PairingStatus{Status: f.authorizeStatus})
+			writeOK(f.t, w, freebox.PairingStatus{Status: f.authorizeStatus})
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
 
-	mux.HandleFunc("/api/v4/login/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/api/v4/login/", func(w http.ResponseWriter, _ *http.Request) {
 		f.authChallengeCount.Add(1)
-		writeOK(w, freebox.LoginChallenge{Challenge: f.currentChallenge})
+		writeOK(f.t, w, freebox.LoginChallenge{Challenge: f.currentChallenge})
 	})
 
 	mux.HandleFunc("/api/v4/login/session/", func(w http.ResponseWriter, r *http.Request) {
 		var body freebox.SessionRequest
-		require.NoError(f.t, json.NewDecoder(r.Body).Decode(&body))
-		require.Equal(f.t, freebox.DefaultAppID, body.AppID)
-		require.Equal(f.t, expectedHMAC(f.appToken, f.currentChallenge), body.Password)
 
-		writeOK(w, freebox.SessionResult{SessionToken: f.currentSession})
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			f.sessionAssertErr.Store("decode session body: " + err.Error())
+		}
+
+		if !assert.Equal(f.t, freebox.DefaultAppID, body.AppID) {
+			f.sessionAssertErr.Store("unexpected app_id: " + body.AppID)
+		}
+
+		want := expectedHMAC(f.appToken, f.currentChallenge)
+		if !assert.Equal(f.t, want, body.Password) {
+			f.sessionAssertErr.Store("unexpected password hash")
+		}
+
+		writeOK(f.t, w, freebox.SessionResult{SessionToken: f.currentSession})
 	})
 
 	mux.HandleFunc("/api/v4/connection/", func(w http.ResponseWriter, r *http.Request) {
 		f.connectionHit.Add(1)
 
 		if r.Header.Get("X-Fbx-App-Auth") != f.currentSession {
-			writeErr(w, "auth_required", "Invalid session token")
+			writeErr(f.t, w, "auth_required", "Invalid session token")
 
 			return
 		}
 
-		writeOK(w, map[string]any{"state": "up"})
+		writeOK(f.t, w, map[string]any{"state": "up"})
 	})
 
 	return mux
 }
 
-func writeOK(w http.ResponseWriter, result any) {
+func writeOK(t *testing.T, w http.ResponseWriter, result any) {
+	t.Helper()
+
 	raw, err := json.Marshal(result)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -110,14 +133,22 @@ func writeOK(w http.ResponseWriter, result any) {
 	out := freebox.APIResponse{Success: true, Result: raw}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out)
+
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		t.Logf("encode envelope: %v", err)
+	}
 }
 
-func writeErr(w http.ResponseWriter, code, msg string) {
+func writeErr(t *testing.T, w http.ResponseWriter, code, msg string) {
+	t.Helper()
+
 	out := freebox.APIResponse{Success: false, ErrorCode: code, Msg: msg}
 
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(out)
+
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		t.Logf("encode envelope: %v", err)
+	}
 }
 
 func TestClient_AuthorizeReturnsAppToken(t *testing.T) {
@@ -193,6 +224,7 @@ func TestClient_GetOpensSessionAndUsesToken(t *testing.T) {
 	r.NoError(c.Get(context.Background(), "/api/v4/connection/", &got))
 	r.EqualValues(1, fb.authChallengeCount.Load(), "session must be cached across calls")
 	r.EqualValues(2, fb.connectionHit.Load())
+	fb.flush()
 }
 
 func TestClient_GetTransparentSessionRenewalOnAuthRequired(t *testing.T) {
@@ -221,6 +253,7 @@ func TestClient_GetTransparentSessionRenewalOnAuthRequired(t *testing.T) {
 	// the cache, fetch a new challenge, and succeed.
 	r.NoError(c.Get(context.Background(), "/api/v4/connection/", nil))
 	r.EqualValues(2, fb.authChallengeCount.Load(), "second call must fetch a fresh challenge")
+	fb.flush()
 }
 
 func TestClient_PropagatesAuthRequiredAfterRetry(t *testing.T) {
@@ -231,18 +264,18 @@ func TestClient_PropagatesAuthRequiredAfterRetry(t *testing.T) {
 	// gets exhausted and we still surface the error.
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/v4/login/", func(w http.ResponseWriter, _ *http.Request) {
-		writeOK(w, freebox.LoginChallenge{Challenge: "c"})
+		writeOK(t, w, freebox.LoginChallenge{Challenge: "c"})
 	})
 	mux.HandleFunc("/api/v4/login/session/", func(w http.ResponseWriter, _ *http.Request) {
-		writeOK(w, freebox.SessionResult{SessionToken: "tok"})
+		writeOK(t, w, freebox.SessionResult{SessionToken: "tok"})
 	})
 
-	hits := 0
+	var hits atomic.Int32
 
 	mux.HandleFunc("/api/v4/connection/", func(w http.ResponseWriter, _ *http.Request) {
-		hits++
+		hits.Add(1)
 
-		writeErr(w, "auth_required", "no good")
+		writeErr(t, w, "auth_required", "no good")
 	})
 
 	srv := httptest.NewServer(mux)
@@ -254,7 +287,7 @@ func TestClient_PropagatesAuthRequiredAfterRetry(t *testing.T) {
 	err := c.Get(context.Background(), "/api/v4/connection/", nil)
 	r.Error(err)
 	r.ErrorIs(err, freebox.ErrAuthRequired)
-	r.Equal(2, hits, "client should attempt the call exactly twice on persistent auth_required")
+	r.EqualValues(2, hits.Load(), "client should attempt the call exactly twice on persistent auth_required")
 }
 
 func TestClient_ServerErrorSurfacesUnexpectedStatus(t *testing.T) {
@@ -298,7 +331,7 @@ func TestErrorTextIncludesCode(t *testing.T) {
 	t.Parallel()
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		writeErr(w, "ratelimit", "slow down")
+		writeErr(t, w, "ratelimit", "slow down")
 	}))
 	defer srv.Close()
 
@@ -307,6 +340,6 @@ func TestErrorTextIncludesCode(t *testing.T) {
 
 	_, err := c.Authorize(context.Background(), "x")
 	r.Error(err)
-	r.True(errors.Is(err, freebox.ErrAPI), fmt.Sprintf("expected ErrAPI wrap, got %v", err))
+	r.ErrorIs(err, freebox.ErrAPI)
 	r.Contains(err.Error(), "ratelimit")
 }

@@ -128,10 +128,16 @@ func startFakeFreebox(t *testing.T, appToken string, trackID int, status string)
 		switch r.Method {
 		case http.MethodPost:
 			raw, _ := json.Marshal(freebox.AuthorizeResult{AppToken: appToken, TrackID: trackID})
-			_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+			if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+				t.Logf("encode envelope: %v", err)
+			}
 		case http.MethodGet:
 			raw, _ := json.Marshal(freebox.PairingStatus{Status: status})
-			_ = json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw})
+
+			if err := json.NewEncoder(w).Encode(freebox.APIResponse{Success: true, Result: raw}); err != nil {
+				t.Logf("encode envelope: %v", err)
+			}
 		default:
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		}
@@ -173,7 +179,9 @@ func TestStartFreeboxPairingCreatesChannelWithEncryptedToken(t *testing.T) {
 	r.NotNil(conn.SettingsPrivateKeys)
 
 	// Public settings still carry the trackId and status.
-	r.EqualValues(17, int(conn.Settings["trackId"].(float64))) //nolint:forcetypeassert // test asserts json.Number
+	track, ok := conn.Settings["trackId"].(float64)
+	r.True(ok, "trackId must be a JSON number")
+	r.Equal(17, int(track))
 	r.Equal(models.FreeboxStatusPairing, conn.Settings["status"])
 }
 

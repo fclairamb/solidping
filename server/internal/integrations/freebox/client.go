@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/hmac"
-	"crypto/sha1" //nolint:gosec // HMAC-SHA1 is the algorithm the Freebox API requires
+	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -49,7 +49,7 @@ const (
 )
 
 // Client is a minimal Freebox OS API client. It is safe for concurrent
-// use: session refreshes are serialised by sessionMu, and the underlying
+// use: session refreshes are serialized by sessionMu, and the underlying
 // http.Client is goroutine-safe by design.
 //
 // Higher-level packages (checkers, the channel handler) should not
@@ -276,16 +276,16 @@ func classifyError(env *APIResponse) error {
 	}
 }
 
-func truncate(b []byte, max int) string {
-	if len(b) <= max {
+func truncate(b []byte, limit int) string {
+	if len(b) <= limit {
 		return string(b)
 	}
 
-	return string(b[:max]) + "…"
+	return string(b[:limit]) + "…"
 }
 
 // ensureSession returns the current session token, opening a new one
-// when none is cached. Concurrent callers serialise through sessionMu —
+// when none is cached. Concurrent callers serializethrough sessionMu —
 // at most one /login/session/ round-trip in flight at a time.
 func (c *Client) ensureSession(ctx context.Context) (string, error) {
 	c.sessionMu.Lock()

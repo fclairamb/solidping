@@ -8,6 +8,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// ErrNilSettings is returned when a service-layer helper is called
+// without a settings struct — callers that mean "no settings" should
+// pass a zero-valued struct, not nil.
+var ErrNilSettings = errors.New("freebox: nil settings")
+
 // StartPairing kicks off the Freebox pairing flow. The returned
 // AuthorizeResult contains the permanent app_token and the short-lived
 // track_id used to poll the LCD-approval status; both must be persisted
@@ -21,7 +26,7 @@ func StartPairing(
 	ctx context.Context, settings *models.FreeboxSettings,
 ) (*AuthorizeResult, error) {
 	if settings == nil {
-		return nil, errors.New("freebox: nil settings")
+		return nil, ErrNilSettings
 	}
 
 	appID := settings.AppID
@@ -55,7 +60,7 @@ func CheckPairingStatus(
 	ctx context.Context, settings *models.FreeboxSettings, trackID int,
 ) (string, error) {
 	if settings == nil {
-		return "", errors.New("freebox: nil settings")
+		return "", ErrNilSettings
 	}
 
 	client := NewClientWithAppID(settings.BaseURL, settings.AppID, "")
@@ -91,7 +96,7 @@ func ValidateConnection(
 	priv *models.FreeboxPrivateSettings,
 ) error {
 	if settings == nil {
-		return errors.New("freebox: nil settings")
+		return ErrNilSettings
 	}
 
 	if priv == nil || priv.AppToken == "" {

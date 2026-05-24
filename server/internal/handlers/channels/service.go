@@ -509,41 +509,71 @@ func (s *Service) StartFreeboxPairing(
 func (s *Service) CheckFreeboxPairingStatus(
 	ctx context.Context, orgSlug, connectionUID string,
 ) (*FreeboxPairingStatusResponse, error) {
+	conn, settings, err := s.loadPairingChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := reconcilePairingStatus(ctx, settings); err != nil {
+		return nil, err
+	}
+
+	if err := s.persistFreeboxSettings(ctx, conn, settings); err != nil {
+		return nil, err
+	}
+
+	return &FreeboxPairingStatusResponse{Status: settings.Status}, nil
+}
+
+// loadPairingChannel resolves the org + connection and validates that
+// the channel is a Freebox row currently in the pairing state. Pulled
+// out of CheckFreeboxPairingStatus to keep that function below the
+// cyclomatic-complexity threshold.
+func (s *Service) loadPairingChannel(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*models.Channel, *models.FreeboxSettings, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrOrganizationNotFound
+			return nil, nil, ErrOrganizationNotFound
 		}
 
-		return nil, err
+		return nil, nil, err
 	}
 
 	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrConnectionNotFound
+			return nil, nil, ErrConnectionNotFound
 		}
 
-		return nil, err
+		return nil, nil, err
 	}
 
 	if conn.OrganizationUID != org.UID {
-		return nil, ErrConnectionNotFound
+		return nil, nil, ErrConnectionNotFound
 	}
 
 	if conn.Type != models.ConnectionTypeFreebox {
-		return nil, ErrFreeboxTypeMismatch
+		return nil, nil, ErrFreeboxTypeMismatch
 	}
 
 	settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
 	if err != nil {
-		return nil, fmt.Errorf("parse freebox settings: %w", err)
+		return nil, nil, fmt.Errorf("parse freebox settings: %w", err)
 	}
 
 	if settings.TrackID == 0 || settings.Status != models.FreeboxStatusPairing {
-		return nil, ErrFreeboxNotPairing
+		return nil, nil, ErrFreeboxNotPairing
 	}
 
+	return conn, settings, nil
+}
+
+// reconcilePairingStatus polls the Freebox once and mutates `settings`
+// in place to reflect the new state. The caller is responsible for
+// persisting `settings` back to the channel row.
+func reconcilePairingStatus(ctx context.Context, settings *models.FreeboxSettings) error {
 	status, pollErr := freebox.CheckPairingStatus(ctx, settings, settings.TrackID)
 	switch {
 	case errors.Is(pollErr, freebox.ErrPairingDenied):
@@ -551,23 +581,13 @@ func (s *Service) CheckFreeboxPairingStatus(
 	case errors.Is(pollErr, freebox.ErrPairingTimeout):
 		settings.Status = models.FreeboxStatusTimeout
 	case pollErr != nil:
-		return nil, fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, pollErr)
-	default:
-		switch status {
-		case freebox.StatusGranted:
-			settings.Status = models.FreeboxStatusGranted
-			settings.TrackID = 0
-		case freebox.StatusPending, freebox.StatusUnknown:
-			// No state change needed.
-		}
+		return fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, pollErr)
+	case status == freebox.StatusGranted:
+		settings.Status = models.FreeboxStatusGranted
+		settings.TrackID = 0
 	}
 
-	// Persist any state transition that happened above.
-	if err := s.persistFreeboxSettings(ctx, conn, settings); err != nil {
-		return nil, err
-	}
-
-	return &FreeboxPairingStatusResponse{Status: settings.Status}, nil
+	return nil
 }
 
 // mergeFreeboxSettings flattens the public/private structs into one
