@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 )
 
 var (
@@ -24,6 +25,16 @@ var (
 	ErrConnectionNotFound = errors.New("connection not found")
 	// ErrInvalidConnectionType is returned when an invalid connection type is provided.
 	ErrInvalidConnectionType = errors.New("invalid connection type")
+	// ErrFreeboxPairingFailed is returned when the Freebox pairing flow
+	// fails (transport error, denial, timeout). The wrapped error keeps
+	// the underlying cause so the handler can surface a useful message.
+	ErrFreeboxPairingFailed = errors.New("freebox pairing failed")
+	// ErrFreeboxNotPairing is returned when a status-poll is requested
+	// against a channel that isn't currently in the pairing state.
+	ErrFreeboxNotPairing = errors.New("freebox channel is not in pairing state")
+	// ErrFreeboxTypeMismatch is returned when a pairing endpoint targets
+	// a non-Freebox channel.
+	ErrFreeboxTypeMismatch = errors.New("channel is not a freebox connection")
 )
 
 // Service provides business logic for connection management.
@@ -392,6 +403,235 @@ func (s *Service) loadDecryptedSettings(
 	}
 
 	return out, nil
+}
+
+// StartFreeboxPairingRequest is the body for the start-pairing endpoint.
+type StartFreeboxPairingRequest struct {
+	// Name is used for the IntegrationConnection row and for the
+	// device_name shown on the Freebox LCD prompt. Optional — defaults
+	// to "SolidPing" if absent.
+	Name string `json:"name,omitempty"`
+	// BaseURL of the Freebox API. Defaults to
+	// "http://mafreebox.freebox.fr" when empty.
+	BaseURL string `json:"baseUrl,omitempty"`
+}
+
+// FreeboxPairingResponse is the body returned by the start-pairing
+// endpoint.
+type FreeboxPairingResponse struct {
+	ConnectionUID string `json:"connectionUid"`
+	TrackID       int    `json:"trackId"`
+	Status        string `json:"status"`
+}
+
+// FreeboxPairingStatusResponse is the body returned by the
+// poll-status endpoint.
+type FreeboxPairingStatusResponse struct {
+	Status string `json:"status"`
+}
+
+// StartFreeboxPairing kicks off a Freebox pairing flow and persists the
+// resulting permanent app_token (encrypted) onto a new IntegrationConnection
+// row. The connection starts in `Status = "pairing"` until the operator
+// approves the prompt on the Freebox LCD.
+func (s *Service) StartFreeboxPairing(
+	ctx context.Context, orgSlug string, req StartFreeboxPairingRequest,
+) (*FreeboxPairingResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	settings := &models.FreeboxSettings{
+		BaseURL:    req.BaseURL,
+		AppID:      freebox.DefaultAppID,
+		DeviceName: req.Name,
+		Status:     models.FreeboxStatusPairing,
+	}
+	if settings.BaseURL == "" {
+		settings.BaseURL = freebox.DefaultBaseURL
+	}
+	if settings.DeviceName == "" {
+		settings.DeviceName = freebox.DefaultDeviceName
+	}
+
+	authResult, err := freebox.StartPairing(ctx, settings)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, err)
+	}
+
+	settings.TrackID = authResult.TrackID
+
+	channelName := req.Name
+	if channelName == "" {
+		channelName = "Freebox"
+	}
+
+	conn := models.NewChannel(org.UID, models.ConnectionTypeFreebox, channelName)
+
+	effective, err := mergeFreeboxSettings(settings, &models.FreeboxPrivateSettings{
+		AppToken: authResult.AppToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.applySettingsEncryption(ctx, conn, effective); err != nil {
+		return nil, err
+	}
+
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
+		return nil, err
+	}
+
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		activation.SourceAPI, "")
+
+	return &FreeboxPairingResponse{
+		ConnectionUID: conn.UID,
+		TrackID:       authResult.TrackID,
+		Status:        models.FreeboxStatusPairing,
+	}, nil
+}
+
+// CheckFreeboxPairingStatus polls the Freebox once for the current
+// pairing status and reconciles the IntegrationConnection record:
+//
+//   - granted → clears TrackID, sets Status = granted
+//   - denied / timeout → sets Status accordingly, leaves the row in
+//     place so the operator can see the failure (and re-pair from the UI)
+//   - pending / unknown → unchanged
+func (s *Service) CheckFreeboxPairingStatus(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*FreeboxPairingStatusResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, err
+	}
+
+	if conn.OrganizationUID != org.UID {
+		return nil, ErrConnectionNotFound
+	}
+
+	if conn.Type != models.ConnectionTypeFreebox {
+		return nil, ErrFreeboxTypeMismatch
+	}
+
+	settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return nil, fmt.Errorf("parse freebox settings: %w", err)
+	}
+
+	if settings.TrackID == 0 || settings.Status != models.FreeboxStatusPairing {
+		return nil, ErrFreeboxNotPairing
+	}
+
+	status, pollErr := freebox.CheckPairingStatus(ctx, settings, settings.TrackID)
+	switch {
+	case errors.Is(pollErr, freebox.ErrPairingDenied):
+		settings.Status = models.FreeboxStatusDenied
+	case errors.Is(pollErr, freebox.ErrPairingTimeout):
+		settings.Status = models.FreeboxStatusTimeout
+	case pollErr != nil:
+		return nil, fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, pollErr)
+	default:
+		switch status {
+		case freebox.StatusGranted:
+			settings.Status = models.FreeboxStatusGranted
+			settings.TrackID = 0
+		case freebox.StatusPending, freebox.StatusUnknown:
+			// No state change needed.
+		}
+	}
+
+	// Persist any state transition that happened above.
+	if err := s.persistFreeboxSettings(ctx, conn, settings); err != nil {
+		return nil, err
+	}
+
+	return &FreeboxPairingStatusResponse{Status: settings.Status}, nil
+}
+
+// mergeFreeboxSettings flattens the public/private structs into one
+// effective map that applySettingsEncryption can split again. Keeping
+// this in one place avoids leaking the freebox secret-key names into
+// the channel handler.
+func mergeFreeboxSettings(
+	pub *models.FreeboxSettings, priv *models.FreeboxPrivateSettings,
+) (map[string]any, error) {
+	asMap, err := pub.ToJSONMap()
+	if err != nil {
+		return nil, fmt.Errorf("marshal freebox settings: %w", err)
+	}
+
+	out := make(map[string]any, len(asMap)+1)
+	for k, v := range asMap {
+		out[k] = v
+	}
+
+	if priv != nil && priv.AppToken != "" {
+		out["appToken"] = priv.AppToken
+	}
+
+	return out, nil
+}
+
+// persistFreeboxSettings writes the freebox-specific Settings struct
+// back to the channel without disturbing the encrypted app_token. It
+// loads the existing decrypted secrets, replaces the public side, and
+// goes back through the standard split-and-encrypt pipeline.
+func (s *Service) persistFreeboxSettings(
+	ctx context.Context, conn *models.Channel, settings *models.FreeboxSettings,
+) error {
+	existing, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	pubMap, err := settings.ToJSONMap()
+	if err != nil {
+		return fmt.Errorf("marshal freebox settings: %w", err)
+	}
+
+	merged := make(map[string]any, len(pubMap)+1)
+	for k, v := range pubMap {
+		merged[k] = v
+	}
+	// Preserve the encrypted secret if present.
+	if v, ok := existing["appToken"]; ok {
+		merged["appToken"] = v
+	}
+
+	if err := s.applySettingsEncryption(ctx, conn, merged); err != nil {
+		return err
+	}
+
+	update := &models.ChannelUpdate{
+		Settings:             &conn.Settings,
+		SettingsPrivate:      conn.SettingsPrivate,
+		SettingsPrivateKeys:  conn.SettingsPrivateKeys,
+		ClearSettingsPrivate: conn.SettingsPrivate == nil,
+	}
+
+	return s.db.UpdateChannel(ctx, conn.UID, update)
 }
 
 // DeleteChannel deletes a connection.
