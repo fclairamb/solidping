@@ -162,7 +162,17 @@
     "docker": "Docker",
     "dockerDescription": "Zustand von Docker-Containern überwachen",
     "browser": "Browser",
-    "browserDescription": "Seiten mit Headless-Chrome überwachen"
+    "browserDescription": "Seiten mit Headless-Chrome überwachen",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Prüfen, ob eine IP/Domain auf DNS-Blocklisten steht"
+  },
+  "dnsbl": {
+    "target": "Ziel-IP oder Hostname",
+    "targetHelp": "IPv4-Adresse oder Hostname, der gegen die Blocklisten geprüft wird.",
+    "blocklists": "Blocklisten-Zonen",
+    "blocklistsHelp": "Optional. Eine DNS-Blocklisten-Zone pro Zeile (oder durch Komma getrennt). Leer lassen, um die Standardwerte zu verwenden (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Eigener Resolver",
+    "nameserverHelp": "Optional host:port eines rekursiven Resolvers. Öffentliche Resolver (8.8.8.8, 1.1.1.1) werden von Spamhaus blockiert, verwenden Sie bei Bedarf einen lokalen Resolver."
   },
   "intervals": {
     "10s": "10 Sekunden",
