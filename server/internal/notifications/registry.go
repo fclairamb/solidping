@@ -25,6 +25,12 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &OpsgenieSender{}, true
 	case models.ConnectionTypePushover:
 		return &PushoverSender{}, true
+	case models.ConnectionTypeFreebox:
+		// Freebox is a monitoring source, not a notification sink —
+		// the API has no outbound message channel. We register no
+		// sender so attempts to bind a Freebox channel to a check
+		// short-circuit at notify time.
+		return nil, false
 	default:
 		return nil, false
 	}

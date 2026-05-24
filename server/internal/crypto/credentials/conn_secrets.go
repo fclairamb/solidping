@@ -32,6 +32,7 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeNtfy:       {"auth_token"},
 	models.ConnectionTypeOpsgenie:   {"api_key"},
 	models.ConnectionTypePushover:   {"user_key", "api_token"},
+	models.ConnectionTypeFreebox:    {"appToken"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

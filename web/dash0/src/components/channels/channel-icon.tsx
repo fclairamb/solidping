@@ -5,6 +5,7 @@ import {
   MessageCircle,
   MessageSquare,
   MessagesSquare,
+  Router,
   Webhook,
 } from "lucide-react";
 import type { ConnectionType } from "@/api/hooks";
@@ -24,6 +25,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   ntfy: Bell,
   opsgenie: Bell,
   pushover: Bell,
+  freebox: Router,
 };
 
 export function ChannelIcon({ type, className }: ChannelIconProps) {
@@ -55,6 +57,8 @@ export function channelLabel(type: ConnectionType): string {
       return "Opsgenie";
     case "pushover":
       return "Pushover";
+    case "freebox":
+      return "Freebox";
     default:
       return type;
   }

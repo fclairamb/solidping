@@ -768,6 +768,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.DELETE("/:uid", channelsHandler.DeleteChannel)
 	}
 
+	// Freebox pairing endpoints — separate from the generic CRUD because
+	// they wrap the multi-step LCD-approval handshake. POST creates the
+	// connection in `pairing` status and asks the Freebox for an
+	// app_token; GET polls until the user approves the prompt.
+	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
+	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
+	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
