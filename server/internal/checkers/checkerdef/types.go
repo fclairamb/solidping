@@ -1,6 +1,9 @@
 package checkerdef
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Status represents the outcome of a check execution.
 type Status int
@@ -236,10 +239,8 @@ func ListCheckTypeMetas() []CheckTypeMeta {
 // MatchesLabels returns true if the check type has any of the given labels.
 func (m *CheckTypeMeta) MatchesLabels(labels []string) bool {
 	for _, want := range labels {
-		for _, have := range m.Labels {
-			if want == have {
-				return true
-			}
+		if slices.Contains(m.Labels, want) {
+			return true
 		}
 	}
 
