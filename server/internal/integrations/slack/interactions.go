@@ -13,13 +13,21 @@ import (
 // ErrMissingViewState is returned when a view submission is missing state.
 var ErrMissingViewState = errors.New("missing view state")
 
-// handleInteraction routes interactions to their specific handlers.
+// handleInteraction routes interactions to their specific handlers (HTTP transport entry point).
 func (h *Handler) handleInteraction(ctx context.Context, interaction *Interaction) (*MessageResponse, error) {
+	return DispatchInteraction(ctx, h.svc, interaction)
+}
+
+// DispatchInteraction is the transport-agnostic dispatch entry for Slack
+// interactive payloads (shortcuts, block actions, view submissions).
+func DispatchInteraction(ctx context.Context, svc *Service, interaction *Interaction) (*MessageResponse, error) {
 	slog.InfoContext(ctx, "Handling Slack interaction",
 		"type", interaction.Type,
 		"callback_id", interaction.CallbackID,
 		"team_id", interaction.Team.ID,
 	)
+
+	h := &Handler{svc: svc}
 
 	switch interaction.Type {
 	case "shortcut":

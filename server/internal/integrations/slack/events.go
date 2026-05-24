@@ -8,12 +8,23 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// handleEvent routes events to their specific handlers.
+// handleEvent routes events to their specific handlers (HTTP transport entry point).
 func (h *Handler) handleEvent(ctx context.Context, event *Event) error {
+	return DispatchEvent(ctx, h.svc, event)
+}
+
+// DispatchEvent is the transport-agnostic dispatch entry for Slack events.
+// Both the HTTP webhook handler and the Socket Mode supervisor route through it.
+func DispatchEvent(ctx context.Context, svc *Service, event *Event) error {
 	slog.InfoContext(ctx, "Handling Slack event",
 		"event_type", event.Event.Type,
 		"team_id", event.TeamID,
 	)
+
+	// Construct a transport-less *Handler bound only to svc — every inner
+	// dispatch helper here uses h.svc; cfg is only needed for HTTP install /
+	// signature paths and is not reachable from the dispatch chain.
+	h := &Handler{svc: svc}
 
 	switch event.Event.Type {
 	case "app_home_opened":

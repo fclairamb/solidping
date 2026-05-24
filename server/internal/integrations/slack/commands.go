@@ -10,8 +10,15 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// handleCommand routes commands to their specific handlers.
+// handleCommand routes commands to their specific handlers (HTTP transport entry point).
 func (h *Handler) handleCommand(ctx context.Context, cmd *Command) (*MessageResponse, error) {
+	return DispatchCommand(ctx, h.svc, cmd)
+}
+
+// DispatchCommand is the transport-agnostic dispatch entry for Slack slash commands.
+// Returns nil response when the response is posted out-of-band via chat.postMessage,
+// or a MessageResponse to be returned synchronously.
+func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageResponse, error) {
 	slog.InfoContext(ctx, "Handling Slack command",
 		"command", cmd.Command,
 		"text", cmd.Text,
@@ -19,6 +26,8 @@ func (h *Handler) handleCommand(ctx context.Context, cmd *Command) (*MessageResp
 		"team_id", cmd.TeamID,
 		"channel_id", cmd.ChannelID,
 	)
+
+	h := &Handler{svc: svc}
 
 	switch cmd.Command {
 	case "/check":
