@@ -61,9 +61,9 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
-  // Regression guard: the scan list rendered `scan.uid.slice(0, 8)`, which threw
-  // "Cannot read properties of undefined (reading 'slice')" when the API serialized
-  // the job model with Go field casing (`UID`) instead of camelCase (`uid`).
+  // Regression guard: the scan list previously rendered `scan.uid.slice(0, 8)`,
+  // which threw when the API used Go field casing (`UID`). The bogus UID column
+  // has since been removed, but the list must still render without crashing.
   test("renders the scan list without crashing after a scan is created", async ({ page }) => {
     const pageErrors: Error[] = [];
     page.on("pageerror", (err) => pageErrors.push(err));
@@ -80,16 +80,46 @@ test.describe("Network Discovery", () => {
     // The uid is rendered on the detail page — blank if the API used the wrong casing.
     await expect(page.getByText(jobUid)).toBeVisible();
 
-    // Back on the index, the row must render the truncated uid without throwing.
+    // Back on the index, the table must render without throwing.
     await page.goto("/dash0/orgs/test/discovery");
     await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
     const table = page.getByRole("table");
     await expect(table).toBeVisible();
-    await expect(table.getByText(jobUid.slice(0, 8))).toBeVisible();
 
     expect(
       pageErrors,
       `unexpected page errors: ${pageErrors.map((e) => e.message).join(", ")}`,
     ).toHaveLength(0);
+  });
+
+  test("scan list no longer shows the bogus IP Address column", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
+    // The first column header used to be "IP Address" while rendering the scan
+    // UID — it has been removed. The header row should not contain it.
+    const headerRow = page.locator("thead tr");
+    if (await headerRow.count()) {
+      await expect(headerRow.getByText(/IP Address/i)).toHaveCount(0);
+    }
+  });
+
+  test("discovery page header uses the Network breadcrumb crumb", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    // The breadcrumb (in the header bar) carries the discovery label, matching
+    // the sidebar entry. There are two "Discovery" texts (sidebar + breadcrumb).
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+    await expect(page.locator("header").getByText(/discovery/i)).toBeVisible();
+  });
+
+  test("notifications page renders the My pages header", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/me/notifications");
+    await expect(page.getByTestId("my-notifications-page")).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /my pages/i }),
+    ).toBeVisible();
+    // Breadcrumb mirrors the page title.
+    await expect(page.locator("header").getByText(/my pages/i)).toBeVisible();
   });
 });
