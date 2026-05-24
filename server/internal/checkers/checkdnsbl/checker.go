@@ -21,6 +21,11 @@ const (
 	maxTimeout     = 60 * time.Second
 )
 
+var (
+	errTargetNotIPv4 = errors.New("target is not an IPv4 address")
+	errTargetNoIPv4  = errors.New("target resolved to no IPv4 addresses")
+)
+
 // hostLookuper is the minimal resolver surface the checker needs. It lets tests
 // inject a map-backed fake so they never touch the network.
 type hostLookuper interface {
@@ -48,7 +53,7 @@ func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
 	}
 
 	if cfg.Target == "" {
-		return checkerdef.NewConfigError("target", "is required")
+		return checkerdef.NewConfigError(keyTarget, "is required")
 	}
 
 	if cfg.Nameserver != "" && !strings.Contains(cfg.Nameserver, ":") {
@@ -64,7 +69,7 @@ func (c *DNSBLChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // Execute performs the DNSBL check and returns the result.
 //
-//nolint:funlen,cyclop // DNSBL checking aggregates several zones with inverted DNS semantics
+//nolint:funlen // DNSBL checking aggregates several zones with inverted DNS semantics
 func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*checkerdef.Result, error) {
 	cfg, err := checkerdef.AssertConfig[*DNSBLConfig](config)
 	if err != nil {
@@ -92,7 +97,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
 			Output: map[string]any{
-				"target":                  cfg.Target,
+				keyTarget:                 cfg.Target,
 				checkerdef.OutputKeyError: fmt.Sprintf("failed to resolve target: %v", err),
 			},
 		}, nil
@@ -144,7 +149,7 @@ func (c *DNSBLChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 			"query_time_ms":      float64(duration.Milliseconds()),
 		},
 		Output: map[string]any{
-			"target":       cfg.Target,
+			keyTarget:      cfg.Target,
 			"target_ip":    strings.Join(ips, ","),
 			"listed_on":    listedOn,
 			"clean":        clean,
@@ -186,7 +191,7 @@ func classifyStatus(listed, clean, inconclusive int) checkerdef.Status {
 func resolveTargetIPs(ctx context.Context, lookuper hostLookuper, target string) ([]string, error) {
 	if ip := net.ParseIP(target); ip != nil {
 		if ip.To4() == nil {
-			return nil, fmt.Errorf("target %q is not an IPv4 address", target)
+			return nil, fmt.Errorf("%w: %q", errTargetNotIPv4, target)
 		}
 
 		return []string{ip.String()}, nil
@@ -207,7 +212,7 @@ func resolveTargetIPs(ctx context.Context, lookuper hostLookuper, target string)
 	}
 
 	if len(ips) == 0 {
-		return nil, fmt.Errorf("target %q resolved to no IPv4 addresses", target)
+		return nil, fmt.Errorf("%w: %q", errTargetNoIPv4, target)
 	}
 
 	return ips, nil
@@ -295,13 +300,13 @@ func sortedKeysExcept(set, except map[string]bool) []string {
 }
 
 // mergeSets returns the union of two string sets.
-func mergeSets(a, b map[string]bool) map[string]bool {
-	out := make(map[string]bool, len(a)+len(b))
-	for k := range a {
+func mergeSets(first, second map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(first)+len(second))
+	for k := range first {
 		out[k] = true
 	}
 
-	for k := range b {
+	for k := range second {
 		out[k] = true
 	}
 

@@ -55,14 +55,14 @@ func TestDNSBLConfig_FromMap(t *testing.T) {
 		{
 			name: "valid config with all fields",
 			configMap: map[string]any{
-				"target":     "203.0.113.10",
-				"blocklists": []any{"zen.spamhaus.org", "bl.spamcop.net"},
+				"target":     sampleMailServerIP,
+				"blocklists": []any{zoneSpamhaus, zoneSpamcop},
 				"nameserver": "127.0.0.1:53",
 				"timeout":    "15s",
 			},
 			validate: func(r *require.Assertions, cfg *DNSBLConfig) {
-				r.Equal("203.0.113.10", cfg.Target)
-				r.Equal([]string{"zen.spamhaus.org", "bl.spamcop.net"}, cfg.Blocklists)
+				r.Equal(sampleMailServerIP, cfg.Target)
+				r.Equal([]string{zoneSpamhaus, zoneSpamcop}, cfg.Blocklists)
 				r.Equal("127.0.0.1:53", cfg.Nameserver)
 				r.Equal(15*time.Second, cfg.Timeout)
 			},
@@ -78,9 +78,9 @@ func TestDNSBLConfig_FromMap(t *testing.T) {
 		},
 		{
 			name:      "blocklists as []string",
-			configMap: map[string]any{"target": "1.2.3.4", "blocklists": []string{"zen.spamhaus.org"}},
+			configMap: map[string]any{"target": "1.2.3.4", "blocklists": []string{zoneSpamhaus}},
 			validate: func(r *require.Assertions, cfg *DNSBLConfig) {
-				r.Equal([]string{"zen.spamhaus.org"}, cfg.Blocklists)
+				r.Equal([]string{zoneSpamhaus}, cfg.Blocklists)
 			},
 		},
 		{
@@ -115,7 +115,7 @@ func TestDNSBLConfig_FromMap(t *testing.T) {
 		},
 		{
 			name:      "invalid blocklists type",
-			configMap: map[string]any{"target": "1.2.3.4", "blocklists": "zen.spamhaus.org"},
+			configMap: map[string]any{"target": "1.2.3.4", "blocklists": zoneSpamhaus},
 			wantErr:   true,
 			errMsg:    "blocklists: must be a string array",
 		},
@@ -150,15 +150,15 @@ func TestDNSBLConfig_GetConfig(t *testing.T) {
 
 	r := require.New(t)
 	cfg := &DNSBLConfig{
-		Target:     "203.0.113.10",
-		Blocklists: []string{"zen.spamhaus.org"},
+		Target:     sampleMailServerIP,
+		Blocklists: []string{zoneSpamhaus},
 		Nameserver: "127.0.0.1:53",
 		Timeout:    15 * time.Second,
 	}
 
 	got := cfg.GetConfig()
-	r.Equal("203.0.113.10", got["target"])
-	r.Equal([]string{"zen.spamhaus.org"}, got["blocklists"])
+	r.Equal(sampleMailServerIP, got["target"])
+	r.Equal([]string{zoneSpamhaus}, got["blocklists"])
 	r.Equal("127.0.0.1:53", got["nameserver"])
 	r.Equal("15s", got["timeout"])
 
@@ -184,7 +184,7 @@ func TestDNSBLChecker_Validate(t *testing.T) {
 	}{
 		{
 			name:   "valid minimal config",
-			config: &DNSBLConfig{Target: "203.0.113.10"},
+			config: &DNSBLConfig{Target: sampleMailServerIP},
 		},
 		{
 			name:   "valid full config",
@@ -262,19 +262,17 @@ func TestReverseIP(t *testing.T) {
 	}
 }
 
-//nolint:funlen // table-driven Execute test with several scenarios
 func TestDNSBLChecker_Execute(t *testing.T) {
 	t.Parallel()
 
-	const (
-		zoneSpamhaus = "zen.spamhaus.org"
-		zoneSpamcop  = "bl.spamcop.net"
-	)
+	const ipMixed = "198.51.100.5"
 
-	listedQuery := reverseIP("203.0.113.10") + "." + zoneSpamhaus       // listed on spamhaus
-	cleanQuery := reverseIP("203.0.113.10") + "." + zoneSpamcop         // clean on spamcop
-	inconclQuery := reverseIP("198.51.100.5") + "." + zoneSpamcop       // errors out
-	cleanInconclQuery := reverseIP("198.51.100.5") + "." + zoneSpamhaus // clean
+	ipListed := sampleMailServerIP
+
+	listedQuery := reverseIP(ipListed) + "." + zoneSpamhaus      // listed on spamhaus
+	cleanQuery := reverseIP(ipListed) + "." + zoneSpamcop        // clean on spamcop
+	inconclQuery := reverseIP(ipMixed) + "." + zoneSpamcop       // errors out
+	cleanInconclQuery := reverseIP(ipMixed) + "." + zoneSpamhaus // clean
 
 	tests := []struct {
 		name             string
@@ -288,7 +286,7 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 	}{
 		{
 			name:   "listed on one zone",
-			config: &DNSBLConfig{Target: "203.0.113.10", Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
 			lookuper: &fakeLookuper{
 				responses: map[string]fakeResp{
 					listedQuery: {addrs: []string{"127.0.0.2"}},
@@ -302,7 +300,7 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 		},
 		{
 			name:   "clean on all zones",
-			config: &DNSBLConfig{Target: "203.0.113.10", Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
 			lookuper: &fakeLookuper{
 				fallback: fakeResp{err: errNXDOMAIN},
 			},
@@ -326,7 +324,7 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 		},
 		{
 			name:   "all zones inconclusive is timeout",
-			config: &DNSBLConfig{Target: "203.0.113.10", Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
+			config: &DNSBLConfig{Target: sampleMailServerIP, Blocklists: []string{zoneSpamhaus, zoneSpamcop}},
 			lookuper: &fakeLookuper{
 				fallback: fakeResp{err: &net.DNSError{Err: "timeout", IsTimeout: true}},
 			},
@@ -369,11 +367,11 @@ func TestDNSBLChecker_Execute(t *testing.T) {
 func TestDNSBLChecker_Execute_MultiIPHostname(t *testing.T) {
 	t.Parallel()
 
-	const zone = "zen.spamhaus.org"
+	const zone = zoneSpamhaus
 
 	r := require.New(t)
 
-	ip1 := "203.0.113.10"
+	ip1 := sampleMailServerIP
 	ip2 := "203.0.113.11"
 
 	lookuper := &fakeLookuper{

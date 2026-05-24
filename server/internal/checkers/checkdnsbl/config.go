@@ -6,16 +6,27 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// keyTarget is the config/output map key for the check target.
+const keyTarget = "target"
+
+// Known IP-based DNS blocklist zones used as defaults and in tests.
+const (
+	zoneSpamhaus   = "zen.spamhaus.org"
+	zoneSpamcop    = "bl.spamcop.net"
+	zoneBarracuda  = "b.barracudacentral.org"
+	zoneUCEProtect = "dnsbl-1.uceprotect.net"
+)
+
 // defaultBlocklists are the IP-based DNS blocklist zones queried when the
 // config provides none. SORBS (dnsbl.sorbs.net) is intentionally excluded —
 // it shut down in 2024.
 //
 //nolint:gochecknoglobals // read-only default list
 var defaultBlocklists = []string{
-	"zen.spamhaus.org",
-	"bl.spamcop.net",
-	"b.barracudacentral.org",
-	"dnsbl-1.uceprotect.net",
+	zoneSpamhaus,
+	zoneSpamcop,
+	zoneBarracuda,
+	zoneUCEProtect,
 }
 
 // DNSBLConfig holds the configuration for DNSBL (blocklist) checks.
@@ -27,14 +38,12 @@ type DNSBLConfig struct {
 }
 
 // FromMap populates the configuration from a map.
-//
-//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *DNSBLConfig) FromMap(configMap map[string]any) error {
 	// Extract Target (required string)
-	if target, ok := configMap["target"].(string); ok {
+	if target, ok := configMap[keyTarget].(string); ok {
 		c.Target = target
-	} else if configMap["target"] != nil {
-		return checkerdef.NewConfigError("target", "must be a string")
+	} else if configMap[keyTarget] != nil {
+		return checkerdef.NewConfigError(keyTarget, "must be a string")
 	}
 
 	// Extract Nameserver (optional string)
@@ -80,7 +89,7 @@ func (c *DNSBLConfig) FromMap(configMap map[string]any) error {
 // GetConfig implements the GetConfig interface by returning the configuration as a map.
 func (c *DNSBLConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"target": c.Target,
+		keyTarget: c.Target,
 	}
 
 	if len(c.Blocklists) > 0 {

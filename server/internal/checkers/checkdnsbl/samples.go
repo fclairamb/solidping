@@ -9,7 +9,11 @@ import (
 // DNSBL test convention: on most zones 127.0.0.2 is a permanent test-listing
 // (always "listed"), while 127.0.0.1 is guaranteed clean (never listed). The
 // guaranteed-clean sample below uses the latter so it reports Up reliably.
-const sampleTimeout = 10 * time.Second
+const (
+	sampleTimeout = 10 * time.Second
+	// sampleMailServerIP is a documentation IP (RFC 5737) used as a sample target.
+	sampleMailServerIP = "203.0.113.10"
+)
 
 // GetSampleConfigs returns sample DNSBL check configurations.
 func (c *DNSBLChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checkerdef.CheckSpec {
@@ -30,7 +34,7 @@ func (c *DNSBLChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []check
 			Slug:   "dnsbl-mail-server",
 			Period: time.Hour,
 			Config: (&DNSBLConfig{
-				Target:  "203.0.113.10",
+				Target:  sampleMailServerIP,
 				Timeout: sampleTimeout,
 			}).GetConfig(),
 		},
