@@ -166,6 +166,33 @@
     "freebox_line": "Qualité de ligne Freebox",
     "freebox_lineDescription": "Surveiller la qualité de la ligne xDSL/FTTH via Freebox OS"
   },
+  "freebox": {
+    "discover": "Découvrir depuis Freebox",
+    "discoverTitle": "Découvrir des hôtes depuis Freebox",
+    "discoverDescription": "Choisissez un hôte visible par votre Freebox pour pré-remplir un contrôle ICMP.",
+    "searchPlaceholder": "Rechercher par nom ou IP…",
+    "loading": "Chargement des hôtes…",
+    "error": "Impossible de charger les hôtes depuis la Freebox.",
+    "retry": "Réessayer",
+    "noHosts": "Aucun hôte visible sur cette Freebox.",
+    "noMatches": "Aucun hôte ne correspond à la recherche.",
+    "reachable": "Joignable",
+    "unreachable": "Injoignable",
+    "cancel": "Annuler",
+    "useSelected": "Utiliser l'hôte sélectionné",
+    "hostType": {
+      "workstation": "Ordinateur",
+      "laptop": "Portable",
+      "smartphone": "Téléphone",
+      "tablet": "Tablette",
+      "nas": "NAS",
+      "printer": "Imprimante",
+      "player": "Lecteur multimédia",
+      "ip_camera": "Caméra",
+      "router": "Routeur",
+      "other": "Appareil"
+    }
+  },
   "freeboxLine": {
     "connectionUid": "Connexion Freebox",
     "connectionUidHelp": "Sélectionnez une connexion Freebox appairée. Si vous n'en avez aucune, appairez-en une depuis les Canaux.",

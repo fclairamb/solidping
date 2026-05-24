@@ -2753,6 +2753,45 @@ export function useFreeboxPairingStatus(
   });
 }
 
+// Freebox LAN-discovery types and hooks. The endpoint surfaces hosts
+// currently visible to a paired Freebox so the operator can pre-fill
+// an ICMP check without typing an IP — see spec
+// `2026-05-24-08-freebox-lan-discovery.md`.
+
+export interface FreeboxLanHost {
+  id: string;
+  name: string;
+  ip: string;
+  hostType: string;
+  reachable: boolean;
+  lastSeen?: string;
+}
+
+export interface ListFreeboxLanHostsResponse {
+  data: FreeboxLanHost[];
+}
+
+// useFreeboxLanHosts polls the LAN-browser endpoint on demand. We do
+// not auto-refresh — the dashboard opens the picker, gets a snapshot,
+// and the user moves on. A manual refetch is one click away.
+export function useFreeboxLanHosts(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxLanHosts", org, connectionUid],
+    queryFn: async () => {
+      const response = await apiFetch<ListFreeboxLanHostsResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/${connectionUid}/lan-hosts`,
+      );
+      return response.data || [];
+    },
+    enabled: enabled && !!org && !!connectionUid,
+    staleTime: 30_000,
+  });
+}
+
 // CheckConnection is what GET /checks/$check/channels returns — a
 // flattened view of the bound channel (uid is the underlying channel
 // UID), not the join row. The TS-side name keeps "Connection" until
