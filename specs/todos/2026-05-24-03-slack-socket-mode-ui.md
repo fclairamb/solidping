@@ -281,3 +281,24 @@ make dev
 | App-Level Token appears in browser network tab on GET | Backend `GET /api/v1/system/parameters` returns `secret: true` rows with `value: null` (existing behavior). Never render `value` for secret params. |
 | New `server.slack` tab conflicts with an existing route segment | Check `server.tsx` tab map before adding. Route file names in the `server.*` family are TanStack Router path segments — a name collision would cause a build error caught by `bun run build`. |
 | French/Spanish/German translations are machine-translated and awkward | Mark as "community-reviewed needed" in the PR description; initial quality is acceptable for operator-facing text. |
+
+## Implementation Plan
+
+1. **Add `useSlackSocketStatus` hook** to `web/dash0/src/api/hooks.ts` with a `SlackSocketStatus` interface and 5-second polling (background paused).
+2. **Add i18n keys** to `server.json` in all four locales (`en`, `fr`, `es`, `de`):
+   - `tabs.slack` for the tab strip label.
+   - `slack.*` namespace with `socketMode`, `status` subsections and the `notEnabledHint`.
+3. **Register the "Slack" tab** in `web/dash0/src/routes/orgs/$org/server.tsx` (after Authentication).
+4. **Create the route file** `web/dash0/src/routes/orgs/$org/server.slack.tsx`:
+   - Use `useSystemParameters` to read `slack.enabled`, `slack.socket_mode_enabled`, `slack.app_token`.
+   - When `slack.enabled` is falsy, render only an `Alert` with the not-enabled hint.
+   - Otherwise render two cards: a config card (Switch + secret-input + Save) and a live Connection Status card driven by `useSlackSocketStatus`.
+   - Mirror `server.auth.tsx` secret-input handling (`editingSecrets`, `visibleSecrets`, masked placeholder + Edit).
+   - Mobile-friendly: stacked spacing, no fixed widths, full-width buttons inside cards.
+5. **Add Playwright tests** in `web/dash0/e2e/slack-socket-mode.spec.ts`:
+   - "not enabled" hint when `slack.enabled` is false.
+   - Toggle Socket Mode + save token → assert PUT calls with the right payload, masked field afterwards.
+   - Mocked status `connected: true` → Connected badge + team count.
+   - Mocked status `connected: false, lastError` → Disconnected badge + error text.
+6. **QA**: `make fmt`, `make build-backend build-client lint-back test`, then run Playwright (`make test-dash`) as feasible.
+7. **Audit + archive** per the orchestrator's instructions.
