@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/uptrace/bunrouter"
@@ -56,105 +55,50 @@ func (h *Handler) handleLanHostsError(writer http.ResponseWriter, err error) err
 	}
 }
 
-// ListFreeboxLanHosts loads the channel, validates it is a granted
-// Freebox connection, builds an authenticated client and proxies the
-// LAN-browser query. Returns ErrFreeboxNotGranted when the channel is
-// missing an app_token (still in `pairing`, `denied`, or `timeout`).
+// ListFreeboxLanHosts resolves the org + channel, validates it is a Freebox
+// connection (preserving the precise 404 / 400 domain errors the HTTP layer
+// relies on), then delegates the granted-check → decrypt-token → build-client
+// → list chain to the shared freebox.ListLanHostsForChannel resolver. The
+// freebox package's not-granted sentinel is mapped back to this handler's
+// ErrFreeboxNotGranted so the endpoint keeps returning 409.
 func (s *Service) ListFreeboxLanHosts(
 	ctx context.Context, orgSlug, connectionUID string,
 ) ([]freebox.LanHost, error) {
-	conn, settings, appToken, err := s.loadGrantedFreeboxChannel(ctx, orgSlug, connectionUID)
-	if err != nil {
-		return nil, err
-	}
-
-	_ = conn // kept for future audit hooks; silenced for the linter
-
-	client := s.freeboxClient(settings.BaseURL, settings.AppID, appToken)
-
-	hosts, err := freebox.ListLanHosts(ctx, client)
-	if err != nil {
-		return nil, fmt.Errorf("list lan hosts: %w", err)
-	}
-
-	return hosts, nil
-}
-
-// loadGrantedFreeboxChannel resolves the org + channel, validates the
-// type is Freebox, and returns the decrypted app_token. Pulled out so
-// future granted-only endpoints (e.g. line stats UI) can reuse it.
-func (s *Service) loadGrantedFreeboxChannel(
-	ctx context.Context, orgSlug, connectionUID string,
-) (*models.Channel, *models.FreeboxSettings, string, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, "", ErrOrganizationNotFound
+			return nil, ErrOrganizationNotFound
 		}
 
-		return nil, nil, "", err
+		return nil, err
 	}
 
 	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, nil, "", ErrConnectionNotFound
+			return nil, ErrConnectionNotFound
 		}
 
-		return nil, nil, "", err
+		return nil, err
 	}
 
 	if conn.OrganizationUID != org.UID {
-		return nil, nil, "", ErrConnectionNotFound
+		return nil, ErrConnectionNotFound
 	}
 
 	if conn.Type != models.ConnectionTypeFreebox {
-		return nil, nil, "", ErrFreeboxTypeMismatch
+		return nil, ErrFreeboxTypeMismatch
 	}
 
-	settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
-	if err != nil {
-		return nil, nil, "", fmt.Errorf("parse freebox settings: %w", err)
+	hosts, err := freebox.ListLanHostsForChannel(ctx, s.db, s.creds, org.UID, connectionUID)
+	switch {
+	case errors.Is(err, freebox.ErrFreeboxNotGranted):
+		return nil, ErrFreeboxNotGranted
+	case errors.Is(err, freebox.ErrFreeboxChannelNotFound):
+		return nil, ErrConnectionNotFound
+	case err != nil:
+		return nil, err
 	}
 
-	appToken, err := s.resolveFreeboxAppToken(ctx, conn)
-	if err != nil {
-		return nil, nil, "", err
-	}
-
-	if appToken == "" || settings.Status != models.FreeboxStatusGranted {
-		return nil, nil, "", ErrFreeboxNotGranted
-	}
-
-	return conn, settings, appToken, nil
-}
-
-// resolveFreeboxAppToken decrypts the app_token stored on a Freebox
-// channel. Mirrors the resolver wired in server.go for the checker —
-// honors both encrypted-private and plaintext-fallback storage paths.
-func (s *Service) resolveFreeboxAppToken(
-	ctx context.Context, conn *models.Channel,
-) (string, error) {
-	if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
-		if !s.creds.Enabled() {
-			return "", fmt.Errorf("decrypt freebox app_token: %w (credentials disabled)", ErrFreeboxNotGranted)
-		}
-
-		priv, err := s.creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
-		if err != nil {
-			return "", fmt.Errorf("decrypt freebox app_token: %w", err)
-		}
-
-		if v, ok := priv["appToken"].(string); ok && v != "" {
-			return v, nil
-		}
-	}
-
-	// Plaintext fallback (credentials disabled): the same key lives on
-	// the public Settings map.
-	if v, ok := conn.Settings["appToken"].(string); ok {
-		return v, nil
-	}
-
-	return "", nil
+	return hosts, nil
 }
