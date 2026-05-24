@@ -82,7 +82,11 @@ type Service interface {
 
 // ListJobsOptions contains filtering options for listing jobs.
 type ListJobsOptions struct {
-	Type   string
+	// Type filters to a single job type. Ignored when Types is set.
+	Type string
+	// Types filters to any of the given job types (WHERE type IN). Takes
+	// precedence over Type when non-empty.
+	Types  []string
 	Status string
 	Limit  int
 	Offset int
@@ -265,7 +269,9 @@ func (s *serviceImpl) ListJobs(
 		Where("deleted_at IS NULL").
 		Order("created_at DESC")
 
-	if opts.Type != "" {
+	if len(opts.Types) > 0 {
+		query = query.Where("type IN (?)", bun.In(opts.Types))
+	} else if opts.Type != "" {
 		query = query.Where("type = ?", opts.Type)
 	}
 
@@ -283,7 +289,7 @@ func (s *serviceImpl) ListJobs(
 
 	var jobs []*models.Job
 
-	err := query.Scan(ctx)
+	err := query.Scan(ctx, &jobs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}

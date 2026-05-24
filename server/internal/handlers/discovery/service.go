@@ -13,10 +13,12 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
+	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
@@ -28,12 +30,19 @@ var (
 	ErrAlreadyRunning = errors.New("a discovery scan is already running for this organization")
 	// ErrAlreadyPromoted is returned when a host has already been promoted.
 	ErrAlreadyPromoted = errors.New("host already promoted")
+	// ErrFreeboxNotGranted is returned when a Freebox discovery targets a
+	// channel that has not completed the LCD-pairing flow.
+	ErrFreeboxNotGranted = errors.New("freebox channel is not paired yet")
+	// ErrFreeboxChannelNotFound is returned when the targeted Freebox channel
+	// does not exist, belongs to another org, or is not a Freebox channel.
+	ErrFreeboxChannelNotFound = errors.New("freebox channel not found")
 )
 
 // ListHostsOptions configures which hosts to return.
 type ListHostsOptions struct {
 	JobUID   string
 	Promoted *bool
+	Sources  []models.DiscoverySource
 	Limit    int
 	Offset   int
 }
@@ -53,6 +62,7 @@ type Service struct {
 	dbSvc      db.Service
 	checksSvc  *checks.Service
 	jobSvc     jobsvc.Service
+	creds      credentials.Service
 	isPostgres bool
 }
 
@@ -62,6 +72,7 @@ func NewService(
 	dbSvc db.Service,
 	checksSvc *checks.Service,
 	jobSvc jobsvc.Service,
+	creds credentials.Service,
 ) *Service {
 	_, isPostgres := bunDB.Dialect().(*pgdialect.Dialect)
 
@@ -70,6 +81,7 @@ func NewService(
 		dbSvc:      dbSvc,
 		checksSvc:  checksSvc,
 		jobSvc:     jobSvc,
+		creds:      creds,
 		isPostgres: isPostgres,
 	}
 }
@@ -81,7 +93,7 @@ func (s *Service) StartScan(ctx context.Context, orgUID string, cfg disc.Config)
 	}
 
 	// Check for already-running scan.
-	if err := s.checkAlreadyRunning(ctx, orgUID); err != nil {
+	if err := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobTypeNetworkDiscovery); err != nil {
 		return nil, err
 	}
 
@@ -104,11 +116,61 @@ func (s *Service) StartScan(ctx context.Context, orgUID string, cfg disc.Config)
 	return job, nil
 }
 
-// checkAlreadyRunning returns ErrAlreadyRunning if a discovery job is already running for the org.
-func (s *Service) checkAlreadyRunning(ctx context.Context, orgUID string) error {
+// StartFreeboxScan validates that channelUID is a paired Freebox channel,
+// guards against a Freebox discovery already running for the org, then creates
+// a freebox_lan_discovery job. Returns ErrFreeboxNotGranted /
+// ErrFreeboxChannelNotFound when validation fails, ErrAlreadyRunning when a
+// run is already in flight.
+func (s *Service) StartFreeboxScan(ctx context.Context, orgUID, channelUID string) (*models.Job, error) {
+	// Fail fast: probe the channel via the shared resolver so we surface a
+	// 409/404 before queueing a job that would just fail on first run.
+	if _, err := freebox.ListLanHostsForChannel(ctx, s.dbSvc, s.creds, orgUID, channelUID); err != nil {
+		switch {
+		case errors.Is(err, freebox.ErrFreeboxNotGranted):
+			return nil, ErrFreeboxNotGranted
+		case errors.Is(err, freebox.ErrFreeboxChannelNotFound):
+			return nil, ErrFreeboxChannelNotFound
+		default:
+			return nil, fmt.Errorf("validate freebox channel: %w", err)
+		}
+	}
+
+	if err := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobTypeFreeboxLanDiscovery); err != nil {
+		return nil, err
+	}
+
+	configBytes, err := json.Marshal(jobFreeboxConfig{ChannelUID: channelUID})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal freebox discovery config: %w", err)
+	}
+
+	job, err := s.jobSvc.CreateJob(
+		ctx,
+		orgUID,
+		string(jobdef.JobTypeFreeboxLanDiscovery),
+		configBytes,
+		nil,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create freebox discovery job: %w", err)
+	}
+
+	return job, nil
+}
+
+// jobFreeboxConfig is the config payload for a freebox_lan_discovery job. Kept
+// local to avoid importing the jobtypes package (which would create a cycle).
+type jobFreeboxConfig struct {
+	ChannelUID string `json:"channelUid"`
+}
+
+// checkAlreadyRunning returns ErrAlreadyRunning if a discovery job of the given
+// type is already running for the org. Per-org and per-type so LAN and Freebox
+// runs guard independently.
+func (s *Service) checkAlreadyRunning(ctx context.Context, orgUID string, jobType jobdef.JobType) error {
 	count, err := s.db.NewSelect().
 		TableExpr("jobs").
-		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
+		Where("type = ?", string(jobType)).
 		Where("organization_uid = ?", orgUID).
 		Where("status = ?", models.JobStatusRunning).
 		Where("deleted_at IS NULL").
@@ -145,7 +207,7 @@ func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.Discove
 	if s.isPostgres {
 		insertQuery = s.db.NewInsert().
 			Model(host).
-			On("CONFLICT (organization_uid, ip) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
+			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = EXCLUDED.job_uid").
 			Set("hostname = EXCLUDED.hostname").
 			Set("open_ports = EXCLUDED.open_ports").
@@ -156,7 +218,7 @@ func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.Discove
 		// SQLite: INSERT OR REPLACE semantics via conflict handling.
 		insertQuery = s.db.NewInsert().
 			Model(host).
-			On("CONFLICT (organization_uid, ip) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
+			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = excluded.job_uid").
 			Set("hostname = excluded.hostname").
 			Set("open_ports = excluded.open_ports").
@@ -213,6 +275,15 @@ func (s *Service) ListHosts(
 		} else {
 			query = query.Where("promoted_to_check_uid IS NULL")
 		}
+	}
+
+	if len(opts.Sources) > 0 {
+		sources := make([]string, 0, len(opts.Sources))
+		for _, src := range opts.Sources {
+			sources = append(sources, string(src))
+		}
+
+		query = query.Where("source IN (?)", bun.In(sources))
 	}
 
 	if opts.Limit > 0 {
