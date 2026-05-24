@@ -13,6 +13,7 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Bell,
+  BellRing,
   Loader2,
   Bug,
   Building,
@@ -24,6 +25,7 @@ import {
   LayoutDashboard,
   ListChecks,
   Megaphone,
+  Network,
   Palette,
   Server,
   User2,
@@ -111,6 +113,8 @@ function Breadcrumbs({ org }: { org: string }) {
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
+  const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
+  const isNotifications = routeIds.has("/orgs/$org/me/notifications");
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -503,6 +507,58 @@ function Breadcrumbs({ org }: { org: string }) {
       <span className={activeClass}>
         <Palette className={iconClass} />
         {t("designReference")}
+      </span>
+    );
+  }
+
+  if (isDiscovery) {
+    const jobUid = params.jobUid;
+    const isNew = routeIds.has("/orgs/$org/discovery/new");
+    const isPromote = routeIds.has(
+      "/orgs/$org/discovery/$jobUid/$hostUid/promote",
+    );
+    const isRoot = !jobUid && !isNew;
+
+    return (
+      <>
+        {isRoot ? (
+          <span className={activeClass}><Network className={iconClass} />{t("discovery")}</span>
+        ) : (
+          <Link to="/orgs/$org/discovery" params={{ org }} className={linkClass}><Network className={iconClass} />{t("discovery")}</Link>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {jobUid && (
+          <>
+            <BreadcrumbSeparator />
+            {isPromote ? (
+              <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }} className={linkClass}>
+                {jobUid.slice(0, 8)}
+              </Link>
+            ) : (
+              <span className={activeClass}>{jobUid.slice(0, 8)}</span>
+            )}
+          </>
+        )}
+        {isPromote && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("promote")}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isNotifications) {
+    return (
+      <span className={activeClass}>
+        <BellRing className={iconClass} />
+        {t("myPages")}
       </span>
     );
   }
