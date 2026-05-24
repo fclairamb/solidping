@@ -2010,6 +2010,27 @@ export function useSetSystemParameter() {
   });
 }
 
+// Slack Socket Mode status hook
+export interface SlackSocketStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  lastError?: string;
+  teamCount?: number;
+}
+
+export function useSlackSocketStatus() {
+  return useQuery({
+    queryKey: ["slack-socket-status"],
+    queryFn: async () =>
+      apiFetch<SlackSocketStatus>(
+        "/api/v1/integrations/slack/socket/status",
+      ),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useTestEmail() {
   return useMutation({
     mutationFn: (recipient: string) =>
