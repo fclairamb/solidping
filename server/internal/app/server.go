@@ -782,6 +782,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
 	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
 	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+	// LAN discovery: returns the list of hosts currently visible to the
+	// Freebox so the dashboard can pre-fill ICMP checks without typing.
+	// Requires a `granted` connection — see Service.ListFreeboxLanHosts.
+	orgFreebox.GET("/:uid/lan-hosts", channelsHandler.LanHostsHandler)
 
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)

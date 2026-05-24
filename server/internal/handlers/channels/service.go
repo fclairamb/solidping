@@ -43,14 +43,38 @@ type Service struct {
 	// creds is always non-nil — its .Enabled() reports whether a master
 	// key is configured. Used to encrypt secret fields in Settings.
 	creds credentials.Service
+	// freeboxClient builds a Freebox API client from a (baseURL, appID,
+	// appToken) tuple. Defaults to freebox.NewClientWithAppID; tests
+	// override it to point at an httptest stub without spinning up real
+	// network state.
+	freeboxClient FreeboxClientFactory
 }
+
+// FreeboxClientFactory builds an authenticated Freebox API client. The
+// channels service uses one to talk to a paired Freebox when serving
+// "Discover from Freebox" requests; tests can plug in a fake to avoid
+// touching the real HTTP stack.
+type FreeboxClientFactory func(baseURL, appID, appToken string) *freebox.Client
 
 // NewService creates a new connections service.
 func NewService(dbService db.Service, creds credentials.Service) *Service {
 	return &Service{
-		db:    dbService,
-		creds: creds,
+		db:            dbService,
+		creds:         creds,
+		freeboxClient: freebox.NewClientWithAppID,
 	}
+}
+
+// SetFreeboxClientFactory overrides the Freebox-client builder. Exposed
+// for tests; the default constructor wires the production factory.
+func (s *Service) SetFreeboxClientFactory(f FreeboxClientFactory) {
+	if f == nil {
+		s.freeboxClient = freebox.NewClientWithAppID
+
+		return
+	}
+
+	s.freeboxClient = f
 }
 
 // ChannelResponse represents a connection in API responses.
