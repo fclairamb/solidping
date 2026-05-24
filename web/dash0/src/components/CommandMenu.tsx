@@ -20,19 +20,30 @@ import {
   BadgeCheck,
   Users,
   Search,
+  PlusCircle,
 } from "lucide-react";
 import { useChecks } from "@/api/hooks";
 
-type GroupKey = "pages" | "account" | "organization";
+type GroupKey = "actions" | "pages" | "account" | "organization";
 
 interface PageEntry {
   titleKey: string;
+  descriptionKey?: string;
   path: string;
   icon: typeof LayoutDashboard;
   group: GroupKey;
+  testId?: string;
 }
 
 const pages: PageEntry[] = [
+  {
+    titleKey: "command.newCheck",
+    descriptionKey: "command.newCheckDescription",
+    path: "/orgs/$org/checks/new",
+    icon: PlusCircle,
+    group: "actions",
+    testId: "command-menu-new-check",
+  },
   { titleKey: "dashboard", path: "/orgs/$org", icon: LayoutDashboard, group: "pages" },
   { titleKey: "checks", path: "/orgs/$org/checks", icon: ListChecks, group: "pages" },
   { titleKey: "incidents", path: "/orgs/$org/incidents", icon: AlertTriangle, group: "pages" },
@@ -50,7 +61,10 @@ const pages: PageEntry[] = [
   { titleKey: "settings", path: "/orgs/$org/organization/settings", icon: Settings, group: "organization" },
 ];
 
+const groupOrder: GroupKey[] = ["actions", "pages", "account", "organization"];
+
 const groupLabelKey: Record<GroupKey, string> = {
+  actions: "command.groupActions",
   pages: "command.groupPages",
   account: "command.groupAccount",
   organization: "command.groupOrganization",
@@ -113,10 +127,16 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     navigate({ to: path, params: { org } });
   }
 
-  const enrichedPages = pages.map((p) => ({ ...p, title: t(p.titleKey) }));
-  const filteredPages = enrichedPages.filter((p) =>
-    !search || p.title.toLowerCase().includes(search.toLowerCase())
-  );
+  const enrichedPages = pages.map((p) => ({
+    ...p,
+    title: t(p.titleKey),
+    description: p.descriptionKey ? t(p.descriptionKey) : undefined,
+  }));
+  const filteredPages = enrichedPages.filter((p) => {
+    if (!search) return true;
+    const haystack = `${p.title} ${p.description ?? ""}`.toLowerCase();
+    return haystack.includes(search.toLowerCase());
+  });
 
   const groupedPages = filteredPages.reduce<Record<GroupKey, typeof enrichedPages>>(
     (groups, page) => {
@@ -125,6 +145,10 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
     },
     {} as Record<GroupKey, typeof enrichedPages>
   );
+
+  const orderedGroupedPages = groupOrder
+    .filter((g) => groupedPages[g] && groupedPages[g].length > 0)
+    .map((g) => [g, groupedPages[g]] as const);
 
   // Only mount the dialog when open. Keeps a single source of truth for
   // visibility and prevents stale instances from accumulating across HMR
@@ -173,27 +197,31 @@ export function CommandMenu({ open: controlledOpen, onOpenChange }: CommandMenuP
           {t("command.noResults")}
         </Command.Empty>
 
-        {(Object.entries(groupedPages) as [GroupKey, typeof enrichedPages][]).map(
-          ([group, items]) => (
-            <Command.Group
-              key={group}
-              heading={t(groupLabelKey[group])}
-              className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
-            >
-              {items.map((page) => (
-                <Command.Item
-                  key={page.path}
-                  value={`${page.title} ${group}`}
-                  onSelect={() => goTo(page.path)}
-                  className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
-                >
-                  <page.icon className="h-4 w-4 text-muted-foreground" />
-                  {page.title}
-                </Command.Item>
-              ))}
-            </Command.Group>
-          ),
-        )}
+        {orderedGroupedPages.map(([group, items]) => (
+          <Command.Group
+            key={group}
+            heading={t(groupLabelKey[group])}
+            className="[&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
+          >
+            {items.map((page) => (
+              <Command.Item
+                key={page.path}
+                value={`${page.title} ${page.description ?? ""} ${group}`}
+                onSelect={() => goTo(page.path)}
+                data-testid={page.testId}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 text-sm aria-selected:bg-accent aria-selected:text-accent-foreground"
+              >
+                <page.icon className="h-4 w-4 text-muted-foreground" />
+                <span>{page.title}</span>
+                {page.description && (
+                  <span className="text-xs text-muted-foreground">
+                    {page.description}
+                  </span>
+                )}
+              </Command.Item>
+            ))}
+          </Command.Group>
+        ))}
 
         {checks && checks.length > 0 && (
           <Command.Group
