@@ -32,14 +32,38 @@ type ResolvedConnection struct {
 // startup (see internal/app/server.go).
 type ConnectionResolver func(ctx context.Context, connectionUID string) (*ResolvedConnection, error)
 
-// ConnectionResolverFunc is the active resolver. Test code can replace
-// it for the duration of a test. It is intentionally a package-level
-// variable rather than a checker-field so the registry-built checker
-// (zero-valued struct) still has access without plumbing services
-// through the checkerdef interface.
+// ConnectionResolverFunc is the active resolver. Production code wires
+// it once at startup; tests should prefer WithResolver(ctx, …) so
+// parallel tests don't race over a single global. It is intentionally a
+// package-level variable rather than a checker-field so the
+// registry-built checker (zero-valued struct) still has access without
+// plumbing services through the checkerdef interface.
 //
 //nolint:gochecknoglobals // Mirrors the checkjs.ResolveChecker indirection pattern.
 var ConnectionResolverFunc ConnectionResolver
+
+// resolverCtxKeyType makes the context-key unique within the binary.
+type resolverCtxKeyType struct{}
+
+//nolint:gochecknoglobals // sentinel value for context key
+var resolverCtxKey = resolverCtxKeyType{}
+
+// WithResolver returns a context that carries the given resolver, taking
+// precedence over the package-level ConnectionResolverFunc. Intended for
+// tests — production wires the global once at startup.
+func WithResolver(ctx context.Context, resolver ConnectionResolver) context.Context {
+	return context.WithValue(ctx, resolverCtxKey, resolver)
+}
+
+// resolverFromContext returns the per-context resolver if set, otherwise
+// the package-level ConnectionResolverFunc.
+func resolverFromContext(ctx context.Context) ConnectionResolver {
+	if v, ok := ctx.Value(resolverCtxKey).(ConnectionResolver); ok && v != nil {
+		return v
+	}
+
+	return ConnectionResolverFunc
+}
 
 // Default per-execution timeout. The freebox HTTP client itself has a
 // 30s per-request timeout (DefaultTimeout in the freebox package); we
@@ -180,7 +204,8 @@ func (c *FreeboxLineChecker) Execute(
 		return nil, err
 	}
 
-	if ConnectionResolverFunc == nil {
+	resolver := resolverFromContext(ctx)
+	if resolver == nil {
 		return nil, ErrResolverNotConfigured
 	}
 
@@ -189,7 +214,7 @@ func (c *FreeboxLineChecker) Execute(
 
 	start := time.Now()
 
-	conn, err := ConnectionResolverFunc(ctx, cfg.ConnectionUID)
+	conn, err := resolver(ctx, cfg.ConnectionUID)
 	if err != nil {
 		return errorResult(start, fmt.Errorf("resolve freebox connection: %w", err)), nil
 	}
