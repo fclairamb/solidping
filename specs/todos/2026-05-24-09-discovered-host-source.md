@@ -344,3 +344,45 @@ and the per-job host table; confirm source filter narrows the scans list; confir
 6. Frontend: hooks, Source column, scans-list source filter + badges, Freebox launcher,
    i18n; update `docs/api-specification.md`. `make build lint test-dash`.
 7. QA loop: `make build lint test test-dash`; completeness audit + archive + merge.
+
+## Implementation Plan
+
+1. **Migration 030 (both backends).** Add `030_discovered_hosts_source.{up,down}.sql`
+   for sqlite and postgres. `up`: `ADD COLUMN source TEXT NOT NULL DEFAULT 'lan'`
+   (backfills existing rows), drop `idx_discovered_hosts_org_ip_active`, create
+   `idx_discovered_hosts_org_ip_source_active` on `(organization_uid, ip, source)`
+   with the same partial predicate. `down`: reverse. Add a sqlite migration test
+   asserting the column exists and existing rows default to `lan`.
+
+2. **Model.** In `discovered_host.go` add `DiscoverySource` type + `DiscoverySourceLAN`
+   / `DiscoverySourceFreebox` constants, the `Source` field, and change
+   `NewDiscoveredHost(orgUID, jobUID, ip string, source DiscoverySource)`. Update
+   `job_network_discovery.go` to pass `DiscoverySourceLAN` and change its upsert
+   conflict target to include `source`. Model unit test for the new field.
+
+3. **Shared Freebox LAN resolver.** Export `ErrFreeboxNotGranted` from the freebox
+   package. New `freebox/lanlookup.go`: `ListLanHostsForChannel(ctx, dbSvc, creds,
+   orgUID, channelUID)` resolving channel → validate org+type → decrypt app token →
+   build client → `ListLanHosts`. Refactor `channels.ListFreeboxLanHosts` to delegate
+   (keep the handler-layer `ErrFreeboxNotGranted` 409 mapping). `lanlookup_test.go`:
+   ungranted → `ErrFreeboxNotGranted`; granted → hosts.
+
+4. **Freebox job.** `JobTypeFreeboxLanDiscovery` in `jobdef/types.go`, registry entry,
+   `job_freebox_lan_discovery.go` (`{channelUid}` config, calls resolver, maps LanHost
+   → DiscoveredHost source='freebox', inline per-host upsert, non-fatal errors).
+   `_test.go` with a stub freebox server.
+
+5. **Discovery service/handler.** Update `UpsertDiscoveredHost` conflict target; add
+   `StartFreeboxScan` (validates channel via resolver, guards in-flight per-type);
+   generalize `checkAlreadyRunning(ctx, orgUID, jobType)`; add `Sources []DiscoverySource`
+   to `ListHostsOptions` + `WHERE source IN`; `ListScans` lists both job types;
+   `POST /freebox-scans` route + handler + `ErrorCodeFreeboxNotGranted`; `?source=`
+   param on `ListHosts`. Service + handler tests.
+
+6. **Frontend.** `hooks.ts`: `source` on `DiscoveredHost`, `source?` arg on
+   `useListCandidateHosts`, `useStartFreeboxScan`. Source column + badge on
+   `discovery.$jobUid.tsx`. Scans-list source badges + filter + "Discover via Freebox"
+   launcher on `discovery.index.tsx`. i18n keys in 4 locales. Playwright assertions.
+   Update `docs/api-specification.md`.
+
+7. **QA + audit + archive + merge.**
