@@ -100,7 +100,7 @@ func (r *NetworkDiscoveryJobRun) persistHosts(
 			return fmt.Errorf("marshal suggested_checks for %s: %w", discovered.IP, err)
 		}
 
-		host := models.NewDiscoveredHost(orgUID, jobUID, discovered.IP)
+		host := models.NewDiscoveredHost(orgUID, jobUID, discovered.IP, models.DiscoverySourceLAN)
 		host.Hostname = discovered.Hostname
 		host.ICMPReachable = discovered.ICMPReachable
 		host.OpenPorts = openPortsJSON
@@ -108,7 +108,7 @@ func (r *NetworkDiscoveryJobRun) persistHosts(
 
 		_, err = db.NewInsert().
 			Model(host).
-			On("CONFLICT (organization_uid, ip) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
+			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = EXCLUDED.job_uid").
 			Set("hostname = EXCLUDED.hostname").
 			Set("open_ports = EXCLUDED.open_ports").
