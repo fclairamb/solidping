@@ -37,6 +37,13 @@ var (
 	// ErrAPI is returned when the Freebox envelope reports success=false
 	// with no more specific mapping.
 	ErrAPI = errors.New("freebox: api error")
+	// ErrFreeboxNotGranted is returned when an authenticated call targets a
+	// Freebox channel that hasn't completed the LCD-pairing flow yet (no
+	// app_token, or status != granted). Callers map it to a 409 so the UI
+	// can prompt the operator to finish pairing. Exported from the freebox
+	// package so both the channels handler and the discovery job can branch
+	// on it without importing each other.
+	ErrFreeboxNotGranted = errors.New("freebox: channel is not paired yet")
 )
 
 const (

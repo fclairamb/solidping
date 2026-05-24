@@ -54,5 +54,15 @@
   "scanDetails": "Scan-Details",
   "cidrs": "CIDRs",
   "startedAt": "Gestartet am",
-  "completedAt": "Abgeschlossen am"
+  "completedAt": "Abgeschlossen am",
+  "source": "Quelle",
+  "sourceLan": "LAN",
+  "sourceFreebox": "Freebox",
+  "filterBySource": "Nach Quelle filtern",
+  "allSources": "Alle Quellen",
+  "discoverViaFreebox": "Über Freebox erkennen",
+  "selectFreeboxChannel": "Freebox-Kanal auswählen",
+  "noFreeboxChannels": "Keine gekoppelten Freebox-Kanäle",
+  "freeboxScanStarted": "Freebox-Erkennung gestartet",
+  "freeboxScanFailed": "Freebox-Erkennung konnte nicht gestartet werden"
 }

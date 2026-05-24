@@ -3010,6 +3010,8 @@ export interface SuggestedCheck {
   config: Record<string, unknown>;
 }
 
+export type DiscoverySource = "lan" | "freebox";
+
 export interface DiscoveredHost {
   uid: string;
   organizationUid: string;
@@ -3019,6 +3021,7 @@ export interface DiscoveredHost {
   openPorts: number[];
   icmpReachable: boolean;
   suggestedChecks: SuggestedCheck[];
+  source: DiscoverySource;
   promotedToCheckUid?: string;
   discoveredAt: string;
 }
@@ -3052,6 +3055,23 @@ export function useStartDiscoveryScan(org: string) {
   });
 }
 
+export function useStartFreeboxScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (channelUid: string) =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/freebox-scans`,
+        {
+          method: "POST",
+          body: JSON.stringify({ channelUid }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
 export function useListDiscoveryScans(org: string) {
   return useQuery({
     queryKey: ["discoveryScans", org],
@@ -3079,11 +3099,12 @@ export function useDiscoveryScan(org: string, jobUid: string) {
 
 export function useListCandidateHosts(
   org: string,
-  opts?: { jobUid?: string; promoted?: boolean },
+  opts?: { jobUid?: string; promoted?: boolean; source?: string },
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
   if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  if (opts?.source) params.set("source", opts.source);
   const qs = params.toString();
 
   return useQuery({

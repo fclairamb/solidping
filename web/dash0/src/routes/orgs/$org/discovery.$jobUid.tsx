@@ -71,6 +71,11 @@ function HostRow({
       <TableCell className="text-xs text-muted-foreground">
         {host.hostname || "—"}
       </TableCell>
+      <TableCell>
+        <Badge variant="outline">
+          {t(host.source === "freebox" ? "sourceFreebox" : "sourceLan")}
+        </Badge>
+      </TableCell>
       <TableCell className="text-xs">
         {host.openPorts?.length > 0 ? host.openPorts.join(", ") : "—"}
       </TableCell>
@@ -191,6 +196,7 @@ function ScanDetailPage() {
                 <TableRow>
                   <TableHead>{t("ip")}</TableHead>
                   <TableHead>{t("hostname")}</TableHead>
+                  <TableHead>{t("source")}</TableHead>
                   <TableHead>{t("openPorts")}</TableHead>
                   <TableHead>{t("icmpReachable")}</TableHead>
                   <TableHead>{t("status")}</TableHead>

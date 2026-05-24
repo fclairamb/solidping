@@ -101,12 +101,8 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 	)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	// Now point the channels service at our fake Freebox via the
-	// factory hook so the LAN-hosts handler ends up at the same URL.
-	f.svc.SetFreeboxClientFactory(func(_, _, appToken string) *freebox.Client {
-		return freebox.NewClient(srv.URL, appToken)
-	})
-
+	// The channel's persisted BaseURL already points at our fake Freebox
+	// (set at pairing time), so the LAN-hosts handler reaches it directly.
 	rec = f.do(t, http.MethodGet,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/"+start.ConnectionUID+"/lan-hosts",
 		nil,

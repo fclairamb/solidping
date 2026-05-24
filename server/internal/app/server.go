@@ -492,7 +492,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
 
 	// Network discovery routes (authentication + org access required)
-	discoverySvc := discovery.NewService(s.dbService.DB(), s.dbService, checksService, s.jobSvc)
+	discoverySvc := discovery.NewService(
+		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+	)
 	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
 	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
 	discoveryHandler.RegisterRoutes(orgDiscovery)

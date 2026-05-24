@@ -28,4 +28,8 @@ const (
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
 	// records them in the discovered_hosts table for operator review and promotion.
 	JobTypeNetworkDiscovery JobType = "network_discovery"
+	// JobTypeFreeboxLanDiscovery queries a paired Freebox channel's LAN browser
+	// and records the hosts it knows about in the discovered_hosts table
+	// (source='freebox') so they share the LAN-scan promote/dismiss UX.
+	JobTypeFreeboxLanDiscovery JobType = "freebox_lan_discovery"
 )
