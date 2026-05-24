@@ -25,6 +25,21 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("link", { name: /new scan|start new scan/i })).toBeVisible();
   });
 
+  test("discover via Freebox button is visible for admin", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(
+      page.getByRole("button", { name: /discover via freebox/i }),
+    ).toBeVisible();
+  });
+
+  test("source filter is visible on the scans list", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    // The source filter is a combobox (Radix Select) labelled "Filter by source".
+    await expect(
+      page.getByRole("combobox", { name: /filter by source/i }),
+    ).toBeVisible();
+  });
+
   test("can navigate to new scan form", async ({ page }) => {
     await page.goto("/dash0/orgs/test/discovery/new");
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
