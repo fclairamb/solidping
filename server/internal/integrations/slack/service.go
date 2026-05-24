@@ -234,26 +234,10 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, ErrEmailRequired
 	}
 
-	// Prefer the workspace team_name claim for the org display name; fall
-	// back to the OAuth response's Team.Name.
-	orgName := userInfo.SlackTeamName
-	if orgName == "" {
-		orgName = oauthResp.Team.Name
-	}
-
-	// Find or create organization by Slack Team ID. Slug candidates are tried
-	// in priority order: workspace subdomain → workspace team_name →
-	// OAuth Team.Name → "org".
-	org, err := s.findOrCreateOrganizationByTeamID(
-		ctx,
-		oauthResp.Team.ID,
-		orgName,
-		userInfo.SlackTeamDomain,
-		userInfo.SlackTeamName,
-		oauthResp.Team.Name,
-	)
+	// Find or create organization from the Slack workspace identity.
+	org, orgName, err := s.resolveOrganization(ctx, oauthResp, userInfo)
 	if err != nil {
-		return nil, fmt.Errorf("failed to find or create organization: %w", err)
+		return nil, err
 	}
 
 	// Find or create user
@@ -296,6 +280,36 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		OrgSlug:       org.Slug,
 		UserUID:       user.UID,
 	}, nil
+}
+
+// resolveOrganization derives the org display name and slug candidates from
+// the Slack workspace identity, then finds or creates the organization. It
+// returns the organization and the resolved display name (also used for the
+// user-provider metadata). Slug candidates are tried in priority order:
+// workspace subdomain → workspace team_name → OAuth Team.Name → "org".
+func (s *Service) resolveOrganization(
+	ctx context.Context, oauthResp *OAuthResponse, userInfo *OpenIDUserInfo,
+) (*models.Organization, string, error) {
+	// Prefer the workspace team_name claim for the org display name; fall
+	// back to the OAuth response's Team.Name.
+	orgName := userInfo.SlackTeamName
+	if orgName == "" {
+		orgName = oauthResp.Team.Name
+	}
+
+	org, err := s.findOrCreateOrganizationByTeamID(
+		ctx,
+		oauthResp.Team.ID,
+		orgName,
+		userInfo.SlackTeamDomain,
+		userInfo.SlackTeamName,
+		oauthResp.Team.Name,
+	)
+	if err != nil {
+		return nil, "", fmt.Errorf("failed to find or create organization: %w", err)
+	}
+
+	return org, orgName, nil
 }
 
 // createOrUpdateConnection creates or updates an integration connection for the Slack team.

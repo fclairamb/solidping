@@ -6,7 +6,7 @@ package orgslug
 
 import (
 	"context"
-	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -95,7 +95,7 @@ func GenerateUnique(ctx context.Context, finder Finder, candidates ...string) st
 			return slug
 		}
 
-		suffixStr := fmt.Sprintf("%d", suffix)
+		suffixStr := strconv.Itoa(suffix)
 
 		// Cap base so base+suffix never exceeds maxSlugLen.
 		trimmedBase := base
