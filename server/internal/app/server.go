@@ -120,18 +120,19 @@ var openAPIFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService   db.Service
-	jobSvc      jobsvc.Service
-	services    *services.Registry
-	router      *bunrouter.Router
-	config      *config.Config
-	authService *auth.Service
-	mcpHandler  *mcp.Handler
-	profilerSrv *profiler.Server
-	jmapManager *jmap.Manager
-	rateLimiter *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
-	cancelCtx   context.CancelFunc
-	workersWg   sync.WaitGroup // Tracks workers
+	dbService             db.Service
+	jobSvc                jobsvc.Service
+	services              *services.Registry
+	router                *bunrouter.Router
+	config                *config.Config
+	authService           *auth.Service
+	mcpHandler            *mcp.Handler
+	profilerSrv           *profiler.Server
+	jmapManager           *jmap.Manager
+	slackSocketSupervisor *slack.SlackSocketSupervisor
+	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	cancelCtx             context.CancelFunc
+	workersWg             sync.WaitGroup // Tracks workers
 }
 
 // NewServer creates a new HTTP server instance.
@@ -818,9 +819,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
 	slackHandler := slack.NewHandler(slackService, s.config)
+
+	// Build the Socket Mode supervisor up-front when enabled so its status is
+	// readable via GET /integrations/slack/socket/status even before Start().
+	// The actual Run() goroutine is launched from Start() under workersWg.
+	if s.config.Slack.Enabled && s.config.Slack.SocketModeEnabled && s.config.ShouldRunAPI() {
+		s.slackSocketSupervisor = slack.NewSlackSocketSupervisor(slackService, s.config, slog.Default())
+		slackHandler.SetSocketSupervisor(s.slackSocketSupervisor)
+	}
+
 	slackIntegration := api.NewGroup("/integrations/slack")
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
+	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
 	// Apply signature verification middleware to Slack webhooks
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
@@ -1407,6 +1418,18 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runJMAPManager(runnerCtx)
 	}
 
+	// Start Slack Socket Mode supervisor when configured. The supervisor
+	// dials Slack's outgoing WebSocket and dispatches events through the
+	// shared Dispatch* functions; the HTTPS webhook handlers stay registered
+	// but receive no traffic while Socket Mode is active (Slack picks one
+	// transport per app at configuration time).
+	if s.slackSocketSupervisor != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runSlackSocketSupervisor(runnerCtx)
+	}
+
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
@@ -1518,6 +1541,16 @@ func (s *Server) runJMAPManager(ctx context.Context) {
 
 	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
+	}
+}
+
+// runSlackSocketSupervisor wraps SlackSocketSupervisor.Run for the goroutine
+// launched in Start.
+func (s *Server) runSlackSocketSupervisor(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.slackSocketSupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "Slack Socket Mode supervisor exited", "error", err)
 	}
 }
 
