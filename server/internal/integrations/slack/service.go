@@ -545,7 +545,7 @@ func (s *Service) ensureOrganizationMembership(
 	return member, nil
 }
 
-// CountInstalledTeams returns the number of distinct organisations that
+// CountInstalledTeams returns the number of distinct organizations that
 // currently have a Slack integration connection. Used by the Socket Mode
 // supervisor's status snapshot. Best-effort: returns (0, err) on failure.
 func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {

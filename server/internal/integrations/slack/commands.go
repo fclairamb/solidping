@@ -27,11 +27,11 @@ func DispatchCommand(ctx context.Context, svc *Service, cmd *Command) (*MessageR
 		"channel_id", cmd.ChannelID,
 	)
 
-	h := &Handler{svc: svc}
+	dispatcher := &Handler{svc: svc}
 
 	switch cmd.Command {
 	case "/check":
-		return h.handleCheckCommand(ctx, cmd)
+		return dispatcher.handleCheckCommand(ctx, cmd)
 	default:
 		return &MessageResponse{
 			ResponseType: ResponseTypeEphemeral,

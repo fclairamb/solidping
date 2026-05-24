@@ -27,15 +27,15 @@ func DispatchInteraction(ctx context.Context, svc *Service, interaction *Interac
 		"team_id", interaction.Team.ID,
 	)
 
-	h := &Handler{svc: svc}
+	dispatcher := &Handler{svc: svc}
 
 	switch interaction.Type {
 	case "shortcut":
-		return h.handleShortcut(ctx, interaction)
+		return dispatcher.handleShortcut(ctx, interaction)
 	case "block_actions":
-		return h.handleBlockActions(ctx, interaction)
+		return dispatcher.handleBlockActions(ctx, interaction)
 	case "view_submission":
-		return h.handleViewSubmission(ctx, interaction)
+		return dispatcher.handleViewSubmission(ctx, interaction)
 	case "view_closed":
 		// View was closed, no action needed
 		return &MessageResponse{}, nil

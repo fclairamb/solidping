@@ -14,6 +14,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 )
 
+var (
+	errForcedDisconnect = errors.New("forced disconnect")
+	errUnauthorizedTest = errors.New("unauthorized")
+)
+
 // fakeSocketModeClient implements socketModeRunner with channels the test
 // controls. RunContext blocks until ctx is done or runErr is sent, mirroring
 // the real slack-go behavior (RunContext returns only on unrecoverable
@@ -170,9 +175,10 @@ func TestSocketSupervisor_AcksEventsAPIAndCallsDispatcher(t *testing.T) {
 	// Push an events_api envelope. Even though svc is nil, the dispatcher
 	// must still call AckCtx before any business logic — that's the contract
 	// the test pins.
+	payload := []byte(`{"team_id":"T1","event":{"type":"definitely_not_a_real_event"}}`)
 	fake.events <- socketmode.Event{
 		Type:    socketmode.EventTypeEventsAPI,
-		Request: &socketmode.Request{EnvelopeID: "env-1", Payload: []byte(`{"team_id":"T1","event":{"type":"definitely_not_a_real_event"}}`)},
+		Request: &socketmode.Request{EnvelopeID: "env-1", Payload: payload},
 	}
 
 	r.True(waitFor(2*time.Second, func() bool { return fake.ackCount() >= 1 }),
@@ -242,7 +248,7 @@ func TestSocketSupervisor_ReconnectsAfterRunContextError(t *testing.T) {
 	r.True(waitFor(time.Second, func() bool { return fake.runCount() >= 1 }),
 		"first RunContext never started")
 
-	fake.runErr <- errors.New("forced disconnect")
+	fake.runErr <- errForcedDisconnect
 
 	// Supervisor should restart RunContext.
 	r.True(waitFor(2*time.Second, func() bool { return fake.runCount() >= 2 }),
@@ -265,7 +271,7 @@ func TestSocketSupervisor_StatusNeverLeaksAppToken(t *testing.T) {
 
 	// Simulate a failure that mentions the token to make sure recordError
 	// preserves the raw error and the status snapshot doesn't transform it.
-	sup.recordError(errors.New("unauthorized"))
+	sup.recordError(errUnauthorizedTest)
 
 	st := sup.GetStatus()
 	r.NotContains(st.LastError, "xapp-test")
