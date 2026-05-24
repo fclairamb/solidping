@@ -152,8 +152,11 @@ type ftthResponse struct {
 	SfpSerial         string `json:"sfp_serial"`
 	SfpVendor         string `json:"sfp_vendor"`
 	SfpModel          string `json:"sfp_model"`
-	// SfpPwrTx / SfpPwrRx are reported in µW × 100 (i.e. units of 0.01 µW
-	// per the Freebox docs). We convert to mW + dBm in code.
+	// SfpPwrTx / SfpPwrRx are the SFP optical power readings as dBm × 100
+	// (Freebox API convention — matches the −1230 → −12.30 dBm example
+	// in the spec). The signed values land in the −3000 / +300 range for
+	// healthy lines; we convert them to dBm + mW for downstream
+	// thresholding and display.
 	SfpPwrTx int `json:"sfp_pwr_tx"`
 	SfpPwrRx int `json:"sfp_pwr_rx"`
 }
@@ -376,11 +379,13 @@ func (c *FreeboxLineChecker) executeFTTH(
 		return downResult(start, "fetch /connection/ftth/: "+err.Error())
 	}
 
-	// SFP power readings are exposed as integers in 0.01 µW units
-	// (Freebox API convention). Convert to mW for thresholding and to
-	// dBm for human-friendly display.
-	rxPowerMw := uwToMw(resp.SfpPwrRx)
-	txPowerMw := uwToMw(resp.SfpPwrTx)
+	// SFP power readings are exposed as integers in dBm × 100 (Freebox
+	// API convention — −1230 → −12.30 dBm). Convert to dBm first, then
+	// derive mW for threshold comparisons.
+	rxPowerDbm := float64(resp.SfpPwrRx) / 100.0
+	txPowerDbm := float64(resp.SfpPwrTx) / 100.0
+	rxPowerMw := dbmToMw(rxPowerDbm)
+	txPowerMw := dbmToMw(txPowerDbm)
 
 	output := map[string]any{
 		OutputKeyState:        wan.State,
@@ -389,15 +394,15 @@ func (c *FreeboxLineChecker) executeFTTH(
 		OutputKeySfpHasSignal: resp.SfpHasSignal,
 		OutputKeyRxPowerMw:    rxPowerMw,
 		OutputKeyTxPowerMw:    txPowerMw,
-		OutputKeyRxPowerDbm:   mwToDbm(rxPowerMw),
-		OutputKeyTxPowerDbm:   mwToDbm(txPowerMw),
+		OutputKeyRxPowerDbm:   rxPowerDbm,
+		OutputKeyTxPowerDbm:   txPowerDbm,
 		OutputKeySfpVendor:    resp.SfpVendor,
 	}
 
 	metrics := map[string]any{
 		"rx_power_mw_val":  rxPowerMw,
 		"tx_power_mw_val":  txPowerMw,
-		"rx_power_dbm_val": mwToDbm(rxPowerMw),
+		"rx_power_dbm_val": rxPowerDbm,
 	}
 
 	if !resp.Link || !resp.SfpHasSignal {
@@ -458,22 +463,9 @@ func evaluateFTTHThresholds(cfg *FreeboxLineConfig, rxPowerMw float64) string {
 	return ""
 }
 
-// uwToMw converts the Freebox SFP-power raw integer (0.01 µW units) to mW.
-// 1 mW = 1000 µW = 100 000 raw-units.
-func uwToMw(raw int) float64 {
-	const rawPerMw = 100_000.0
-	return float64(raw) / rawPerMw
-}
-
-// mwToDbm converts a power in mW to dBm. Returns -inf for non-positive
-// inputs; the caller is responsible for sanity checks downstream (we
-// never display the raw value blindly).
-func mwToDbm(mw float64) float64 {
-	if mw <= 0 {
-		return math.Inf(-1)
-	}
-
-	return 10 * math.Log10(mw)
+// dbmToMw converts a power in dBm to mW (1 mW = 0 dBm).
+func dbmToMw(dbm float64) float64 {
+	return math.Pow(10, dbm/10.0)
 }
 
 // emptyAsUnknown reports `value` as-is unless it is empty, in which case

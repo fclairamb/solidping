@@ -591,8 +591,8 @@ func TestChecker_Execute_FTTHUp(t *testing.T) {
 		challenge: "ch-ftth",
 		session:   "sess-ftth",
 		wanResp:   map[string]any{"state": "up", "type": "ftth"},
-		// pwr_rx = 32000 raw = 0.32 mW; pwr_tx = 158000 raw = 1.58 mW.
-		ftthResp: newFTTHResponse(true, true, 32000, 158000),
+		// rx = -10 dBm × 100 = -1000 → 0.1 mW; tx = +2 dBm × 100 = 200 → ~1.58 mW.
+		ftthResp: newFTTHResponse(true, true, -1000, 200),
 	}
 	url := startFakeFreebox(t, fb)
 	ctx := ctxWithResolver(resolverFor(url, fb.appToken))
@@ -607,8 +607,8 @@ func TestChecker_Execute_FTTHUp(t *testing.T) {
 
 	r := require.New(t)
 	r.Equal(checkerdef.StatusUp, result.Status)
-	r.InDelta(0.32, result.Output[checkfreeboxline.OutputKeyRxPowerMw], 0.001)
-	r.InDelta(1.58, result.Output[checkfreeboxline.OutputKeyTxPowerMw], 0.001)
+	r.InDelta(0.1, result.Output[checkfreeboxline.OutputKeyRxPowerMw], 0.001)
+	r.InDelta(-10.0, result.Output[checkfreeboxline.OutputKeyRxPowerDbm], 0.001)
 	r.Equal("Cisco", result.Output[checkfreeboxline.OutputKeySfpVendor])
 	r.EqualValues(1, fb.ftthHits.Load())
 }
@@ -622,7 +622,7 @@ func TestChecker_Execute_FTTHDownNoSignal(t *testing.T) {
 		challenge: "ch-ftth-down",
 		session:   "sess-ftth-down",
 		wanResp:   map[string]any{"state": "up", "type": "ftth"},
-		ftthResp:  newFTTHResponse(true, false, 0, 158000),
+		ftthResp:  newFTTHResponse(true, false, -5000, 200),
 	}
 	url := startFakeFreebox(t, fb)
 	ctx := ctxWithResolver(resolverFor(url, fb.appToken))
@@ -646,8 +646,8 @@ func TestChecker_Execute_FTTHDegradedLowRxPower(t *testing.T) {
 		challenge: "ch-ftth-low",
 		session:   "sess-ftth-low",
 		wanResp:   map[string]any{"state": "up", "type": "ftth"},
-		// 0.01 mW — below the 0.05 mW floor.
-		ftthResp: newFTTHResponse(true, true, 1000, 158000),
+		// −30 dBm × 100 = −3000 → ~0.001 mW (below the 0.05 mW floor).
+		ftthResp: newFTTHResponse(true, true, -3000, 200),
 	}
 	url := startFakeFreebox(t, fb)
 	ctx := ctxWithResolver(resolverFor(url, fb.appToken))
