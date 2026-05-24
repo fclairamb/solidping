@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Pencil, RefreshCw, Trash2 } from "lucide-react";
+import { ArrowLeft, CirclePlus, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -102,7 +102,7 @@ function HostRow({
                   to="/orgs/$org/discovery/$jobUid/$hostUid/promote"
                   params={{ org, jobUid, hostUid: host.uid }}
                 >
-                  <Pencil className="h-4 w-4" />
+                  <CirclePlus className="h-4 w-4" />
                 </Link>
               </Button>
               <Button

@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, RefreshCw, Scan, Wifi } from "lucide-react";
+import { Network, Plus, RefreshCw, Scan, Wifi } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -67,9 +68,6 @@ function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
 
   return (
     <TableRow>
-      <TableCell className="font-mono text-xs text-muted-foreground">
-        {scan.uid.slice(0, 8)}…
-      </TableCell>
       <TableCell>
         <Badge variant="outline">
           {t(source === "freebox" ? "sourceFreebox" : "sourceLan")}
@@ -151,30 +149,32 @@ function DiscoveryIndexPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("subtitle")}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => void refetch()}
-            disabled={isRefetching}
-            aria-label="Refresh"
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
-          </Button>
-          <FreeboxLauncher org={org} />
-          <Button asChild>
-            <Link to="/orgs/$org/discovery/new" params={{ org }}>
-              <Plus className="h-4 w-4 mr-1" />
-              {t("newScan")}
-            </Link>
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        icon={Network}
+        title={t("title")}
+        description={t("subtitle")}
+        className="flex-wrap"
+        actions={
+          <>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => void refetch()}
+              disabled={isRefetching}
+              aria-label="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+            </Button>
+            <FreeboxLauncher org={org} />
+            <Button asChild>
+              <Link to="/orgs/$org/discovery/new" params={{ org }}>
+                <Plus className="h-4 w-4 mr-1" />
+                {t("newScan")}
+              </Link>
+            </Button>
+          </>
+        }
+      />
 
       <Card>
         <CardHeader>
@@ -212,7 +212,6 @@ function DiscoveryIndexPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("ip")}</TableHead>
                   <TableHead>{t("source")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
                   <TableHead>{t("cidrs")}</TableHead>

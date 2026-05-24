@@ -1,12 +1,13 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, CirclePlus, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -24,8 +25,8 @@ import {
 import {
   useListCandidateHosts,
   usePromoteCandidate,
-  type DiscoveredHost,
   type SuggestedCheck,
+  type PromoteCheckSpec,
 } from "@/api/hooks";
 
 export const Route = createFileRoute(
@@ -36,18 +37,25 @@ export const Route = createFileRoute(
 
 const CHECK_TYPES = ["http", "tcp", "ping", "ssl", "dns"] as const;
 
-function getDefaultConfig(host: DiscoveredHost): { checkType: string; name: string; slug: string } {
-  const first: SuggestedCheck | undefined = host.suggestedChecks?.[0];
-  const checkType = first?.type ?? "tcp";
-  const name = host.hostname || host.ip;
-  const slug = (host.hostname || host.ip)
+function slugify(value: string): string {
+  return value
     .toLowerCase()
     .replace(/[^a-z0-9-]/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 48);
+}
 
-  return { checkType, name, slug };
+// configHint summarizes a suggested check's config into a short string
+// (url / host:port / host) for display next to the checkbox.
+function configHint(suggested: SuggestedCheck): string {
+  const cfg = suggested.config ?? {};
+  if (typeof cfg.url === "string") return cfg.url;
+  if (cfg.host !== undefined && cfg.port !== undefined) {
+    return `${String(cfg.host)}:${String(cfg.port)}`;
+  }
+  if (cfg.host !== undefined) return String(cfg.host);
+  return "";
 }
 
 function PromoteHostPage() {
@@ -60,21 +68,57 @@ function PromoteHostPage() {
   const { data: hosts } = useListCandidateHosts(org, { jobUid });
   const host = hosts?.find((h) => h.uid === hostUid);
 
-  const defaults = host ? getDefaultConfig(host) : { checkType: "tcp", name: "", slug: "" };
-  const [checkType, setCheckType] = useState(defaults.checkType);
-  const [name, setName] = useState(defaults.name);
-  const [slug, setSlug] = useState(defaults.slug);
-  const [period, setPeriod] = useState("1m");
+  const suggested = useMemo<SuggestedCheck[]>(
+    () => host?.suggestedChecks ?? [],
+    [host],
+  );
+  const hasSuggestions = suggested.length > 0;
 
-  // Update defaults once host loads.
+  const baseName = host ? host.hostname || host.ip : "";
+  const [name, setName] = useState("");
+  const [period, setPeriod] = useState("1m");
+  // Which suggested check indices are ticked. Pre-checked once the host loads.
+  const [selected, setSelected] = useState<Record<number, boolean>>({});
+  // Manual fallback type (used when there are no suggested checks).
+  const [manualType, setManualType] = useState("tcp");
+
+  // Initialize defaults once the host loads.
   const [initialized, setInitialized] = useState(false);
   if (host && !initialized) {
-    const d = getDefaultConfig(host);
-    setCheckType(d.checkType);
-    setName(d.name);
-    setSlug(d.slug);
+    setName(host.hostname || host.ip);
+    setManualType(suggested[0]?.type ?? "tcp");
+    const initSel: Record<number, boolean> = {};
+    suggested.forEach((_, i) => {
+      initSel[i] = true;
+    });
+    setSelected(initSel);
     setInitialized(true);
   }
+
+  const selectedSuggestions = useMemo(
+    () => suggested.filter((_, i) => selected[i]),
+    [suggested, selected],
+  );
+
+  const canSubmit = hasSuggestions ? selectedSuggestions.length > 0 : !!name;
+
+  const toggle = (index: number) => {
+    setSelected((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  const buildChecks = (): PromoteCheckSpec[] => {
+    const types = hasSuggestions
+      ? selectedSuggestions.map((s) => s.type)
+      : [manualType];
+    const multi = types.length > 1;
+
+    return types.map((type) => ({
+      checkType: type,
+      name: multi ? `${name} (${type})` : name,
+      slug: multi ? `${slugify(name)}-${type}` : slugify(name),
+      period,
+    }));
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,12 +126,7 @@ function PromoteHostPage() {
     try {
       await promote.mutateAsync({
         uid: hostUid,
-        req: {
-          checkType,
-          name,
-          slug,
-          period,
-        },
+        req: { checks: buildChecks() },
       });
       toast.success(t("promoted_success"));
       navigate({
@@ -104,10 +143,7 @@ function PromoteHostPage() {
       <CardHeader>
         <div className="flex items-center gap-3">
           <Button asChild variant="ghost" size="icon">
-            <Link
-              to="/orgs/$org/discovery/$jobUid"
-              params={{ org, jobUid }}
-            >
+            <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }}>
               <ArrowLeft className="h-4 w-4" />
             </Link>
           </Button>
@@ -115,7 +151,8 @@ function PromoteHostPage() {
             <CardTitle>{t("promoteTitle")}</CardTitle>
             {host && (
               <CardDescription className="font-mono text-xs">
-                {host.ip}{host.hostname ? ` (${host.hostname})` : ""}
+                {host.ip}
+                {host.hostname ? ` (${host.hostname})` : ""}
               </CardDescription>
             )}
           </div>
@@ -124,37 +161,13 @@ function PromoteHostPage() {
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1.5">
-            <Label htmlFor="checkType">{t("checkType")}</Label>
-            <Select value={checkType} onValueChange={setCheckType}>
-              <SelectTrigger id="checkType">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {CHECK_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="space-y-1.5">
             <Label htmlFor="name">{t("name")}</Label>
             <Input
               id="name"
               value={name}
               onChange={(e) => setName(e.target.value)}
+              placeholder={baseName}
               required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="slug">{t("slug")}</Label>
-            <Input
-              id="slug"
-              value={slug}
-              onChange={(e) => setSlug(e.target.value)}
             />
           </div>
 
@@ -168,21 +181,64 @@ function PromoteHostPage() {
             />
           </div>
 
+          {hasSuggestions ? (
+            <div className="space-y-2">
+              <Label>{t("selectChecks")}</Label>
+              <div className="space-y-2 rounded-md border p-3">
+                {suggested.map((s, i) => {
+                  const hint = configHint(s);
+                  return (
+                    <label
+                      key={`${s.type}-${i}`}
+                      className="flex items-center gap-3 text-sm"
+                    >
+                      <Checkbox
+                        checked={!!selected[i]}
+                        onCheckedChange={() => toggle(i)}
+                        aria-label={s.type}
+                      />
+                      <span className="font-medium">{s.type}</span>
+                      {hint && (
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {hint}
+                        </span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label htmlFor="checkType">{t("noSuggestedChecks")}</Label>
+              <Select value={manualType} onValueChange={setManualType}>
+                <SelectTrigger id="checkType">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CHECK_TYPES.map((type) => (
+                    <SelectItem key={type} value={type}>
+                      {type}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2">
             <Button asChild type="button" variant="outline">
               <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }}>
                 {t("cancel")}
               </Link>
             </Button>
-            <Button type="submit" disabled={promote.isPending || !name}>
+            <Button type="submit" disabled={promote.isPending || !canSubmit}>
               {promote.isPending ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  {t("promote")}…
-                </>
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
-                t("promote")
+                <CirclePlus className="h-4 w-4 mr-1" />
               )}
+              {t("createChecks")}
             </Button>
           </div>
         </form>
