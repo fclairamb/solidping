@@ -20,6 +20,7 @@ import {
   ChannelForm,
   type ChannelFormState,
 } from "@/components/channels/channel-form";
+import { FreeboxForm } from "@/components/channels/freebox-form";
 
 interface NewChannelSearch {
   type?: ConnectionType;
@@ -42,6 +43,7 @@ const ALL_TYPES: ConnectionType[] = [
   "ntfy",
   "opsgenie",
   "pushover",
+  "freebox",
 ];
 
 function NewChannelPage() {
@@ -114,6 +116,38 @@ function NewChannelPage() {
           ))}
         </div>
       </div>
+    );
+  }
+
+  // Freebox uses a dedicated form because pairing is a two-step
+  // handshake (LCD approval) rather than a regular create — we don't
+  // know the app_token until the Freebox grants it.
+  if (type === "freebox") {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <ChannelIcon type={type} className="h-5 w-5" />
+              {channelLabel(type)}
+            </CardTitle>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/orgs/$org/channels" params={{ org }}>
+                {t("cancel", "Cancel")}
+              </Link>
+            </Button>
+          </div>
+          <CardDescription>
+            {t(
+              "freebox.description",
+              "Monitor your Freebox line quality and network status",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FreeboxForm org={org} onCancel={() => setType(null)} />
+        </CardContent>
+      </Card>
     );
   }
 
