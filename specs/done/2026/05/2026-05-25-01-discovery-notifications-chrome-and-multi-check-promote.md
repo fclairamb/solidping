@@ -189,3 +189,41 @@ Frontend (Playwright + manual, `make dev-test`):
 | Partial creation if a later `CreateCheck` fails | Fail-fast returns the error; earlier checks persist. Document; full tx rollback is a follow-up if needed |
 | Changing `PromoteRequest` shape breaks existing callers/tests | Only the dash0 client and discovery tests use it; both updated in this spec |
 | `promoted_to_check_uid` points at only the first check | Acceptable — it is a boolean-ish "promoted" flag in the UI; not a relation |
+
+## Implementation Plan
+
+1. **Backend service (`service.go`)** — Replace `PromoteRequest` with the array shape
+   (`PromoteCheckSpec` + `PromoteRequest{ Checks []PromoteCheckSpec }`). Refactor
+   `buildCheckConfig` to take a `PromoteCheckSpec`. Rewrite `PromoteHost` to return
+   `[]checks.CheckResponse`: fetch host, reject already-promoted, build each check via
+   `buildCheckConfig`, attach `auto-discovery`/`discovery-job` labels, default empty per-spec
+   `Name` to `host.IP`, call `CreateCheck` fail-fast, then set `promoted_to_check_uid` to the
+   first created check's UID.
+2. **Backend handler (`handler.go`)** — Decode the new body; validate `len(Checks) >= 1` and
+   each `CheckType != ""` → `VALIDATION_ERROR` (422). Keep `ErrHostNotFound` → 404,
+   `ErrAlreadyPromoted` → 409. Respond 201 with `{ "data": [check, …] }`.
+3. **Backend tests** — `service_test.go`: single-check, multi-check (distinct slugs),
+   already-promoted, empty-checks. Add `handler_test.go`: HTTP-level multi-check 201,
+   empty-checks 422, already-promoted 409, missing checkType 422.
+4. **Frontend hooks (`hooks.ts`)** — Add `PromoteCheckSpec`; change
+   `PromoteCandidateRequest` to `{ checks: PromoteCheckSpec[] }`; `usePromoteCandidate`
+   resolves to `{ data: Check[] }`; keep invalidating `discoveryHosts` + `checks`.
+5. **Breadcrumbs (`$org.tsx`)** — Import `Network`, `BellRing`. Add `isDiscovery` /
+   `isNotifications` flags. Discovery branch (root link + `new` leaf + scan-UID sub-crumb +
+   `promote` leaf). Notifications branch (single `BellRing + myPages` crumb).
+6. **Notifications page (`me.notifications.tsx`)** — Swap `Bell` → `BellRing`; replace inline
+   header with `PageHeader`. Keep `data-testid`.
+7. **Discovery index (`discovery.index.tsx`)** — Replace inline header with `PageHeader`
+   (refresh + Freebox + New Scan into `actions`). Remove the bogus first `IP Address`
+   column header + cell.
+8. **Scan detail (`discovery.$jobUid.tsx`)** — Promote icon `Pencil` → `CirclePlus`.
+9. **Promote page (`discovery.$jobUid.$hostUid.promote.tsx`)** — Checkbox list of
+   `suggestedChecks` (pre-checked, type label + config hint), shared Name + Period inputs.
+   Empty `suggestedChecks` → fall back to the 5-type picker. Build `checks[]` with per-check
+   slug/name suffixing; `CirclePlus` submit; disable when nothing selected.
+10. **i18n** — `nav.json` `promote`; `discovery.json` `selectChecks`, `createChecks`,
+    `noSuggestedChecks` (en + fr).
+11. **e2e** — Extend `discovery.spec.ts`: breadcrumb icons present, no IP column, promote
+    page shows checkboxes.
+12. **QA** — `make fmt`, build backend + dash0, lint-back, test until green; completeness
+    audit.

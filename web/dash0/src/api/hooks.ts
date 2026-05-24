@@ -3033,12 +3033,16 @@ export interface StartDiscoveryScanRequest {
   concurrency?: number;
 }
 
-export interface PromoteCandidateRequest {
+export interface PromoteCheckSpec {
   checkType: string;
   name?: string;
   slug?: string;
   period?: string;
   extraConfig?: Record<string, unknown>;
+}
+
+export interface PromoteCandidateRequest {
+  checks: PromoteCheckSpec[];
 }
 
 export function useStartDiscoveryScan(org: string) {
@@ -3121,7 +3125,7 @@ export function usePromoteCandidate(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
-      apiFetch<{ data: Check }>(
+      apiFetch<{ data: Check[] }>(
         `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
         {
           method: "POST",

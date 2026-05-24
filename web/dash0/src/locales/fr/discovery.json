@@ -64,5 +64,8 @@
   "selectFreeboxChannel": "Choisir un canal Freebox",
   "noFreeboxChannels": "Aucun canal Freebox appairé",
   "freeboxScanStarted": "Découverte Freebox démarrée",
-  "freeboxScanFailed": "Échec du démarrage de la découverte Freebox"
+  "freeboxScanFailed": "Échec du démarrage de la découverte Freebox",
+  "selectChecks": "Vérifications à créer",
+  "createChecks": "Créer les vérifications",
+  "noSuggestedChecks": "Aucune vérification suggérée — choisissez un type"
 }
