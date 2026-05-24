@@ -7,6 +7,7 @@ import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation"
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -45,7 +46,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -90,6 +91,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "docker", label: "Docker", description: "Monitor Docker container health" },
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
+  { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -145,6 +147,21 @@ function getConfigField(
   const value = config[field];
   if (value === undefined || value === null) return "";
   return String(value);
+}
+
+// splitBlocklists turns the DNSBL blocklists textarea (comma/newline separated)
+// into a trimmed, de-duplicated array, dropping empty entries.
+function splitBlocklists(raw: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const z of raw.split(/[\n,]/)) {
+    const zone = z.trim();
+    if (zone && !seen.has(zone)) {
+      seen.add(zone);
+      out.push(zone);
+    }
+  }
+  return out;
 }
 
 function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: string; label: string }[] {
@@ -411,6 +428,18 @@ export function CheckForm({
     getConfigField(initialData?.config, "maxRxPowerMw"),
   );
   const [freeboxThresholdsOpen, setFreeboxThresholdsOpen] = useState(false);
+  // dnsbl state — target IP/hostname + optional blocklist zones + optional resolver.
+  // blocklists are stored as a comma/newline-separated string in the form and
+  // split into an array on submit (empty = backend defaults).
+  const [dnsblTarget, setDnsblTarget] = useState(getConfigField(initialData?.config, "target"));
+  const [dnsblBlocklists, setDnsblBlocklists] = useState(
+    Array.isArray(initialData?.config?.blocklists)
+      ? (initialData.config.blocklists as string[]).join("\n")
+      : getConfigField(initialData?.config, "blocklists"),
+  );
+  const [dnsblNameserver, setDnsblNameserver] = useState(
+    getConfigField(initialData?.config, "nameserver"),
+  );
   // ICMP "Discover from Freebox" picker — opens a modal that lists hosts
   // currently seen by a paired Freebox so the user can pre-fill an ICMP
   // check without typing an IP.
@@ -524,6 +553,13 @@ export function CheckForm({
     setSnmpOperator(getConfigField(cfg, "operator") || "equals");
     setWsSend(getConfigField(cfg, "send"));
     setWsExpect(getConfigField(cfg, "expect"));
+    setDnsblTarget(getConfigField(cfg, "target"));
+    setDnsblBlocklists(
+      Array.isArray(cfg.blocklists)
+        ? (cfg.blocklists as string[]).join("\n")
+        : getConfigField(cfg, "blocklists"),
+    );
+    setDnsblNameserver(getConfigField(cfg, "nameserver"));
   }
 
   const currentConfig = useMemo(() => {
@@ -694,6 +730,14 @@ export function CheckForm({
         if (freeboxMinRxMw) cfg.minRxPowerMw = parseFloat(freeboxMinRxMw);
         if (freeboxMaxRxMw) cfg.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
         break;
+      case "dnsbl":
+        if (dnsblTarget) cfg.target = dnsblTarget;
+        {
+          const zones = splitBlocklists(dnsblBlocklists);
+          if (zones.length > 0) cfg.blocklists = zones;
+        }
+        if (dnsblNameserver) cfg.nameserver = dnsblNameserver;
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
@@ -702,7 +746,8 @@ export function CheckForm({
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
     waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays,
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
-    freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw]);
+    freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
+    dnsblTarget, dnsblBlocklists, dnsblNameserver]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -909,6 +954,15 @@ export function CheckForm({
         if (freeboxMaxCrcErrors) config.maxCrcErrorsPerRun = parseInt(freeboxMaxCrcErrors, 10);
         if (freeboxMinRxMw) config.minRxPowerMw = parseFloat(freeboxMinRxMw);
         if (freeboxMaxRxMw) config.maxRxPowerMw = parseFloat(freeboxMaxRxMw);
+        break;
+      case "dnsbl":
+        if (!dnsblTarget) { setError("Target IP or hostname is required"); return; }
+        config.target = dnsblTarget;
+        {
+          const zones = splitBlocklists(dnsblBlocklists);
+          if (zones.length > 0) config.blocklists = zones;
+        }
+        if (dnsblNameserver) config.nameserver = dnsblNameserver;
         break;
       case "heartbeat":
       case "email":
@@ -1655,6 +1709,37 @@ export function CheckForm({
           </>
         );
       }
+      case "dnsbl":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label htmlFor="dnsblTarget">{t("dnsbl.target")}</Label>
+              <Input id="dnsblTarget" type="text" placeholder="203.0.113.10" value={dnsblTarget}
+                onChange={(e) => setDnsblTarget(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "target") && "border-destructive")}
+                data-testid="check-dnsbl-target-input" />
+              <p className="text-xs text-muted-foreground">{t("dnsbl.targetHelp")}</p>
+              {getFieldError(fieldErrors, "target") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "target")}</p>)}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dnsblBlocklists">{t("dnsbl.blocklists")}</Label>
+              <Textarea id="dnsblBlocklists" rows={4}
+                placeholder={"zen.spamhaus.org\nbl.spamcop.net"} value={dnsblBlocklists}
+                onChange={(e) => setDnsblBlocklists(e.target.value)}
+                data-testid="check-dnsbl-blocklists-input" />
+              <p className="text-xs text-muted-foreground">{t("dnsbl.blocklistsHelp")}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="dnsblNameserver">{t("dnsbl.nameserver")}</Label>
+              <Input id="dnsblNameserver" type="text" placeholder="127.0.0.1:53" value={dnsblNameserver}
+                onChange={(e) => setDnsblNameserver(e.target.value)}
+                className={cn(getFieldError(fieldErrors, "nameserver") && "border-destructive")}
+                data-testid="check-dnsbl-nameserver-input" />
+              <p className="text-xs text-muted-foreground">{t("dnsbl.nameserverHelp")}</p>
+              {getFieldError(fieldErrors, "nameserver") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "nameserver")}</p>)}
+            </div>
+          </>
+        );
       case "heartbeat":
         return (
           <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>

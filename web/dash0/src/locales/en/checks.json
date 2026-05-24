@@ -164,7 +164,9 @@
     "browser": "Browser",
     "browserDescription": "Monitor pages with headless Chrome",
     "freebox_line": "Freebox Line Quality",
-    "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS"
+    "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Check if an IP/domain is on DNS blocklists"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -208,6 +210,14 @@
     "maxCrcErrorsPerRun": "Max CRC errors per check",
     "minRxPowerMw": "Min Rx power (mW)",
     "maxRxPowerMw": "Max Rx power (mW)"
+  },
+  "dnsbl": {
+    "target": "Target IP or hostname",
+    "targetHelp": "IPv4 address or hostname to check against the blocklists.",
+    "blocklists": "Blocklist zones",
+    "blocklistsHelp": "Optional. One DNS blocklist zone per line (or comma-separated). Leave empty to use the defaults (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Custom resolver",
+    "nameserverHelp": "Optional host:port of a recursive resolver. Public resolvers (8.8.8.8, 1.1.1.1) are blocked by Spamhaus, so use a local resolver if needed."
   },
   "intervals": {
     "10s": "10 seconds",

@@ -5,6 +5,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkemail"
@@ -128,6 +129,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkbrowser.BrowserChecker{}, true
 	case checkerdef.CheckTypeFreeboxLine:
 		return &checkfreeboxline.FreeboxLineChecker{}, true
+	case checkerdef.CheckTypeDNSBL:
+		return &checkdnsbl.DNSBLChecker{}, true
 	default:
 		return nil, false
 	}
@@ -207,6 +210,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkbrowser.BrowserConfig{}, true
 	case checkerdef.CheckTypeFreeboxLine:
 		return &checkfreeboxline.FreeboxLineConfig{}, true
+	case checkerdef.CheckTypeDNSBL:
+		return &checkdnsbl.DNSBLConfig{}, true
 	default:
 		return nil, false
 	}
