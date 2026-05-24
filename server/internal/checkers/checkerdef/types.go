@@ -119,6 +119,8 @@ const (
 	CheckTypeDocker CheckType = "docker"
 	// CheckTypeBrowser performs headless Chrome browser health checks.
 	CheckTypeBrowser CheckType = "browser"
+	// CheckTypeFreeboxLine monitors xDSL/FTTH line quality via the Freebox OS API.
+	CheckTypeFreeboxLine CheckType = "freebox_line"
 )
 
 // Common output and config map keys used across checker implementations.
@@ -209,6 +211,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
 	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome"},
+	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
@@ -297,5 +300,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeSNMP,
 		CheckTypeDocker,
 		CheckTypeBrowser,
+		CheckTypeFreeboxLine,
 	}
 }
