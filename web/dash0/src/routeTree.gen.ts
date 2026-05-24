@@ -87,6 +87,7 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
+import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
@@ -504,6 +505,12 @@ const OrgsOrgOnCallSlugIndexRoute = OrgsOrgOnCallSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgOnCallSlugRoute,
 } as any)
+const OrgsOrgDiscoveryJobUidIndexRoute =
+  OrgsOrgDiscoveryJobUidIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgDiscoveryJobUidRoute,
+  } as any)
 const OrgsOrgChecksCheckUidIndexRoute =
   OrgsOrgChecksCheckUidIndexRouteImport.update({
     id: '/',
@@ -628,6 +635,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
+  '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -656,7 +664,6 @@ export interface FileRoutesByTo {
   '/orgs/$org/channels/$channelUid': typeof OrgsOrgChannelsChannelUidRoute
   '/orgs/$org/channels/new': typeof OrgsOrgChannelsNewRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
-  '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidRouteWithChildren
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
@@ -699,6 +706,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
+  '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -787,6 +795,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
+  '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
@@ -876,6 +885,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
+    | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -904,7 +914,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/channels/$channelUid'
     | '/orgs/$org/channels/new'
     | '/orgs/$org/checks/new'
-    | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/discovery/new'
     | '/orgs/$org/escalation-policies/$slug'
     | '/orgs/$org/escalation-policies/new'
@@ -947,6 +956,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
+    | '/orgs/$org/discovery/$jobUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -1034,6 +1044,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
+    | '/orgs/$org/discovery/$jobUid/'
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -1600,6 +1611,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallSlugIndexRouteImport
       parentRoute: typeof OrgsOrgOnCallSlugRoute
     }
+    '/orgs/$org/discovery/$jobUid/': {
+      id: '/orgs/$org/discovery/$jobUid/'
+      path: '/'
+      fullPath: '/orgs/$org/discovery/$jobUid/'
+      preLoaderRoute: typeof OrgsOrgDiscoveryJobUidIndexRouteImport
+      parentRoute: typeof OrgsOrgDiscoveryJobUidRoute
+    }
     '/orgs/$org/checks/$checkUid/': {
       id: '/orgs/$org/checks/$checkUid/'
       path: '/'
@@ -1723,11 +1741,13 @@ const OrgsOrgChecksRouteWithChildren = OrgsOrgChecksRoute._addFileChildren(
 )
 
 interface OrgsOrgDiscoveryJobUidRouteChildren {
+  OrgsOrgDiscoveryJobUidIndexRoute: typeof OrgsOrgDiscoveryJobUidIndexRoute
   OrgsOrgDiscoveryJobUidHostUidPromoteRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 
 const OrgsOrgDiscoveryJobUidRouteChildren: OrgsOrgDiscoveryJobUidRouteChildren =
   {
+    OrgsOrgDiscoveryJobUidIndexRoute: OrgsOrgDiscoveryJobUidIndexRoute,
     OrgsOrgDiscoveryJobUidHostUidPromoteRoute:
       OrgsOrgDiscoveryJobUidHostUidPromoteRoute,
   }
