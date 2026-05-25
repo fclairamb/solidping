@@ -56,10 +56,13 @@ var (
 // OAuthResult contains the result of a successful OAuth callback.
 type OAuthResult struct {
 	ConnectionUID string
-	AccessToken   string
-	RefreshToken  string
-	OrgSlug       string
-	UserUID       string
+	// ChannelUID is set when the install was triggered from a specific channel
+	// edit page. The frontend uses it to navigate back to that channel.
+	ChannelUID   string
+	AccessToken  string
+	RefreshToken string
+	OrgSlug      string
+	UserUID      string
 }
 
 // installStateKind / installStateTTL govern the bot-install OAuth flow's
@@ -81,6 +84,11 @@ const (
 	payloadKeyOrgSlug      = "orgSlug"
 	payloadKeyUserUID      = "userUID"
 	payloadKeySource       = "source"
+	// payloadKeyChannelUID and payloadKeyInstallOrg carry the channel context
+	// from the install entry point through the CSRF state so the callback can
+	// update the specific channel that triggered the install flow.
+	payloadKeyChannelUID = "channelUid"
+	payloadKeyInstallOrg = "installOrg"
 )
 
 // slackBotScopes / slackUserScopes are the scopes requested during install.
@@ -154,11 +162,19 @@ func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*mo
 // BuildInstallURL mints a fresh CSRF state and returns the Slack OAuth
 // authorization URL the user should be redirected to. `source` (when set)
 // is stashed in the state payload for install-source analytics on the
-// callback side.
-func (s *Service) BuildInstallURL(ctx context.Context, source string) (string, error) {
+// callback side. `channelUID` and `orgSlug` are stashed when the install is
+// triggered from a specific channel edit page, so the callback can update
+// that channel directly instead of creating a new one.
+func (s *Service) BuildInstallURL(ctx context.Context, source, channelUID, orgSlug string) (string, error) {
 	payload := map[string]any{}
 	if source != "" {
 		payload[payloadKeySource] = source
+	}
+	if channelUID != "" {
+		payload[payloadKeyChannelUID] = channelUID
+	}
+	if orgSlug != "" {
+		payload[payloadKeyInstallOrg] = orgSlug
 	}
 
 	nonce, err := oauthstate.Generate(ctx, s.db, installStateKind, payload, installStateTTL)
@@ -189,6 +205,9 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 		payloadKeyOrgSlug:      result.OrgSlug,
 		payloadKeyUserUID:      result.UserUID,
 	}
+	if result.ChannelUID != "" {
+		payload[payloadKeyChannelUID] = result.ChannelUID
+	}
 
 	code, err := oauthstate.Generate(ctx, s.db, exchangeStateKind, payload, exchangeStateTTL)
 	if err != nil {
@@ -202,44 +221,28 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 // It validates the CSRF state up front, then creates/updates the integration
 // connection and creates user and organization if needed.
 func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (*OAuthResult, error) {
-	if _, err := oauthstate.Validate(ctx, s.db, installStateKind, state); err != nil {
+	entry, err := oauthstate.Validate(ctx, s.db, installStateKind, state)
+	if err != nil {
 		return nil, ErrInvalidState
 	}
 
-	// Exchange code for access token
-	oauthResp, err := ExchangeCode(
-		ctx,
-		s.cfg.Slack.ClientID,
-		s.cfg.Slack.ClientSecret,
-		code,
-		"", // redirect_uri is optional for token exchange
-	)
+	// Extract optional channel context stored when the install was triggered
+	// from a specific channel edit page.
+	var targetChannelUID, targetOrgSlug string
+	if entry.Payload != nil {
+		targetChannelUID, _ = entry.Payload[payloadKeyChannelUID].(string)
+		targetOrgSlug, _ = entry.Payload[payloadKeyInstallOrg].(string)
+	}
+
+	oauthResp, userInfo, err := s.exchangeCodeAndFetchUser(ctx, code)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to exchange OAuth code", "error", err)
-
-		return nil, fmt.Errorf("%w: %w", ErrOAuthFailed, err)
+		return nil, err
 	}
 
-	// Fetch user info via OpenID Connect using the user token
-	userInfo, err := FetchOpenIDUserInfo(ctx, oauthResp.AuthedUser.AccessToken)
-	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"Failed to fetch user info from Slack via OpenID Connect",
-			"error", err,
-			"user_id", oauthResp.AuthedUser.ID,
-		)
-
-		return nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrOAuthFailed, err)
-	}
-
-	// Validate email is present
-	if userInfo.Email == "" {
-		return nil, ErrEmailRequired
-	}
-
-	// Find or create organization from the Slack workspace identity.
-	org, orgName, err := s.resolveOrganization(ctx, oauthResp, userInfo)
+	// Resolve organization: when triggered from a channel page, use that
+	// channel's org directly so the user stays in their existing workspace.
+	// For marketplace installs (no channel context), find/create from Slack identity.
+	org, orgName, err := s.resolveOrganizationForOAuth(ctx, targetOrgSlug, oauthResp, userInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -256,8 +259,16 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, fmt.Errorf("failed to ensure organization membership: %w", err)
 	}
 
-	// Create or update the integration connection
-	connUID, err := s.createOrUpdateConnection(ctx, org.UID, oauthResp)
+	// Create or update the integration connection. When triggered from a
+	// channel page, update THAT channel's settings directly so the
+	// existing channel record becomes "connected" (gains a team_id).
+	var connUID string
+	if targetChannelUID != "" {
+		connUID, err = s.updateExistingChannel(ctx, targetChannelUID, oauthResp)
+	} else {
+		connUID, err = s.createOrUpdateConnection(ctx, org.UID, oauthResp)
+	}
+
 	if err != nil {
 		return nil, err
 	}
@@ -279,11 +290,101 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	return &OAuthResult{
 		ConnectionUID: connUID,
+		ChannelUID:    targetChannelUID,
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
 		OrgSlug:       org.Slug,
 		UserUID:       user.UID,
 	}, nil
+}
+
+// exchangeCodeAndFetchUser exchanges the OAuth code for tokens and fetches
+// the authenticated user's identity via OpenID Connect.
+func (s *Service) exchangeCodeAndFetchUser(
+	ctx context.Context, code string,
+) (*OAuthResponse, *OpenIDUserInfo, error) {
+	oauthResp, err := ExchangeCode(
+		ctx,
+		s.cfg.Slack.ClientID,
+		s.cfg.Slack.ClientSecret,
+		code,
+		"", // redirect_uri is optional for token exchange
+	)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to exchange OAuth code", "error", err)
+
+		return nil, nil, fmt.Errorf("%w: %w", ErrOAuthFailed, err)
+	}
+
+	userInfo, err := FetchOpenIDUserInfo(ctx, oauthResp.AuthedUser.AccessToken)
+	if err != nil {
+		slog.ErrorContext(
+			ctx,
+			"Failed to fetch user info from Slack via OpenID Connect",
+			"error", err,
+			"user_id", oauthResp.AuthedUser.ID,
+		)
+
+		return nil, nil, fmt.Errorf("%w: failed to fetch user info: %w", ErrOAuthFailed, err)
+	}
+
+	if userInfo.Email == "" {
+		return nil, nil, ErrEmailRequired
+	}
+
+	return oauthResp, userInfo, nil
+}
+
+// resolveOrganizationForOAuth resolves the target organization during a Slack
+// OAuth callback. When a targetOrgSlug is present (install triggered from a
+// channel edit page), it fetches that org directly, falling back to the Slack
+// workspace identity if the slug is not found. Otherwise it delegates to
+// resolveOrganization to find or create from the Slack team.
+func (s *Service) resolveOrganizationForOAuth(
+	ctx context.Context,
+	targetOrgSlug string,
+	oauthResp *OAuthResponse,
+	userInfo *OpenIDUserInfo,
+) (*models.Organization, string, error) {
+	if targetOrgSlug == "" {
+		return s.resolveOrganization(ctx, oauthResp, userInfo)
+	}
+
+	org, err := s.db.GetOrganizationBySlug(ctx, targetOrgSlug)
+	if err != nil {
+		// Target org not found — fall back to Slack workspace identity.
+		return s.resolveOrganization(ctx, oauthResp, userInfo)
+	}
+
+	return org, org.Name, nil
+}
+
+// updateExistingChannel writes the Slack bot credentials from oauthResp into
+// the channel identified by channelUID. Used when install is triggered from
+// the channel edit page so the existing channel becomes "connected".
+func (s *Service) updateExistingChannel(
+	ctx context.Context, channelUID string, oauthResp *OAuthResponse,
+) (string, error) {
+	settings := &models.SlackSettings{
+		TeamID:            oauthResp.Team.ID,
+		TeamName:          oauthResp.Team.Name,
+		BotUserID:         oauthResp.BotUserID,
+		AccessToken:       oauthResp.AccessToken,
+		InstalledByUserID: oauthResp.AuthedUser.ID,
+		Scopes:            strings.Split(oauthResp.Scope, ","),
+	}
+
+	settingsMap, err := settings.ToJSONMap()
+	if err != nil {
+		return "", fmt.Errorf("failed to convert settings: %w", err)
+	}
+
+	update := &models.ChannelUpdate{Settings: &settingsMap}
+	if err := s.db.UpdateChannel(ctx, channelUID, update); err != nil {
+		return "", fmt.Errorf("failed to update channel %s: %w", channelUID, err)
+	}
+
+	return channelUID, nil
 }
 
 // resolveOrganization derives the org display name and slug candidates from
