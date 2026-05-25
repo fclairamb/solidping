@@ -83,6 +83,23 @@
     "removeFailed": "Failed to remove check",
     "removeButton": "Remove"
   },
+  "subscribers": {
+    "title": "Subscribers",
+    "description": "People subscribed to email notifications for this status page.",
+    "empty": "No subscribers yet.",
+    "email": "Email",
+    "scope": "Scope",
+    "status": "Status",
+    "actions": "Actions",
+    "confirmed": "Confirmed",
+    "pending": "Pending",
+    "remove": "Remove",
+    "cancel": "Cancel",
+    "removed": "Subscriber removed",
+    "removeError": "Failed to remove subscriber",
+    "removeConfirmTitle": "Remove subscriber?",
+    "removeConfirmDescription": "This subscriber will stop receiving notifications. They can re-subscribe from the public status page."
+  },
   "toast": {
     "created": "Status page created successfully",
     "updated": "Status page updated successfully",

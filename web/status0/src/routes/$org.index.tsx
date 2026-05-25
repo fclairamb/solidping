@@ -36,5 +36,5 @@ function DefaultStatusPage() {
     );
   }
 
-  return <StatusPageView page={page} />;
+  return <StatusPageView page={page} org={org} />;
 }

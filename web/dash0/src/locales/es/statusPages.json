@@ -83,6 +83,23 @@
     "removeFailed": "Error al quitar la comprobación",
     "removeButton": "Quitar"
   },
+  "subscribers": {
+    "title": "Suscriptores",
+    "description": "Personas suscritas a las notificaciones por correo de esta página de estado.",
+    "empty": "Aún no hay suscriptores.",
+    "email": "Correo",
+    "scope": "Alcance",
+    "status": "Estado",
+    "actions": "Acciones",
+    "confirmed": "Confirmado",
+    "pending": "Pendiente",
+    "remove": "Eliminar",
+    "cancel": "Cancelar",
+    "removed": "Suscriptor eliminado",
+    "removeError": "Error al eliminar el suscriptor",
+    "removeConfirmTitle": "¿Eliminar suscriptor?",
+    "removeConfirmDescription": "Este suscriptor dejará de recibir notificaciones. Podrá volver a suscribirse desde la página de estado pública."
+  },
   "toast": {
     "created": "Página de estado creada correctamente",
     "updated": "Página de estado actualizada correctamente",
