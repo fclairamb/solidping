@@ -23,11 +23,6 @@ const (
 	icmpProtocol = 1
 )
 
-// defaultPortList returns the default set of ports to scan when none are specified.
-func defaultPortList() []int {
-	return []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
-}
-
 // Config is the configuration for a discovery scan.
 type Config struct {
 	CIDRs       []string `json:"cidrs"`
