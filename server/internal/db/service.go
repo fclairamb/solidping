@@ -185,6 +185,7 @@ type Service interface {
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
 	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)
 	GetOnCallScheduleBySlug(ctx context.Context, orgUID, slug string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.OnCallSchedule, error)
 	GetOnCallScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error)
 	ListOnCallSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error)
 	UpdateOnCallSchedule(ctx context.Context, scheduleUID string, update *models.OnCallScheduleUpdate) error
@@ -206,6 +207,7 @@ type Service interface {
 	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
 	GetEscalationPolicy(ctx context.Context, orgUID, policyUID string) (*models.EscalationPolicy, error)
 	GetEscalationPolicyBySlug(ctx context.Context, orgUID, slug string) (*models.EscalationPolicy, error)
+	GetEscalationPolicyByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.EscalationPolicy, error)
 	ListEscalationPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error

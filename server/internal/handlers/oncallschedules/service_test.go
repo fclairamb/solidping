@@ -83,6 +83,105 @@ func TestServiceCreateScheduleHappyPath(t *testing.T) {
 	r.Equal(1, roster[1].Position)
 }
 
+func TestServiceGetScheduleByUidOrSlug(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, org := newTestService(t)
+
+	alice := newTestUser(t, dbSvc, org.UID, "alice")
+
+	mon := 0
+	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
+	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
+		OrganizationUID: org.UID,
+		Slug:            "platform",
+		Name:            "Platform",
+		Timezone:        "Europe/Paris",
+		RotationType:    models.RotationTypeWeekly,
+		HandoffTime:     "09:00",
+		HandoffWeekday:  &mon,
+		StartAt:         startAt,
+		UserUIDs:        []string{alice.UID},
+	})
+	r.NoError(err)
+
+	t.Run("by slug", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "platform")
+		require.NoError(t, err)
+		require.Equal(t, schedule.UID, got.UID)
+	})
+
+	t.Run("by uid", func(t *testing.T) {
+		t.Parallel()
+
+		got, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
+		require.NoError(t, err)
+		require.Equal(t, schedule.UID, got.UID)
+	})
+
+	t.Run("unknown slug returns not found", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "nope")
+		require.ErrorIs(t, err, oncallschedules.ErrScheduleNotFound)
+	})
+
+	t.Run("unknown uid returns not found", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "00000000-0000-0000-0000-000000000000")
+		require.ErrorIs(t, err, oncallschedules.ErrScheduleNotFound)
+	})
+}
+
+func TestServiceUpdateAndDeleteByUidOrSlug(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	svc, dbSvc, org := newTestService(t)
+
+	alice := newTestUser(t, dbSvc, org.UID, "alice")
+
+	mon := 0
+	startAt := time.Date(2026, 5, 4, 9, 0, 0, 0, time.UTC)
+	schedule, err := svc.CreateSchedule(t.Context(), &oncallschedules.CreateScheduleInput{
+		OrganizationUID: org.UID,
+		Slug:            "platform",
+		Name:            "Platform",
+		Timezone:        "Europe/Paris",
+		RotationType:    models.RotationTypeWeekly,
+		HandoffTime:     "09:00",
+		HandoffWeekday:  &mon,
+		StartAt:         startAt,
+		UserUIDs:        []string{alice.UID},
+	})
+	r.NoError(err)
+
+	// Resolve by uid, update via the resolved UID — exercises the
+	// uid-addressable update path end to end.
+	resolved, err := svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
+	r.NoError(err)
+
+	newName := "Platform Team"
+	updated, err := svc.UpdateSchedule(t.Context(), org.UID, resolved.UID, &oncallschedules.UpdateScheduleInput{
+		Name: &newName,
+	})
+	r.NoError(err)
+	r.Equal("Platform Team", updated.Name)
+
+	// Delete by the resolved uid, then confirm 404 on subsequent lookups.
+	r.NoError(svc.DeleteSchedule(t.Context(), org.UID, resolved.UID))
+
+	_, err = svc.GetScheduleByUidOrSlug(t.Context(), org.UID, schedule.UID)
+	r.ErrorIs(err, oncallschedules.ErrScheduleNotFound)
+
+	_, err = svc.GetScheduleByUidOrSlug(t.Context(), org.UID, "platform")
+	r.ErrorIs(err, oncallschedules.ErrScheduleNotFound)
+}
+
 func TestServiceCreateScheduleWeeklyRequiresWeekday(t *testing.T) {
 	t.Parallel()
 

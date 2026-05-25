@@ -576,6 +576,86 @@ View a specific status page by slug. Auth: public
 
 ---
 
+## Escalation Policies
+
+Manage escalation policies — ordered steps of notification targets that fire
+when an incident is not acknowledged. The `:id` path param is resolved as
+**uid-or-slug**: a value that parses as a UUID matches the policy `uid`,
+otherwise it matches the `slug`. Prefer the `uid` as a stable identifier
+(the `slug` is mutable via PATCH).
+
+### GET /api/v1/orgs/:org/escalation-policies
+List escalation policies (headers only, steps not expanded). Auth: required
+
+### POST /api/v1/orgs/:org/escalation-policies
+Create an escalation policy with its steps and targets. Auth: required
+
+### GET /api/v1/orgs/:org/escalation-policies/:id
+Get a single escalation policy (with expanded steps and targets) by **uid or
+slug**. Returns `404 NOT_FOUND` for an unknown identifier. Auth: required
+
+### PATCH /api/v1/orgs/:org/escalation-policies/:id
+Update an escalation policy by **uid or slug**. When `steps` is present the
+entire step list is replaced. Auth: required
+
+### DELETE /api/v1/orgs/:org/escalation-policies/:id
+Delete an escalation policy by **uid or slug** (soft delete). Returns
+`409 ESCALATION_POLICY_IN_USE` when an open incident still references it.
+Auth: required
+
+---
+
+## On-Call Schedules
+
+Manage on-call rotation schedules, their rosters, overrides, and iCal feeds.
+The `:id` path param is resolved as **uid-or-slug**: a value that parses as a
+UUID matches the schedule `uid`, otherwise it matches the `slug`. Prefer the
+`uid` as a stable identifier (the `slug` is mutable via PATCH).
+
+### GET /api/v1/orgs/:org/on-call-schedules
+List on-call schedules. Auth: required
+
+### POST /api/v1/orgs/:org/on-call-schedules
+Create an on-call schedule with its initial roster. Auth: required
+
+### GET /api/v1/orgs/:org/on-call-schedules/:id
+Get a single schedule by **uid or slug**, including the current on-call user.
+Returns `404 NOT_FOUND` for an unknown identifier. Auth: required
+
+### PATCH /api/v1/orgs/:org/on-call-schedules/:id
+Update a schedule by **uid or slug**. When `userUids` is present the roster
+is rewritten. Auth: required
+
+### DELETE /api/v1/orgs/:org/on-call-schedules/:id
+Delete a schedule by **uid or slug** (soft delete). Auth: required
+
+### GET /api/v1/orgs/:org/on-call-schedules/:id/preview
+Preview the rotation over a window. Query: `from` (RFC3339, default now),
+`days` (1–365, default 14). Auth: required
+
+### GET /api/v1/orgs/:org/on-call-schedules/:id/overrides
+List overrides on the schedule. Query: `from`, `until` (RFC3339). Auth: required
+
+### POST /api/v1/orgs/:org/on-call-schedules/:id/overrides
+Create an override. Auth: required
+
+### DELETE /api/v1/orgs/:org/on-call-schedules/:id/overrides/:overrideUid
+Delete an override. Auth: required
+
+### POST /api/v1/orgs/:org/on-call-schedules/:id/ical-feed/enable
+Enable the public iCal feed and return its secret + URL. Auth: required
+
+### POST /api/v1/orgs/:org/on-call-schedules/:id/ical-feed/rotate
+Rotate the iCal feed secret. Old URLs stop working. Auth: required
+
+### POST /api/v1/orgs/:org/on-call-schedules/:id/ical-feed/disable
+Disable the iCal feed. Subscribers begin receiving 410. Auth: required
+
+### GET /api/v1/on-call-schedules/:secret/feed.ics
+Public iCal feed. The secret in the URL authorizes access. Auth: public
+
+---
+
 ## Maintenance Windows
 
 ### GET /api/v1/orgs/:org/maintenance-windows

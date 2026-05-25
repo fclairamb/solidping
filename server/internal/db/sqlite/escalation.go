@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -61,6 +62,35 @@ func (s *Service) GetEscalationPolicyBySlug(
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get escalation policy by slug: %w", err)
+	}
+
+	return &policy, nil
+}
+
+// GetEscalationPolicyByUidOrSlug fetches by (org, identifier) where the
+// identifier is a UID when it parses as a UUID, otherwise a slug. Mirrors
+// the resolution used by checks and status pages so the same path param can
+// address a policy by uid or slug.
+//
+//nolint:revive // ByUidOrSlug matches the db.Service interface naming
+func (s *Service) GetEscalationPolicyByUidOrSlug(
+	ctx context.Context, orgUID, identifier string,
+) (*models.EscalationPolicy, error) {
+	var policy models.EscalationPolicy
+
+	query := s.db.NewSelect().
+		Model(&policy).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL")
+
+	if _, err := uuid.Parse(identifier); err == nil {
+		query = query.Where("uid = ?", identifier)
+	} else {
+		query = query.Where("slug = ?", identifier)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, fmt.Errorf("get escalation policy by uid or slug: %w", err)
 	}
 
 	return &policy, nil

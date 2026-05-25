@@ -228,9 +228,9 @@ func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) e
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	slug := req.Param("slug")
+	identifier := req.Param("slug")
 
-	detail, err := h.svc.GetPolicyBySlug(req.Context(), orgUID, slug)
+	detail, err := h.svc.GetPolicyByUidOrSlug(req.Context(), orgUID, identifier)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
