@@ -5,6 +5,7 @@ import { useStatusPage, useUpdateStatusPage } from "@/api/hooks";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { StatusPageForm } from "@/components/shared/status-page-form";
+import { StatusPageSubscribers } from "@/components/shared/status-page-subscribers";
 
 export const Route = createFileRoute(
   "/orgs/$org/status-pages/$statusPageUid/edit"
@@ -47,34 +48,38 @@ function StatusPageEditPage() {
   if (!page) return null;
 
   return (
-    <StatusPageForm
-      mode="edit"
-      initialData={page}
-      isPending={updateStatusPage.isPending}
-      onCancel={() =>
-        navigate({
-          to: "/orgs/$org/status-pages/$statusPageUid",
-          params: { org, statusPageUid: page.uid },
-        })
-      }
-      onSubmit={async (data) => {
-        await updateStatusPage.mutateAsync({
-          name: data.name,
-          slug: data.slug,
-          description: data.description || undefined,
-          visibility: data.visibility,
-          isDefault: data.isDefault,
-          enabled: data.enabled,
-          showAvailability: data.showAvailability,
-          showResponseTime: data.showResponseTime,
-          historyDays: data.historyDays,
-        });
-        toast.success(t("toast.updated"));
-        navigate({
-          to: "/orgs/$org/status-pages/$statusPageUid",
-          params: { org, statusPageUid: page.uid },
-        });
-      }}
-    />
+    <div className="space-y-8 max-w-2xl">
+      <StatusPageForm
+        mode="edit"
+        initialData={page}
+        isPending={updateStatusPage.isPending}
+        onCancel={() =>
+          navigate({
+            to: "/orgs/$org/status-pages/$statusPageUid",
+            params: { org, statusPageUid: page.uid },
+          })
+        }
+        onSubmit={async (data) => {
+          await updateStatusPage.mutateAsync({
+            name: data.name,
+            slug: data.slug,
+            description: data.description || undefined,
+            visibility: data.visibility,
+            isDefault: data.isDefault,
+            enabled: data.enabled,
+            showAvailability: data.showAvailability,
+            showResponseTime: data.showResponseTime,
+            historyDays: data.historyDays,
+          });
+          toast.success(t("toast.updated"));
+          navigate({
+            to: "/orgs/$org/status-pages/$statusPageUid",
+            params: { org, statusPageUid: page.uid },
+          });
+        }}
+      />
+
+      <StatusPageSubscribers org={org} statusPageUid={page.uid} />
+    </div>
   );
 }

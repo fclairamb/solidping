@@ -49,14 +49,41 @@ const (
 	maxBodyLen  = 16384
 )
 
+// SubscriberNotifier fans a published status update out to confirmed status-page
+// subscribers. It is an optional dependency: when nil, CreateStatusUpdate skips
+// the fan-out. The concrete implementation lives in the statussubscribers
+// package; this small interface avoids an import cycle.
+type SubscriberNotifier interface {
+	NotifyStatusUpdate(ctx context.Context, ev *SubscriberUpdateEvent)
+}
+
+// SubscriberUpdateEvent describes a freshly-published update for fan-out.
+type SubscriberUpdateEvent struct {
+	StatusPageUID       string
+	IncidentUID         *string
+	Kind                string
+	Title               string
+	BodyMarkdown        string
+	LinkURL             *string
+	PageName            string
+	IncidentUpdateCount int
+}
+
 // Service provides business logic for status update management.
 type Service struct {
-	db db.Service
+	db       db.Service
+	notifier SubscriberNotifier
 }
 
 // NewService creates a new status updates service.
 func NewService(dbService db.Service) *Service {
 	return &Service{db: dbService}
+}
+
+// SetSubscriberNotifier wires the subscriber fan-out notifier. Optional —
+// CreateStatusUpdate is a no-op for subscribers when this is never called.
+func (s *Service) SetSubscriberNotifier(n SubscriberNotifier) {
+	s.notifier = n
 }
 
 // StatusUpdateResponse represents a status update in API responses.
@@ -293,7 +320,58 @@ func (s *Service) CreateStatusUpdate( //nolint:cyclop // validation requires che
 	event.Payload["status_update_uid"] = update.UID
 	_ = s.db.CreateEvent(ctx, event)
 
+	s.dispatchSubscriberNotification(ctx, page, update)
+
 	return toResponse(update), nil
+}
+
+// dispatchSubscriberNotification fans the published update out to confirmed
+// subscribers. It runs in a fire-and-forget goroutine so a slow or failing mail
+// path never blocks the HTTP response or fails the status update. The detached
+// goroutine uses a context derived via WithoutCancel because the request
+// context is canceled once the handler returns.
+func (s *Service) dispatchSubscriberNotification(
+	ctx context.Context, page *models.StatusPage, update *models.StatusUpdate,
+) {
+	if s.notifier == nil {
+		return
+	}
+
+	// Count prior updates for the incident (excluding this one) so the notifier
+	// can pick the incident-opened template for the first update. Computed on
+	// the request goroutine where the DB context is still valid.
+	priorCount := 0
+
+	if update.IncidentUID != nil && *update.IncidentUID != "" {
+		existing, err := s.db.ListStatusUpdates(ctx, page.OrganizationUID, models.StatusUpdatesFilter{
+			StatusPageUID: page.UID,
+			IncidentUID:   update.IncidentUID,
+			Limit:         200,
+		})
+		if err == nil {
+			priorCount = len(existing) - 1 // exclude the just-created update
+			if priorCount < 0 {
+				priorCount = 0
+			}
+		}
+	}
+
+	event := &SubscriberUpdateEvent{
+		StatusPageUID:       page.UID,
+		IncidentUID:         update.IncidentUID,
+		Kind:                string(update.Kind),
+		Title:               update.Title,
+		BodyMarkdown:        update.BodyMarkdown,
+		LinkURL:             update.LinkURL,
+		PageName:            page.Name,
+		IncidentUpdateCount: priorCount,
+	}
+
+	// Detach from the request context (preserving its values) so the goroutine
+	// survives the handler returning, without inheriting its cancellation.
+	bgCtx := context.WithoutCancel(ctx)
+
+	go s.notifier.NotifyStatusUpdate(bgCtx, event)
 }
 
 // resolveIncidentCheck looks up the incident and returns the check UID to use,

@@ -68,6 +68,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
+	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
@@ -790,6 +791,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
+	// Fan published status updates out to confirmed status-page subscribers by
+	// email. The notifier runs detached (fire-and-forget) inside the service.
+	statusSubscriberNotifier := statussubscribers.NewNotifier(
+		s.dbService, s.services.EmailSender, s.config.Server.BaseURL, slog.Default())
+	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
 	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
 	orgStatusUpdates := api.NewGroup("/orgs/:org/status-updates").Use(authMiddleware.RequireAuth)
 	orgStatusUpdates.GET("", statusUpdatesHandler.ListStatusUpdates)
@@ -820,6 +826,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.UpdateResource)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.DeleteResource)
 
+	// Status page subscribers (public email/RSS subscriptions). The handler is
+	// shared by the authed admin routes (below) and the public routes (further
+	// down, outside RequireAuth).
+	statusSubscribersService := statussubscribers.NewService(s.dbService)
+	statusSubscribersHandler := statussubscribers.NewHandler(
+		statusSubscribersService, s.dbService, s.services.EmailSender, s.config)
+	// Authed admin: list (count + redactable addresses) and remove.
+	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)
+
 	// Maintenance windows routes (authentication required)
 	mwService := maintenancewindows.NewService(s.dbService)
 	mwHandler := maintenancewindows.NewHandler(mwService, s.config)
@@ -835,6 +851,17 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Public status page endpoints (no authentication)
 	api.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
 	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	// Public Atom/RSS feed of the status-update timeline.
+	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+
+	// Public status-page subscription endpoints (no authentication). The
+	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
+	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
+	// single-purpose token links that render an HTML landing page.
+	api.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
+	publicSubscribers := api.NewGroup("/public/status-subscribers")
+	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
+	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
 
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)

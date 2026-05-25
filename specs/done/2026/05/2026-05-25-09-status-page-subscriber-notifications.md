@@ -221,3 +221,44 @@ two public routes outside `RequireAuth`, the two admin routes under it.
 
 P1.2. No hard dependencies — reuses `email.Sender` and the public status-page +
 status-update domains.
+
+## Implementation Plan
+
+> Concrete plan for this branch. NOTE: migration `031` is already taken
+> (`031_result_duration_avg`); the new migration is **`032`** in both DB dirs.
+
+1. **Model + migration 032 + DB methods + interface** — add
+   `db/models/status_page_subscriber.go` (`StatusPageSubscriber`, `Scope` enum,
+   `NewStatusPageSubscriber`). Add `032_status_page_subscriber.{up,down}.sql` to
+   both `db/sqlite/migrations/` and `db/postgres/migrations/`. Implement DB methods
+   in `db/sqlite/status_page_subscriber.go` + `db/postgres/status_page_subscriber.go`
+   and declare them in `db/service.go` (`CreateSubscriber`,
+   `GetSubscriberByConfirmToken`, `GetSubscriberByUnsubToken`, `ConfirmSubscriber`,
+   `SoftDeleteSubscriber`, `ListConfirmedSubscribers`, `ListSubscribers`,
+   `GetSubscriber`, `FindLiveSubscriber`). Add a DB-parity test block in
+   `db/service_test.go` running against both sqlite and postgres harnesses.
+2. **Domain package `statussubscribers`** — `service.go` (subscribe/confirm/
+   unsubscribe/list/remove + `crypto/rand` base64url token generation, double
+   opt-in, soft-undelete on re-subscribe) + `handler.go` (public subscribe/confirm/
+   unsubscribe + authed list/remove + Atom feed). `service_test.go` + `handler_test.go`.
+3. **Mail templates** — `mail.go` builder in `statussubscribers/` producing
+   `email.Message` (HTML+Text) for `confirm`, `incident-opened`, `update`,
+   `resolved`, each non-confirm message carrying the one-click unsubscribe link
+   built from `config.Server.BaseURL`. Sent via `services.EmailSender.Send`.
+4. **Fan-out hook** — add an optional `SubscriberNotifier` dependency to
+   `statusupdates.Service`; `CreateStatusUpdate` dispatches mail to confirmed
+   page-scoped + matching incident-scoped subscribers in a fire-and-forget
+   goroutine that logs failures (never fails/blocks the update). Map `Kind` →
+   template (resolved → resolved; first update for an incident → incident-opened;
+   else → update). Test with a fake `email.Sender`.
+5. **Routes** — register in `server.go`: two public routes outside `RequireAuth`
+   (`POST /orgs/:org/status-pages/:statusPageUid/subscribers`,
+   `GET /public/status-subscribers/{confirm,unsubscribe}`), the Atom feed
+   (`GET /status-pages/:org/:slug/feed.xml`), and two authed admin routes under
+   `RequireAuth` (list + delete). The global per-IP rate-limit middleware already
+   covers all `/api/v1/` traffic; the public subscribe endpoint inherits it, and
+   double opt-in is the primary anti-abuse control.
+6. **Frontend** — `web/status0`: subscribe widget (email → "check your inbox")
+   + `feed.xml` link on the public page. `web/dash0`: read-only subscriber list
+   with count + `Trash2` remove action on the status-page edit route. Playwright E2E.
+7. **Archive** — move spec to `specs/done/2026/05/`.

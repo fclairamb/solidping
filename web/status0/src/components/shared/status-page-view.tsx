@@ -17,6 +17,7 @@ import { AvailabilityBar } from "./availability-bar";
 import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
+import { SubscribeWidget } from "./subscribe-widget";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -192,11 +193,18 @@ function SectionCard({
   );
 }
 
-export function StatusPageView({ page }: { page: StatusPage }) {
+export function StatusPageView({
+  page,
+  org,
+}: {
+  page: StatusPage;
+  org: string;
+}) {
   const { t } = useTranslation();
   const sections = page.sections ?? [];
   const overallStatus = getOverallStatus(sections);
   const { data: versionInfo } = useVersion();
+  const feedUrl = `/api/v1/status-pages/${org}/${page.slug}/feed.xml`;
 
   return (
     <div className="min-h-screen">
@@ -272,6 +280,15 @@ export function StatusPageView({ page }: { page: StatusPage }) {
             <StatusUpdatesTimeline updates={page.recentUpdates} />
           </section>
         )}
+
+        {/* Subscribe to updates (email double opt-in) + RSS/Atom feed */}
+        <section aria-label="Subscribe to updates" className="mt-8">
+          <SubscribeWidget
+            org={org}
+            statusPageUid={page.uid}
+            feedUrl={feedUrl}
+          />
+        </section>
 
         {/* Footer — outbound brand link to solidping.io. text-brand
             (pink) signals "leaves this page" vs internal nav which

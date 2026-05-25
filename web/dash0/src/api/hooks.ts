@@ -1183,6 +1183,53 @@ export function useDeleteStatusPage(org: string) {
   });
 }
 
+// Status page subscriber hooks (read-only admin list + remove).
+export interface StatusPageSubscriber {
+  uid: string;
+  email: string;
+  scope: string;
+  incidentUid?: string;
+  confirmed: boolean;
+  createdAt: string;
+}
+
+export function useStatusPageSubscribers(org: string, statusPageUid: string) {
+  return useQuery({
+    queryKey: ["statusPageSubscribers", org, statusPageUid],
+    queryFn: async () => {
+      const response = await apiFetch<{
+        data?: StatusPageSubscriber[];
+        meta?: { count: number };
+      }>(`/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers`);
+      return {
+        subscribers: response.data ?? [],
+        count: response.meta?.count ?? response.data?.length ?? 0,
+      };
+    },
+    enabled: !!org && !!statusPageUid,
+  });
+}
+
+export function useDeleteStatusPageSubscriber(
+  org: string,
+  statusPageUid: string
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/${uid}`,
+        { method: "DELETE" }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSubscribers", org, statusPageUid],
+      });
+    },
+  });
+}
+
 // Section hooks
 export function useStatusPageSections(org: string, statusPageUid: string) {
   return useQuery({

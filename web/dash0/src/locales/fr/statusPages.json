@@ -83,6 +83,23 @@
     "removeFailed": "Échec du retrait de la vérification",
     "removeButton": "Retirer"
   },
+  "subscribers": {
+    "title": "Abonnés",
+    "description": "Personnes abonnées aux notifications par e-mail de cette page de statut.",
+    "empty": "Aucun abonné pour le moment.",
+    "email": "E-mail",
+    "scope": "Portée",
+    "status": "Statut",
+    "actions": "Actions",
+    "confirmed": "Confirmé",
+    "pending": "En attente",
+    "remove": "Retirer",
+    "cancel": "Annuler",
+    "removed": "Abonné retiré",
+    "removeError": "Échec du retrait de l'abonné",
+    "removeConfirmTitle": "Retirer l'abonné ?",
+    "removeConfirmDescription": "Cet abonné ne recevra plus de notifications. Il pourra se réabonner depuis la page de statut publique."
+  },
   "toast": {
     "created": "Page de statut créée avec succès",
     "updated": "Page de statut mise à jour avec succès",
