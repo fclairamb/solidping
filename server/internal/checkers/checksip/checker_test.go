@@ -460,9 +460,12 @@ func TestSIPChecker_Execute_Options(t *testing.T) {
 
 				res := runExecute(t, cfg)
 				r.Equal(c.wantStatus, res.Status, "output: %v", res.Output)
+				r.Contains(res.Metrics, "response_time_ms")
+				r.Equal(transport, res.Output["transport"])
 
 				if c.wantSIPCode != 0 {
 					r.Equal(c.wantSIPCode, res.Output["sip_status"])
+					r.Equal(c.wantSIPCode, res.Metrics["sip_status_code"])
 				}
 			})
 		}

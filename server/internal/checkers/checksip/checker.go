@@ -139,6 +139,10 @@ func (c *SIPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 
 	result.Metrics["response_time_ms"] = float64(result.Duration.Microseconds()) / microsecondsPerMilli
 
+	if code, ok := result.Output["sip_status"].(int); ok {
+		result.Metrics["sip_status_code"] = code
+	}
+
 	return &result, nil
 }
 
