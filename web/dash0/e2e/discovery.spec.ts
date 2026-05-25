@@ -182,6 +182,24 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
+  test("entering a /8 CIDR shows the large-range warning with host and chunk estimate", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // 10.0.0.0/8 = 16,777,216 addresses → 4096 chunks.
+    await page.fill("textarea", "10.0.0.0/8");
+
+    // The large-range warning Alert should appear.
+    const warning = page.getByTestId("large-range-warning");
+    await expect(warning).toBeVisible();
+    // Should mention host count (16M+) and 4096 chunks.
+    await expect(warning).toContainText(/16/);
+    await expect(warning).toContainText(/4.096/);
+
+    // Submission is still gated only by the confirm checkbox.
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
+    await page.getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
