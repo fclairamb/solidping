@@ -254,10 +254,14 @@ func (s *Service) lookup(ctx context.Context, orgSlug, fileUID string) (*models.
 
 func (s *Service) storageConfig() *filestorage.Config {
 	return &filestorage.Config{
-		Type:      s.cfg.FileStorage.Type,
-		LocalRoot: s.cfg.FileStorage.LocalRoot,
-		S3Bucket:  s.cfg.FileStorage.S3Bucket,
-		S3Region:  s.cfg.FileStorage.S3Region,
-		S3Prefix:  s.cfg.FileStorage.S3Prefix,
+		Type:           s.cfg.FileStorage.Type,
+		LocalRoot:      s.cfg.FileStorage.LocalRoot,
+		S3Bucket:       s.cfg.FileStorage.S3Bucket,
+		S3Region:       s.cfg.FileStorage.S3Region,
+		S3Prefix:       s.cfg.FileStorage.S3Prefix,
+		S3Endpoint:     s.cfg.FileStorage.S3Endpoint,
+		S3UsePathStyle: s.cfg.FileStorage.S3UsePathStyle,
+		S3AccessKey:    s.cfg.FileStorage.S3AccessKey,
+		S3SecretKey:    s.cfg.FileStorage.S3SecretKey,
 	}
 }

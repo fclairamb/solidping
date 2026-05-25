@@ -24,7 +24,8 @@ type GroupType string
 
 // Defined groups. Add new ones here as new use cases land.
 const (
-	GroupTypeReports GroupType = "reports"
+	GroupTypeReports     GroupType = "reports"
+	GroupTypeScreenshots GroupType = "screenshots"
 )
 
 // FileMetadata is the small bag of attributes a backend may need to write
@@ -105,11 +106,15 @@ type StorageFactory func(cfg *Config) (FileStorage, error)
 // We pass it as a struct (not the full *config.Config) to keep this package
 // free of an import cycle on the config package.
 type Config struct {
-	Type      string
-	LocalRoot string
-	S3Bucket  string
-	S3Region  string
-	S3Prefix  string
+	Type           string
+	LocalRoot      string
+	S3Bucket       string
+	S3Region       string
+	S3Prefix       string
+	S3Endpoint     string // custom endpoint for S3-compatible stores (MinIO, R2, Garage, Ceph)
+	S3UsePathStyle bool   // path-style addressing — required by MinIO/Garage/Ceph
+	S3AccessKey    string // optional static access key (else the ambient AWS chain)
+	S3SecretKey    string // optional static secret key — never logged
 }
 
 // RegisterStorageFactory registers a backend factory under a URI scheme

@@ -201,14 +201,21 @@ type EmailConfig struct {
 
 // FileStorageConfig controls where File blobs are persisted. The bytes live
 // behind one of the registered backends (local FS, S3); the metadata always
-// lives in the `files` table. AWS credentials are not stored here — they
-// come from the standard AWS SDK chain (env, IAM role, shared config).
+// lives in the `files` table. By default S3 credentials come from the standard
+// AWS SDK chain (env, IAM role, shared config); set S3AccessKey/S3SecretKey to
+// pin static credentials for self-hosted S3-compatible stores. The multi-word
+// keys here are settable via env through applyFileStorageEnv (koanf's env
+// loader collapses underscores and can't reach the snake_case koanf tags).
 type FileStorageConfig struct {
-	Type      string `koanf:"type"`       // "local" (default) or "s3"
-	LocalRoot string `koanf:"local_root"` // local backend root, e.g. "./data/files"
-	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
-	S3Region  string `koanf:"s3_region"`  // S3 backend region
-	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
+	Type           string `koanf:"type"`              // "local" (default) or "s3"
+	LocalRoot      string `koanf:"local_root"`        // local backend root, e.g. "./data/files"
+	S3Bucket       string `koanf:"s3_bucket"`         // S3 backend bucket name
+	S3Region       string `koanf:"s3_region"`         // S3 backend region
+	S3Prefix       string `koanf:"s3_prefix"`         // optional key prefix
+	S3Endpoint     string `koanf:"s3_endpoint"`       // custom endpoint, e.g. https://minio.local:9000
+	S3UsePathStyle bool   `koanf:"s3_use_path_style"` // true for MinIO/Garage/Ceph
+	S3AccessKey    string `koanf:"s3_access_key"`     // optional static cred (else AWS chain)
+	S3SecretKey    string `koanf:"s3_secret_key"`     // optional static cred — never logged
 }
 
 // AppConfig contains application-level integration settings: in-app bug
@@ -521,6 +528,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyFileStorageEnv(&cfg.FileStorage)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -583,6 +591,35 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
+}
+
+// applyFileStorageEnv reads SP_FILESTORAGE_S3_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so it would map
+// these to filestorage.s3.bucket / filestorage.s3.endpoint etc. and miss the
+// snake_case koanf tags ("s3_bucket", "s3_endpoint", ...). Reading them here
+// makes the whole S3 backend env-configurable for containerized self-hosters.
+func applyFileStorageEnv(cfg *FileStorageConfig) {
+	if v := os.Getenv("SP_FILESTORAGE_S3_BUCKET"); v != "" {
+		cfg.S3Bucket = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_REGION"); v != "" {
+		cfg.S3Region = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_PREFIX"); v != "" {
+		cfg.S3Prefix = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_ENDPOINT"); v != "" {
+		cfg.S3Endpoint = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_USE_PATH_STYLE"); v == "true" || v == "1" {
+		cfg.S3UsePathStyle = true
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_ACCESS_KEY"); v != "" {
+		cfg.S3AccessKey = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_SECRET_KEY"); v != "" {
+		cfg.S3SecretKey = v
+	}
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.
