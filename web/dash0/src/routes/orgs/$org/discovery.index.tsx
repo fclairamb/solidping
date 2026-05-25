@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Network, Plus, RefreshCw, Scan, Wifi } from "lucide-react";
-import { toast } from "sonner";
+import { Network, Plus, RefreshCw, Scan } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,16 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  useChannels,
   useListDiscoveryScans,
-  useStartFreeboxScan,
-  canSource,
   type DiscoveryScan,
 } from "@/api/hooks";
 
@@ -96,49 +86,6 @@ function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
   );
 }
 
-function FreeboxLauncher({ org }: { org: string }) {
-  const { t } = useTranslation("discovery");
-  const { data: channels } = useChannels(org);
-  const startFreebox = useStartFreeboxScan(org);
-
-  // Source integrations (canSource) that can drive a discovery scan. Today the
-  // active-scan launcher is Freebox-only; capability filtering keeps it open to
-  // future source types without another type-literal carve-out.
-  const freeboxChannels = useMemo(
-    () => (channels ?? []).filter((c) => canSource(c.type)),
-    [channels],
-  );
-
-  const handleSelect = (channelUid: string) => {
-    startFreebox.mutate(channelUid, {
-      onSuccess: () => toast.success(t("freeboxScanStarted")),
-      onError: () => toast.error(t("freeboxScanFailed")),
-    });
-  };
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="outline" disabled={startFreebox.isPending}>
-          <Wifi className="h-4 w-4 mr-1" />
-          {t("discoverViaFreebox")}
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
-        {freeboxChannels.length === 0 ? (
-          <DropdownMenuItem disabled>{t("noFreeboxChannels")}</DropdownMenuItem>
-        ) : (
-          freeboxChannels.map((c) => (
-            <DropdownMenuItem key={c.uid} onSelect={() => handleSelect(c.uid)}>
-              {c.name}
-            </DropdownMenuItem>
-          ))
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
 function DiscoveryIndexPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
@@ -169,7 +116,6 @@ function DiscoveryIndexPage() {
             >
               <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
             </Button>
-            <FreeboxLauncher org={org} />
             <Button asChild>
               <Link to="/orgs/$org/discovery/new" params={{ org }}>
                 <Plus className="h-4 w-4 mr-1" />
