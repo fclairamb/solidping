@@ -99,6 +99,27 @@ func TestCreateCheckInternalBypassesCap(t *testing.T) {
 	}
 }
 
+func TestCloneCheckBlockedOverCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	svc, org := setupQuotaService(t, 1)
+
+	// First (non-internal) check fills the cap of 1.
+	created, err := svc.CreateCheck(ctx, org.Slug, httpCheckReq())
+	r.NoError(err)
+
+	// Cloning it would create a second non-internal check → quota error.
+	_, err = svc.CloneCheck(ctx, org.Slug, created.UID, &checks.CloneCheckRequest{})
+	r.Error(err)
+	r.ErrorIs(err, entcore.ErrEntitlementExceeded)
+
+	var qe *entcore.QuotaError
+	r.ErrorAs(err, &qe)
+	r.Equal("MaxChecks", qe.LimitName)
+}
+
 func TestCreateCheckUnlimitedWhenNoCap(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

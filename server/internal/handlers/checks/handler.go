@@ -588,6 +588,15 @@ func (h *Handler) handleDeleteError(writer http.ResponseWriter, err error) error
 // handleCloneError handles errors from CloneCheck.
 func (h *Handler) handleCloneError(writer http.ResponseWriter, err error) error {
 	switch {
+	case errors.Is(err, entcore.ErrEntitlementExceeded):
+		var qe *entcore.QuotaError
+		if !errors.As(err, &qe) {
+			return h.WriteInternalError(writer, err)
+		}
+		body := entitlementshandler.FormatQuotaError(qe)
+		body["code"] = string(base.ErrorCodeQuotaExceeded)
+
+		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
