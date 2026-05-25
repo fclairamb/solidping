@@ -15,9 +15,9 @@ const (
 	MaxAddresses = 4096
 
 	// MaxScanChunks is the fixed overall ceiling on how many ≤MaxAddresses chunks a single
-	// fan-out scan may be split into. 256 chunks × 4096 addresses ≈ 1M addresses (a /12),
-	// which keeps a /8 from accidentally scheduling thousands of child jobs.
-	MaxScanChunks = 256
+	// fan-out scan may be split into. 4096 chunks × 4096 addresses = 16,777,216 addresses
+	// (exactly one /8). A /7 (8192 chunks) exceeds the ceiling and is rejected.
+	MaxScanChunks = 4096
 
 	// ErrCodeRangeTooLarge is the error code returned when the CIDRs expand to more than MaxAddresses.
 	ErrCodeRangeTooLarge = "DISCOVERY_RANGE_TOO_LARGE"
