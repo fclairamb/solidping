@@ -3441,3 +3441,25 @@ export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
     staleTime: 60 * 1000,
   });
 }
+
+// ----- Web Push -----
+
+interface VapidPublicKeyData {
+  publicKey: string;
+}
+
+interface VapidPublicKeyResponse {
+  data: VapidPublicKeyData;
+}
+
+export function useVapidPublicKey(org: string) {
+  return useQuery({
+    queryKey: ["vapidPublicKey", org],
+    queryFn: () =>
+      apiFetch<VapidPublicKeyResponse>(
+        `/api/v1/orgs/${org}/webpush/vapid-public-key`,
+      ).then((r) => r.data),
+    enabled: !!org,
+    staleTime: Infinity, // key is stable; refetch only on mount
+  });
+}
