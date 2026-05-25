@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -61,6 +62,33 @@ func (s *Service) GetOnCallScheduleBySlug(
 		Scan(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("get on-call schedule by slug: %w", err)
+	}
+
+	return &schedule, nil
+}
+
+// GetOnCallScheduleByUidOrSlug looks up by (org, identifier) where the
+// identifier is a UID when it parses as a UUID, otherwise a slug. Mirrors
+// the resolution used by checks and status pages so the same path param can
+// address a schedule by uid or slug.
+func (s *Service) GetOnCallScheduleByUidOrSlug(
+	ctx context.Context, orgUID, identifier string,
+) (*models.OnCallSchedule, error) {
+	var schedule models.OnCallSchedule
+
+	query := s.db.NewSelect().
+		Model(&schedule).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL")
+
+	if _, err := uuid.Parse(identifier); err == nil {
+		query = query.Where("uid = ?", identifier)
+	} else {
+		query = query.Where("slug = ?", identifier)
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, fmt.Errorf("get on-call schedule by uid or slug: %w", err)
 	}
 
 	return &schedule, nil
