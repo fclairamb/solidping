@@ -124,6 +124,24 @@ func (s *Service) GetPolicyBySlug(
 	return s.loadDetail(ctx, policy)
 }
 
+// GetPolicyByUidOrSlug returns a policy (with expanded steps and targets)
+// addressed by either its UID or its slug. Used by GET/PATCH/DELETE so a
+// Terraform-style uid is a valid identifier alongside the slug.
+func (s *Service) GetPolicyByUidOrSlug(
+	ctx context.Context, orgUID, identifier string,
+) (*PolicyDetail, error) {
+	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrPolicyNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return s.loadDetail(ctx, policy)
+}
+
 // ListPolicies returns all policies for an org. Steps and targets are NOT
 // expanded — the list response is intentionally light.
 func (s *Service) ListPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error) {
@@ -144,11 +162,12 @@ type UpdatePolicyInput struct {
 	ClearRepeatAfterSeconds bool
 }
 
-// UpdatePolicy applies a partial update.
+// UpdatePolicy applies a partial update. The identifier is resolved as
+// uid-or-slug so PATCH works with either form.
 func (s *Service) UpdatePolicy(
-	ctx context.Context, orgUID, slug string, input *UpdatePolicyInput,
+	ctx context.Context, orgUID, identifier string, input *UpdatePolicyInput,
 ) (*PolicyDetail, error) {
-	policy, err := s.db.GetEscalationPolicyBySlug(ctx, orgUID, slug)
+	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrPolicyNotFound
 	}
@@ -216,8 +235,8 @@ func (s *Service) UpdatePolicy(
 // open incident's check (or its group) still references this policy —
 // otherwise pending escalation jobs would dangle and the timeline would
 // reference a non-existent policy.
-func (s *Service) DeletePolicy(ctx context.Context, orgUID, slug string) error {
-	policy, err := s.db.GetEscalationPolicyBySlug(ctx, orgUID, slug)
+func (s *Service) DeletePolicy(ctx context.Context, orgUID, identifier string) error {
+	policy, err := s.db.GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrPolicyNotFound
 	}
