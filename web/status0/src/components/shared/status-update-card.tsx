@@ -83,24 +83,27 @@ interface StatusUpdateCardProps {
 export function StatusUpdateCard({ update }: StatusUpdateCardProps) {
   return (
     <div className="rounded-lg border border-border bg-card p-4 space-y-2">
-      {/* Header row: kind badge + timestamp */}
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <Badge
-          variant={kindBadgeVariant(update.kind)}
-          aria-label={`Update kind: ${kindLabel(update.kind)}`}
-        >
-          {kindLabel(update.kind)}
-        </Badge>
+      {/* Header row: kind badge + title (inline) + timestamp */}
+      <div className="flex items-start justify-between gap-2 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0 flex-wrap">
+          <Badge
+            variant={kindBadgeVariant(update.kind)}
+            aria-label={`Update kind: ${kindLabel(update.kind)}`}
+            className="shrink-0"
+          >
+            {kindLabel(update.kind)}
+          </Badge>
+          <h3 className="text-sm font-semibold text-foreground min-w-0 break-words">
+            {update.title}
+          </h3>
+        </div>
         <time
           dateTime={update.publishedAt}
-          className="text-xs text-muted-foreground"
+          className="text-xs text-muted-foreground shrink-0"
         >
           {formatRelativeTime(update.publishedAt)}
         </time>
       </div>
-
-      {/* Title */}
-      <h3 className="text-sm font-semibold text-foreground">{update.title}</h3>
 
       {/* Body markdown */}
       {update.bodyMarkdown && (
