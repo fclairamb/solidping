@@ -27,6 +27,7 @@ function OrganizationLayout() {
       path: "/orgs/$org/organization/requests",
       badge: pendingCount,
     },
+    { label: t("nav:usage", "Usage"), path: "/orgs/$org/organization/usage" },
     { label: t("nav:settings"), path: "/orgs/$org/organization/settings" },
   ];
 

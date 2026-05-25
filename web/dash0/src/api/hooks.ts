@@ -3325,3 +3325,36 @@ export function useTestNotificationRoute(org: string) {
       }),
   });
 }
+
+// Entitlements hooks
+export interface EntitlementsLimits {
+  maxChecks?: number | null;
+  maxChecksPerMinute?: number | null;
+  maxSsoUsers?: number | null;
+}
+
+export interface EntitlementsUsage {
+  checks: number;
+  checksPerMinute: number;
+  ssoUsers: number;
+}
+
+export interface EntitlementsResponse {
+  limits: EntitlementsLimits;
+  usage?: EntitlementsUsage;
+  source: string;
+  stale: boolean;
+  upgradeUrl?: string;
+}
+
+export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
+  return useQuery({
+    queryKey: ["entitlements", org, opts?.withUsage ?? false],
+    queryFn: () =>
+      apiFetch<EntitlementsResponse>(
+        `/api/v1/orgs/${org}/entitlements${opts?.withUsage ? "?with=usage" : ""}`,
+      ),
+    enabled: !!org,
+    staleTime: 60 * 1000,
+  });
+}
