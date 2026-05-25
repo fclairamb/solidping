@@ -132,3 +132,27 @@ any follow-up task files). The provider itself is verified in its own repo:
 
 P2.2. Depends on the stable v1 REST API (done). Mostly out-of-tree; the only in-repo work
 is the completeness audit and any follow-up API tasks it surfaces.
+
+## Implementation Plan
+
+The in-tree deliverable for this spec is the **API completeness audit** plus follow-up
+task files for any gaps. The provider itself is built out-of-tree (separate repo) and is
+explicitly out of scope here (Non-goals + Implementation notes).
+
+1. **Walk the five resource handlers against the audit checklist** — for each of
+   `checks`, `channels`, `escalation_policy`, `oncall_schedule`, `status_page`, confirm:
+   (a) Create returns the full server-assigned object, (b) GET-by-uid returns every
+   writable field with secret-bearing fields surfaced only as placeholder key lists,
+   (c) PATCH does partial updates and preserves omitted secrets, (d) DELETE is
+   idempotent enough (404-on-already-gone is acceptable). Record findings.
+2. **Write the audit findings note** in this repo (`docs/terraform-provider-api-audit.md`)
+   — a per-resource table mapping each Terraform resource onto its endpoints, secret
+   handling, and import addressing, with explicit gap callouts.
+3. **File follow-up API task specs** for any gap that would block a clean declarative
+   lifecycle (perpetual diffs, broken `terraform import org/uid`, etc.), named per the
+   `YYYY-MM-DD-NN-title.md` convention in `specs/todos/`. Do not block the provider on
+   large API changes — gaps become small follow-ups.
+4. **Archive** this spec to `specs/done/2026/05/` once the audit note and follow-up
+   task(s) are committed. Provider repo bootstrap + resources + acceptance tests + docs
+   (plan steps 2-4 in the section above) happen in `terraform-provider-solidping`, out
+   of this tree, and are not gated by this spec's archival.
