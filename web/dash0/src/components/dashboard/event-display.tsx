@@ -22,3 +22,14 @@ export function getEventLabel(
   if (!eventType) return t("unknown");
   return t(`types.${eventType}`, { defaultValue: eventType });
 }
+
+// getEventDescription returns a human-readable description for an event type,
+// or "" when the type has no description. Callers should skip rendering the
+// description line when this returns an empty string.
+export function getEventDescription(
+  eventType: string | undefined,
+  t: (key: string, options?: Record<string, unknown>) => string,
+): string {
+  if (!eventType) return "";
+  return t(`descriptions.${eventType}`, { defaultValue: "" });
+}

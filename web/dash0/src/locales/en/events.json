@@ -24,7 +24,13 @@
     "incident.opened": "Incident Opened",
     "incident.resolved": "Incident Resolved",
     "incident.escalated": "Incident Escalated",
-    "incident.acknowledged": "Incident Acknowledged"
+    "incident.acknowledged": "Incident Acknowledged",
+    "org.activation.first_check_created": "First Check Created",
+    "org.activation.first_notification_configured": "First Notification Configured"
+  },
+  "descriptions": {
+    "org.activation.first_check_created": "Your first uptime check is live and monitoring.",
+    "org.activation.first_notification_configured": "You have set up your first notification channel."
   },
   "links": {
     "check": "Check",

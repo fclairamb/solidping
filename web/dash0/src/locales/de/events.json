@@ -24,7 +24,13 @@
     "incident.opened": "Vorfall eröffnet",
     "incident.resolved": "Vorfall gelöst",
     "incident.escalated": "Vorfall eskaliert",
-    "incident.acknowledged": "Vorfall bestätigt"
+    "incident.acknowledged": "Vorfall bestätigt",
+    "org.activation.first_check_created": "Erste Prüfung erstellt",
+    "org.activation.first_notification_configured": "Erste Benachrichtigung konfiguriert"
+  },
+  "descriptions": {
+    "org.activation.first_check_created": "Ihre erste Verfügbarkeitsprüfung ist aktiv und überwacht.",
+    "org.activation.first_notification_configured": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet."
   },
   "links": {
     "check": "Prüfung",

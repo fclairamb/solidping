@@ -24,7 +24,13 @@
     "incident.opened": "Incidente abierto",
     "incident.resolved": "Incidente resuelto",
     "incident.escalated": "Incidente escalado",
-    "incident.acknowledged": "Incidente reconocido"
+    "incident.acknowledged": "Incidente reconocido",
+    "org.activation.first_check_created": "Primera comprobación creada",
+    "org.activation.first_notification_configured": "Primera notificación configurada"
+  },
+  "descriptions": {
+    "org.activation.first_check_created": "Tu primera comprobación de disponibilidad está activa y monitorizando.",
+    "org.activation.first_notification_configured": "Has configurado tu primer canal de notificación."
   },
   "links": {
     "check": "Comprobación",
