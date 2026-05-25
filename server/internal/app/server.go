@@ -777,6 +777,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.GET("/:uid", channelsHandler.GetChannel)
 		group.PATCH("/:uid", channelsHandler.UpdateChannel)
 		group.DELETE("/:uid", channelsHandler.DeleteChannel)
+		// Standard Webhooks: rotate the per-channel signing secret and send a
+		// synthetic signed test delivery. Both are webhook-only (400 otherwise).
+		group.POST("/:uid/rotate-secret", channelsHandler.RotateWebhookSecret)
+		group.POST("/:uid/test", channelsHandler.TestWebhookChannel)
 	}
 
 	// Freebox pairing endpoints — separate from the generic CRUD because
