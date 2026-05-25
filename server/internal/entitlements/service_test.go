@@ -10,6 +10,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/entitlements"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 func setup(t *testing.T) (*entitlements.Service, *models.Organization, *sqlite.Service) {
@@ -319,6 +320,153 @@ func TestReserveCheckExecutionResetOnSet(t *testing.T) {
 	}, "user:tester", ""))
 
 	r.NoError(svc.ReserveCheckExecution(ctx, org.UID))
+}
+
+// newCheckRate seeds a check with the given enabled/period/internal flags
+// and returns it. Period is parsed from a duration string (e.g. "1m", "30s").
+func seedCheck(t *testing.T, dbSvc *sqlite.Service, orgUID string, enabled, internal bool, period time.Duration) {
+	t.Helper()
+	r := require.New(t)
+
+	check := models.NewCheck(orgUID, "", "http")
+	check.Enabled = enabled
+	check.Internal = internal
+	check.Period = timeutils.Duration(period)
+	r.NoError(dbSvc.CreateCheck(t.Context(), check))
+}
+
+func TestUsageCountsAndRate(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	// Two enabled @ 1m (1/min each), one disabled @ 30s (counted but no rate),
+	// one internal @ 10s (excluded entirely).
+	seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+	seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+	seedCheck(t, dbSvc, org.UID, false, false, 30*time.Second)
+	seedCheck(t, dbSvc, org.UID, true, true, 10*time.Second)
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	// Internal check excluded: 3 non-internal checks.
+	r.Equal(3, usage.Checks)
+	// Only the two enabled non-internal checks contribute rate: 1 + 1 = 2/min.
+	r.InDelta(2.0, usage.ChecksPerMinute, 0.0001)
+	r.Equal(0, usage.SSOUsers)
+}
+
+func TestUsageWithSSOMembers(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	user := models.NewUser("sso@example.com")
+	r.NoError(dbSvc.CreateUser(ctx, user))
+	member := models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleUser)
+	r.NoError(dbSvc.CreateOrganizationMember(ctx, member))
+	provider := models.NewUserProvider(user.UID, models.ProviderTypeGoogle, "sso-sub")
+	r.NoError(dbSvc.CreateUserProvider(ctx, provider))
+
+	usage, err := svc.Usage(ctx, org.UID)
+	r.NoError(err)
+	r.Equal(0, usage.Checks)
+	r.Equal(1, usage.SSOUsers)
+}
+
+func TestCheckCreateAllowedUnlimitedWhenNil(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+	// Self-hosted defaults: MaxChecks is nil → unlimited.
+	for range 10 {
+		seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+	}
+	r.NoError(svc.CheckCreateAllowed(ctx, org.UID))
+}
+
+func TestCheckCreateAllowedUnderCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(3)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+	r.NoError(svc.CheckCreateAllowed(ctx, org.UID))
+}
+
+func TestCheckCreateAllowedBlocksAtCap(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(2)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+	seedCheck(t, dbSvc, org.UID, true, false, time.Minute)
+
+	err := svc.CheckCreateAllowed(ctx, org.UID)
+	r.Error(err)
+	r.ErrorIs(err, entitlements.ErrEntitlementExceeded)
+
+	var quotaErr *entitlements.QuotaError
+	r.ErrorAs(err, &quotaErr)
+	r.Equal("MaxChecks", quotaErr.LimitName)
+	r.Equal(2, quotaErr.Limit)
+	r.Equal(2, quotaErr.CurrentUsage)
+}
+
+func TestCheckCreateAllowedInternalExempt(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, dbSvc := setup(t)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(1)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	// Internal checks do not count toward the cap, so creating many of them
+	// keeps CheckCreateAllowed passing for a non-internal check.
+	for range 5 {
+		seedCheck(t, dbSvc, org.UID, true, true, time.Minute)
+	}
+	r.NoError(svc.CheckCreateAllowed(ctx, org.UID))
+}
+
+func TestMergePropagatesMaxChecks(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+	svc, org, _ := setup(t)
+
+	// Nil row → MaxChecks stays nil (unlimited) under self-hosted defaults.
+	resolved, err := svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.Nil(resolved.Limits.MaxChecks)
+
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecks: entitlements.Int(42)},
+		Source: models.EntitlementSourceAdmin,
+	}, "user:tester", ""))
+
+	resolved, err = svc.Resolve(ctx, org.UID)
+	r.NoError(err)
+	r.NotNil(resolved.Limits.MaxChecks)
+	r.Equal(42, *resolved.Limits.MaxChecks)
 }
 
 // TestPayloadRoundTrip ensures every field that lives inside the payload
