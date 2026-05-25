@@ -30,3 +30,27 @@ The body markdown and the optional "Read more →" link stay below, unchanged.
   gracefully without overlapping the timestamp.
 - No backend or API changes — this is purely a layout tweak in
   `status-update-card.tsx`.
+
+## Implementation Plan
+
+1. **Restructure the header row** in
+   `web/status0/src/components/shared/status-update-card.tsx`:
+   - Replace the current two-row layout (badge+timestamp row, then a separate
+     title row) with a single header row.
+   - Left group: `[Info badge] Title` inline (badge first, `<h3>` title after).
+     Wrap them in a flex container that wraps gracefully and takes the available
+     space (`min-w-0` so the title can truncate/wrap without pushing the
+     timestamp off-screen).
+   - Right: the relative timestamp `<time>`, right-aligned, non-shrinking
+     (`shrink-0`).
+   - Keep the title as `<h3 className="text-sm font-semibold text-foreground">`
+     — same heading level, semantics, and accessibility (badge keeps its
+     `aria-label`).
+   - Keep body markdown and the optional "Read more →" link below, unchanged.
+2. **Responsiveness**: ensure the badge + title group can wrap on narrow widths
+   without overlapping the timestamp (flex-wrap on the outer row, `min-w-0` on
+   the inner group, `shrink-0` on the time).
+3. **QA**: `rtk make build-backend build-dash0 lint-back test`. The existing E2E
+   (`web/status0/e2e/status-updates.spec.ts`) asserts badge and title are each
+   visible — both remain true; no new assertions required, but verify they still
+   pass.
