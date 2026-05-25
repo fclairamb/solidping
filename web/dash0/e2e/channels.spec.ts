@@ -27,29 +27,41 @@ test.describe("Slack destination picker", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    const token = await getAuthToken(page);
 
-    // Create a fake Slack channel via API (type=slack, minimal settings)
-    const channelResp = await page.request.post(
-      `${API_BASE}/api/v1/orgs/test/channels`,
-      {
-        headers: { Authorization: `Bearer ${token}` },
-        data: {
-          type: "slack",
-          name: `E2E Slack Picker ${Date.now()}`,
-          settings: {
-            team_id: "T0123",
-            team_name: "Test Workspace",
-            bot_user_id: "B0123",
-            access_token: "xoxb-fake",
-            installed_by_user_id: "U0001",
-            scopes: [],
-          },
-        },
+    // Slack channels are install-only — the manual POST /channels endpoint
+    // rejects type=slack. To exercise the connected picker we mock the channel
+    // GET so the edit page renders as if an OAuth-installed channel exists.
+    const channelUid = "11111111-1111-1111-1111-111111111111";
+
+    await page.route(
+      `**/api/v1/orgs/test/channels/${channelUid}`,
+      async (route) => {
+        if (route.request().method() === "GET") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              uid: channelUid,
+              type: "slack",
+              name: "Test Workspace",
+              enabled: true,
+              isDefault: false,
+              settings: {
+                team_id: "T0123",
+                team_name: "Test Workspace",
+              },
+              settingsPrivateKeys: ["access_token"],
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }),
+          });
+
+          return;
+        }
+
+        await route.continue();
       },
     );
-    const channel = await channelResp.json();
-    const channelUid: string = channel.uid;
 
     // Mock the /slack/destinations endpoint before navigating
     await page.route(
@@ -77,7 +89,24 @@ test.describe("Slack destination picker", () => {
         if (route.request().method() === "PATCH") {
           const body = route.request().postDataJSON() as Record<string, unknown>;
           patchBody = body;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              uid: channelUid,
+              type: "slack",
+              name: "Test Workspace",
+              enabled: true,
+              isDefault: false,
+              settings: { team_id: "T0123", team_name: "Test Workspace" },
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            }),
+          });
+
+          return;
         }
+
         await route.continue();
       },
     );
@@ -101,9 +130,6 @@ test.describe("Slack destination picker", () => {
     const settings = patchBody.settings as Record<string, unknown> | undefined;
     expect(settings?.channel_id).toBe("C0123ABCDE");
     expect(settings?.destination_type).toBe("channel");
-
-    // Cleanup
-    await deleteConnection(page, token, channelUid);
   });
 });
 

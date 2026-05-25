@@ -262,3 +262,26 @@ func TestGetDestinationsRejectsTokenlessChannel(t *testing.T) {
 
 5. **Archive** — move spec to
    `specs/done/2026/05/2026-05-25-04-fix-slack-channel-install-only.md`.
+
+## Implementation Plan
+
+1. **Backend errors + create guard** — add `ErrorCodeChannelNotConnected` to
+   `base/base.go`; add `ErrSlackManualCreate` to `channels/service.go` and reject
+   `type=slack` in `CreateChannel` (after the type switch); map to 400
+   `VALIDATION_ERROR` in `channels/handler.go handleError`.
+2. **Backend GetDestinations guard** — add `ErrSlackNotConnected` to
+   `slack/service.go`; early-return when `settings.AccessToken == ""` in
+   `GetDestinations`; map to 409 `CHANNEL_NOT_CONNECTED` in `slack/handler.go`.
+3. **Backend tests** — `TestCreateChannelRejectsSlackType` (channels) and
+   `TestGetDestinationsRejectsTokenlessChannel` (slack).
+4. **Frontend hook** — add `enabled = true` param to `useSlackDestinations`.
+5. **Frontend New Channel form** — Slack branch in `channels.new.tsx` rendering an
+   Install CTA (full-page redirect to `/api/v1/integrations/slack/install?source=dashboard`),
+   no `ChannelForm`/submit.
+6. **Frontend edit not-connected CTA** — in `SlackDestinationPanel`, detect
+   `settings.team_id`; when edit mode but not connected, render the install CTA and
+   gate `useSlackDestinations` (pass `enabled={isConnected}`).
+7. **i18n** — add `slackNotConnectedTitle`, `slackNotConnectedBody`,
+   `slackConnectButton` to `en` + `fr` channels.json.
+8. **E2E** — `channels-slack-install.spec.ts`.
+9. **QA + archive.**

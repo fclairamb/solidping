@@ -30,6 +30,9 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Requ
 		case errors.Is(err, ErrNotSlackChannel):
 			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 				"Channel is not of type slack")
+		case errors.Is(err, ErrSlackNotConnected):
+			return h.WriteError(writer, http.StatusConflict, base.ErrorCodeChannelNotConnected,
+				"Slack channel is not connected — install the Slack app")
 		default:
 			// Wrap Slack API failures as 502 so callers can distinguish bot-token
 			// issues from general server errors.
