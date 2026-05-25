@@ -136,6 +136,8 @@ func (s *Service) GetScheduleBySlug(
 // GetScheduleByUidOrSlug returns a schedule addressed by either its UID or
 // its slug. Used by GET/PATCH/DELETE and the schedule sub-routes so a
 // Terraform-style uid is a valid identifier alongside the slug.
+//
+//nolint:revive // ByUidOrSlug matches the established checks/status-pages naming
 func (s *Service) GetScheduleByUidOrSlug(
 	ctx context.Context, orgUID, identifier string,
 ) (*models.OnCallSchedule, error) {

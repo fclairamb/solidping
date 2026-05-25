@@ -8,13 +8,12 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 )
 
-func newPolicyTestService(t *testing.T) (*escalationpolicies.Service, db.Service, *models.Organization) {
+func newPolicyTestService(t *testing.T) (*escalationpolicies.Service, *models.Organization) {
 	t.Helper()
 
 	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
@@ -27,7 +26,7 @@ func newPolicyTestService(t *testing.T) (*escalationpolicies.Service, db.Service
 	org := models.NewOrganization("test", "")
 	require.NoError(t, dbSvc.CreateOrganization(t.Context(), org))
 
-	return escalationpolicies.NewService(dbSvc), dbSvc, org
+	return escalationpolicies.NewService(dbSvc), org
 }
 
 func createTestPolicy(
@@ -56,7 +55,7 @@ func createTestPolicy(
 func TestServiceGetPolicyByUidOrSlug(t *testing.T) {
 	t.Parallel()
 
-	svc, _, org := newPolicyTestService(t)
+	svc, org := newPolicyTestService(t)
 	policy := createTestPolicy(t, svc, org.UID, "oncall")
 
 	t.Run("by slug", func(t *testing.T) {
@@ -95,7 +94,7 @@ func TestServiceUpdatePolicyByUidOrSlug(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svc, _, org := newPolicyTestService(t)
+	svc, org := newPolicyTestService(t)
 	policy := createTestPolicy(t, svc, org.UID, "oncall")
 
 	newName := "On-Call Policy"
@@ -126,7 +125,7 @@ func TestServiceDeletePolicyByUidOrSlug(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	svc, _, org := newPolicyTestService(t)
+	svc, org := newPolicyTestService(t)
 
 	// Delete by UID.
 	p1 := createTestPolicy(t, svc, org.UID, "byuid")

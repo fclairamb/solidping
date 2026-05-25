@@ -127,6 +127,8 @@ func (s *Service) GetPolicyBySlug(
 // GetPolicyByUidOrSlug returns a policy (with expanded steps and targets)
 // addressed by either its UID or its slug. Used by GET/PATCH/DELETE so a
 // Terraform-style uid is a valid identifier alongside the slug.
+//
+//nolint:revive // ByUidOrSlug matches the established checks/status-pages naming
 func (s *Service) GetPolicyByUidOrSlug(
 	ctx context.Context, orgUID, identifier string,
 ) (*PolicyDetail, error) {

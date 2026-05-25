@@ -68,15 +68,15 @@ func testService(t *testing.T, svc db.Service) {
 	})
 
 	t.Run("EscalationPolicyByUidOrSlug", func(t *testing.T) {
-		testEscalationPolicyByUidOrSlug(ctx, t, svc)
+		testEscalationPolicyByUIDOrSlug(ctx, t, svc)
 	})
 
 	t.Run("OnCallScheduleByUidOrSlug", func(t *testing.T) {
-		testOnCallScheduleByUidOrSlug(ctx, t, svc)
+		testOnCallScheduleByUIDOrSlug(ctx, t, svc)
 	})
 }
 
-func testEscalationPolicyByUidOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+func testEscalationPolicyByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
 	org := models.NewOrganization("esc-uid-or-slug", "")
@@ -100,7 +100,7 @@ func testEscalationPolicyByUidOrSlug(ctx context.Context, t *testing.T, svc db.S
 	require.Error(t, err)
 }
 
-func testOnCallScheduleByUidOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+func testOnCallScheduleByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
 	org := models.NewOrganization("oncall-uid-or-slug", "")

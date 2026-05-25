@@ -71,6 +71,8 @@ func (s *Service) GetEscalationPolicyBySlug(
 // identifier is a UID when it parses as a UUID, otherwise a slug. Mirrors
 // the resolution used by checks and status pages so the same path param can
 // address a policy by uid or slug.
+//
+//nolint:revive // ByUidOrSlug matches the db.Service interface naming
 func (s *Service) GetEscalationPolicyByUidOrSlug(
 	ctx context.Context, orgUID, identifier string,
 ) (*models.EscalationPolicy, error) {
