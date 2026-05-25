@@ -3,64 +3,191 @@ package notifications
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	crypto_rand "crypto/rand"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
-const webhookTimeout = 30 * time.Second
+const (
+	webhookTimeout = 30 * time.Second
+	// webhookSecretPrefix is the Svix-compatible prefix for signing secrets.
+	webhookSecretPrefix = "whsec_"
+	// webhookSecretBytes is the number of random bytes in a signing secret.
+	webhookSecretBytes = 32
+
+	// Settings keys used by the signing-secret lifecycle.
+	settingsKeySigningSecret         = "signingSecret"
+	settingsKeySigningSecretPrevious = "signingSecretPrevious"
+	settingsKeySigningSecretExpiry   = "signingSecretPreviousExpiry"
+
+	// Standard Webhooks header names. HTTP header names are case-insensitive on
+	// the wire and Go canonicalizes them via textproto, so receivers using any
+	// Standard-Webhooks library read them regardless of this exact casing.
+	headerWebhookID        = "Webhook-Id"
+	headerWebhookTimestamp = "Webhook-Timestamp"
+	headerWebhookSignature = "Webhook-Signature"
+)
 
 var (
 	// ErrWebhookURLNotConfigured is returned when the webhook URL is not configured.
 	ErrWebhookURLNotConfigured = errors.New("webhook url not configured")
 	// ErrWebhookRequestFailed is returned when the webhook request returns a non-2xx status code.
 	ErrWebhookRequestFailed = errors.New("webhook request failed")
+	// ErrInvalidSigningSecret is returned when a signing secret is malformed.
+	ErrInvalidSigningSecret = errors.New("invalid signing secret")
 )
 
-// WebhookSender sends notifications via HTTP webhooks.
-type WebhookSender struct{}
+// WebhookPayload is the Standard Webhooks envelope sent to receivers.
+type WebhookPayload struct {
+	Type      string      `json:"type"`
+	Timestamp time.Time   `json:"timestamp"`
+	Data      WebhookData `json:"data"`
+}
 
-// Send sends a notification via webhook.
-func (s *WebhookSender) Send(ctx context.Context, _ *jobdef.JobContext, payload *Payload) error {
-	// Extract webhook URL from settings
+// WebhookData carries the typed incident + check data for a webhook event.
+type WebhookData struct {
+	Incident WebhookIncident `json:"incident"`
+	Check    WebhookCheck    `json:"check"`
+}
+
+// WebhookIncident is the incident projection inside a webhook payload.
+type WebhookIncident struct {
+	UID                   string     `json:"uid"`
+	StartedAt             time.Time  `json:"startedAt"`
+	ResolvedAt            *time.Time `json:"resolvedAt"`
+	DurationSeconds       *int       `json:"durationSeconds"`
+	Title                 *string    `json:"title"`
+	FailureCount          int        `json:"failureCount"`
+	RelapseCount          int        `json:"relapseCount"`
+	RecoveryPeriodSeconds *int       `json:"recoveryPeriodSeconds"`
+}
+
+// WebhookCheck is the check projection inside a webhook payload.
+type WebhookCheck struct {
+	UID  string `json:"uid"`
+	Name string `json:"name"`
+	Type string `json:"type"`
+}
+
+// WebhookSender sends notifications via HTTP webhooks signed per the Standard
+// Webhooks specification (https://www.standardwebhooks.com/).
+type WebhookSender struct {
+	// UpdateChannel persists a channel after the sender mutates its signing
+	// secrets (auto-generation or expired-previous purge). When nil (e.g. in
+	// tests that don't need persistence), the sender skips persistence and
+	// logs a warning, but still signs with the in-memory secret.
+	UpdateChannel func(ctx context.Context, channel *models.Channel) error
+}
+
+// generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
+// signing secret using crypto/rand.
+func generateWebhookSecret() (string, error) {
+	raw := make([]byte, webhookSecretBytes)
+	if _, err := crypto_rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generating webhook secret: %w", err)
+	}
+
+	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// signRequest computes the Standard Webhooks signature header value over the
+// signed content `"{id}.{timestamp}.{body}"` for each secret. The returned
+// string is a space-separated list of `v1,<base64-hmac>` entries.
+func signRequest(secrets []string, id, timestamp string, body []byte) (string, error) {
+	signedContent := make([]byte, 0, len(id)+len(timestamp)+len(body)+2)
+	signedContent = append(signedContent, id...)
+	signedContent = append(signedContent, '.')
+	signedContent = append(signedContent, timestamp...)
+	signedContent = append(signedContent, '.')
+	signedContent = append(signedContent, body...)
+
+	sigs := make([]string, 0, len(secrets))
+	for _, secret := range secrets {
+		trimmed := strings.TrimPrefix(secret, webhookSecretPrefix)
+
+		secretBytes, err := base64.RawURLEncoding.DecodeString(trimmed)
+		if err != nil {
+			return "", fmt.Errorf("%w: %w", ErrInvalidSigningSecret, err)
+		}
+
+		mac := hmac.New(sha256.New, secretBytes)
+		mac.Write(signedContent)
+		sig := base64.StdEncoding.EncodeToString(mac.Sum(nil))
+		sigs = append(sigs, "v1,"+sig)
+	}
+
+	return strings.Join(sigs, " "), nil
+}
+
+// Send sends a notification via webhook, signed per the Standard Webhooks spec.
+func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	url, ok := payload.Connection.Settings["url"].(string)
 	if !ok || url == "" {
 		return ErrWebhookURLNotConfigured
 	}
 
-	// Build webhook payload
-	webhookPayload := s.buildPayload(payload)
-
-	body, err := json.Marshal(webhookPayload)
+	body, err := json.Marshal(s.buildPayload(payload))
 	if err != nil {
 		return fmt.Errorf("marshaling webhook payload: %w", err)
 	}
 
-	// Create request
+	secrets, err := s.ensureSecrets(ctx, jctx, payload.Connection)
+	if err != nil {
+		return err
+	}
+
+	webhookID := uuid.New().String()
+	webhookTimestamp := strconv.FormatInt(time.Now().Unix(), 10)
+
+	signature, err := signRequest(secrets, webhookID, webhookTimestamp, body)
+	if err != nil {
+		return err
+	}
+
+	// Expose the webhook-id as the message id so the audit layer can record it.
+	payload.MessageID = webhookID
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("creating webhook request: %w", err)
 	}
 
+	req.Header.Set(headerWebhookID, webhookID)
+	req.Header.Set(headerWebhookTimestamp, webhookTimestamp)
+	req.Header.Set(headerWebhookSignature, signature)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SolidPing/1.0")
 
-	// Add custom headers if configured
+	// Custom headers are added after the Standard Webhooks headers so they can
+	// override User-Agent but not the signing headers.
 	if headers, ok := payload.Connection.Settings["headers"].(map[string]any); ok {
 		for k, v := range headers {
 			if str, ok := v.(string); ok {
+				if isStandardWebhookHeader(k) {
+					continue
+				}
 				req.Header.Set(k, str)
 			}
 		}
 	}
 
-	// Send request
 	client := &http.Client{Timeout: webhookTimeout}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("sending webhook: %w", err)
@@ -69,16 +196,110 @@ func (s *WebhookSender) Send(ctx context.Context, _ *jobdef.JobContext, payload 
 		_ = resp.Body.Close()
 	}()
 
-	// Check status
 	if resp.StatusCode >= 300 {
 		respBody, _ := io.ReadAll(resp.Body)
+
 		return fmt.Errorf("%w: status %d: %s", ErrWebhookRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil
 }
 
-func (s *WebhookSender) buildPayload(payload *Payload) map[string]any {
+// isStandardWebhookHeader reports whether a custom header would clobber one of
+// the three reserved Standard Webhooks signing headers (case-insensitive).
+func isStandardWebhookHeader(name string) bool {
+	switch strings.ToLower(name) {
+	case "webhook-id", "webhook-timestamp", "webhook-signature":
+		return true
+	default:
+		return false
+	}
+}
+
+// ensureSecrets resolves the active signing secrets for a channel. It
+// auto-generates a secret when none exists, purges an expired previous secret,
+// and persists any mutation through the injected UpdateChannel callback.
+func (s *WebhookSender) ensureSecrets(
+	ctx context.Context, jctx *jobdef.JobContext, channel *models.Channel,
+) ([]string, error) {
+	log := s.logger(jctx)
+
+	active, _ := channel.Settings[settingsKeySigningSecret].(string)
+	previous, _ := channel.Settings[settingsKeySigningSecretPrevious].(string)
+
+	dirty := false
+
+	// Purge the previous secret once its grace window has elapsed.
+	if previous != "" && s.previousExpired(channel) {
+		previous = ""
+		delete(channel.Settings, settingsKeySigningSecretPrevious)
+		delete(channel.Settings, settingsKeySigningSecretExpiry)
+		dirty = true
+	}
+
+	// Auto-generate on first delivery for legacy channels without a secret.
+	if active == "" {
+		generated, err := generateWebhookSecret()
+		if err != nil {
+			return nil, err
+		}
+
+		active = generated
+		channel.Settings[settingsKeySigningSecret] = active
+		dirty = true
+
+		log.InfoContext(ctx, "auto-generated signing secret for webhook channel "+channel.UID)
+	}
+
+	if dirty {
+		if s.UpdateChannel != nil {
+			if err := s.UpdateChannel(ctx, channel); err != nil {
+				return nil, fmt.Errorf("persisting webhook signing secret: %w", err)
+			}
+		} else {
+			log.WarnContext(ctx,
+				"webhook signing secret changed but no persistence callback is configured; "+
+					"signing with in-memory secret only", "channelUid", channel.UID)
+		}
+	}
+
+	secrets := make([]string, 0, 2)
+	secrets = append(secrets, active)
+
+	if previous != "" {
+		secrets = append(secrets, previous)
+	}
+
+	return secrets, nil
+}
+
+// previousExpired reports whether the rotation grace window for the previous
+// secret has elapsed. A missing or unparseable expiry is treated as expired.
+func (s *WebhookSender) previousExpired(channel *models.Channel) bool {
+	expiryRaw, ok := channel.Settings[settingsKeySigningSecretExpiry].(string)
+	if !ok || expiryRaw == "" {
+		return true
+	}
+
+	expiry, err := time.Parse(time.RFC3339, expiryRaw)
+	if err != nil {
+		return true
+	}
+
+	return time.Now().After(expiry)
+}
+
+// logger returns the job logger when available, falling back to the default.
+func (s *WebhookSender) logger(jctx *jobdef.JobContext) *slog.Logger {
+	if jctx != nil && jctx.Logger != nil {
+		return jctx.Logger
+	}
+
+	return slog.Default()
+}
+
+// buildPayload builds the typed Standard Webhooks envelope for a notification.
+func (s *WebhookSender) buildPayload(payload *Payload) WebhookPayload {
 	checkName := ""
 	if payload.Check.Name != nil {
 		checkName = *payload.Check.Name
@@ -86,30 +307,36 @@ func (s *WebhookSender) buildPayload(payload *Payload) map[string]any {
 		checkName = *payload.Check.Slug
 	}
 
-	result := map[string]any{
-		"eventType":   payload.EventType,
-		"incidentUid": payload.Incident.UID,
-		"checkUid":    payload.Check.UID,
-		"checkName":   checkName,
-		"checkType":   payload.Check.Type,
-		"startedAt":   payload.Incident.StartedAt,
+	incident := WebhookIncident{
+		UID:          payload.Incident.UID,
+		StartedAt:    payload.Incident.StartedAt,
+		ResolvedAt:   payload.Incident.ResolvedAt,
+		Title:        payload.Incident.Title,
+		FailureCount: payload.Incident.FailureCount,
+		RelapseCount: payload.Incident.RelapseCount,
 	}
 
 	if payload.Incident.ResolvedAt != nil {
-		result["resolvedAt"] = payload.Incident.ResolvedAt
-		result["durationSeconds"] = int(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Seconds())
+		duration := int(payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Seconds())
+		incident.DurationSeconds = &duration
 	}
 
-	if payload.Incident.Title != nil {
-		result["title"] = *payload.Incident.Title
-	}
-
-	result["failureCount"] = payload.Incident.FailureCount
-
+	// RecoveryPeriodSeconds is omitted (null) when no relapse has occurred.
 	if payload.Incident.RelapseCount > 0 {
-		result["relapseCount"] = payload.Incident.RelapseCount
-		result["recoveryPeriodSeconds"] = payload.Check.RecoveryPeriodSeconds
+		recovery := payload.Check.RecoveryPeriodSeconds
+		incident.RecoveryPeriodSeconds = &recovery
 	}
 
-	return result
+	return WebhookPayload{
+		Type:      payload.EventType,
+		Timestamp: time.Now().UTC(),
+		Data: WebhookData{
+			Incident: incident,
+			Check: WebhookCheck{
+				UID:  payload.Check.UID,
+				Name: checkName,
+				Type: payload.Check.Type,
+			},
+		},
+	}
 }

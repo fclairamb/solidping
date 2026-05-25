@@ -126,6 +126,13 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %s", ErrSenderNotFound, connection.Type)
 	}
 
+	// Webhook senders may auto-generate / rotate their signing secret on
+	// delivery. Inject a persistence callback so the mutated secret is written
+	// back (re-encrypted) to the channel row.
+	if ws, isWebhook := sender.(*notifications.WebhookSender); isWebhook {
+		ws.UpdateChannel = r.webhookChannelUpdater(jctx)
+	}
+
 	// Look up the org slug so the email sender can build user-facing URLs
 	// (magic-link ack endpoint). A missing org is logged but does not fail
 	// the notification — recipients still get the email, just without a
@@ -195,10 +202,55 @@ func (r *NotificationJobRun) sendAndAudit(
 		return err
 	}
 
-	// Non-email senders have no message_id; pass empty string.
+	// Most senders have no message_id. Webhook senders set the Standard
+	// Webhooks `webhook-id` on the payload; surface it on the audit row.
 	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
-		ctx, jctx.Job.UID, time.Now(), "",
+		ctx, jctx.Job.UID, time.Now(), payload.MessageID,
 	)
 
 	return nil
+}
+
+// webhookChannelUpdater returns a callback that re-encrypts a webhook
+// channel's (now-decrypted, mutated) Settings and persists them. Used by the
+// WebhookSender when it auto-generates or purges a signing secret. When
+// encryption is disabled, secrets fall back to plaintext storage (V1 behavior).
+func (r *NotificationJobRun) webhookChannelUpdater(
+	jctx *jobdef.JobContext,
+) func(ctx context.Context, channel *models.Channel) error {
+	return func(ctx context.Context, channel *models.Channel) error {
+		secrets := credentials.ConnectionSecretFields(channel.Type)
+		effective := credentials.MergeConfig(channel.Settings, nil)
+		public, private := credentials.SplitConfig(effective, secrets)
+
+		update := &models.ChannelUpdate{}
+
+		creds := jctx.Services.Credentials
+		if creds == nil || !creds.Enabled() || len(private) == 0 {
+			// Plaintext fallback: secrets stay on the public Settings map so
+			// delivery keeps working without a master key.
+			merged := credentials.MergeConfig(public, private)
+			settings := models.JSONMap(merged)
+			update.Settings = &settings
+			update.ClearSettingsPrivate = true
+		} else {
+			envelope, err := creds.EncryptForOrg(ctx, channel.OrganizationUID, private)
+			if err != nil {
+				return fmt.Errorf("encrypt webhook channel settings: %w", err)
+			}
+
+			keysJSON, err := json.Marshal(credentials.SortedKeys(private))
+			if err != nil {
+				return fmt.Errorf("marshal webhook settings private keys: %w", err)
+			}
+
+			keysStr := string(keysJSON)
+			settings := models.JSONMap(public)
+			update.Settings = &settings
+			update.SettingsPrivate = &envelope
+			update.SettingsPrivateKeys = &keysStr
+		}
+
+		return jctx.DBService.UpdateChannel(ctx, channel.UID, update)
+	}
 }

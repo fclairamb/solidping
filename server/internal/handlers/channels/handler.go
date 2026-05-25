@@ -172,6 +172,36 @@ func (h *Handler) GetFreeboxPairingStatus(writer http.ResponseWriter, req bunrou
 	return h.WriteJSON(writer, http.StatusOK, resp)
 }
 
+// RotateWebhookSecret rotates the signing secret of a webhook channel. The
+// current secret becomes the previous one (valid for a 24 h grace window) and
+// a fresh secret is generated. Returns the updated channel.
+func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	connectionUID := req.Param("uid")
+
+	connection, err := h.svc.RotateWebhookSecret(req.Context(), orgSlug, connectionUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, connection)
+}
+
+// TestWebhookChannel sends a synthetic signed webhook to the channel's
+// configured URL and reports the outcome. Always returns HTTP 200 — the caller
+// inspects the `success` field to know whether the remote accepted it.
+func (h *Handler) TestWebhookChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	connectionUID := req.Param("uid")
+
+	result, err := h.svc.TestWebhookChannel(req.Context(), orgSlug, connectionUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, result)
+}
+
 // handleError maps service errors to HTTP responses.
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
@@ -189,6 +219,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrFreeboxTypeMismatch):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Channel is not a Freebox connection")
+	case errors.Is(err, ErrNotWebhookChannel):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Channel is not a webhook connection")
 	case errors.Is(err, ErrSlackManualCreate):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Slack channels are added by installing the Slack app")

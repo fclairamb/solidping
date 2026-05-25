@@ -1,15 +1,34 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { Check, ChevronsUpDown, Loader2, Search } from "lucide-react";
+import {
+  Check,
+  ChevronsUpDown,
+  Copy,
+  Loader2,
+  RefreshCw,
+  Search,
+  Send,
+} from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import type { Channel, ConnectionType, SlackChannel, SlackUser } from "@/api/hooks";
-import { useSlackDestinations } from "@/api/hooks";
+import type {
+  Channel,
+  ConnectionType,
+  SlackChannel,
+  SlackUser,
+  WebhookTestResult,
+} from "@/api/hooks";
+import {
+  useSlackDestinations,
+  useRotateWebhookSecret,
+  useTestWebhookChannel,
+} from "@/api/hooks";
 
 export interface ChannelFormState {
   name: string;
@@ -111,6 +130,22 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
 
   switch (type) {
     case "webhook":
+      return (
+        <div className="space-y-3">
+          <UrlPanel
+            label={t("form.webhookUrl", "Webhook URL")}
+            value={(settings.webhook_url as string) || ""}
+            onChange={(v) => update("webhook_url", v)}
+          />
+          {org && channelUid && (
+            <WebhookSigningPanel
+              settings={settings}
+              org={org}
+              channelUid={channelUid}
+            />
+          )}
+        </div>
+      );
     case "discord":
     case "googlechat":
     case "mattermost":
@@ -263,6 +298,178 @@ function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> })
           "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
         )}
       </p>
+    </div>
+  );
+}
+
+// ---- Webhook signing-secret panel ----
+
+interface WebhookSigningPanelProps {
+  settings: Record<string, unknown>;
+  org: string;
+  channelUid: string;
+}
+
+// WebhookSigningPanel shows the per-channel Standard Webhooks signing secret
+// (retrievable, not a one-time reveal), with copy + rotate actions, a
+// rotation-in-progress banner, and a "send test" button reporting the result.
+function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelProps) {
+  const { t } = useTranslation("channels");
+  const rotate = useRotateWebhookSecret(org, channelUid);
+  const test = useTestWebhookChannel(org);
+
+  const [copied, setCopied] = useState(false);
+  const [testResult, setTestResult] = useState<WebhookTestResult | null>(null);
+
+  const secret =
+    typeof settings.signingSecret === "string" ? settings.signingSecret : "";
+  const previousExpiry =
+    typeof settings.signingSecretPreviousExpiry === "string"
+      ? settings.signingSecretPreviousExpiry
+      : "";
+
+  async function handleCopy() {
+    if (!secret) return;
+    try {
+      await navigator.clipboard.writeText(secret);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard may be unavailable (insecure context) — silently ignore.
+    }
+  }
+
+  function handleTest() {
+    test.mutate(channelUid, {
+      onSuccess: (res) => setTestResult(res),
+      onError: (err) =>
+        setTestResult({
+          success: false,
+          statusCode: 0,
+          durationMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    });
+  }
+
+  return (
+    <div
+      className="space-y-3 rounded border bg-muted/30 p-3"
+      data-testid="webhook-signing-panel"
+    >
+      <div className="space-y-2">
+        <Label htmlFor="ch-signing-secret">
+          {t("form.signingSecret", "Signing secret")}
+        </Label>
+        {secret ? (
+          <div className="flex items-center gap-2">
+            <Input
+              id="ch-signing-secret"
+              readOnly
+              value={secret}
+              className="font-mono text-xs"
+              data-testid="webhook-signing-secret"
+              onFocus={(e) => e.currentTarget.select()}
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleCopy}
+              data-testid="webhook-copy-secret"
+            >
+              <Copy className="mr-1 h-4 w-4" />
+              {copied ? t("form.copied", "Copied") : t("form.copy", "Copy")}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={rotate.isPending}
+              onClick={() => rotate.mutate()}
+              data-testid="webhook-rotate-secret"
+            >
+              {rotate.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-4 w-4" />
+              )}
+              {t("form.rotate", "Rotate")}
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-2" data-testid="webhook-no-secret">
+            <p className="text-xs text-muted-foreground">
+              {t(
+                "form.signingSecretMissing",
+                "No signing secret — will be auto-generated on next delivery. Rotate to generate one now.",
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={rotate.isPending}
+              onClick={() => rotate.mutate()}
+              data-testid="webhook-rotate-secret"
+            >
+              {rotate.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1 h-4 w-4" />
+              )}
+              {t("form.generate", "Generate")}
+            </Button>
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground">
+          {t(
+            "form.signingSecretHelp",
+            "Outbound webhooks are signed with this secret using the Standard Webhooks scheme (HMAC-SHA256). Verify it on the receiving end.",
+          )}
+        </p>
+      </div>
+
+      {previousExpiry && (
+        <div
+          className="rounded border border-yellow-500/40 bg-yellow-500/10 p-2 text-xs"
+          data-testid="webhook-rotation-banner"
+        >
+          {t("form.rotationBanner", "Previous secret active until")}{" "}
+          {new Date(previousExpiry).toLocaleString()}.{" "}
+          {t("form.rotationBannerHint", "Remove it early by rotating again.")}
+        </div>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={test.isPending}
+          onClick={handleTest}
+          data-testid="webhook-send-test"
+        >
+          {test.isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="mr-1 h-4 w-4" />
+          )}
+          {t("form.sendTest", "Send test")}
+        </Button>
+        {testResult && (
+          <Badge
+            variant={testResult.success ? "success" : "destructive"}
+            data-testid="webhook-test-result"
+          >
+            {testResult.success
+              ? `${testResult.statusCode} OK · ${testResult.durationMs} ms`
+              : `${testResult.statusCode || "—"} · ${testResult.durationMs} ms${
+                  testResult.error ? ` — ${testResult.error}` : ""
+                }`}
+          </Badge>
+        )}
+      </div>
     </div>
   );
 }

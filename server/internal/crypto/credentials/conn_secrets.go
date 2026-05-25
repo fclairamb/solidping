@@ -25,7 +25,7 @@ const (
 var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeSlack:      {"access_token"},
 	models.ConnectionTypeDiscord:    {connKeyWebhookURL},
-	models.ConnectionTypeWebhook:    {"url", "auth_token"},
+	models.ConnectionTypeWebhook:    {"url", "auth_token", "signingSecret", "signingSecretPrevious"},
 	models.ConnectionTypeEmail:      {"smtp_password"},
 	models.ConnectionTypeGoogleChat: {connKeyWebhookURL},
 	models.ConnectionTypeMattermost: {connKeyWebhookURL},
