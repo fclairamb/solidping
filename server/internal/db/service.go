@@ -365,6 +365,22 @@ type Service interface {
 	UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
 	SoftDeleteStatusUpdate(ctx context.Context, uid string) error
 
+	// StatusPageSubscriber operations (public email/RSS subscriptions)
+	CreateSubscriber(ctx context.Context, sub *models.StatusPageSubscriber) error
+	GetSubscriber(ctx context.Context, statusPageUID, uid string) (*models.StatusPageSubscriber, error)
+	GetSubscriberByConfirmToken(ctx context.Context, token string) (*models.StatusPageSubscriber, error)
+	GetSubscriberByUnsubToken(ctx context.Context, token string) (*models.StatusPageSubscriber, error)
+	FindLiveSubscriber(
+		ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
+	) (*models.StatusPageSubscriber, error)
+	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
+	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
+	SoftDeleteSubscriber(ctx context.Context, uid string) error
+	ListConfirmedSubscribers(
+		ctx context.Context, statusPageUID string, incidentUID *string,
+	) ([]*models.StatusPageSubscriber, error)
+	ListSubscribers(ctx context.Context, statusPageUID string) ([]*models.StatusPageSubscriber, error)
+
 	// StatusPage operations
 	CreateStatusPage(ctx context.Context, page *models.StatusPage) error
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)

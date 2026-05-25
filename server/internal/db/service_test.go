@@ -62,6 +62,10 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("StateEntries", func(t *testing.T) {
 		testStateEntries(ctx, t, svc)
 	})
+
+	t.Run("StatusPageSubscribers", func(t *testing.T) {
+		testStatusPageSubscribers(ctx, t, svc)
+	})
 }
 
 func testOrganizations(ctx context.Context, t *testing.T, svc db.Service) {
@@ -1213,4 +1217,144 @@ func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 		key = models.StateKey()
 		r.Empty(key)
 	})
+}
+
+// statusSubURL is a tiny helper to take the address of a string literal.
+func strPtr(s string) *string { return &s }
+
+//nolint:funlen,maintidx // exercises the full subscriber lifecycle against both backends
+func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("sub-test-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	page := models.NewStatusPage(org.UID, "Sub Page", "sub-page")
+	r.NoError(svc.CreateStatusPage(ctx, page))
+
+	t.Run("CreateAndFetchByToken", func(t *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "a@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "confirm-tok-1"
+		sub.UnsubscribeToken = "unsub-tok-1"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+
+		byConfirm, err := svc.GetSubscriberByConfirmToken(ctx, "confirm-tok-1")
+		r.NoError(err)
+		r.Equal(sub.UID, byConfirm.UID)
+		r.Nil(byConfirm.ConfirmedAt)
+
+		byUnsub, err := svc.GetSubscriberByUnsubToken(ctx, "unsub-tok-1")
+		r.NoError(err)
+		r.Equal(sub.UID, byUnsub.UID)
+	})
+
+	t.Run("FindLiveSubscriber", func(t *testing.T) {
+		found, err := svc.FindLiveSubscriber(
+			ctx, page.UID, "a@example.com", models.SubscriberScopePage, nil)
+		r.NoError(err)
+		r.Equal("a@example.com", found.Email)
+	})
+
+	t.Run("ConfirmConsumesToken", func(t *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "b@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "confirm-tok-2"
+		sub.UnsubscribeToken = "unsub-tok-2"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+
+		now := time.Now()
+		r.NoError(svc.ConfirmSubscriber(ctx, sub.UID, now))
+
+		// Confirm token is consumed (cleared) so a second lookup fails.
+		_, err := svc.GetSubscriberByConfirmToken(ctx, "confirm-tok-2")
+		r.Error(err)
+
+		got, err := svc.GetSubscriber(ctx, page.UID, sub.UID)
+		r.NoError(err)
+		r.NotNil(got.ConfirmedAt)
+	})
+
+	t.Run("ListConfirmedScoping", func(t *testing.T) {
+		check := models.NewCheck(org.UID, "sub-incident-check", "http")
+		r.NoError(svc.CreateCheck(ctx, check))
+
+		incident := models.NewIncident(org.UID, check.UID, time.Now(), "outage")
+		r.NoError(svc.CreateIncident(ctx, incident))
+		incidentA := incident.UID
+
+		// Page-scoped confirmed.
+		pageSub := models.NewStatusPageSubscriber(org.UID, page.UID, "page@example.com", models.SubscriberScopePage)
+		pageSub.ConfirmToken = "ct-page"
+		pageSub.UnsubscribeToken = "ut-page"
+		r.NoError(svc.CreateSubscriber(ctx, pageSub))
+		r.NoError(svc.ConfirmSubscriber(ctx, pageSub.UID, time.Now()))
+
+		// Incident-scoped confirmed matching incidentA.
+		incSub := models.NewStatusPageSubscriber(
+			org.UID, page.UID, "inc@example.com", models.SubscriberScopeIncident)
+		incSub.IncidentUID = strPtr(incidentA)
+		incSub.ConfirmToken = "ct-inc"
+		incSub.UnsubscribeToken = "ut-inc"
+		r.NoError(svc.CreateSubscriber(ctx, incSub))
+		r.NoError(svc.ConfirmSubscriber(ctx, incSub.UID, time.Now()))
+
+		// Unconfirmed page-scoped (must be excluded).
+		unconf := models.NewStatusPageSubscriber(
+			org.UID, page.UID, "unconf@example.com", models.SubscriberScopePage)
+		unconf.ConfirmToken = "ct-unconf"
+		unconf.UnsubscribeToken = "ut-unconf"
+		r.NoError(svc.CreateSubscriber(ctx, unconf))
+
+		// With incident: page-scoped + matching incident-scoped.
+		withIncident, err := svc.ListConfirmedSubscribers(ctx, page.UID, &incidentA)
+		r.NoError(err)
+		emails := subscriberEmails(withIncident)
+		r.Contains(emails, "page@example.com")
+		r.Contains(emails, "inc@example.com")
+		r.NotContains(emails, "unconf@example.com")
+
+		// Without incident: only page-scoped.
+		pageOnly, err := svc.ListConfirmedSubscribers(ctx, page.UID, nil)
+		r.NoError(err)
+		pageEmails := subscriberEmails(pageOnly)
+		r.Contains(pageEmails, "page@example.com")
+		r.NotContains(pageEmails, "inc@example.com")
+	})
+
+	t.Run("SoftDeleteAndResubscribe", func(t *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "c@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "ct-c"
+		sub.UnsubscribeToken = "ut-c"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+		r.NoError(svc.ConfirmSubscriber(ctx, sub.UID, time.Now()))
+
+		r.NoError(svc.SoftDeleteSubscriber(ctx, sub.UID))
+
+		// No longer a live subscriber.
+		_, err := svc.FindLiveSubscriber(ctx, page.UID, "c@example.com", models.SubscriberScopePage, nil)
+		r.Error(err)
+
+		// Resubscribe soft-undeletes and resets confirmation.
+		r.NoError(svc.ResubscribeSubscriber(ctx, sub.UID, "ct-c2", "ut-c2"))
+		revived, err := svc.FindLiveSubscriber(ctx, page.UID, "c@example.com", models.SubscriberScopePage, nil)
+		r.NoError(err)
+		r.Equal(sub.UID, revived.UID)
+		r.Nil(revived.ConfirmedAt)
+	})
+
+	t.Run("ListSubscribersAdmin", func(t *testing.T) {
+		subs, err := svc.ListSubscribers(ctx, page.UID)
+		r.NoError(err)
+		r.NotEmpty(subs)
+	})
+}
+
+func subscriberEmails(subs []*models.StatusPageSubscriber) []string {
+	emails := make([]string, 0, len(subs))
+	for _, s := range subs {
+		emails = append(emails, s.Email)
+	}
+
+	return emails
 }
