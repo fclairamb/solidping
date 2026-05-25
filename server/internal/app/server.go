@@ -73,6 +73,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
+	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -774,6 +775,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEntitlements.PUT("", entitlementsHandler.Put)
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
 	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
+
+	// Web Push routes (authentication required).
+	webpushHandler := webpushhandler.NewHandler(s.config)
+	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
+	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
 
 	// Integration connections routes (authentication required).
 	//
