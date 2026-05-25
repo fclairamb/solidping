@@ -1,8 +1,10 @@
 package statusupdates_test
 
 import (
+	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -10,6 +12,84 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 )
+
+// captureNotifier records fan-out events. Dispatch runs in a goroutine, so the
+// channel lets the test wait for the event deterministically.
+type captureNotifier struct {
+	events chan statusupdates.SubscriberUpdateEvent
+}
+
+func newCaptureNotifier() *captureNotifier {
+	return &captureNotifier{events: make(chan statusupdates.SubscriberUpdateEvent, 8)}
+}
+
+func (c *captureNotifier) NotifyStatusUpdate(_ context.Context, ev statusupdates.SubscriberUpdateEvent) {
+	c.events <- ev
+}
+
+func (c *captureNotifier) wait(t *testing.T) statusupdates.SubscriberUpdateEvent {
+	t.Helper()
+
+	select {
+	case ev := <-c.events:
+		return ev
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for fan-out event")
+
+		return statusupdates.SubscriberUpdateEvent{}
+	}
+}
+
+// TestFanOutDispatchesOnCreate verifies CreateStatusUpdate triggers the
+// subscriber notifier with the page + update details.
+func TestFanOutDispatchesOnCreate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newTestSetup(t)
+	notifier := newCaptureNotifier()
+	s.svc.SetSubscriberNotifier(notifier)
+
+	_, err := s.svc.CreateStatusUpdate(t.Context(), s.org.Slug, s.user.UID,
+		makeCreate(s.pageID, "info", "Heads up", "Body"))
+	r.NoError(err)
+
+	ev := notifier.wait(t)
+	r.Equal(s.pageID, ev.StatusPageUID)
+	r.Equal("info", ev.Kind)
+	r.Equal("Heads up", ev.Title)
+	r.Equal("Default Page", ev.PageName)
+}
+
+// TestFanOutResolvedKind verifies the resolved kind is propagated so the
+// notifier can pick the resolved template.
+func TestFanOutResolvedKind(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newTestSetup(t)
+	notifier := newCaptureNotifier()
+	s.svc.SetSubscriberNotifier(notifier)
+
+	_, err := s.svc.CreateStatusUpdate(t.Context(), s.org.Slug, s.user.UID,
+		makeCreate(s.pageID, "resolved", "All clear", "Fixed"))
+	r.NoError(err)
+
+	ev := notifier.wait(t)
+	r.Equal("resolved", ev.Kind)
+}
+
+// TestNoNotifierIsSafe verifies CreateStatusUpdate works without a notifier.
+func TestNoNotifierIsSafe(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	s := newTestSetup(t)
+
+	_, err := s.svc.CreateStatusUpdate(t.Context(), s.org.Slug, s.user.UID,
+		makeCreate(s.pageID, "info", "No notifier", "Body"))
+	r.NoError(err)
+}
 
 // testSetup spins up an in-memory sqlite db and all required fixtures.
 type testSetup struct {

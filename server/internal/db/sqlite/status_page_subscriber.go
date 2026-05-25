@@ -99,6 +99,35 @@ func (s *Service) FindLiveSubscriber(
 	return sub, nil
 }
 
+// FindAnySubscriber returns the most recent subscriber matching the unique
+// tuple, including soft-deleted rows, or sql.ErrNoRows when none exists. Used
+// to soft-undelete on re-subscribe instead of inserting a duplicate.
+func (s *Service) FindAnySubscriber(
+	ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
+) (*models.StatusPageSubscriber, error) {
+	sub := new(models.StatusPageSubscriber)
+
+	query := s.db.NewSelect().
+		Model(sub).
+		Where("status_page_uid = ?", statusPageUID).
+		Where("email = ?", email).
+		Where("scope = ?", string(scope)).
+		Order("created_at DESC").
+		Limit(1)
+
+	if incidentUID != nil {
+		query = query.Where("incident_uid = ?", *incidentUID)
+	} else {
+		query = query.Where("incident_uid IS NULL")
+	}
+
+	if err := query.Scan(ctx); err != nil {
+		return nil, err
+	}
+
+	return sub, nil
+}
+
 // ConfirmSubscriber sets confirmed_at and consumes the confirm token by
 // replacing it with a non-reusable sentinel (the row UID prefixed with
 // "consumed:") so the opaque token can no longer be looked up while preserving

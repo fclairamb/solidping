@@ -373,6 +373,9 @@ type Service interface {
 	FindLiveSubscriber(
 		ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
 	) (*models.StatusPageSubscriber, error)
+	FindAnySubscriber(
+		ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
+	) (*models.StatusPageSubscriber, error)
 	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
 	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
 	SoftDeleteSubscriber(ctx context.Context, uid string) error
