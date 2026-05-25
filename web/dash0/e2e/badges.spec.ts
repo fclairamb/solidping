@@ -63,6 +63,10 @@ test.describe("Badges", () => {
     await expect(page.getByTestId("badge-component-availability")).toBeVisible();
     await expect(page.getByTestId("badge-component-duration")).toBeVisible();
     await expect(page.getByTestId("badge-component-response-time")).toBeVisible();
+    await expect(page.getByTestId("badge-component-uptime-bar")).toBeVisible();
+    await expect(
+      page.getByTestId("badge-component-response-time-graph")
+    ).toBeVisible();
 
     // Status is checked by default
     await expect(page.getByTestId("badge-component-status")).toBeChecked();
@@ -158,12 +162,12 @@ test.describe("Badges", () => {
     expect(pageUrl.searchParams.get("components")).toBe("status,availability");
   });
 
-  test("cannot uncheck Status when it is the sole primary", async ({
+  test("toggling all components off falls back to status", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
-    const checkName = `Badge Primary ${Date.now()}`;
+    const checkName = `Badge Fallback ${Date.now()}`;
     const check = await createCheck(page, token, checkName);
 
     await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
@@ -172,36 +176,73 @@ test.describe("Badges", () => {
       timeout: 10000,
     });
 
-    // Status is the sole primary — the checkbox must be disabled
-    const statusCheckbox = page.getByTestId("badge-component-status");
-    await expect(statusCheckbox).toBeChecked();
-    await expect(statusCheckbox).toBeDisabled();
-  });
-
-  test("can switch primary from Status to Availability", async ({
-    authenticatedPage,
-  }) => {
-    const page = authenticatedPage;
-    const token = await getAuthToken(page);
-    const checkName = `Badge Switch ${Date.now()}`;
-    const check = await createCheck(page, token, checkName);
-
-    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
-    await page.waitForLoadState("networkidle");
-    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
-      timeout: 10000,
-    });
-
-    // Enable Availability
-    await page.getByTestId("badge-component-availability").click();
-
-    // Now Status is no longer sole primary — uncheck it
+    // Status is the only token; unchecking it must not loop — it falls back to status.
     await page.getByTestId("badge-component-status").click();
 
-    // URL should contain only availability
+    // Status remains checked (fallback) and the embed URL still points at status.
+    await expect(page.getByTestId("badge-component-status")).toBeChecked();
     const urlText = await page.getByTestId("badge-embed-url").textContent();
-    expect(urlText).toContain("/badges/availability");
-    expect(urlText).not.toContain("status,availability");
+    expect(urlText).toContain("/badges/status");
+  });
+
+  test("toggling uptime-bar and response-time-graph grows the preview", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Rows ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    const img = page.getByTestId("badge-preview-img");
+    await expect(img).toBeVisible({ timeout: 10000 });
+
+    const heightOf = async () =>
+      (await img.boundingBox())?.height ?? 0;
+
+    const baseHeight = await heightOf();
+
+    // Enable uptime-bar → URL gains the token and the width input appears.
+    await page.getByTestId("badge-component-uptime-bar").click();
+    let urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain("uptime-bar");
+    await expect(page.getByTestId("badge-width")).toBeVisible();
+
+    await expect.poll(heightOf, { timeout: 10000 }).toBeGreaterThan(baseHeight);
+    const barHeight = await heightOf();
+
+    // Enable response-time-graph → URL gains the token, preview grows again.
+    await page.getByTestId("badge-component-response-time-graph").click();
+    urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain("response-time-graph");
+
+    await expect.poll(heightOf, { timeout: 10000 }).toBeGreaterThan(barHeight);
+  });
+
+  test("old uptime-bar section and embeds are absent from the DOM", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge No Bar ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // The standalone uptime-bar preview / embed / period selector are gone.
+    await expect(page.getByTestId("uptime-bar-preview-img")).toHaveCount(0);
+    await expect(page.getByTestId("uptime-bar-embed-url")).toHaveCount(0);
+    await expect(page.getByTestId("uptime-bar-period-select")).toHaveCount(0);
+    await expect(page.getByTestId("uptime-bar-width")).toHaveCount(0);
+
+    // The embed URL never points at the removed /uptime-bar route.
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).not.toContain("/uptime-bar");
   });
 
   test("SVG download button triggers download", async ({
@@ -399,5 +440,29 @@ test.describe("Badges", () => {
 
     // check param should remain
     expect(new URL(page.url()).searchParams.get("check")).toBe(check.slug);
+  });
+
+  test("downloads SVG of a multi-row badge", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge MultiRow DL ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(
+      `/dash0/orgs/test/badges?check=${check.slug}&components=status,uptime-bar,response-time-graph`
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Embed URL carries all three tokens.
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain("/badges/status,uptime-bar,response-time-graph");
+
+    const downloadPromise = page.waitForEvent("download");
+    await page.getByTestId("badge-download-svg").click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toContain(".svg");
   });
 });

@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -236,6 +237,10 @@ func TestAggregateResults_RawData(t *testing.T) {
 	require.NotNil(t, compacted.DurationMax)
 	assert.InDelta(t, float32(200.0), *compacted.DurationMax, 0.01)
 
+	// duration_avg for a raw rollup is the mean of the raw durations.
+	require.NotNil(t, compacted.DurationAvg)
+	assert.InDelta(t, float32(150.0), *compacted.DurationAvg, 0.01)
+
 	require.NotNil(t, compacted.TotalChecks)
 	assert.Equal(t, 3, *compacted.TotalChecks)
 
@@ -252,6 +257,95 @@ func TestAggregateResults_RawData(t *testing.T) {
 	// Verify worker UID (all same, so should be preserved)
 	require.NotNil(t, compacted.WorkerUID)
 	assert.Equal(t, workerUID, *compacted.WorkerUID)
+}
+
+// TestAggregateResults_DurationAvgWeighted verifies that rolling up already
+// aggregated children (hour → day) computes duration_avg as a total_checks
+// weighted mean of the children's own duration_avg, not a plain average.
+func TestAggregateResults_DurationAvgWeighted(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	orgUID := testOrgUID
+	checkUID := testCheckUID
+	region := testRegion
+	periodStart := time.Date(2025, 12, 19, 0, 0, 0, 0, time.UTC)
+	periodEnd := periodStart.Add(24 * time.Hour)
+
+	statusUp := int(models.ResultStatusUp)
+
+	// Child A: avg 100ms over 90 checks. Child B: avg 200ms over 10 checks.
+	// Weighted mean = (100*90 + 200*10) / (90+10) = 11000/100 = 110ms.
+	mkChild := func(avg float32, total int, start time.Time) *models.Result {
+		dMin := avg
+		dMax := avg
+		dP95 := avg
+		dAvg := avg
+		tc := total
+		sc := total
+		avail := 100.0
+
+		return &models.Result{
+			UID: uuid.Must(uuid.NewV7()).String(), OrganizationUID: orgUID, CheckUID: checkUID,
+			Region: &region, PeriodType: "hour", Status: &statusUp,
+			Duration: &avg, DurationMin: &dMin, DurationMax: &dMax, DurationP95: &dP95, DurationAvg: &dAvg,
+			TotalChecks: &tc, SuccessfulChecks: &sc, AvailabilityPct: &avail,
+			PeriodStart: start, Output: models.JSONMap{},
+		}
+	}
+
+	results := []*models.Result{
+		mkChild(100.0, 90, periodStart.Add(1*time.Hour)),
+		mkChild(200.0, 10, periodStart.Add(2*time.Hour)),
+	}
+
+	compacted := aggregateResults(results, "day", periodStart, periodEnd)
+
+	r.NotNil(compacted.DurationAvg)
+	r.InDelta(float32(110.0), *compacted.DurationAvg, 0.01)
+}
+
+// TestAggregateResults_DurationAvgNilWhenNoDurations verifies that a bucket with
+// no measured durations leaves duration_avg nil.
+func TestAggregateResults_DurationAvgNilWhenNoDurations(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	orgUID := testOrgUID
+	checkUID := testCheckUID
+	region := testRegion
+	periodStart := time.Date(2025, 12, 19, 0, 0, 0, 0, time.UTC)
+	periodEnd := periodStart.Add(24 * time.Hour)
+
+	statusUp := int(models.ResultStatusUp)
+
+	// Aggregated children that never carried a duration_avg (e.g. all checks
+	// produced no duration). DurationMin is set so isRawData stays false.
+	mkChild := func(total int, start time.Time) *models.Result {
+		dMin := float32(0)
+		tc := total
+		sc := total
+		avail := 100.0
+
+		return &models.Result{
+			UID: uuid.Must(uuid.NewV7()).String(), OrganizationUID: orgUID, CheckUID: checkUID,
+			Region: &region, PeriodType: "hour", Status: &statusUp,
+			DurationMin: &dMin, DurationAvg: nil,
+			TotalChecks: &tc, SuccessfulChecks: &sc, AvailabilityPct: &avail,
+			PeriodStart: start, Output: models.JSONMap{},
+		}
+	}
+
+	results := []*models.Result{
+		mkChild(5, periodStart.Add(1*time.Hour)),
+		mkChild(5, periodStart.Add(2*time.Hour)),
+	}
+
+	compacted := aggregateResults(results, "day", periodStart, periodEnd)
+
+	r.Nil(compacted.DurationAvg, "duration_avg must be nil when no child carries it")
 }
 
 func TestAggregateResults_MultipleWorkers(t *testing.T) {

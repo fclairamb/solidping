@@ -11,6 +11,7 @@
   "customLabelPlaceholder": "Leer lassen, um den Prüfungsnamen zu verwenden",
   "minWidth": "Mindestbreite (px)",
   "minWidthDescription": "Verbreitert das Abzeichen auf mindestens diese Breite. 0 für automatisch.",
+  "width": "Breite (px)",
   "preview": "Vorschau",
   "refresh": "Aktualisieren",
   "selectCheckPrompt": "Wählen Sie eine Prüfung, um eine Vorschau zu sehen und Abzeichen zu erstellen",
@@ -25,7 +26,6 @@
   "copied": "Kopiert",
   "copiedToClipboard": "{{label}} in Zwischenablage kopiert",
   "components": "Komponenten",
-  "components.required": "Mindestens Status oder Verfügbarkeit ist erforderlich",
   "components.status": "Status",
   "components.statusDescription": "Aktueller up/down-Status",
   "components.availability": "Verfügbarkeit",
@@ -34,21 +34,20 @@
   "components.durationDescription": "Zeit seit der letzten Statusänderung",
   "components.responseTime": "Antwortzeit",
   "components.responseTimeDescription": "Durchschnittliche Antwortzeit im gewählten Zeitraum",
+  "components.uptimeBar": "Verfügbarkeitsbalken",
+  "components.uptimeBarDescription": "Ein horizontaler Streifen, der die Verfügbarkeit pro Zeitbereich zeigt",
+  "components.responseTimeGraph": "Antwortzeit-Diagramm",
+  "components.responseTimeGraphDescription": "Ein Flächendiagramm der durchschnittlichen Antwortzeit pro Zeitbereich",
   "periods": {
-    "1h": "1 Stunde",
     "24h": "24 Stunden",
     "7d": "7 Tage",
-    "30d": "30 Tage"
+    "30d": "30 Tage",
+    "90d": "90 Tage"
   },
   "styles": {
     "flat": "Flach",
     "flatSquare": "Flach quadratisch"
   },
   "availability": "Verfügbarkeit",
-  "status": "Status",
-  "uptimeBar": "Verfügbarkeitsbalken",
-  "uptimeBarDescription": "Ein horizontaler Streifen, der die Verfügbarkeit pro Zeitbereich zeigt",
-  "uptimeBarPreview": "Vorschau des Verfügbarkeitsbalkens",
-  "uptimeBarEmbed": "Einbettungscode des Verfügbarkeitsbalkens",
-  "barWidth": "Balkenbreite (px)"
+  "status": "Status"
 }

@@ -11,6 +11,7 @@
   "customLabelPlaceholder": "Laisser vide pour utiliser le nom de la vérification",
   "minWidth": "Largeur minimale (px)",
   "minWidthDescription": "Élargit le badge jusqu'à cette largeur au minimum. Utilisez 0 pour automatique.",
+  "width": "Largeur (px)",
   "preview": "Aperçu",
   "refresh": "Actualiser",
   "selectCheckPrompt": "Sélectionnez une vérification pour prévisualiser et générer les badges",
@@ -25,7 +26,6 @@
   "copied": "Copié",
   "copiedToClipboard": "{{label}} copié dans le presse-papiers",
   "components": "Composants",
-  "components.required": "Au moins un élément parmi Statut ou Disponibilité est requis",
   "components.status": "Statut",
   "components.statusDescription": "Statut actuel up/down",
   "components.availability": "Disponibilité",
@@ -34,21 +34,20 @@
   "components.durationDescription": "Temps depuis le dernier changement de statut",
   "components.responseTime": "Temps de réponse",
   "components.responseTimeDescription": "Temps de réponse moyen sur la période sélectionnée",
+  "components.uptimeBar": "Barre de disponibilité",
+  "components.uptimeBarDescription": "Une bande horizontale montrant la disponibilité par tranche de temps",
+  "components.responseTimeGraph": "Graphique du temps de réponse",
+  "components.responseTimeGraphDescription": "Un graphique en aires du temps de réponse moyen par tranche de temps",
   "periods": {
-    "1h": "1 heure",
     "24h": "24 heures",
     "7d": "7 jours",
-    "30d": "30 jours"
+    "30d": "30 jours",
+    "90d": "90 jours"
   },
   "styles": {
     "flat": "Plat",
     "flatSquare": "Plat carré"
   },
   "availability": "Disponibilité",
-  "status": "Statut",
-  "uptimeBar": "Barre de disponibilité",
-  "uptimeBarDescription": "Une bande horizontale montrant la disponibilité par tranche de temps",
-  "uptimeBarPreview": "Aperçu de la barre de disponibilité",
-  "uptimeBarEmbed": "Code d'intégration de la barre de disponibilité",
-  "barWidth": "Largeur de la barre (px)"
+  "status": "Statut"
 }

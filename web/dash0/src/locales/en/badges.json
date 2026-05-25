@@ -11,6 +11,7 @@
   "customLabelPlaceholder": "Leave empty for check name",
   "minWidth": "Minimum width (px)",
   "minWidthDescription": "Pads the badge to at least this width. Use 0 for auto.",
+  "width": "Width (px)",
   "preview": "Preview",
   "refresh": "Refresh",
   "selectCheckPrompt": "Select a check to preview and generate badges",
@@ -25,7 +26,6 @@
   "copied": "Copied",
   "copiedToClipboard": "{{label}} copied to clipboard",
   "components": "Components",
-  "components.required": "At least one of Status or Availability is required",
   "components.status": "Status",
   "components.statusDescription": "Current up/down status",
   "components.availability": "Availability",
@@ -34,21 +34,20 @@
   "components.durationDescription": "Time since last status change",
   "components.responseTime": "Response time",
   "components.responseTimeDescription": "Mean response time over the selected period",
+  "components.uptimeBar": "Uptime bar",
+  "components.uptimeBarDescription": "A horizontal strip showing availability per time bucket",
+  "components.responseTimeGraph": "Response-time graph",
+  "components.responseTimeGraphDescription": "An area graph of average response time per time bucket",
   "periods": {
-    "1h": "1 hour",
     "24h": "24 hours",
     "7d": "7 days",
-    "30d": "30 days"
+    "30d": "30 days",
+    "90d": "90 days"
   },
   "styles": {
     "flat": "Flat",
     "flatSquare": "Flat Square"
   },
   "availability": "Availability",
-  "status": "Status",
-  "uptimeBar": "Uptime Bar",
-  "uptimeBarDescription": "A horizontal strip showing availability per time bucket",
-  "uptimeBarPreview": "Uptime Bar Preview",
-  "uptimeBarEmbed": "Uptime Bar Embed Code",
-  "barWidth": "Bar width (px)"
+  "status": "Status"
 }
