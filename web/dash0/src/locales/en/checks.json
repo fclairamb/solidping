@@ -166,7 +166,9 @@
     "freebox_line": "Freebox Line Quality",
     "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS",
     "dnsbl": "DNSBL",
-    "dnsblDescription": "Check if an IP/domain is on DNS blocklists"
+    "dnsblDescription": "Check if an IP/domain is on DNS blocklists",
+    "sip": "SIP",
+    "sipDescription": "Check SIP server reachability and registration"
   },
   "freebox": {
     "discover": "Discover from Freebox",
@@ -218,6 +220,19 @@
     "blocklistsHelp": "Optional. One DNS blocklist zone per line (or comma-separated). Leave empty to use the defaults (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
     "nameserver": "Custom resolver",
     "nameserverHelp": "Optional host:port of a recursive resolver. Public resolvers (8.8.8.8, 1.1.1.1) are blocked by Spamhaus, so use a local resolver if needed."
+  },
+  "sip": {
+    "transport": "Transport",
+    "mode": "Mode",
+    "modeOptions": "OPTIONS (reachability)",
+    "modeRegister": "REGISTER (authentication)",
+    "domain": "SIP domain",
+    "domainHelp": "Optional. SIP domain/realm for the address of record. Defaults to the host.",
+    "username": "Username",
+    "password": "Password",
+    "passwordEncrypted": "(encrypted — enter a new value to replace)",
+    "expectStatus": "Expected status (optional)",
+    "expectStatusHelp": "Optional. Comma-separated SIP status codes that count as Up (e.g. 200 or 200,405). Leave empty to accept any valid SIP response."
   },
   "intervals": {
     "10s": "10 seconds",

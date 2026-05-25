@@ -48,7 +48,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -94,6 +94,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "browser", label: "Browser", description: "Monitor pages with headless Chrome" },
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
+  { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -447,6 +448,19 @@ export function CheckForm({
   const [dnsblNameserver, setDnsblNameserver] = useState(
     getConfigField(initialData?.config, "nameserver"),
   );
+  // sip state — transport (udp/tcp/tls), mode (options/register), and an
+  // optional comma-separated expect_status list. host/port/domain/username/
+  // password reuse the shared state above; password is a secret field rendered
+  // with a configPrivateKeys placeholder on edit.
+  const [sipTransport, setSipTransport] = useState(
+    getConfigField(initialData?.config, "transport") || "udp",
+  );
+  const [sipMode, setSipMode] = useState(
+    getConfigField(initialData?.config, "mode") || "options",
+  );
+  const [sipExpectStatus, setSipExpectStatus] = useState(
+    getConfigField(initialData?.config, "expect_status"),
+  );
   // ICMP "Discover from Freebox" picker — opens a modal that lists hosts
   // currently seen by a paired Freebox so the user can pre-fill an ICMP
   // check without typing an IP.
@@ -567,6 +581,9 @@ export function CheckForm({
         : getConfigField(cfg, "blocklists"),
     );
     setDnsblNameserver(getConfigField(cfg, "nameserver"));
+    setSipTransport(getConfigField(cfg, "transport") || "udp");
+    setSipMode(getConfigField(cfg, "mode") || "options");
+    setSipExpectStatus(getConfigField(cfg, "expect_status"));
   }
 
   const currentConfig = useMemo(() => {
@@ -745,6 +762,18 @@ export function CheckForm({
         }
         if (dnsblNameserver) cfg.nameserver = dnsblNameserver;
         break;
+      case "sip":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (sipTransport && sipTransport !== "udp") cfg.transport = sipTransport;
+        if (sipMode && sipMode !== "options") cfg.mode = sipMode;
+        if (domain) cfg.domain = domain;
+        if (sipMode === "register") {
+          if (username) cfg.username = username;
+          if (password) cfg.password = password;
+        }
+        if (sipMode === "options" && sipExpectStatus) cfg.expect_status = sipExpectStatus;
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
@@ -754,7 +783,8 @@ export function CheckForm({
     waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays,
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
-    dnsblTarget, dnsblBlocklists, dnsblNameserver]);
+    dnsblTarget, dnsblBlocklists, dnsblNameserver,
+    sipTransport, sipMode, sipExpectStatus]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -970,6 +1000,25 @@ export function CheckForm({
           if (zones.length > 0) config.blocklists = zones;
         }
         if (dnsblNameserver) config.nameserver = dnsblNameserver;
+        break;
+      case "sip":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (sipTransport && sipTransport !== "udp") config.transport = sipTransport;
+        if (sipMode && sipMode !== "options") config.mode = sipMode;
+        if (domain) config.domain = domain;
+        if (sipMode === "register") {
+          if (!username) { setError("Username is required for register mode"); return; }
+          // Allow an empty password on edit when one is already stored (encrypted).
+          if (!password && !initialData?.configPrivateKeys?.includes("password")) {
+            setError("Password is required for register mode"); return;
+          }
+          if (username) config.username = username;
+          if (password) config.password = password;
+        } else if (sipExpectStatus) {
+          config.expect_status = sipExpectStatus;
+        }
         break;
       case "heartbeat":
       case "email":
@@ -1753,6 +1802,84 @@ export function CheckForm({
               <p className="text-xs text-muted-foreground">{t("dnsbl.nameserverHelp")}</p>
               {getFieldError(fieldErrors, "nameserver") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "nameserver")}</p>)}
             </div>
+          </>
+        );
+      case "sip":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>{t("form.host")}</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="pbx.example.com" value={host}
+                  onChange={(e) => setHost(e.target.value)} className="flex-1"
+                  data-testid="check-sip-host-input" />
+                <Input id="port" type="number"
+                  placeholder={sipTransport === "tls" ? "5061" : "5060"} value={port}
+                  onChange={(e) => setPort(e.target.value)} className="w-24"
+                  data-testid="check-sip-port-input" />
+              </div>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="sipTransport">{t("sip.transport")}</Label>
+                <Select value={sipTransport} onValueChange={setSipTransport}>
+                  <SelectTrigger id="sipTransport" data-testid="check-sip-transport-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="udp">UDP</SelectItem>
+                    <SelectItem value="tcp">TCP</SelectItem>
+                    <SelectItem value="tls">TLS</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2 flex-1">
+                <Label htmlFor="sipMode">{t("sip.mode")}</Label>
+                <Select value={sipMode} onValueChange={setSipMode}>
+                  <SelectTrigger id="sipMode" data-testid="check-sip-mode-select">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="options">{t("sip.modeOptions")}</SelectItem>
+                    <SelectItem value="register">{t("sip.modeRegister")}</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="domain">{t("sip.domain")}</Label>
+              <Input id="domain" type="text" placeholder="defaults to host" value={domain}
+                onChange={(e) => setDomain(e.target.value)} data-testid="check-sip-domain-input" />
+              <p className="text-xs text-muted-foreground">{t("sip.domainHelp")}</p>
+            </div>
+            {sipMode === "register" ? (
+              <div className="flex gap-4">
+                <div className="space-y-2 flex-1">
+                  <Label htmlFor="username">{t("sip.username")}</Label>
+                  <Input id="username" type="text" placeholder="1001" value={username}
+                    onChange={(e) => setUsername(e.target.value)} data-testid="check-sip-username-input" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <Label htmlFor="password">{t("sip.password")}</Label>
+                  <Input id="password" type="password" value={password}
+                    onChange={(e) => setPassword(e.target.value)} data-testid="check-sip-password-input" />
+                  {initialData?.configPrivateKeys?.includes("password") && !password && (
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-mono tracking-widest">••••</span>
+                      {" "}
+                      <span className="italic">{t("sip.passwordEncrypted")}</span>
+                    </p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="sipExpectStatus">{t("sip.expectStatus")}</Label>
+                <Input id="sipExpectStatus" type="text" placeholder="200,405" value={sipExpectStatus}
+                  onChange={(e) => setSipExpectStatus(e.target.value)} data-testid="check-sip-expect-status-input" />
+                <p className="text-xs text-muted-foreground">{t("sip.expectStatusHelp")}</p>
+              </div>
+            )}
           </>
         );
       case "heartbeat":
