@@ -297,8 +297,6 @@ func TestParseLogLevel(t *testing.T) {
 // underscore→dot collapse: every SP_FILESTORAGE_S3_* var lands on the
 // snake_case-tagged FileStorageConfig field. Uses t.Setenv, which is
 // incompatible with t.Parallel.
-//
-//nolint:paralleltest // t.Setenv forbids t.Parallel
 func TestApplyFileStorageEnv(t *testing.T) {
 	r := require.New(t)
 
@@ -324,8 +322,6 @@ func TestApplyFileStorageEnv(t *testing.T) {
 
 // TestApplyFileStorageEnv_PathStyleVariants checks the boolean parsing accepts
 // "1" and rejects other truthy-looking values.
-//
-//nolint:paralleltest // t.Setenv forbids t.Parallel
 func TestApplyFileStorageEnv_PathStyleVariants(t *testing.T) {
 	r := require.New(t)
 
