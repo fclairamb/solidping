@@ -25,11 +25,14 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("link", { name: /new scan|start new scan/i })).toBeVisible();
   });
 
-  test("discover via Freebox button is visible for admin", async ({ page }) => {
+  test("the discover-via-Freebox dropdown is removed from the index", async ({ page }) => {
     await page.goto("/dash0/orgs/test/discovery");
+    await expect(page.getByRole("heading", { name: /network discovery/i })).toBeVisible();
+    // The standalone Freebox launcher dropdown no longer exists; the unified
+    // "Start new scan" flow owns the Freebox path now.
     await expect(
       page.getByRole("button", { name: /discover via freebox/i }),
-    ).toBeVisible();
+    ).toHaveCount(0);
   });
 
   test("source filter is visible on the scans list", async ({ page }) => {
@@ -45,6 +48,25 @@ test.describe("Network Discovery", () => {
     await expect(page.getByLabel(/cidr/i)).toBeVisible();
     await expect(page.getByRole("checkbox")).toBeVisible();
     await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
+  });
+
+  test("new scan form defaults to the LAN method with CIDR fields visible", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // The scan-method select defaults to LAN.
+    const methodSelect = page.getByRole("combobox", { name: /scan method/i });
+    await expect(methodSelect).toBeVisible();
+    await expect(methodSelect).toHaveText(/IP range|LAN/i);
+    // LAN fields (CIDR textarea) are shown by default.
+    await expect(page.getByLabel(/cidr/i)).toBeVisible();
+  });
+
+  test("Freebox method option is hidden when no granted channel exists", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // Open the scan-method select; the test org has no granted Freebox channel,
+    // so only the LAN option is offered.
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    await expect(page.getByRole("option", { name: /IP range|LAN/i })).toBeVisible();
+    await expect(page.getByRole("option", { name: /^freebox$/i })).toHaveCount(0);
   });
 
   test("start scan button is disabled without confirmation", async ({ page }) => {

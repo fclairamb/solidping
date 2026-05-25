@@ -168,3 +168,31 @@ Playwright e2e (`web/dash0/e2e/`) — add or extend the discovery spec:
 5. **Removed dropdown:** the "Discover via Freebox" dropdown is no longer present
    on the discovery index page.
 6. `make test-dash` passes clean.
+
+## Implementation Plan
+
+1. **i18n keys** — add `scanMethod`, `methodLan`, `methodFreebox` to `en/fr/de/es`
+   `discovery.json`; remove the now-unused `discoverViaFreebox` key from all four.
+2. **`discovery.new.tsx`** — add a `method` state (`"lan" | "freebox"`) and a
+   scan-method `Select` at the top of the form. Derive `grantedFreeboxChannels`
+   from `useChannels(org)` filtered by `canSource(c.type) && c.settings?.status
+   === "granted"` (mirrors `check-form.tsx`). Render the Freebox option only when
+   ≥1 granted channel exists.
+   - `method === "lan"`: existing CIDR textarea + advanced options (unchanged).
+   - `method === "freebox"`: replace CIDR section with a channel `Select`
+     (`selectFreeboxChannel` label) sourced from granted channels; hide advanced.
+   - Confirmation checkbox shown for both methods; submit disabled until checked
+     and (LAN) a CIDR is entered or (Freebox) a channel is selected.
+   - Dual submit: LAN → `useStartDiscoveryScan`; Freebox →
+     `useStartFreeboxScan(channelUid)`. Both navigate to
+     `/orgs/$org/discovery/$jobUid` using `result.data.uid`. Toasts:
+     `scanStarted`/`scanFailed` for LAN, `freeboxScanStarted`/`freeboxScanFailed`
+     for Freebox.
+3. **`discovery.index.tsx`** — delete the `FreeboxLauncher` component and its
+   `useChannels` / `useStartFreeboxScan` / `canSource` / `DropdownMenu` / `Wifi`
+   imports and usages. Keep the "Start new scan" link and source filter.
+4. **Playwright e2e** — update `discovery.spec.ts`: remove the old "discover via
+   Freebox button" test; add coverage for the method select default (LAN), CIDR
+   visibility, absence of the index dropdown, and the LAN submit path. Add a
+   `data-testid` to the method select where needed for stable selection.
+5. **QA** — `rtk make build-backend build-dash0 lint-back test`; iterate to green.
