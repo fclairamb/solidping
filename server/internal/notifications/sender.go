@@ -22,6 +22,10 @@ type Payload struct {
 	// OrgSlug is the organization slug used to build user-facing URLs (e.g.
 	// magic-link ack URLs). Populated by the notification job runner.
 	OrgSlug string
+	// MessageID is set by a sender after delivery to surface a provider-side
+	// message identifier for the audit row (e.g. the Standard Webhooks
+	// `webhook-id`). Empty for senders that have no such concept.
+	MessageID string
 }
 
 // Sender is the interface for sending notifications via different channels.
