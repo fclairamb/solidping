@@ -176,12 +176,12 @@ func TestValidatePlanCIDRs(t *testing.T) {
 			cidrs: []string{"10.0.0.0/18"},
 		},
 		{
-			name:  "/12 at ceiling (256 chunks)",
-			cidrs: []string{"10.0.0.0/12"},
+			name:  "/8 at ceiling (4096 chunks)",
+			cidrs: []string{"10.0.0.0/8"},
 		},
 		{
-			name:     "/11 exceeds ceiling",
-			cidrs:    []string{"10.0.0.0/11"},
+			name:     "/7 exceeds ceiling",
+			cidrs:    []string{"0.0.0.0/7"},
 			wantErr:  true,
 			tooLarge: true,
 		},
