@@ -139,7 +139,7 @@ func TestNetworkDiscoveryPlanRejectsTooLarge(t *testing.T) {
 	r := require.New(t)
 
 	def := &jobtypes.NetworkDiscoveryPlanJobDefinition{}
-	cfgBytes, err := json.Marshal(disc.Config{CIDRs: []string{"10.0.0.0/11"}})
+	cfgBytes, err := json.Marshal(disc.Config{CIDRs: []string{"0.0.0.0/7"}})
 	r.NoError(err)
 
 	_, err = def.CreateJobRun(cfgBytes)

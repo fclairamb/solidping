@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   Card,
   CardContent,
@@ -66,6 +67,21 @@ function NewScanPage() {
   const [advanced, setAdvanced] = useState(false);
 
   const isPending = startScan.isPending || startFreeboxScan.isPending;
+
+  // Estimate the total host count and chunk count for the entered CIDRs.
+  const cidrEstimate = useMemo(() => {
+    const tokens = cidrsText.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+    let totalHosts = 0;
+    for (const token of tokens) {
+      const match = /^(\d{1,3}\.){3}\d{1,3}\/(\d{1,2})$/.exec(token);
+      if (!match) continue;
+      const prefix = parseInt(match[2], 10);
+      if (prefix < 0 || prefix > 32) continue;
+      totalHosts += Math.pow(2, 32 - prefix);
+    }
+    const estimatedChunks = Math.ceil(totalHosts / 4096);
+    return { totalHosts, estimatedChunks };
+  }, [cidrsText]);
 
   const submitDisabled =
     isPending ||
@@ -247,6 +263,17 @@ function NewScanPage() {
                 </SelectContent>
               </Select>
             </div>
+          )}
+
+          {method === "lan" && cidrEstimate.totalHosts > 4096 && (
+            <Alert variant="warning" data-testid="large-range-warning">
+              <AlertDescription>
+                {t("largeRangeWarning", {
+                  hosts: cidrEstimate.totalHosts.toLocaleString(),
+                  chunks: cidrEstimate.estimatedChunks.toLocaleString(),
+                })}
+              </AlertDescription>
+            </Alert>
           )}
 
           <div className="flex items-start gap-2">

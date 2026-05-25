@@ -73,5 +73,6 @@
   "selectFreeboxChannel": "Freebox-Kanal auswählen",
   "noFreeboxChannels": "Keine gekoppelten Freebox-Kanäle",
   "freeboxScanStarted": "Freebox-Erkennung gestartet",
-  "freeboxScanFailed": "Freebox-Erkennung konnte nicht gestartet werden"
+  "freeboxScanFailed": "Freebox-Erkennung konnte nicht gestartet werden",
+  "largeRangeWarning": "Großer Bereich: ~{{hosts}} Adressen in {{chunks}} Blöcken. Dieser Scan kann lange dauern (Stunden bis Tage)."
 }

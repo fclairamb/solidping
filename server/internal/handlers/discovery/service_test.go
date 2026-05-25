@@ -351,7 +351,7 @@ func TestStartScanRejectsRangeOverCeiling(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"10.0.0.0/11"}})
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"0.0.0.0/7"}})
 	r.ErrorIs(err, disc.ErrRangeTooLarge)
 }
 

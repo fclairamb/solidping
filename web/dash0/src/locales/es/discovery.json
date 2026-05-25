@@ -73,5 +73,6 @@
   "selectFreeboxChannel": "Seleccionar canal Freebox",
   "noFreeboxChannels": "No hay canales Freebox emparejados",
   "freeboxScanStarted": "Descubrimiento Freebox iniciado",
-  "freeboxScanFailed": "No se pudo iniciar el descubrimiento Freebox"
+  "freeboxScanFailed": "No se pudo iniciar el descubrimiento Freebox",
+  "largeRangeWarning": "Rango grande: ~{{hosts}} direcciones en {{chunks}} lotes. Este escaneo puede tardar mucho tiempo (horas a días)."
 }
