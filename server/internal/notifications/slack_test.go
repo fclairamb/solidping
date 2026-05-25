@@ -1527,5 +1527,63 @@ func (m *mockDBService) ListPublicStatusUpdates(
 	return nil, nil
 }
 
+func (m *mockDBService) CreateSubscriber(_ context.Context, _ *models.StatusPageSubscriber) error {
+	return nil
+}
+
+func (m *mockDBService) GetSubscriber(
+	_ context.Context, _, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) GetSubscriberByConfirmToken(
+	_ context.Context, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) GetSubscriberByUnsubToken(
+	_ context.Context, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) FindLiveSubscriber(
+	_ context.Context, _, _ string, _ models.SubscriberScope, _ *string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) FindAnySubscriber(
+	_ context.Context, _, _ string, _ models.SubscriberScope, _ *string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) ConfirmSubscriber(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+
+func (m *mockDBService) ResubscribeSubscriber(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteSubscriber(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListConfirmedSubscribers(
+	_ context.Context, _ string, _ *string,
+) ([]*models.StatusPageSubscriber, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ListSubscribers(
+	_ context.Context, _ string,
+) ([]*models.StatusPageSubscriber, error) {
+	return nil, nil
+}
+
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)

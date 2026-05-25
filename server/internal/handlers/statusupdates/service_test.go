@@ -16,18 +16,18 @@ import (
 // captureNotifier records fan-out events. Dispatch runs in a goroutine, so the
 // channel lets the test wait for the event deterministically.
 type captureNotifier struct {
-	events chan statusupdates.SubscriberUpdateEvent
+	events chan *statusupdates.SubscriberUpdateEvent
 }
 
 func newCaptureNotifier() *captureNotifier {
-	return &captureNotifier{events: make(chan statusupdates.SubscriberUpdateEvent, 8)}
+	return &captureNotifier{events: make(chan *statusupdates.SubscriberUpdateEvent, 8)}
 }
 
-func (c *captureNotifier) NotifyStatusUpdate(_ context.Context, ev statusupdates.SubscriberUpdateEvent) {
+func (c *captureNotifier) NotifyStatusUpdate(_ context.Context, ev *statusupdates.SubscriberUpdateEvent) {
 	c.events <- ev
 }
 
-func (c *captureNotifier) wait(t *testing.T) statusupdates.SubscriberUpdateEvent {
+func (c *captureNotifier) wait(t *testing.T) *statusupdates.SubscriberUpdateEvent {
 	t.Helper()
 
 	select {
@@ -36,7 +36,7 @@ func (c *captureNotifier) wait(t *testing.T) statusupdates.SubscriberUpdateEvent
 	case <-time.After(2 * time.Second):
 		t.Fatal("timed out waiting for fan-out event")
 
-		return statusupdates.SubscriberUpdateEvent{}
+		return nil
 	}
 }
 

@@ -3,7 +3,6 @@ package statussubscribers_test
 import (
 	"context"
 	"errors"
-	"strings"
 	"sync"
 	"testing"
 
@@ -13,6 +12,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
 )
+
+// errSendFailed is a static sentinel used by the failing fake sender.
+var errSendFailed = errors.New("smtp boom")
 
 // fakeSender captures sent messages and optionally fails.
 type fakeSender struct {
@@ -28,7 +30,7 @@ func (f *fakeSender) Send(_ context.Context, msg *email.Message) (*email.SendRes
 	f.messages = append(f.messages, msg)
 
 	if f.fail {
-		return nil, errors.New("smtp boom")
+		return nil, errSendFailed
 	}
 
 	return &email.SendResult{Sent: true}, nil
@@ -95,7 +97,7 @@ func TestNotifierResolvedTemplate(t *testing.T) {
 	msgs := sender.sent()
 	r.Len(msgs, 1)
 	r.Contains(msgs[0].Subject, "Resolved")
-	r.True(strings.Contains(msgs[0].Text, "Resolved"))
+	r.Contains(msgs[0].Text, "Resolved")
 }
 
 func TestNotifierIncidentOpenedTemplate(t *testing.T) {

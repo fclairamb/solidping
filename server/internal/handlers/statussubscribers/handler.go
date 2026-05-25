@@ -102,7 +102,7 @@ func (h *Handler) sendConfirmMail(ctx context.Context, result *SubscribeResult) 
 	}
 }
 
-// Confirm handles GET /api/v1/public/status-subscribers/confirm?token=…
+// Confirm handles GET /api/v1/public/status-subscribers/confirm?token=… .
 func (h *Handler) Confirm(writer http.ResponseWriter, req bunrouter.Request) error {
 	token := req.URL.Query().Get("token")
 
@@ -117,7 +117,7 @@ func (h *Handler) Confirm(writer http.ResponseWriter, req bunrouter.Request) err
 		h.statusPageURL(result.OrgSlug, result.PageSlug))
 }
 
-// Unsubscribe handles GET /api/v1/public/status-subscribers/unsubscribe?token=…
+// Unsubscribe handles GET /api/v1/public/status-subscribers/unsubscribe?token=… .
 func (h *Handler) Unsubscribe(writer http.ResponseWriter, req bunrouter.Request) error {
 	token := req.URL.Query().Get("token")
 
@@ -172,8 +172,6 @@ func (h *Handler) RemoveSubscriber(writer http.ResponseWriter, req bunrouter.Req
 }
 
 // handleError maps domain errors to HTTP responses (JSON).
-//
-//nolint:cyclop // error taxonomy requires all cases
 func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrOrganizationNotFound):
@@ -322,7 +320,7 @@ func (h *Handler) buildFeed(
 	}
 
 	feed := &atomFeed{
-		Title:    fmt.Sprintf("%s status updates", pageName),
+		Title:    pageName + " status updates",
 		ID:       feedURL,
 		Updated:  updated,
 		Subtitle: "Status updates from " + pageName,

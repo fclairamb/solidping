@@ -1219,10 +1219,10 @@ func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 	})
 }
 
-// statusSubURL is a tiny helper to take the address of a string literal.
+// strPtr is a tiny helper to take the address of a string literal.
 func strPtr(s string) *string { return &s }
 
-//nolint:funlen,maintidx // exercises the full subscriber lifecycle against both backends
+//nolint:maintidx // exercises the full subscriber lifecycle against both backends
 func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
@@ -1234,7 +1234,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 	page := models.NewStatusPage(org.UID, "Sub Page", "sub-page")
 	r.NoError(svc.CreateStatusPage(ctx, page))
 
-	t.Run("CreateAndFetchByToken", func(t *testing.T) {
+	t.Run("CreateAndFetchByToken", func(_ *testing.T) {
 		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "a@example.com", models.SubscriberScopePage)
 		sub.ConfirmToken = "confirm-tok-1"
 		sub.UnsubscribeToken = "unsub-tok-1"
@@ -1250,14 +1250,14 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 		r.Equal(sub.UID, byUnsub.UID)
 	})
 
-	t.Run("FindLiveSubscriber", func(t *testing.T) {
+	t.Run("FindLiveSubscriber", func(_ *testing.T) {
 		found, err := svc.FindLiveSubscriber(
 			ctx, page.UID, "a@example.com", models.SubscriberScopePage, nil)
 		r.NoError(err)
 		r.Equal("a@example.com", found.Email)
 	})
 
-	t.Run("ConfirmConsumesToken", func(t *testing.T) {
+	t.Run("ConfirmConsumesToken", func(_ *testing.T) {
 		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "b@example.com", models.SubscriberScopePage)
 		sub.ConfirmToken = "confirm-tok-2"
 		sub.UnsubscribeToken = "unsub-tok-2"
@@ -1275,7 +1275,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 		r.NotNil(got.ConfirmedAt)
 	})
 
-	t.Run("ListConfirmedScoping", func(t *testing.T) {
+	t.Run("ListConfirmedScoping", func(_ *testing.T) {
 		check := models.NewCheck(org.UID, "sub-incident-check", "http")
 		r.NoError(svc.CreateCheck(ctx, check))
 
@@ -1322,7 +1322,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 		r.NotContains(pageEmails, "inc@example.com")
 	})
 
-	t.Run("SoftDeleteAndResubscribe", func(t *testing.T) {
+	t.Run("SoftDeleteAndResubscribe", func(_ *testing.T) {
 		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "c@example.com", models.SubscriberScopePage)
 		sub.ConfirmToken = "ct-c"
 		sub.UnsubscribeToken = "ut-c"
@@ -1343,7 +1343,7 @@ func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service
 		r.Nil(revived.ConfirmedAt)
 	})
 
-	t.Run("ListSubscribersAdmin", func(t *testing.T) {
+	t.Run("ListSubscribersAdmin", func(_ *testing.T) {
 		subs, err := svc.ListSubscribers(ctx, page.UID)
 		r.NoError(err)
 		r.NotEmpty(subs)

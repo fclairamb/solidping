@@ -54,7 +54,7 @@ const (
 // the fan-out. The concrete implementation lives in the statussubscribers
 // package; this small interface avoids an import cycle.
 type SubscriberNotifier interface {
-	NotifyStatusUpdate(ctx context.Context, ev SubscriberUpdateEvent)
+	NotifyStatusUpdate(ctx context.Context, ev *SubscriberUpdateEvent)
 }
 
 // SubscriberUpdateEvent describes a freshly-published update for fan-out.
@@ -328,8 +328,8 @@ func (s *Service) CreateStatusUpdate( //nolint:cyclop // validation requires che
 // dispatchSubscriberNotification fans the published update out to confirmed
 // subscribers. It runs in a fire-and-forget goroutine so a slow or failing mail
 // path never blocks the HTTP response or fails the status update. The detached
-// goroutine uses context.Background() because the request context is cancelled
-// once the handler returns.
+// goroutine uses a context derived via WithoutCancel because the request
+// context is canceled once the handler returns.
 func (s *Service) dispatchSubscriberNotification(
 	ctx context.Context, page *models.StatusPage, update *models.StatusUpdate,
 ) {
@@ -356,7 +356,7 @@ func (s *Service) dispatchSubscriberNotification(
 		}
 	}
 
-	ev := SubscriberUpdateEvent{
+	event := &SubscriberUpdateEvent{
 		StatusPageUID:       page.UID,
 		IncidentUID:         update.IncidentUID,
 		Kind:                string(update.Kind),
@@ -367,7 +367,11 @@ func (s *Service) dispatchSubscriberNotification(
 		IncidentUpdateCount: priorCount,
 	}
 
-	go s.notifier.NotifyStatusUpdate(context.Background(), ev)
+	// Detach from the request context (preserving its values) so the goroutine
+	// survives the handler returning, without inheriting its cancellation.
+	bgCtx := context.WithoutCancel(ctx)
+
+	go s.notifier.NotifyStatusUpdate(bgCtx, event)
 }
 
 // resolveIncidentCheck looks up the incident and returns the check UID to use,
