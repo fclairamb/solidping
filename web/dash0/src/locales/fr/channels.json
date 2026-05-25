@@ -70,7 +70,10 @@
     "pushoverToken": "Token de l'application",
     "opsgenieKey": "Clé API",
     "opsgenieTeam": "Équipe (optionnel)",
-    "slackOauthHint": "Les canaux Slack sont configurés via l'installation OAuth Slack. Le bot remplira les noms d'espace et de canal à la fin."
+    "slackOauthHint": "Les canaux Slack sont configurés via l'installation OAuth Slack. Le bot remplira les noms d'espace et de canal à la fin.",
+    "slackNotConnectedTitle": "Espace de travail Slack non connecté",
+    "slackNotConnectedBody": "Ce canal n'est lié à aucun espace de travail Slack. Installez l'application Slack SolidPing pour en connecter un.",
+    "slackConnectButton": "Installer l'application Slack"
   },
   "freebox": {
     "name": "Freebox",

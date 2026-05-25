@@ -2856,14 +2856,18 @@ export interface SlackDestinationsResponse {
   users: SlackUser[];
 }
 
-export function useSlackDestinations(org: string, channelUid: string) {
+export function useSlackDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
   return useQuery({
     queryKey: ["slack-destinations", org, channelUid],
     queryFn: () =>
       apiFetch<SlackDestinationsResponse>(
         `/api/v1/orgs/${org}/channels/${channelUid}/slack/destinations`,
       ),
-    enabled: Boolean(org && channelUid),
+    enabled: enabled && Boolean(org && channelUid),
     staleTime: 60_000,
   });
 }

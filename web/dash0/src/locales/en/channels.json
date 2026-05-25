@@ -70,7 +70,10 @@
     "pushoverToken": "App token",
     "opsgenieKey": "API key",
     "opsgenieTeam": "Team (optional)",
-    "slackOauthHint": "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion."
+    "slackOauthHint": "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
+    "slackNotConnectedTitle": "Slack workspace not connected",
+    "slackNotConnectedBody": "This channel has no linked Slack workspace. Install the SolidPing Slack app to connect one.",
+    "slackConnectButton": "Install Slack app"
   },
   "freebox": {
     "name": "Freebox",

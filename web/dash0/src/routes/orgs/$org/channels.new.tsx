@@ -151,6 +151,50 @@ function NewChannelPage() {
     );
   }
 
+  // Slack is install-only: a manually-created channel has no bot token and is
+  // permanently broken. Instead of a create form, render an "install the Slack
+  // app" CTA that does a full-page redirect to the OAuth install flow.
+  if (type === "slack") {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <ChannelIcon type={type} className="h-5 w-5" />
+              {channelLabel(type)}
+            </CardTitle>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/orgs/$org/channels" params={{ org }}>
+                {t("cancel", "Cancel")}
+              </Link>
+            </Button>
+          </div>
+          <CardDescription>
+            {t(
+              "form.slackNotConnectedBody",
+              "This channel has no linked Slack workspace. Install the SolidPing Slack app to connect one.",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={() => {
+              window.location.href =
+                "/api/v1/integrations/slack/install?source=dashboard";
+            }}
+            data-testid="slack-install"
+          >
+            {t("form.slackConnectButton", "Install Slack app")}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setType(null)}>
+            {t("changeType", "Change type")}
+          </Button>
+        </CardContent>
+      </Card>
+    );
+  }
+
   return (
     <Card className="max-w-xl">
       <CardHeader>

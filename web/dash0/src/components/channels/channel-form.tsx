@@ -284,15 +284,24 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
   // If no org/channelUid, we're on the new-channel page (Slack OAuth not yet complete).
   const isEditMode = Boolean(org && channelUid);
 
+  // A channel is connected once the OAuth install has written its workspace
+  // identity. team_id is a non-secret field present in the public settings for
+  // OAuth-connected channels and absent for tokenless stubs.
+  const isConnected =
+    typeof settings.team_id === "string" && settings.team_id.length > 0;
+
   // Derive current tab from existing settings; default to "channel".
   const [activeTab, setActiveTab] = useState<SlackTab>(() => {
     const dt = settings.destination_type;
     return dt === "dm" ? "dm" : "channel";
   });
 
+  // Gate the destinations fetch so a tokenless channel never triggers the
+  // backend 409 / Slack API call.
   const { data, isLoading, isError } = useSlackDestinations(
     org ?? "",
     channelUid ?? "",
+    isEditMode && isConnected,
   );
 
   // Current selection from settings
@@ -333,6 +342,39 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
             "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
           )}
         </p>
+      </div>
+    );
+  }
+
+  // Editing a Slack channel that was never connected (e.g. a tokenless stub):
+  // show an install CTA instead of the broken destination picker.
+  if (!isConnected) {
+    return (
+      <div
+        className="rounded border bg-muted/30 p-3 text-sm space-y-3"
+        data-testid="slack-not-connected"
+      >
+        <div className="space-y-1">
+          <p className="font-medium">
+            {t("form.slackNotConnectedTitle", "Slack workspace not connected")}
+          </p>
+          <p className="text-muted-foreground">
+            {t(
+              "form.slackNotConnectedBody",
+              "This channel has no linked Slack workspace. Install the SolidPing Slack app to connect one.",
+            )}
+          </p>
+        </div>
+        <Button
+          type="button"
+          onClick={() => {
+            window.location.href =
+              "/api/v1/integrations/slack/install?source=dashboard";
+          }}
+          data-testid="slack-install"
+        >
+          {t("form.slackConnectButton", "Install Slack app")}
+        </Button>
       </div>
     );
   }
