@@ -6,10 +6,12 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -51,10 +53,12 @@ type FreeboxLanDiscoveryJobRun struct {
 	config FreeboxLanDiscoveryConfig
 }
 
-// Run queries the paired Freebox channel's LAN browser and persists each host
-// into discovered_hosts with source='freebox'. The single Freebox API call is
-// wrapped in the async job machinery purely for consistency with
-// network_discovery — it is cheap (no scan engine, no CIDR expansion).
+// Run queries the paired Freebox channel's LAN browser, then actively probes
+// each reported host through the same scanner engine the CIDR scan uses, so
+// Freebox-discovered hosts get identical-quality icmpReachable / open_ports /
+// suggested_checks. The Freebox-provided device name is preserved over reverse
+// DNS, and any host the active scan finds unresponsive still falls back to the
+// router's reachability flag so no known device is dropped.
 func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
@@ -73,41 +77,71 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 
 	creds := jctx.Services.Credentials
 
-	hosts, err := freebox.ListLanHostsForChannel(ctx, jctx.DBService, creds, orgUID, r.config.ChannelUID)
+	lanHosts, err := freebox.ListLanHostsForChannel(ctx, jctx.DBService, creds, orgUID, r.config.ChannelUID)
 	if err != nil {
 		return fmt.Errorf("list freebox lan hosts: %w", err)
 	}
 
+	// Actively probe the reported hosts, preserving each device's name as a
+	// reverse-DNS override. ScanHosts inherits the default port list, timeout
+	// (1s) and concurrency (64).
+	inputs := make([]disc.HostInput, 0, len(lanHosts))
+	for i := range lanHosts {
+		ip := net.ParseIP(lanHosts[i].IP)
+		if ip == nil {
+			continue
+		}
+
+		inputs = append(inputs, disc.HostInput{IP: ip, HostnameHint: lanHosts[i].Name})
+	}
+
+	scanned, err := disc.ScanHosts(ctx, inputs, disc.Config{})
+	if err != nil {
+		return fmt.Errorf("scan freebox hosts: %w", err)
+	}
+
 	log.InfoContext(ctx, "Freebox LAN discovery complete",
-		"host_count", len(hosts),
+		"host_count", len(lanHosts),
+		"responsive_count", len(scanned),
 		"org_uid", orgUID,
 		"job_uid", jobUID,
 	)
 
-	return r.persistHosts(ctx, jctx.DB, orgUID, jobUID, hosts, log)
+	return r.persistHosts(ctx, jctx.DB, orgUID, jobUID, lanHosts, scanned, log)
 }
 
-// persistHosts upserts the Freebox-discovered hosts into discovered_hosts.
-// Mirrors NetworkDiscoveryJobRun.persistHosts: per-host failures are logged
-// and skipped rather than aborting the whole run.
+// persistHosts upserts the Freebox-discovered hosts into discovered_hosts,
+// merging the active-scan results into each Freebox host. A host the scanner
+// found responsive gets real open_ports / suggested_checks and the scan's
+// (hint-preserved) hostname and ICMP reachability; a host the scan did not see
+// falls back to the Freebox name + reachability flag with empty ports/checks so
+// it is never dropped. Mirrors NetworkDiscoveryJobRun.persistHosts: per-host
+// failures are logged and skipped rather than aborting the whole run.
 func (r *FreeboxLanDiscoveryJobRun) persistHosts(
 	ctx context.Context,
 	db *bun.DB,
 	orgUID, jobUID string,
-	hosts []freebox.LanHost,
+	lanHosts []freebox.LanHost,
+	scanned []disc.DiscoveredHost,
 	log *slog.Logger,
 ) error {
-	for idx := range hosts {
-		lan := &hosts[idx]
+	byIP := make(map[string]*disc.DiscoveredHost, len(scanned))
+	for i := range scanned {
+		byIP[scanned[i].IP] = &scanned[i]
+	}
 
-		host := models.NewDiscoveredHost(orgUID, jobUID, lan.IP, models.DiscoverySourceFreebox)
-		host.Hostname = lan.Name
-		host.ICMPReachable = lan.Reachable
-		// Freebox gives us name + reachability only — no port scan, no
-		// suggested checks. open_ports / suggested_checks stay "[]" (the
-		// promote flow falls back to config["host"] = host.IP).
+	for idx := range lanHosts {
+		lan := &lanHosts[idx]
 
-		_, err := db.NewInsert().
+		host, err := buildFreeboxHost(orgUID, jobUID, lan, byIP[lan.IP])
+		if err != nil {
+			log.WarnContext(ctx, "failed to build freebox discovered host",
+				"ip", lan.IP, "error", err)
+
+			continue
+		}
+
+		_, err = db.NewInsert().
 			Model(host).
 			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
 			Set("job_uid = EXCLUDED.job_uid").
@@ -125,4 +159,47 @@ func (r *FreeboxLanDiscoveryJobRun) persistHosts(
 	}
 
 	return nil
+}
+
+// buildFreeboxHost assembles a DiscoveredHost row for one Freebox device,
+// merging the active-scan result when present. When scan is nil (host did not
+// respond to the active probe), it falls back to the Freebox-reported name and
+// reachability with empty ports/checks.
+func buildFreeboxHost(
+	orgUID, jobUID string,
+	lan *freebox.LanHost,
+	scan *disc.DiscoveredHost,
+) (*models.DiscoveredHost, error) {
+	host := models.NewDiscoveredHost(orgUID, jobUID, lan.IP, models.DiscoverySourceFreebox)
+	host.Hostname = lan.Name
+	host.ICMPReachable = lan.Reachable
+
+	if scan == nil {
+		// open_ports / suggested_checks keep the "[]" defaults set by
+		// NewDiscoveredHost.
+		return host, nil
+	}
+
+	// HostnameHint preservation means scan.Hostname is already the Freebox name
+	// when one was provided; fall back to it only if it is non-empty.
+	if scan.Hostname != "" {
+		host.Hostname = scan.Hostname
+	}
+
+	host.ICMPReachable = scan.ICMPReachable
+
+	openPortsJSON, err := json.Marshal(scan.OpenPorts)
+	if err != nil {
+		return nil, fmt.Errorf("marshal open_ports for %s: %w", lan.IP, err)
+	}
+
+	suggestedJSON, err := json.Marshal(scan.SuggestedChecks)
+	if err != nil {
+		return nil, fmt.Errorf("marshal suggested_checks for %s: %w", lan.IP, err)
+	}
+
+	host.OpenPorts = openPortsJSON
+	host.SuggestedChecks = suggestedJSON
+
+	return host, nil
 }

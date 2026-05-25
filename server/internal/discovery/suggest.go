@@ -1,5 +1,7 @@
 package discovery
 
+import "fmt"
+
 const (
 	checkTypePing = "ping"
 	checkTypeHTTP = "http"
@@ -33,20 +35,23 @@ func SuggestChecks(ip string, icmpReachable bool, openPorts []int) []SuggestedCh
 	return suggestions
 }
 
-// suggestForPort maps a port number to a suggested check type and configuration.
+// suggestForPort maps a port number to a suggested check type and
+// configuration, driven by the authoritative defaultPorts table (ports.go).
+// A port absent from that table produces no suggestion.
 func suggestForPort(ip string, port int) *SuggestedCheck {
-	switch port {
-	case 80:
-		return &SuggestedCheck{
-			Type:   checkTypeHTTP,
-			Config: map[string]any{"url": "http://" + ip},
+	for i := range defaultPorts {
+		spec := defaultPorts[i]
+		if spec.Port != port {
+			continue
 		}
-	case 443:
-		return &SuggestedCheck{
-			Type:   checkTypeHTTP,
-			Config: map[string]any{"url": "https://" + ip},
+
+		if spec.CheckType == checkTypeHTTP {
+			return &SuggestedCheck{
+				Type:   checkTypeHTTP,
+				Config: map[string]any{"url": fmt.Sprintf(spec.URLTmpl, ip)},
+			}
 		}
-	case 22, 25, 53, 110, 143, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443:
+
 		return &SuggestedCheck{
 			Type:   checkTypeTCP,
 			Config: map[string]any{"host": ip, "port": port},

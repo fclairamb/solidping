@@ -23,11 +23,6 @@ const (
 	icmpProtocol = 1
 )
 
-// defaultPortList returns the default set of ports to scan when none are specified.
-func defaultPortList() []int {
-	return []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
-}
-
 // Config is the configuration for a discovery scan.
 type Config struct {
 	CIDRs       []string `json:"cidrs"`
@@ -45,47 +40,116 @@ type DiscoveredHost struct {
 	SuggestedChecks []SuggestedCheck `json:"suggestedChecks"`
 }
 
+// HostInput is one host to probe, with an optional pre-resolved name. It lets
+// callers (e.g. the Freebox job) feed a fixed host list through the same engine
+// the CIDR scan uses, preserving a known hostname over reverse DNS.
+type HostInput struct {
+	IP           net.IP
+	HostnameHint string // preserved over reverse-DNS if non-empty
+}
+
+// probeTarget is the internal unit the worker pool probes: an IP plus an
+// optional hostname hint. CIDR-expanded targets carry no hint; explicit-host
+// targets carry the caller-supplied name.
+type probeTarget struct {
+	IP           string
+	HostnameHint string
+}
+
+// scanParams holds the normalized scan tuning resolved from a Config.
+type scanParams struct {
+	ports       []int
+	concurrency int
+	timeout     time.Duration
+}
+
+// resolveScanParams normalizes the ports / concurrency / timeout from a Config,
+// applying defaults. Shared by Scan and ScanHosts.
+func resolveScanParams(cfg Config) (scanParams, error) {
+	params := scanParams{
+		ports:       cfg.Ports,
+		concurrency: cfg.Concurrency,
+		timeout:     defaultTimeout,
+	}
+
+	if len(params.ports) == 0 {
+		params.ports = defaultPortList()
+	}
+
+	if params.concurrency <= 0 {
+		params.concurrency = defaultConcurrency
+	}
+
+	if cfg.Timeout != "" {
+		d, err := time.ParseDuration(cfg.Timeout)
+		if err != nil {
+			return scanParams{}, fmt.Errorf("invalid timeout %q: %w", cfg.Timeout, err)
+		}
+
+		params.timeout = d
+	}
+
+	return params, nil
+}
+
 // Scan performs a network discovery scan based on the given configuration.
 // It expands all CIDRs, probes each address with ICMP and TCP, and returns
 // a list of responsive hosts.
-//
-//nolint:funlen // scan setup and concurrency boilerplate is inherently verbose
 func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 	if err := ValidateCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
 	}
 
-	ports := cfg.Ports
-	if len(ports) == 0 {
-		ports = defaultPortList()
+	params, err := resolveScanParams(cfg)
+	if err != nil {
+		return nil, err
 	}
 
-	concurrency := cfg.Concurrency
-	if concurrency <= 0 {
-		concurrency = defaultConcurrency
-	}
-
-	probeTimeout := defaultTimeout
-	if cfg.Timeout != "" {
-		d, err := time.ParseDuration(cfg.Timeout)
-		if err != nil {
-			return nil, fmt.Errorf("invalid timeout %q: %w", cfg.Timeout, err)
-		}
-
-		probeTimeout = d
-	}
-
-	// Expand all CIDRs into individual IPs.
-	allIPs := make([]net.IP, 0, 256)
+	// Expand all CIDRs into individual probe targets.
+	targets := make([]probeTarget, 0, 256)
 	for _, cidr := range cfg.CIDRs {
 		ips, err := expandCIDR(cidr)
 		if err != nil {
 			return nil, err
 		}
 
-		allIPs = append(allIPs, ips...)
+		for _, ip := range ips {
+			targets = append(targets, probeTarget{IP: ip.String()})
+		}
 	}
 
+	return runProbes(ctx, targets, params), nil
+}
+
+// ScanHosts probes a fixed list of IPs through the same engine as Scan.
+// cfg.Ports defaults to defaultPortList(); cfg.CIDRs is ignored. Each result's
+// Hostname comes from the matching HostInput.HostnameHint when non-empty, else
+// from reverse DNS. Only responsive hosts are returned (same semantics as Scan).
+func ScanHosts(ctx context.Context, hosts []HostInput, cfg Config) ([]DiscoveredHost, error) {
+	params, err := resolveScanParams(cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	targets := make([]probeTarget, 0, len(hosts))
+	for i := range hosts {
+		if hosts[i].IP == nil {
+			continue
+		}
+
+		targets = append(targets, probeTarget{
+			IP:           hosts[i].IP.String(),
+			HostnameHint: hosts[i].HostnameHint,
+		})
+	}
+
+	return runProbes(ctx, targets, params), nil
+}
+
+// runProbes drives the bounded-concurrency worker pool over the given targets.
+// It is the shared core used by both Scan (after CIDR expansion) and ScanHosts
+// (with a pre-supplied list).
+func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []DiscoveredHost {
 	// Attempt to open an ICMP socket; fall back to TCP-only if unavailable.
 	icmpConn, icmpErr := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if icmpErr != nil {
@@ -95,27 +159,27 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		defer func() { _ = icmpConn.Close() }()
 	}
 
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, params.concurrency)
 	var hostsMu sync.Mutex
 	hosts := make([]DiscoveredHost, 0)
 
 	var wgroup sync.WaitGroup
 
-	for _, ip := range allIPs {
+	for i := range targets {
 		if ctx.Err() != nil {
 			break
 		}
 
 		wgroup.Add(1)
-		ipStr := ip.String()
+		tgt := targets[i]
 
-		go func(ipStr string) {
+		go func() {
 			defer wgroup.Done()
 
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			host := probeHost(ctx, ipStr, ports, icmpConn, probeTimeout)
+			host := probeHost(ctx, tgt, params.ports, icmpConn, params.timeout)
 			if host == nil {
 				return
 			}
@@ -123,23 +187,26 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 			hostsMu.Lock()
 			hosts = append(hosts, *host)
 			hostsMu.Unlock()
-		}(ipStr)
+		}()
 	}
 
 	wgroup.Wait()
 
-	return hosts, nil
+	return hosts
 }
 
 // probeHost probes a single host with ICMP and TCP and returns a DiscoveredHost
-// if it responds to any probe, or nil if it's unreachable.
+// if it responds to any probe, or nil if it's unreachable. The host's name is
+// taken from target.HostnameHint when non-empty, otherwise from reverse DNS.
 func probeHost(
 	ctx context.Context,
-	ipStr string,
+	target probeTarget,
 	ports []int,
 	icmpConn *icmp.PacketConn,
 	timeout time.Duration,
 ) *DiscoveredHost {
+	ipStr := target.IP
+
 	var (
 		icmpReachable bool
 		openPorts     []int
@@ -180,8 +247,11 @@ func probeHost(
 		return nil
 	}
 
-	// Best-effort reverse DNS.
-	hostname := resolveHostname(ctx, ipStr)
+	// Prefer the caller-supplied hostname hint; fall back to reverse DNS.
+	hostname := target.HostnameHint
+	if hostname == "" {
+		hostname = resolveHostname(ctx, ipStr)
+	}
 
 	// Sort open ports for consistent output.
 	sortPorts(openPorts)
