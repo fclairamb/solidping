@@ -47,10 +47,11 @@ func TestCreateCheckHandlerReturns402OverCap(t *testing.T) {
 	router.NewGroup("/api/v1/orgs/:org/checks").POST("", handler.CreateCheck)
 
 	post := func() *httptest.ResponseRecorder {
-		body, _ := json.Marshal(map[string]any{
+		body, marshalErr := json.Marshal(map[string]any{
 			"type":   "http",
 			"config": map[string]any{"url": "https://example.com"},
 		})
+		r.NoError(marshalErr)
 		req := httptest.NewRequestWithContext(
 			t.Context(), http.MethodPost, "/api/v1/orgs/"+org.Slug+"/checks", bytes.NewBuffer(body))
 		req.Header.Set("Content-Type", "application/json")
@@ -72,6 +73,6 @@ func TestCreateCheckHandlerReturns402OverCap(t *testing.T) {
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &body))
 	r.Equal(string(base.ErrorCodeQuotaExceeded), body["code"])
 	r.Equal("MaxChecks", body["limitName"])
-	r.Equal(float64(1), body["limit"])
-	r.Equal(float64(1), body["currentUsage"])
+	r.InDelta(float64(1), body["limit"], 0.0001)
+	r.InDelta(float64(1), body["currentUsage"], 0.0001)
 }

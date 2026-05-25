@@ -237,6 +237,8 @@ func (h *Handler) ListAudits(writer http.ResponseWriter, req bunrouter.Request) 
 }
 
 // mergePartial loads the current row and overlays it with the input.
+//
+//nolint:gocritic // input is the decoded wire shape, passed by value to match the API contract
 func (h *Handler) mergePartial(
 	ctx context.Context, orgUID string, input entcore.Entitlements,
 ) entcore.Entitlements {
