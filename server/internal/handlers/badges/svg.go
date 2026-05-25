@@ -17,6 +17,9 @@ const (
 	ColorGraph  = "#4078c0"
 )
 
+// fontFamily is the shields-style font stack used across rows.
+const fontFamily = "DejaVu Sans,Verdana,Geneva,sans-serif"
+
 // Row heights (px) for the composable multi-row badge.
 const (
 	rowHeightText  = 20
@@ -35,12 +38,13 @@ func borderRadius(style string) string {
 }
 
 // textWidths computes the label, value and total widths for a shields row.
-// When value is empty (black-title variant) the value cell is omitted.
-func textWidths(label, value string, minWidth int) (labelWidth, valueWidth, totalWidth int) {
-	labelWidth = len(label)*6 + 10
+// When value is empty (black-title variant) the value cell is omitted. Returns
+// (labelWidth, valueWidth, totalWidth).
+func textWidths(label, value string, minWidth int) (int, int, int) {
+	labelWidth := len(label)*6 + 10
 
 	if value == "" {
-		totalWidth = labelWidth
+		totalWidth := labelWidth
 		if minWidth > 0 && totalWidth < minWidth {
 			labelWidth += minWidth - totalWidth
 			totalWidth = minWidth
@@ -49,8 +53,8 @@ func textWidths(label, value string, minWidth int) (labelWidth, valueWidth, tota
 		return labelWidth, 0, totalWidth
 	}
 
-	valueWidth = len(value)*6 + 10
-	totalWidth = labelWidth + valueWidth
+	valueWidth := len(value)*6 + 10
+	totalWidth := labelWidth + valueWidth
 
 	if minWidth > 0 && totalWidth < minWidth {
 		valueWidth += minWidth - totalWidth
@@ -64,7 +68,7 @@ func textWidths(label, value string, minWidth int) (labelWidth, valueWidth, tota
 // <g> fragment translated to y. When value is empty it renders the label as a
 // plain black title with no value cell. width, when > 0, stretches the value
 // cell (or the title cell) to fill it.
-func renderBadgeRow(label, value, valueColor, style string, width, y int) string {
+func renderBadgeRow(label, value, valueColor, style string, width, yOffset int) string {
 	labelWidth, valueWidth, naturalWidth := textWidths(label, value, width)
 
 	totalWidth := naturalWidth
@@ -86,8 +90,8 @@ func renderBadgeRow(label, value, valueColor, style string, width, y int) string
 	// Black-title variant: no value cell, plain text title.
 	if value == "" {
 		return fmt.Sprintf(`  <g transform="translate(0,%d)">
-    <text x="5" y="14" fill="%s" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11" font-weight="bold">%s</text>
-  </g>`, y, ColorTitle, escLabel)
+    <text x="5" y="14" fill="%s" font-family="%s" font-size="11" font-weight="bold">%s</text>
+  </g>`, yOffset, ColorTitle, fontFamily, escLabel)
 	}
 
 	return fmt.Sprintf(`  <g transform="translate(0,%d)">
@@ -103,21 +107,22 @@ func renderBadgeRow(label, value, valueColor, style string, width, y int) string
       <rect x="%d" width="%d" height="20" fill="%s"/>
       <rect width="%d" height="20" fill="url(#g%d)"/>
     </g>
-    <g fill="#fff" text-anchor="middle" font-family="DejaVu Sans,Verdana,Geneva,sans-serif" font-size="11">
+    <g fill="#fff" text-anchor="middle" font-family="%s" font-size="11">
       <text x="%d" y="15" fill="#010101" fill-opacity=".3">%s</text>
       <text x="%d" y="14">%s</text>
       <text x="%d" y="15" fill="#010101" fill-opacity=".3">%s</text>
       <text x="%d" y="14">%s</text>
     </g>
   </g>`,
-		y,
-		y,
-		y,
+		yOffset,
+		yOffset,
+		yOffset,
 		totalWidth, radius,
-		y,
+		yOffset,
 		labelWidth, ColorLabel,
 		labelWidth, valueWidth, valueColor,
-		totalWidth, y,
+		totalWidth, yOffset,
+		fontFamily,
 		labelWidth/2, escLabel,
 		labelWidth/2, escLabel,
 		labelWidth+valueWidth/2, escValue,
@@ -126,11 +131,11 @@ func renderBadgeRow(label, value, valueColor, style string, width, y int) string
 }
 
 // renderUptimeBarRow renders an N-segment availability strip as a positioned
-// <g> fragment translated to y.
-func renderUptimeBarRow(segments []string, width, height, y int, style string) string {
+// <g> fragment translated to yOffset.
+func renderUptimeBarRow(segments []string, width, height, yOffset int, style string) string {
 	n := len(segments)
 	if n == 0 {
-		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, y)
+		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, yOffset)
 	}
 
 	radius := borderRadius(style)
@@ -161,15 +166,70 @@ func renderUptimeBarRow(segments []string, width, height, y int, style string) s
     </clipPath>
     <g clip-path="url(#bar%d)">
 %s    </g>
-  </g>`, y, y, width, height, radius, y, rects.String())
+  </g>`, yOffset, yOffset, width, height, radius, yOffset, rects.String())
+}
+
+// paddedRange applies 10% padding around [minV, maxV] so the line never
+// touches the row edges. A flat series (span 0) is padded symmetrically.
+func paddedRange(minV, maxV float64) (float64, float64) {
+	span := maxV - minV
+	if span == 0 {
+		pad := maxV * 0.1
+		if pad == 0 {
+			pad = 1
+		}
+
+		return minV - pad, maxV + pad
+	}
+
+	pad := span * 0.1
+
+	return minV - pad, maxV + pad
+}
+
+// renderGraphSegments renders the area, line and dot fragments for the given
+// point segments into the supplied builders.
+func renderGraphSegments(
+	segments [][]int, points []*float64,
+	xAt func(int) float64, yAt func(float64) float64,
+	height, yOffset int,
+	areas, lines, dots *strings.Builder,
+) {
+	for _, seg := range segments {
+		if len(seg) == 1 {
+			idx := seg[0]
+			fmt.Fprintf(dots, `    <circle cx="%.1f" cy="%.1f" r="1.6" fill="%s"/>`,
+				xAt(idx), yAt(*points[idx]), ColorGraph)
+			fmt.Fprintln(dots)
+
+			continue
+		}
+
+		var poly strings.Builder
+		for pos, idx := range seg {
+			if pos > 0 {
+				poly.WriteByte(' ')
+			}
+
+			fmt.Fprintf(&poly, "%.1f,%.1f", xAt(idx), yAt(*points[idx]))
+		}
+
+		fmt.Fprintf(areas, `    <path d="M%.1f,%d L%s L%.1f,%d Z" fill="url(#grad%d)"/>`,
+			xAt(seg[0]), height, poly.String(), xAt(seg[len(seg)-1]), height, yOffset)
+		fmt.Fprintln(areas)
+
+		fmt.Fprintf(lines, `    <polyline points="%s" fill="none" stroke="%s" stroke-width="1.5"/>`,
+			poly.String(), ColorGraph)
+		fmt.Fprintln(lines)
+	}
 }
 
 // renderResponseTimeGraphRow renders a filled-area response-time graph as a
-// positioned <g> fragment translated to y. points holds per-bucket average
-// response times oldest→newest; nil entries are gaps (no data) that break the
-// line into separate segments. The Y axis auto-scales to [min, max] with 10%
-// padding. A single data point (or a flat run) renders as a dot.
-func renderResponseTimeGraphRow(points []*float64, width, height, y int, style string) string {
+// positioned <g> fragment translated to yOffset. points holds per-bucket
+// average response times oldest→newest; nil entries are gaps (no data) that
+// break the line into separate segments. The Y axis auto-scales to [min, max]
+// with 10% padding. A single data point (or a flat run) renders as a dot.
+func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, style string) string {
 	radius := borderRadius(style)
 
 	minV, maxV, hasData := pointsRange(points)
@@ -177,25 +237,10 @@ func renderResponseTimeGraphRow(points []*float64, width, height, y int, style s
 		// No data at all: render an empty framed area.
 		return fmt.Sprintf(`  <g transform="translate(0,%d)">
     <rect width="%d" height="%d" rx="%s" fill="#f5f5f5"/>
-  </g>`, y, width, height, radius)
+  </g>`, yOffset, width, height, radius)
 	}
 
-	// Apply 10%% padding to the value range so the line never touches edges.
-	span := maxV - minV
-	if span == 0 {
-		// Flat series: pad symmetrically around the single value.
-		pad := maxV * 0.1
-		if pad == 0 {
-			pad = 1
-		}
-
-		minV -= pad
-		maxV += pad
-	} else {
-		pad := span * 0.1
-		minV -= pad
-		maxV += pad
-	}
+	minV, maxV = paddedRange(minV, maxV)
 
 	n := len(points)
 	xStep := 0.0
@@ -217,73 +262,48 @@ func renderResponseTimeGraphRow(points []*float64, width, height, y int, style s
 		return float64(height) - frac*float64(height)
 	}
 
-	segments := buildGraphSegments(points)
-
 	var defs, areas, lines, dots strings.Builder
 
 	fmt.Fprintf(&defs, `    <linearGradient id="grad%d" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="%s" stop-opacity="0.4"/>
       <stop offset="1" stop-color="%s" stop-opacity="0"/>
-    </linearGradient>`, y, ColorGraph, ColorGraph)
+    </linearGradient>`, yOffset, ColorGraph, ColorGraph)
 
-	for _, seg := range segments {
-		if len(seg) == 1 {
-			// Single point: draw a dot.
-			i := seg[0]
-			fmt.Fprintf(&dots, `    <circle cx="%.1f" cy="%.1f" r="1.6" fill="%s"/>`,
-				xAt(i), yAt(*points[i]), ColorGraph)
-			fmt.Fprintln(&dots)
-
-			continue
-		}
-
-		var poly strings.Builder
-		for idx, i := range seg {
-			if idx > 0 {
-				poly.WriteByte(' ')
-			}
-
-			fmt.Fprintf(&poly, "%.1f,%.1f", xAt(i), yAt(*points[i]))
-		}
-
-		// Filled area path: down to baseline at both ends.
-		fmt.Fprintf(&areas, `    <path d="M%.1f,%d L%s L%.1f,%d Z" fill="url(#grad%d)"/>`,
-			xAt(seg[0]), height, poly.String(), xAt(seg[len(seg)-1]), height, y)
-		fmt.Fprintln(&areas)
-
-		fmt.Fprintf(&lines, `    <polyline points="%s" fill="none" stroke="%s" stroke-width="1.5"/>`,
-			poly.String(), ColorGraph)
-		fmt.Fprintln(&lines)
-	}
+	renderGraphSegments(buildGraphSegments(points), points, xAt, yAt, height, yOffset, &areas, &lines, &dots)
 
 	return fmt.Sprintf(`  <g transform="translate(0,%d)">
     <defs>
 %s
     </defs>
     <rect width="%d" height="%d" rx="%s" fill="#f5f5f5"/>
-%s%s%s  </g>`, y, defs.String(), width, height, radius, areas.String(), lines.String(), dots.String())
+%s%s%s  </g>`, yOffset, defs.String(), width, height, radius,
+		areas.String(), lines.String(), dots.String())
 }
 
 // pointsRange returns the min and max of the non-nil points and whether any
-// data exists.
-func pointsRange(points []*float64) (minV, maxV float64, hasData bool) {
-	for _, p := range points {
-		if p == nil {
+// data exists. Returns (min, max, hasData).
+func pointsRange(points []*float64) (float64, float64, bool) {
+	var minV, maxV float64
+
+	hasData := false
+
+	for _, point := range points {
+		if point == nil {
 			continue
 		}
 
 		if !hasData {
-			minV, maxV, hasData = *p, *p, true
+			minV, maxV, hasData = *point, *point, true
 
 			continue
 		}
 
-		if *p < minV {
-			minV = *p
+		if *point < minV {
+			minV = *point
 		}
 
-		if *p > maxV {
-			maxV = *p
+		if *point > maxV {
+			maxV = *point
 		}
 	}
 

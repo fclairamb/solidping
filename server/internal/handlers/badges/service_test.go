@@ -632,10 +632,10 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 
 		// Min/max auto-scale with 10%% padding: the highest value must map near
 		// the top (small y) and lowest near the bottom (large y), both inside
-		// [0, height].
-		row := renderResponseTimeGraphRow([]*float64{f(100), f(300)}, 300, 40, 0, "flat")
+		// [0, height]. Use a non-default height to exercise the height param.
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(300)}, 300, 60, 0, "flat")
 		r.Contains(row, "<polyline")
-		// Padding means neither endpoint sits exactly at y=0 or y=40.
+		// Padding means neither endpoint sits exactly at y=0 or y=60.
 		r.NotContains(row, ",0.0 ")
 	})
 }

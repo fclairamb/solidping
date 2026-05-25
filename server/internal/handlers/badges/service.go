@@ -130,7 +130,54 @@ func (s *Service) GenerateBadge(
 	opts = s.applyDefaults(opts, check)
 
 	// 5. Split tokens into row-1 text tokens and bar/graph rows.
+	textTokens, hasBar, hasGraph := splitTokens(tokens)
+
+	// 6. Fetch row-1 data.
+	results, err := s.fetchResults(ctx, org.UID, check.UID, textTokens, opts.Period)
+	if err != nil {
+		return "", err
+	}
+
+	// 7. Determine combined width (0 → row-1 natural width, resolved below).
+	width := opts.MinWidth
+	if hasBar || hasGraph {
+		width = opts.Width
+		if width <= 0 {
+			width = defaultBadgeWidth
+		}
+	}
+
+	// 8. Render row 1.
+	value := s.composeValue(textTokens, results)
+	color := resolveColor(textTokens, results)
+	rows := []string{renderBadgeRow(opts.Label, value, color, opts.Style, width, 0)}
+
+	totalHeight := rowHeightText
+
+	// 9. Fetch bucket data and append bar/graph rows.
+	if hasBar || hasGraph {
+		rows, totalHeight, err = s.appendRowFragments(
+			ctx, org.UID, check.UID, opts, width, hasBar, hasGraph, rows, totalHeight,
+		)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// 10. Resolve final width to row-1 natural width for text-only badges.
+	if width <= 0 {
+		_, _, width = textWidths(opts.Label, value, opts.MinWidth)
+	}
+
+	return ComposeBadgeSVG(rows, width, totalHeight), nil
+}
+
+// splitTokens partitions parsed tokens into the row-1 text tokens and the
+// presence of the uptime-bar and response-time-graph rows. Returns
+// (textTokens, hasBar, hasGraph).
+func splitTokens(tokens []string) ([]string, bool, bool) {
 	textTokens := make([]string, 0, len(tokens))
+
 	hasBar := false
 	hasGraph := false
 
@@ -147,58 +194,37 @@ func (s *Service) GenerateBadge(
 		}
 	}
 
-	// 6. Fetch row-1 data.
-	results, err := s.fetchResults(ctx, org.UID, check.UID, textTokens, opts.Period)
+	return textTokens, hasBar, hasGraph
+}
+
+// appendRowFragments fetches the shared bucket data and appends the bar and
+// graph row fragments. It returns the updated rows slice and total height.
+func (s *Service) appendRowFragments(
+	ctx context.Context, orgUID, checkUID string, opts BadgeOptions,
+	width int, hasBar, hasGraph bool, rows []string, totalHeight int,
+) ([]string, int, error) {
+	availMap, durationMap, bucketStart, n, bucketDuration, err := s.fetchBucketData(
+		ctx, orgUID, checkUID, opts.Period,
+	)
 	if err != nil {
-		return "", err
+		return rows, totalHeight, err
 	}
 
-	// 7. Determine combined width.
-	width := opts.MinWidth
-	if hasBar || hasGraph {
-		width = opts.Width
-		if width <= 0 {
-			width = defaultBadgeWidth
-		}
+	if hasBar {
+		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
+		yOffset := totalHeight + rowGap
+		rows = append(rows, renderUptimeBarRow(segments, width, rowHeightBar, yOffset, opts.Style))
+		totalHeight = yOffset + rowHeightBar
 	}
 
-	// 8. Render row 1.
-	value := s.composeValue(textTokens, results)
-	color := resolveColor(textTokens, results)
-	rows := []string{renderBadgeRow(opts.Label, value, color, opts.Style, width, 0)}
-
-	totalHeight := rowHeightText
-
-	// 9. Fetch bucket data and render bar/graph rows.
-	if hasBar || hasGraph {
-		availMap, durationMap, bucketStart, n, bucketDuration, ferr := s.fetchBucketData(
-			ctx, org.UID, check.UID, opts.Period,
-		)
-		if ferr != nil {
-			return "", ferr
-		}
-
-		if hasBar {
-			segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
-			y := totalHeight + rowGap
-			rows = append(rows, renderUptimeBarRow(segments, width, rowHeightBar, y, opts.Style))
-			totalHeight = y + rowHeightBar
-		}
-
-		if hasGraph {
-			points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
-			y := totalHeight + rowGap
-			rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, y, opts.Style))
-			totalHeight = y + rowHeightGraph
-		}
+	if hasGraph {
+		points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
+		yOffset := totalHeight + rowGap
+		rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, yOffset, opts.Style))
+		totalHeight = yOffset + rowHeightGraph
 	}
 
-	// 10. Compute final width (row 1 natural width for text-only badges).
-	if width <= 0 {
-		_, _, width = textWidths(opts.Label, value, opts.MinWidth)
-	}
-
-	return ComposeBadgeSVG(rows, width, totalHeight), nil
+	return rows, totalHeight, nil
 }
 
 // fetchBucketData runs the aggregated bucket query once and returns the per
@@ -227,15 +253,15 @@ func (s *Service) fetchBucketData(
 	availMap := make(map[time.Time]float64, len(res.Results))
 	durationMap := make(map[time.Time]*float64, len(res.Results))
 
-	for _, r := range res.Results {
-		bucket := r.PeriodStart.UTC().Truncate(bucketDuration)
+	for _, result := range res.Results {
+		bucket := result.PeriodStart.UTC().Truncate(bucketDuration)
 
-		if r.AvailabilityPct != nil {
-			availMap[bucket] = *r.AvailabilityPct
+		if result.AvailabilityPct != nil {
+			availMap[bucket] = *result.AvailabilityPct
 		}
 
-		if r.DurationAvg != nil {
-			v := float64(*r.DurationAvg)
+		if result.DurationAvg != nil {
+			v := float64(*result.DurationAvg)
 			durationMap[bucket] = &v
 		}
 	}
