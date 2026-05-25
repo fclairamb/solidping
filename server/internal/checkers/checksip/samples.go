@@ -6,7 +6,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
-const sampleTimeout = 5 * time.Second
+const (
+	sampleTimeout = 5 * time.Second
+	samplePBXHost = "pbx.example.com"
+)
 
 // GetSampleConfigs returns sample SIP check configurations: an OPTIONS
 // reachability probe and a REGISTER auth probe with placeholder credentials.
@@ -29,11 +32,11 @@ func (c *SIPChecker) GetSampleConfigs(_ *checkerdef.ListSampleOptions) []checker
 			Slug:   "sip-register",
 			Period: time.Minute,
 			Config: (&SIPConfig{
-				Host:      "pbx.example.com",
+				Host:      samplePBXHost,
 				Port:      defaultPortPlain,
 				Transport: transportUDP,
 				Mode:      modeRegister,
-				Domain:    "pbx.example.com",
+				Domain:    samplePBXHost,
 				Username:  "1001",
 				Password:  "change-me",
 				Timeout:   sampleTimeout,

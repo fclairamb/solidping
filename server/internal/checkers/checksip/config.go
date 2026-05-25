@@ -22,6 +22,9 @@ const (
 
 	modeOptions  = "options"
 	modeRegister = "register"
+
+	// keyPassword is the config map key for the (secret) SIP password.
+	keyPassword = "password"
 )
 
 // SIPConfig holds the configuration for SIP server checks.
@@ -42,7 +45,7 @@ type SIPConfig struct {
 
 // FromMap populates the configuration from a map.
 //
-//nolint:cyclop,funlen // Configuration parsing requires checking multiple field types
+//nolint:cyclop // Configuration parsing requires checking multiple field types
 func (c *SIPConfig) FromMap(configMap map[string]any) error {
 	if host, ok := configMap[checkerdef.OutputKeyHost].(string); ok {
 		c.Host = host
@@ -82,10 +85,10 @@ func (c *SIPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("username", "must be a string")
 	}
 
-	if password, ok := configMap["password"].(string); ok {
+	if password, ok := configMap[keyPassword].(string); ok {
 		c.Password = password
-	} else if configMap["password"] != nil {
-		return checkerdef.NewConfigError("password", "must be a string")
+	} else if configMap[keyPassword] != nil {
+		return checkerdef.NewConfigError(keyPassword, "must be a string")
 	}
 
 	if authUsername, ok := configMap["auth_username"].(string); ok {
@@ -127,8 +130,6 @@ func (c *SIPConfig) FromMap(configMap map[string]any) error {
 }
 
 // GetConfig returns the configuration as a map.
-//
-//nolint:cyclop // Serialization mirrors the field set
 func (c *SIPConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
 		checkerdef.OutputKeyHost: c.Host,
@@ -155,7 +156,7 @@ func (c *SIPConfig) GetConfig() map[string]any {
 	}
 
 	if c.Password != "" {
-		cfg["password"] = c.Password
+		cfg[keyPassword] = c.Password
 	}
 
 	if c.AuthUsername != "" {

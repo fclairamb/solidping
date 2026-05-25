@@ -2,7 +2,7 @@ package checksip
 
 import (
 	"context"
-	"crypto/md5" //nolint:gosec // RFC 2617 digest auth mandates MD5; not used for security here.
+	"crypto/md5"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -24,6 +24,12 @@ const (
 	digestNonceCount = "00000001"
 
 	microsecondsPerMilli = 1000.0
+
+	// qopAuth is the RFC 2617 "auth" quality-of-protection directive.
+	qopAuth = "auth"
+
+	// errNotValidSIP is the diagnostic for an unparseable (non-SIP) reply.
+	errNotValidSIP = "reply is not a valid SIP response"
 )
 
 // SIPChecker implements the Checker interface for SIP checks.
@@ -150,7 +156,7 @@ func (c *SIPChecker) executeOptions(ctx context.Context, cfg *SIPConfig) checker
 	if !ok {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{checkerdef.OutputKeyError: "reply is not a valid SIP response"},
+			Output: map[string]any{checkerdef.OutputKeyError: errNotValidSIP},
 		}
 	}
 
@@ -168,8 +174,6 @@ func (c *SIPChecker) executeOptions(ctx context.Context, cfg *SIPConfig) checker
 }
 
 // executeRegister performs the two-shot digest-auth REGISTER handshake.
-//
-//nolint:cyclop // The handshake has several distinct branches to classify.
 func (c *SIPChecker) executeRegister(ctx context.Context, cfg *SIPConfig) checkerdef.Result {
 	ids := newRequestIDs()
 
@@ -185,7 +189,7 @@ func (c *SIPChecker) executeRegister(ctx context.Context, cfg *SIPConfig) checke
 	if !ok {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{checkerdef.OutputKeyError: "reply is not a valid SIP response"},
+			Output: map[string]any{checkerdef.OutputKeyError: errNotValidSIP},
 		}
 	}
 
@@ -237,7 +241,7 @@ func (c *SIPChecker) executeRegister(ctx context.Context, cfg *SIPConfig) checke
 	if !ok {
 		return checkerdef.Result{
 			Status: checkerdef.StatusDown,
-			Output: map[string]any{checkerdef.OutputKeyError: "reply is not a valid SIP response"},
+			Output: map[string]any{checkerdef.OutputKeyError: errNotValidSIP},
 		}
 	}
 
@@ -340,30 +344,30 @@ func buildRequest(method string, cfg *SIPConfig, ids requestIDs, authHeader stri
 	fromURI := fmt.Sprintf("sip:%s@%s", user, cfg.Domain)
 	toURI := fromURI
 
-	var b strings.Builder
+	var buf strings.Builder
 
-	fmt.Fprintf(&b, "%s %s SIP/2.0\r\n", method, requestURI)
-	fmt.Fprintf(&b, "Via: SIP/2.0/%s %s;branch=%s;rport\r\n", viaTransport, cfg.Host, ids.branch)
-	b.WriteString("Max-Forwards: 70\r\n")
-	fmt.Fprintf(&b, "From: <%s>;tag=%s\r\n", fromURI, ids.fromTag)
-	fmt.Fprintf(&b, "To: <%s>\r\n", toURI)
-	fmt.Fprintf(&b, "Call-ID: %s@%s\r\n", ids.callID, cfg.Host)
-	fmt.Fprintf(&b, "CSeq: %d %s\r\n", ids.cseq, method)
-	fmt.Fprintf(&b, "Contact: <%s>\r\n", localContact)
-	b.WriteString("User-Agent: SolidPing\r\n")
+	fmt.Fprintf(&buf, "%s %s SIP/2.0\r\n", method, requestURI)
+	fmt.Fprintf(&buf, "Via: SIP/2.0/%s %s;branch=%s;rport\r\n", viaTransport, cfg.Host, ids.branch)
+	buf.WriteString("Max-Forwards: 70\r\n")
+	fmt.Fprintf(&buf, "From: <%s>;tag=%s\r\n", fromURI, ids.fromTag)
+	fmt.Fprintf(&buf, "To: <%s>\r\n", toURI)
+	fmt.Fprintf(&buf, "Call-ID: %s@%s\r\n", ids.callID, cfg.Host)
+	fmt.Fprintf(&buf, "CSeq: %d %s\r\n", ids.cseq, method)
+	fmt.Fprintf(&buf, "Contact: <%s>\r\n", localContact)
+	buf.WriteString("User-Agent: SolidPing\r\n")
 
 	if authHeader != "" {
-		fmt.Fprintf(&b, "Authorization: %s\r\n", authHeader)
+		fmt.Fprintf(&buf, "Authorization: %s\r\n", authHeader)
 	}
 
 	if method == "REGISTER" {
-		b.WriteString("Expires: 60\r\n")
+		buf.WriteString("Expires: 60\r\n")
 	}
 
-	b.WriteString("Content-Length: 0\r\n")
-	b.WriteString("\r\n")
+	buf.WriteString("Content-Length: 0\r\n")
+	buf.WriteString("\r\n")
 
-	return b.String()
+	return buf.String()
 }
 
 // roundTrip dials the configured transport, sends the request and reads the
@@ -400,11 +404,11 @@ func roundTripUDP(ctx context.Context, cfg *SIPConfig, request string) (string, 
 		deadline = time.Now().Add(cfg.Timeout)
 	}
 
-	if err := conn.SetDeadline(deadline); err != nil {
+	if err = conn.SetDeadline(deadline); err != nil {
 		return "", err
 	}
 
-	if _, err := conn.Write([]byte(request)); err != nil {
+	if _, err = conn.Write([]byte(request)); err != nil {
 		return "", err
 	}
 
@@ -445,7 +449,7 @@ func roundTripStream(ctx context.Context, cfg *SIPConfig, request string, useTLS
 
 		tlsConn := tls.Client(conn, &tls.Config{
 			ServerName:         serverName,
-			InsecureSkipVerify: !cfg.TLSVerify, //nolint:gosec // Verification is opt-in via tls_verify, mirroring checktcp.
+			InsecureSkipVerify: !cfg.TLSVerify, // Verification is opt-in via tls_verify, mirroring checktcp.
 		})
 
 		if err := tlsConn.HandshakeContext(ctx); err != nil {
@@ -625,13 +629,13 @@ func parseAuthChallenge(header string) map[string]string {
 			continue
 		}
 
-		eq := strings.IndexByte(raw, '=')
-		if eq < 0 {
+		eqIdx := strings.IndexByte(raw, '=')
+		if eqIdx < 0 {
 			continue
 		}
 
-		key := strings.ToLower(strings.TrimSpace(raw[:eq]))
-		val := strings.TrimSpace(raw[eq+1:])
+		key := strings.ToLower(strings.TrimSpace(raw[:eqIdx]))
+		val := strings.TrimSpace(raw[eqIdx+1:])
 		val = strings.Trim(val, "\"")
 		params[key] = val
 	}
@@ -641,23 +645,23 @@ func parseAuthChallenge(header string) map[string]string {
 
 // splitParams splits a digest parameter list on commas, ignoring commas that
 // appear inside double-quoted values (e.g. qop="auth,auth-int").
-func splitParams(s string) []string {
+func splitParams(input string) []string {
 	var (
 		parts   []string
 		current strings.Builder
 		inQuote bool
 	)
 
-	for _, r := range s {
+	for _, char := range input {
 		switch {
-		case r == '"':
+		case char == '"':
 			inQuote = !inQuote
-			current.WriteRune(r)
-		case r == ',' && !inQuote:
+			current.WriteRune(char)
+		case char == ',' && !inQuote:
 			parts = append(parts, current.String())
 			current.Reset()
 		default:
-			current.WriteRune(r)
+			current.WriteRune(char)
 		}
 	}
 
@@ -671,12 +675,12 @@ func splitParams(s string) []string {
 // buildDigestAuthorization computes an RFC 2617 MD5 digest and returns a full
 // "Digest ..." Authorization header value. When the challenge advertises
 // qop=auth it uses the qop variant (nc + cnonce); otherwise the legacy form.
-func buildDigestAuthorization(ch map[string]string, method, uri, username, password string) string {
-	realm := ch["realm"]
-	nonce := ch["nonce"]
-	qop := ch["qop"]
-	opaque := ch["opaque"]
-	cnonce := ch["cnonce"]
+func buildDigestAuthorization(challenge map[string]string, method, uri, username, password string) string {
+	realm := challenge["realm"]
+	nonce := challenge["nonce"]
+	qop := challenge["qop"]
+	opaque := challenge["opaque"]
+	cnonce := challenge["cnonce"]
 
 	if cnonce == "" {
 		cnonce = "0a4f113b" // deterministic fallback; overridden by callers needing randomness.
@@ -689,29 +693,29 @@ func buildDigestAuthorization(ch map[string]string, method, uri, username, passw
 
 	var response string
 	if useQOP {
-		response = md5Hex(strings.Join([]string{ha1, nonce, digestNonceCount, cnonce, "auth", ha2}, ":"))
+		response = md5Hex(strings.Join([]string{ha1, nonce, digestNonceCount, cnonce, qopAuth, ha2}, ":"))
 	} else {
 		response = md5Hex(strings.Join([]string{ha1, nonce, ha2}, ":"))
 	}
 
-	var b strings.Builder
+	var buf strings.Builder
 
-	fmt.Fprintf(&b, "Digest username=%q, realm=%q, nonce=%q, uri=%q, response=%q",
+	fmt.Fprintf(&buf, "Digest username=%q, realm=%q, nonce=%q, uri=%q, response=%q",
 		username, realm, nonce, uri, response)
 
-	if algo := ch["algorithm"]; algo != "" {
-		fmt.Fprintf(&b, ", algorithm=%s", algo)
+	if algo := challenge["algorithm"]; algo != "" {
+		fmt.Fprintf(&buf, ", algorithm=%s", algo)
 	}
 
 	if useQOP {
-		fmt.Fprintf(&b, ", qop=auth, nc=%s, cnonce=%q", digestNonceCount, cnonce)
+		fmt.Fprintf(&buf, ", qop=%s, nc=%s, cnonce=%q", qopAuth, digestNonceCount, cnonce)
 	}
 
 	if opaque != "" {
-		fmt.Fprintf(&b, ", opaque=%q", opaque)
+		fmt.Fprintf(&buf, ", opaque=%q", opaque)
 	}
 
-	return b.String()
+	return buf.String()
 }
 
 // qopHasAuth reports whether a qop directive includes the "auth" option.
@@ -721,7 +725,7 @@ func qopHasAuth(qop string) bool {
 	}
 
 	for _, opt := range strings.Split(qop, ",") {
-		if strings.TrimSpace(opt) == "auth" {
+		if strings.TrimSpace(opt) == qopAuth {
 			return true
 		}
 	}
@@ -729,8 +733,8 @@ func qopHasAuth(qop string) bool {
 	return false
 }
 
-func md5Hex(s string) string {
-	sum := md5.Sum([]byte(s)) //nolint:gosec // RFC 2617 mandates MD5.
+func md5Hex(input string) string {
+	sum := md5.Sum([]byte(input))
 
 	return hex.EncodeToString(sum[:])
 }
@@ -738,10 +742,10 @@ func md5Hex(s string) string {
 // randomHex returns n random bytes hex-encoded (2n chars). Falls back to a
 // time-seeded value if the system RNG fails (never expected).
 func randomHex(n int) string {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
+	buf := make([]byte, n)
+	if _, err := rand.Read(buf); err != nil {
 		return strconv.FormatInt(time.Now().UnixNano(), 16)
 	}
 
-	return hex.EncodeToString(b)
+	return hex.EncodeToString(buf)
 }

@@ -304,12 +304,27 @@ func TestBuildDigestAuthorization(t *testing.T) {
 	r.NotContains(authLegacy, "qop=")
 }
 
-// fakeUDPServer answers SIP datagrams with a fixed response. If respond is
-// empty it stays silent (to exercise the timeout path).
-func fakeUDPServer(t *testing.T, respond string) (host string, port int) {
+// hostPort splits an "ip:port" address into host and integer port.
+func hostPort(t *testing.T, addr string) (string, int) {
 	t.Helper()
 
-	pc, err := net.ListenPacket("udp", "127.0.0.1:0")
+	host, portStr, err := net.SplitHostPort(addr)
+	require.NoError(t, err)
+
+	port, err := strconv.Atoi(portStr)
+	require.NoError(t, err)
+
+	return host, port
+}
+
+// fakeUDPServer answers SIP datagrams with a fixed response. If respond is
+// empty it stays silent (to exercise the timeout path).
+func fakeUDPServer(t *testing.T, respond string) (string, int) {
+	t.Helper()
+
+	var lc net.ListenConfig
+
+	pc, err := lc.ListenPacket(context.Background(), "udp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = pc.Close() })
@@ -318,7 +333,7 @@ func fakeUDPServer(t *testing.T, respond string) (host string, port int) {
 		buf := make([]byte, 4096)
 
 		for {
-			n, addr, err := pc.ReadFrom(buf)
+			_, addr, err := pc.ReadFrom(buf)
 			if err != nil {
 				return
 			}
@@ -326,23 +341,21 @@ func fakeUDPServer(t *testing.T, respond string) (host string, port int) {
 			if respond != "" {
 				_, _ = pc.WriteTo([]byte(respond), addr)
 			}
-
-			_ = n
 		}
 	}()
 
-	addr := pc.LocalAddr().(*net.UDPAddr)
-
-	return "127.0.0.1", addr.Port
+	return hostPort(t, pc.LocalAddr().String())
 }
 
 // fakeTCPServer answers each incoming connection with the next response in
 // order (one response per connection). The checker dials a fresh connection
 // per SIP transaction, so a REGISTER handshake consumes two responses.
-func fakeTCPServer(t *testing.T, responses []string) (host string, port int) {
+func fakeTCPServer(t *testing.T, responses []string) (string, int) {
 	t.Helper()
 
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
 	t.Cleanup(func() { _ = ln.Close() })
@@ -367,9 +380,7 @@ func fakeTCPServer(t *testing.T, responses []string) (host string, port int) {
 		}
 	}()
 
-	addr := ln.Addr().(*net.TCPAddr)
-
-	return "127.0.0.1", addr.Port
+	return hostPort(t, ln.Addr().String())
 }
 
 func handleTCPConn(conn net.Conn, resp string) {
@@ -475,9 +486,11 @@ func TestSIPChecker_Execute_Options_Refused(t *testing.T) {
 	r := require.New(t)
 
 	// Bind a TCP listener then close it to get a refused/closed port.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+
+	ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 	r.NoError(err)
-	port := ln.Addr().(*net.TCPAddr).Port
+	_, port := hostPort(t, ln.Addr().String())
 	r.NoError(ln.Close())
 
 	cfg := &SIPConfig{Host: "127.0.0.1", Port: port, Transport: "tcp", Mode: "options", Timeout: 2 * time.Second}
@@ -503,7 +516,9 @@ func TestSIPChecker_Execute_Register(t *testing.T) {
 			requests []string
 		)
 
-		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		var lc net.ListenConfig
+
+		ln, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
 		r.NoError(err)
 
 		t.Cleanup(func() { _ = ln.Close() })
@@ -538,10 +553,10 @@ func TestSIPChecker_Execute_Register(t *testing.T) {
 			}
 		}()
 
-		addr := ln.Addr().(*net.TCPAddr)
+		_, port := hostPort(t, ln.Addr().String())
 		cfg := &SIPConfig{
 			Host:      "127.0.0.1",
-			Port:      addr.Port,
+			Port:      port,
 			Transport: "tcp",
 			Mode:      "register",
 			Domain:    "asterisk",
