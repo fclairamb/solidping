@@ -65,6 +65,10 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 		opts.MinWidth = minWidth
 	}
 
+	if width, ok := parseIntParam(req.URL.Query().Get("width"), 60, 800); ok {
+		opts.Width = width
+	}
+
 	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, components, opts)
 	if err != nil {
 		return h.handleError(writer, err)
@@ -72,39 +76,6 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 
 	writer.Header().Set("Content-Type", "image/svg+xml")
 	writer.Header().Set("Cache-Control", "public, max-age=60")
-	writer.WriteHeader(http.StatusOK)
-	_, _ = writer.Write([]byte(svg))
-
-	return nil
-}
-
-// GetUptimeBar handles GET requests for uptime bar SVG images.
-func (h *Handler) GetUptimeBar(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgSlug := req.Param("org")
-	checkIdentifier := req.Param("check")
-
-	opts := UptimeBarOptions{
-		Period: req.URL.Query().Get("period"),
-		Style:  req.URL.Query().Get("style"),
-		Width:  300,
-		Height: 20,
-	}
-
-	if barWidth, ok := parseIntParam(req.URL.Query().Get("width"), 60, 800); ok {
-		opts.Width = barWidth
-	}
-
-	if barHeight, ok := parseIntParam(req.URL.Query().Get("height"), 10, 40); ok {
-		opts.Height = barHeight
-	}
-
-	svg, err := h.svc.GenerateUptimeBar(req.Context(), orgSlug, checkIdentifier, opts)
-	if err != nil {
-		return h.handleError(writer, err)
-	}
-
-	writer.Header().Set("Content-Type", "image/svg+xml")
-	writer.Header().Set("Cache-Control", "public, max-age=300")
 	writer.WriteHeader(http.StatusOK)
 	_, _ = writer.Write([]byte(svg))
 

@@ -21,29 +21,28 @@ var (
 
 // Component token constants.
 const (
-	componentStatus       = "status"
-	componentAvailability = "availability"
-	componentDuration     = "duration"
-	componentResponseTime = "response-time"
-	statusUp              = "up"
-	statusDown            = "down"
-	statusUnknown         = "unknown"
+	componentStatus            = "status"
+	componentAvailability      = "availability"
+	componentDuration          = "duration"
+	componentResponseTime      = "response-time"
+	componentUptimeBar         = "uptime-bar"
+	componentResponseTimeGraph = "response-time-graph"
+	statusUp                   = "up"
+	statusDown                 = "down"
+	statusUnknown              = "unknown"
 )
 
-// UptimeBarOptions contains options for uptime bar generation.
-type UptimeBarOptions struct {
-	Period string // "24h", "7d", "30d", "90d"
-	Width  int    // px, default 300, range 60-800
-	Height int    // px, default 20, range 10-40
-	Style  string // "flat", "flat-square"
-}
+// defaultBadgeWidth is the combined image width used when a bar or graph row is
+// present and no explicit width is requested.
+const defaultBadgeWidth = 300
 
 // BadgeOptions contains options for badge generation.
 type BadgeOptions struct {
-	Period   string // "1h", "24h", "7d", "30d"
+	Period   string // "24h", "7d", "30d", "90d"
 	Label    string // Custom label (default: check name)
 	Style    string // "flat", "flat-square"
 	MinWidth int    // 0 = no minimum
+	Width    int    // combined width for bar/graph rows; 0 = use default
 }
 
 // Service provides badge generation functionality.
@@ -58,6 +57,17 @@ func NewService(dbSvc db.Service) *Service {
 
 func isAllowedComponent(token string) bool {
 	switch token {
+	case componentStatus, componentAvailability, componentDuration, componentResponseTime,
+		componentUptimeBar, componentResponseTimeGraph:
+		return true
+	default:
+		return false
+	}
+}
+
+// isTextToken reports whether a token renders as text in row 1.
+func isTextToken(token string) bool {
+	switch token {
 	case componentStatus, componentAvailability, componentDuration, componentResponseTime:
 		return true
 	default:
@@ -66,6 +76,8 @@ func isAllowedComponent(token string) bool {
 }
 
 // parseComponents validates and returns the ordered list of component tokens.
+// Every token is optional; the only requirements are that the path segment is
+// non-empty and that each token is known and unique.
 func parseComponents(raw string) ([]string, error) {
 	parts := strings.Split(raw, ",")
 	seen := make(map[string]bool, len(parts))
@@ -85,15 +97,14 @@ func parseComponents(raw string) ([]string, error) {
 		result = append(result, token)
 	}
 
-	// At least one primary metric (status or availability) is required.
-	if !seen[componentStatus] && !seen[componentAvailability] {
+	if len(result) == 0 {
 		return nil, ErrInvalidFormat
 	}
 
 	return result, nil
 }
 
-// GenerateBadge generates an SVG badge for a check.
+// GenerateBadge generates a composable multi-row SVG badge for a check.
 func (s *Service) GenerateBadge(
 	ctx context.Context, orgSlug, checkIdentifier, components string, opts BadgeOptions,
 ) (string, error) {
@@ -118,19 +129,151 @@ func (s *Service) GenerateBadge(
 	// 4. Set defaults.
 	opts = s.applyDefaults(opts, check)
 
-	// 5. Fetch results.
-	results, err := s.fetchResults(ctx, org.UID, check.UID, tokens, opts.Period)
+	// 5. Split tokens into row-1 text tokens and bar/graph rows.
+	textTokens := make([]string, 0, len(tokens))
+	hasBar := false
+	hasGraph := false
+
+	for _, token := range tokens {
+		switch token {
+		case componentUptimeBar:
+			hasBar = true
+		case componentResponseTimeGraph:
+			hasGraph = true
+		default:
+			if isTextToken(token) {
+				textTokens = append(textTokens, token)
+			}
+		}
+	}
+
+	// 6. Fetch row-1 data.
+	results, err := s.fetchResults(ctx, org.UID, check.UID, textTokens, opts.Period)
 	if err != nil {
 		return "", err
 	}
 
-	// 6. Compose value substrings in URL order.
-	value := s.composeValue(tokens, results)
+	// 7. Determine combined width.
+	width := opts.MinWidth
+	if hasBar || hasGraph {
+		width = opts.Width
+		if width <= 0 {
+			width = defaultBadgeWidth
+		}
+	}
 
-	// 7. Resolve color.
-	color := resolveColor(tokens, results)
+	// 8. Render row 1.
+	value := s.composeValue(textTokens, results)
+	color := resolveColor(textTokens, results)
+	rows := []string{renderBadgeRow(opts.Label, value, color, opts.Style, width, 0)}
 
-	return GenerateSVG(opts.Label, value, color, opts.Style, opts.MinWidth), nil
+	totalHeight := rowHeightText
+
+	// 9. Fetch bucket data and render bar/graph rows.
+	if hasBar || hasGraph {
+		availMap, durationMap, bucketStart, n, bucketDuration, ferr := s.fetchBucketData(
+			ctx, org.UID, check.UID, opts.Period,
+		)
+		if ferr != nil {
+			return "", ferr
+		}
+
+		if hasBar {
+			segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
+			y := totalHeight + rowGap
+			rows = append(rows, renderUptimeBarRow(segments, width, rowHeightBar, y, opts.Style))
+			totalHeight = y + rowHeightBar
+		}
+
+		if hasGraph {
+			points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
+			y := totalHeight + rowGap
+			rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, y, opts.Style))
+			totalHeight = y + rowHeightGraph
+		}
+	}
+
+	// 10. Compute final width (row 1 natural width for text-only badges).
+	if width <= 0 {
+		_, _, width = textWidths(opts.Label, value, opts.MinWidth)
+	}
+
+	return ComposeBadgeSVG(rows, width, totalHeight), nil
+}
+
+// fetchBucketData runs the aggregated bucket query once and returns the per
+// bucket availability and average-duration maps shared by the bar and graph
+// rows, along with the bucket window parameters.
+func (s *Service) fetchBucketData(
+	ctx context.Context, orgUID, checkUID, period string,
+) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
+	periodType, n, bucketDuration := uptimeBarPeriodInfo(period)
+
+	now := time.Now().UTC()
+	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
+
+	filter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        []string{checkUID},
+		PeriodTypes:      []string{periodType},
+		PeriodStartAfter: &bucketStart,
+	}
+
+	res, err := s.dbSvc.ListResults(ctx, filter)
+	if err != nil {
+		return nil, nil, time.Time{}, 0, 0, err
+	}
+
+	availMap := make(map[time.Time]float64, len(res.Results))
+	durationMap := make(map[time.Time]*float64, len(res.Results))
+
+	for _, r := range res.Results {
+		bucket := r.PeriodStart.UTC().Truncate(bucketDuration)
+
+		if r.AvailabilityPct != nil {
+			availMap[bucket] = *r.AvailabilityPct
+		}
+
+		if r.DurationAvg != nil {
+			v := float64(*r.DurationAvg)
+			durationMap[bucket] = &v
+		}
+	}
+
+	return availMap, durationMap, bucketStart, n, bucketDuration, nil
+}
+
+// buildBarSegments resolves the colored segments for the uptime bar row.
+func buildBarSegments(
+	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []string {
+	segments := make([]string, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			segments[i] = uptimeBarColor(pct)
+		} else {
+			segments[i] = ColorGray
+		}
+	}
+
+	return segments
+}
+
+// buildGraphPoints resolves the per-bucket average response times (oldest →
+// newest); nil entries mark buckets with no data.
+func buildGraphPoints(
+	durationMap map[time.Time]*float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []*float64 {
+	points := make([]*float64, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		points[i] = durationMap[t]
+	}
+
+	return points
 }
 
 // uptimeBarPeriodInfo returns the periodType, number of segments, and bucket
@@ -160,64 +303,6 @@ func uptimeBarColor(pct float64) string {
 	default:
 		return ColorRed
 	}
-}
-
-// GenerateUptimeBar generates an SVG uptime bar for a check.
-func (s *Service) GenerateUptimeBar(
-	ctx context.Context, orgSlug, checkIdentifier string, opts UptimeBarOptions,
-) (string, error) {
-	// 1. Resolve organization.
-	org, err := s.dbSvc.GetOrganizationBySlug(ctx, orgSlug)
-	if err != nil {
-		return "", ErrOrganizationNotFound
-	}
-
-	// 2. Resolve check by UID or slug (auto-detected).
-	check, err := s.dbSvc.GetCheckByUidOrSlug(ctx, org.UID, checkIdentifier)
-	if err != nil || check == nil {
-		return "", ErrCheckNotFound
-	}
-
-	// 3. Determine period info.
-	periodType, n, bucketDuration := uptimeBarPeriodInfo(opts.Period)
-
-	// 4. Compute bucket start: go back N full buckets from the current bucket boundary.
-	now := time.Now().UTC()
-	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
-
-	// 5. Fetch aggregated results.
-	filter := &models.ListResultsFilter{
-		OrganizationUID:  org.UID,
-		CheckUIDs:        []string{check.UID},
-		PeriodTypes:      []string{periodType},
-		PeriodStartAfter: &bucketStart,
-	}
-
-	res, err := s.dbSvc.ListResults(ctx, filter)
-	if err != nil {
-		return "", err
-	}
-
-	// 6. Build map of period_start → availability_pct.
-	availMap := make(map[time.Time]float64, len(res.Results))
-	for _, r := range res.Results {
-		if r.AvailabilityPct != nil {
-			availMap[r.PeriodStart.UTC().Truncate(bucketDuration)] = *r.AvailabilityPct
-		}
-	}
-
-	// 7. Iterate N buckets and resolve colors.
-	segments := make([]string, n)
-	for i := range n {
-		t := bucketStart.Add(time.Duration(i) * bucketDuration)
-		if pct, ok := availMap[t]; ok {
-			segments[i] = uptimeBarColor(pct)
-		} else {
-			segments[i] = ColorGray
-		}
-	}
-
-	return GenerateUptimeBarSVG(segments, opts.Width, opts.Height, opts.Style), nil
 }
 
 // fetchResults fetches the results needed for the given tokens.
@@ -298,7 +383,7 @@ func (s *Service) composeValue(tokens []string, results []*models.Result) string
 
 func (s *Service) applyDefaults(opts BadgeOptions, check *models.Check) BadgeOptions {
 	if opts.Period == "" {
-		opts.Period = "24h"
+		opts.Period = "30d"
 	}
 
 	if opts.Label == "" && check.Name != nil {
@@ -453,14 +538,14 @@ func calculateStatusDuration(results []*models.Result) (time.Duration, bool, boo
 
 func parsePeriod(period string) time.Duration {
 	switch period {
-	case "1h":
-		return time.Hour
+	case "24h":
+		return 24 * time.Hour
 	case "7d":
 		return 7 * 24 * time.Hour
-	case "30d":
+	case "90d":
+		return 90 * 24 * time.Hour
+	default: // "30d"
 		return 30 * 24 * time.Hour
-	default: // "24h"
-		return 24 * time.Hour
 	}
 }
 
