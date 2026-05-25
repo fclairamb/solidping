@@ -118,7 +118,7 @@ func TestNetworkDiscoveryPlanFansOut(t *testing.T) {
 
 	// The plan records the chunk total as the progress denominator.
 	r.NotNil(f.plan.Output)
-	r.Equal(float64(4), toFloat(f.plan.Output["totalChunks"]))
+	r.Equal(4, toInt(f.plan.Output["totalChunks"]))
 }
 
 func TestNetworkDiscoveryPlanSingleChunk(t *testing.T) {
@@ -146,15 +146,15 @@ func TestNetworkDiscoveryPlanRejectsTooLarge(t *testing.T) {
 	r.ErrorIs(err, disc.ErrRangeTooLarge)
 }
 
-// toFloat coerces a JSON-decoded numeric value to float64 for assertions.
-func toFloat(v any) float64 {
+// toInt coerces a JSON-decoded numeric value to int for assertions.
+func toInt(v any) int {
 	switch n := v.(type) {
 	case float64:
-		return n
+		return int(n)
 	case int:
-		return float64(n)
+		return n
 	case int64:
-		return float64(n)
+		return int(n)
 	default:
 		return -1
 	}

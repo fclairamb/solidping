@@ -71,7 +71,7 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		"parent_job_uid", r.config.ParentJobUID,
 	)
 
-	hosts, err := disc.Scan(ctx, r.config)
+	hosts, err := disc.Scan(ctx, &r.config)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}

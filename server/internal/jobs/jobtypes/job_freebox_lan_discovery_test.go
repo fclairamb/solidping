@@ -26,7 +26,7 @@ import (
 // the scanner's default set, so the active scan finds a genuinely open port.
 // The candidate list mirrors discovery.defaultPorts (which is package-private),
 // since the Freebox job uses the scanner's default port list.
-func listenOnDefaultPort(t *testing.T) (net.Listener, int) {
+func listenOnDefaultPort(t *testing.T) int {
 	t.Helper()
 
 	defaultScannerPorts := []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
@@ -38,13 +38,13 @@ func listenOnDefaultPort(t *testing.T) (net.Listener, int) {
 		if err == nil {
 			t.Cleanup(func() { _ = ln.Close() })
 
-			return ln, port
+			return port
 		}
 	}
 
 	t.Skip("no default scanner port free to listen on")
 
-	return nil, 0
+	return 0
 }
 
 // fbDiscoveryFixture stands up an in-memory db + disabled credentials + a fake
@@ -230,7 +230,7 @@ func TestFreeboxLanDiscoveryActivelyScansHosts(t *testing.T) {
 	// A real listener on a default scanner port confirms the active scan ran:
 	// the corresponding Freebox host must come back with that port open and a
 	// non-empty suggested-checks list.
-	_, openPort := listenOnDefaultPort(t)
+	openPort := listenOnDefaultPort(t)
 
 	srv := startFakeFreeboxLAN(t, []freebox.RawLanHost{
 		{

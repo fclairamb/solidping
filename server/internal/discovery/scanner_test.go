@@ -21,7 +21,7 @@ func TestScanLocalhost(t *testing.T) {
 		Ports: []int{80, 443},
 	}
 
-	hosts, err := Scan(ctx, cfg)
+	hosts, err := Scan(ctx, &cfg)
 	r.NoError(err)
 	// The scan may return zero hosts if nothing is listening, but it must not error.
 	r.NotNil(hosts)
@@ -33,7 +33,7 @@ func TestScanInvalidCIDR(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	_, err := Scan(ctx, Config{
+	_, err := Scan(ctx, &Config{
 		CIDRs: []string{"invalid"},
 		Ports: []int{80},
 	})
@@ -46,7 +46,7 @@ func TestScanTooLarge(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	_, err := Scan(ctx, Config{
+	_, err := Scan(ctx, &Config{
 		CIDRs: []string{"10.0.0.0/8"},
 		Ports: []int{80},
 	})
@@ -74,7 +74,7 @@ func TestScanHostsHostnameHintPrecedence(t *testing.T) {
 		{IP: net.ParseIP("127.0.0.1"), HostnameHint: "my-device"},
 	}
 
-	results, err := ScanHosts(ctx, hosts, Config{Ports: []int{port}})
+	results, err := ScanHosts(ctx, hosts, &Config{Ports: []int{port}})
 	r.NoError(err)
 	r.Len(results, 1, "the listening host must be reported")
 
@@ -96,7 +96,7 @@ func TestScanHostsUnresponsiveOmitted(t *testing.T) {
 		{IP: net.ParseIP("192.0.2.1"), HostnameHint: "test-net-host"}, // TEST-NET-1
 	}
 
-	results, err := ScanHosts(ctx, hosts, Config{Ports: []int{9}, Timeout: "200ms"})
+	results, err := ScanHosts(ctx, hosts, &Config{Ports: []int{9}, Timeout: "200ms"})
 	r.NoError(err)
 	r.NotNil(results)
 }
@@ -108,7 +108,7 @@ func TestScanHostsDefaultsAndIgnoresCIDRs(t *testing.T) {
 	ctx := context.Background()
 
 	// cfg.CIDRs is ignored by ScanHosts; nil port list falls back to defaults.
-	results, err := ScanHosts(ctx, nil, Config{CIDRs: []string{"invalid-cidr-ignored"}})
+	results, err := ScanHosts(ctx, nil, &Config{CIDRs: []string{"invalid-cidr-ignored"}})
 	r.NoError(err)
 	r.NotNil(results)
 	r.Empty(results)
@@ -120,7 +120,7 @@ func TestScanHostsInvalidTimeout(t *testing.T) {
 	r := require.New(t)
 	ctx := context.Background()
 
-	_, err := ScanHosts(ctx, []HostInput{{IP: net.ParseIP("127.0.0.1")}}, Config{Timeout: "notaduration"})
+	_, err := ScanHosts(ctx, []HostInput{{IP: net.ParseIP("127.0.0.1")}}, &Config{Timeout: "notaduration"})
 	r.Error(err)
 }
 

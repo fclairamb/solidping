@@ -136,7 +136,7 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "cidrs is required")
 	}
 
-	job, err := h.svc.StartScan(req.Context(), org.UID, cfg)
+	job, err := h.svc.StartScan(req.Context(), org.UID, &cfg)
 
 	switch {
 	case errors.Is(err, disc.ErrRangeTooLarge):

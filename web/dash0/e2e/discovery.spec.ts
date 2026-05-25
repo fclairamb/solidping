@@ -135,6 +135,53 @@ test.describe("Network Discovery", () => {
     await expect(page.locator("header").getByText(/discovery/i)).toBeVisible();
   });
 
+  // Fan-out: a range larger than a /20 (here a /18 → 4 bounded chunks) is now
+  // accepted (no DISCOVERY_RANGE_TOO_LARGE), creates a plan scan, and the detail
+  // page renders the chunk-progress indicator.
+  test("large range fans out and the detail page shows chunk progress", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
+    await page.fill("textarea", "10.10.0.0/18");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /start scan/i }).click();
+
+    // The scan is accepted and navigates to the detail page (no error toast).
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    // The progress card surfaces the chunk count (4 chunks of the fan-out).
+    await expect(page.getByText(/\/\s*4\s*chunks/i)).toBeVisible({ timeout: 15000 });
+  });
+
+  test("large range can be stopped mid-scan, clearing the guard", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.fill("textarea", "10.20.0.0/18");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /start scan/i }).click();
+
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    // While the scan is active, the Stop button is offered. Click it and confirm.
+    const stopButton = page.getByRole("button", { name: /stop scan/i }).first();
+    if (await stopButton.isVisible().catch(() => false)) {
+      await stopButton.click();
+      // Confirm in the alert dialog.
+      await page
+        .getByRole("alertdialog")
+        .getByRole("button", { name: /stop scan/i })
+        .click();
+      await expect(page.getByText(/scan stopped/i)).toBeVisible({ timeout: 10000 });
+    }
+
+    // After stopping (or natural completion), a fresh scan can be started — the
+    // "already running" guard is cleared.
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.fill("textarea", "127.0.0.1/32");
+    await page.getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();

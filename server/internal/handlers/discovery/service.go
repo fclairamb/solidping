@@ -106,7 +106,7 @@ func NewService(
 // is the scan UID; when it runs it splits the range into bounded child jobs.
 // Returns ErrRangeTooLarge if the range exceeds MaxScanChunks, ErrAlreadyRunning
 // if another scan is in progress.
-func (s *Service) StartScan(ctx context.Context, orgUID string, cfg disc.Config) (*models.Job, error) {
+func (s *Service) StartScan(ctx context.Context, orgUID string, cfg *disc.Config) (*models.Job, error) {
 	if err := disc.ValidatePlanCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
 	}
@@ -229,7 +229,7 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 		TableExpr("jobs").
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscoveryPlan)).
 		Where("organization_uid = ?", orgUID).
-		Where("status IN (?)", bun.In([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Where("deleted_at IS NULL").
 		Count(ctx)
 	if err != nil {
@@ -247,7 +247,7 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 		TableExpr("jobs").
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
 		Where("organization_uid = ?", orgUID).
-		Where("status IN (?)", bun.In([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Where("deleted_at IS NULL").
 		Where("updated_at >= ?", staleBefore).
 		Count(ctx)

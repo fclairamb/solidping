@@ -42,7 +42,7 @@ func TestNetworkDiscoveryChildRollsUpUnderParent(t *testing.T) {
 	r.NoError(dbSvc.CreateJob(ctx, child))
 
 	// Listen on a default scanner port so 127.0.0.1 is found responsive.
-	_, openPort := listenOnDefaultPort(t)
+	openPort := listenOnDefaultPort(t)
 
 	def := &jobtypes.NetworkDiscoveryJobDefinition{}
 	cfgBytes, err := json.Marshal(disc.Config{

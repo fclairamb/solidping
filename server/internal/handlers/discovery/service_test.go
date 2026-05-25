@@ -339,7 +339,7 @@ func TestStartScanCreatesPlanJob(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	job, err := f.svc.StartScan(t.Context(), f.org.UID, disc.Config{CIDRs: []string{"10.0.0.0/18"}})
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"10.0.0.0/18"}})
 	r.NoError(err)
 	r.NotNil(job)
 	r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), job.Type, "StartScan must create a plan job")
@@ -351,7 +351,7 @@ func TestStartScanRejectsRangeOverCeiling(t *testing.T) {
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 
-	_, err := f.svc.StartScan(t.Context(), f.org.UID, disc.Config{CIDRs: []string{"10.0.0.0/11"}})
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"10.0.0.0/11"}})
 	r.ErrorIs(err, disc.ErrRangeTooLarge)
 }
 
@@ -368,7 +368,7 @@ func TestStartScanGuardsOnPendingChild(t *testing.T) {
 	r.NoError(f.dbSvc.CreateJob(ctx, plan))
 	f.newChildJob(t, plan.UID, models.JobStatusPending)
 
-	_, err := f.svc.StartScan(ctx, f.org.UID, disc.Config{CIDRs: []string{"192.168.1.0/24"}})
+	_, err := f.svc.StartScan(ctx, f.org.UID, &disc.Config{CIDRs: []string{"192.168.1.0/24"}})
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
@@ -393,7 +393,7 @@ func TestStartScanIgnoresStaleRunningChild(t *testing.T) {
 		Exec(ctx)
 	r.NoError(err)
 
-	job, err := f.svc.StartScan(ctx, f.org.UID, disc.Config{CIDRs: []string{"192.168.1.0/24"}})
+	job, err := f.svc.StartScan(ctx, f.org.UID, &disc.Config{CIDRs: []string{"192.168.1.0/24"}})
 	r.NoError(err, "a stale running child must not block a new scan")
 	r.NotNil(job)
 }

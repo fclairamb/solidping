@@ -116,15 +116,15 @@ func SplitCIDRs(cidrs []string, maxPerChunk int) ([][]string, error) {
 	current := make([]string, 0, 1)
 	currentSize := 0
 
-	for _, b := range blocks {
-		if currentSize+b.size > maxPerChunk && len(current) > 0 {
+	for _, blk := range blocks {
+		if currentSize+blk.size > maxPerChunk && len(current) > 0 {
 			chunks = append(chunks, current)
 			current = make([]string, 0, 1)
 			currentSize = 0
 		}
 
-		current = append(current, b.cidr)
-		currentSize += b.size
+		current = append(current, blk.cidr)
+		currentSize += blk.size
 	}
 
 	if len(current) > 0 {
