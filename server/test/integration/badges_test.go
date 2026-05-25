@@ -629,7 +629,13 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 	now := time.Now().UTC()
 	workerUID := badgeMTWorkerUID
 
-	// Raw result: up, 50ms — falls in the current day bucket.
+	// Place data 2 days ago so it always falls within the 30-day window regardless of
+	// what time of day the test runs. The 30d window covers [now.Truncate(24h)-30d,
+	// now.Truncate(24h)), so yesterday's midnight bucket (now.Truncate(24h)-24h) is
+	// always within the window.
+	yesterday := now.Truncate(24 * time.Hour).Add(-24 * time.Hour)
+
+	// Raw result: up, 50ms — falls in yesterday's day bucket.
 	statusUp := int(models.ResultStatusUp)
 	rawDuration := float32(50.0)
 	rawResult := &models.Result{
@@ -639,7 +645,7 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 		WorkerUID:       &workerUID,
 		Region:          &region,
 		PeriodType:      models.PeriodTypeRaw,
-		PeriodStart:     now.Add(-30 * time.Minute),
+		PeriodStart:     yesterday.Add(time.Hour), // within yesterday
 		Status:          &statusUp,
 		Duration:        &rawDuration,
 		Output:          models.JSONMap{"message": "OK"},
@@ -649,20 +655,19 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 		t.Fatalf("failed to create mt raw result: %v", err)
 	}
 
-	// Hour-aggregated result: 10 total, 8 up, avg 120ms — in the current day bucket.
+	// Hour-aggregated result: 10 total, 8 up, avg 120ms — also in yesterday's day bucket.
 	total := 10
 	successful := 8
 	availPct := 80.0
 	avgDur := float32(120.0)
-	dayBucketStart := now.Truncate(24 * time.Hour)
-	dayBucketEnd := dayBucketStart.Add(24 * time.Hour)
+	dayBucketEnd := yesterday.Add(24 * time.Hour)
 	hourResult := &models.Result{
 		UID:              badgeMTHourUID,
 		OrganizationUID:  orgUID,
 		CheckUID:         badgeMTCheckUID,
 		Region:           &region,
 		PeriodType:       models.PeriodTypeHour,
-		PeriodStart:      dayBucketStart,
+		PeriodStart:      yesterday, // yesterday midnight
 		PeriodEnd:        &dayBucketEnd,
 		TotalChecks:      &total,
 		SuccessfulChecks: &successful,
@@ -676,8 +681,8 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 }
 
 // TestBadges_UptimeBarHasNonGreyRect asserts that when raw + hour rows exist
-// in the current window, the uptime-bar SVG contains at least one non-grey
-// coloured rect.
+// in the current window, the uptime-bar SVG contains at least one non-gray
+// colored rect.
 func TestBadges_UptimeBarHasNonGreyRect(t *testing.T) {
 	t.Parallel()
 
@@ -703,7 +708,7 @@ func TestBadges_UptimeBarHasNonGreyRect(t *testing.T) {
 	// Must contain at least one non-grey rect (red, because avg availability < 99%).
 	r.Contains(svg, `<rect x=`)
 	// Grey-only bars use only #9f9f9f; presence of any other color proves a bucket has data.
-	r.NotEqual(0, countNonGreyRects(svg), "expected at least one non-grey segment in uptime bar")
+	r.NotEqual(0, countNonGreyRects(svg), "expected at least one non-gray segment in uptime bar")
 }
 
 // TestBadges_ResponseTimeGraphHasPolyline asserts that seeded raw + hour data

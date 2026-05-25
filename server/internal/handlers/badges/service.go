@@ -236,6 +236,66 @@ type bucketAccumulator struct {
 	durCnt int
 }
 
+// accumulateRaw merges a raw result row into acc.
+// Returns false when the row should be skipped (created/running status).
+func (acc *bucketAccumulator) accumulateRaw(result *models.Result) {
+	if result.Status == nil {
+		return
+	}
+
+	st := models.ResultStatus(*result.Status)
+	if st == models.ResultStatusCreated || st == models.ResultStatusRunning {
+		return
+	}
+
+	acc.total++
+
+	if *result.Status == int(models.ResultStatusUp) {
+		acc.up++
+	}
+
+	if result.Duration != nil {
+		acc.durSum += float64(*result.Duration)
+		acc.durCnt++
+	}
+}
+
+// accumulateAgg merges an hour/day aggregated result row into acc.
+func (acc *bucketAccumulator) accumulateAgg(result *models.Result) {
+	if result.TotalChecks != nil {
+		acc.total += *result.TotalChecks
+	}
+
+	if result.SuccessfulChecks != nil {
+		acc.up += *result.SuccessfulChecks
+	}
+
+	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
+		acc.durSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
+		acc.durCnt += *result.TotalChecks
+	}
+}
+
+// buildBucketMaps converts the per-bucket accumulators into the availability
+// and duration maps consumed by buildBarSegments / buildGraphPoints.
+func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]float64, map[time.Time]*float64) {
+	availMap := make(map[time.Time]float64, len(accMap))
+	durationMap := make(map[time.Time]*float64, len(accMap))
+
+	for bucket, acc := range accMap {
+		if acc.total > 0 {
+			availMap[bucket] = float64(acc.up) / float64(acc.total) * 100
+		}
+
+		if acc.durCnt > 0 {
+			v := acc.durSum / float64(acc.durCnt)
+			durationMap[bucket] = &v
+		}
+	}
+
+	return availMap, durationMap
+}
+
 // fetchBucketData runs a multi-tier query (raw + hour + day) and returns
 // per-bucket availability and average-duration maps. Because the tiers cover
 // non-overlapping age bands, unioning them never double-counts.
@@ -270,57 +330,14 @@ func (s *Service) fetchBucketData(
 			accMap[bucket] = acc
 		}
 
-		switch result.PeriodType {
-		case models.PeriodTypeRaw:
-			if result.Status == nil {
-				continue
-			}
-
-			s := models.ResultStatus(*result.Status)
-			if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
-				continue
-			}
-
-			acc.total++
-
-			if *result.Status == int(models.ResultStatusUp) {
-				acc.up++
-			}
-
-			if result.Duration != nil {
-				acc.durSum += float64(*result.Duration)
-				acc.durCnt++
-			}
-
-		default: // hour / day aggregated rows
-			if result.TotalChecks != nil {
-				acc.total += *result.TotalChecks
-			}
-
-			if result.SuccessfulChecks != nil {
-				acc.up += *result.SuccessfulChecks
-			}
-
-			if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
-				acc.durSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
-				acc.durCnt += *result.TotalChecks
-			}
+		if result.PeriodType == models.PeriodTypeRaw {
+			acc.accumulateRaw(result)
+		} else {
+			acc.accumulateAgg(result)
 		}
 	}
 
-	availMap := make(map[time.Time]float64, len(accMap))
-	durationMap := make(map[time.Time]*float64, len(accMap))
-
-	for bucket, acc := range accMap {
-		if acc.total > 0 {
-			availMap[bucket] = float64(acc.up) / float64(acc.total) * 100
-		}
-
-		if acc.durCnt > 0 {
-			v := acc.durSum / float64(acc.durCnt)
-			durationMap[bucket] = &v
-		}
-	}
+	availMap, durationMap := buildBucketMaps(accMap)
 
 	return availMap, durationMap, bucketStart, n, bucketDuration, nil
 }
