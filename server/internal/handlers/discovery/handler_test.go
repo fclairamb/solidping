@@ -214,7 +214,7 @@ func TestHandlerStartScanLargeRangeStillRejected(t *testing.T) {
 	router := f.newRouter(t)
 
 	path := "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
-	rec := f.doAdminRequest(t, router, http.MethodPost, path, disc.Config{CIDRs: []string{"10.0.0.0/11"}})
+	rec := f.doAdminRequest(t, router, http.MethodPost, path, disc.Config{CIDRs: []string{"0.0.0.0/7"}})
 	r.Equal(http.StatusUnprocessableEntity, rec.Code)
 	r.Contains(rec.Body.String(), "DISCOVERY_RANGE_TOO_LARGE")
 }
