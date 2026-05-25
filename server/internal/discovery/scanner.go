@@ -29,6 +29,11 @@ type Config struct {
 	Ports       []int    `json:"ports,omitempty"`
 	Concurrency int      `json:"concurrency,omitempty"`
 	Timeout     string   `json:"timeout,omitempty"`
+	// ParentJobUID, when set on a child network_discovery job, is the UID of the
+	// network_discovery_plan job that scheduled it. Discovered hosts roll up under
+	// the parent so the scan-detail page sees them all under one UID. The
+	// synchronous Scan ignores it.
+	ParentJobUID string `json:"parentJobUid,omitempty"`
 }
 
 // DiscoveredHost is a host discovered during a scan.

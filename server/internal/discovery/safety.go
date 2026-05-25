@@ -10,8 +10,14 @@ import (
 
 const (
 	// MaxAddresses is the maximum number of addresses that can be scanned in a single job.
-	// This corresponds to a /20 IPv4 network.
+	// This corresponds to a /20 IPv4 network. It stays the per-chunk cap for child
+	// network_discovery jobs.
 	MaxAddresses = 4096
+
+	// MaxScanChunks is the fixed overall ceiling on how many ≤MaxAddresses chunks a single
+	// fan-out scan may be split into. 256 chunks × 4096 addresses ≈ 1M addresses (a /12),
+	// which keeps a /8 from accidentally scheduling thousands of child jobs.
+	MaxScanChunks = 256
 
 	// ErrCodeRangeTooLarge is the error code returned when the CIDRs expand to more than MaxAddresses.
 	ErrCodeRangeTooLarge = "DISCOVERY_RANGE_TOO_LARGE"
@@ -57,6 +63,129 @@ func ValidateCIDRs(cidrs []string) error {
 	}
 
 	return nil
+}
+
+// ValidatePlanCIDRs validates the CIDRs for a fan-out scan plan. Each CIDR must
+// be a valid IPv4 network, and the total number of ≤MaxAddresses chunks the scan
+// would split into must not exceed MaxScanChunks. It returns ErrRangeTooLarge
+// (wrapped, with an updated message) when the chunk count exceeds the ceiling.
+func ValidatePlanCIDRs(cidrs []string) error {
+	chunks, err := SplitCIDRs(cidrs, MaxAddresses)
+	if err != nil {
+		return err
+	}
+
+	if len(chunks) > MaxScanChunks {
+		return fmt.Errorf(
+			"%w: %d chunks (max %d, ≈%d addresses)",
+			ErrRangeTooLarge, len(chunks), MaxScanChunks, MaxScanChunks*MaxAddresses,
+		)
+	}
+
+	return nil
+}
+
+// SplitCIDRs subdivides each input CIDR into ≤ /20 (MaxAddresses) blocks and packs
+// those blocks into chunks whose combined address count does not exceed maxPerChunk.
+// Every returned chunk is itself a valid set of CIDR strings that ValidateCIDRs
+// accepts, so each can drive an independent bounded network_discovery child job.
+// CIDRs larger than maxPerChunk are split; smaller CIDRs are packed together.
+func SplitCIDRs(cidrs []string, maxPerChunk int) ([][]string, error) {
+	if len(cidrs) == 0 {
+		return nil, errNoCIDRs
+	}
+
+	if maxPerChunk <= 0 {
+		maxPerChunk = MaxAddresses
+	}
+
+	// First, normalize every input CIDR into ≤ maxPerChunk-sized blocks.
+	blocks := make([]cidrBlock, 0, len(cidrs))
+
+	for _, cidr := range cidrs {
+		split, err := splitOneCIDR(cidr, maxPerChunk)
+		if err != nil {
+			return nil, err
+		}
+
+		blocks = append(blocks, split...)
+	}
+
+	// Then pack blocks greedily into chunks of ≤ maxPerChunk addresses.
+	chunks := make([][]string, 0, 1)
+	current := make([]string, 0, 1)
+	currentSize := 0
+
+	for _, b := range blocks {
+		if currentSize+b.size > maxPerChunk && len(current) > 0 {
+			chunks = append(chunks, current)
+			current = make([]string, 0, 1)
+			currentSize = 0
+		}
+
+		current = append(current, b.cidr)
+		currentSize += b.size
+	}
+
+	if len(current) > 0 {
+		chunks = append(chunks, current)
+	}
+
+	return chunks, nil
+}
+
+// cidrBlock is a single normalized CIDR block plus its address count.
+type cidrBlock struct {
+	cidr string
+	size int
+}
+
+// splitOneCIDR subdivides a single CIDR into blocks no larger than maxPerChunk
+// addresses. A CIDR already ≤ maxPerChunk is returned as one block; a larger CIDR
+// is recursively halved (mask + 1 on each side) until every piece fits.
+func splitOneCIDR(cidr string, maxPerChunk int) ([]cidrBlock, error) {
+	_, ipNet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, fmt.Errorf("invalid CIDR %q: %w", cidr, err)
+	}
+
+	ip4 := ipNet.IP.To4()
+	if ip4 == nil {
+		return nil, fmt.Errorf("CIDR %q: %w", cidr, errIPv6NotSupported)
+	}
+
+	size, err := cidrSize(ipNet)
+	if err != nil {
+		return nil, fmt.Errorf("cannot compute size for CIDR %q: %w", cidr, err)
+	}
+
+	if size <= maxPerChunk {
+		return []cidrBlock{{cidr: ipNet.String(), size: size}}, nil
+	}
+
+	ones, bits := ipNet.Mask.Size()
+
+	// Split into two halves by extending the prefix by one bit.
+	childOnes := ones + 1
+	start := binary.BigEndian.Uint32(ip4)
+	half := uint32(1) << uint(bits-childOnes)
+
+	blocks := make([]cidrBlock, 0, 2)
+
+	for _, base := range []uint32{start, start + half} {
+		b := make([]byte, 4)
+		binary.BigEndian.PutUint32(b, base)
+		childCIDR := fmt.Sprintf("%s/%d", net.IP(b).String(), childOnes)
+
+		split, splitErr := splitOneCIDR(childCIDR, maxPerChunk)
+		if splitErr != nil {
+			return nil, splitErr
+		}
+
+		blocks = append(blocks, split...)
+	}
+
+	return blocks, nil
 }
 
 // cidrSize returns the number of host addresses in the network (all IPs including network and broadcast).
