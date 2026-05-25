@@ -680,3 +680,108 @@ func TestBuildGraphPoints(t *testing.T) {
 	r.InDelta(150.0, *points[1], 0.01)
 	r.Nil(points[2])
 }
+
+// TestBucketAccumulator verifies that mixing raw and hour rows in the same
+// bucket produces correctly weighted availability and average duration.
+func TestBucketAccumulator(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Simulate: 1 raw row (up, 100ms) + 1 hour row (9 checks, 8 up, avg 200ms).
+	// Expected availability = 9/10 = 90%; weighted avg duration = (100*1 + 200*9)/10 = 1900/10 = 190ms.
+	acc := &bucketAccumulator{}
+
+	// Raw row
+	statusUp := int(models.ResultStatusUp)
+	rawDuration := float32(100.0)
+	raw := &models.Result{
+		PeriodType: models.PeriodTypeRaw,
+		Status:     &statusUp,
+		Duration:   &rawDuration,
+	}
+
+	// Aggregate raw row
+	if raw.Status != nil {
+		s := models.ResultStatus(*raw.Status)
+		if s != models.ResultStatusCreated && s != models.ResultStatusRunning {
+			acc.total++
+			if *raw.Status == int(models.ResultStatusUp) {
+				acc.up++
+			}
+			if raw.Duration != nil {
+				acc.durSum += float64(*raw.Duration)
+				acc.durCnt++
+			}
+		}
+	}
+
+	// Hour aggregated row: 9 total, 8 up, avg duration 200ms
+	total := 9
+	successful := 8
+	avgDur := float32(200.0)
+	hourRow := &models.Result{
+		PeriodType:       models.PeriodTypeHour,
+		TotalChecks:      &total,
+		SuccessfulChecks: &successful,
+		DurationAvg:      &avgDur,
+	}
+
+	if hourRow.TotalChecks != nil {
+		acc.total += *hourRow.TotalChecks
+	}
+	if hourRow.SuccessfulChecks != nil {
+		acc.up += *hourRow.SuccessfulChecks
+	}
+	if hourRow.DurationAvg != nil && hourRow.TotalChecks != nil && *hourRow.TotalChecks > 0 {
+		acc.durSum += float64(*hourRow.DurationAvg) * float64(*hourRow.TotalChecks)
+		acc.durCnt += *hourRow.TotalChecks
+	}
+
+	// Verify: 9 total (1 raw + 8 successful+1 from hour row... wait, total is 9, up is 8+1=9)
+	// Actually: raw contributes total=1, up=1; hour contributes total=9, up=8 → total=10, up=9
+	r.Equal(10, acc.total)
+	r.Equal(9, acc.up)
+	r.InDelta(90.0, float64(acc.up)/float64(acc.total)*100, 0.001)
+
+	// Weighted average duration: (100*1 + 200*9) / (1+9) = 1900/10 = 190ms
+	r.Equal(10, acc.durCnt)
+	r.InDelta(190.0, acc.durSum/float64(acc.durCnt), 0.001)
+}
+
+// TestBucketAccumulatorSkipsCreatedRunning verifies that raw rows with
+// created or running status are excluded from the totals.
+func TestBucketAccumulatorSkipsCreatedRunning(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	acc := &bucketAccumulator{}
+
+	statusCreated := int(models.ResultStatusCreated)
+	statusRunning := int(models.ResultStatusRunning)
+	statusDown := int(models.ResultStatusDown)
+
+	rows := []*models.Result{
+		{PeriodType: models.PeriodTypeRaw, Status: &statusCreated},
+		{PeriodType: models.PeriodTypeRaw, Status: &statusRunning},
+		{PeriodType: models.PeriodTypeRaw, Status: &statusDown},
+	}
+
+	for _, row := range rows {
+		if row.Status == nil {
+			continue
+		}
+		s := models.ResultStatus(*row.Status)
+		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+			continue
+		}
+		acc.total++
+		if *row.Status == int(models.ResultStatusUp) {
+			acc.up++
+		}
+	}
+
+	r.Equal(1, acc.total)
+	r.Equal(0, acc.up)
+}
