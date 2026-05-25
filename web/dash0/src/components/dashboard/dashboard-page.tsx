@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  getEventDescription,
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
@@ -752,22 +753,32 @@ function RecentActivityList({
           </div>
         ) : (
           <ul className="divide-y">
-            {events.map((event) => (
-              <li
-                key={event.uid}
-                className="flex items-center gap-3 py-3 text-sm"
-              >
-                <span className="shrink-0">{getEventIcon(event.eventType)}</span>
-                <span className="flex-1 truncate">
-                  {getEventLabel(event.eventType, tEvents)}
-                </span>
-                {event.createdAt ? (
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatRelative(new Date(event.createdAt), tickNow)}
-                  </span>
-                ) : null}
-              </li>
-            ))}
+            {events.map((event) => {
+              const description = getEventDescription(event.eventType, tEvents);
+              return (
+                <li
+                  key={event.uid}
+                  className="flex items-center gap-3 py-3 text-sm"
+                >
+                  <span className="shrink-0">{getEventIcon(event.eventType)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">
+                      {getEventLabel(event.eventType, tEvents)}
+                    </div>
+                    {description ? (
+                      <div className="text-xs text-muted-foreground truncate">
+                        {description}
+                      </div>
+                    ) : null}
+                  </div>
+                  {event.createdAt ? (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatRelative(new Date(event.createdAt), tickNow)}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>
@@ -776,9 +787,9 @@ function RecentActivityList({
           to="/orgs/$org/events"
           params={{ org }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
+          data-testid="recent-activity-footer"
         >
           {t("recentActivity.footer")}
-          <ArrowRight className="h-3 w-3" />
         </Link>
       </CardFooter>
     </Card>

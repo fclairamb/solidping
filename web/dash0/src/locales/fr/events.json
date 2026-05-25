@@ -24,7 +24,13 @@
     "incident.opened": "Incident ouvert",
     "incident.resolved": "Incident résolu",
     "incident.escalated": "Incident escaladé",
-    "incident.acknowledged": "Incident acquitté"
+    "incident.acknowledged": "Incident acquitté",
+    "org.activation.first_check_created": "Premier contrôle créé",
+    "org.activation.first_notification_configured": "Première notification configurée"
+  },
+  "descriptions": {
+    "org.activation.first_check_created": "Votre premier contrôle de disponibilité est actif et surveille.",
+    "org.activation.first_notification_configured": "Vous avez configuré votre premier canal de notification."
   },
   "links": {
     "check": "Contrôle",
