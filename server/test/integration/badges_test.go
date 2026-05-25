@@ -18,6 +18,12 @@ const (
 	badgeTestResultUID1 = "30000000-0000-0000-0000-000000000003"
 	badgeTestResultUID2 = "30000000-0000-0000-0000-000000000004"
 	badgeTestResultUID3 = "30000000-0000-0000-0000-000000000005"
+
+	// Multi-tier badge test fixtures (separate check to avoid UID collision).
+	badgeMTCheckUID  = "31000000-0000-0000-0000-000000000001"
+	badgeMTWorkerUID = "31000000-0000-0000-0000-000000000002"
+	badgeMTRawUID    = "31000000-0000-0000-0000-000000000003"
+	badgeMTHourUID   = "31000000-0000-0000-0000-000000000004"
 )
 
 // setupBadgesTestData creates test data for badge tests.
@@ -579,4 +585,200 @@ func TestBadges_PeriodOptions(t *testing.T) {
 			r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
 		})
 	}
+}
+
+// setupBadgesMultiTierData creates a dedicated check seeded with one raw row
+// and one hour-aggregated row in the current bucket window. This exercises the
+// multi-tier fetch path added to fetchBucketData.
+func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer) {
+	t.Helper()
+
+	dbSvc := ts.Server.DBService()
+	orgUID := "10000000-0000-0000-0000-000000000001"
+	region := "us-east-1"
+
+	worker := &models.Worker{
+		UID:       badgeMTWorkerUID,
+		Slug:      "badge-mt-worker",
+		Name:      "Badge Multi-Tier Worker",
+		Region:    &region,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := dbSvc.CreateWorker(ctx, worker); err != nil {
+		t.Fatalf("failed to create mt worker: %v", err)
+	}
+
+	checkName := "Badge MT Check"
+	checkSlug := "badge-mt-check"
+	check := &models.Check{
+		UID:             badgeMTCheckUID,
+		OrganizationUID: orgUID,
+		Name:            &checkName,
+		Slug:            &checkSlug,
+		Type:            "http",
+		Config:          models.JSONMap{"url": "https://example.com"},
+		Enabled:         true,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if err := dbSvc.CreateCheck(ctx, check); err != nil {
+		t.Fatalf("failed to create mt check: %v", err)
+	}
+
+	now := time.Now().UTC()
+	workerUID := badgeMTWorkerUID
+
+	// Raw result: up, 50ms — falls in the current day bucket.
+	statusUp := int(models.ResultStatusUp)
+	rawDuration := float32(50.0)
+	rawResult := &models.Result{
+		UID:             badgeMTRawUID,
+		OrganizationUID: orgUID,
+		CheckUID:        badgeMTCheckUID,
+		WorkerUID:       &workerUID,
+		Region:          &region,
+		PeriodType:      models.PeriodTypeRaw,
+		PeriodStart:     now.Add(-30 * time.Minute),
+		Status:          &statusUp,
+		Duration:        &rawDuration,
+		Output:          models.JSONMap{"message": "OK"},
+		CreatedAt:       now,
+	}
+	if err := dbSvc.CreateResult(ctx, rawResult); err != nil {
+		t.Fatalf("failed to create mt raw result: %v", err)
+	}
+
+	// Hour-aggregated result: 10 total, 8 up, avg 120ms — in the current day bucket.
+	total := 10
+	successful := 8
+	availPct := 80.0
+	avgDur := float32(120.0)
+	dayBucketStart := now.Truncate(24 * time.Hour)
+	dayBucketEnd := dayBucketStart.Add(24 * time.Hour)
+	hourResult := &models.Result{
+		UID:              badgeMTHourUID,
+		OrganizationUID:  orgUID,
+		CheckUID:         badgeMTCheckUID,
+		Region:           &region,
+		PeriodType:       models.PeriodTypeHour,
+		PeriodStart:      dayBucketStart,
+		PeriodEnd:        &dayBucketEnd,
+		TotalChecks:      &total,
+		SuccessfulChecks: &successful,
+		AvailabilityPct:  &availPct,
+		DurationAvg:      &avgDur,
+		CreatedAt:        now,
+	}
+	if err := dbSvc.CreateResult(ctx, hourResult); err != nil {
+		t.Fatalf("failed to create mt hour result: %v", err)
+	}
+}
+
+// TestBadges_UptimeBarHasNonGreyRect asserts that when raw + hour rows exist
+// in the current window, the uptime-bar SVG contains at least one non-grey
+// coloured rect.
+func TestBadges_UptimeBarHasNonGreyRect(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesMultiTierData(ctx, t, testServer)
+
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-mt-check/badges/uptime-bar?period=30d"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	// Must contain at least one non-grey rect (red, because avg availability < 99%).
+	r.Contains(svg, `<rect x=`)
+	// Grey-only bars use only #9f9f9f; presence of any other color proves a bucket has data.
+	r.NotEqual(0, countNonGreyRects(svg), "expected at least one non-grey segment in uptime bar")
+}
+
+// TestBadges_ResponseTimeGraphHasPolyline asserts that seeded raw + hour data
+// produces a <polyline> or area <path> in the response-time-graph SVG.
+func TestBadges_ResponseTimeGraphHasPolyline(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesMultiTierData(ctx, t, testServer)
+
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-mt-check/badges/response-time-graph?period=30d"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	// An empty graph only contains a rect frame; a non-empty one has a polyline or area path.
+	r.True(
+		containsString(svg, "<polyline") || containsString(svg, "<circle"),
+		"expected a polyline or dot in response-time-graph SVG; got only empty frame",
+	)
+}
+
+// countNonGreyRects counts fill attributes that are not the grey placeholder color.
+func countNonGreyRects(svg string) int {
+	const grey = "#9f9f9f"
+	count := 0
+	idx := 0
+
+	for {
+		pos := indexString(svg[idx:], `fill="`)
+		if pos < 0 {
+			break
+		}
+
+		pos += idx + len(`fill="`)
+		end := indexString(svg[pos:], `"`)
+
+		if end < 0 {
+			break
+		}
+
+		color := svg[pos : pos+end]
+		if color != grey {
+			count++
+		}
+
+		idx = pos + end + 1
+	}
+
+	return count
+}
+
+// indexString returns the index of substr in s, or -1.
+func indexString(s, substr string) int {
+	for i := range len(s) - len(substr) + 1 {
+		if s[i:i+len(substr)] == substr {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// containsString reports whether substr appears in s.
+func containsString(s, substr string) bool {
+	return indexString(s, substr) >= 0
 }
