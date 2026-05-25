@@ -89,6 +89,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -285,6 +286,20 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
 	s3fs.Register()
+
+	// Initialize VAPID keys for Web Push. Auto-generates and persists to
+	// app_settings when not pre-provisioned via env vars.
+	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.WebPushConfig{
+		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
+		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
+		Subject:         cfg.WebPush.Subject,
+		Enabled:         cfg.WebPush.Enabled,
+	}, dbService); err != nil {
+		slog.WarnContext(ctx, "webpush: VAPID key initialization failed — web push disabled", "err", err)
+	} else {
+		cfg.WebPush.VAPIDPublicKey = pub
+		cfg.WebPush.VAPIDPrivateKey = priv
+	}
 
 	server := &Server{
 		dbService:   dbService,

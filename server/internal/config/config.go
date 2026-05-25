@@ -122,6 +122,15 @@ type SentryConfig struct {
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
+// WebPushConfig holds VAPID credentials for Web Push notifications.
+// Keys are auto-generated at first startup when not pre-provisioned.
+type WebPushConfig struct {
+	VAPIDPublicKey  string `koanf:"vapid_public_key"`
+	VAPIDPrivateKey string `koanf:"vapid_private_key"`
+	Subject         string `koanf:"subject"` // e.g. "mailto:admin@example.com"
+	Enabled         bool   `koanf:"enabled"`
+}
+
 // Config represents the application configuration structure.
 type Config struct {
 	Server      ServerConfig         `koanf:"server"`
@@ -145,6 +154,7 @@ type Config struct {
 	FileStorage FileStorageConfig    `koanf:"filestorage"`
 	App         AppConfig            `koanf:"app"`
 	Deployment  DeploymentConfig     `koanf:"deployment"`
+	WebPush     WebPushConfig        `koanf:"webpush"`
 	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -529,6 +539,7 @@ func Load() (*Config, error) {
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
 	applyFileStorageEnv(&cfg.FileStorage)
+	applyWebPushEnv(&cfg.WebPush)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -619,6 +630,28 @@ func applyFileStorageEnv(cfg *FileStorageConfig) {
 	}
 	if v := os.Getenv("SP_FILESTORAGE_S3_SECRET_KEY"); v != "" {
 		cfg.S3SecretKey = v
+	}
+}
+
+// applyWebPushEnv reads SP_WEBPUSH_* into cfg. koanf's env loader collapses
+// every underscore in SP_*-prefixed names to a dot, so it maps
+// SP_WEBPUSH_VAPID_PUBLIC_KEY to webpush.vapid.public.key instead of
+// webpush.vapid_public_key, missing the snake_case koanf tags.
+func applyWebPushEnv(cfg *WebPushConfig) {
+	if v := os.Getenv("SP_WEBPUSH_VAPID_PUBLIC_KEY"); v != "" {
+		cfg.VAPIDPublicKey = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_VAPID_PRIVATE_KEY"); v != "" {
+		cfg.VAPIDPrivateKey = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_SUBJECT"); v != "" {
+		cfg.Subject = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == "true" || v == "1" {
+		cfg.Enabled = true
 	}
 }
 
