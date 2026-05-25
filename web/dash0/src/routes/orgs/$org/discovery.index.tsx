@@ -40,6 +40,7 @@ import {
   useChannels,
   useListDiscoveryScans,
   useStartFreeboxScan,
+  canSource,
   type DiscoveryScan,
 } from "@/api/hooks";
 
@@ -100,8 +101,11 @@ function FreeboxLauncher({ org }: { org: string }) {
   const { data: channels } = useChannels(org);
   const startFreebox = useStartFreeboxScan(org);
 
+  // Source integrations (canSource) that can drive a discovery scan. Today the
+  // active-scan launcher is Freebox-only; capability filtering keeps it open to
+  // future source types without another type-literal carve-out.
   const freeboxChannels = useMemo(
-    () => (channels ?? []).filter((c) => c.type === "freebox"),
+    () => (channels ?? []).filter((c) => canSource(c.type)),
     [channels],
   );
 
