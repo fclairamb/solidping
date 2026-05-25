@@ -73,6 +73,28 @@ func generateWebhookSecret() (string, error) {
 	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
 }
 
+// ensureWebhookCreateSecret returns a settings map guaranteed to contain a
+// signing secret, generating one when absent. Extracted from CreateChannel to
+// keep that function below the cyclomatic-complexity threshold.
+func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) {
+	if settings == nil {
+		settings = map[string]any{}
+	}
+
+	if existing, ok := settings[settingsKeySigningSecret].(string); ok && existing != "" {
+		return settings, nil
+	}
+
+	secret, err := generateWebhookSecret()
+	if err != nil {
+		return nil, err
+	}
+
+	settings[settingsKeySigningSecret] = secret
+
+	return settings, nil
+}
+
 // Service provides business logic for connection management.
 type Service struct {
 	db db.Service
@@ -331,18 +353,12 @@ func (s *Service) CreateChannel(
 	// Webhook channels always get a signing secret on creation so the first
 	// delivery is signed without an auto-generation round-trip.
 	if connType == models.ConnectionTypeWebhook {
-		if req.Settings == nil {
-			req.Settings = map[string]any{}
+		settings, secErr := ensureWebhookCreateSecret(req.Settings)
+		if secErr != nil {
+			return nil, secErr
 		}
 
-		if _, ok := req.Settings[settingsKeySigningSecret].(string); !ok {
-			secret, secErr := generateWebhookSecret()
-			if secErr != nil {
-				return nil, secErr
-			}
-
-			req.Settings[settingsKeySigningSecret] = secret
-		}
+		req.Settings = settings
 	}
 
 	if err := s.applySettingsEncryption(ctx, conn, req.Settings); err != nil {
@@ -893,7 +909,7 @@ func (s *Service) RotateWebhookSecret(
 
 	effective[settingsKeySigningSecret] = newSecret
 
-	if err := s.persistChannelSettings(ctx, conn, effective); err != nil {
+	if err = s.persistChannelSettings(ctx, conn, effective); err != nil {
 		return nil, err
 	}
 
@@ -903,7 +919,7 @@ func (s *Service) RotateWebhookSecret(
 	}
 
 	resp := toResponse(updated, true)
-	if err := s.injectSigningSecrets(ctx, updated, resp); err != nil {
+	if err = s.injectSigningSecrets(ctx, updated, resp); err != nil {
 		return nil, err
 	}
 
@@ -945,13 +961,13 @@ func (s *Service) TestWebhookChannel(
 	}
 
 	sender := &notifications.WebhookSender{
-		UpdateChannel: func(ctx context.Context, ch *models.Channel) error {
-			merged := make(map[string]any, len(ch.Settings))
-			for k, v := range ch.Settings {
+		UpdateChannel: func(ctx context.Context, channel *models.Channel) error {
+			merged := make(map[string]any, len(channel.Settings))
+			for k, v := range channel.Settings {
 				merged[k] = v
 			}
 
-			return s.persistChannelSettings(ctx, ch, merged)
+			return s.persistChannelSettings(ctx, channel, merged)
 		},
 	}
 

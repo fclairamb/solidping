@@ -29,14 +29,18 @@ const (
 	webhookSecretPrefix = "whsec_"
 	// webhookSecretBytes is the number of random bytes in a signing secret.
 	webhookSecretBytes = 32
-	// webhookRotationGrace is how long the previous secret stays valid after a
-	// rotation, so receivers have time to roll over.
-	webhookRotationGrace = 24 * time.Hour
 
 	// Settings keys used by the signing-secret lifecycle.
 	settingsKeySigningSecret         = "signingSecret"
 	settingsKeySigningSecretPrevious = "signingSecretPrevious"
 	settingsKeySigningSecretExpiry   = "signingSecretPreviousExpiry"
+
+	// Standard Webhooks header names. HTTP header names are case-insensitive on
+	// the wire and Go canonicalizes them via textproto, so receivers using any
+	// Standard-Webhooks library read them regardless of this exact casing.
+	headerWebhookID        = "Webhook-Id"
+	headerWebhookTimestamp = "Webhook-Timestamp"
+	headerWebhookSignature = "Webhook-Signature"
 )
 
 var (
@@ -163,9 +167,9 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return fmt.Errorf("creating webhook request: %w", err)
 	}
 
-	req.Header.Set("webhook-id", webhookID)
-	req.Header.Set("webhook-timestamp", webhookTimestamp)
-	req.Header.Set("webhook-signature", signature)
+	req.Header.Set(headerWebhookID, webhookID)
+	req.Header.Set(headerWebhookTimestamp, webhookTimestamp)
+	req.Header.Set(headerWebhookSignature, signature)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SolidPing/1.0")
 

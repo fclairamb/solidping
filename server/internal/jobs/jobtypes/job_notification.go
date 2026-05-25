@@ -214,7 +214,7 @@ func (r *NotificationJobRun) sendAndAudit(
 // webhookChannelUpdater returns a callback that re-encrypts a webhook
 // channel's (now-decrypted, mutated) Settings and persists them. Used by the
 // WebhookSender when it auto-generates or purges a signing secret. When
-// encryption is disabled, secrets fall back to plaintext storage (V1 behaviour).
+// encryption is disabled, secrets fall back to plaintext storage (V1 behavior).
 func (r *NotificationJobRun) webhookChannelUpdater(
 	jctx *jobdef.JobContext,
 ) func(ctx context.Context, channel *models.Channel) error {

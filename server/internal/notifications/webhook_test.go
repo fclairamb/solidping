@@ -134,16 +134,16 @@ func TestWebhookSender_Send_SetsHeaders(t *testing.T) {
 	sender := &WebhookSender{}
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
 
-	id := gotHeaders.Get("webhook-id")
+	id := gotHeaders.Get(headerWebhookID)
 	r.NotEmpty(id)
 	r.Len(strings.Split(id, "-"), 5, "webhook-id should be a UUID")
 
-	ts := gotHeaders.Get("webhook-timestamp")
+	ts := gotHeaders.Get(headerWebhookTimestamp)
 	r.NotEmpty(ts)
 	_, convErr := strconv.ParseInt(ts, 10, 64)
 	r.NoError(convErr, "webhook-timestamp must be numeric")
 
-	sig := gotHeaders.Get("webhook-signature")
+	sig := gotHeaders.Get(headerWebhookSignature)
 	r.True(strings.HasPrefix(sig, "v1,"))
 	r.Equal("application/json", gotHeaders.Get("Content-Type"))
 	r.Equal("SolidPing/1.0", gotHeaders.Get("User-Agent"))
@@ -222,8 +222,8 @@ func TestWebhookSender_Send_CustomHeadersCannotOverrideSigning(t *testing.T) {
 
 	r.Equal("Custom/9.9", got.Get("User-Agent"), "custom header may override User-Agent")
 	r.Equal("yes", got.Get("X-Extra"))
-	r.NotEqual("v1,attacker", got.Get("webhook-signature"), "signing header must not be overridable")
-	r.True(strings.HasPrefix(got.Get("webhook-signature"), "v1,"))
+	r.NotEqual("v1,attacker", got.Get(headerWebhookSignature), "signing header must not be overridable")
+	r.True(strings.HasPrefix(got.Get(headerWebhookSignature), "v1,"))
 }
 
 // TestWebhookSender_Send_AutoGeneratesSecret verifies the UpdateChannel
@@ -257,7 +257,7 @@ func TestWebhookSender_Send_AutoGeneratesSecret(t *testing.T) {
 
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
 	r.True(called, "UpdateChannel must be invoked to persist the generated secret")
-	r.True(strings.HasPrefix(got.Get("webhook-signature"), "v1,"))
+	r.True(strings.HasPrefix(got.Get(headerWebhookSignature), "v1,"))
 
 	// The channel's in-memory settings now carry the generated secret.
 	secret, ok := payload.Connection.Settings[settingsKeySigningSecret].(string)
@@ -283,7 +283,7 @@ func TestWebhookSender_Send_NoUpdateCallbackWarns(t *testing.T) {
 
 	sender := &WebhookSender{} // no UpdateChannel
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
-	r.True(strings.HasPrefix(got.Get("webhook-signature"), "v1,"))
+	r.True(strings.HasPrefix(got.Get(headerWebhookSignature), "v1,"))
 }
 
 // TestWebhookSender_Send_TwoActiveSecrets verifies a rotation-in-progress
@@ -315,7 +315,7 @@ func TestWebhookSender_Send_TwoActiveSecrets(t *testing.T) {
 	sender := &WebhookSender{}
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
 
-	parts := strings.Split(got.Get("webhook-signature"), " ")
+	parts := strings.Split(got.Get(headerWebhookSignature), " ")
 	r.Len(parts, 2, "both active and previous secret must sign")
 }
 
@@ -362,7 +362,7 @@ func TestWebhookSender_Send_ExpiredPreviousSecretPurged(t *testing.T) {
 	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
 	r.True(purged, "UpdateChannel must be invoked to persist the purge")
 
-	parts := strings.Split(got.Get("webhook-signature"), " ")
+	parts := strings.Split(got.Get(headerWebhookSignature), " ")
 	r.Len(parts, 1, "only the active secret should remain after purge")
 }
 

@@ -104,12 +104,14 @@ func TestRotateWebhookSecret_CyclesSecrets(t *testing.T) {
 		Settings: map[string]any{"url": "https://example.com/hook"},
 	})
 	r.NoError(err)
-	original := created.Settings[secretKey].(string)
+	original, ok := created.Settings[secretKey].(string)
+	r.True(ok)
 
 	rotated, err := svc.RotateWebhookSecret(ctx, org.Slug, created.UID)
 	r.NoError(err)
 
-	newSecret := rotated.Settings[secretKey].(string)
+	newSecret, ok := rotated.Settings[secretKey].(string)
+	r.True(ok)
 	r.NotEqual(original, newSecret, "rotation must produce a fresh secret")
 	r.True(strings.HasPrefix(newSecret, "whsec_"))
 
@@ -152,7 +154,7 @@ func TestTestWebhookChannel_Success(t *testing.T) {
 
 	var gotSig string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-		gotSig = req.Header.Get("webhook-signature")
+		gotSig = req.Header.Get("Webhook-Signature")
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer srv.Close()
