@@ -378,6 +378,46 @@ func TestWebhookSender_Send_MissingURL(t *testing.T) {
 	r.ErrorIs(err, ErrWebhookURLNotConfigured)
 }
 
+// TestWebhookSender_URLKeyResolution verifies that Send succeeds when
+// Settings["url"] is set, and returns ErrWebhookURLNotConfigured when the
+// key is absent. This guards the contract between the frontend (which writes
+// "url" for the generic webhook type) and the backend sender (which reads "url").
+func TestWebhookSender_URLKeyResolution(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Sub-test: Send succeeds when Settings["url"] is populated.
+	t.Run("url_key_present", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		defer srv.Close()
+
+		payload := testPayload(models.JSONMap{"url": srv.URL})
+		sender := &WebhookSender{}
+		r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
+	})
+
+	// Sub-test: Send returns ErrWebhookURLNotConfigured when no URL key is present.
+	t.Run("url_key_absent", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		payload := testPayload(models.JSONMap{})
+		sender := &WebhookSender{}
+		err := sender.Send(context.Background(), newJobCtx(), payload)
+		r.ErrorIs(err, ErrWebhookURLNotConfigured)
+	})
+
+	_ = r // outer require used for parallel declaration only
+}
+
 // TestWebhookSender_Send_RelapseIncludesRecoveryPeriod verifies the recovery
 // period is included once a relapse has occurred.
 func TestWebhookSender_Send_RelapseIncludesRecoveryPeriod(t *testing.T) {
