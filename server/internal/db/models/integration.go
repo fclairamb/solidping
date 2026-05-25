@@ -25,6 +25,33 @@ const (
 	ConnectionTypeFreebox    ConnectionType = "freebox"
 )
 
+// Capabilities describes what roles an integration type can play. The two
+// flags are independent: a single type may be both a notification sink and a
+// data source. They replace the former hard-coded "Freebox is a source, not a
+// sink" carve-out in notifications.GetSender — capability is now data, not a
+// special case.
+type Capabilities struct {
+	// CanNotify reports whether the integration can receive outbound
+	// notifications (i.e. it can act as a "channel" / notification target).
+	CanNotify bool
+	// CanSource reports whether the integration provides data that checks
+	// read from (e.g. the Freebox line-quality source).
+	CanSource bool
+}
+
+// CapabilitiesFor returns the capabilities of an integration connection type.
+// Every notification sink (slack, discord, webhook, email, googlechat,
+// mattermost, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
+// (CanSource) and cannot receive notifications.
+func CapabilitiesFor(t ConnectionType) Capabilities {
+	switch t {
+	case ConnectionTypeFreebox:
+		return Capabilities{CanSource: true}
+	default: // all current notification sinks
+		return Capabilities{CanNotify: true}
+	}
+}
+
 // Channel represents a notification target — a Slack channel, Discord
 // webhook, email recipient list, generic webhook URL, etc. The legacy
 // table name `integration_connections` is preserved via the bun tag
