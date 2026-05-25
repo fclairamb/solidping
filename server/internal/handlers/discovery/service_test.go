@@ -45,7 +45,7 @@ func newDiscoveryFixture(t *testing.T) *discoveryFixture {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	checksSvc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), creds)
+	checksSvc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), creds, nil)
 	svc := discovery.NewService(dbSvc.DB(), dbSvc, checksSvc, jobSvc, creds)
 
 	return &discoveryFixture{svc: svc, dbSvc: dbSvc, org: org}

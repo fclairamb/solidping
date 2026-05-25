@@ -17,7 +17,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/urlparse"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	entitlementshandler "github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 )
 
 // errInvalidStatus is returned when an unknown status token appears in ?status=.
@@ -473,6 +475,15 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	}
 
 	switch {
+	case errors.Is(err, entcore.ErrEntitlementExceeded):
+		var qe *entcore.QuotaError
+		if !errors.As(err, &qe) {
+			return h.WriteInternalError(writer, err)
+		}
+		body := entitlementshandler.FormatQuotaError(qe)
+		body["code"] = string(base.ErrorCodeQuotaExceeded)
+
+		return h.WriteJSON(writer, http.StatusPaymentRequired, body)
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)

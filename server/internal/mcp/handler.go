@@ -13,6 +13,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
@@ -100,9 +101,10 @@ func NewHandler(
 	jobSvc jobsvc.Service,
 	checkTypesSvc *checktypes.Service,
 	creds credentials.Service,
+	entSvc *entcore.Service,
 ) *Handler {
 	handler := &Handler{
-		checksSvc:      checks.NewService(dbService, eventNotifier, creds),
+		checksSvc:      checks.NewService(dbService, eventNotifier, creds, entSvc),
 		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
 		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}),

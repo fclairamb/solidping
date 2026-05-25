@@ -457,7 +457,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// MCP endpoint (auth via PAT token, org derived from token)
 	s.mcpHandler = mcp.NewHandler(
-		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService, s.services.Credentials,
+		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
+		s.services.Credentials, s.services.Entitlements,
 	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
@@ -478,7 +479,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
-	checksService := checks.NewService(s.dbService, s.services.EventNotifier, s.services.Credentials)
+	checksService := checks.NewService(
+		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
