@@ -198,7 +198,7 @@ func TestBadges_LegacyAvailabilityDurationReturns400(t *testing.T) {
 	r.Equal("application/json", resp.Header.Get("Content-Type"))
 }
 
-func TestBadges_DurationOnlyReturns400(t *testing.T) {
+func TestBadges_DurationOnlyIsValid(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -207,15 +207,138 @@ func TestBadges_DurationOnlyReturns400(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// duration without a primary metric must be rejected.
+	// duration alone is now valid: row 1 renders the check name + duration text.
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
 		"/checks/badge-test-check/badges/duration"
 	resp, err := fetchBadge(ctx, url)
 	r.NoError(err)
 	defer func() { _ = resp.Body.Close() }()
 
-	r.Equal(http.StatusBadRequest, resp.StatusCode)
-	r.Equal("application/json", resp.Header.Get("Content-Type"))
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+}
+
+func TestBadges_UptimeBarRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// uptime-bar alone: name title row + bar strip. H = 20 + 4 + 20 = 44.
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/uptime-bar"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
+	r.Contains(svg, `height="44"`)
+	r.Contains(svg, "Badge Test Check")
+}
+
+func TestBadges_ResponseTimeGraphRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// response-time-graph alone: name title row + graph. H = 20 + 4 + 40 = 64.
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/response-time-graph"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	r.Contains(svg, `height="64"`)
+}
+
+func TestBadges_AllSixRows(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// status,uptime-bar,response-time-graph: 3 rows. H = 20 + 4 + 20 + 4 + 40 = 88.
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/status,uptime-bar,response-time-graph?period=30d"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	r.Contains(svg, `height="88"`)
+	r.Contains(svg, `width="300"`) // default combined width
+}
+
+func TestBadges_AllComponentsWithRows(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/badges/" +
+		"status,availability,duration,response-time,uptime-bar,response-time-graph?period=30d"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+}
+
+func TestBadges_LegacyUptimeBarEndpointRemoved(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesTestData(ctx, t, testServer)
+
+	// The standalone /uptime-bar API route was removed; it is folded into
+	// /badges/uptime-bar. The dedicated SVG handler no longer exists, so the
+	// request must NOT return an SVG badge (it falls through to the SPA
+	// catch-all instead of the badge handler).
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-test-check/uptime-bar"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.NotEqual("image/svg+xml", resp.Header.Get("Content-Type"),
+		"the removed uptime-bar route must not serve an SVG badge")
 }
 
 func TestBadges_StatusBadgeByUID(t *testing.T) {
@@ -439,7 +562,7 @@ func TestBadges_PeriodOptions(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	periods := []string{"1h", "24h", "7d", "30d"}
+	periods := []string{"24h", "7d", "30d", "90d"}
 
 	for _, period := range periods {
 		t.Run("period_"+period, func(t *testing.T) {

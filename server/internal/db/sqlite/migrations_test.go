@@ -116,6 +116,35 @@ func TestMigrationCreatesCheckDependencies(t *testing.T) {
 	}
 }
 
+// TestMigrationResultDurationAvg verifies migration 031 adds the duration_avg
+// column to the results table.
+func TestMigrationResultDurationAvg(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	err = svc.db.NewRaw("SELECT name FROM pragma_table_info('results')").Scan(ctx, &columns)
+	r.NoError(err)
+
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+
+	assert.Contains(t, colNames, "duration_avg", "duration_avg column must exist after migration 031")
+}
+
 // TestMigrationDiscoveredHostsSource verifies migration 030 adds the source
 // column and backfills existing rows to 'lan'.
 func TestMigrationDiscoveredHostsSource(t *testing.T) {

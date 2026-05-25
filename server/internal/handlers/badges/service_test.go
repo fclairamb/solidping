@@ -53,11 +53,11 @@ func TestParsePeriod(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	r.Equal(time.Hour, parsePeriod("1h"))
 	r.Equal(24*time.Hour, parsePeriod("24h"))
 	r.Equal(7*24*time.Hour, parsePeriod("7d"))
 	r.Equal(30*24*time.Hour, parsePeriod("30d"))
-	r.Equal(24*time.Hour, parsePeriod("invalid")) // defaults to 24h
+	r.Equal(90*24*time.Hour, parsePeriod("90d"))
+	r.Equal(30*24*time.Hour, parsePeriod("invalid")) // defaults to 30d
 }
 
 func TestGenerateSVG(t *testing.T) {
@@ -195,18 +195,38 @@ func TestParseComponents(t *testing.T) {
 		r.ErrorIs(err, ErrInvalidFormat)
 	})
 
-	t.Run("missing primary returns ErrInvalidFormat", func(t *testing.T) {
+	t.Run("duration alone is valid (primary no longer required)", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := parseComponents("duration")
-		r.ErrorIs(err, ErrInvalidFormat)
+		tokens, err := parseComponents("duration")
+		r.NoError(err)
+		r.Equal([]string{"duration"}, tokens)
 	})
 
-	t.Run("duration only returns ErrInvalidFormat", func(t *testing.T) {
+	t.Run("uptime-bar alone is valid (no text metric required)", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := parseComponents("duration,response-time")
-		r.ErrorIs(err, ErrInvalidFormat)
+		tokens, err := parseComponents("uptime-bar")
+		r.NoError(err)
+		r.Equal([]string{"uptime-bar"}, tokens)
+	})
+
+	t.Run("response-time-graph alone is valid", func(t *testing.T) {
+		t.Parallel()
+
+		tokens, err := parseComponents("response-time-graph")
+		r.NoError(err)
+		r.Equal([]string{"response-time-graph"}, tokens)
+	})
+
+	t.Run("all six tokens preserve order", func(t *testing.T) {
+		t.Parallel()
+
+		tokens, err := parseComponents("status,availability,duration,response-time,uptime-bar,response-time-graph")
+		r.NoError(err)
+		r.Equal([]string{
+			"status", "availability", "duration", "response-time", "uptime-bar", "response-time-graph",
+		}, tokens)
 	})
 }
 
@@ -483,4 +503,180 @@ func TestGenerateUptimeBarSVG(t *testing.T) {
 		r.Contains(svg, `width="600"`)
 		r.Contains(svg, `height="30"`)
 	})
+}
+
+func TestRenderBadgeRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	t.Run("with value renders label and value cells", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderBadgeRow("My Check", "up", ColorGreen, "flat", 0, 0)
+		r.Contains(row, "<g transform=\"translate(0,0)\">")
+		r.Contains(row, "My Check")
+		r.Contains(row, "up")
+		r.Contains(row, ColorGreen)
+	})
+
+	t.Run("empty value renders black title without value cell", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderBadgeRow("My Check", "", ColorGray, "flat", 0, 0)
+		r.Contains(row, "My Check")
+		r.Contains(row, ColorTitle)
+		r.NotContains(row, ColorGray) // no value cell, so the value color is absent
+		r.NotContains(row, "clipPath")
+	})
+
+	t.Run("y offset is applied to the group", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderBadgeRow("X", "up", ColorGreen, "flat", 0, 24)
+		r.Contains(row, "translate(0,24)")
+	})
+}
+
+func TestComposeBadgeSVG(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	svg := ComposeBadgeSVG([]string{"<g>a</g>", "<g>b</g>"}, 300, 88)
+	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="88">`)
+	r.Contains(svg, "<g>a</g>")
+	r.Contains(svg, "<g>b</g>")
+	r.Contains(svg, "</svg>")
+}
+
+func TestBuildGraphSegments(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	f := func(v float64) *float64 { return &v }
+
+	t.Run("all present is one segment", func(t *testing.T) {
+		t.Parallel()
+
+		segs := buildGraphSegments([]*float64{f(1), f(2), f(3)})
+		r.Equal([][]int{{0, 1, 2}}, segs)
+	})
+
+	t.Run("nil gap breaks into two segments", func(t *testing.T) {
+		t.Parallel()
+
+		segs := buildGraphSegments([]*float64{f(1), nil, f(3)})
+		r.Equal([][]int{{0}, {2}}, segs)
+	})
+
+	t.Run("leading and trailing nils are skipped", func(t *testing.T) {
+		t.Parallel()
+
+		segs := buildGraphSegments([]*float64{nil, f(2), f(3), nil})
+		r.Equal([][]int{{1, 2}}, segs)
+	})
+
+	t.Run("all nil produces no segments", func(t *testing.T) {
+		t.Parallel()
+
+		segs := buildGraphSegments([]*float64{nil, nil})
+		r.Empty(segs)
+	})
+}
+
+func TestRenderResponseTimeGraphRow(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	f := func(v float64) *float64 { return &v }
+
+	t.Run("multiple points render a polyline and area", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), f(150)}, 300, 40, 0, "flat")
+		r.Contains(row, "<polyline")
+		r.Contains(row, "<path")
+		r.Contains(row, "linearGradient")
+		r.Contains(row, "translate(0,0)")
+	})
+
+	t.Run("nil gap produces a line break (two polylines)", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(200), nil, f(150), f(120)}, 300, 40, 0, "flat")
+		r.Equal(2, strings.Count(row, "<polyline"))
+	})
+
+	t.Run("single value renders a dot, no polyline", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{nil, f(150), nil}, 300, 40, 0, "flat")
+		r.Contains(row, "<circle")
+		r.NotContains(row, "<polyline")
+	})
+
+	t.Run("no data renders a framed empty area", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{nil, nil}, 300, 40, 0, "flat")
+		r.NotContains(row, "<polyline")
+		r.NotContains(row, "<circle")
+		r.Contains(row, "<rect")
+	})
+
+	t.Run("y-scaling keeps points within the row height", func(t *testing.T) {
+		t.Parallel()
+
+		// Min/max auto-scale with 10%% padding: the highest value must map near
+		// the top (small y) and lowest near the bottom (large y), both inside
+		// [0, height].
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(300)}, 300, 40, 0, "flat")
+		r.Contains(row, "<polyline")
+		// Padding means neither endpoint sits exactly at y=0 or y=40.
+		r.NotContains(row, ",0.0 ")
+	})
+}
+
+func TestBuildBarSegments(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	bucketDuration := 24 * time.Hour
+
+	availMap := map[time.Time]float64{
+		bucketStart:                         100.0,
+		bucketStart.Add(2 * bucketDuration): 97.0,
+	}
+
+	segs := buildBarSegments(availMap, bucketStart, 3, bucketDuration)
+	r.Len(segs, 3)
+	r.Equal(ColorGreen, segs[0]) // 100% → green
+	r.Equal(ColorGray, segs[1])  // missing bucket → gray
+	r.Equal(ColorRed, segs[2])   // 97% → red
+}
+
+func TestBuildGraphPoints(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	bucketDuration := 24 * time.Hour
+
+	v := 150.0
+	durationMap := map[time.Time]*float64{
+		bucketStart.Add(1 * bucketDuration): &v,
+	}
+
+	points := buildGraphPoints(durationMap, bucketStart, 3, bucketDuration)
+	r.Len(points, 3)
+	r.Nil(points[0])
+	r.NotNil(points[1])
+	r.InDelta(150.0, *points[1], 0.01)
+	r.Nil(points[2])
 }
