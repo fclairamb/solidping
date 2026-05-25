@@ -255,6 +255,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out.LastSyncedAt = row.LastSyncedAt
 
 	limits := row.Payload.Limits
+	if limits.MaxChecks != nil {
+		out.Limits.MaxChecks = limits.MaxChecks
+	}
 	if limits.MaxSSOUsers != nil {
 		out.Limits.MaxSSOUsers = limits.MaxSSOUsers
 	}
