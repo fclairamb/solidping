@@ -336,3 +336,85 @@ non-empty).
 curl -si 'http://localhost:4000/api/v1/orgs/default/checks/<slug>/badges/status,availability,uptime-bar,response-time-graph?period=30d'
 curl -si 'http://localhost:4000/api/v1/orgs/default/checks/<slug>/uptime-bar'   # expect 404
 ```
+
+## Implementation Plan
+
+### Step 1 — `duration_avg` column (migration + model)
+- New migration `031_result_duration_avg` (postgres + sqlite up/down):
+  `ALTER TABLE results ADD COLUMN duration_avg real;` plus a postgres comment;
+  down drops the column.
+- Add `DurationAvg *float32 \`bun:"duration_avg"\`` to `models.Result`.
+
+### Step 2 — Aggregation job populates `duration_avg`
+- `aggregationState`: add `durationAvgSum float32`, `durationAvgCount int` (for
+  weighted aggregation), and track an `avgDuration` for raw.
+- raw → hour: `duration_avg = sum(raw.Duration)/count(non-nil Duration)` (this
+  is the existing `avgDuration` from `calculateRawMetrics`).
+- hour/day → day/month: `total_checks`-weighted mean of children's
+  `DurationAvg` — `Σ(child.DurationAvg × child.TotalChecks) / Σ(TotalChecks
+  over children with non-nil DurationAvg)`. Nil when no children carry it.
+- `buildAggregatedResult` sets `DurationAvg` (nil when count == 0).
+- Update `TestAggregateResults_RawData` and add tests for weighted hour→day +
+  nil-bucket.
+
+### Step 3 — SVG row renderers (`svg.go`)
+- Keep color consts + `escapeXML`.
+- Add `renderBadgeRow(label, value, color, style string, width, y int) string`
+  → `<g transform>` shields content; black-title variant when `value == ""`.
+- Add `renderUptimeBarRow(segments []string, width, height, y int, style string) string`.
+- Add `renderResponseTimeGraphRow(points []*float64, width, height, y int, style string) string`
+  with auto Y-scale (10% padding), gradient `<defs>`, area `<path>`, stroke
+  `<polyline>`, line breaks at nil gaps, single-point dot.
+- Add `ComposeBadgeSVG(rows []string, w, h int) string`.
+- Rewrite `GenerateSVG` / `GenerateUptimeBarSVG` as thin wrappers over the row
+  renderers + `ComposeBadgeSVG` (keep test signatures).
+
+### Step 4 — Service composition (`service.go`)
+- Add token consts `componentUptimeBar`, `componentResponseTimeGraph`;
+  extend `isAllowedComponent`.
+- `parseComponents`: drop the status/availability-required guard (keep unknown
+  + duplicate + non-empty checks).
+- Rework `GenerateBadge`: split tokens into text tokens / hasBar / hasGraph;
+  fetch row-1 data via `fetchResults`; when bar/graph present, run the bucket
+  query building `availMap` and `durationMap`; compute W (300 default when
+  bar/graph) and H (20/20/40 rows + 4px gaps); render row fragments; compose.
+- `applyDefaults`: default period `"30d"`.
+- `parsePeriod`: drop `"1h"`, default `"30d"`.
+- Delete `GenerateUptimeBar` + `UptimeBarOptions`.
+
+### Step 5 — Handler + route
+- `handler.go`: parse `width` (60–800, default 300 when bar/graph present);
+  delete `GetUptimeBar`.
+- `server.go`: remove the `/uptime-bar` route.
+
+### Step 6 — Backend tests
+- `service_test.go`: all-six-tokens dimensions; `uptime-bar`-only (black
+  title + bar); `response-time-graph`-only (no bar gap); graph points / nil
+  break / single dot / Y-scaling; updated `parseComponents` expectations;
+  update `parsePeriod`/`uptimeBarPeriodInfo` tests for dropped `1h`.
+- `test/integration/badges_test.go`: add bar/graph 200 cases, `/uptime-bar`
+  → 404, fix the now-valid `duration`-only case, drop `1h` from period list.
+
+### Step 7 — Frontend (`badges.tsx` + i18n + routeTree)
+- `BadgeSearch`: drop `barPeriod`/`barWidth`; add `width`; period type
+  `24h|7d|30d|90d` default `30d`; valid tokens set gains `uptime-bar`,
+  `response-time-graph`.
+- `componentDefs`: 6 entries; remove primary-required disable + fallback to
+  `status` when empty.
+- Controls: period shown for availability/response-time/uptime-bar/
+  response-time-graph; width (60–800) shown for bar/graph; minWidth shown only
+  for text-only.
+- Delete `UptimeBarPreview` + its embed card + the bar sub-section; single
+  `BadgePreview`; preview `<img>` drops hard-coded `h-5`; URL builder adds
+  `width` when bar/graph active and `!= 300`.
+- i18n add/remove keys across en/fr/es/de.
+
+### Step 8 — Playwright (`e2e/badges.spec.ts`)
+- Replace primary-required tests with: toggle uptime-bar / response-time-graph
+  grows preview + URL gains token; toggling all off falls back to `status`;
+  old uptime-bar section / img / embed absent; multi-row SVG/PNG download.
+- Add `badge-component-uptime-bar` / `badge-component-response-time-graph` /
+  `badge-width` testids; regenerate route tree if needed.
+
+### Step 9 — QA + audit
+- `make fmt`; `make build-backend build-client lint-back test`; fix; audit.
