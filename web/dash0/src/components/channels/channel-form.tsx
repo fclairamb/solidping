@@ -134,8 +134,8 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
         <div className="space-y-3">
           <UrlPanel
             label={t("form.webhookUrl", "Webhook URL")}
-            value={(settings.webhook_url as string) || ""}
-            onChange={(v) => update("webhook_url", v)}
+            value={(settings.url as string) || ""}
+            onChange={(v) => update("url", v)}
           />
           {org && channelUid && (
             <WebhookSigningPanel
@@ -575,8 +575,10 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
         <Button
           type="button"
           onClick={() => {
-            window.location.href =
-              "/api/v1/integrations/slack/install?source=dashboard";
+            const params = new URLSearchParams({ source: "dashboard" });
+            if (channelUid) params.set("channelUid", channelUid);
+            if (org) params.set("org", org);
+            window.location.href = `/api/v1/integrations/slack/install?${params.toString()}`;
           }}
           data-testid="slack-install"
         >
