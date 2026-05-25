@@ -222,3 +222,49 @@ PR-A is independently valuable and low-churn — land it first regardless of
 whether the rename PRs (B–E) get scheduled. B–E are mechanical and should ride
 together with the already-deferred PR-5/PR-6 of `2026-05-07-03` so the table and
 route names are touched exactly once more, then frozen.
+
+### Scope decision for this branch
+
+Verified at implementation time that PR-5/PR-6 of `2026-05-07-03` have **not**
+landed — `server/internal/app/server.go` still serves the legacy `/connections`
+paths alongside `/channels`. Per this spec's own Implementation Plan, PR-B…PR-E
+(the frontend + backend rename, table migration, and route-canonicalization)
+are explicitly meant to ride together with those deferred PRs so the
+table/route names are touched exactly once more. Doing them now would touch
+those names a second time and contradict the sequencing guidance, and PR-D is
+flagged as cancellable. **This branch therefore implements PR-A only** — the
+spec's stated "substance" that "alone closes the silent-no-op bug" and is
+"shippable even if the rename never happens." PR-B…PR-E remain queued to land
+with the `2026-05-07-03` tail.
+
+### PR-A steps (this branch)
+
+1. **Backend capability registry.** Add `Capabilities` struct and
+   `CapabilitiesFor(ConnectionType) Capabilities` to
+   `server/internal/db/models/integration.go`. `freebox` → `{CanSource: true}`;
+   default → `{CanNotify: true}`. Add unit tests asserting the capability of
+   every declared `ConnectionType` (table-driven).
+2. **Data-driven sender lookup.** Rewrite `notifications.GetSender` so the
+   Freebox `(nil,false)` carve-out is replaced by a leading
+   `if !CapabilitiesFor(connType).CanNotify { return nil, false }` guard; delete
+   the apologetic comment. Add a test asserting `GetSender(freebox)` returns
+   `(nil,false)` and every `CanNotify` type resolves a non-nil sender.
+3. **Server-side notify-binding rejection.** In
+   `handlers/checkconnections/service.go`, reject binding a non-`CanNotify`
+   integration in both `SetConnections` and `AddConnection` with a new
+   `ErrNotNotifyCapable` sentinel; the handler maps it to `400 VALIDATION_ERROR`
+   with message "This integration cannot receive notifications." Add
+   handler/service tests.
+4. **Frontend capability map.** Add a `CAPABILITIES` const map and
+   `canNotify`/`canSource` helpers to `web/dash0/src/api/hooks.ts`, mirroring the
+   backend map.
+5. **Grouped new-integration picker.** `channels.new.tsx` groups the type list
+   into "Notification channels" (`canNotify`) and "Data sources" (`canSource`).
+6. **Filtered check notify picker.** `NotifyViaSection` in `check-form.tsx`
+   filters the bindable list to `canNotify` integrations — Freebox disappears.
+7. **Restate source filters as `canSource`.** The `freebox_line` connection
+   picker and the ICMP/discovery "Discover from Freebox" picker filter by
+   `canSource` (still resolving to freebox today) instead of a hard
+   `c.type === "freebox"`, so future source types are picked up automatically.
+8. **e2e + QA.** Extend `e2e/channels.spec.ts` for the grouped picker and the
+   Freebox-not-in-notify-picker behavior; run the full QA gate.

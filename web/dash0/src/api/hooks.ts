@@ -2606,6 +2606,42 @@ export type ConnectionType =
   | "pushover"
   | "freebox";
 
+// Capabilities mirror the backend capability registry
+// (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
+// are independent: a type may be both a notification sink and a data source.
+//   - canNotify: can receive outbound notifications (acts as a "channel")
+//   - canSource: provides data that checks read from
+export interface IntegrationCapabilities {
+  canNotify: boolean;
+  canSource: boolean;
+}
+
+const NOTIFY: IntegrationCapabilities = { canNotify: true, canSource: false };
+const SOURCE: IntegrationCapabilities = { canNotify: false, canSource: true };
+
+export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
+  slack: NOTIFY,
+  discord: NOTIFY,
+  webhook: NOTIFY,
+  email: NOTIFY,
+  googlechat: NOTIFY,
+  mattermost: NOTIFY,
+  ntfy: NOTIFY,
+  opsgenie: NOTIFY,
+  pushover: NOTIFY,
+  freebox: SOURCE,
+};
+
+/** Whether an integration type can receive notifications (act as a channel). */
+export function canNotify(type: ConnectionType): boolean {
+  return CAPABILITIES[type]?.canNotify ?? true;
+}
+
+/** Whether an integration type provides data that checks read from. */
+export function canSource(type: ConnectionType): boolean {
+  return CAPABILITIES[type]?.canSource ?? false;
+}
+
 export interface Channel {
   uid: string;
   type: ConnectionType;

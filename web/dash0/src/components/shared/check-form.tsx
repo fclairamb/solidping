@@ -36,6 +36,8 @@ import {
   useChannels,
   useCheckConnections,
   useCheckDependencies,
+  canNotify,
+  canSource,
 } from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
@@ -304,7 +306,12 @@ export function CheckForm({
     if (connectionUids !== null) return;
     if (mode === "create") {
       if (!connections) return;
-      setConnectionUids(connections.filter((c) => c.isDefault && c.enabled).map((c) => c.uid));
+      // Only notify-capable integrations can be a default notification target.
+      setConnectionUids(
+        connections
+          .filter((c) => c.isDefault && c.enabled && canNotify(c.type))
+          .map((c) => c.uid),
+      );
       return;
     }
     if (existingBindings) {
@@ -1271,9 +1278,12 @@ export function CheckForm({
           </>
         );
       case "icmp": {
+        // Source integrations (canSource) drive the LAN-host discovery picker.
+        // Today this is freebox only; the `granted` gate is the Freebox pairing
+        // state. Filtering by capability keeps future source types eligible.
         const freeboxChannels = (connections ?? []).filter(
           (c) =>
-            c.type === "freebox" &&
+            canSource(c.type) &&
             (c.settings?.status as string | undefined) === "granted",
         );
         return (
@@ -1620,7 +1630,12 @@ export function CheckForm({
           </>
         );
       case "freebox_line": {
-        const freeboxConnections = (connections ?? []).filter((c) => c.type === "freebox");
+        // Filter by the canSource capability rather than a hard-coded type so
+        // future data-source integrations are picked up automatically. Today
+        // this resolves to freebox only.
+        const freeboxConnections = (connections ?? []).filter((c) =>
+          canSource(c.type),
+        );
         return (
           <>
             <div className="space-y-2">
@@ -2138,7 +2153,10 @@ interface NotifyViaSectionProps {
 }
 
 function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSectionProps) {
-  const list = connections ?? [];
+  // Only notify-capable integrations can be bound as notification targets —
+  // data sources (e.g. Freebox) never appear here. This is the visible half of
+  // the silent-no-op bug fix.
+  const list = (connections ?? []).filter((c) => canNotify(c.type));
   // Disabled channels stay listed if currently bound so the user can unbind
   // them; otherwise they're hidden from the picker.
   const visible = list.filter((c) => c.enabled || selected.includes(c.uid));

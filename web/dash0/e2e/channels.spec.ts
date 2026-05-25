@@ -241,6 +241,109 @@ test.describe("Notification Channels", () => {
     await deleteCheck(page, token, check.uid);
   });
 
+  test("new-integration picker groups notification channels and data sources", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/channels/new");
+    await page.waitForLoadState("networkidle");
+
+    // The picker is split into two capability groups.
+    const notifyGroup = page.getByTestId("group-notify");
+    const sourceGroup = page.getByTestId("group-source");
+    await expect(notifyGroup).toBeVisible();
+    await expect(sourceGroup).toBeVisible();
+
+    // A notify-capable type (webhook) sits in the notify group, not sources.
+    await expect(notifyGroup.getByTestId("pick-webhook")).toBeVisible();
+    await expect(sourceGroup.getByTestId("pick-webhook")).toHaveCount(0);
+
+    // Freebox (a data source) sits in the source group, not notify.
+    await expect(sourceGroup.getByTestId("pick-freebox")).toBeVisible();
+    await expect(notifyGroup.getByTestId("pick-freebox")).toHaveCount(0);
+  });
+
+  test("freebox source is hidden from the check Notify via picker", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Wipe existing connections for a deterministic picker.
+    const existing = await page.request
+      .get(`${API_BASE}/api/v1/orgs/test/channels`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((r) => r.json());
+    for (const c of existing.data ?? []) {
+      await deleteConnection(page, token, c.uid);
+    }
+
+    // Create one notify integration (webhook) and one source (freebox).
+    const webhookName = `E2E Notify Webhook ${Date.now()}`;
+    const webhookResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/channels`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "webhook",
+          name: webhookName,
+          settings: { url: "https://example.com/webhook" },
+        },
+      },
+    );
+    const webhook = await webhookResp.json();
+
+    const freeboxName = `E2E Freebox Source ${Date.now()}`;
+    const freeboxResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/channels`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { type: "freebox", name: freeboxName },
+      },
+    );
+    const freebox = await freeboxResp.json();
+
+    const checkResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/checks`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "http",
+          name: `E2E NotifyFilter ${Date.now()}`,
+          config: { url: `https://example.com/${Date.now()}` },
+          period: "00:05:00",
+        },
+      },
+    );
+    const check = await checkResp.json();
+
+    await page.goto(`orgs/test/checks/${check.uid}/edit`);
+    await page.waitForLoadState("networkidle");
+
+    // The notify-capable webhook appears; the freebox source does not.
+    await expect(page.getByText(webhookName, { exact: true })).toBeVisible();
+    await expect(page.getByText(freeboxName, { exact: true })).toHaveCount(0);
+
+    // The API also rejects binding the freebox source as a notify target.
+    const bindResp = await page.request.put(
+      `${API_BASE}/api/v1/orgs/test/checks/${check.uid}/channels`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: { connectionUids: [freebox.uid] },
+      },
+    );
+    expect(bindResp.status()).toBe(400);
+    const bindErr = await bindResp.json();
+    expect(bindErr.code).toBe("VALIDATION_ERROR");
+
+    // Cleanup.
+    await deleteCheck(page, token, check.uid);
+    await deleteConnection(page, token, webhook.uid);
+    await deleteConnection(page, token, freebox.uid);
+  });
+
   test("empty Notify via shows create-channel link", async ({
     authenticatedPage,
   }) => {

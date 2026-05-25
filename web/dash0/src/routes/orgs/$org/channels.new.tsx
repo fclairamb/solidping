@@ -13,6 +13,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCreateChannel,
+  canNotify,
+  canSource,
   type ConnectionType,
 } from "@/api/hooks";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
@@ -79,15 +81,46 @@ function NewChannelPage() {
   };
 
   if (!type) {
+    // Group the picker by capability so operators understand the distinction
+    // between a notification sink ("channel") and a data source. Mirrors the
+    // backend capability registry via the frontend CAPABILITIES map.
+    const notifyTypes = ALL_TYPES.filter((c) => canNotify(c));
+    const sourceTypes = ALL_TYPES.filter((c) => canSource(c));
+
+    const renderGroup = (groupTypes: ConnectionType[], testid: string) => (
+      <div
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        data-testid={testid}
+      >
+        {groupTypes.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setType(c)}
+            className="flex items-center gap-3 rounded border p-4 text-left hover:bg-accent"
+            data-testid={`pick-${c}`}
+          >
+            <ChannelIcon type={c} className="h-6 w-6 text-muted-foreground" />
+            <div>
+              <div className="font-medium">{channelLabel(c)}</div>
+              <div className="text-xs text-muted-foreground">
+                {t(`hint.${c}`, "")}
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+
     return (
-      <div className="space-y-4">
+      <div className="space-y-6">
         <div className="flex items-start justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              {t("newTitle", "Add a notification channel")}
+              {t("newTitle", "Add an integration")}
             </h1>
             <p className="text-sm text-muted-foreground">
-              {t("newSubtitle", "Pick the channel type to configure.")}
+              {t("newSubtitle", "Pick the integration type to configure.")}
             </p>
           </div>
           <Button asChild variant="ghost" size="sm">
@@ -96,25 +129,22 @@ function NewChannelPage() {
             </Link>
           </Button>
         </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {ALL_TYPES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setType(c)}
-              className="flex items-center gap-3 rounded border p-4 text-left hover:bg-accent"
-              data-testid={`pick-${c}`}
-            >
-              <ChannelIcon type={c} className="h-6 w-6 text-muted-foreground" />
-              <div>
-                <div className="font-medium">{channelLabel(c)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {t(`hint.${c}`, "")}
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
+        {notifyTypes.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              {t("groupNotify", "Notification channels")}
+            </h2>
+            {renderGroup(notifyTypes, "group-notify")}
+          </div>
+        )}
+        {sourceTypes.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              {t("groupSource", "Data sources")}
+            </h2>
+            {renderGroup(sourceTypes, "group-source")}
+          </div>
+        )}
       </div>
     );
   }
