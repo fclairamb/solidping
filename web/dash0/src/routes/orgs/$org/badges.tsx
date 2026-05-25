@@ -24,14 +24,22 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Checkbox } from "@/components/ui/checkbox";
 
-type BadgePeriod = "1h" | "24h" | "7d" | "30d";
+type BadgePeriod = "24h" | "7d" | "30d" | "90d";
 type BadgeStyle = "flat" | "flat-square";
-type BarPeriod = "24h" | "7d" | "30d" | "90d";
 
-const validComponentTokens = new Set(["status", "availability", "duration", "response-time"]);
-const validPeriods: BadgePeriod[] = ["1h", "24h", "7d", "30d"];
-const validBarPeriods: BarPeriod[] = ["24h", "7d", "30d", "90d"];
+const componentOrder = [
+  "status",
+  "availability",
+  "duration",
+  "response-time",
+  "uptime-bar",
+  "response-time-graph",
+] as const;
+const validComponentTokens = new Set<string>(componentOrder);
+const validPeriods: BadgePeriod[] = ["24h", "7d", "30d", "90d"];
 const validStyles: BadgeStyle[] = ["flat", "flat-square"];
+
+const DEFAULT_WIDTH = 300;
 
 interface BadgeSearch {
   check?: string;
@@ -40,8 +48,7 @@ interface BadgeSearch {
   style?: BadgeStyle;
   label?: string;
   minWidth?: number;
-  barPeriod?: BarPeriod;
-  barWidth?: number;
+  width?: number;
 }
 
 function parseComponentsString(raw: string): string[] {
@@ -51,8 +58,8 @@ function parseComponentsString(raw: string): string[] {
     .filter((t) => validComponentTokens.has(t));
 }
 
-function hasPrimary(tokens: string[]): boolean {
-  return tokens.includes("status") || tokens.includes("availability");
+function hasRowToken(tokens: string[]): boolean {
+  return tokens.includes("uptime-bar") || tokens.includes("response-time-graph");
 }
 
 export const Route = createFileRoute("/orgs/$org/badges")({
@@ -60,11 +67,11 @@ export const Route = createFileRoute("/orgs/$org/badges")({
     let components = "status";
     if (typeof search.components === "string" && search.components) {
       const tokens = parseComponentsString(search.components);
-      if (tokens.length > 0 && hasPrimary(tokens)) {
+      if (tokens.length > 0) {
         components = tokens.join(",");
       }
     }
-    const rawBarWidth = Number(search.barWidth);
+    const rawWidth = Number(search.width);
     const rawMinWidth = Number(search.minWidth);
     return {
       check: typeof search.check === "string" ? search.check : undefined,
@@ -81,11 +88,8 @@ export const Route = createFileRoute("/orgs/$org/badges")({
       minWidth: !isNaN(rawMinWidth) && rawMinWidth >= 1 && rawMinWidth <= 800
         ? rawMinWidth
         : undefined,
-      barPeriod: validBarPeriods.includes(search.barPeriod as BarPeriod)
-        ? (search.barPeriod as BarPeriod)
-        : undefined,
-      barWidth: !isNaN(rawBarWidth) && rawBarWidth >= 60 && rawBarWidth <= 800
-        ? rawBarWidth
+      width: !isNaN(rawWidth) && rawWidth >= 60 && rawWidth <= 800
+        ? rawWidth
         : undefined,
     };
   },
@@ -93,10 +97,10 @@ export const Route = createFileRoute("/orgs/$org/badges")({
 });
 
 const badgePeriods: { value: BadgePeriod; labelKey: string }[] = [
-  { value: "1h", labelKey: "periods.1h" },
   { value: "24h", labelKey: "periods.24h" },
   { value: "7d", labelKey: "periods.7d" },
   { value: "30d", labelKey: "periods.30d" },
+  { value: "90d", labelKey: "periods.90d" },
 ];
 
 const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
@@ -104,18 +108,13 @@ const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
   { value: "flat-square", labelKey: "styles.flatSquare" },
 ];
 
-const barPeriodOptions: { value: BarPeriod; label: string }[] = [
-  { value: "24h", label: "24 hours" },
-  { value: "7d", label: "7 days" },
-  { value: "30d", label: "30 days" },
-  { value: "90d", label: "90 days" },
-];
-
 const componentDefs = [
   { token: "status", labelKey: "components.status", descKey: "components.statusDescription" },
   { token: "availability", labelKey: "components.availability", descKey: "components.availabilityDescription" },
   { token: "duration", labelKey: "components.duration", descKey: "components.durationDescription" },
   { token: "response-time", labelKey: "components.responseTime", descKey: "components.responseTimeDescription" },
+  { token: "uptime-bar", labelKey: "components.uptimeBar", descKey: "components.uptimeBarDescription" },
+  { token: "response-time-graph", labelKey: "components.responseTimeGraph", descKey: "components.responseTimeGraphDescription" },
 ] as const;
 
 function CopyButton({ text, label }: { text: string; label: string }) {
@@ -145,6 +144,7 @@ function BadgePreview({
   style,
   customLabel,
   minWidth,
+  width,
 }: {
   org: string;
   check: Check;
@@ -153,17 +153,22 @@ function BadgePreview({
   style: BadgeStyle;
   customLabel: string;
   minWidth: number;
+  width: number;
 }) {
   const { t } = useTranslation("badges");
   const imgRef = useRef<HTMLImageElement>(null);
   const [cacheBust, setCacheBust] = useState(() => Date.now());
 
+  const tokens = parseComponentsString(components);
+  const showRowControls = hasRowToken(tokens);
+
   const identifier = check.slug || check.uid;
   const params = new URLSearchParams();
-  if (period !== "24h") params.set("period", period);
+  if (period !== "30d") params.set("period", period);
   if (style !== "flat") params.set("style", style);
   if (customLabel) params.set("label", customLabel);
-  if (minWidth > 0) params.set("minWidth", String(minWidth));
+  if (!showRowControls && minWidth > 0) params.set("minWidth", String(minWidth));
+  if (showRowControls && width !== DEFAULT_WIDTH) params.set("width", String(width));
   const query = params.toString();
 
   const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${components}${query ? `?${query}` : ""}`;
@@ -268,7 +273,6 @@ function BadgePreview({
               ref={imgRef}
               src={previewUrl}
               alt={`${check.name || identifier} badge`}
-              className="h-5"
               data-testid="badge-preview-img"
             />
           </div>
@@ -314,101 +318,6 @@ function BadgePreview({
   );
 }
 
-function UptimeBarPreview({
-  org,
-  check,
-  barPeriod,
-  barWidth,
-  style,
-}: {
-  org: string;
-  check: Check;
-  barPeriod: BarPeriod;
-  barWidth: number;
-  style: BadgeStyle;
-}) {
-  const { t } = useTranslation("badges");
-  const [cacheBust, setCacheBust] = useState(() => Date.now());
-
-  const identifier = check.slug || check.uid;
-  const params = new URLSearchParams();
-  if (barPeriod !== "30d") params.set("period", barPeriod);
-  if (barWidth !== 300) params.set("width", String(barWidth));
-  if (style !== "flat") params.set("style", style);
-  const query = params.toString();
-
-  const barPath = `/api/v1/orgs/${org}/checks/${identifier}/uptime-bar${query ? `?${query}` : ""}`;
-  const barUrl = `${window.location.origin}${barPath}`;
-
-  const markdownCode = `![${check.name || identifier} uptime bar](${barUrl})`;
-  const htmlCode = `<img src="${barUrl}" alt="${check.name || identifier} uptime bar" />`;
-
-  const previewUrl = `${barPath}${query ? "&" : "?"}t=${cacheBust}`;
-
-  return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">{t("uptimeBarPreview")}</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCacheBust(Date.now())}
-            data-testid="uptime-bar-refresh-preview"
-          >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            {t("refresh")}
-          </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
-            <img
-              src={previewUrl}
-              alt={`${check.name || identifier} uptime bar`}
-              data-testid="uptime-bar-preview-img"
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("uptimeBarEmbed")}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">{t("url")}</Label>
-              <CopyButton text={barUrl} label={t("url")} />
-            </div>
-            <code data-testid="uptime-bar-embed-url" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
-              {barUrl}
-            </code>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">{t("markdown")}</Label>
-              <CopyButton text={markdownCode} label={t("markdown")} />
-            </div>
-            <code data-testid="uptime-bar-embed-markdown" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
-              {markdownCode}
-            </code>
-          </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label className="text-xs text-muted-foreground">{t("html")}</Label>
-              <CopyButton text={htmlCode} label={t("html")} />
-            </div>
-            <code data-testid="uptime-bar-embed-html" className="block rounded-md border bg-muted/50 p-3 text-xs break-all font-mono">
-              {htmlCode}
-            </code>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
 function BadgesPage() {
   const { t } = useTranslation("badges");
   const { org } = Route.useParams();
@@ -417,16 +326,18 @@ function BadgesPage() {
   const { data: checks = [], isLoading, error } = useChecks(org);
 
   const components = search.components ?? "status";
-  const period = search.period ?? "24h";
+  const period = search.period ?? "30d";
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
   const minWidth = search.minWidth ?? 0;
-  const barPeriod = search.barPeriod ?? "30d";
-  const barWidth = search.barWidth ?? 300;
+  const width = search.width ?? DEFAULT_WIDTH;
 
   const activeTokens = parseComponentsString(components);
-  const primaryCount = activeTokens.filter((t) => t === "status" || t === "availability").length;
-  const showPeriod = activeTokens.includes("availability") || activeTokens.includes("response-time");
+  const showRowControls = hasRowToken(activeTokens);
+  const showPeriod =
+    activeTokens.includes("availability") ||
+    activeTokens.includes("response-time") ||
+    showRowControls;
 
   const selectedCheck = search.check
     ? checks.find((c) => c.uid === search.check) ??
@@ -438,12 +349,11 @@ function BadgesPage() {
       search: (prev: BadgeSearch) => {
         const next = { ...prev, ...updates };
         if (next.components === "status") delete next.components;
-        if (next.period === "24h") delete next.period;
+        if (next.period === "30d") delete next.period;
         if (next.style === "flat") delete next.style;
         if (!next.label) delete next.label;
         if (!next.minWidth || next.minWidth <= 0) delete next.minWidth;
-        if (next.barPeriod === "30d") delete next.barPeriod;
-        if (!next.barWidth || next.barWidth === 300) delete next.barWidth;
+        if (!next.width || next.width === DEFAULT_WIDTH) delete next.width;
         return next;
       },
       replace: true,
@@ -460,9 +370,8 @@ function BadgesPage() {
     if (checked) {
       if (!tokens.includes(token)) {
         // Insert in canonical order.
-        const order = ["status", "availability", "duration", "response-time"];
         const newTokens: string[] = [];
-        for (const t of order) {
+        for (const t of componentOrder) {
           if (tokens.includes(t) || t === token) {
             newTokens.push(t);
           }
@@ -473,9 +382,9 @@ function BadgesPage() {
       tokens = tokens.filter((t) => t !== token);
     }
 
-    // Ensure we always have at least one primary.
-    if (!hasPrimary(tokens)) {
-      tokens = ["status", ...tokens.filter((t) => t !== "status")];
+    // Keep the URL non-empty: fall back to "status" when everything is off.
+    if (tokens.length === 0) {
+      tokens = ["status"];
     }
 
     updateSearch({ components: tokens.join(",") });
@@ -527,15 +436,11 @@ function BadgesPage() {
               <div className="space-y-3">
                 {componentDefs.map(({ token, labelKey, descKey }) => {
                   const checked = activeTokens.includes(token);
-                  const isPrimary = token === "status" || token === "availability";
-                  // Disable unchecking the last primary.
-                  const disabled = checked && isPrimary && primaryCount === 1;
                   return (
                     <div key={token} className="flex items-start gap-3">
                       <Checkbox
                         id={`component-${token}`}
                         checked={checked}
-                        disabled={disabled}
                         onCheckedChange={(v) =>
                           handleComponentToggle(token, v === true)
                         }
@@ -554,7 +459,6 @@ function BadgesPage() {
                   );
                 })}
               </div>
-              <p className="text-xs text-muted-foreground">{t("components.required")}</p>
             </div>
 
             {showPeriod && (
@@ -597,19 +501,34 @@ function BadgesPage() {
               </Select>
             </div>
 
-            <div className="space-y-2">
-              <Label>{t("minWidth")}</Label>
-              <Input
-                data-testid="badge-min-width"
-                type="number"
-                min={0}
-                max={800}
-                step={10}
-                value={minWidth}
-                onChange={(e) => updateSearch({ minWidth: Number(e.target.value) || undefined })}
-              />
-              <p className="text-xs text-muted-foreground">{t("minWidthDescription")}</p>
-            </div>
+            {showRowControls ? (
+              <div className="space-y-2">
+                <Label>{t("width")}</Label>
+                <Input
+                  data-testid="badge-width"
+                  type="number"
+                  min={60}
+                  max={800}
+                  step={10}
+                  value={width}
+                  onChange={(e) => updateSearch({ width: Number(e.target.value) || undefined })}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{t("minWidth")}</Label>
+                <Input
+                  data-testid="badge-min-width"
+                  type="number"
+                  min={0}
+                  max={800}
+                  step={10}
+                  value={minWidth}
+                  onChange={(e) => updateSearch({ minWidth: Number(e.target.value) || undefined })}
+                />
+                <p className="text-xs text-muted-foreground">{t("minWidthDescription")}</p>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>{t("customLabel")}</Label>
@@ -620,47 +539,6 @@ function BadgesPage() {
                 onChange={(e) => updateSearch({ label: e.target.value })}
               />
             </div>
-
-            {selectedCheck && (
-              <>
-                <div className="border-t pt-4">
-                  <p className="text-sm font-semibold mb-3">{t("uptimeBar")}</p>
-                  <p className="text-xs text-muted-foreground mb-4">{t("uptimeBarDescription")}</p>
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label>{t("period")}</Label>
-                      <Select
-                        value={barPeriod}
-                        onValueChange={(v) => updateSearch({ barPeriod: v as BarPeriod })}
-                      >
-                        <SelectTrigger data-testid="uptime-bar-period-select">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {barPeriodOptions.map((p) => (
-                            <SelectItem key={p.value} value={p.value}>
-                              {p.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>{t("barWidth")}</Label>
-                      <Input
-                        data-testid="uptime-bar-width"
-                        type="number"
-                        min={60}
-                        max={800}
-                        step={10}
-                        value={barWidth}
-                        onChange={(e) => updateSearch({ barWidth: Number(e.target.value) || undefined })}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </>
-            )}
           </CardContent>
         </Card>
 
@@ -675,13 +553,7 @@ function BadgesPage() {
                 style={style}
                 customLabel={customLabel}
                 minWidth={minWidth}
-              />
-              <UptimeBarPreview
-                org={org}
-                check={selectedCheck}
-                barPeriod={barPeriod}
-                barWidth={barWidth}
-                style={style}
+                width={width}
               />
             </div>
           ) : (

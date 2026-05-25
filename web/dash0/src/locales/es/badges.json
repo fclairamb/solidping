@@ -11,6 +11,7 @@
   "customLabelPlaceholder": "Déjelo vacío para usar el nombre de la comprobación",
   "minWidth": "Ancho mínimo (px)",
   "minWidthDescription": "Amplía la insignia hasta al menos este ancho. Use 0 para automático.",
+  "width": "Ancho (px)",
   "preview": "Vista previa",
   "refresh": "Actualizar",
   "selectCheckPrompt": "Seleccione una comprobación para previsualizar y generar insignias",
@@ -25,7 +26,6 @@
   "copied": "Copiado",
   "copiedToClipboard": "{{label}} copiado al portapapeles",
   "components": "Componentes",
-  "components.required": "Se requiere al menos uno de los siguientes: Estado o Disponibilidad",
   "components.status": "Estado",
   "components.statusDescription": "Estado actual up/down",
   "components.availability": "Disponibilidad",
@@ -34,21 +34,20 @@
   "components.durationDescription": "Tiempo desde el último cambio de estado",
   "components.responseTime": "Tiempo de respuesta",
   "components.responseTimeDescription": "Tiempo de respuesta medio en el período seleccionado",
+  "components.uptimeBar": "Barra de disponibilidad",
+  "components.uptimeBarDescription": "Una franja horizontal que muestra la disponibilidad por intervalo de tiempo",
+  "components.responseTimeGraph": "Gráfico de tiempo de respuesta",
+  "components.responseTimeGraphDescription": "Un gráfico de área del tiempo de respuesta medio por intervalo de tiempo",
   "periods": {
-    "1h": "1 hora",
     "24h": "24 horas",
     "7d": "7 días",
-    "30d": "30 días"
+    "30d": "30 días",
+    "90d": "90 días"
   },
   "styles": {
     "flat": "Plano",
     "flatSquare": "Plano cuadrado"
   },
   "availability": "Disponibilidad",
-  "status": "Estado",
-  "uptimeBar": "Barra de disponibilidad",
-  "uptimeBarDescription": "Una franja horizontal que muestra la disponibilidad por intervalo de tiempo",
-  "uptimeBarPreview": "Vista previa de la barra de disponibilidad",
-  "uptimeBarEmbed": "Código de integración de la barra de disponibilidad",
-  "barWidth": "Ancho de la barra (px)"
+  "status": "Estado"
 }
