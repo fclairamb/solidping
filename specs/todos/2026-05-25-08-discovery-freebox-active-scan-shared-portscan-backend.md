@@ -165,3 +165,32 @@ No API, migration, model, or frontend changes.
    testcontainer host to confirm the scanner ran).
 5. **No LAN scan regression**: existing `TestNetworkDiscovery*` tests pass
    unchanged.
+
+## Implementation Plan
+
+1. **Shared port table (`ports.go`)** — New file in `server/internal/discovery`
+   defining `portSpec`, the authoritative `defaultPorts` slice (exactly the 16
+   ports/types/URL templates from the spec), and `defaultPortList()` derived from
+   it. Remove the old hardcoded `defaultPortList()` from `scanner.go`.
+2. **Suggestion engine (`suggest.go`)** — Rewrite `suggestForPort` to look up the
+   port in `defaultPorts` (range/match) and build the suggestion from the spec's
+   `CheckType` + `URLTmpl`, producing identical output to today's switch.
+3. **Explicit-host scan API (`scanner.go`)** — Add `HostInput{IP, HostnameHint}`,
+   extract the shared worker-pool body of `Scan` into a private
+   `runProbes(ctx, targets []probeTarget, ports, concurrency, timeout)`, and add
+   `ScanHosts(ctx, hosts, cfg)` that resolves config defaults (ports, timeout,
+   concurrency), ignores `cfg.CIDRs`, and calls `runProbes` with the pre-supplied
+   targets. `probeTarget` carries `IP` + `HostnameHint`; `probeHost` prefers the
+   hint over reverse DNS.
+4. **Freebox job rewrite (`job_freebox_lan_discovery.go`)** — After
+   `ListLanHostsForChannel`, build `[]discovery.HostInput` (IP + device name as
+   hint), call `discovery.ScanHosts`, index results by IP, and merge: responsive
+   hosts get real `icmpReachable`/`open_ports`/`suggested_checks`; hosts not seen
+   by the scan fall back to the Freebox `reachable` flag with empty
+   ports/checks (so no Freebox host is dropped). Persist via the existing upsert
+   (no migration).
+5. **Tests** — `ScanHosts` unit test (hostname-hint precedence, results shape);
+   port-table coherence test (`defaultPorts`↔`defaultPortList()`↔`suggestForPort`);
+   update the Freebox job test assertions for the active-scan merge while keeping
+   the 2-host / idempotency / not-granted cases green.
+6. **QA** — `make build-backend build-dash0 lint-back test` until clean.
