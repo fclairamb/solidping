@@ -76,5 +76,6 @@
   "freeboxScanFailed": "Failed to start Freebox discovery",
   "selectChecks": "Checks to create",
   "createChecks": "Create checks",
-  "noSuggestedChecks": "No suggested checks — pick a type"
+  "noSuggestedChecks": "No suggested checks — pick a type",
+  "largeRangeWarning": "Large range: ~{{hosts}} addresses across {{chunks}} chunks. This scan may take a long time (hours to days)."
 }

@@ -76,5 +76,6 @@
   "freeboxScanFailed": "Échec du démarrage de la découverte Freebox",
   "selectChecks": "Vérifications à créer",
   "createChecks": "Créer les vérifications",
-  "noSuggestedChecks": "Aucune vérification suggérée — choisissez un type"
+  "noSuggestedChecks": "Aucune vérification suggérée — choisissez un type",
+  "largeRangeWarning": "Grande plage : ~{{hosts}} adresses sur {{chunks}} lots. Ce scan peut prendre longtemps (heures à jours)."
 }
