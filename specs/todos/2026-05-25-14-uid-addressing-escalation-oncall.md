@@ -77,3 +77,43 @@ For each of the two handlers, resolve the existing `:slug` path param as **uid-o
 P2.2 — small, mechanical API task. Unblocks `terraform import org/uid` for the last two
 provider resources. Not a blocker for the provider's initial release (it can import these
 two by slug in the interim).
+
+## Implementation Plan
+
+1. **DB layer (interface + sqlite + postgres).**
+   - Add `GetEscalationPolicyByUidOrSlug(ctx, orgUID, identifier)` to `db.Service`
+     (`internal/db/service.go`) and implement it in
+     `internal/db/sqlite/escalation.go` and `internal/db/postgres/escalation.go`.
+     Use the same `uuid.Parse(identifier)` heuristic as `GetCheckByUidOrSlug` /
+     `GetStatusPageByUidOrSlug` — parse-ok ⇒ match `uid`, else match `slug`. Scope by
+     `organization_uid`, exclude `deleted_at`. Wrap errors with `%w` so the service's
+     `errors.Is(err, sql.ErrNoRows)` keeps working.
+   - Add `GetOnCallScheduleByUidOrSlug(ctx, orgUID, identifier)` to `db.Service` and
+     implement it in `internal/db/sqlite/on_call.go` and
+     `internal/db/postgres/on_call.go` with the same heuristic.
+
+2. **Service layer.**
+   - `escalationpolicies/service.go`: add `GetPolicyByUidOrSlug` mirroring
+     `GetPolicyBySlug` but calling the new DB method; route `UpdatePolicy` and
+     `DeletePolicy` resolution through `GetEscalationPolicyByUidOrSlug` so PATCH/DELETE
+     accept a uid too. Keep the `:slug` param name for backward compatibility.
+   - `oncallschedules/service.go`: add `GetScheduleByUidOrSlug` calling the new DB
+     method.
+
+3. **Handlers.**
+   - `escalationpolicies/handler.go`: `GetPolicy` → `GetPolicyByUidOrSlug`;
+     `UpdatePolicy`/`DeletePolicy` already delegate to the service which now resolves
+     uid-or-slug.
+   - `oncallschedules/handler.go`: point `GetSchedule`, `UpdateSchedule`,
+     `DeleteSchedule`, `PreviewSchedule`, `ListOverrides`, `CreateOverride`,
+     `EnableICalFeed`, `DisableICalFeed`, `RotateICalFeed` (all the `:slug` sub-routes)
+     at `GetScheduleByUidOrSlug`.
+
+4. **Docs.** Add `escalation-policies` and `on-call-schedules` endpoint sections to
+   `docs/api-specification.md`, noting uid-or-slug addressing on GET/PATCH/DELETE.
+
+5. **Tests.**
+   - DB: `service_test.go` cases for `GetEscalationPolicyByUidOrSlug` /
+     `GetOnCallScheduleByUidOrSlug` covering uid path, slug path, and not-found.
+   - Service + handler: table-driven tests covering uid path, slug path, and 404 for
+     GET/PATCH/DELETE on both resources.
