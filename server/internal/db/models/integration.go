@@ -42,7 +42,11 @@ type Capabilities struct {
 // CapabilitiesFor returns the capabilities of an integration connection type.
 // Every notification sink (slack, discord, webhook, email, googlechat,
 // mattermost, ntfy, opsgenie, pushover) is CanNotify; freebox is a data source
-// (CanSource) and cannot receive notifications.
+// (CanSource) and cannot receive notifications. The default branch
+// intentionally covers every current notification-sink type, so only data
+// sources need an explicit case.
+//
+//nolint:exhaustive // default branch handles all notification-sink types.
 func CapabilitiesFor(t ConnectionType) Capabilities {
 	switch t {
 	case ConnectionTypeFreebox:

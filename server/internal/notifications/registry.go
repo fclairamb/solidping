@@ -13,6 +13,9 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return nil, false
 	}
 
+	// Non-notify types (e.g. freebox) are already handled by the CanNotify
+	// guard above; the default covers any unmapped notify type.
+	//nolint:exhaustive // non-notify types handled by the CanNotify guard above.
 	switch connType {
 	case models.ConnectionTypeSlack:
 		return &SlackSender{}, true
