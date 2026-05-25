@@ -664,16 +664,19 @@ Submit a check execution result. Auth: worker token
 On-demand host discovery. Found hosts land in `discovered_hosts` and can be listed, promoted to a check, or dismissed. Each host carries a `source` discriminator (`"lan"` for the CIDR scanner, `"freebox"` for Freebox LAN discovery). All routes are under `/api/v1/orgs/:org/discovery` and require auth + org access.
 
 ### POST /api/v1/orgs/:org/discovery/scans
-Launch a CIDR network-discovery scan. Body `{ "cidrs": [...], "ports": [...] }`. Auth: admin. Returns `{ "data": <job> }`. `409 DISCOVERY_ALREADY_RUNNING` if a scan is already in flight for the org.
+Launch a CIDR network-discovery scan. Body `{ "cidrs": [...], "ports": [...] }`. Auth: admin. Large ranges are accepted: the scan is created as a `network_discovery_plan` job (its UID is the scan UID) that fans out into bounded `network_discovery` child jobs of ≤4096 addresses each, so hosts appear progressively. Returns `{ "data": <job> }`. `422 DISCOVERY_RANGE_TOO_LARGE` if the range exceeds the overall ceiling (`MaxScanChunks` = 256 chunks ≈ 1M addresses / a /12). `409 DISCOVERY_ALREADY_RUNNING` if a scan is already in flight for the org (a plan or any non-stale child pending/running; children whose `updated_at` is older than 30m are ignored).
 
 ### POST /api/v1/orgs/:org/discovery/freebox-scans
 Launch a Freebox LAN-discovery run against a paired Freebox channel. Body `{ "channelUid": "..." }`. Auth: admin. Validates the channel is a paired Freebox channel before queueing. Returns `{ "data": <job> }` (same shape as `/scans`). Errors: `409 FREEBOX_NOT_GRANTED` (channel not paired), `404 NOT_FOUND` (no such Freebox channel), `409 DISCOVERY_ALREADY_RUNNING`.
 
 ### GET /api/v1/orgs/:org/discovery/scans
-List discovery runs (both `network_discovery` and `freebox_lan_discovery`), newest first. Auth: required. Returns `{ "data": [<job>, ...] }`.
+List discovery runs (`network_discovery_plan`, standalone `network_discovery`, and `freebox_lan_discovery`), newest first. Child `network_discovery` jobs (those carrying a `parentJobUid` in config) are filtered out — the plan job represents the scan. Auth: required. Returns `{ "data": [<job>, ...] }`.
 
 ### GET /api/v1/orgs/:org/discovery/scans/:jobUid
-Get one discovery run. Auth: required.
+Get one discovery run. Auth: required. For a `network_discovery_plan` scan the response also carries a `progress` block: `{ "totalChunks", "completedChunks", "failedChunks", "runningChunks", "pendingChunks", "derivedStatus", "hostCount" }`. `derivedStatus` is `running` while the plan is pending/running or any child is pending/running, `success` once all children are terminal, `failed` only if the plan itself failed.
+
+### POST /api/v1/orgs/:org/discovery/scans/:jobUid/cancel
+Stop a running fan-out scan. Auth: admin. Cancels the plan job if still pending, then soft-deletes every pending child chunk; children already running finish naturally. Returns `204 No Content`. `404 NOT_FOUND` if no such scan exists for the org.
 
 ### GET /api/v1/orgs/:org/discovery/hosts
 List discovered hosts for the org. Auth: required. Query params: `jobUid`, `promoted` (`true`/`false`), `source` (singular, comma-separated, e.g. `?source=lan,freebox`). Returns `{ "data": [<discoveredHost>, ...] }`. Each `discoveredHost` includes a `source` field.

@@ -23,9 +23,17 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
 
+// staleScanThreshold is how old a child network_discovery job's updated_at may be
+// before the "already running" guard stops counting it as active. This is the
+// pragmatic stand-in for a real lease/reaper: a single child stuck in `running`
+// (e.g. a crashed worker) stops blocking new scans after this window.
+const staleScanThreshold = 30 * time.Minute
+
 var (
 	// ErrHostNotFound is returned when a discovered host is not found.
 	ErrHostNotFound = errors.New("discovered host not found")
+	// ErrScanNotFound is returned when a discovery scan (plan job) is not found.
+	ErrScanNotFound = errors.New("discovery scan not found")
 	// ErrAlreadyRunning is returned when a discovery job is already running for the org.
 	ErrAlreadyRunning = errors.New("a discovery scan is already running for this organization")
 	// ErrAlreadyPromoted is returned when a host has already been promoted.
@@ -92,16 +100,24 @@ func NewService(
 	}
 }
 
-// StartScan creates a new discovery job. Returns ErrAlreadyRunning if another scan is in progress.
-func (s *Service) StartScan(ctx context.Context, orgUID string, cfg disc.Config) (*models.Job, error) {
-	if err := disc.ValidateCIDRs(cfg.CIDRs); err != nil {
+// StartScan creates a fan-out discovery scan. It validates the range against the
+// overall ceiling (ValidatePlanCIDRs), guards against an already-running scan for
+// the org, then creates a single network_discovery_plan job. That plan job's UID
+// is the scan UID; when it runs it splits the range into bounded child jobs.
+// Returns ErrRangeTooLarge if the range exceeds MaxScanChunks, ErrAlreadyRunning
+// if another scan is in progress.
+func (s *Service) StartScan(ctx context.Context, orgUID string, cfg *disc.Config) (*models.Job, error) {
+	if err := disc.ValidatePlanCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
 	}
 
-	// Check for already-running scan.
-	if err := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobTypeNetworkDiscovery); err != nil {
+	// Check for already-running scan (plan or any non-stale child).
+	if err := s.checkScanAlreadyRunning(ctx, orgUID); err != nil {
 		return nil, err
 	}
+
+	// The plan job carries no parentJobUid — children inherit it from the plan UID.
+	cfg.ParentJobUID = ""
 
 	configBytes, err := json.Marshal(cfg)
 	if err != nil {
@@ -111,12 +127,12 @@ func (s *Service) StartScan(ctx context.Context, orgUID string, cfg disc.Config)
 	job, err := s.jobSvc.CreateJob(
 		ctx,
 		orgUID,
-		string(jobdef.JobTypeNetworkDiscovery),
+		string(jobdef.JobTypeNetworkDiscoveryPlan),
 		configBytes,
 		nil,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery job: %w", err)
+		return nil, fmt.Errorf("failed to create discovery plan job: %w", err)
 	}
 
 	return job, nil
@@ -187,6 +203,217 @@ func (s *Service) checkAlreadyRunning(ctx context.Context, orgUID string, jobTyp
 
 	if count > 0 {
 		return ErrAlreadyRunning
+	}
+
+	return nil
+}
+
+// parentJobUIDExpr returns the dialect-specific SQL expression that reads the
+// parentJobUid key out of a job's JSON config column.
+func (s *Service) parentJobUIDExpr() string {
+	if s.isPostgres {
+		return "config->>'parentJobUid'"
+	}
+
+	return "json_extract(config, '$.parentJobUid')"
+}
+
+// checkScanAlreadyRunning returns ErrAlreadyRunning when a fan-out scan is active
+// for the org. A scan is active if its plan job is pending/running, OR any child
+// network_discovery job is pending/running. Children stuck in `running` past
+// staleScanThreshold are ignored so a single crashed worker cannot block all
+// future scans for the org (the pragmatic stand-in for a real reaper).
+func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) error {
+	// Active plan jobs.
+	planCount, err := s.db.NewSelect().
+		TableExpr("jobs").
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscoveryPlan)).
+		Where("organization_uid = ?", orgUID).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check running plan jobs: %w", err)
+	}
+
+	if planCount > 0 {
+		return ErrAlreadyRunning
+	}
+
+	// Active child jobs, ignoring children whose updated_at is stale.
+	staleBefore := time.Now().Add(-staleScanThreshold)
+
+	childCount, err := s.db.NewSelect().
+		TableExpr("jobs").
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
+		Where("organization_uid = ?", orgUID).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Where("deleted_at IS NULL").
+		Where("updated_at >= ?", staleBefore).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to check running child jobs: %w", err)
+	}
+
+	if childCount > 0 {
+		return ErrAlreadyRunning
+	}
+
+	return nil
+}
+
+// ScanProgress is the derived progress view of a fan-out scan, aggregated from
+// the plan job plus its child network_discovery jobs.
+type ScanProgress struct {
+	TotalChunks     int    `json:"totalChunks"`
+	CompletedChunks int    `json:"completedChunks"`
+	FailedChunks    int    `json:"failedChunks"`
+	RunningChunks   int    `json:"runningChunks"`
+	PendingChunks   int    `json:"pendingChunks"`
+	DerivedStatus   string `json:"derivedStatus"`
+	HostCount       int    `json:"hostCount"`
+}
+
+// GetScanProgress aggregates a fan-out scan's progress from the plan job and its
+// children. derivedStatus is "running" while the plan is pending/running or any
+// child is pending/running; "success" once every child is terminal; "failed" only
+// if the plan job itself failed.
+func (s *Service) GetScanProgress(ctx context.Context, orgUID, planUID string) (*ScanProgress, error) {
+	plan, err := s.jobSvc.GetJob(ctx, planUID)
+	if err != nil {
+		return nil, ErrScanNotFound
+	}
+
+	progress := &ScanProgress{}
+
+	// Denominator: prefer the plan's recorded totalChunks, fall back to counting children.
+	if plan.Output != nil {
+		if v, ok := plan.Output["totalChunks"]; ok {
+			progress.TotalChunks = toInt(v)
+		}
+	}
+
+	// Count children by status.
+	parentExpr := s.parentJobUIDExpr()
+
+	var children []*models.Job
+
+	err = s.db.NewSelect().
+		Model(&children).
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where(parentExpr+" = ?", planUID).
+		Scan(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count child jobs: %w", err)
+	}
+
+	for _, child := range children {
+		switch child.Status {
+		case models.JobStatusSuccess:
+			progress.CompletedChunks++
+		case models.JobStatusFailed:
+			progress.FailedChunks++
+		case models.JobStatusRunning:
+			progress.RunningChunks++
+		case models.JobStatusPending:
+			progress.PendingChunks++
+		case models.JobStatusRetried:
+			// Retried children are superseded by a fresh pending child; don't
+			// double-count them toward any terminal bucket.
+		}
+	}
+
+	if progress.TotalChunks == 0 {
+		progress.TotalChunks = len(children)
+	}
+
+	// Host count rolled up under the plan UID.
+	hostCount, err := s.db.NewSelect().
+		TableExpr("discovered_hosts").
+		Where("organization_uid = ?", orgUID).
+		Where("job_uid = ?", planUID).
+		Where("deleted_at IS NULL").
+		Count(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count hosts: %w", err)
+	}
+
+	progress.HostCount = hostCount
+
+	progress.DerivedStatus = deriveScanStatus(plan, progress)
+
+	return progress, nil
+}
+
+// deriveScanStatus computes the overall scan status from the plan job and the
+// aggregated child progress.
+func deriveScanStatus(plan *models.Job, progress *ScanProgress) string {
+	switch {
+	case plan.Status == models.JobStatusFailed:
+		return string(models.JobStatusFailed)
+	case plan.Status == models.JobStatusPending || plan.Status == models.JobStatusRunning:
+		return string(models.JobStatusRunning)
+	case progress.RunningChunks > 0 || progress.PendingChunks > 0:
+		return string(models.JobStatusRunning)
+	default:
+		return string(models.JobStatusSuccess)
+	}
+}
+
+// toInt coerces a JSON-decoded numeric value (float64, json.Number, int) to int.
+func toInt(v any) int {
+	switch n := v.(type) {
+	case float64:
+		return int(n)
+	case int:
+		return n
+	case int64:
+		return int(n)
+	case json.Number:
+		i, _ := n.Int64()
+
+		return int(i)
+	default:
+		return 0
+	}
+}
+
+// CancelScan stops a fan-out scan: it cancels the plan job if still pending, then
+// cancels every pending child network_discovery job (soft delete). Running
+// children are bounded (~minutes) and finish naturally; the net effect is that no
+// new chunks start. Returns ErrScanNotFound if no such plan exists for the org.
+func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error {
+	plan, err := s.jobSvc.GetJob(ctx, planUID)
+	if err != nil || plan.OrganizationUID == nil || *plan.OrganizationUID != orgUID {
+		return ErrScanNotFound
+	}
+
+	// Cancel the plan job itself if it hasn't started scheduling yet. CancelJob
+	// only affects pending jobs, so a running/finished plan is left untouched.
+	if cancelErr := s.jobSvc.CancelJob(ctx, planUID); cancelErr != nil &&
+		!errors.Is(cancelErr, jobsvc.ErrJobNotPending) {
+		return fmt.Errorf("cancel plan job: %w", cancelErr)
+	}
+
+	// Soft-delete every pending child in one statement (CancelJob is per-UID and
+	// pending-only; a bulk update matches its semantics for the child set).
+	now := time.Now()
+	parentExpr := s.parentJobUIDExpr()
+
+	_, err = s.db.NewUpdate().
+		Model((*models.Job)(nil)).
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
+		Where("organization_uid = ?", orgUID).
+		Where("status = ?", models.JobStatusPending).
+		Where("deleted_at IS NULL").
+		Where(parentExpr+" = ?", planUID).
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("cancel pending child jobs: %w", err)
 	}
 
 	return nil

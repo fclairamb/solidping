@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -309,6 +310,179 @@ func TestListHostsSourceFilter(t *testing.T) {
 	r.Len(fbOnly, 1)
 	r.Equal(models.DiscoverySourceFreebox, fbOnly[0].Source)
 	r.Equal("192.168.1.20", fbOnly[0].IP)
+}
+
+// newChildJob inserts a network_discovery child job carrying the given parent UID
+// and status, returning it.
+func (f *discoveryFixture) newChildJob(
+	t *testing.T, parentUID string, status models.JobStatus,
+) *models.Job {
+	t.Helper()
+
+	r := require.New(t)
+	ctx := t.Context()
+
+	job := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscovery))
+	job.Status = status
+	job.Config = models.JSONMap{
+		"cidrs":        []string{"10.0.0.0/24"},
+		"parentJobUid": parentUID,
+	}
+	r.NoError(f.dbSvc.CreateJob(ctx, job))
+
+	return job
+}
+
+func TestStartScanCreatesPlanJob(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"10.0.0.0/18"}})
+	r.NoError(err)
+	r.NotNil(job)
+	r.Equal(string(jobdef.JobTypeNetworkDiscoveryPlan), job.Type, "StartScan must create a plan job")
+}
+
+func TestStartScanRejectsRangeOverCeiling(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, &disc.Config{CIDRs: []string{"10.0.0.0/11"}})
+	r.ErrorIs(err, disc.ErrRangeTooLarge)
+}
+
+func TestStartScanGuardsOnPendingChild(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	// Simulate an in-flight scan via a pending child (plan already succeeded).
+	plan := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
+	plan.Status = models.JobStatusSuccess
+	r.NoError(f.dbSvc.CreateJob(ctx, plan))
+	f.newChildJob(t, plan.UID, models.JobStatusPending)
+
+	_, err := f.svc.StartScan(ctx, f.org.UID, &disc.Config{CIDRs: []string{"192.168.1.0/24"}})
+	r.ErrorIs(err, discovery.ErrAlreadyRunning)
+}
+
+func TestStartScanIgnoresStaleRunningChild(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	plan := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
+	plan.Status = models.JobStatusSuccess
+	r.NoError(f.dbSvc.CreateJob(ctx, plan))
+
+	// A child stuck `running` with a very old updated_at must not block new scans.
+	child := f.newChildJob(t, plan.UID, models.JobStatusRunning)
+	stale := time.Now().Add(-2 * time.Hour)
+	_, err := f.dbSvc.DB().NewUpdate().
+		Model((*models.Job)(nil)).
+		Set("updated_at = ?", stale).
+		Where("uid = ?", child.UID).
+		Exec(ctx)
+	r.NoError(err)
+
+	job, err := f.svc.StartScan(ctx, f.org.UID, &disc.Config{CIDRs: []string{"192.168.1.0/24"}})
+	r.NoError(err, "a stale running child must not block a new scan")
+	r.NotNil(job)
+}
+
+func TestCancelScanDropsPendingChildren(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	plan := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
+	plan.Status = models.JobStatusSuccess
+	r.NoError(f.dbSvc.CreateJob(ctx, plan))
+
+	pending := f.newChildJob(t, plan.UID, models.JobStatusPending)
+	running := f.newChildJob(t, plan.UID, models.JobStatusRunning)
+
+	r.NoError(f.svc.CancelScan(ctx, f.org.UID, plan.UID))
+
+	// Pending child is soft-deleted; running child is untouched (finishes naturally).
+	var pendingJob models.Job
+	err := f.dbSvc.DB().NewSelect().Model(&pendingJob).Where("uid = ?", pending.UID).Scan(ctx)
+	r.NoError(err)
+	r.NotNil(pendingJob.DeletedAt)
+
+	var runningJob models.Job
+	err = f.dbSvc.DB().NewSelect().Model(&runningJob).Where("uid = ?", running.UID).Scan(ctx)
+	r.NoError(err)
+	r.Nil(runningJob.DeletedAt)
+}
+
+func TestCancelScanUnknownScan(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	err := f.svc.CancelScan(t.Context(), f.org.UID, "00000000-0000-0000-0000-000000000000")
+	r.ErrorIs(err, discovery.ErrScanNotFound)
+}
+
+func TestGetScanProgressAggregates(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	plan := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
+	plan.Status = models.JobStatusSuccess
+	plan.Output = models.JSONMap{"totalChunks": 4}
+	r.NoError(f.dbSvc.CreateJob(ctx, plan))
+
+	f.newChildJob(t, plan.UID, models.JobStatusSuccess)
+	f.newChildJob(t, plan.UID, models.JobStatusSuccess)
+	f.newChildJob(t, plan.UID, models.JobStatusRunning)
+	f.newChildJob(t, plan.UID, models.JobStatusPending)
+
+	prog, err := f.svc.GetScanProgress(ctx, f.org.UID, plan.UID)
+	r.NoError(err)
+	r.Equal(4, prog.TotalChunks)
+	r.Equal(2, prog.CompletedChunks)
+	r.Equal(1, prog.RunningChunks)
+	r.Equal(1, prog.PendingChunks)
+	r.Equal(0, prog.FailedChunks)
+	// A running/pending child keeps the derived status at running.
+	r.Equal(string(models.JobStatusRunning), prog.DerivedStatus)
+}
+
+func TestGetScanProgressAllDoneIsSuccess(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	ctx := t.Context()
+
+	plan := models.NewJob(&f.org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
+	plan.Status = models.JobStatusSuccess
+	plan.Output = models.JSONMap{"totalChunks": 2}
+	r.NoError(f.dbSvc.CreateJob(ctx, plan))
+
+	f.newChildJob(t, plan.UID, models.JobStatusSuccess)
+	f.newChildJob(t, plan.UID, models.JobStatusSuccess)
+
+	prog, err := f.svc.GetScanProgress(ctx, f.org.UID, plan.UID)
+	r.NoError(err)
+	r.Equal(2, prog.CompletedChunks)
+	r.Equal(string(models.JobStatusSuccess), prog.DerivedStatus)
 }
 
 func TestCrossSourceUpsertCoexists(t *testing.T) {

@@ -53,16 +53,25 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 	}
 
 	orgUID := *jctx.OrganizationUID
+
+	// Hosts roll up under the parent plan job when this is a fan-out child, so the
+	// scan-detail page sees every chunk's hosts under one UID. A standalone scan
+	// (no parent) persists under its own job UID.
 	jobUID := jctx.Job.UID
+	if r.config.ParentJobUID != "" {
+		jobUID = r.config.ParentJobUID
+	}
 
 	log.InfoContext(ctx, "Starting network discovery scan",
 		"cidrs", r.config.CIDRs,
 		"ports", r.config.Ports,
 		"org_uid", orgUID,
 		"job_uid", jobUID,
+		"child_job_uid", jctx.Job.UID,
+		"parent_job_uid", r.config.ParentJobUID,
 	)
 
-	hosts, err := disc.Scan(ctx, r.config)
+	hosts, err := disc.Scan(ctx, &r.config)
 	if err != nil {
 		return fmt.Errorf("scan failed: %w", err)
 	}

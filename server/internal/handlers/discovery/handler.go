@@ -60,6 +60,7 @@ func (h *Handler) RegisterRoutes(group *bunrouter.Group) {
 	group.POST("/freebox-scans", h.StartFreeboxScan)
 	group.GET("/scans", h.ListScans)
 	group.GET("/scans/:jobUid", h.GetScan)
+	group.POST("/scans/:jobUid/cancel", h.CancelScan)
 	group.GET("/hosts", h.ListHosts)
 	group.POST("/hosts/:uid/promote", h.PromoteHost)
 	group.DELETE("/hosts/:uid", h.DismissHost)
@@ -135,7 +136,7 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "cidrs is required")
 	}
 
-	job, err := h.svc.StartScan(req.Context(), org.UID, cfg)
+	job, err := h.svc.StartScan(req.Context(), org.UID, &cfg)
 
 	switch {
 	case errors.Is(err, disc.ErrRangeTooLarge):
@@ -161,6 +162,7 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) e
 
 	jobs, err := h.svc.jobSvc.ListJobs(req.Context(), org.UID, jobsvc.ListJobsOptions{
 		Types: []string{
+			string(jobdef.JobTypeNetworkDiscoveryPlan),
 			string(jobdef.JobTypeNetworkDiscovery),
 			string(jobdef.JobTypeFreeboxLanDiscovery),
 		},
@@ -169,11 +171,36 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteInternalError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: jobs})
+	// Child network_discovery jobs (those carrying a parentJobUid) are
+	// implementation detail of a fan-out scan — the scan itself is the plan job.
+	// Filter them out so the list shows one entry per user-initiated scan.
+	scans := make([]*models.Job, 0, len(jobs))
+
+	for _, job := range jobs {
+		if job.Type == string(jobdef.JobTypeNetworkDiscovery) && job.Config != nil {
+			if parent, ok := job.Config["parentJobUid"]; ok {
+				if pStr, _ := parent.(string); pStr != "" {
+					continue
+				}
+			}
+		}
+
+		scans = append(scans, job)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: scans})
 }
 
 // GetScan handles GET /orgs/:org/discovery/scans/:jobUid.
+// It returns the scan's job plus a derived progress block (chunk counts, derived
+// status, host count) for fan-out plan scans. Legacy/standalone jobs return a nil
+// progress block.
 func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) error {
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
+	}
+
 	jobUID := req.Param("jobUid")
 
 	job, err := h.svc.jobSvc.GetJob(req.Context(), jobUID)
@@ -181,7 +208,44 @@ func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "scan not found")
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: job})
+	resp := map[string]any{keyData: job}
+
+	if job.Type == string(jobdef.JobTypeNetworkDiscoveryPlan) {
+		progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, jobUID)
+		if progErr != nil {
+			return h.WriteInternalError(writer, progErr)
+		}
+
+		resp["progress"] = progress
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
+// CancelScan handles POST /orgs/:org/discovery/scans/:jobUid/cancel.
+// Admin only. Cancels the plan job (if pending) and all pending child chunks.
+func (h *Handler) CancelScan(writer http.ResponseWriter, req bunrouter.Request) error {
+	if !isAdmin(req) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
+	}
+
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
+	}
+
+	jobUID := req.Param("jobUid")
+
+	err := h.svc.CancelScan(req.Context(), org.UID, jobUID)
+	if errors.Is(err, ErrScanNotFound) {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "scan not found")
+	} else if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
 }
 
 // ListHosts handles GET /orgs/:org/discovery/hosts.

@@ -29,6 +29,11 @@ type Config struct {
 	Ports       []int    `json:"ports,omitempty"`
 	Concurrency int      `json:"concurrency,omitempty"`
 	Timeout     string   `json:"timeout,omitempty"`
+	// ParentJobUID, when set on a child network_discovery job, is the UID of the
+	// network_discovery_plan job that scheduled it. Discovered hosts roll up under
+	// the parent so the scan-detail page sees them all under one UID. The
+	// synchronous Scan ignores it.
+	ParentJobUID string `json:"parentJobUid,omitempty"`
 }
 
 // DiscoveredHost is a host discovered during a scan.
@@ -65,7 +70,7 @@ type scanParams struct {
 
 // resolveScanParams normalizes the ports / concurrency / timeout from a Config,
 // applying defaults. Shared by Scan and ScanHosts.
-func resolveScanParams(cfg Config) (scanParams, error) {
+func resolveScanParams(cfg *Config) (scanParams, error) {
 	params := scanParams{
 		ports:       cfg.Ports,
 		concurrency: cfg.Concurrency,
@@ -95,7 +100,7 @@ func resolveScanParams(cfg Config) (scanParams, error) {
 // Scan performs a network discovery scan based on the given configuration.
 // It expands all CIDRs, probes each address with ICMP and TCP, and returns
 // a list of responsive hosts.
-func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
+func Scan(ctx context.Context, cfg *Config) ([]DiscoveredHost, error) {
 	if err := ValidateCIDRs(cfg.CIDRs); err != nil {
 		return nil, err
 	}
@@ -125,7 +130,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 // cfg.Ports defaults to defaultPortList(); cfg.CIDRs is ignored. Each result's
 // Hostname comes from the matching HostInput.HostnameHint when non-empty, else
 // from reverse DNS. Only responsive hosts are returned (same semantics as Scan).
-func ScanHosts(ctx context.Context, hosts []HostInput, cfg Config) ([]DiscoveredHost, error) {
+func ScanHosts(ctx context.Context, hosts []HostInput, cfg *Config) ([]DiscoveredHost, error) {
 	params, err := resolveScanParams(cfg)
 	if err != nil {
 		return nil, err

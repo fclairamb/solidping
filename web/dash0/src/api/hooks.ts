@@ -3092,6 +3092,18 @@ export interface DiscoveryScan {
   updatedAt: string;
 }
 
+// DiscoveryScanProgress is the derived fan-out progress block returned alongside
+// a plan scan: chunk counts, an overall derived status, and the host roll-up count.
+export interface DiscoveryScanProgress {
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  runningChunks: number;
+  pendingChunks: number;
+  derivedStatus: "pending" | "running" | "success" | "failed";
+  hostCount: number;
+}
+
 export interface SuggestedCheck {
   type: string;
   config: Record<string, unknown>;
@@ -3172,18 +3184,47 @@ export function useListDiscoveryScans(org: string) {
   });
 }
 
+// scanIsActive returns true while a scan (by its derived status, falling back to
+// the plan job's own status for legacy/standalone jobs) is still in flight.
+function scanIsActive(
+  scan?: DiscoveryScan,
+  progress?: DiscoveryScanProgress,
+): boolean {
+  const status = progress?.derivedStatus ?? scan?.status;
+  return status === "pending" || status === "running";
+}
+
+// useDiscoveryScan returns the plan job plus its derived fan-out progress block
+// (when present). It polls every 3s while the scan is active so the progress
+// indicator and host table update as chunks finish.
 export function useDiscoveryScan(org: string, jobUid: string) {
   return useQuery({
     queryKey: ["discoveryScan", org, jobUid],
     queryFn: () =>
-      apiFetch<{ data: DiscoveryScan }>(
+      apiFetch<{ data: DiscoveryScan; progress?: DiscoveryScanProgress }>(
         `/api/v1/orgs/${org}/discovery/scans/${jobUid}`,
       ),
-    select: (res) => res?.data,
+    select: (res) => ({ scan: res?.data, progress: res?.progress }),
     enabled: !!jobUid,
     refetchInterval: (query) => {
-      const status = query.state.data?.data?.status;
-      return status === "pending" || status === "running" ? 3000 : false;
+      const data = query.state.data;
+      return scanIsActive(data?.data, data?.progress) ? 3000 : false;
+    },
+  });
+}
+
+// useCancelScan stops a running fan-out scan: cancels the plan job (if pending)
+// and drops every pending child chunk. Running children finish naturally.
+export function useCancelScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/scans/${jobUid}/cancel`, {
+        method: "POST",
+      }),
+    onSuccess: (_data, jobUid) => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScan", org, jobUid] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
     },
   });
 }
@@ -3191,6 +3232,9 @@ export function useDiscoveryScan(org: string, jobUid: string) {
 export function useListCandidateHosts(
   org: string,
   opts?: { jobUid?: string; promoted?: boolean; source?: string },
+  // pollWhileActive streams hosts into the table while a fan-out scan is running
+  // (chunks land progressively), by polling the list every 3s.
+  pollWhileActive = false,
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
@@ -3205,6 +3249,7 @@ export function useListCandidateHosts(
         `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
       ),
     select: (res) => res?.data ?? [],
+    refetchInterval: pollWhileActive ? 3000 : false,
   });
 }
 
