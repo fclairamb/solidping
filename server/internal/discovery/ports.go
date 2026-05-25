@@ -15,6 +15,8 @@ type portSpec struct {
 // defaultPorts is the authoritative set of ports probed by the scanner and
 // understood by the suggestion engine. Adding a port here automatically makes
 // the scanner probe it and the suggestion engine emit a check for it.
+//
+//nolint:gochecknoglobals // authoritative port table; treated as a constant lookup list
 var defaultPorts = []portSpec{
 	{22, checkTypeTCP, ""},
 	{25, checkTypeTCP, ""},
@@ -38,8 +40,8 @@ var defaultPorts = []portSpec{
 // specified, derived from the authoritative defaultPorts table.
 func defaultPortList() []int {
 	ports := make([]int, len(defaultPorts))
-	for i, p := range defaultPorts {
-		ports[i] = p.Port
+	for i := range defaultPorts {
+		ports[i] = defaultPorts[i].Port
 	}
 
 	return ports

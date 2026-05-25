@@ -22,18 +22,19 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
 )
 
-// defaultScannerPorts mirrors discovery.defaultPorts (which is package-private).
-// A Freebox host must listen on one of these for the active scan to report an
-// open port, since the Freebox job uses the scanner's default port list.
-var defaultScannerPorts = []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
-
 // listenOnDefaultPort opens a loopback TCP listener on the first free port from
 // the scanner's default set, so the active scan finds a genuinely open port.
+// The candidate list mirrors discovery.defaultPorts (which is package-private),
+// since the Freebox job uses the scanner's default port list.
 func listenOnDefaultPort(t *testing.T) (net.Listener, int) {
 	t.Helper()
 
+	defaultScannerPorts := []int{22, 25, 53, 80, 110, 143, 443, 465, 587, 993, 995, 3306, 5432, 6379, 8080, 8443}
+
+	var lc net.ListenConfig
+
 	for _, port := range defaultScannerPorts {
-		ln, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+		ln, err := lc.Listen(t.Context(), "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 		if err == nil {
 			t.Cleanup(func() { _ = ln.Close() })
 

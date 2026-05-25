@@ -61,11 +61,14 @@ func TestScanHostsHostnameHintPrecedence(t *testing.T) {
 
 	// Listen on a loopback port so the scan finds at least one open port and
 	// returns a result for the host.
-	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	var lc net.ListenConfig
+	ln, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	r.NoError(err)
 	defer func() { _ = ln.Close() }()
 
-	port := ln.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	r.True(ok)
+	port := tcpAddr.Port
 
 	hosts := []HostInput{
 		{IP: net.ParseIP("127.0.0.1"), HostnameHint: "my-device"},

@@ -56,30 +56,40 @@ type probeTarget struct {
 	HostnameHint string
 }
 
+// scanParams holds the normalized scan tuning resolved from a Config.
+type scanParams struct {
+	ports       []int
+	concurrency int
+	timeout     time.Duration
+}
+
 // resolveScanParams normalizes the ports / concurrency / timeout from a Config,
 // applying defaults. Shared by Scan and ScanHosts.
-func resolveScanParams(cfg Config) (ports []int, concurrency int, timeout time.Duration, err error) {
-	ports = cfg.Ports
-	if len(ports) == 0 {
-		ports = defaultPortList()
+func resolveScanParams(cfg Config) (scanParams, error) {
+	params := scanParams{
+		ports:       cfg.Ports,
+		concurrency: cfg.Concurrency,
+		timeout:     defaultTimeout,
 	}
 
-	concurrency = cfg.Concurrency
-	if concurrency <= 0 {
-		concurrency = defaultConcurrency
+	if len(params.ports) == 0 {
+		params.ports = defaultPortList()
 	}
 
-	timeout = defaultTimeout
+	if params.concurrency <= 0 {
+		params.concurrency = defaultConcurrency
+	}
+
 	if cfg.Timeout != "" {
-		d, perr := time.ParseDuration(cfg.Timeout)
-		if perr != nil {
-			return nil, 0, 0, fmt.Errorf("invalid timeout %q: %w", cfg.Timeout, perr)
+		d, err := time.ParseDuration(cfg.Timeout)
+		if err != nil {
+			return scanParams{}, fmt.Errorf("invalid timeout %q: %w", cfg.Timeout, err)
 		}
 
-		timeout = d
+		params.timeout = d
 	}
 
-	return ports, concurrency, timeout, nil
+	return params, nil
 }
 
 // Scan performs a network discovery scan based on the given configuration.
@@ -90,7 +100,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		return nil, err
 	}
 
-	ports, concurrency, probeTimeout, err := resolveScanParams(cfg)
+	params, err := resolveScanParams(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -108,7 +118,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 		}
 	}
 
-	return runProbes(ctx, targets, ports, concurrency, probeTimeout), nil
+	return runProbes(ctx, targets, params), nil
 }
 
 // ScanHosts probes a fixed list of IPs through the same engine as Scan.
@@ -116,7 +126,7 @@ func Scan(ctx context.Context, cfg Config) ([]DiscoveredHost, error) {
 // Hostname comes from the matching HostInput.HostnameHint when non-empty, else
 // from reverse DNS. Only responsive hosts are returned (same semantics as Scan).
 func ScanHosts(ctx context.Context, hosts []HostInput, cfg Config) ([]DiscoveredHost, error) {
-	ports, concurrency, probeTimeout, err := resolveScanParams(cfg)
+	params, err := resolveScanParams(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -133,19 +143,13 @@ func ScanHosts(ctx context.Context, hosts []HostInput, cfg Config) ([]Discovered
 		})
 	}
 
-	return runProbes(ctx, targets, ports, concurrency, probeTimeout), nil
+	return runProbes(ctx, targets, params), nil
 }
 
 // runProbes drives the bounded-concurrency worker pool over the given targets.
 // It is the shared core used by both Scan (after CIDR expansion) and ScanHosts
 // (with a pre-supplied list).
-func runProbes(
-	ctx context.Context,
-	targets []probeTarget,
-	ports []int,
-	concurrency int,
-	timeout time.Duration,
-) []DiscoveredHost {
+func runProbes(ctx context.Context, targets []probeTarget, params scanParams) []DiscoveredHost {
 	// Attempt to open an ICMP socket; fall back to TCP-only if unavailable.
 	icmpConn, icmpErr := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if icmpErr != nil {
@@ -155,19 +159,19 @@ func runProbes(
 		defer func() { _ = icmpConn.Close() }()
 	}
 
-	sem := make(chan struct{}, concurrency)
+	sem := make(chan struct{}, params.concurrency)
 	var hostsMu sync.Mutex
 	hosts := make([]DiscoveredHost, 0)
 
 	var wgroup sync.WaitGroup
 
-	for _, target := range targets {
+	for i := range targets {
 		if ctx.Err() != nil {
 			break
 		}
 
 		wgroup.Add(1)
-		tgt := target
+		tgt := targets[i]
 
 		go func() {
 			defer wgroup.Done()
@@ -175,7 +179,7 @@ func runProbes(
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			host := probeHost(ctx, tgt, ports, icmpConn, timeout)
+			host := probeHost(ctx, tgt, params.ports, icmpConn, params.timeout)
 			if host == nil {
 				return
 			}
