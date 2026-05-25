@@ -2779,6 +2779,44 @@ export function useDeleteChannel(org: string) {
   });
 }
 
+// Standard Webhooks: per-channel signing-secret rotation and synthetic test
+// delivery. Both are webhook-only on the backend (400 otherwise).
+
+/** Result of a POST /channels/:uid/test synthetic delivery. */
+export interface WebhookTestResult {
+  success: boolean;
+  statusCode: number;
+  durationMs: number;
+  error?: string;
+}
+
+export function useRotateWebhookSecret(org: string, channelUid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Channel>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/rotate-secret`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["channel", org, channelUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+    },
+  });
+}
+
+export function useTestWebhookChannel(org: string) {
+  return useMutation({
+    mutationFn: (channelUid: string) =>
+      apiFetch<WebhookTestResult>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/test`,
+        { method: "POST" },
+      ),
+  });
+}
+
 // Freebox pairing helpers. The Freebox API requires a one-time
 // LCD-approval step, so the pairing flow is split across two endpoints
 // rather than mapped onto the generic CRUD: POST asks the Freebox for
