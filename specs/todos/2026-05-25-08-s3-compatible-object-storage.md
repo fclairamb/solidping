@@ -242,3 +242,23 @@ func TestBuildClientOptions(t *testing.T) {
 ## Priority
 
 Prerequisite for P1.3 (screenshots) and the vortex-S3 results spec. Small, contained.
+
+## Implementation Plan
+
+1. **Config structs** — add `S3Endpoint`, `S3UsePathStyle`, `S3AccessKey`,
+   `S3SecretKey` to `FileStorageConfig` (`config.go`) and to `filestorage.Config`
+   (`filestorage.go`); copy the new fields at the `files/service.go` `storageConfig()`
+   copy site.
+2. **Env reader** — add `applyFileStorageEnv(&cfg.FileStorage)` next to
+   `applyRateLimitingEnv`, reading `SP_FILESTORAGE_S3_BUCKET` / `_REGION` / `_PREFIX` /
+   `_ENDPOINT` / `_USE_PATH_STYLE` / `_ACCESS_KEY` / `_SECRET_KEY` (bypasses the koanf
+   underscore→dot collapse). Wire the call in `Load()`.
+3. **S3 wiring** — extract `BuildClientOptions(cfg)` in `s3fs.go` returning the
+   LoadDefaultConfig options (region + optional static creds) and the `s3.Options`
+   mutators (BaseEndpoint + UsePathStyle when endpoint set); call it from `Register()`;
+   add the `aws-sdk-go-v2/credentials` import; update the package doc comment.
+4. **Screenshots group** — add `GroupTypeScreenshots` constant to `filestorage.go`.
+5. **Tests** — `TestApplyFileStorageEnv` (config_test.go) and `TestBuildClientOptions`
+   (s3fs_test.go).
+6. **QA** — `make build-backend build-dash0 lint-back test` green.
+7. **Archive** — move spec to `specs/done/2026/05/`.
