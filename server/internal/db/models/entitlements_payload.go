@@ -20,11 +20,15 @@ var ErrUnknownEntitlementsPayloadVersion = errors.New("unknown entitlements payl
 // EntitlementLimits is the quantitative half of an entitlement set.
 // nil = unlimited. JSON tags are the wire format consumed by the API.
 //
-// Only two limits are modeled: MaxSSOUsers (capped on self-hosted by
-// default) and MaxChecksPerMinute (capped on SaaS). Extra fields that
-// previous versions stored (MaxChecks, retention, feature flags, …)
-// are silently ignored on read — encoding/json drops unknown keys.
+// Three limits are modeled: MaxChecks (total non-internal checks an org
+// may own, enforced at check creation), MaxSSOUsers (capped on
+// self-hosted by default) and MaxChecksPerMinute (aggregate dispatch
+// rate, capped on SaaS). Adding an optional field to the v1 JSONB
+// payload is backward-compatible — absent keys unmarshal to nil
+// (= unlimited), so no version bump is needed. Other extra keys
+// (retention, feature flags, …) remain silently ignored on read.
 type EntitlementLimits struct {
+	MaxChecks          *int `json:"maxChecks,omitempty"`
 	MaxSSOUsers        *int `json:"maxSsoUsers,omitempty"`
 	MaxChecksPerMinute *int `json:"maxChecksPerMinute,omitempty"`
 }

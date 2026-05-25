@@ -65,7 +65,7 @@ func setupEncryptedChecksService(t *testing.T) (*checks.Service, db.Service, *mo
 	org := models.NewOrganization("encrypt-test", "Encryption Test Org")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
 
-	svc := checks.NewService(dbSvc, nil, creds)
+	svc := checks.NewService(dbSvc, nil, creds, nil)
 
 	return svc, dbSvc, org
 }

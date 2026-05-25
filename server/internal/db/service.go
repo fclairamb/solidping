@@ -465,6 +465,10 @@ type Service interface {
 	// row in user_providers. Used by the entitlements service to enforce
 	// MaxSSOUsers.
 	CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error)
+	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
+	// non-internal checks of the given org. Used to compute usage stats
+	// (count + aggregate checks-per-minute) and to enforce MaxChecks.
+	ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error)
 
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error

@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/regions"
@@ -207,17 +208,26 @@ type Service struct {
 	// creds is always non-nil — its .Enabled() reports whether a master
 	// key is configured. When disabled, write paths fall back to plaintext.
 	creds credentials.Service
+	// entitlements enforces the per-org MaxChecks cap at creation. May be
+	// nil in tests / paths that don't construct it; guards no-op when nil.
+	entitlements *entcore.Service
 }
 
-// NewService creates a new checks service.
+// NewService creates a new checks service. entSvc enforces the MaxChecks
+// quota at creation; pass nil to disable enforcement (e.g. in unit tests
+// that don't exercise quotas).
 func NewService(
-	dbService db.Service, eventNotifier notifier.EventNotifier, creds credentials.Service,
+	dbService db.Service,
+	eventNotifier notifier.EventNotifier,
+	creds credentials.Service,
+	entSvc *entcore.Service,
 ) *Service {
 	return &Service{
 		db:            dbService,
 		eventNotifier: eventNotifier,
 		regions:       regions.NewService(dbService),
 		creds:         creds,
+		entitlements:  entSvc,
 	}
 }
 
@@ -760,6 +770,15 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return CheckResponse{}, ErrOrganizationNotFound
+	}
+
+	// Enforce the MaxChecks quota before doing any work. Internal /
+	// system-created checks (discovery hosts, heartbeats) are exempt.
+	isInternal := req.Internal != nil && *req.Internal
+	if !isInternal && s.entitlements != nil {
+		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
+			return CheckResponse{}, quotaErr
+		}
 	}
 
 	// Get the checker to validate the configuration
@@ -2467,6 +2486,15 @@ func (s *Service) CloneCheck(
 	}
 
 	clone := s.cloneBuildCheck(org.UID, source, req, finalSlug)
+
+	// Clone bypasses CreateCheck (calls s.db.CreateCheck directly), so the
+	// MaxChecks quota guard must be applied here too. Internal clones are
+	// exempt, mirroring CreateCheck.
+	if !clone.Internal && s.entitlements != nil {
+		if quotaErr := s.entitlements.CheckCreateAllowed(ctx, org.UID); quotaErr != nil {
+			return CheckResponse{}, quotaErr
+		}
+	}
 
 	if createErr := s.db.CreateCheck(ctx, clone); createErr != nil {
 		return CheckResponse{}, fmt.Errorf("create clone: %w", createErr)

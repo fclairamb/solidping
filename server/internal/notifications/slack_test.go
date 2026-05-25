@@ -1125,6 +1125,10 @@ func (m *mockDBService) CountSSOMembersForOrg(_ context.Context, _ string) (int,
 	return 0, nil
 }
 
+func (m *mockDBService) ListOrgCheckRates(_ context.Context, _ string) ([]models.CheckRate, error) {
+	return nil, nil
+}
+
 func (m *mockDBService) CreateIncidentNotification(_ context.Context, _ *models.IncidentNotification) error {
 	return nil
 }

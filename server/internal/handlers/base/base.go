@@ -71,6 +71,7 @@ const (
 	ErrorCodeDependencyDuplicate       ErrorCode = "DEPENDENCY_DUPLICATE"
 	ErrorCodeDependencyInvalidKind     ErrorCode = "DEPENDENCY_INVALID_KIND"
 	ErrorCodeEntitlementExceeded       ErrorCode = "ENTITLEMENT_EXCEEDED"
+	ErrorCodeQuotaExceeded             ErrorCode = "QUOTA_EXCEEDED"
 	ErrorCodeFeatureNotEntitled        ErrorCode = "FEATURE_NOT_ENTITLED"
 	ErrorCodeEntitlementsStale         ErrorCode = "ENTITLEMENTS_STALE"
 	ErrorCodePasskeyNotFound           ErrorCode = "PASSKEY_NOT_FOUND"

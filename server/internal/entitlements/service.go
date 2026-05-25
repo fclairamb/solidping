@@ -63,6 +63,8 @@ type Service struct {
 //
 // defaults is held by value for the service's lifetime; passing by
 // pointer would invite mutation.
+//
+//nolint:gocritic // defaults held by value intentionally; passing by pointer would invite mutation
 func NewService(
 	dbService db.Service, defaults Entitlements, staleAfter time.Duration,
 ) *Service {
@@ -93,6 +95,8 @@ func (s *Service) Resolve(ctx context.Context, orgUID string) (Resolved, error) 
 
 // Set replaces the entitlement row and writes an audit entry in the same
 // transaction. Pass empty actor for unattended writes.
+//
+//nolint:gocritic // input is the wire shape, passed by value to match the API contract
 func (s *Service) Set(
 	ctx context.Context, orgUID string, input Entitlements, actor, reason string,
 ) error {
@@ -255,6 +259,9 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 	out.LastSyncedAt = row.LastSyncedAt
 
 	limits := row.Payload.Limits
+	if limits.MaxChecks != nil {
+		out.Limits.MaxChecks = limits.MaxChecks
+	}
 	if limits.MaxSSOUsers != nil {
 		out.Limits.MaxSSOUsers = limits.MaxSSOUsers
 	}
@@ -287,6 +294,8 @@ func (s *Service) isStale(row *models.OrgEntitlements) bool {
 // toModel maps an Entitlements (input) onto an OrgEntitlements row. If
 // previous is non-nil the existing UID is preserved; otherwise a fresh
 // one is generated.
+//
+//nolint:gocritic // input is the wire shape, passed by value to match the API contract
 func toModel(
 	orgUID string, input Entitlements, previous *models.OrgEntitlements,
 ) *models.OrgEntitlements {

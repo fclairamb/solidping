@@ -273,13 +273,16 @@ function Breadcrumbs({ org }: { org: string }) {
     const isMembers = routeIds.has("/orgs/$org/organization/members");
     const isInvitations = routeIds.has("/orgs/$org/organization/invitations");
     const isSettings = routeIds.has("/orgs/$org/organization/settings");
+    const isUsage = routeIds.has("/orgs/$org/organization/usage");
     const subLabel = isMembers
       ? t("members")
       : isInvitations
         ? t("invitations")
-        : isSettings
-          ? t("settings")
-          : null;
+        : isUsage
+          ? t("usage")
+          : isSettings
+            ? t("settings")
+            : null;
     return (
       <>
         {subLabel ? (

@@ -17,6 +17,16 @@
     "saved": "Ajustes guardados.",
     "unexpectedError": "Se ha producido un error inesperado"
   },
+  "usage": {
+    "title": "Uso",
+    "description": "Los límites de tu plan y cuánto estás usando de cada uno.",
+    "checks": "Comprobaciones",
+    "checksPerMinute": "Comprobaciones por minuto",
+    "ssoUsers": "Usuarios SSO",
+    "unlimited": "Ilimitado",
+    "upgrade": "Mejorar plan",
+    "loadError": "No se pudo cargar el uso."
+  },
   "requests": {
     "title": "Solicitudes de adhesión",
     "description": "Aprueba o rechaza a los usuarios que piden unirse.",
