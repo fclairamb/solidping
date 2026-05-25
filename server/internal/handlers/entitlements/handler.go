@@ -13,6 +13,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/uptrace/bunrouter"
 
@@ -119,10 +120,23 @@ func (h *Handler) Get(writer http.ResponseWriter, req bunrouter.Request) error {
 
 	upgradeURL, _ := h.upgradeURL(req.Context(), org.Slug)
 
+	// Usage is opt-in via ?with=usage (comma-separated, consistent with the
+	// checks endpoint's ?with=last_result,last_status_change). Without it,
+	// no usage is computed — the cheap path stays cheap.
+	var usagePtr *entcore.Usage
+	if strings.Contains(req.URL.Query().Get("with"), "usage") {
+		usage, usageErr := h.svc.Usage(req.Context(), org.UID)
+		if usageErr != nil {
+			return h.WriteInternalError(writer, usageErr)
+		}
+		usagePtr = &usage
+	}
+
 	return h.WriteJSON(writer, http.StatusOK, struct {
 		entcore.Resolved
-		UpgradeURL string `json:"upgradeUrl,omitempty"`
-	}{Resolved: resolved, UpgradeURL: upgradeURL})
+		Usage      *entcore.Usage `json:"usage,omitempty"`
+		UpgradeURL string         `json:"upgradeUrl,omitempty"`
+	}{Resolved: resolved, Usage: usagePtr, UpgradeURL: upgradeURL})
 }
 
 // Put handles PUT /api/v1/orgs/:org/entitlements — replaces the row.
@@ -150,8 +164,9 @@ func (h *Handler) write(writer http.ResponseWriter, req bunrouter.Request, parti
 	dec := json.NewDecoder(req.Body)
 	dec.DisallowUnknownFields()
 	if decErr := dec.Decode(&input); decErr != nil {
-		// DisallowUnknownFields surfaces e.g. legacy callers sending
-		// "maxChecks" — reject loudly so the deprecation is obvious.
+		// DisallowUnknownFields rejects keys outside the modeled limits
+		// (maxChecks / maxSsoUsers / maxChecksPerMinute) so typos surface
+		// loudly instead of silently no-op-ing.
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: "body", Message: decErr.Error()},
 		})
@@ -263,6 +278,9 @@ func (h *Handler) mergePartial(
 }
 
 func overlayLimits(dst *entcore.Limits, src entcore.Limits) {
+	if src.MaxChecks != nil {
+		dst.MaxChecks = src.MaxChecks
+	}
 	if src.MaxSSOUsers != nil {
 		dst.MaxSSOUsers = src.MaxSSOUsers
 	}
@@ -346,27 +364,7 @@ func (h *Handler) upgradeURL(ctx context.Context, orgSlug string) (string, error
 // interpolateURL replaces {org} with the slug. Lightweight by design — no
 // general templating needed for one variable.
 func interpolateURL(template, org string) string {
-	out := template
-	for {
-		idx := stringsIndex(out, "{org}")
-		if idx < 0 {
-			break
-		}
-		out = out[:idx] + org + out[idx+len("{org}"):]
-	}
-
-	return out
-}
-
-// stringsIndex avoids importing strings just for one Index call.
-func stringsIndex(s, substr string) int {
-	for i := 0; i+len(substr) <= len(s); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-
-	return -1
+	return strings.ReplaceAll(template, "{org}", org)
 }
 
 func extractBearerToken(authHeader string) string {
