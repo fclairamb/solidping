@@ -514,6 +514,15 @@ type Service interface {
 	// Returns nil, nil when no Slack channel is configured.
 	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
 
+	// AppSettings operations
+
+	// GetAppSetting returns the value for the given key.
+	// Returns sql.ErrNoRows (wrapped) if the key does not exist.
+	GetAppSetting(ctx context.Context, key string) (string, error)
+
+	// SetAppSetting creates or updates a key/value pair (upsert).
+	SetAppSetting(ctx context.Context, key, value string) error
+
 	// Close closes the database connection and cleans up resources
 	io.Closer
 }
