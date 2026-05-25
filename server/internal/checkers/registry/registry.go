@@ -30,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksip"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -131,6 +132,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkfreeboxline.FreeboxLineChecker{}, true
 	case checkerdef.CheckTypeDNSBL:
 		return &checkdnsbl.DNSBLChecker{}, true
+	case checkerdef.CheckTypeSIP:
+		return &checksip.SIPChecker{}, true
 	default:
 		return nil, false
 	}
@@ -212,6 +215,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkfreeboxline.FreeboxLineConfig{}, true
 	case checkerdef.CheckTypeDNSBL:
 		return &checkdnsbl.DNSBLConfig{}, true
+	case checkerdef.CheckTypeSIP:
+		return &checksip.SIPConfig{}, true
 	default:
 		return nil, false
 	}
