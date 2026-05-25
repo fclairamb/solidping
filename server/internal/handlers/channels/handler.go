@@ -189,6 +189,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrFreeboxTypeMismatch):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Channel is not a Freebox connection")
+	case errors.Is(err, ErrSlackManualCreate):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"Slack channels are added by installing the Slack app")
 	case errors.Is(err, ErrFreeboxPairingFailed):
 		return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError, err.Error())
 	default:

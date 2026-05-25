@@ -35,6 +35,11 @@ var (
 	// ErrFreeboxTypeMismatch is returned when a pairing endpoint targets
 	// a non-Freebox channel.
 	ErrFreeboxTypeMismatch = errors.New("channel is not a freebox connection")
+	// ErrSlackManualCreate is returned when a Slack channel is created via the
+	// manual create endpoint. Slack channels can only originate from the OAuth
+	// install flow (which writes the bot token); a manually-created stub has no
+	// token and is permanently broken.
+	ErrSlackManualCreate = errors.New("slack channels are added by installing the Slack app")
 )
 
 // Service provides business logic for connection management.
@@ -225,6 +230,13 @@ func (s *Service) CreateChannel(
 		// Valid types
 	default:
 		return nil, ErrInvalidConnectionType
+	}
+
+	// Slack channels can only be created by the OAuth install flow (which calls
+	// s.db.CreateChannel directly and writes the bot token). A manually-created
+	// Slack channel has no token and is permanently broken, so reject it here.
+	if connType == models.ConnectionTypeSlack {
+		return nil, ErrSlackManualCreate
 	}
 
 	conn := models.NewChannel(org.UID, connType, req.Name)

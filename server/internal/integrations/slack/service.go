@@ -41,6 +41,10 @@ var (
 	ErrOrganizationNotFound = errors.New("organization not found")
 	// ErrNotSlackChannel is returned when the channel is not of type slack.
 	ErrNotSlackChannel = errors.New("channel is not of type slack")
+	// ErrSlackNotConnected is returned when a Slack channel has no bot token
+	// (e.g. a manually-created stub). Such a channel must be (re-)connected via
+	// the OAuth install flow before its destinations can be listed.
+	ErrSlackNotConnected = errors.New("slack channel has no bot token — install via OAuth")
 	// ErrInvalidState is returned when the OAuth state is invalid.
 	ErrInvalidState = errors.New("invalid OAuth state")
 	// ErrOAuthFailed is returned when OAuth exchange fails.
@@ -804,6 +808,13 @@ func (s *Service) GetDestinations(
 	settings, err := models.SlackSettingsFromJSONMap(conn.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parse slack settings: %w", err)
+	}
+
+	// Tokenless stubs (e.g. manually-created channels) have no bot token, so any
+	// Slack API call would fail with invalid_auth and surface as a misleading
+	// 502. Reject early so the handler can return a clear "not connected" state.
+	if settings.AccessToken == "" {
+		return nil, ErrSlackNotConnected
 	}
 
 	client := NewClient(settings.AccessToken)
