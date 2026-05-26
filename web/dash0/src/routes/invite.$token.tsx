@@ -124,7 +124,11 @@ function AcceptInvitePage() {
             {t("auth:invite.invitedAs")}{" "}
             <span className="font-medium">{inviteInfo.role}</span>
           </p>
-          {inviteInfo.email && (
+          {isAuthenticated ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              {t("auth:invite.alreadySignedIn")}
+            </p>
+          ) : inviteInfo.email ? (
             <div className="mt-3 flex items-center justify-center gap-2 text-sm">
               <Mail className="h-4 w-4 shrink-0 text-muted-foreground" />
               <span className="break-all" title={inviteInfo.email}>
@@ -133,7 +137,7 @@ function AcceptInvitePage() {
                 })}
               </span>
             </div>
-          )}
+          ) : null}
         </CardHeader>
         <CardContent>
           {error && (
