@@ -442,6 +442,46 @@ test.describe("Badges", () => {
     expect(new URL(page.url()).searchParams.get("check")).toBe(check.slug);
   });
 
+  test("width input updates badge URL after blur", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Width ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    // Enable uptime-bar so the width input is visible
+    await page.goto(
+      `/dash0/orgs/test/badges?check=${check.slug}&components=status,uptime-bar`
+    );
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+
+    const widthInput = page.getByTestId("badge-width");
+    await expect(widthInput).toBeVisible();
+
+    // Clear the field, type a new value, and commit with Tab (blur)
+    await widthInput.click({ clickCount: 3 });
+    await widthInput.fill("500");
+    await widthInput.press("Tab");
+
+    // URL should now contain width=500
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get("width"), { timeout: 5000 })
+      .toBe("500");
+
+    // Typing an out-of-range value and blurring should revert
+    await widthInput.click({ clickCount: 3 });
+    await widthInput.fill("30");
+    await widthInput.press("Tab");
+
+    await expect
+      .poll(() => page.getByTestId("badge-width").inputValue(), { timeout: 3000 })
+      .toBe("500");
+  });
+
   test("downloads SVG of a multi-row badge", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
