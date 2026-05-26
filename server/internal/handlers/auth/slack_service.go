@@ -126,6 +126,9 @@ type SlackExchangeResult struct {
 	RefreshToken string `json:"refreshToken"`
 	OrgSlug      string `json:"orgSlug"`
 	UserUID      string `json:"userUid"`
+	// ChannelUID is set when the install was triggered from a channel edit page.
+	// The dashboard uses it to navigate back to that channel after login.
+	ChannelUID string `json:"channelUid,omitempty"`
 }
 
 // ExchangeSlackInstallCode validates a single-use code minted by the Slack
@@ -152,11 +155,14 @@ func (s *SlackOAuthService) ExchangeSlackInstallCode(
 		return nil, ErrInvalidOAuthState
 	}
 
+	channelUID, _ := entry.Payload["channelUid"].(string)
+
 	return &SlackExchangeResult{
 		AccessToken:  access,
 		RefreshToken: refresh,
 		OrgSlug:      orgSlug,
 		UserUID:      userUID,
+		ChannelUID:   channelUID,
 	}, nil
 }
 
