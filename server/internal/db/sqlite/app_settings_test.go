@@ -3,7 +3,6 @@ package sqlite
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -30,7 +29,7 @@ func TestGetAppSetting_MissingKey(t *testing.T) {
 
 	_, err := svc.GetAppSetting(ctx, "nonexistent.key")
 	require.Error(t, err)
-	require.True(t, errors.Is(err, sql.ErrNoRows), "expected sql.ErrNoRows, got %v", err)
+	require.ErrorIs(t, err, sql.ErrNoRows)
 }
 
 func TestSetAppSetting_Upsert(t *testing.T) {

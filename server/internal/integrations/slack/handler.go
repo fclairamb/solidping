@@ -92,7 +92,7 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
 	source := req.URL.Query().Get("source")
 
-	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source)
+	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, "", "")
 	if err != nil {
 		slog.ErrorContext(req.Context(), "Failed to build Slack install URL", "error", err)
 		h.redirectInstallError(writer, req, "unknown")
