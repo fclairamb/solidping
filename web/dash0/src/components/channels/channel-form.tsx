@@ -64,6 +64,12 @@ export function ChannelForm({ type, initial, initialName, onChange, org, channel
     initial?.settings || {},
   );
 
+  // Sync settings when the server-side channel data changes (e.g. after
+  // a secret rotation mutation invalidates and refetches the query).
+  useEffect(() => {
+    setSettings(initial?.settings ?? {});
+  }, [initial]);
+
   useEffect(() => {
     onChange({ name, enabled, isDefault, settings });
   }, [name, enabled, isDefault, settings, onChange]);

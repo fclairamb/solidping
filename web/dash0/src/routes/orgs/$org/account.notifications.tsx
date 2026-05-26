@@ -180,6 +180,7 @@ function RouteRow({
             onClick={handleTest}
             disabled={testPending || !route.enabled}
             title="Send test notification"
+            aria-label="Send test notification"
             data-testid={`test-route-${route.uid}`}
           >
             {testPending ? (
