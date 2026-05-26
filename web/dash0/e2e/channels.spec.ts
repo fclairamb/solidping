@@ -262,6 +262,28 @@ test.describe("Notification Channels", () => {
     // Freebox (a data source) sits in the source group, not notify.
     await expect(sourceGroup.getByTestId("pick-freebox")).toBeVisible();
     await expect(notifyGroup.getByTestId("pick-freebox")).toHaveCount(0);
+
+    // webpush (a notify-capable type) sits in the notify group, not sources.
+    await expect(notifyGroup.getByTestId("pick-webpush")).toBeVisible();
+    await expect(sourceGroup.getByTestId("pick-webpush")).toHaveCount(0);
+  });
+
+  test("webpush channel panel renders subscribe button and empty device list", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/channels/new?type=webpush");
+    await page.waitForLoadState("networkidle");
+
+    // The WebPushChannelPanel should be rendered.
+    const panel = page.getByTestId("webpush-channel-panel");
+    await expect(panel).toBeVisible();
+
+    // The empty-device message should appear.
+    await expect(
+      panel.getByText(/No devices subscribed yet/i),
+    ).toBeVisible();
   });
 
   test("freebox source is hidden from the check Notify via picker", async ({
