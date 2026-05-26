@@ -248,8 +248,16 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	})
 
 	// Start the job worker — needed for escalation-step and notification jobs.
+	// The cleanup must drain the worker before closing the server: worker.Run
+	// calls wg.Wait() internally, so closing workerDone signals the drain is
+	// complete. Registered here (after server.Close) so it fires first in LIFO
+	// order, guaranteeing the DB is still open while in-progress jobs finish.
 	workerCtx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	workerDone := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		<-workerDone
+	})
 
 	worker := jobworker.NewJobWorker(
 		server.DBService().DB(),
@@ -260,6 +268,7 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 	)
 
 	go func() {
+		defer close(workerDone)
 		_ = worker.Run(workerCtx)
 	}()
 
