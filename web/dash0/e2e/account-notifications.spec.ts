@@ -156,6 +156,79 @@ test.describe("Account Notifications", () => {
     }
   });
 
+  test("should send test notification for a webpush route (mocked)", async ({
+    authenticatedPage: page,
+  }) => {
+    const routeUid = "route-wp-test-1";
+    const contactUid = "contact-wp-test-1";
+
+    // Mock the notification-contacts list to return a webpush route.
+    await page.route("**/notification-contacts**", async (route) => {
+      if (route.request().method() === "GET") {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: [
+              {
+                uid: routeUid,
+                enabled: true,
+                position: 1,
+                contact: {
+                  uid: contactUid,
+                  type: "webpush",
+                  value: "{}",
+                  label: "Chrome on macOS",
+                  verifiedAt: new Date().toISOString(),
+                },
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+
+        return;
+      }
+
+      await route.continue();
+    });
+
+    // Capture the POST to the test endpoint.
+    let testPostReceived = false;
+    await page.route(
+      `**/notification-contacts/${routeUid}/test`,
+      async (route) => {
+        if (route.request().method() === "POST") {
+          testPostReceived = true;
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ success: true }),
+          });
+
+          return;
+        }
+
+        await route.continue();
+      },
+    );
+
+    await page.goto("orgs/test/account/notifications");
+    await page.waitForLoadState("networkidle");
+
+    // The webpush route row should be visible.
+    const list = page.getByTestId("notification-routes-list");
+    await expect(list).toBeVisible();
+
+    // Click the test (bell) button for the webpush row.
+    const testBtn = list.getByRole("button", { name: /test/i }).first();
+    await expect(testBtn).toBeVisible();
+    await testBtn.click();
+    await page.waitForLoadState("networkidle");
+
+    expect(testPostReceived).toBe(true);
+  });
+
   test("should toggle enabled on email route", async ({
     authenticatedPage: page,
   }) => {
