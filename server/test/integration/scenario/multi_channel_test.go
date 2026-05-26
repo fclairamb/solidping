@@ -61,7 +61,7 @@ func TestMultiChannelFanout(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		_, errs[0] = wc1.WaitForWebhook(ctx, func(m map[string]any) bool {
-			et, _ := m["eventType"].(string)
+			et, _ := m["type"].(string)
 			return et == "incident.escalated"
 		})
 	}()
@@ -69,7 +69,7 @@ func TestMultiChannelFanout(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		_, errs[1] = wc2.WaitForWebhook(ctx, func(m map[string]any) bool {
-			et, _ := m["eventType"].(string)
+			et, _ := m["type"].(string)
 			return et == "incident.escalated"
 		})
 	}()

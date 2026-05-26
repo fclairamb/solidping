@@ -62,6 +62,7 @@ func TestOnCallScheduleTarget(t *testing.T) {
 	// 8. The webhook (connection target) must arrive — confirms the whole
 	//    escalation step ran, including on-call resolution.
 	payload := waitForWebhookEvent(t, s.Webhooks, "incident.escalated")
-	r.Equal("incident.escalated", payload["eventType"])
-	r.Equal(checkUID, payload["checkUid"])
+	r.Equal("incident.escalated", payload["type"])
+	_, chkData := webhookPayloadExtract(payload)
+	r.Equal(checkUID, chkData["uid"])
 }

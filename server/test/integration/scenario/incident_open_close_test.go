@@ -60,19 +60,21 @@ func TestIncidentOpenAndClose(t *testing.T) {
 
 	// 7. Wait for incident.escalated (sent by the escalation step job).
 	escalated := waitForWebhookEvent(t, s.Webhooks, "incident.escalated")
-	r.Equal("incident.escalated", escalated["eventType"])
-	r.Equal(checkUID, escalated["checkUid"], "checkUid must match")
-	r.NotEmpty(escalated["incidentUid"], "incidentUid must be non-empty")
-	r.Equal("open-close-check", escalated["checkName"])
-	r.NotNil(escalated["startedAt"])
-	r.Nil(escalated["resolvedAt"], "resolvedAt must be absent on escalation")
+	r.Equal("incident.escalated", escalated["type"])
+	incData, chkData := webhookPayloadExtract(escalated)
+	r.Equal(checkUID, chkData["uid"], "checkUid must match")
+	r.NotEmpty(incData["uid"], "incidentUid must be non-empty")
+	r.Equal("open-close-check", chkData["name"])
+	r.NotNil(incData["startedAt"])
+	r.Nil(incData["resolvedAt"], "resolvedAt must be absent on escalation")
 
 	// 8. Send an "up" heartbeat — incident resolves.
 	SendHeartbeat(t, s, "open-close-check", hbToken, "up")
 
 	// 9. Wait for incident.resolved (sent via direct check-channel binding).
 	resolved := waitForWebhookEvent(t, s.Webhooks, "incident.resolved")
-	r.Equal("incident.resolved", resolved["eventType"])
-	r.Equal(checkUID, resolved["checkUid"])
-	r.NotNil(resolved["resolvedAt"], "resolvedAt must be set on incident.resolved")
+	r.Equal("incident.resolved", resolved["type"])
+	incResolved, chkResolved := webhookPayloadExtract(resolved)
+	r.Equal(checkUID, chkResolved["uid"])
+	r.NotNil(incResolved["resolvedAt"], "resolvedAt must be set on incident.resolved")
 }

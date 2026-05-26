@@ -41,7 +41,7 @@ func TestAckTimeoutRepeatCycle(t *testing.T) {
 	// 3. Create an escalation policy: repeat 1 cycle after 1 minute (minimum
 	//    granularity in this model), single step with delay=0.
 	repeatMax := 1
-	repeatAfterMinutes := 1
+	repeatAfterSeconds := 60
 	policySlug := "ack-timeout-policy"
 
 	ctx := t.Context()
@@ -52,7 +52,7 @@ func TestAckTimeoutRepeatCycle(t *testing.T) {
 			"slug":               policySlug,
 			"name":               "Ack Timeout Policy",
 			"repeatMax":          repeatMax,
-			"repeatAfterMinutes": repeatAfterMinutes,
+			"repeatAfterSeconds": repeatAfterSeconds,
 			"steps": []any{
 				map[string]any{
 					"delaySeconds": 0,
@@ -79,8 +79,9 @@ func TestAckTimeoutRepeatCycle(t *testing.T) {
 
 	// 6. Wait for the first escalation webhook (cycle 0).
 	firstEscalated := waitForWebhookEvent(t, s.Webhooks, "incident.escalated")
-	r.Equal("incident.escalated", firstEscalated["eventType"])
-	r.Equal(checkUID, firstEscalated["checkUid"])
+	r.Equal("incident.escalated", firstEscalated["type"])
+	_, chkData := webhookPayloadExtract(firstEscalated)
+	r.Equal(checkUID, chkData["uid"])
 
 	// 7. Advance the fake clock past the repeat-after window (1 minute + 1s).
 	// The escalation step job schedules cycle 1 startAt = clock.Now() + 1 minute.
@@ -94,7 +95,7 @@ func TestAckTimeoutRepeatCycle(t *testing.T) {
 
 	escalatedCount := 0
 	_, err := s.Webhooks.WaitForWebhook(secondCtx, func(m map[string]any) bool {
-		et, _ := m["eventType"].(string)
+		et, _ := m["type"].(string)
 		if et != "incident.escalated" {
 			return false
 		}

@@ -226,12 +226,24 @@ func waitForWebhookEvent(t *testing.T, wc *WebhookCollector, eventType string) m
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 
+	// Standard Webhooks format: top-level "type" field (not "eventType").
 	payload, err := wc.WaitForWebhook(ctx, func(m map[string]any) bool {
-		et, _ := m["eventType"].(string)
+		et, _ := m["type"].(string)
 		return et == eventType
 	})
 
 	require.NoError(t, err, "timed out waiting for webhook event %q", eventType)
 
 	return payload
+}
+
+// webhookPayloadExtract returns the nested incident and check maps from a
+// Standard Webhooks payload produced by WebhookSender. The payload shape is:
+//
+//	{ "type": "...", "timestamp": "...", "data": { "incident": {...}, "check": {...} } }
+func webhookPayloadExtract(m map[string]any) (map[string]any, map[string]any) {
+	data, _ := m["data"].(map[string]any)
+	inc, _ := data["incident"].(map[string]any)
+	chk, _ := data["check"].(map[string]any)
+	return inc, chk
 }
