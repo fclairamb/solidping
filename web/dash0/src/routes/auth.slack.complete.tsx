@@ -21,6 +21,7 @@ interface ExchangeResponse {
   refreshToken: string;
   orgSlug: string;
   userUid: string;
+  channelUid?: string;
 }
 
 const installErrorPage = "https://www.solidping.io/saas/install-error";
@@ -54,11 +55,19 @@ function SlackInstallComplete() {
 
         await loginWithOAuth(data.accessToken, data.orgSlug);
 
-        navigate({
-          to: "/orgs/$org",
-          params: { org: data.orgSlug },
-          replace: true,
-        });
+        if (data.channelUid) {
+          navigate({
+            to: "/orgs/$org/channels/$channelUid",
+            params: { org: data.orgSlug, channelUid: data.channelUid },
+            replace: true,
+          });
+        } else {
+          navigate({
+            to: "/orgs/$org",
+            params: { org: data.orgSlug },
+            replace: true,
+          });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Unexpected error");
         window.location.href = `${installErrorPage}?reason=oauth_failed`;

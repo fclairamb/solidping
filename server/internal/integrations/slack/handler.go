@@ -88,11 +88,14 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 // fresh CSRF state and 302s to Slack. No auth required — Slack hits this
 // URL with no session.
 //
-// GET /api/v1/integrations/slack/install[?source=marketplace].
+// GET /api/v1/integrations/slack/install[?source=marketplace&channelUid=<uid>&org=<slug>].
 func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
-	source := req.URL.Query().Get("source")
+	q := req.URL.Query()
+	source := q.Get("source")
+	channelUID := q.Get("channelUid")
+	orgSlug := q.Get("org")
 
-	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source)
+	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, channelUID, orgSlug)
 	if err != nil {
 		slog.ErrorContext(req.Context(), "Failed to build Slack install URL", "error", err)
 		h.redirectInstallError(writer, req, "unknown")
