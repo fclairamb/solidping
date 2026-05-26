@@ -83,6 +83,7 @@
     "mattermost": "In Mattermost-Kanal über eingehenden Webhook posten",
     "ntfy": "Push-Benachrichtigungen über ntfy.sh",
     "opsgenie": "Bereitschaftsdienst über Opsgenie alarmieren",
-    "pushover": "Mobile Push-Benachrichtigungen über Pushover"
+    "pushover": "Mobile Push-Benachrichtigungen über Pushover",
+    "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen"
   }
 }

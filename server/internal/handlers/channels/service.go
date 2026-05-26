@@ -327,7 +327,8 @@ func (s *Service) CreateChannel(
 		models.ConnectionTypeWebhook, models.ConnectionTypeEmail,
 		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
 		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
-		models.ConnectionTypePushover, models.ConnectionTypeFreebox:
+		models.ConnectionTypePushover, models.ConnectionTypeFreebox,
+		models.ConnectionTypeWebPush:
 		// Valid types
 	default:
 		return nil, ErrInvalidConnectionType

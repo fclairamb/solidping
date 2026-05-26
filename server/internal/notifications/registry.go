@@ -35,6 +35,8 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &OpsgenieSender{}, true
 	case models.ConnectionTypePushover:
 		return &PushoverSender{}, true
+	case models.ConnectionTypeWebPush:
+		return &WebPushSender{}, true
 	default:
 		return nil, false
 	}

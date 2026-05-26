@@ -104,6 +104,7 @@
     "ntfy": "Notifications push via ntfy.sh",
     "opsgenie": "Alerter les astreintes via Opsgenie",
     "pushover": "Notifications push mobile via Pushover",
-    "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)"
+    "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)",
+    "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés"
   }
 }

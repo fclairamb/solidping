@@ -1,5 +1,6 @@
 import {
   Bell,
+  BellRing,
   Hash,
   Mail,
   MessageCircle,
@@ -26,6 +27,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   opsgenie: Bell,
   pushover: Bell,
   freebox: Router,
+  webpush: BellRing,
 };
 
 export function ChannelIcon({ type, className }: ChannelIconProps) {
@@ -59,6 +61,8 @@ export function channelLabel(type: ConnectionType): string {
       return "Pushover";
     case "freebox":
       return "Freebox";
+    case "webpush":
+      return "Browser push";
     default:
       return type;
   }

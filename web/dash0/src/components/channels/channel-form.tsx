@@ -5,9 +5,11 @@ import {
   ChevronsUpDown,
   Copy,
   Loader2,
+  MonitorSmartphone,
   RefreshCw,
   Search,
   Send,
+  Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -29,6 +31,7 @@ import {
   useRotateWebhookSecret,
   useTestWebhookChannel,
 } from "@/api/hooks";
+import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 
 export interface ChannelFormState {
   name: string;
@@ -266,6 +269,15 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
       );
     case "freebox":
       return <FreeboxStatusPanel settings={settings} />;
+    case "webpush":
+      return (
+        <WebPushChannelPanel
+          settings={settings}
+          onChange={onChange}
+          org={org}
+          isEdit={!!channelUid}
+        />
+      );
     default:
       return null;
   }
@@ -298,6 +310,88 @@ function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> })
           "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
         )}
       </p>
+    </div>
+  );
+}
+
+// ---- Web Push channel panel ----
+
+interface WebPushSub {
+  endpoint: string;
+  keys: { p256dh: string; auth: string };
+  label?: string;
+}
+
+interface WebPushChannelPanelProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  isEdit?: boolean;
+}
+
+/** Manages the list of browser subscriptions for a webpush org channel. */
+function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPushChannelPanelProps) {
+  const { t } = useTranslation("channels");
+
+  const subs: WebPushSub[] = Array.isArray(settings.subscriptions)
+    ? (settings.subscriptions as WebPushSub[])
+    : [];
+
+  const handleRemove = (endpoint: string) => {
+    const updated = subs.filter((s) => s.endpoint !== endpoint);
+    onChange({ ...settings, subscriptions: updated });
+  };
+
+  const handleSubscription = (subscriptionJson: string) => {
+    try {
+      const parsed = JSON.parse(subscriptionJson) as WebPushSub;
+      // Deduplicate by endpoint.
+      const already = subs.some((s) => s.endpoint === parsed.endpoint);
+      if (!already) {
+        onChange({ ...settings, subscriptions: [...subs, parsed] });
+      }
+    } catch {
+      // ignore malformed JSON
+    }
+  };
+
+  return (
+    <div className="space-y-3" data-testid="webpush-channel-panel">
+      <p className="text-sm text-muted-foreground">
+        {t("hint.webpush", "Receive alerts as browser notifications on your subscribed devices")}
+      </p>
+
+      {subs.length === 0 ? (
+        <p className="text-sm text-muted-foreground italic">
+          No devices subscribed yet. Click the button below to add this browser.
+        </p>
+      ) : (
+        <div className="space-y-2" data-testid="webpush-subscriptions-list">
+          {subs.map((sub) => (
+            <div key={sub.endpoint} className="flex items-center gap-2 rounded border px-3 py-2">
+              <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
+              <span className="flex-1 text-sm truncate">{sub.label || "Browser"}</span>
+              <button
+                type="button"
+                onClick={() => handleRemove(sub.endpoint)}
+                className="text-destructive hover:text-destructive/80"
+                aria-label="Remove subscription"
+                data-testid="remove-webpush-subscription"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {org && (
+        <WebPushEnableButton
+          org={org}
+          onSubscription={handleSubscription}
+          data-testid="webpush-subscribe-button"
+        />
+      )}
     </div>
   );
 }

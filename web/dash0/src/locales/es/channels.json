@@ -83,6 +83,7 @@
     "mattermost": "Publicar en un canal Mattermost vía webhook entrante",
     "ntfy": "Notificaciones push vía ntfy.sh",
     "opsgenie": "Avisar a guardias vía Opsgenie",
-    "pushover": "Notificaciones push móviles vía Pushover"
+    "pushover": "Notificaciones push móviles vía Pushover",
+    "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos"
   }
 }

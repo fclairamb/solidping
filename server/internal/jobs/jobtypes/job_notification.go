@@ -133,6 +133,12 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		ws.UpdateChannel = r.webhookChannelUpdater(jctx)
 	}
 
+	// Web Push senders prune dead subscriptions; inject the same persistence
+	// callback so the pruned list is written back to the channel row.
+	if wps, isWebPush := sender.(*notifications.WebPushSender); isWebPush {
+		wps.UpdateChannel = r.webhookChannelUpdater(jctx)
+	}
+
 	// Look up the org slug so the email sender can build user-facing URLs
 	// (magic-link ack endpoint). A missing org is logged but does not fail
 	// the notification — recipients still get the email, just without a

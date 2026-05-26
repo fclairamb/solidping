@@ -104,6 +104,7 @@
     "ntfy": "Push notifications via ntfy.sh",
     "opsgenie": "Page on-call engineers via Opsgenie",
     "pushover": "Mobile push notifications via Pushover",
-    "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)"
+    "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)",
+    "webpush": "Receive alerts as browser notifications on your subscribed devices"
   }
 }
