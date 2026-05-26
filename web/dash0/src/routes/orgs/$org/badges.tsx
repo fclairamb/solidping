@@ -64,10 +64,10 @@ function hasRowToken(tokens: string[]): boolean {
 
 export const Route = createFileRoute("/orgs/$org/badges")({
   validateSearch: (search: Record<string, unknown>): BadgeSearch => {
-    let components = "status";
+    let components: string | undefined;
     if (typeof search.components === "string" && search.components) {
       const tokens = parseComponentsString(search.components);
-      if (tokens.length > 0) {
+      if (tokens.length > 0 && tokens.join(",") !== "status") {
         components = tokens.join(",");
       }
     }
@@ -75,11 +75,17 @@ export const Route = createFileRoute("/orgs/$org/badges")({
     const rawMinWidth = Number(search.minWidth);
     return {
       check: typeof search.check === "string" ? search.check : undefined,
+      // Keep components undefined when it equals the default ("status") so
+      // TanStack Router omits it from the URL instead of serializing it.
       components,
-      period: validPeriods.includes(search.period as BadgePeriod)
+      // Keep period/style undefined when they equal their defaults ("30d" / "flat")
+      // so TanStack Router omits them from the URL.
+      period: validPeriods.includes(search.period as BadgePeriod) &&
+        search.period !== "30d"
         ? (search.period as BadgePeriod)
         : undefined,
-      style: validStyles.includes(search.style as BadgeStyle)
+      style: validStyles.includes(search.style as BadgeStyle) &&
+        search.style !== "flat"
         ? (search.style as BadgeStyle)
         : undefined,
       label: typeof search.label === "string" && search.label

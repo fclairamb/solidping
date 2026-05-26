@@ -131,21 +131,21 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
     return subDays(now, 365).toISOString();
   }, []);
 
-  // Include raw as a co-tier so the current open bucket (never rolled up by
-  // the aggregator until it closes) contributes to availability immediately.
-  // Raw retention is 24 h by default, so the extra payload is bounded.
+  // Fetch only aggregated tiers — raw results are excluded from availability
+  // computation (see computeAvailability below) and fetching them would add
+  // noise without benefit.
   const tableRefetchInterval = Math.max(refetchInterval ?? 60_000, 60_000);
 
   const { data: allResults, isLoading: loadingResults } = useAllResults(org, {
     checkUid,
     periodStartAfter: yearAgo,
-    periodType: "raw,hour,day,month",
+    periodType: "hour,day,month",
     with: "availabilityPct,totalChecks,successfulChecks,status",
     size: 1000,
     refetchInterval: tableRefetchInterval,
   });
 
-  // Bucket all results (raw + aggregated) by the period windows we need.
+  // Bucket all aggregated results by the period windows we need.
   const { todayRows, last7Rows, last30Rows, last365Rows } = useMemo(() => {
     const data = allResults?.data ?? [];
     const now = new Date();
@@ -172,19 +172,19 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
   const rows = useMemo(() => {
     const now = new Date();
 
-    // Compute availability from a mix of raw and aggregated rows. Mirrors
-    // calculateAvailability() in server/internal/handlers/badges/service.go.
-    // Aggregated rows are weighted by their actual sample count so a bucket
-    // with many checks isn't treated as a single "vote".
+    // Compute availability from aggregated rows only (hour/day/month).
+    // Raw results are excluded — they are only available for the current open
+    // bucket and are not yet rolled up by the aggregator. Showing them would
+    // produce misleading numbers (e.g. 50% from 5 up + 5 down pings) when no
+    // aggregated data exists yet. Show "-" instead.
     function computeAvailability(data: OrgResult[] | undefined): number | null {
       if (!data?.length) return null;
       let successful = 0;
       let total = 0;
       for (const r of data) {
         if (r.periodType === "raw") {
-          if (r.status === "created" || r.status === "running") continue;
-          total += 1;
-          if (r.status === "up") successful += 1;
+          // Skip raw results — availability is only computed from aggregated tiers.
+          continue;
         } else if (r.totalChecks != null && r.successfulChecks != null) {
           total += r.totalChecks;
           successful += r.successfulChecks;
