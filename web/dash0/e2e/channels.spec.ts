@@ -107,7 +107,7 @@ test.describe("Slack destination picker", () => {
           return;
         }
 
-        await route.continue();
+        await route.fallback();
       },
     );
 
