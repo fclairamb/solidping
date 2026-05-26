@@ -2651,7 +2651,8 @@ export type ConnectionType =
   | "ntfy"
   | "opsgenie"
   | "pushover"
-  | "freebox";
+  | "freebox"
+  | "webpush";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -2677,6 +2678,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   opsgenie: NOTIFY,
   pushover: NOTIFY,
   freebox: SOURCE,
+  webpush: NOTIFY,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */

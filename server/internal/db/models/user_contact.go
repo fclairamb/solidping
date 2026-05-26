@@ -14,6 +14,7 @@ const (
 	UserContactTypeSlackUser = "slack_user"
 	UserContactTypePushover  = "pushover_user"
 	UserContactTypeNtfy      = "ntfy_topic"
+	UserContactTypeWebPush   = "webpush"
 )
 
 // UserContact is one addressable endpoint for a user (email, phone, Slack DM, …).

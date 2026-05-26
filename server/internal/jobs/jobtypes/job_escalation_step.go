@@ -13,6 +13,7 @@ import (
 	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // Escalation step errors.
@@ -434,6 +435,8 @@ func (r *EscalationStepJobRun) dispatchRoute(
 		}
 
 		return 1
+	case models.UserContactTypeWebPush:
+		return r.sendWebPush(ctx, jctx, log, incident, route)
 	case models.UserContactTypePhone:
 		log.WarnContext(ctx, "SMS provider not configured; skipping route",
 			"contactUID", route.Contact.UID,
@@ -448,6 +451,62 @@ func (r *EscalationStepJobRun) dispatchRoute(
 
 		return 0
 	}
+}
+
+// sendWebPush delivers a Web Push notification for a per-user webpush contact.
+// Dead subscriptions (404/410) are pruned by soft-deleting the contact row.
+func (r *EscalationStepJobRun) sendWebPush(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute,
+) int {
+	if jctx.Services == nil || jctx.Services.WebPushOptions.VAPIDPublicKey == "" {
+		log.WarnContext(ctx, "web push not configured; skipping route",
+			"contactUID", route.Contact.UID)
+
+		return 0
+	}
+
+	msg := webpush.Message{
+		Title: fmt.Sprintf("[escalation] incident %s requires attention", incident.UID),
+		Body:  "An incident requires your attention. Open the dashboard to acknowledge or resolve.",
+		URL:   "",
+	}
+
+	err := webpush.Send(ctx, jctx.Services.WebPushOptions, route.Contact.Value, msg)
+	if errors.Is(err, webpush.ErrSubscriptionGone) {
+		log.InfoContext(ctx, "web push subscription gone; pruning contact",
+			"contactUID", route.Contact.UID)
+
+		if deleteErr := jctx.DBService.DeleteUserContact(ctx, route.Contact.UID); deleteErr != nil {
+			log.WarnContext(ctx, "failed to prune gone web push contact",
+				"contactUID", route.Contact.UID, "error", deleteErr)
+		}
+
+		return 0
+	}
+
+	if err != nil {
+		log.WarnContext(ctx, "failed to send web push notification",
+			"contactUID", route.Contact.UID, "error", err)
+
+		return 0
+	}
+
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	n := models.NewIncidentNotificationForUser(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		models.IncidentNotificationSourceEscalationUser, route.UserUID, "webpush",
+		&stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create web push notification audit row", "error", auditErr)
+	}
+
+	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), "")
+
+	return 1
 }
 
 // postSlackDM sends a DM to slackUserID using the org's Slack bot token.
@@ -512,9 +571,33 @@ func (r *EscalationStepJobRun) pageSchedule(
 		return 0
 	}
 
-	return r.sendEscalationEmail(
-		ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
-	)
+	// Walk all enabled notification routes for the on-call user so that
+	// webpush (and any future contact type) is also paged.
+	routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, user.UID, incident.OrganizationUID)
+	if routesErr != nil || len(routes) == 0 {
+		// Fallback: no routes — email directly.
+		return r.sendEscalationEmail(
+			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+		)
+	}
+
+	sent := 0
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+
+		sent += r.dispatchRoute(ctx, jctx, log, incident, route)
+	}
+
+	if sent == 0 {
+		// All routes were disabled or unknown — fall back to direct email.
+		sent = r.sendEscalationEmail(
+			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+		)
+	}
+
+	return sent
 }
 
 // pageAllAdmins emails every admin member of the incident's org.
@@ -535,14 +618,42 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 			continue
 		}
 
-		if member.User == nil || member.User.Email == "" {
+		if member.User == nil {
 			continue
 		}
 
-		count += r.sendEscalationEmail(
-			ctx, jctx, log, incident, member.User.Email, member.UserUID,
-			models.IncidentNotificationSourceEscalationAllAdmins,
-		)
+		// Walk all enabled notification routes for the admin user.
+		routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
+		if routesErr != nil || len(routes) == 0 {
+			// Fallback: email directly.
+			if member.User.Email != "" {
+				count += r.sendEscalationEmail(
+					ctx, jctx, log, incident, member.User.Email, member.UserUID,
+					models.IncidentNotificationSourceEscalationAllAdmins,
+				)
+			}
+
+			continue
+		}
+
+		routeSent := 0
+		for _, route := range routes {
+			if !route.Enabled {
+				continue
+			}
+
+			routeSent += r.dispatchRoute(ctx, jctx, log, incident, route)
+		}
+
+		if routeSent == 0 && member.User.Email != "" {
+			// All routes were disabled/unknown — fall back to direct email.
+			routeSent = r.sendEscalationEmail(
+				ctx, jctx, log, incident, member.User.Email, member.UserUID,
+				models.IncidentNotificationSourceEscalationAllAdmins,
+			)
+		}
+
+		count += routeSent
 	}
 
 	if count == 0 {

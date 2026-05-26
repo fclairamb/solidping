@@ -5,6 +5,7 @@ import { useWebPushSubscription } from "@/hooks/useWebPushSubscription";
 interface WebPushEnableButtonProps {
   org: string;
   onSubscription: (subscriptionJson: string) => void;
+  "data-testid"?: string;
 }
 
 type ButtonState = "default" | "pending" | "subscribed" | "blocked";
@@ -20,6 +21,7 @@ type ButtonState = "default" | "pending" | "subscribed" | "blocked";
 export function WebPushEnableButton({
   org,
   onSubscription,
+  "data-testid": testId,
 }: WebPushEnableButtonProps) {
   const { isSupported, permission, subscribe } = useWebPushSubscription(org);
   const [state, setState] = useState<ButtonState>(() => {
@@ -63,6 +65,7 @@ export function WebPushEnableButton({
       onClick={handleClick}
       disabled={state === "pending" || state === "subscribed" || state === "blocked"}
       variant={state === "blocked" ? "ghost" : "default"}
+      data-testid={testId}
     >
       {label[state]}
     </Button>

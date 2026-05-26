@@ -46,6 +46,7 @@ const ALL_TYPES: ConnectionType[] = [
   "opsgenie",
   "pushover",
   "freebox",
+  "webpush",
 ];
 
 function NewChannelPage() {

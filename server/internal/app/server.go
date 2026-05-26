@@ -300,6 +300,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	} else {
 		cfg.WebPush.VAPIDPublicKey = pub
 		cfg.WebPush.VAPIDPrivateKey = priv
+		svcList.WebPushOptions = webpushpkg.Options{
+			VAPIDPublicKey:  pub,
+			VAPIDPrivateKey: priv,
+			Subject:         cfg.WebPush.Subject,
+		}
 	}
 
 	server := &Server{
@@ -682,7 +687,9 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	userNotifService := usernotifications.NewService(s.dbService)
 	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
 	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
-	userNotifHandler := usernotifications.NewHandler(userNotifService, s.config, emailAdapter, slackAdapter)
+	userNotifHandler := usernotifications.NewHandler(
+		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
+	)
 	orgUserNotif := api.NewGroup("/orgs/:org/users/me").Use(authMiddleware.RequireAuth)
 	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
 	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)

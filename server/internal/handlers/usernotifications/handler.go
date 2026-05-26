@@ -11,6 +11,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // EmailSender is the minimal interface needed to send a test email.
@@ -26,18 +27,23 @@ type SlackDMSender interface {
 // Handler exposes the user notification routes REST API.
 type Handler struct {
 	base.HandlerBase
-	svc         *Service
-	emailSender EmailSender
-	slackSender SlackDMSender
+	svc            *Service
+	emailSender    EmailSender
+	slackSender    SlackDMSender
+	webPushOptions webpush.Options
 }
 
 // NewHandler builds a handler.
-func NewHandler(svc *Service, cfg *config.Config, email EmailSender, slack SlackDMSender) *Handler {
+func NewHandler(
+	svc *Service, cfg *config.Config,
+	email EmailSender, slack SlackDMSender, wpOpts webpush.Options,
+) *Handler {
 	return &Handler{
-		HandlerBase: base.NewHandlerBase(cfg),
-		svc:         svc,
-		emailSender: email,
-		slackSender: slack,
+		HandlerBase:    base.NewHandlerBase(cfg),
+		svc:            svc,
+		emailSender:    email,
+		slackSender:    slack,
+		webPushOptions: wpOpts,
 	}
 }
 
@@ -157,7 +163,9 @@ func (h *Handler) TestRoute(writer http.ResponseWriter, req bunrouter.Request) e
 
 	routeUID := req.Param("routeUid")
 
-	err := h.svc.SendTestNotification(req.Context(), req.Param("org"), user, routeUID, h.emailSender, h.slackSender)
+	err := h.svc.SendTestNotification(
+		req.Context(), req.Param("org"), user, routeUID, h.emailSender, h.slackSender, h.webPushOptions,
+	)
 	if err != nil {
 		// 422 for "provider not configured" style errors.
 		errMsg := "test failed: " + err.Error()

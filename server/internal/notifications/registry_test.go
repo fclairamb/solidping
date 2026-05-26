@@ -23,6 +23,7 @@ func TestGetSender_NotifyCapableTypesResolve(t *testing.T) {
 		models.ConnectionTypeNtfy,
 		models.ConnectionTypeOpsgenie,
 		models.ConnectionTypePushover,
+		models.ConnectionTypeWebPush,
 	}
 
 	for _, connType := range notifyTypes {
