@@ -14,9 +14,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Switch } from "@/components/ui/switch";
 import {
   AlertCircle,
-  Bell,
+  BellRing,
   Mail,
   MessageSquare,
+  MonitorSmartphone,
   Phone,
   Trash2,
   Send,
@@ -24,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 import {
   useNotificationRoutes,
   useCreateNotificationContact,
@@ -46,8 +48,10 @@ function contactTypeIcon(type: string) {
       return <Phone className="h-4 w-4" />;
     case "slack_user":
       return <MessageSquare className="h-4 w-4" />;
+    case "webpush":
+      return <MonitorSmartphone className="h-4 w-4" />;
     default:
-      return <Bell className="h-4 w-4" />;
+      return <BellRing className="h-4 w-4" />;
   }
 }
 
@@ -59,9 +63,44 @@ function contactTypeLabel(type: string) {
       return "Phone (SMS)";
     case "slack_user":
       return "Slack DM";
+    case "webpush":
+      return "Browser push";
     default:
       return type;
   }
+}
+
+/** Derives a short human-readable device label from navigator.userAgent. */
+function deriveDeviceLabel(): string {
+  const ua = navigator.userAgent;
+  let browser = "Browser";
+  let os = "Unknown OS";
+
+  if (/Chrome\/[\d.]+/.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua)) {
+    browser = "Chrome";
+  } else if (/Firefox\//.test(ua)) {
+    browser = "Firefox";
+  } else if (/Edg\//.test(ua)) {
+    browser = "Edge";
+  } else if (/OPR\/|Opera\//.test(ua)) {
+    browser = "Opera";
+  } else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) {
+    browser = "Safari";
+  }
+
+  if (/Windows/.test(ua)) {
+    os = "Windows";
+  } else if (/Macintosh|Mac OS X/.test(ua)) {
+    os = "macOS";
+  } else if (/Linux/.test(ua) && !/Android/.test(ua)) {
+    os = "Linux";
+  } else if (/Android/.test(ua)) {
+    os = "Android";
+  } else if (/iPhone|iPad/.test(ua)) {
+    os = "iOS";
+  }
+
+  return `${browser} on ${os}`;
 }
 
 function RouteRow({
@@ -123,7 +162,9 @@ function RouteRow({
           {contactTypeLabel(route.contact.type)}
         </div>
         <div className="text-sm text-muted-foreground truncate">
-          {route.contact.value}
+          {route.contact.type === "webpush"
+            ? (route.contact.label || "Browser")
+            : route.contact.value}
         </div>
         {isPhone && (
           <Badge variant="outline" className="mt-1 text-xs text-yellow-600 border-yellow-400">
@@ -258,58 +299,95 @@ function AddContactForm({
     }
   };
 
+  const handleWebPushSubscription = async (subscriptionJson: string) => {
+    try {
+      await createContact.mutateAsync({
+        type: "webpush",
+        value: subscriptionJson,
+        label: deriveDeviceLabel(),
+      });
+      toast.success("Browser push notifications enabled");
+      onSuccess();
+    } catch (err: unknown) {
+      // 409 CONFLICT means the browser is already subscribed — silently ignore.
+      const msg = err instanceof Error ? err.message : "";
+      if (!msg.includes("409") && !msg.toLowerCase().includes("conflict")) {
+        toast.error("Failed to enable browser push notifications");
+      } else {
+        onSuccess();
+      }
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 pt-4 border-t mt-4">
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant={type === "email" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setType("email")}
-        >
-          <Mail className="h-3 w-3 mr-1" /> Email
-        </Button>
-        <Button
-          type="button"
-          variant={type === "phone" ? "default" : "outline"}
-          size="sm"
-          onClick={() => setType("phone")}
-        >
-          <Phone className="h-3 w-3 mr-1" /> Phone
-        </Button>
-      </div>
+    <div className="space-y-4 pt-4 border-t mt-4">
+      <form onSubmit={handleSubmit} className="space-y-3">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant={type === "email" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setType("email")}
+          >
+            <Mail className="h-3 w-3 mr-1" /> Email
+          </Button>
+          <Button
+            type="button"
+            variant={type === "phone" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setType("phone")}
+          >
+            <Phone className="h-3 w-3 mr-1" /> Phone
+          </Button>
+        </div>
 
-      {error && (
-        <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
+        {error && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
 
-      <div className="flex gap-2">
-        <Input
-          type={type === "email" ? "email" : "tel"}
-          placeholder={
-            type === "email" ? "you@example.com" : "+1 555 123 4567"
-          }
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          className="flex-1"
-          data-testid="add-contact-input"
+        <div className="flex gap-2">
+          <Input
+            type={type === "email" ? "email" : "tel"}
+            placeholder={
+              type === "email" ? "you@example.com" : "+1 555 123 4567"
+            }
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+            className="flex-1"
+            data-testid="add-contact-input"
+          />
+          <Button
+            type="submit"
+            disabled={createContact.isPending}
+            data-testid="add-contact-submit"
+          >
+            {createContact.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              "Add"
+            )}
+          </Button>
+        </div>
+      </form>
+
+      <div className="flex items-center gap-3 pt-2 border-t">
+        <MonitorSmartphone className="h-4 w-4 text-muted-foreground flex-none" />
+        <div className="flex-1">
+          <p className="text-sm font-medium">Add browser</p>
+          <p className="text-xs text-muted-foreground">
+            Receive notifications as browser push alerts on this device.
+          </p>
+        </div>
+        <WebPushEnableButton
+          org={org}
+          onSubscription={handleWebPushSubscription}
+          data-testid="add-browser-push-button"
         />
-        <Button
-          type="submit"
-          disabled={createContact.isPending}
-          data-testid="add-contact-submit"
-        >
-          {createContact.isPending ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            "Add"
-          )}
-        </Button>
       </div>
-    </form>
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // Registry holds all application services for dependency injection.
@@ -29,6 +30,9 @@ type Registry struct {
 	// windows, recovery periods, escalation repeat intervals). Tests inject
 	// a Fake to advance time deterministically; production uses Real.
 	Clock clock.Clock
+	// WebPushOptions holds VAPID credentials for Web Push dispatch. Zero
+	// value means "not configured" — callers check VAPIDPublicKey != "".
+	WebPushOptions webpush.Options
 }
 
 // NewRegistry creates a new services registry.

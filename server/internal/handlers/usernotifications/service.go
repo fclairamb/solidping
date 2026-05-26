@@ -11,6 +11,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // Service errors.
@@ -23,6 +24,7 @@ var (
 	ErrEmailSenderNotConfigured = errors.New("email sender not configured")
 	ErrNoSlackChannelForOrg     = errors.New("no Slack channel configured for this organization")
 	ErrSlackClientNotConfigured = errors.New("slack client not configured")
+	ErrWebPushNotConfigured     = errors.New("web push not configured on this server")
 )
 
 // ContactResponse is the API representation of a UserContact.
@@ -191,7 +193,9 @@ func (s *Service) CreateContact(
 
 	contact := models.NewUserContact(user.UID, orgUID, req.Type, req.Value, req.Label)
 
-	if req.Type == models.UserContactTypeEmail {
+	if req.Type == models.UserContactTypeEmail || req.Type == models.UserContactTypeWebPush {
+		// Email is verified by sending; web push is verified by subscribing
+		// (browser grants permission and registers the subscription endpoint).
 		now := time.Now()
 		contact.VerifiedAt = &now
 	}
@@ -339,7 +343,7 @@ func toRouteResponses(routes []*models.UserNotificationRoute) []*RouteResponse {
 // SendTestNotification dispatches a test notification for the given route.
 func (s *Service) SendTestNotification(
 	ctx context.Context, orgSlug string, user *models.User, routeUID string,
-	emailSender EmailSender, slackClient SlackDMSender,
+	emailSender EmailSender, slackClient SlackDMSender, wpOpts webpush.Options,
 ) error {
 	orgUID, err := s.resolveOrgUID(ctx, orgSlug)
 	if err != nil {
@@ -365,6 +369,15 @@ func (s *Service) SendTestNotification(
 		return ErrRouteNotFound
 	}
 
+	return s.dispatchTestRoute(ctx, orgUID, target, emailSender, slackClient, wpOpts)
+}
+
+// dispatchTestRoute delivers a test notification for a single route.
+func (s *Service) dispatchTestRoute(
+	ctx context.Context, orgUID string,
+	target *models.UserNotificationRoute,
+	emailSender EmailSender, slackClient SlackDMSender, wpOpts webpush.Options,
+) error {
 	switch target.Contact.Type {
 	case models.UserContactTypeEmail:
 		if emailSender == nil {
@@ -373,21 +386,38 @@ func (s *Service) SendTestNotification(
 
 		return emailSender.SendTestEmail(ctx, target.Contact.Value)
 	case models.UserContactTypeSlackUser:
-		slackChannel, chErr := s.db.GetSlackChannelForOrg(ctx, orgUID)
-		if chErr != nil {
-			if errors.Is(chErr, sql.ErrNoRows) {
-				return ErrNoSlackChannelForOrg
-			}
-
-			return fmt.Errorf("load slack channel: %w", chErr)
+		return s.dispatchTestSlack(ctx, orgUID, target.Contact.Value, slackClient)
+	case models.UserContactTypeWebPush:
+		if wpOpts.VAPIDPublicKey == "" {
+			return ErrWebPushNotConfigured
 		}
 
-		if slackClient == nil {
-			return ErrSlackClientNotConfigured
-		}
-
-		return slackClient.SendDMTest(ctx, slackChannel, target.Contact.Value)
+		return webpush.Send(ctx, wpOpts, target.Contact.Value, webpush.Message{
+			Title: "Test alert from SolidPing",
+			Body:  "This is a test notification.",
+			URL:   "",
+		})
 	default:
 		return fmt.Errorf("provider not configured for contact type %q", target.Contact.Type) //nolint:err113
 	}
+}
+
+// dispatchTestSlack sends a test Slack DM for the given user ID.
+func (s *Service) dispatchTestSlack(
+	ctx context.Context, orgUID, slackUserID string, slackClient SlackDMSender,
+) error {
+	slackChannel, chErr := s.db.GetSlackChannelForOrg(ctx, orgUID)
+	if chErr != nil {
+		if errors.Is(chErr, sql.ErrNoRows) {
+			return ErrNoSlackChannelForOrg
+		}
+
+		return fmt.Errorf("load slack channel: %w", chErr)
+	}
+
+	if slackClient == nil {
+		return ErrSlackClientNotConfigured
+	}
+
+	return slackClient.SendDMTest(ctx, slackChannel, slackUserID)
 }

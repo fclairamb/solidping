@@ -23,6 +23,7 @@ const (
 	ConnectionTypeOpsgenie   ConnectionType = "opsgenie"
 	ConnectionTypePushover   ConnectionType = "pushover"
 	ConnectionTypeFreebox    ConnectionType = "freebox"
+	ConnectionTypeWebPush    ConnectionType = "webpush"
 )
 
 // Capabilities describes what roles an integration type can play. The two
