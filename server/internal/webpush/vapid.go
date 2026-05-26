@@ -19,8 +19,9 @@ const (
 	keyPrivate = "webpush.vapid_private_key"
 )
 
-// WebPushConfig holds the web-push configuration block from the app config.
-type WebPushConfig struct {
+// Config holds the web-push configuration used for VAPID key management.
+// It mirrors the relevant fields from config.WebPushConfig.
+type Config struct {
 	VAPIDPublicKey  string
 	VAPIDPrivateKey string
 	Subject         string
@@ -32,40 +33,42 @@ type WebPushConfig struct {
 // app_settings table; if still absent, generates a new pair, persists both to
 // app_settings, and returns them.
 // Must be called once during app startup and the result stored in config.
-func GetOrCreateVAPIDKeys(ctx context.Context, cfg WebPushConfig, dbSvc db.Service) (pub, priv string, err error) {
+func GetOrCreateVAPIDKeys(ctx context.Context, cfg Config, dbSvc db.Service) (string, string, error) {
 	// 1. Use config values when both are present.
 	if cfg.VAPIDPublicKey != "" && cfg.VAPIDPrivateKey != "" {
 		return cfg.VAPIDPublicKey, cfg.VAPIDPrivateKey, nil
 	}
 
 	// 2. Try to read from the database.
-	pub, privErr := readVAPIDFromDB(ctx, dbSvc)
-	if privErr == nil {
-		priv, privErr = dbSvc.GetAppSetting(ctx, keyPrivate)
-	}
+	pub, pubErr := readVAPIDFromDB(ctx, dbSvc)
+	var priv string
 
-	if privErr == nil && pub != "" && priv != "" {
-		return pub, priv, nil
+	if pubErr == nil && pub != "" {
+		var privErr error
+		priv, privErr = dbSvc.GetAppSetting(ctx, keyPrivate)
+		if privErr == nil && priv != "" {
+			return pub, priv, nil
+		}
 	}
 
 	// 3. Generate a new keypair and persist.
-	priv, pub, err = webpushgo.GenerateVAPIDKeys()
+	generatedPriv, generatedPub, err := webpushgo.GenerateVAPIDKeys()
 	if err != nil {
 		return "", "", fmt.Errorf("webpush: generate VAPID keys: %w", err)
 	}
 
-	if setErr := dbSvc.SetAppSetting(ctx, keyPublic, pub); setErr != nil {
+	if setErr := dbSvc.SetAppSetting(ctx, keyPublic, generatedPub); setErr != nil {
 		slog.WarnContext(ctx, "webpush: failed to persist VAPID public key", "err", setErr)
-		return pub, priv, nil
+		return generatedPub, generatedPriv, nil
 	}
 
-	if setErr := dbSvc.SetAppSetting(ctx, keyPrivate, priv); setErr != nil {
+	if setErr := dbSvc.SetAppSetting(ctx, keyPrivate, generatedPriv); setErr != nil {
 		slog.WarnContext(ctx, "webpush: failed to persist VAPID private key", "err", setErr)
 	}
 
 	slog.InfoContext(ctx, "Generated VAPID keys, persisted to app_settings")
 
-	return pub, priv, nil
+	return generatedPub, generatedPriv, nil
 }
 
 // readVAPIDFromDB attempts to read the public key from app_settings.

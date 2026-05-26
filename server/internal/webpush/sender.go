@@ -16,6 +16,10 @@ import (
 // soft-delete the corresponding UserContact or prune it from channel Settings.
 var ErrSubscriptionGone = errors.New("webpush: subscription gone")
 
+// ErrPushServiceError is returned when the push service responds with an
+// unexpected non-2xx, non-404/410 status code.
+var ErrPushServiceError = errors.New("webpush: push service error")
+
 // Message is the payload sent via Web Push.
 type Message struct {
 	Title string `json:"title"`
@@ -32,7 +36,7 @@ type Options struct {
 }
 
 // Send encrypts msg and POSTs it to the push service endpoint encoded in
-// subscriptionJSON (a JSON-serialised PushSubscription from the browser).
+// subscriptionJSON (a JSON-serialized PushSubscription from the browser).
 // Returns ErrSubscriptionGone for 404/410 responses.
 func Send(ctx context.Context, opts Options, subscriptionJSON string, msg Message) error {
 	payload, err := json.Marshal(msg)
@@ -41,18 +45,19 @@ func Send(ctx context.Context, opts Options, subscriptionJSON string, msg Messag
 	}
 
 	sub := &webpushgo.Subscription{}
-	if err := json.Unmarshal([]byte(subscriptionJSON), sub); err != nil {
-		return fmt.Errorf("webpush: parse subscription: %w", err)
+
+	if parseErr := json.Unmarshal([]byte(subscriptionJSON), sub); parseErr != nil {
+		return fmt.Errorf("webpush: parse subscription: %w", parseErr)
 	}
 
-	resp, err := webpushgo.SendNotificationWithContext(ctx, payload, sub, &webpushgo.Options{
+	resp, sendErr := webpushgo.SendNotificationWithContext(ctx, payload, sub, &webpushgo.Options{
 		VAPIDPublicKey:  opts.VAPIDPublicKey,
 		VAPIDPrivateKey: opts.VAPIDPrivateKey,
 		Subscriber:      opts.Subject,
 		TTL:             86400,
 	})
-	if err != nil {
-		return fmt.Errorf("webpush: send: %w", err)
+	if sendErr != nil {
+		return fmt.Errorf("webpush: send: %w", sendErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -61,7 +66,7 @@ func Send(ctx context.Context, opts Options, subscriptionJSON string, msg Messag
 	}
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("webpush: push service returned %d", resp.StatusCode)
+		return fmt.Errorf("%w: status %d", ErrPushServiceError, resp.StatusCode)
 	}
 
 	return nil

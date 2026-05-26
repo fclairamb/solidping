@@ -290,7 +290,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize VAPID keys for Web Push. Auto-generates and persists to
 	// app_settings when not pre-provisioned via env vars.
-	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.WebPushConfig{
+	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
 		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
 		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
 		Subject:         cfg.WebPush.Subject,

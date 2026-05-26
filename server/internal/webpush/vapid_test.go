@@ -30,7 +30,7 @@ func TestGetOrCreateVAPIDKeys_GeneratesAndPersists(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 
-	cfg := webpush.WebPushConfig{} // no pre-set keys
+	cfg := webpush.Config{} // no pre-set keys
 
 	pub, priv, err := webpush.GetOrCreateVAPIDKeys(ctx, cfg, db)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestGetOrCreateVAPIDKeys_Idempotent(t *testing.T) {
 	ctx := context.Background()
 	db := newTestDB(t)
 
-	cfg := webpush.WebPushConfig{}
+	cfg := webpush.Config{}
 
 	pub1, priv1, err := webpush.GetOrCreateVAPIDKeys(ctx, cfg, db)
 	require.NoError(t, err)
@@ -74,7 +74,7 @@ func TestGetOrCreateVAPIDKeys_UsesConfigValues(t *testing.T) {
 	// Pre-generate a real keypair to use as config values.
 	pubCfg, privCfg := realVAPIDKeys(t)
 
-	cfg := webpush.WebPushConfig{
+	cfg := webpush.Config{
 		VAPIDPublicKey:  pubCfg,
 		VAPIDPrivateKey: privCfg,
 	}

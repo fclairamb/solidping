@@ -47,6 +47,9 @@ func ValidDeploymentModes() []string {
 	return []string{DeploymentModeSelfHosted, DeploymentModeSaaS}
 }
 
+// envTrue is the canonical string value that enables a boolean env var.
+const envTrue = "true"
+
 var (
 	// ErrInvalidDatabaseType is returned when the database type is invalid.
 	ErrInvalidDatabaseType = errors.New(
@@ -547,7 +550,7 @@ func Load() (*Config, error) {
 	}
 
 	// Manually read SP_DB_RESET for database reset on startup
-	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == "true" || dbReset == "1" {
+	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
 	}
 
@@ -622,7 +625,7 @@ func applyFileStorageEnv(cfg *FileStorageConfig) {
 	if v := os.Getenv("SP_FILESTORAGE_S3_ENDPOINT"); v != "" {
 		cfg.S3Endpoint = v
 	}
-	if v := os.Getenv("SP_FILESTORAGE_S3_USE_PATH_STYLE"); v == "true" || v == "1" {
+	if v := os.Getenv("SP_FILESTORAGE_S3_USE_PATH_STYLE"); v == envTrue || v == "1" {
 		cfg.S3UsePathStyle = true
 	}
 	if v := os.Getenv("SP_FILESTORAGE_S3_ACCESS_KEY"); v != "" {
@@ -650,7 +653,7 @@ func applyWebPushEnv(cfg *WebPushConfig) {
 		cfg.Subject = v
 	}
 
-	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == "true" || v == "1" {
+	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == envTrue || v == "1" {
 		cfg.Enabled = true
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1427,14 +1428,14 @@ func testAppSettings(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Run("GetMissingKey", func(t *testing.T) {
 		t.Parallel()
 
-		_, err := svc.GetAppSetting(ctx, "nonexistent.key."+fmt.Sprintf("%d", time.Now().UnixNano()))
+		_, err := svc.GetAppSetting(ctx, "nonexistent.key."+strconv.FormatInt(time.Now().UnixNano(), 10))
 		r.Error(err, "GetAppSetting should return an error for a missing key")
 	})
 
 	t.Run("SetAndGet", func(t *testing.T) {
 		t.Parallel()
 
-		key := fmt.Sprintf("test.key.%d", time.Now().UnixNano())
+		key := "test.key." + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 		err := svc.SetAppSetting(ctx, key, "value1")
 		r.NoError(err, "SetAppSetting should not fail")
@@ -1447,7 +1448,7 @@ func testAppSettings(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Run("Upsert", func(t *testing.T) {
 		t.Parallel()
 
-		key := fmt.Sprintf("test.upsert.%d", time.Now().UnixNano())
+		key := "test.upsert." + strconv.FormatInt(time.Now().UnixNano(), 10)
 
 		err := svc.SetAppSetting(ctx, key, "first")
 		r.NoError(err)

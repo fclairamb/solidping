@@ -8,13 +8,14 @@ import (
 	"testing"
 
 	webpushgo "github.com/SherClockHolmes/webpush-go"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // realVAPIDKeys generates a throwaway VAPID keypair for tests.
-func realVAPIDKeys(t *testing.T) (pub, priv string) {
+func realVAPIDKeys(t *testing.T) (string, string) {
 	t.Helper()
 
 	priv, pub, err := webpushgo.GenerateVAPIDKeys()
@@ -24,16 +25,18 @@ func realVAPIDKeys(t *testing.T) (pub, priv string) {
 }
 
 // fakeSubscription returns a minimal JSON push subscription that points to the
-// given test server URL. The keys are fake but structurally valid.
+// given test server URL. The p256dh value is a valid P-256 uncompressed public
+// key (65 bytes, base64url-encoded) generated once for test use.
 func fakeSubscription(t *testing.T, serverURL string) string {
 	t.Helper()
 
 	sub := map[string]any{
 		"endpoint": serverURL + "/push",
 		"keys": map[string]string{
-			// These are valid-length base64url strings that satisfy the webpush-go parser.
-			"p256dh": "BNcR2oRRFkqEBMXPEBfHhpZCZlDpv3MRF3E9pkBj2_RDZLLJl4iyq-MkzFwOeOj4-FHLS8eJv9BxGJnDdz4vQ0",
-			"auth":   "tBHItnDR9oNFbwKMkhY7lQ",
+			// Valid P-256 uncompressed public key (65 bytes → 87 base64url chars).
+			"p256dh": "BLiMDpdL9AFok4VWdDMMek7hFVBaleGPi8DVegkLJFH7IFnJo5zAP1GjH50H-njZFrZJ1etQf3F38z68FzSPa1Y",
+			// 16-byte base64url auth secret.
+			"auth": "tBHItnDR9oNFbwKMkhY7lQ",
 		},
 	}
 	b, err := json.Marshal(sub)
@@ -48,9 +51,9 @@ func TestSend_Success(t *testing.T) {
 	pub, priv := realVAPIDKeys(t)
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Verify VAPID Authorization header is present.
-		require.NotEmpty(t, r.Header.Get("Authorization"), "Authorization header must be set")
-		require.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
+		// Verify VAPID Authorization header is present (use assert, not require in handler).
+		assert.NotEmpty(t, r.Header.Get("Authorization"), "Authorization header must be set")
+		assert.Equal(t, "application/octet-stream", r.Header.Get("Content-Type"))
 		w.WriteHeader(http.StatusCreated)
 	}))
 	defer srv.Close()
