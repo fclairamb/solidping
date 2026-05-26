@@ -247,11 +247,17 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 		_ = server.Close(context.Background())
 	})
 
+	// Per-scenario webhook collector (independent httptest.Server per test).
+	// Must be registered before the worker cleanup so that in LIFO order the
+	// worker drains first (and can still POST to the webhook server), then the
+	// webhook server closes.
+	webhooks, whSrv := newWebhookCollector(t)
+
 	// Start the job worker — needed for escalation-step and notification jobs.
-	// The cleanup must drain the worker before closing the server: worker.Run
-	// calls wg.Wait() internally, so closing workerDone signals the drain is
-	// complete. Registered here (after server.Close) so it fires first in LIFO
-	// order, guaranteeing the DB is still open while in-progress jobs finish.
+	// Registered after webhookCollector so it fires first in LIFO order,
+	// guaranteeing the webhook server is still open while in-progress
+	// notification jobs deliver their payloads, and the DB is still open while
+	// the worker drains.
 	workerCtx, cancel := context.WithCancel(context.Background())
 	workerDone := make(chan struct{})
 	t.Cleanup(func() {
@@ -271,9 +277,6 @@ func NewPostgresScenario(t *testing.T) *Scenario {
 		defer close(workerDone)
 		_ = worker.Run(workerCtx)
 	}()
-
-	// Per-scenario webhook collector (independent httptest.Server per test).
-	webhooks, whSrv := newWebhookCollector(t)
 
 	orgSlug := randOrgSlug()
 	userUID, pat := seedScenario(t, server, orgSlug)
