@@ -73,6 +73,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
+	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -89,6 +90,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -285,6 +287,20 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
 	s3fs.Register()
+
+	// Initialize VAPID keys for Web Push. Auto-generates and persists to
+	// app_settings when not pre-provisioned via env vars.
+	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
+		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
+		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
+		Subject:         cfg.WebPush.Subject,
+		Enabled:         cfg.WebPush.Enabled,
+	}, dbService); err != nil {
+		slog.WarnContext(ctx, "webpush: VAPID key initialization failed — web push disabled", "err", err)
+	} else {
+		cfg.WebPush.VAPIDPublicKey = pub
+		cfg.WebPush.VAPIDPrivateKey = priv
+	}
 
 	server := &Server{
 		dbService:   dbService,
@@ -759,6 +775,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEntitlements.PUT("", entitlementsHandler.Put)
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
 	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
+
+	// Web Push routes (authentication required).
+	webpushHandler := webpushhandler.NewHandler(s.config)
+	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
+	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
 
 	// Integration connections routes (authentication required).
 	//

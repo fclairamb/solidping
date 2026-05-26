@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -73,6 +74,10 @@ func testService(t *testing.T, svc db.Service) {
 
 	t.Run("OnCallScheduleByUidOrSlug", func(t *testing.T) {
 		testOnCallScheduleByUIDOrSlug(ctx, t, svc)
+	})
+
+	t.Run("AppSettings", func(t *testing.T) {
+		testAppSettings(ctx, t, svc)
 	})
 }
 
@@ -1413,4 +1418,46 @@ func subscriberEmails(subs []*models.StatusPageSubscriber) []string {
 	}
 
 	return emails
+}
+
+func testAppSettings(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	t.Run("GetMissingKey", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := svc.GetAppSetting(ctx, "nonexistent.key."+strconv.FormatInt(time.Now().UnixNano(), 10))
+		r.Error(err, "GetAppSetting should return an error for a missing key")
+	})
+
+	t.Run("SetAndGet", func(t *testing.T) {
+		t.Parallel()
+
+		key := "test.key." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		err := svc.SetAppSetting(ctx, key, "value1")
+		r.NoError(err, "SetAppSetting should not fail")
+
+		val, err := svc.GetAppSetting(ctx, key)
+		r.NoError(err, "GetAppSetting should not fail after set")
+		r.Equal("value1", val)
+	})
+
+	t.Run("Upsert", func(t *testing.T) {
+		t.Parallel()
+
+		key := "test.upsert." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		err := svc.SetAppSetting(ctx, key, "first")
+		r.NoError(err)
+
+		err = svc.SetAppSetting(ctx, key, "second")
+		r.NoError(err)
+
+		val, err := svc.GetAppSetting(ctx, key)
+		r.NoError(err)
+		r.Equal("second", val, "upsert should overwrite with new value")
+	})
 }

@@ -1603,5 +1603,13 @@ func (m *mockDBService) ListSubscribers(
 	return nil, nil
 }
 
+func (m *mockDBService) GetAppSetting(_ context.Context, _ string) (string, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
+	panic("not implemented")
+}
+
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)

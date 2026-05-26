@@ -114,3 +114,10 @@ root.render(
     </ErrorBoundary>
   </StrictMode>,
 );
+
+// Register the service worker for Web Push notifications.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/dash0/sw.js").catch((err) => {
+    console.warn("[solidping] SW registration failed", err);
+  });
+}
