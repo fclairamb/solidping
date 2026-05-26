@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
@@ -332,6 +332,12 @@ function BadgesPage() {
   const minWidth = search.minWidth ?? 0;
   const width = search.width ?? DEFAULT_WIDTH;
 
+  const [localWidth, setLocalWidth] = useState(String(width));
+  const [localMinWidth, setLocalMinWidth] = useState(String(minWidth));
+
+  useEffect(() => setLocalWidth(String(width)), [width]);
+  useEffect(() => setLocalMinWidth(String(minWidth)), [minWidth]);
+
   const activeTokens = parseComponentsString(components);
   const showRowControls = hasRowToken(activeTokens);
   const showPeriod =
@@ -510,8 +516,14 @@ function BadgesPage() {
                   min={60}
                   max={800}
                   step={10}
-                  value={width}
-                  onChange={(e) => updateSearch({ width: Number(e.target.value) || undefined })}
+                  value={localWidth}
+                  onChange={(e) => setLocalWidth(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(localWidth);
+                    if (!isNaN(n) && n >= 60 && n <= 800) updateSearch({ width: n });
+                    else setLocalWidth(String(width));
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                 />
               </div>
             ) : (
@@ -523,8 +535,14 @@ function BadgesPage() {
                   min={0}
                   max={800}
                   step={10}
-                  value={minWidth}
-                  onChange={(e) => updateSearch({ minWidth: Number(e.target.value) || undefined })}
+                  value={localMinWidth}
+                  onChange={(e) => setLocalMinWidth(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(localMinWidth);
+                    if (!isNaN(n) && n >= 0 && n <= 800) updateSearch({ minWidth: n || undefined });
+                    else setLocalMinWidth(String(minWidth));
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
                 />
                 <p className="text-xs text-muted-foreground">{t("minWidthDescription")}</p>
               </div>
