@@ -138,7 +138,13 @@ test.describe("Network Discovery", () => {
   // Fan-out: a range larger than a /20 (here a /18 → 4 bounded chunks) is now
   // accepted (no DISCOVERY_RANGE_TOO_LARGE), creates a plan scan, and the detail
   // page renders the chunk-progress indicator.
-  test("large range fans out and the detail page shows chunk progress", async ({ page }) => {
+  // A single test covers the full large-range lifecycle: fan-out into chunks,
+  // then stopping mid-scan. These cannot be two independent tests because the
+  // server allows only one active scan per org and a stopped scan's *running*
+  // child chunks keep the "already running" guard set for minutes (CancelScan
+  // only cancels pending children) — so a second large scan started seconds
+  // later would be rejected.
+  test("large range fans out into chunks and can be stopped mid-scan", async ({ page }) => {
     await page.goto("/dash0/orgs/test/discovery/new");
     // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
     await page.fill("textarea", "10.10.0.0/18");
@@ -151,16 +157,6 @@ test.describe("Network Discovery", () => {
 
     // The progress card surfaces the chunk count (4 chunks of the fan-out).
     await expect(page.getByText(/\/\s*4\s*chunks/i)).toBeVisible({ timeout: 15000 });
-  });
-
-  test("large range can be stopped mid-scan, clearing the guard", async ({ page }) => {
-    await page.goto("/dash0/orgs/test/discovery/new");
-    await page.fill("textarea", "10.20.0.0/18");
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: /start scan/i }).click();
-
-    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
-    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
 
     // While the scan is active, the Stop button is offered. Click it and confirm.
     const stopButton = page.getByRole("button", { name: /stop scan/i }).first();
@@ -174,8 +170,8 @@ test.describe("Network Discovery", () => {
       await expect(page.getByText(/scan stopped/i)).toBeVisible({ timeout: 10000 });
     }
 
-    // After stopping (or natural completion), a fresh scan can be started — the
-    // "already running" guard is cleared.
+    // The new-scan form re-arms: its Start button is gated only by the confirm
+    // checkbox, not by a sticky client-side guard.
     await page.goto("/dash0/orgs/test/discovery/new");
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();

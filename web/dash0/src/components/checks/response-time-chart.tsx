@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceArea,
+  type MouseHandlerDataParam,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
 import { useAllResults } from "@/api/hooks";
@@ -444,6 +445,21 @@ export function ResponseTimeChart({
     return stops;
   }, [chartData]);
 
+  // Recharts v3 routes all pointer events through a single top-level surface,
+  // so per-dot onClick handlers never fire. Handle clicks at the chart level
+  // and resolve the active point via activeTooltipIndex into chartData.
+  const handleChartClick = (state: MouseHandlerDataParam) => {
+    // activeTooltipIndex is `number | string | null` across recharts versions.
+    const raw = state?.activeTooltipIndex;
+    const idx = typeof raw === "number" ? raw : raw != null ? Number(raw) : NaN;
+    const point = Number.isInteger(idx) ? chartData[idx] : undefined;
+    if (point?.uid) {
+      handleDotClick(point.uid);
+    } else {
+      setSelectedUid(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
@@ -490,13 +506,9 @@ export function ResponseTimeChart({
             {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
-          <div
-            ref={chartWrapperRef}
-            className="relative"
-            onClick={() => setSelectedUid(null)}
-          >
+          <div ref={chartWrapperRef} className="relative">
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={chartData}>
+            <AreaChart data={chartData} onClick={handleChartClick}>
               <defs>
                 <linearGradient
                   id={`strokeGradient-${checkUid}`}
@@ -642,10 +654,6 @@ export function ResponseTimeChart({
                             stroke={isSelected ? "var(--primary)" : undefined}
                             strokeWidth={isSelected ? 2 : 0}
                             style={{ cursor: "pointer" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDotClick(uid);
-                            }}
                           >
                             <title>
                               {isSelected
@@ -686,10 +694,6 @@ export function ResponseTimeChart({
                       r={5}
                       fill={fill}
                       style={{ cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDotClick(uid);
-                      }}
                     />
                   );
                 }}

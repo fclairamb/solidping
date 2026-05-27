@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useStatusPages, useStatusPage, type StatusUpdate } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import {
@@ -87,6 +87,16 @@ export function StatusUpdateForm({
   const [form, setForm] = useState<StatusUpdateFormData>(() =>
     initialData ? formDataFromUpdate(initialData) : emptyFormData()
   );
+
+  // In create mode, default the status page to the first available one once
+  // the list loads — the API rejects an empty statusPageUid (404), so the form
+  // must never submit without a page selected.
+  useEffect(() => {
+    if (mode !== "create") return;
+    if (form.statusPageUid) return;
+    const first = pages?.[0];
+    if (first) setForm((f) => ({ ...f, statusPageUid: first.uid }));
+  }, [mode, pages, form.statusPageUid]);
 
   // Fetch the selected page with sections for cascading dropdowns
   const { data: selectedPage } = useStatusPage(

@@ -99,7 +99,11 @@ test.describe("Chart point preview", () => {
 
     const firstDot = chartDots.first();
 
-    // First click: preview should appear.
+    // First click: preview should appear. Hover first so recharts establishes
+    // the active data point before the click (mirrors real mouse interaction;
+    // a synthetic click with no prior pointer movement leaves the chart state
+    // empty).
+    await firstDot.hover({ force: true });
     await firstDot.click({ force: true });
     const previewBox = page.getByTestId("pinned-result-box");
     await expect(previewBox).toBeVisible({ timeout: 5000 });
@@ -107,6 +111,7 @@ test.describe("Chart point preview", () => {
     const urlBefore = page.url();
 
     // Second click on the same dot: preview should disappear, URL unchanged.
+    await firstDot.hover({ force: true });
     await firstDot.click({ force: true });
     await expect(previewBox).not.toBeVisible({ timeout: 5000 });
     expect(page.url()).toBe(urlBefore);
@@ -129,8 +134,11 @@ test.describe("Chart point preview", () => {
       return;
     }
 
-    // Click the dot to open the preview.
-    await chartDots.first().click({ force: true });
+    // Click the dot to open the preview. Hover first so recharts has an active
+    // data point at click time (mirrors real mouse interaction).
+    const firstDot = chartDots.first();
+    await firstDot.hover({ force: true });
+    await firstDot.click({ force: true });
     const previewBox = page.getByTestId("pinned-result-box");
     await expect(previewBox).toBeVisible({ timeout: 5000 });
 

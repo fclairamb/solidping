@@ -517,6 +517,7 @@ function CheckDetailPage() {
           <Link
             to="/orgs/$org/checks/$checkUid/edit"
             params={{ org, checkUid }}
+            aria-label={t("checks:edit")}
           >
             <Button variant="outline" size="icon">
               <Pencil className="h-4 w-4" />

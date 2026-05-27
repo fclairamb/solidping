@@ -105,7 +105,7 @@ function StatusPageRow({
             title={t("edit")}
           >
             <Link
-              to="/orgs/$org/status-pages/$statusPageUid"
+              to="/orgs/$org/status-pages/$statusPageUid/edit"
               params={{ org, statusPageUid: page.uid }}
               data-testid={`status-page-row-edit-${page.slug}`}
             >

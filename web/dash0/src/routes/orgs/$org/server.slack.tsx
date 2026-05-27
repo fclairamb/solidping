@@ -50,6 +50,10 @@ function SlackSettingsPage() {
   const slackEnabled = Boolean(getParam(KEY_ENABLED)?.value);
   const persistedSocketEnabled = Boolean(getParam(KEY_SOCKET_ENABLED)?.value);
   const tokenStored = getParam(KEY_APP_TOKEN)?.secret ?? false;
+  // The token input is shown either when no token is stored yet (first-time
+  // entry) or when the user explicitly clicked "edit" on a stored token. In
+  // both cases a typed value must be persisted on save.
+  const tokenInputVisible = editingToken || !tokenStored;
 
   useEffect(() => {
     if (!params) return;
@@ -62,7 +66,7 @@ function SlackSettingsPage() {
 
   const isDirty =
     socketEnabled !== persistedSocketEnabled ||
-    (editingToken && appToken.length > 0);
+    (tokenInputVisible && appToken.length > 0);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -79,7 +83,7 @@ function SlackSettingsPage() {
           }),
         );
       }
-      if (editingToken && appToken.length > 0) {
+      if (tokenInputVisible && appToken.length > 0) {
         writes.push(
           setParam.mutateAsync({
             key: KEY_APP_TOKEN,

@@ -49,6 +49,35 @@ function configHint(suggested: SuggestedCheck): string {
   return "";
 }
 
+// periodToIso8601 converts a human-friendly period ("1m", "30s", "1h30m") into
+// the ISO 8601 duration the API expects ("PT1M"). Already-valid ISO 8601 / HMS
+// strings pass through. Returns undefined when nothing parseable was entered, so
+// the caller can omit the field and let the server apply its default.
+function periodToIso8601(input: string): string | undefined {
+  const trimmed = input.trim();
+  if (!trimmed) return undefined;
+  if (/^PT/i.test(trimmed) || /^\d{1,3}:\d{2}:\d{2}$/.test(trimmed)) {
+    return trimmed;
+  }
+  let totalSeconds = 0;
+  let matched = false;
+  for (const m of trimmed.matchAll(/(\d+)\s*([hms])/gi)) {
+    matched = true;
+    const n = Number(m[1]);
+    const unit = m[2].toLowerCase();
+    totalSeconds += unit === "h" ? n * 3600 : unit === "m" ? n * 60 : n;
+  }
+  if (!matched && /^\d+$/.test(trimmed)) {
+    totalSeconds = Number(trimmed);
+    matched = true;
+  }
+  if (!matched || totalSeconds <= 0) return undefined;
+  const h = Math.floor(totalSeconds / 3600);
+  const m = Math.floor((totalSeconds % 3600) / 60);
+  const s = totalSeconds % 60;
+  return `PT${h ? `${h}H` : ""}${m ? `${m}M` : ""}${s ? `${s}S` : ""}`;
+}
+
 function PromoteHostPage() {
   const { t } = useTranslation("discovery");
   const { org, jobUid, hostUid } = Route.useParams();
@@ -106,7 +135,7 @@ function PromoteHostPage() {
     return types.map((type) => ({
       checkType: type,
       name: multi ? `${name} (${type})` : name,
-      period,
+      period: periodToIso8601(period),
     }));
   };
 
