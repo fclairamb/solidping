@@ -37,15 +37,6 @@ export const Route = createFileRoute(
 
 const CHECK_TYPES = ["http", "tcp", "ping", "ssl", "dns"] as const;
 
-function slugify(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9-]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48);
-}
-
 // configHint summarizes a suggested check's config into a short string
 // (url / host:port / host) for display next to the checkbox.
 function configHint(suggested: SuggestedCheck): string {
@@ -115,7 +106,6 @@ function PromoteHostPage() {
     return types.map((type) => ({
       checkType: type,
       name: multi ? `${name} (${type})` : name,
-      slug: multi ? `${slugify(name)}-${type}` : slugify(name),
       period,
     }));
   };

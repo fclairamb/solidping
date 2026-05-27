@@ -80,6 +80,11 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
+	// Seed a status page so status-update E2E tests can select one in the form.
+	if err := createTestStatusPage(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
 
 	return nil
@@ -245,6 +250,33 @@ func createTestToken(
 	}
 
 	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testToken.Token)
+
+	return nil
+}
+
+func createTestStatusPage(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	const uid = "00000000-0000-0000-0000-000000000009"
+
+	page := &models.StatusPage{
+		UID:              uid,
+		OrganizationUID:  orgUID,
+		Name:             "Test Status Page",
+		Slug:             "test-status-page",
+		Visibility:       "public",
+		IsDefault:        true,
+		Enabled:          true,
+		ShowAvailability: true,
+		ShowResponseTime: true,
+		HistoryDays:      90,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+
+	if err := dbService.CreateStatusPage(ctx, page); err != nil {
+		return fmt.Errorf("failed to create test status page: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test status page", "uid", page.UID, "slug", page.Slug)
 
 	return nil
 }

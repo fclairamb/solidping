@@ -162,8 +162,8 @@ test.describe("Account Notifications", () => {
     const routeUid = "route-wp-test-1";
     const contactUid = "contact-wp-test-1";
 
-    // Mock the notification-contacts list to return a webpush route.
-    await page.route("**/notification-contacts**", async (route) => {
+    // Mock the notification-routes list to return a webpush route.
+    await page.route("**/notification-routes**", async (route) => {
       if (route.request().method() === "GET") {
         await route.fulfill({
           status: 200,
@@ -196,7 +196,7 @@ test.describe("Account Notifications", () => {
     // Capture the POST to the test endpoint.
     let testPostReceived = false;
     await page.route(
-      `**/notification-contacts/${routeUid}/test`,
+      `**/notification-routes/${routeUid}/test`,
       async (route) => {
         if (route.request().method() === "POST") {
           testPostReceived = true;
@@ -242,16 +242,12 @@ test.describe("Account Notifications", () => {
     // Check initial state (enabled = true).
     const isChecked = await switches.first().isChecked();
 
-    // Toggle it.
+    // Toggle it and wait for React Query to re-render after the PATCH + cache invalidation.
     await switches.first().click();
-    await page.waitForLoadState("networkidle");
-
-    // State should have flipped.
-    const newChecked = await switches.first().isChecked();
-    expect(newChecked).toBe(!isChecked);
+    await expect(switches.first()).toBeChecked({ checked: !isChecked });
 
     // Toggle back to restore state.
     await switches.first().click();
-    await page.waitForLoadState("networkidle");
+    await expect(switches.first()).toBeChecked({ checked: isChecked });
   });
 });
