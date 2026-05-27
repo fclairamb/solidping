@@ -13,6 +13,8 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCreateChannel,
+  canNotify,
+  canSource,
   type ConnectionType,
 } from "@/api/hooks";
 import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
@@ -20,6 +22,7 @@ import {
   ChannelForm,
   type ChannelFormState,
 } from "@/components/channels/channel-form";
+import { FreeboxForm } from "@/components/channels/freebox-form";
 
 interface NewChannelSearch {
   type?: ConnectionType;
@@ -42,6 +45,8 @@ const ALL_TYPES: ConnectionType[] = [
   "ntfy",
   "opsgenie",
   "pushover",
+  "freebox",
+  "webpush",
 ];
 
 function NewChannelPage() {
@@ -77,53 +82,164 @@ function NewChannelPage() {
   };
 
   if (!type) {
-    return (
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {t("newTitle", "Add a notification channel")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {t("newSubtitle", "Pick the channel type to configure.")}
-          </p>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {ALL_TYPES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              onClick={() => setType(c)}
-              className="flex items-center gap-3 rounded border p-4 text-left hover:bg-accent"
-              data-testid={`pick-${c}`}
-            >
-              <ChannelIcon type={c} className="h-6 w-6 text-muted-foreground" />
-              <div>
-                <div className="font-medium">{channelLabel(c)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {t(`hint.${c}`, "")}
-                </div>
+    // Group the picker by capability so operators understand the distinction
+    // between a notification sink ("channel") and a data source. Mirrors the
+    // backend capability registry via the frontend CAPABILITIES map.
+    const notifyTypes = ALL_TYPES.filter((c) => canNotify(c));
+    const sourceTypes = ALL_TYPES.filter((c) => canSource(c));
+
+    const renderGroup = (groupTypes: ConnectionType[], testid: string) => (
+      <div
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+        data-testid={testid}
+      >
+        {groupTypes.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => setType(c)}
+            className="flex items-center gap-3 rounded border p-4 text-left hover:bg-accent"
+            data-testid={`pick-${c}`}
+          >
+            <ChannelIcon type={c} className="h-6 w-6 text-muted-foreground" />
+            <div>
+              <div className="font-medium">{channelLabel(c)}</div>
+              <div className="text-xs text-muted-foreground">
+                {t(`hint.${c}`, "")}
               </div>
-            </button>
-          ))}
-        </div>
-        <div>
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+
+    return (
+      <div className="space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">
+              {t("newTitle", "Add an integration")}
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {t("newSubtitle", "Pick the integration type to configure.")}
+            </p>
+          </div>
           <Button asChild variant="ghost" size="sm">
             <Link to="/orgs/$org/channels" params={{ org }}>
               {t("cancel", "Cancel")}
             </Link>
           </Button>
         </div>
+        {notifyTypes.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              {t("groupNotify", "Notification channels")}
+            </h2>
+            {renderGroup(notifyTypes, "group-notify")}
+          </div>
+        )}
+        {sourceTypes.length > 0 && (
+          <div className="space-y-3">
+            <h2 className="text-sm font-semibold text-muted-foreground">
+              {t("groupSource", "Data sources")}
+            </h2>
+            {renderGroup(sourceTypes, "group-source")}
+          </div>
+        )}
       </div>
+    );
+  }
+
+  // Freebox uses a dedicated form because pairing is a two-step
+  // handshake (LCD approval) rather than a regular create — we don't
+  // know the app_token until the Freebox grants it.
+  if (type === "freebox") {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <ChannelIcon type={type} className="h-5 w-5" />
+              {channelLabel(type)}
+            </CardTitle>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/orgs/$org/channels" params={{ org }}>
+                {t("cancel", "Cancel")}
+              </Link>
+            </Button>
+          </div>
+          <CardDescription>
+            {t(
+              "freebox.description",
+              "Monitor your Freebox line quality and network status",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FreeboxForm org={org} onCancel={() => setType(null)} />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Slack is install-only: a manually-created channel has no bot token and is
+  // permanently broken. Instead of a create form, render an "install the Slack
+  // app" CTA that does a full-page redirect to the OAuth install flow.
+  if (type === "slack") {
+    return (
+      <Card className="max-w-xl">
+        <CardHeader>
+          <div className="flex items-center justify-between gap-4">
+            <CardTitle className="flex items-center gap-2">
+              <ChannelIcon type={type} className="h-5 w-5" />
+              {channelLabel(type)}
+            </CardTitle>
+            <Button asChild variant="ghost" size="sm">
+              <Link to="/orgs/$org/channels" params={{ org }}>
+                {t("cancel", "Cancel")}
+              </Link>
+            </Button>
+          </div>
+          <CardDescription>
+            {t(
+              "form.slackNotConnectedBody",
+              "This channel has no linked Slack workspace. Install the SolidPing Slack app to connect one.",
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            onClick={() => {
+              window.location.href =
+                "/api/v1/integrations/slack/install?source=dashboard";
+            }}
+            data-testid="slack-install"
+          >
+            {t("form.slackConnectButton", "Install Slack app")}
+          </Button>
+          <Button type="button" variant="outline" onClick={() => setType(null)}>
+            {t("changeType", "Change type")}
+          </Button>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
     <Card className="max-w-xl">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <ChannelIcon type={type} className="h-5 w-5" />
-          {channelLabel(type)}
-        </CardTitle>
+        <div className="flex items-center justify-between gap-4">
+          <CardTitle className="flex items-center gap-2">
+            <ChannelIcon type={type} className="h-5 w-5" />
+            {channelLabel(type)}
+          </CardTitle>
+          <Button asChild variant="ghost" size="sm">
+            <Link to="/orgs/$org/channels" params={{ org }}>
+              {t("cancel", "Cancel")}
+            </Link>
+          </Button>
+        </div>
         <CardDescription>
           {t("newFormSubtitle", "Configure the channel and save.")}
         </CardDescription>

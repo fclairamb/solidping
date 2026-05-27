@@ -223,12 +223,12 @@ function PolicyRow({ org, policy, onDelete }: PolicyRowProps) {
         {policy.description || ""}
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {policy.repeatMax > 0 && policy.repeatAfterMinutes ? (
+        {policy.repeatMax > 0 && policy.repeatAfterSeconds ? (
           <span className="inline-flex items-center gap-1">
             <Repeat className="h-3.5 w-3.5" />
             {t("escalation:list.repeats", {
               count: policy.repeatMax,
-              minutes: policy.repeatAfterMinutes,
+              seconds: policy.repeatAfterSeconds,
             })}
           </span>
         ) : (

@@ -314,7 +314,7 @@ func FetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUs
 	return &userInfo, nil
 }
 
-// ListChannels lists public channels in the workspace.
+// ListChannels lists public and private channels the bot has access to.
 func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 	var result struct {
 		OK       bool      `json:"ok"`
@@ -322,13 +322,36 @@ func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
 	}
 
 	if err := c.callAPI(ctx, "conversations.list", map[string]any{
-		"types":            "public_channel",
+		"types":            "public_channel,private_channel",
 		"exclude_archived": true,
 	}, &result); err != nil {
 		return nil, err
 	}
 
 	return result.Channels, nil
+}
+
+// ListUsers lists non-bot, non-deleted workspace members.
+func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
+	var result struct {
+		OK      bool        `json:"ok"`
+		Members []SlackUser `json:"members"`
+	}
+
+	if err := c.callAPI(ctx, "users.list", map[string]any{}, &result); err != nil {
+		return nil, err
+	}
+
+	filtered := make([]SlackUser, 0, len(result.Members))
+
+	for i := range result.Members {
+		u := result.Members[i]
+		if !u.IsBot && !u.Deleted {
+			filtered = append(filtered, u)
+		}
+	}
+
+	return filtered, nil
 }
 
 // callAPI makes a Slack API call.

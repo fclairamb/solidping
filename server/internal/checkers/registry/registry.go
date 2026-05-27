@@ -5,10 +5,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checka2s"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkbrowser"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdns"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkdnsbl"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdocker"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkdomain"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkemail"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkgrpc"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkheartbeat"
@@ -28,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkrabbitmq"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksip"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -125,6 +128,12 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkdocker.DockerChecker{}, true
 	case checkerdef.CheckTypeBrowser:
 		return &checkbrowser.BrowserChecker{}, true
+	case checkerdef.CheckTypeFreeboxLine:
+		return &checkfreeboxline.FreeboxLineChecker{}, true
+	case checkerdef.CheckTypeDNSBL:
+		return &checkdnsbl.DNSBLChecker{}, true
+	case checkerdef.CheckTypeSIP:
+		return &checksip.SIPChecker{}, true
 	default:
 		return nil, false
 	}
@@ -202,6 +211,12 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkdocker.DockerConfig{}, true
 	case checkerdef.CheckTypeBrowser:
 		return &checkbrowser.BrowserConfig{}, true
+	case checkerdef.CheckTypeFreeboxLine:
+		return &checkfreeboxline.FreeboxLineConfig{}, true
+	case checkerdef.CheckTypeDNSBL:
+		return &checkdnsbl.DNSBLConfig{}, true
+	case checkerdef.CheckTypeSIP:
+		return &checksip.SIPConfig{}, true
 	default:
 		return nil, false
 	}

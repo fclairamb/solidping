@@ -133,6 +133,26 @@ func (s *Service) GetScheduleBySlug(
 	return schedule, nil
 }
 
+// GetScheduleByUidOrSlug returns a schedule addressed by either its UID or
+// its slug. Used by GET/PATCH/DELETE and the schedule sub-routes so a
+// Terraform-style uid is a valid identifier alongside the slug.
+//
+//nolint:revive // ByUidOrSlug matches the established checks/status-pages naming
+func (s *Service) GetScheduleByUidOrSlug(
+	ctx context.Context, orgUID, identifier string,
+) (*models.OnCallSchedule, error) {
+	schedule, err := s.db.GetOnCallScheduleByUidOrSlug(ctx, orgUID, identifier)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrScheduleNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return schedule, nil
+}
+
 // ListSchedules returns all schedules for an organization.
 func (s *Service) ListSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error) {
 	return s.db.ListOnCallSchedules(ctx, orgUID)

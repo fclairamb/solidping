@@ -8,24 +8,35 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// handleEvent routes events to their specific handlers.
+// handleEvent routes events to their specific handlers (HTTP transport entry point).
 func (h *Handler) handleEvent(ctx context.Context, event *Event) error {
+	return DispatchEvent(ctx, h.svc, event)
+}
+
+// DispatchEvent is the transport-agnostic dispatch entry for Slack events.
+// Both the HTTP webhook handler and the Socket Mode supervisor route through it.
+func DispatchEvent(ctx context.Context, svc *Service, event *Event) error {
 	slog.InfoContext(ctx, "Handling Slack event",
 		"event_type", event.Event.Type,
 		"team_id", event.TeamID,
 	)
 
+	// Construct a transport-less *Handler bound only to svc — every inner
+	// dispatch helper here uses dispatcher.svc; cfg is only needed for HTTP
+	// install / signature paths and is not reachable from the dispatch chain.
+	dispatcher := &Handler{svc: svc}
+
 	switch event.Event.Type {
 	case "app_home_opened":
-		return h.handleAppHomeOpened(ctx, event)
+		return dispatcher.handleAppHomeOpened(ctx, event)
 	case "app_mention":
-		return h.handleAppMention(ctx, event)
+		return dispatcher.handleAppMention(ctx, event)
 	case "app_uninstalled":
-		return h.handleAppUninstalled(ctx, event)
+		return dispatcher.handleAppUninstalled(ctx, event)
 	case "link_shared":
-		return h.handleLinkShared(ctx, event)
+		return dispatcher.handleLinkShared(ctx, event)
 	case "member_joined_channel":
-		return h.handleMemberJoinedChannel(ctx, event)
+		return dispatcher.handleMemberJoinedChannel(ctx, event)
 	default:
 		slog.DebugContext(ctx, "Unhandled event type", "type", event.Event.Type)
 

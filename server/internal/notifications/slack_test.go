@@ -376,6 +376,13 @@ func (m *mockDBService) GetOnCallScheduleBySlug(
 	return nil, errMockNotImplemented
 }
 
+//nolint:revive // ByUidOrSlug matches the db.Service interface naming
+func (m *mockDBService) GetOnCallScheduleByUidOrSlug(
+	_ context.Context, _, _ string,
+) (*models.OnCallSchedule, error) {
+	return nil, errMockNotImplemented
+}
+
 func (m *mockDBService) GetOnCallScheduleByICalSecret(
 	_ context.Context, _ string,
 ) (*models.OnCallSchedule, error) {
@@ -443,6 +450,13 @@ func (m *mockDBService) GetEscalationPolicy(
 }
 
 func (m *mockDBService) GetEscalationPolicyBySlug(
+	_ context.Context, _, _ string,
+) (*models.EscalationPolicy, error) {
+	return nil, errMockNotImplemented
+}
+
+//nolint:revive // ByUidOrSlug matches the db.Service interface naming
+func (m *mockDBService) GetEscalationPolicyByUidOrSlug(
 	_ context.Context, _, _ string,
 ) (*models.EscalationPolicy, error) {
 	return nil, errMockNotImplemented
@@ -1125,6 +1139,44 @@ func (m *mockDBService) CountSSOMembersForOrg(_ context.Context, _ string) (int,
 	return 0, nil
 }
 
+func (m *mockDBService) ListOrgCheckRates(_ context.Context, _ string) ([]models.CheckRate, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) CreateIncidentNotification(_ context.Context, _ *models.IncidentNotification) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationSentByUID(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationFailedByUID(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationSentByJob(_ context.Context, _ string, _ time.Time, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) MarkIncidentNotificationFailedByJob(
+	_ context.Context, _ string, _ time.Time, _ string, _ bool,
+) error {
+	return nil
+}
+
+func (m *mockDBService) CancelIncidentNotificationsForIncident(
+	_ context.Context, _ string, _ time.Time,
+) (int64, error) {
+	return 0, nil
+}
+
+func (m *mockDBService) ListIncidentNotifications(
+	_ context.Context, _ string, _ db.ListIncidentNotificationsFilter,
+) ([]*models.IncidentNotificationRow, error) {
+	return nil, nil
+}
+
 func TestSlackSender_Send_NewThread(t *testing.T) {
 	t.Parallel()
 
@@ -1386,6 +1438,177 @@ func TestSlackSender_buildMessage(t *testing.T) {
 			r.NotEmpty(msg.Attachments[0].Blocks, "expected blocks inside attachment")
 		})
 	}
+}
+
+// TestSlackSender_DMChannelID verifies that a destination_type="dm" setting
+// with a Slack user ID (U…) is passed to PostMessage unchanged. This ensures
+// the sender does not try to look up or transform user IDs — Slack's
+// chat.postMessage API accepts user IDs directly for DMs.
+func TestSlackSender_DMChannelID(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Build a settings map with destination_type="dm" and a user-ID channel.
+	settings := models.SlackSettings{
+		AccessToken:     "xoxb-test-token",
+		ChannelID:       "U0345CDEFG",
+		DestinationType: "dm",
+		DisplayName:     "@alice",
+	}
+
+	settingsMap, err := settings.ToJSONMap()
+	r.NoError(err)
+
+	// determineChannel should return the user ID unchanged.
+	payload := &Payload{
+		Connection: &models.Channel{
+			Settings: settingsMap,
+		},
+	}
+
+	parsed, err := models.SlackSettingsFromJSONMap(payload.Connection.Settings)
+	r.NoError(err)
+	r.Equal("U0345CDEFG", parsed.ChannelID, "channel_id must be the user ID for DMs")
+	r.Equal("dm", parsed.DestinationType)
+	r.Equal("@alice", parsed.DisplayName)
+
+	// Verify determineChannel returns the user ID as-is (no transformation).
+	sender := &SlackSender{}
+	channel := sender.determineChannel(parsed, payload)
+	r.Equal("U0345CDEFG", channel, "DM channel_id must be passed through to PostMessage unchanged")
+}
+
+// --- UserContact / UserNotificationRoute stubs ---
+
+func (m *mockDBService) ListUserContactsWithRoutes(
+	_ context.Context, _, _ string,
+) ([]*models.UserNotificationRoute, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) EnsureDefaultEmailRoute(
+	_ context.Context, _, _, _ string,
+) error {
+	return nil
+}
+
+func (m *mockDBService) UpsertUserContact(_ context.Context, _ *models.UserContact) error {
+	return nil
+}
+
+func (m *mockDBService) DeleteUserContact(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) SetRouteEnabled(_ context.Context, _ string, _ bool) error {
+	return nil
+}
+
+func (m *mockDBService) ReorderRoutes(_ context.Context, _, _ string, _ []string) error {
+	return nil
+}
+
+func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*models.Channel, error) {
+	return nil, nil //nolint:nilnil
+}
+
+// --- StatusUpdate stubs ---
+
+func (m *mockDBService) ListStatusUpdates(
+	_ context.Context, _ string, _ models.StatusUpdatesFilter,
+) ([]*models.StatusUpdate, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) CreateStatusUpdate(_ context.Context, _ *models.StatusUpdate) error {
+	return nil
+}
+
+func (m *mockDBService) GetStatusUpdateByUID(
+	_ context.Context, _ string,
+) (*models.StatusUpdate, error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (m *mockDBService) UpdateStatusUpdate(_ context.Context, _ *models.StatusUpdate) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteStatusUpdate(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListPublicStatusUpdates(
+	_ context.Context, _ string, _ int,
+) ([]*db.PublicStatusUpdate, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) CreateSubscriber(_ context.Context, _ *models.StatusPageSubscriber) error {
+	return nil
+}
+
+func (m *mockDBService) GetSubscriber(
+	_ context.Context, _, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) GetSubscriberByConfirmToken(
+	_ context.Context, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) GetSubscriberByUnsubToken(
+	_ context.Context, _ string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) FindLiveSubscriber(
+	_ context.Context, _, _ string, _ models.SubscriberScope, _ *string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) FindAnySubscriber(
+	_ context.Context, _, _ string, _ models.SubscriberScope, _ *string,
+) (*models.StatusPageSubscriber, error) {
+	return nil, nil //nolint:nilnil // Test stub returns nil when no mock is set
+}
+
+func (m *mockDBService) ConfirmSubscriber(_ context.Context, _ string, _ time.Time) error {
+	return nil
+}
+
+func (m *mockDBService) ResubscribeSubscriber(_ context.Context, _, _, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) SoftDeleteSubscriber(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *mockDBService) ListConfirmedSubscribers(
+	_ context.Context, _ string, _ *string,
+) ([]*models.StatusPageSubscriber, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) ListSubscribers(
+	_ context.Context, _ string,
+) ([]*models.StatusPageSubscriber, error) {
+	return nil, nil
+}
+
+func (m *mockDBService) GetAppSetting(_ context.Context, _ string) (string, error) {
+	panic("not implemented")
+}
+
+func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
+	panic("not implemented")
 }
 
 // Ensure mockDBService implements db.Service interface.

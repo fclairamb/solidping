@@ -10,8 +10,10 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
+	slackclient "github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // Escalation step errors.
@@ -26,6 +28,8 @@ var (
 	// a schedule target fires before the on-call resolver has been wired.
 	// In practice this only happens if the server boot order is broken.
 	ErrOnCallResolverNotWired = errors.New("on-call resolver not wired")
+	// errEmptySlackToken is returned when the Slack access token is empty.
+	errEmptySlackToken = errors.New("empty slack access token")
 )
 
 // EscalationStepJobConfig configures one fired step of an escalation
@@ -104,7 +108,12 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 		return fmt.Errorf("%w: %w", ErrIncidentNotFound, err)
 	}
 
-	if !incidentNeedsPaging(incident) {
+	pagingNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		pagingNow = jctx.Services.Clock.Now()
+	}
+
+	if !incidentNeedsPaging(incident, pagingNow) {
 		log.InfoContext(ctx, "escalation step skipped — incident already handled")
 
 		return nil
@@ -137,11 +146,11 @@ func (r *EscalationStepJobRun) Run(ctx context.Context, jctx *jobdef.JobContext)
 
 // incidentNeedsPaging is the belt-and-braces guard: even if the cancel
 // sweep missed this row, we still skip if the incident has been handled.
-func incidentNeedsPaging(incident *models.Incident) bool {
+func incidentNeedsPaging(incident *models.Incident, now time.Time) bool {
 	if incident.AcknowledgedAt != nil || incident.ResolvedAt != nil {
 		return false
 	}
-	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(time.Now()) {
+	if incident.SnoozedUntil != nil && incident.SnoozedUntil.After(now) {
 		return false
 	}
 
@@ -300,37 +309,224 @@ func (r *EscalationStepJobRun) enqueueNotificationFor(
 		return false
 	}
 
-	if _, err := jctx.Services.Jobs.CreateJob(
+	job, err := jctx.Services.Jobs.CreateJob(
 		ctx, incident.OrganizationUID, string(jobdef.JobTypeNotification), cfg, nil,
-	); err != nil {
+	)
+	if err != nil {
 		log.WarnContext(ctx, "failed to create escalation notification job",
 			"connectionUid", connectionUID, "error", err)
 
 		return false
 	}
 
+	// Audit: record a pending row. Load the connection to get the channel type.
+	conn, connErr := jctx.DBService.GetChannel(ctx, connectionUID)
+	if connErr != nil {
+		log.WarnContext(ctx, "failed to load connection for audit row",
+			"connectionUid", connectionUID, "error", connErr)
+	} else {
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationConnection,
+			connectionUID, job.UID, string(conn.Type),
+			&stepUID, &repeatIndex,
+		)); auditErr != nil {
+			log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
+		}
+	}
+
 	return true
 }
 
-// pageUser sends a direct email to the named user. Returns the count of
-// emails actually sent (0 or 1).
+// pageUser fans out over a user's notification routes. Falls back to a direct
+// email when no routes exist in the DB (preserves V1 behavior for users who
+// have not visited Account → Notifications yet).
 func (r *EscalationStepJobRun) pageUser(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
 	incident *models.Incident, userUID *string,
 ) int {
 	if userUID == nil {
+		log.WarnContext(ctx, "pageUser: nil userUID")
+
 		return 0
 	}
 
-	user, err := jctx.DBService.GetUser(ctx, *userUID)
+	routes, err := jctx.DBService.ListUserContactsWithRoutes(ctx, *userUID, incident.OrganizationUID)
+	if err != nil || len(routes) == 0 {
+		// Fallback: no routes in DB yet — email directly as V1 did.
+		user, userErr := jctx.DBService.GetUser(ctx, *userUID)
+		if userErr != nil {
+			log.WarnContext(ctx, "escalation user target not found",
+				"userUid", *userUID, "error", userErr)
+
+			return 0
+		}
+
+		return r.sendEscalationEmail(
+			ctx, jctx, log, incident, user.Email, *userUID,
+			models.IncidentNotificationSourceEscalationUser,
+		)
+	}
+
+	sent := 0
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+
+		sent += r.dispatchRoute(ctx, jctx, log, incident, route)
+	}
+
+	return sent
+}
+
+// dispatchRoute dispatches a single notification route.
+func (r *EscalationStepJobRun) dispatchRoute(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute,
+) int {
+	if route.Contact == nil {
+		log.WarnContext(ctx, "dispatchRoute: route has no contact loaded",
+			"routeUID", route.UID)
+
+		return 0
+	}
+
+	switch route.Contact.Type {
+	case models.UserContactTypeEmail:
+		return r.sendEscalationEmail(
+			ctx, jctx, log, incident,
+			route.Contact.Value, route.UserUID,
+			models.IncidentNotificationSourceEscalationUser,
+		)
+	case models.UserContactTypeSlackUser:
+		slackConn, connErr := jctx.DBService.GetSlackChannelForOrg(ctx, incident.OrganizationUID)
+		if connErr != nil {
+			log.WarnContext(ctx, "slack channel not found for org; skipping route",
+				"orgUID", incident.OrganizationUID,
+				"contactUID", route.Contact.UID,
+				"error", connErr)
+
+			return 0
+		}
+
+		settings, parseErr := models.SlackSettingsFromJSONMap(slackConn.Settings)
+		if parseErr != nil || settings.AccessToken == "" {
+			log.WarnContext(ctx, "slack access token not configured; skipping route",
+				"orgUID", incident.OrganizationUID, "contactUID", route.Contact.UID)
+
+			return 0
+		}
+
+		text := fmt.Sprintf(
+			"[escalation] incident %s requires your attention. Open the dashboard to acknowledge or resolve.",
+			incident.UID,
+		)
+
+		if err := postSlackDM(ctx, settings.AccessToken, route.Contact.Value, text); err != nil {
+			log.WarnContext(ctx, "failed to send escalation Slack DM",
+				"contactUID", route.Contact.UID,
+				"userUID", route.UserUID,
+				"error", err)
+
+			return 0
+		}
+
+		return 1
+	case models.UserContactTypeWebPush:
+		return r.sendWebPush(ctx, jctx, log, incident, route)
+	case models.UserContactTypePhone:
+		log.WarnContext(ctx, "SMS provider not configured; skipping route",
+			"contactUID", route.Contact.UID,
+			"userUID", route.UserUID,
+			"orgUID", incident.OrganizationUID)
+
+		return 0
+	default:
+		log.WarnContext(ctx, "unknown contact type; skipping route",
+			"type", route.Contact.Type,
+			"contactUID", route.Contact.UID)
+
+		return 0
+	}
+}
+
+// sendWebPush delivers a Web Push notification for a per-user webpush contact.
+// Dead subscriptions (404/410) are pruned by soft-deleting the contact row.
+func (r *EscalationStepJobRun) sendWebPush(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
+	incident *models.Incident, route *models.UserNotificationRoute,
+) int {
+	if jctx.Services == nil || jctx.Services.WebPushOptions.VAPIDPublicKey == "" {
+		log.WarnContext(ctx, "web push not configured; skipping route",
+			"contactUID", route.Contact.UID)
+
+		return 0
+	}
+
+	msg := webpush.Message{
+		Title: fmt.Sprintf("[escalation] incident %s requires attention", incident.UID),
+		Body:  "An incident requires your attention. Open the dashboard to acknowledge or resolve.",
+		URL:   "",
+	}
+
+	err := webpush.Send(ctx, jctx.Services.WebPushOptions, route.Contact.Value, msg)
+	if errors.Is(err, webpush.ErrSubscriptionGone) {
+		log.InfoContext(ctx, "web push subscription gone; pruning contact",
+			"contactUID", route.Contact.UID)
+
+		if deleteErr := jctx.DBService.DeleteUserContact(ctx, route.Contact.UID); deleteErr != nil {
+			log.WarnContext(ctx, "failed to prune gone web push contact",
+				"contactUID", route.Contact.UID, "error", deleteErr)
+		}
+
+		return 0
+	}
+
 	if err != nil {
-		log.WarnContext(ctx, "escalation user target not found",
-			"userUid", *userUID, "error", err)
+		log.WarnContext(ctx, "failed to send web push notification",
+			"contactUID", route.Contact.UID, "error", err)
 
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email)
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	n := models.NewIncidentNotificationForUser(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		models.IncidentNotificationSourceEscalationUser, route.UserUID, "webpush",
+		&stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create web push notification audit row", "error", auditErr)
+	}
+
+	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), "")
+
+	return 1
+}
+
+// postSlackDM sends a DM to slackUserID using the org's Slack bot token.
+// The integrations/slack package has no internal dependencies so importing it
+// here is safe (no import cycle).
+func postSlackDM(ctx context.Context, accessToken, slackUserID, text string) error {
+	if accessToken == "" {
+		return errEmptySlackToken
+	}
+
+	client := slackclient.NewClient(accessToken)
+
+	msg := &slackclient.MessageResponse{Text: text}
+
+	_, err := client.PostMessage(ctx, slackclient.PostMessageOptions{
+		Channel: slackUserID,
+		Message: msg,
+	})
+
+	return err
 }
 
 // pageSchedule resolves who is on call right now and pages them via
@@ -349,16 +545,59 @@ func (r *EscalationStepJobRun) pageSchedule(
 		return 0
 	}
 
-	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, time.Now())
+	resolveNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		resolveNow = jctx.Services.Clock.Now()
+	}
+
+	user, err := resolveOnCallUser(ctx, jctx, *scheduleUID, resolveNow)
 	if err != nil {
 		log.WarnContext(ctx, "on-call schedule resolution failed",
 			"scheduleUid", *scheduleUID, "error", err)
 		r.emitEscalationFailed(ctx, jctx, incident, "schedule_resolve_failed", err.Error())
 
+		// Audit: record a skipped row for this schedule target.
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		n := models.NewSkippedIncidentNotification(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationSchedule, "schedule_resolve_failed",
+			&stepUID, &repeatIndex,
+		)
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+			log.WarnContext(ctx, "failed to create skipped notification audit row", "error", auditErr)
+		}
+
 		return 0
 	}
 
-	return r.sendEscalationEmail(ctx, jctx, log, incident, user.Email)
+	// Walk all enabled notification routes for the on-call user so that
+	// webpush (and any future contact type) is also paged.
+	routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, user.UID, incident.OrganizationUID)
+	if routesErr != nil || len(routes) == 0 {
+		// Fallback: no routes — email directly.
+		return r.sendEscalationEmail(
+			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+		)
+	}
+
+	sent := 0
+	for _, route := range routes {
+		if !route.Enabled {
+			continue
+		}
+
+		sent += r.dispatchRoute(ctx, jctx, log, incident, route)
+	}
+
+	if sent == 0 {
+		// All routes were disabled or unknown — fall back to direct email.
+		sent = r.sendEscalationEmail(
+			ctx, jctx, log, incident, user.Email, user.UID, models.IncidentNotificationSourceEscalationSchedule,
+		)
+	}
+
+	return sent
 }
 
 // pageAllAdmins emails every admin member of the incident's org.
@@ -379,11 +618,56 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 			continue
 		}
 
-		if member.User == nil || member.User.Email == "" {
+		if member.User == nil {
 			continue
 		}
 
-		count += r.sendEscalationEmail(ctx, jctx, log, incident, member.User.Email)
+		// Walk all enabled notification routes for the admin user.
+		routes, routesErr := jctx.DBService.ListUserContactsWithRoutes(ctx, member.UserUID, incident.OrganizationUID)
+		if routesErr != nil || len(routes) == 0 {
+			// Fallback: email directly.
+			if member.User.Email != "" {
+				count += r.sendEscalationEmail(
+					ctx, jctx, log, incident, member.User.Email, member.UserUID,
+					models.IncidentNotificationSourceEscalationAllAdmins,
+				)
+			}
+
+			continue
+		}
+
+		routeSent := 0
+		for _, route := range routes {
+			if !route.Enabled {
+				continue
+			}
+
+			routeSent += r.dispatchRoute(ctx, jctx, log, incident, route)
+		}
+
+		if routeSent == 0 && member.User.Email != "" {
+			// All routes were disabled/unknown — fall back to direct email.
+			routeSent = r.sendEscalationEmail(
+				ctx, jctx, log, incident, member.User.Email, member.UserUID,
+				models.IncidentNotificationSourceEscalationAllAdmins,
+			)
+		}
+
+		count += routeSent
+	}
+
+	if count == 0 {
+		// Audit: record a skipped row when no admins were found to page.
+		stepUID := r.config.StepUID
+		repeatIndex := r.config.RepeatIndex
+		n := models.NewSkippedIncidentNotification(
+			incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+			models.IncidentNotificationSourceEscalationAllAdmins, "no_admins",
+			&stepUID, &repeatIndex,
+		)
+		if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+			log.WarnContext(ctx, "failed to create skipped notification audit row", "error", auditErr)
+		}
 	}
 
 	return count
@@ -395,10 +679,21 @@ func (r *EscalationStepJobRun) pageAllAdmins(
 // per-user notification connection.
 func (r *EscalationStepJobRun) sendEscalationEmail(
 	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger,
-	incident *models.Incident, recipient string,
+	incident *models.Incident, recipient, userUID, source string,
 ) int {
 	if jctx.Services == nil || jctx.Services.EmailSender == nil || recipient == "" {
 		return 0
+	}
+
+	stepUID := r.config.StepUID
+	repeatIndex := r.config.RepeatIndex
+
+	n := models.NewIncidentNotificationForUser(
+		incident.OrganizationUID, incident.UID, string(models.EventTypeIncidentEscalated),
+		source, userUID, "email", &stepUID, &repeatIndex,
+	)
+	if auditErr := jctx.DBService.CreateIncidentNotification(ctx, n); auditErr != nil {
+		log.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 
 	subject := fmt.Sprintf("[escalation] incident %s requires attention", incident.UID)
@@ -412,12 +707,21 @@ func (r *EscalationStepJobRun) sendEscalationEmail(
 		Subject:    subject,
 		Text:       body,
 	}
-	if _, err := jctx.Services.EmailSender.Send(ctx, msg); err != nil {
+
+	result, err := jctx.Services.EmailSender.Send(ctx, msg)
+	if err != nil {
 		log.WarnContext(ctx, "failed to send escalation email",
 			"recipient", recipient, "error", err)
+		_ = jctx.DBService.MarkIncidentNotificationFailedByUID(ctx, n.UID, time.Now(), err.Error())
 
 		return 0
 	}
+
+	messageID := ""
+	if result != nil {
+		messageID = result.MessageID
+	}
+	_ = jctx.DBService.MarkIncidentNotificationSentByUID(ctx, n.UID, time.Now(), messageID)
 
 	return 1
 }
@@ -445,7 +749,7 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 	if policy.RepeatMax == 0 || r.config.RepeatIndex >= policy.RepeatMax {
 		return nil
 	}
-	if policy.RepeatAfterMinutes == nil {
+	if policy.RepeatAfterSeconds == nil {
 		return nil
 	}
 
@@ -454,7 +758,12 @@ func (r *EscalationStepJobRun) scheduleNextCycle(
 		return err
 	}
 
-	startAt := time.Now().Add(time.Duration(*policy.RepeatAfterMinutes) * time.Minute)
+	scheduleNow := time.Now()
+	if jctx.Services != nil && jctx.Services.Clock != nil {
+		scheduleNow = jctx.Services.Clock.Now()
+	}
+
+	startAt := scheduleNow.Add(time.Duration(*policy.RepeatAfterSeconds) * time.Second)
 
 	return ScheduleEscalationCycle(
 		ctx, jctx.Services.Jobs, incident, policy, steps, startAt, r.config.RepeatIndex+1, log,
@@ -486,8 +795,8 @@ func (r *EscalationStepJobRun) emitEscalatedEvent(
 }
 
 // ScheduleEscalationCycle schedules every step in `steps` for the given
-// repeat cycle. Step 0's delay_minutes is applied to startAt; subsequent
-// steps stack their delay_minutes onto the previous fire time.
+// repeat cycle. Step 0's delay_seconds is applied to startAt; subsequent
+// steps stack their delay_seconds onto the previous fire time.
 //
 // Exported because the incident-open path also calls it (cycle 0).
 func ScheduleEscalationCycle(
@@ -503,7 +812,7 @@ func ScheduleEscalationCycle(
 	cumulative := startAt
 
 	for i, step := range steps {
-		cumulative = cumulative.Add(time.Duration(step.DelayMinutes) * time.Minute)
+		cumulative = cumulative.Add(time.Duration(step.DelaySeconds) * time.Second)
 		fireAt := cumulative
 		isLast := i == len(steps)-1
 

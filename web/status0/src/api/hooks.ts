@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { apiFetch } from "./client";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { ApiError, NetworkError, apiFetch } from "./client";
 
 export interface ResourceCheckInfo {
   name?: string;
@@ -45,6 +45,18 @@ export interface StatusPageSection {
   createdAt?: string;
 }
 
+export interface StatusUpdatePublicResponse {
+  uid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: string;
+  publishedAt: string;
+}
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -58,6 +70,7 @@ export interface StatusPage {
   historyDays: number;
   language?: string;
   sections?: StatusPageSection[];
+  recentUpdates?: StatusUpdatePublicResponse[];
   createdAt?: string;
 }
 
@@ -81,6 +94,45 @@ export function useVersion() {
     queryKey: ["version"],
     queryFn: () => apiFetch<VersionInfo>("/api/mgmt/version"),
     staleTime: Infinity,
+  });
+}
+
+export interface SubscribeInput {
+  org: string;
+  statusPageUid: string;
+  email: string;
+}
+
+// useSubscribe starts a double opt-in email subscription for a status page.
+// The backend returns 202 and sends a confirmation email; the UI then shows a
+// "check your inbox" state.
+export function useSubscribe() {
+  return useMutation<void, ApiError | NetworkError, SubscribeInput>({
+    mutationFn: async ({ org, statusPageUid, email }) => {
+      let response: Response;
+      try {
+        response = await fetch(
+          `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+          }
+        );
+      } catch {
+        throw new NetworkError();
+      }
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new ApiError(
+          error.title || "Subscription failed",
+          error.code || "UNKNOWN_ERROR",
+          error.detail,
+          response.status
+        );
+      }
+    },
   });
 }
 

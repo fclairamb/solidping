@@ -25,6 +25,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -45,6 +46,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
+	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
@@ -55,6 +57,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/localfs"
 	"github.com/fclairamb/solidping/server/internal/handlers/filestorage/s3fs"
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
+	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
@@ -65,8 +68,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
 	"github.com/fclairamb/solidping/server/internal/handlers/statuspages"
+	"github.com/fclairamb/solidping/server/internal/handlers/statussubscribers"
+	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
+	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
@@ -81,7 +88,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/version"
+	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
 	"github.com/fclairamb/solidping/server/test/testdata"
 )
 
@@ -115,18 +124,19 @@ var openAPIFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
-	dbService   db.Service
-	jobSvc      jobsvc.Service
-	services    *services.Registry
-	router      *bunrouter.Router
-	config      *config.Config
-	authService *auth.Service
-	mcpHandler  *mcp.Handler
-	profilerSrv *profiler.Server
-	jmapManager *jmap.Manager
-	rateLimiter *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
-	cancelCtx   context.CancelFunc
-	workersWg   sync.WaitGroup // Tracks workers
+	dbService             db.Service
+	jobSvc                jobsvc.Service
+	services              *services.Registry
+	router                *bunrouter.Router
+	config                *config.Config
+	authService           *auth.Service
+	mcpHandler            *mcp.Handler
+	profilerSrv           *profiler.Server
+	jmapManager           *jmap.Manager
+	slackSocketSupervisor *slack.SlackSocketSupervisor
+	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	cancelCtx             context.CancelFunc
+	workersWg             sync.WaitGroup // Tracks workers
 }
 
 // NewServer creates a new HTTP server instance.
@@ -189,13 +199,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	// Initialize services
 	svcList := services.NewRegistry()
-	jobService := jobsvc.NewService(dbService.DB())
-	svcList.Jobs = jobService
+	svcList.Clock = clock.Real{}
 
-	checkJobService := checkjobsvc.NewService(dbService.DB())
-	svcList.CheckJobs = checkJobService
-
-	// Create check notifier based on database type
+	// Create check notifier based on database type — must be created before the
+	// job service so its LISTEN channel can wake up GetJobWait immediately on
+	// Postgres when a job is inserted via NOTIFY jobs.
 	var connString string
 	switch cfg.Database.Type {
 	case "postgres":
@@ -213,6 +221,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create event notifier: %w", err)
 	}
 	svcList.EventNotifier = eventNotifier
+
+	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
+	// call, so no external wakeup channel is needed here.
+	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
+	svcList.Jobs = jobService
+
+	checkJobService := checkjobsvc.NewService(dbService.DB())
+	svcList.CheckJobs = checkJobService
 
 	// Create email services
 	emailSender := email.NewSender(&cfg.Email, slog.Default())
@@ -242,6 +258,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			"how_to_fix", "set SP_ENCRYPTION_MASTER_KEY (or SP_ENCRYPTION_MASTER_KEY_FILE)")
 	}
 
+	// Wire the freebox_line checker's connection resolver. The resolver
+	// owns the DB lookup + app_token decrypt so the checker package stays
+	// importable from unit tests without a live database. Mirrors the
+	// checkjs.ResolveChecker indirection pattern set up by the registry.
+	checkfreeboxline.ConnectionResolverFunc = newFreeboxConnectionResolver(dbService, credSvc)
+
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
 		return nil, fmt.Errorf("failed to initialize Sentry: %w", err)
@@ -265,6 +287,25 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Register file storage backends. Idempotent — safe to call once at startup.
 	localfs.Register()
 	s3fs.Register()
+
+	// Initialize VAPID keys for Web Push. Auto-generates and persists to
+	// app_settings when not pre-provisioned via env vars.
+	if pub, priv, err := webpushpkg.GetOrCreateVAPIDKeys(ctx, webpushpkg.Config{
+		VAPIDPublicKey:  cfg.WebPush.VAPIDPublicKey,
+		VAPIDPrivateKey: cfg.WebPush.VAPIDPrivateKey,
+		Subject:         cfg.WebPush.Subject,
+		Enabled:         cfg.WebPush.Enabled,
+	}, dbService); err != nil {
+		slog.WarnContext(ctx, "webpush: VAPID key initialization failed — web push disabled", "err", err)
+	} else {
+		cfg.WebPush.VAPIDPublicKey = pub
+		cfg.WebPush.VAPIDPrivateKey = priv
+		svcList.WebPushOptions = webpushpkg.Options{
+			VAPIDPublicKey:  pub,
+			VAPIDPrivateKey: priv,
+			Subject:         cfg.WebPush.Subject,
+		}
+	}
 
 	server := &Server{
 		dbService:   dbService,
@@ -437,14 +478,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// MCP endpoint (auth via PAT token, org derived from token)
 	s.mcpHandler = mcp.NewHandler(
-		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService, s.services.Credentials,
+		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
+		s.services.Credentials, s.services.Entitlements,
 	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
 
-	// Job routes
+	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)
-	jobHandler.RegisterRoutes(api)
+	orgJobsGroup := api.NewGroup("/orgs/:org/jobs").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	orgJobsGroup.POST("", jobHandler.CreateJob)
+	orgJobsGroup.GET("", jobHandler.ListJobs)
+	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
+	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
@@ -454,7 +500,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgCheckTypes.GET("", checkTypesHandler.ListOrgCheckTypes)
 
 	// Check routes (authentication required)
-	checksService := checks.NewService(s.dbService, s.services.EventNotifier, s.services.Credentials)
+	checksService := checks.NewService(
+		s.dbService, s.services.EventNotifier, s.services.Credentials, s.services.Entitlements)
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
@@ -467,6 +514,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecks.PATCH("/:checkUid", checksHandler.UpdateCheck)
 	orgChecks.DELETE("/:checkUid", checksHandler.DeleteCheck)
 	orgChecks.POST("/:checkUid/clone", checksHandler.CloneCheck)
+
+	// Network discovery routes (authentication + org access required)
+	discoverySvc := discovery.NewService(
+		s.dbService.DB(), s.dbService, checksService, s.jobSvc, s.services.Credentials,
+	)
+	discoveryHandler := discovery.NewHandler(discoverySvc, s.config)
+	orgDiscovery := api.NewGroup("/orgs/:org/discovery").Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	discoveryHandler.RegisterRoutes(orgDiscovery)
 
 	// Label autocomplete routes
 	labelsService := labels.NewService(s.dbService)
@@ -530,7 +585,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Badge routes (public, no authentication required)
 	badgesService := badges.NewService(s.dbService)
 	badgesHandler := badges.NewHandler(badgesService, s.config)
-	api.GET("/orgs/:org/checks/:check/badges/:format", badgesHandler.GetBadge)
+	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
 	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
@@ -542,7 +597,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -563,7 +618,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -577,6 +632,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
 	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
+	// Incident notifications read API (authentication required)
+	incidentNotifService := incidentnotifications.NewService(s.dbService)
+	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
+	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
+	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
+		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
+	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
+		GET("/notifications", incidentNotifHandler.ListForMe)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
@@ -618,6 +682,20 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEscalation.GET("/:slug", escalationHandler.GetPolicy)
 	orgEscalation.PATCH("/:slug", escalationHandler.UpdatePolicy)
 	orgEscalation.DELETE("/:slug", escalationHandler.DeletePolicy)
+
+	// User notification routes (authentication required)
+	userNotifService := usernotifications.NewService(s.dbService)
+	emailAdapter := usernotifications.NewEmailSenderAdapter(s.services.EmailSender)
+	slackAdapter := usernotifications.NewSlackDMSenderAdapter()
+	userNotifHandler := usernotifications.NewHandler(
+		userNotifService, s.config, emailAdapter, slackAdapter, s.services.WebPushOptions,
+	)
+	orgUserNotif := api.NewGroup("/orgs/:org/users/me").Use(authMiddleware.RequireAuth)
+	orgUserNotif.GET("/notification-routes", userNotifHandler.ListRoutes)
+	orgUserNotif.POST("/notification-contacts", userNotifHandler.CreateContact)
+	orgUserNotif.PATCH("/notification-routes/:routeUid", userNotifHandler.PatchRoute)
+	orgUserNotif.DELETE("/notification-contacts/:contactUid", userNotifHandler.DeleteContact)
+	orgUserNotif.POST("/notification-routes/:routeUid/test", userNotifHandler.TestRoute)
 
 	// Events routes (authentication required)
 	eventsService := events.NewService(s.dbService)
@@ -705,6 +783,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEntitlements.PATCH("", entitlementsHandler.Patch)
 	orgEntitlements.GET("/audits", entitlementsHandler.ListAudits)
 
+	// Web Push routes (authentication required).
+	webpushHandler := webpushhandler.NewHandler(s.config)
+	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
+	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
+
 	// Integration connections routes (authentication required).
 	//
 	// We expose the same handlers under both `/connections` (legacy, original
@@ -722,7 +805,38 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.GET("/:uid", channelsHandler.GetChannel)
 		group.PATCH("/:uid", channelsHandler.UpdateChannel)
 		group.DELETE("/:uid", channelsHandler.DeleteChannel)
+		// Standard Webhooks: rotate the per-channel signing secret and send a
+		// synthetic signed test delivery. Both are webhook-only (400 otherwise).
+		group.POST("/:uid/rotate-secret", channelsHandler.RotateWebhookSecret)
+		group.POST("/:uid/test", channelsHandler.TestWebhookChannel)
 	}
+
+	// Freebox pairing endpoints — separate from the generic CRUD because
+	// they wrap the multi-step LCD-approval handshake. POST creates the
+	// connection in `pairing` status and asks the Freebox for an
+	// app_token; GET polls until the user approves the prompt.
+	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
+	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
+	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+	// LAN discovery: returns the list of hosts currently visible to the
+	// Freebox so the dashboard can pre-fill ICMP checks without typing.
+	// Requires a `granted` connection — see Service.ListFreeboxLanHosts.
+	orgFreebox.GET("/:uid/lan-hosts", channelsHandler.LanHostsHandler)
+
+	// Status updates routes (authentication required)
+	statusUpdatesService := statusupdates.NewService(s.dbService)
+	// Fan published status updates out to confirmed status-page subscribers by
+	// email. The notifier runs detached (fire-and-forget) inside the service.
+	statusSubscriberNotifier := statussubscribers.NewNotifier(
+		s.dbService, s.services.EmailSender, s.config.Server.BaseURL, slog.Default())
+	statusUpdatesService.SetSubscriberNotifier(statusSubscriberNotifier)
+	statusUpdatesHandler := statusupdates.NewHandler(statusUpdatesService, s.config)
+	orgStatusUpdates := api.NewGroup("/orgs/:org/status-updates").Use(authMiddleware.RequireAuth)
+	orgStatusUpdates.GET("", statusUpdatesHandler.ListStatusUpdates)
+	orgStatusUpdates.POST("", statusUpdatesHandler.CreateStatusUpdate)
+	orgStatusUpdates.GET("/:uid", statusUpdatesHandler.GetStatusUpdate)
+	orgStatusUpdates.PATCH("/:uid", statusUpdatesHandler.UpdateStatusUpdate)
+	orgStatusUpdates.DELETE("/:uid", statusUpdatesHandler.DeleteStatusUpdate)
 
 	// Status pages routes (authentication required)
 	statusPagesService := statuspages.NewService(s.dbService)
@@ -746,6 +860,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgStatusPages.PATCH("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.UpdateResource)
 	orgStatusPages.DELETE("/:statusPageUid/sections/:sectionUid/resources/:resourceUid", statusPagesHandler.DeleteResource)
 
+	// Status page subscribers (public email/RSS subscriptions). The handler is
+	// shared by the authed admin routes (below) and the public routes (further
+	// down, outside RequireAuth).
+	statusSubscribersService := statussubscribers.NewService(s.dbService)
+	statusSubscribersHandler := statussubscribers.NewHandler(
+		statusSubscribersService, s.dbService, s.services.EmailSender, s.config)
+	// Authed admin: list (count + redactable addresses) and remove.
+	orgStatusPages.GET("/:statusPageUid/subscribers", statusSubscribersHandler.ListSubscribers)
+	orgStatusPages.DELETE("/:statusPageUid/subscribers/:uid", statusSubscribersHandler.RemoveSubscriber)
+
 	// Maintenance windows routes (authentication required)
 	mwService := maintenancewindows.NewService(s.dbService)
 	mwHandler := maintenancewindows.NewHandler(mwService, s.config)
@@ -761,17 +885,42 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Public status page endpoints (no authentication)
 	api.GET("/status-pages/:org", statusPagesHandler.ViewDefaultStatusPage)
 	api.GET("/status-pages/:org/:slug", statusPagesHandler.ViewStatusPage)
+	// Public Atom/RSS feed of the status-update timeline.
+	api.GET("/status-pages/:org/:slug/feed.xml", statusSubscribersHandler.Feed)
+
+	// Public status-page subscription endpoints (no authentication). The
+	// subscribe endpoint inherits the global per-IP rate limit on /api/v1/;
+	// double opt-in is the primary anti-abuse control. Confirm/unsubscribe are
+	// single-purpose token links that render an HTML landing page.
+	api.POST("/orgs/:org/status-pages/:statusPageUid/subscribers", statusSubscribersHandler.Subscribe)
+	publicSubscribers := api.NewGroup("/public/status-subscribers")
+	publicSubscribers.GET("/confirm", statusSubscribersHandler.Confirm)
+	publicSubscribers.GET("/unsubscribe", statusSubscribersHandler.Unsubscribe)
 
 	// Slack integration routes (inbound from Slack - no org auth)
 	slackService := slack.NewService(s.dbService, s.config, s.authService, checksService, incidentsService)
 	slackHandler := slack.NewHandler(slackService, s.config)
+
+	// Build the Socket Mode supervisor up-front when enabled so its status is
+	// readable via GET /integrations/slack/socket/status even before Start().
+	// The actual Run() goroutine is launched from Start() under workersWg.
+	if s.config.Slack.Enabled && s.config.Slack.SocketModeEnabled && s.config.ShouldRunAPI() {
+		s.slackSocketSupervisor = slack.NewSlackSocketSupervisor(slackService, s.config, slog.Default())
+		slackHandler.SetSocketSupervisor(s.slackSocketSupervisor)
+	}
+
 	slackIntegration := api.NewGroup("/integrations/slack")
 	slackIntegration.GET("/install", slackHandler.Install)
 	slackIntegration.GET("/oauth", slackHandler.OAuthCallback)
+	slackIntegration.GET("/socket/status", slackHandler.GetSocketStatus)
 	// Apply signature verification middleware to Slack webhooks
 	slackIntegration.POST("/events", slackHandler.VerifyMiddleware(slackHandler.HandleEvents))
 	slackIntegration.POST("/command", slackHandler.VerifyMiddleware(slackHandler.HandleCommand))
 	slackIntegration.POST("/interaction", slackHandler.VerifyMiddleware(slackHandler.HandleInteraction))
+
+	// Slack destinations picker (authenticated, org-scoped)
+	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
+	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
 
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
@@ -1350,6 +1499,18 @@ func (s *Server) Start(ctx context.Context) error {
 		go s.runJMAPManager(runnerCtx)
 	}
 
+	// Start Slack Socket Mode supervisor when configured. The supervisor
+	// dials Slack's outgoing WebSocket and dispatches events through the
+	// shared Dispatch* functions; the HTTPS webhook handlers stay registered
+	// but receive no traffic while Socket Mode is active (Slack picks one
+	// transport per app at configuration time).
+	if s.slackSocketSupervisor != nil {
+		s.workersWg.Add(1)
+
+		//nolint:contextcheck // runnerCtx is intentionally separate from request context
+		go s.runSlackSocketSupervisor(runnerCtx)
+	}
+
 	// Run startup job synchronously to ensure default org exists before workers start
 	if s.config.ShouldRunJobs() {
 		if err := s.runStartupJob(ctx); err != nil {
@@ -1461,6 +1622,16 @@ func (s *Server) runJMAPManager(ctx context.Context) {
 
 	if err := s.jmapManager.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 		slog.WarnContext(ctx, "JMAP inbox manager exited", "error", err)
+	}
+}
+
+// runSlackSocketSupervisor wraps SlackSocketSupervisor.Run for the goroutine
+// launched in Start.
+func (s *Server) runSlackSocketSupervisor(ctx context.Context) {
+	defer s.workersWg.Done()
+
+	if err := s.slackSocketSupervisor.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		slog.WarnContext(ctx, "Slack Socket Mode supervisor exited", "error", err)
 	}
 }
 
@@ -1673,6 +1844,98 @@ func (s *Server) InitializeTestData(ctx context.Context) error {
 // DBService returns the database service instance (used for testing).
 func (s *Server) DBService() db.Service {
 	return s.dbService
+}
+
+// Services returns the services registry (used for testing).
+func (s *Server) Services() *services.Registry {
+	return s.services
+}
+
+// JobSvc returns the job service (used for testing).
+func (s *Server) JobSvc() jobsvc.Service {
+	return s.jobSvc
+}
+
+// Sentinel errors surfaced by newFreeboxConnectionResolver. Defining
+// them statically lets callers branch on them and keeps err113 happy
+// without spelling out every formatted variant.
+var (
+	errFreeboxWrongType          = errors.New("connection is not a freebox connection")
+	errFreeboxEncryptionDisabled = errors.New(
+		"connection has encrypted settings but credentials service is disabled",
+	)
+	errFreeboxNoAppToken = errors.New("connection has no app_token")
+)
+
+// newFreeboxConnectionResolver returns a ConnectionResolver closure that
+// looks up an IntegrationConnection by UID, asserts the type is
+// `freebox`, and merges the decrypted app_token from settings_private
+// with the public base URL / app_id fields. Returns an error when the
+// connection is missing, of the wrong type, or has no app_token (a
+// connection still in the pairing state).
+func newFreeboxConnectionResolver(
+	dbService db.Service, credSvc credentials.Service,
+) checkfreeboxline.ConnectionResolver {
+	return func(ctx context.Context, connectionUID string) (*checkfreeboxline.ResolvedConnection, error) {
+		conn, err := dbService.GetChannel(ctx, connectionUID)
+		if err != nil {
+			return nil, fmt.Errorf("get channel %s: %w", connectionUID, err)
+		}
+
+		if conn.Type != models.ConnectionTypeFreebox {
+			return nil, fmt.Errorf(
+				"%w: connection %s is %q, expected %q",
+				errFreeboxWrongType, connectionUID, conn.Type, models.ConnectionTypeFreebox,
+			)
+		}
+
+		settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
+		if err != nil {
+			return nil, fmt.Errorf("parse freebox settings: %w", err)
+		}
+
+		// The app_token lives in the encrypted private side. With no
+		// encryption configured the channel handler stores plaintext in
+		// the public settings under the same key — we honor both paths.
+		appToken := ""
+
+		if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
+			if !credSvc.Enabled() {
+				return nil, fmt.Errorf("%w: %s", errFreeboxEncryptionDisabled, connectionUID)
+			}
+
+			privMap, decErr := credSvc.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+			if decErr != nil {
+				return nil, fmt.Errorf("decrypt freebox app_token: %w", decErr)
+			}
+
+			if v, ok := privMap["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			// Plaintext-fallback path: pre-encryption installs and tests
+			// with credentials disabled keep the app_token under the same
+			// key in the public Settings map.
+			if v, ok := conn.Settings["appToken"].(string); ok {
+				appToken = v
+			}
+		}
+
+		if appToken == "" {
+			return nil, fmt.Errorf(
+				"%w: connection %s (pairing status: %s)",
+				errFreeboxNoAppToken, connectionUID, settings.Status,
+			)
+		}
+
+		return &checkfreeboxline.ResolvedConnection{
+			BaseURL:  settings.BaseURL,
+			AppID:    settings.AppID,
+			AppToken: appToken,
+		}, nil
+	}
 }
 
 // BuildCredentialsService loads the KEK (env or file), constructs the

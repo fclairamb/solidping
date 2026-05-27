@@ -135,6 +135,16 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 	}
 }
 
+// CheckRate is a thin projection of a check used to compute usage stats:
+// just whether the check is enabled and its execution period. Returned by
+// ListOrgCheckRates so the entitlements service can sum the aggregate
+// checks-per-minute in Go (the SQL interval/text representation of Period
+// is not portable for a SUM(60/period) across Postgres and SQLite).
+type CheckRate struct {
+	Enabled bool               `bun:"enabled"`
+	Period  timeutils.Duration `bun:"period"`
+}
+
 // CheckUpdate represents fields that can be updated.
 type CheckUpdate struct {
 	CheckGroupUID      *string

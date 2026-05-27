@@ -1,7 +1,8 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
 	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
-	test test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
-	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres
+	test test-scenario test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
+	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
+	build-scenario scenario-test
 .DEFAULT_GOAL := build
 
 APP_NAME := solidping
@@ -132,6 +133,23 @@ build-loadgen: ## Build the loadgen benchmark client
 	@cd $(BACK_DIR) && go build -o ../bin/loadgen ./cmd/loadgen
 	@echo "Binary created: ./bin/loadgen"
 
+build-scenario: ## Build the scenario driver CLI
+	@echo "Building scenario driver..."
+	@mkdir -p bin
+	@cd $(BACK_DIR) && go build -o ../bin/solidping-scenario ./cmd/scenariodriver
+	@echo "Binary created: ./bin/solidping-scenario"
+
+scenario-test: build-scenario ## Run scenario smoke test against a local dev server (make dev-test first)
+	@echo "Running scenario test against local dev server..."
+	./bin/solidping-scenario run \
+		--server http://localhost:4000 \
+		--org test \
+		--token pat_test \
+		--listen :9876 \
+		--public-url http://localhost:9876 \
+		--scenario server/cmd/scenariodriver/scenarios/incident-open-close.yaml \
+		--junit /tmp/scenario-results.xml
+
 # Bench knobs (override per invocation, e.g. `make bench-checks BENCH_CHECKS=500`).
 BENCH_CHECKS   ?= 200
 BENCH_DURATION ?= 2m
@@ -231,6 +249,11 @@ test: ## Run all tests
 	@echo "Running backend tests..."
 	@cd $(BACK_DIR) && go test ./... -short
 	@echo "Tests complete"
+
+test-scenario: ## Run full-pipeline scenario tests (requires Docker / embedded Postgres)
+	@echo "Running scenario integration tests..."
+	@cd $(BACK_DIR) && go test -v -timeout 120s ./test/integration/scenario/...
+	@echo "Scenario tests complete"
 
 test-dash: ## Run dash tests
 	@echo "Running dash tests..."

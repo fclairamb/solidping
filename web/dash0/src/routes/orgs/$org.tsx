@@ -13,6 +13,8 @@ import {
   ArrowUpRight,
   BadgeCheck,
   Bell,
+  BellRing,
+  Loader2,
   Bug,
   Building,
   Calendar,
@@ -22,6 +24,8 @@ import {
   Globe,
   LayoutDashboard,
   ListChecks,
+  Megaphone,
+  Network,
   Palette,
   Server,
   User2,
@@ -44,6 +48,7 @@ import {
   useOnCallSchedule,
   useResult,
   useStatusPage,
+  useStatusUpdate,
 } from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
@@ -102,11 +107,14 @@ function Breadcrumbs({ org }: { org: string }) {
   const isIncidents = matches.some((m) => m.routeId.startsWith("/orgs/$org/incidents"));
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
+  const isStatusUpdates = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-updates"));
   const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
+  const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
+  const isNotifications = routeIds.has("/orgs/$org/me/notifications");
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -134,6 +142,11 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: escalationPolicy } = useEscalationPolicy(
     org,
     isEscalation ? (params.slug ?? "") : "",
+  );
+  // Status updates section
+  const { data: statusUpdate } = useStatusUpdate(
+    org,
+    isStatusUpdates ? (params.updateUid ?? "") : "",
   );
 
   if (isDashboard) {
@@ -260,13 +273,16 @@ function Breadcrumbs({ org }: { org: string }) {
     const isMembers = routeIds.has("/orgs/$org/organization/members");
     const isInvitations = routeIds.has("/orgs/$org/organization/invitations");
     const isSettings = routeIds.has("/orgs/$org/organization/settings");
+    const isUsage = routeIds.has("/orgs/$org/organization/usage");
     const subLabel = isMembers
       ? t("members")
       : isInvitations
         ? t("invitations")
-        : isSettings
-          ? t("settings")
-          : null;
+        : isUsage
+          ? t("usage")
+          : isSettings
+            ? t("settings")
+            : null;
     return (
       <>
         {subLabel ? (
@@ -331,6 +347,45 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{pageName}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isStatusUpdates) {
+    const updateUid = params.updateUid;
+    const isNew = routeIds.has("/orgs/$org/status-updates/new");
+    const isEdit = routeIds.has("/orgs/$org/status-updates/$updateUid/edit");
+    const label = statusUpdate?.title ?? updateUid?.slice(0, 8);
+
+    return (
+      <>
+        {updateUid || isNew ? (
+          <Link to="/orgs/$org/status-updates" params={{ org }} className={linkClass}>
+            <Megaphone className={iconClass} />{t("statusUpdates")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Megaphone className={iconClass} />{t("statusUpdates")}
+          </span>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {updateUid && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{label}</span>
+          </>
+        )}
+        {isEdit && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("edit")}</span>
           </>
         )}
       </>
@@ -459,6 +514,58 @@ function Breadcrumbs({ org }: { org: string }) {
     );
   }
 
+  if (isDiscovery) {
+    const jobUid = params.jobUid;
+    const isNew = routeIds.has("/orgs/$org/discovery/new");
+    const isPromote = routeIds.has(
+      "/orgs/$org/discovery/$jobUid/$hostUid/promote",
+    );
+    const isRoot = !jobUid && !isNew;
+
+    return (
+      <>
+        {isRoot ? (
+          <span className={activeClass}><Network className={iconClass} />{t("discovery")}</span>
+        ) : (
+          <Link to="/orgs/$org/discovery" params={{ org }} className={linkClass}><Network className={iconClass} />{t("discovery")}</Link>
+        )}
+        {isNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {jobUid && (
+          <>
+            <BreadcrumbSeparator />
+            {isPromote ? (
+              <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }} className={linkClass}>
+                {jobUid.slice(0, 8)}
+              </Link>
+            ) : (
+              <span className={activeClass}>{jobUid.slice(0, 8)}</span>
+            )}
+          </>
+        )}
+        {isPromote && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("promote")}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isNotifications) {
+    return (
+      <span className={activeClass}>
+        <BellRing className={iconClass} />
+        {t("myPages")}
+      </span>
+    );
+  }
+
   return null;
 }
 
@@ -503,21 +610,23 @@ function OrgLayout() {
 
   // Show nothing while processing OAuth callback
   if (oauthProcessing || hasOAuthTokenInURL()) {
-    return null;
+    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
   // Redirect to login once auth finishes loading and user is not authenticated.
   // This covers the case where beforeLoad allowed through while auth was still loading.
-  if (!auth.isLoading && !auth.isAuthenticated) {
-    const basepath = import.meta.env.VITE_BASE_URL || "";
-    const returnTo = basepath + location.pathname + (location.searchStr || "");
-    navigate({
-      to: "/orgs/$org/login",
-      params: { org },
-      search: { session_expired: false, returnTo },
-      replace: true,
-    });
-    return null;
+  if (auth.isLoading || !auth.isAuthenticated) {
+    if (!auth.isLoading) {
+      const basepath = import.meta.env.VITE_BASE_URL || "";
+      const returnTo = basepath + location.pathname + (location.searchStr || "");
+      navigate({
+        to: "/orgs/$org/login",
+        params: { org },
+        search: { session_expired: false, returnTo },
+        replace: true,
+      });
+    }
+    return <div className="flex items-center justify-center h-screen"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>;
   }
 
   return (

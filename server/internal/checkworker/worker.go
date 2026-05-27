@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -29,6 +30,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // Errors returned by the check runner.
@@ -91,7 +93,7 @@ func NewCheckWorker(
 		config:      cfg,
 		services:    svc,
 		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs),
+		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture
@@ -114,6 +116,9 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 		"worker_uid", r.worker.UID,
 		"worker_slug", r.worker.Slug,
 		"pool_size", r.poolSize)
+
+	// 1b. Register per-worker Prometheus channel-depth collector
+	prometheus.DefaultRegisterer.MustRegister(newWorkerChannelCollector(r))
 
 	// 2. Setup self-stats reporting
 	if err := r.setupSelfStats(ctx); err != nil {

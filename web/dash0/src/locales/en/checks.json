@@ -162,7 +162,77 @@
     "docker": "Docker",
     "dockerDescription": "Monitor Docker container health",
     "browser": "Browser",
-    "browserDescription": "Monitor pages with headless Chrome"
+    "browserDescription": "Monitor pages with headless Chrome",
+    "freebox_line": "Freebox Line Quality",
+    "freebox_lineDescription": "Monitor xDSL/FTTH line quality via Freebox OS",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Check if an IP/domain is on DNS blocklists",
+    "sip": "SIP",
+    "sipDescription": "Check SIP server reachability and registration"
+  },
+  "freebox": {
+    "discover": "Discover from Freebox",
+    "discoverTitle": "Discover hosts from Freebox",
+    "discoverDescription": "Pick a host visible to your Freebox to pre-fill an ICMP check.",
+    "searchPlaceholder": "Search by name or IP…",
+    "loading": "Loading hosts…",
+    "error": "Could not load hosts from the Freebox.",
+    "retry": "Retry",
+    "noHosts": "No hosts visible on this Freebox.",
+    "noMatches": "No hosts match your search.",
+    "reachable": "Reachable",
+    "unreachable": "Unreachable",
+    "cancel": "Cancel",
+    "useSelected": "Use selected host",
+    "hostType": {
+      "workstation": "Desktop",
+      "laptop": "Laptop",
+      "smartphone": "Phone",
+      "tablet": "Tablet",
+      "nas": "NAS",
+      "printer": "Printer",
+      "player": "Media player",
+      "ip_camera": "Camera",
+      "router": "Router",
+      "other": "Device"
+    }
+  },
+  "freeboxLine": {
+    "connectionUid": "Freebox connection",
+    "connectionUidHelp": "Pick a paired Freebox connection. If you have none, pair one in Channels.",
+    "noConnections": "No paired Freebox connections. Pair one to start.",
+    "linkType": "Link type",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "linkTypeFtth": "FTTH Fiber",
+    "advancedThresholds": "Advanced thresholds",
+    "thresholdsHelp": "Solidping reports the check as down if any configured threshold is crossed. Leave a field at 0 to skip that threshold.",
+    "minSyncRateDownKbps": "Minimum sync rate (Kbps)",
+    "minSnrMarginDownDb": "Minimum SNR margin (dB)",
+    "maxAttenuationDb": "Max attenuation (dB)",
+    "maxCrcErrorsPerRun": "Max CRC errors per check",
+    "minRxPowerMw": "Min Rx power (mW)",
+    "maxRxPowerMw": "Max Rx power (mW)"
+  },
+  "dnsbl": {
+    "target": "Target IP or hostname",
+    "targetHelp": "IPv4 address or hostname to check against the blocklists.",
+    "blocklists": "Blocklist zones",
+    "blocklistsHelp": "Optional. One DNS blocklist zone per line (or comma-separated). Leave empty to use the defaults (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Custom resolver",
+    "nameserverHelp": "Optional host:port of a recursive resolver. Public resolvers (8.8.8.8, 1.1.1.1) are blocked by Spamhaus, so use a local resolver if needed."
+  },
+  "sip": {
+    "transport": "Transport",
+    "mode": "Mode",
+    "modeOptions": "OPTIONS (reachability)",
+    "modeRegister": "REGISTER (authentication)",
+    "domain": "SIP domain",
+    "domainHelp": "Optional. SIP domain/realm for the address of record. Defaults to the host.",
+    "username": "Username",
+    "password": "Password",
+    "passwordEncrypted": "(encrypted — enter a new value to replace)",
+    "expectStatus": "Expected status (optional)",
+    "expectStatusHelp": "Optional. Comma-separated SIP status codes that count as Up (e.g. 200 or 200,405). Leave empty to accept any valid SIP response."
   },
   "intervals": {
     "10s": "10 seconds",
@@ -228,7 +298,7 @@
       "showingAllRegions": "Showing all regions ({{regions}})",
       "tooltipClickPoint": "Click point for details",
       "dotClickForDetails": "Click for details",
-      "dotClickAgain": "Click again to open full page"
+      "dotClickToClose": "Click to close"
     },
     "resultBox": {
       "close": "Close",
@@ -239,7 +309,7 @@
       "region": "Region",
       "status": "Status",
       "period": "Period",
-      "clickAgain": "Click again to open full page"
+      "moreDetails": "More details →"
     },
     "availability": {
       "title": "Availability",
@@ -334,5 +404,8 @@
   "expectedValue": "Expected value",
   "actualValue": "Actual value",
   "passed": "Passed",
-  "failed": "Failed"
+  "failed": "Failed",
+  "secretHeaders": "Secret headers",
+  "secretHeadersDescription": "Header values stored encrypted — use for API keys and Bearer tokens.",
+  "addSecretHeader": "Add secret header"
 }

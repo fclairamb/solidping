@@ -9,10 +9,10 @@ import {
   Tooltip,
   ResponsiveContainer,
   ReferenceArea,
+  type MouseHandlerDataParam,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
-import { useNavigate } from "@tanstack/react-router";
-import { useResults } from "@/api/hooks";
+import { useAllResults } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -212,7 +212,6 @@ export function ResponseTimeChart({
   onSettingsChange,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
-  const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
@@ -253,10 +252,7 @@ export function ResponseTimeChart({
 
   const handleDotClick = (uid: string) => {
     if (selectedUid === uid) {
-      navigate({
-        to: "/orgs/$org/checks/$checkUid/results/$resultUid",
-        params: { org, checkUid, resultUid: uid },
-      });
+      setSelectedUid(null);
       return;
     }
     setSelectedUid(uid);
@@ -264,20 +260,19 @@ export function ResponseTimeChart({
 
   const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
 
-  // Pick exactly one tier per range so the chart fetches the smallest payload
-  // that still covers the window. The aggregator stores each timestamp in
-  // exactly one tier, so the trailing edge of the current bucket can be
-  // briefly missing on the right edge of the chart while the rollup runs —
-  // accept that visual gap rather than fetching the full raw timeline.
+  // Include raw as a co-tier so the current open bucket (which the aggregator
+  // never rolls up until it closes) is always represented. The aggregator
+  // deletes source rows after rollup, so raw + hour + day are disjoint in
+  // time — no duplicates. detectGaps() already handles tier transitions.
   const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
   const periodType =
     timeRange === "month"
-      ? "day"
+      ? "raw,hour,day"
       : timeRange === "week"
-        ? "hour"
+        ? "raw,hour"
         : timeRange === "day"
           ? denseEnoughForHourly
-            ? "hour"
+            ? "raw,hour"
             : "raw"
           : "raw";
 
@@ -290,12 +285,12 @@ export function ResponseTimeChart({
       ? Math.max(baseInterval, 5 * 60_000)
       : Math.max(baseInterval, 30_000);
 
-  const { data: results, isLoading } = useResults(org, {
+  const { data: results, isLoading } = useAllResults(org, {
     checkUid,
     periodStartAfter,
     periodType,
     with: "durationMs,region",
-    size: 500,
+    size: 1000,
     refetchInterval: chartRefetchInterval,
   });
 
@@ -450,6 +445,21 @@ export function ResponseTimeChart({
     return stops;
   }, [chartData]);
 
+  // Recharts v3 routes all pointer events through a single top-level surface,
+  // so per-dot onClick handlers never fire. Handle clicks at the chart level
+  // and resolve the active point via activeTooltipIndex into chartData.
+  const handleChartClick = (state: MouseHandlerDataParam) => {
+    // activeTooltipIndex is `number | string | null` across recharts versions.
+    const raw = state?.activeTooltipIndex;
+    const idx = typeof raw === "number" ? raw : raw != null ? Number(raw) : NaN;
+    const point = Number.isInteger(idx) ? chartData[idx] : undefined;
+    if (point?.uid) {
+      handleDotClick(point.uid);
+    } else {
+      setSelectedUid(null);
+    }
+  };
+
   return (
     <Card>
       <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0 pb-2">
@@ -496,13 +506,9 @@ export function ResponseTimeChart({
             {t("detail.chart.noDataAvailable")}
           </div>
         ) : (
-          <div
-            ref={chartWrapperRef}
-            className="relative"
-            onClick={() => setSelectedUid(null)}
-          >
+          <div ref={chartWrapperRef} className="relative">
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={chartData}>
+            <AreaChart data={chartData} onClick={handleChartClick}>
               <defs>
                 <linearGradient
                   id={`strokeGradient-${checkUid}`}
@@ -648,14 +654,10 @@ export function ResponseTimeChart({
                             stroke={isSelected ? "var(--primary)" : undefined}
                             strokeWidth={isSelected ? 2 : 0}
                             style={{ cursor: "pointer" }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDotClick(uid);
-                            }}
                           >
                             <title>
                               {isSelected
-                                ? t("detail.chart.dotClickAgain")
+                                ? t("detail.chart.dotClickToClose")
                                 : t("detail.chart.dotClickForDetails")}
                             </title>
                           </circle>
@@ -692,10 +694,6 @@ export function ResponseTimeChart({
                       r={5}
                       fill={fill}
                       style={{ cursor: "pointer" }}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDotClick(uid);
-                      }}
                     />
                   );
                 }}

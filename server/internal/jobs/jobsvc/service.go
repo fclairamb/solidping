@@ -6,17 +6,26 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 const (
 	// maxRetryCount is the maximum number of retries allowed for a job.
 	maxRetryCount = 2
+
+	// eventTypeJobCreated is the notifier event type emitted when a new job is
+	// created and ready to run soon. PgEventNotifier converts "." to "_" so the
+	// on-the-wire Postgres channel name becomes "job_created".
+	// dialect-agnostic — use s.notifier.Notify, never raw SQL.
+	eventTypeJobCreated = "job.created"
 )
 
 // JobOptions contains options for creating a job.
@@ -73,7 +82,11 @@ type Service interface {
 
 // ListJobsOptions contains filtering options for listing jobs.
 type ListJobsOptions struct {
-	Type   string
+	// Type filters to a single job type. Ignored when Types is set.
+	Type string
+	// Types filters to any of the given job types (WHERE type IN). Takes
+	// precedence over Type when non-empty.
+	Types  []string
 	Status string
 	Limit  int
 	Offset int
@@ -81,12 +94,14 @@ type ListJobsOptions struct {
 
 // serviceImpl implements the Service interface.
 type serviceImpl struct {
-	db *bun.DB
+	db       *bun.DB
+	dbSvc    db.Service
+	notifier notifier.EventNotifier
 }
 
 // NewService creates a new job service.
-func NewService(db *bun.DB) Service {
-	return &serviceImpl{db: db}
+func NewService(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier) Service {
+	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n}
 }
 
 // CreateJob creates a new job and notifies waiting runners.
@@ -215,11 +230,9 @@ func (s *serviceImpl) createNewJob(
 		return nil, fmt.Errorf("failed to create job: %w", err)
 	}
 
-	// Send NOTIFY signal to wake up job runners if job is scheduled within 15 minutes
-	// This is PostgreSQL-specific and will be ignored on SQLite (polling fallback is used)
+	// Wake up waiting job runners when the job is due within 15 minutes.
 	if time.Until(job.ScheduledAt) <= 15*time.Minute {
-		_, _ = s.db.ExecContext(ctx, "NOTIFY jobs")
-		// Ignore errors - NOTIFY is not available on SQLite, which uses polling instead
+		_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
 	}
 
 	return job, nil
@@ -256,7 +269,9 @@ func (s *serviceImpl) ListJobs(
 		Where("deleted_at IS NULL").
 		Order("created_at DESC")
 
-	if opts.Type != "" {
+	if len(opts.Types) > 0 {
+		query = query.Where("type IN (?)", bun.List(opts.Types))
+	} else if opts.Type != "" {
 		query = query.Where("type = ?", opts.Type)
 	}
 
@@ -274,7 +289,7 @@ func (s *serviceImpl) ListJobs(
 
 	var jobs []*models.Job
 
-	err := query.Scan(ctx)
+	err := query.Scan(ctx, &jobs)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list jobs: %w", err)
 	}
@@ -323,6 +338,18 @@ func (s *serviceImpl) CancelPendingForIncident(
 		return 0, fmt.Errorf("failed to get rows affected: %w", err)
 	}
 
+	// Also cancel any pending audit rows for this incident.
+	if s.dbSvc != nil {
+		canceledCount, auditErr := s.dbSvc.CancelIncidentNotificationsForIncident(ctx, incidentUID, now)
+		if auditErr != nil {
+			slog.WarnContext(ctx, "failed to cancel notification audit rows",
+				"incident_uid", incidentUID, "error", auditErr)
+		} else {
+			slog.DebugContext(ctx, "canceled notification audit rows",
+				"incident_uid", incidentUID, "count", canceledCount)
+		}
+	}
+
 	return rows, nil
 }
 
@@ -354,38 +381,34 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 	return nil
 }
 
-// GetJobWait waits for and claims the next available job.
-// Uses PostgreSQL LISTEN/NOTIFY for efficient waiting.
+// GetJobWait waits for and claims the next available job. It subscribes to
+// job.created events via the EventNotifier so new-job insertions wake the
+// runner within milliseconds on both SQLite (LocalEventNotifier channels)
+// and Postgres (LISTEN/NOTIFY). A 5-minute fallback ticker handles missed
+// signals and jobs whose scheduled_at passed without a signal.
 func (s *serviceImpl) GetJobWait(ctx context.Context) (*models.Job, error) {
-	// Try to claim a job immediately
-	job, err := s.claimNextJob(ctx)
-	if err == nil {
-		return job, nil
-	}
+	wakeup := s.notifier.Listen(eventTypeJobCreated)
 
-	if !errors.Is(err, sql.ErrNoRows) {
-		return nil, err
-	}
-
-	// TODO: Add notification mechanism:
-	// - NOTIFY/LISTEN on postgresql
-	// - checkrunner's notifier logic (made generic)
-	ticker := time.NewTicker(time.Minute)
+	ticker := time.NewTicker(5 * time.Minute)
 	defer ticker.Stop()
 
 	for {
+		job, err := s.claimNextJob(ctx)
+		if err == nil {
+			return job, nil
+		}
+
+		if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
+		case <-wakeup:
+			// Wake-up signal from CreateJob — try to claim immediately.
 		case <-ticker.C:
-			job, err := s.claimNextJob(ctx)
-			if err == nil {
-				return job, nil
-			}
-
-			if !errors.Is(err, sql.ErrNoRows) {
-				return nil, err
-			}
+			// Fallback poll: handles missed signals and past-due jobs.
 		}
 	}
 }

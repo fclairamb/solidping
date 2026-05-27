@@ -8,6 +8,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 // Registry holds all application services for dependency injection.
@@ -24,6 +26,13 @@ type Registry struct {
 	// Always non-nil after server bootstrap; safe to call regardless of
 	// deployment mode (callers honor nil caps as "unlimited").
 	Entitlements *entitlements.Service
+	// Clock is the time source for business-logic comparisons (confirmation
+	// windows, recovery periods, escalation repeat intervals). Tests inject
+	// a Fake to advance time deterministically; production uses Real.
+	Clock clock.Clock
+	// WebPushOptions holds VAPID credentials for Web Push dispatch. Zero
+	// value means "not configured" — callers check VAPIDPublicKey != "".
+	WebPushOptions webpush.Options
 }
 
 // NewRegistry creates a new services registry.

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { subDays, startOfDay, startOfMinute } from "date-fns";
 import { useAllResults, useIncidents } from "@/api/hooks";
-import type { IncidentDetail } from "@/api/hooks";
+import type { IncidentDetail, OrgResult } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -131,29 +131,33 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
     return subDays(now, 365).toISOString();
   }, []);
 
-  // Aggregated tiers only — the table never displays raw rows. ~70 buckets
-  // for a year of daily + monthly data fits well under the size cap. Bump
-  // the refetch floor to 60s; annual availability doesn't move that fast.
+  // Fetch only aggregated tiers — raw results are excluded from availability
+  // computation (see computeAvailability below) and fetching them would add
+  // noise without benefit.
   const tableRefetchInterval = Math.max(refetchInterval ?? 60_000, 60_000);
 
   const { data: allResults, isLoading: loadingResults } = useAllResults(org, {
     checkUid,
     periodStartAfter: yearAgo,
     periodType: "hour,day,month",
-    with: "availabilityPct",
+    with: "availabilityPct,totalChecks,successfulChecks,status",
     size: 1000,
     refetchInterval: tableRefetchInterval,
   });
 
-  // Filter results by periodType client-side
-  const { hourlyResults, dailyResults, monthlyResults } = useMemo(() => {
-    const data = allResults?.data || [];
-    const todayStart = startOfDay(new Date());
-    const thirtyDaysAgo = subDays(new Date(), 30);
+  // Bucket all aggregated results by the period windows we need.
+  const { todayRows, last7Rows, last30Rows, last365Rows } = useMemo(() => {
+    const data = allResults?.data ?? [];
+    const now = new Date();
+    const todayStart = startOfDay(now).getTime();
+    const day7 = subDays(now, 7).getTime();
+    const day30 = subDays(now, 30).getTime();
+    const day365 = subDays(now, 365).getTime();
     return {
-      hourlyResults: data.filter((r) => r.periodType === "hour" && r.periodStart && new Date(r.periodStart) >= todayStart),
-      dailyResults: data.filter((r) => r.periodType === "day" && r.periodStart && new Date(r.periodStart) >= thirtyDaysAgo),
-      monthlyResults: data.filter((r) => r.periodType === "month"),
+      todayRows:   data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= todayStart),
+      last7Rows:   data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day7),
+      last30Rows:  data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day30),
+      last365Rows: data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day365),
     };
   }, [allResults]);
 
@@ -168,22 +172,29 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
   const rows = useMemo(() => {
     const now = new Date();
 
-    function avgAvailability(
-      data: { availabilityPct?: number }[] | undefined
-    ): number | null {
+    // Compute availability from aggregated rows only (hour/day/month).
+    // Raw results are excluded — they are only available for the current open
+    // bucket and are not yet rolled up by the aggregator. Showing them would
+    // produce misleading numbers (e.g. 50% from 5 up + 5 down pings) when no
+    // aggregated data exists yet. Show "-" instead.
+    function computeAvailability(data: OrgResult[] | undefined): number | null {
       if (!data?.length) return null;
-      const valid = data.filter(
-        (r) => r.availabilityPct != null
-      ) as { availabilityPct: number }[];
-      if (valid.length === 0) return null;
-      return valid.reduce((sum, r) => sum + r.availabilityPct, 0) / valid.length;
+      let successful = 0;
+      let total = 0;
+      for (const r of data) {
+        if (r.periodType === "raw") {
+          // Skip raw results — availability is only computed from aggregated tiers.
+          continue;
+        } else if (r.totalChecks != null && r.successfulChecks != null) {
+          total += r.totalChecks;
+          successful += r.successfulChecks;
+        } else if (r.availabilityPct != null) {
+          total += 1;
+          successful += r.availabilityPct / 100;
+        }
+      }
+      return total === 0 ? null : (successful / total) * 100;
     }
-
-    // Filter daily results for 7-day window
-    const sevenDaysStart = subDays(now, 7);
-    const daily7d = dailyResults.filter(
-      (r) => r.periodStart && new Date(r.periodStart) >= sevenDaysStart
-    );
 
     const incidentData = incidents?.data || [];
 
@@ -191,16 +202,16 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
       let availability: number | null;
       switch (period.id) {
         case "today":
-          availability = avgAvailability(hourlyResults);
+          availability = computeAvailability(todayRows);
           break;
         case "last7":
-          availability = avgAvailability(daily7d);
+          availability = computeAvailability(last7Rows);
           break;
         case "last30":
-          availability = avgAvailability(dailyResults);
+          availability = computeAvailability(last30Rows);
           break;
         case "last365":
-          availability = avgAvailability(monthlyResults);
+          availability = computeAvailability(last365Rows);
           break;
         default:
           availability = null;
@@ -224,7 +235,7 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
         average: incStats.average,
       };
     });
-  }, [hourlyResults, dailyResults, monthlyResults, incidents]);
+  }, [todayRows, last7Rows, last30Rows, last365Rows, incidents]);
 
   if (isLoading) {
     return (

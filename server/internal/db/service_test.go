@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -62,6 +63,70 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("StateEntries", func(t *testing.T) {
 		testStateEntries(ctx, t, svc)
 	})
+
+	t.Run("StatusPageSubscribers", func(t *testing.T) {
+		testStatusPageSubscribers(ctx, t, svc)
+	})
+
+	t.Run("EscalationPolicyByUidOrSlug", func(t *testing.T) {
+		testEscalationPolicyByUIDOrSlug(ctx, t, svc)
+	})
+
+	t.Run("OnCallScheduleByUidOrSlug", func(t *testing.T) {
+		testOnCallScheduleByUIDOrSlug(ctx, t, svc)
+	})
+
+	t.Run("AppSettings", func(t *testing.T) {
+		testAppSettings(ctx, t, svc)
+	})
+}
+
+func testEscalationPolicyByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	org := models.NewOrganization("esc-uid-or-slug", "")
+	require.NoError(t, svc.CreateOrganization(ctx, org))
+
+	policy := models.NewEscalationPolicy(org.UID, "primary", "Primary")
+	require.NoError(t, svc.CreateEscalationPolicy(ctx, policy))
+
+	bySlug, err := svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "primary")
+	require.NoError(t, err)
+	require.Equal(t, policy.UID, bySlug.UID)
+
+	byUID, err := svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, policy.UID)
+	require.NoError(t, err)
+	require.Equal(t, policy.UID, byUID.UID)
+
+	_, err = svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "missing")
+	require.Error(t, err)
+
+	_, err = svc.GetEscalationPolicyByUidOrSlug(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
+	require.Error(t, err)
+}
+
+func testOnCallScheduleByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	org := models.NewOrganization("oncall-uid-or-slug", "")
+	require.NoError(t, svc.CreateOrganization(ctx, org))
+
+	schedule := models.NewOnCallSchedule(org.UID, "primary", "Primary", "UTC", models.RotationTypeDaily)
+	require.NoError(t, svc.CreateOnCallSchedule(ctx, schedule))
+
+	bySlug, err := svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "primary")
+	require.NoError(t, err)
+	require.Equal(t, schedule.UID, bySlug.UID)
+
+	byUID, err := svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, schedule.UID)
+	require.NoError(t, err)
+	require.Equal(t, schedule.UID, byUID.UID)
+
+	_, err = svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "missing")
+	require.Error(t, err)
+
+	_, err = svc.GetOnCallScheduleByUidOrSlug(ctx, org.UID, "00000000-0000-0000-0000-000000000000")
+	require.Error(t, err)
 }
 
 func testOrganizations(ctx context.Context, t *testing.T, svc db.Service) {
@@ -1212,5 +1277,187 @@ func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 
 		key = models.StateKey()
 		r.Empty(key)
+	})
+}
+
+// strPtr is a tiny helper to take the address of a string literal.
+func strPtr(s string) *string { return &s }
+
+//nolint:maintidx // exercises the full subscriber lifecycle against both backends
+func testStatusPageSubscribers(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("sub-test-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	page := models.NewStatusPage(org.UID, "Sub Page", "sub-page")
+	r.NoError(svc.CreateStatusPage(ctx, page))
+
+	t.Run("CreateAndFetchByToken", func(_ *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "a@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "confirm-tok-1"
+		sub.UnsubscribeToken = "unsub-tok-1"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+
+		byConfirm, err := svc.GetSubscriberByConfirmToken(ctx, "confirm-tok-1")
+		r.NoError(err)
+		r.Equal(sub.UID, byConfirm.UID)
+		r.Nil(byConfirm.ConfirmedAt)
+
+		byUnsub, err := svc.GetSubscriberByUnsubToken(ctx, "unsub-tok-1")
+		r.NoError(err)
+		r.Equal(sub.UID, byUnsub.UID)
+	})
+
+	t.Run("FindLiveSubscriber", func(_ *testing.T) {
+		found, err := svc.FindLiveSubscriber(
+			ctx, page.UID, "a@example.com", models.SubscriberScopePage, nil)
+		r.NoError(err)
+		r.Equal("a@example.com", found.Email)
+	})
+
+	t.Run("ConfirmConsumesToken", func(_ *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "b@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "confirm-tok-2"
+		sub.UnsubscribeToken = "unsub-tok-2"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+
+		now := time.Now()
+		r.NoError(svc.ConfirmSubscriber(ctx, sub.UID, now))
+
+		// Confirm token is consumed (cleared) so a second lookup fails.
+		_, err := svc.GetSubscriberByConfirmToken(ctx, "confirm-tok-2")
+		r.Error(err)
+
+		got, err := svc.GetSubscriber(ctx, page.UID, sub.UID)
+		r.NoError(err)
+		r.NotNil(got.ConfirmedAt)
+	})
+
+	t.Run("ListConfirmedScoping", func(_ *testing.T) {
+		check := models.NewCheck(org.UID, "sub-incident-check", "http")
+		r.NoError(svc.CreateCheck(ctx, check))
+
+		incident := models.NewIncident(org.UID, check.UID, time.Now(), "outage")
+		r.NoError(svc.CreateIncident(ctx, incident))
+		incidentA := incident.UID
+
+		// Page-scoped confirmed.
+		pageSub := models.NewStatusPageSubscriber(org.UID, page.UID, "page@example.com", models.SubscriberScopePage)
+		pageSub.ConfirmToken = "ct-page"
+		pageSub.UnsubscribeToken = "ut-page"
+		r.NoError(svc.CreateSubscriber(ctx, pageSub))
+		r.NoError(svc.ConfirmSubscriber(ctx, pageSub.UID, time.Now()))
+
+		// Incident-scoped confirmed matching incidentA.
+		incSub := models.NewStatusPageSubscriber(
+			org.UID, page.UID, "inc@example.com", models.SubscriberScopeIncident)
+		incSub.IncidentUID = strPtr(incidentA)
+		incSub.ConfirmToken = "ct-inc"
+		incSub.UnsubscribeToken = "ut-inc"
+		r.NoError(svc.CreateSubscriber(ctx, incSub))
+		r.NoError(svc.ConfirmSubscriber(ctx, incSub.UID, time.Now()))
+
+		// Unconfirmed page-scoped (must be excluded).
+		unconf := models.NewStatusPageSubscriber(
+			org.UID, page.UID, "unconf@example.com", models.SubscriberScopePage)
+		unconf.ConfirmToken = "ct-unconf"
+		unconf.UnsubscribeToken = "ut-unconf"
+		r.NoError(svc.CreateSubscriber(ctx, unconf))
+
+		// With incident: page-scoped + matching incident-scoped.
+		withIncident, err := svc.ListConfirmedSubscribers(ctx, page.UID, &incidentA)
+		r.NoError(err)
+		emails := subscriberEmails(withIncident)
+		r.Contains(emails, "page@example.com")
+		r.Contains(emails, "inc@example.com")
+		r.NotContains(emails, "unconf@example.com")
+
+		// Without incident: only page-scoped.
+		pageOnly, err := svc.ListConfirmedSubscribers(ctx, page.UID, nil)
+		r.NoError(err)
+		pageEmails := subscriberEmails(pageOnly)
+		r.Contains(pageEmails, "page@example.com")
+		r.NotContains(pageEmails, "inc@example.com")
+	})
+
+	t.Run("SoftDeleteAndResubscribe", func(_ *testing.T) {
+		sub := models.NewStatusPageSubscriber(org.UID, page.UID, "c@example.com", models.SubscriberScopePage)
+		sub.ConfirmToken = "ct-c"
+		sub.UnsubscribeToken = "ut-c"
+		r.NoError(svc.CreateSubscriber(ctx, sub))
+		r.NoError(svc.ConfirmSubscriber(ctx, sub.UID, time.Now()))
+
+		r.NoError(svc.SoftDeleteSubscriber(ctx, sub.UID))
+
+		// No longer a live subscriber.
+		_, err := svc.FindLiveSubscriber(ctx, page.UID, "c@example.com", models.SubscriberScopePage, nil)
+		r.Error(err)
+
+		// Resubscribe soft-undeletes and resets confirmation.
+		r.NoError(svc.ResubscribeSubscriber(ctx, sub.UID, "ct-c2", "ut-c2"))
+		revived, err := svc.FindLiveSubscriber(ctx, page.UID, "c@example.com", models.SubscriberScopePage, nil)
+		r.NoError(err)
+		r.Equal(sub.UID, revived.UID)
+		r.Nil(revived.ConfirmedAt)
+	})
+
+	t.Run("ListSubscribersAdmin", func(_ *testing.T) {
+		subs, err := svc.ListSubscribers(ctx, page.UID)
+		r.NoError(err)
+		r.NotEmpty(subs)
+	})
+}
+
+func subscriberEmails(subs []*models.StatusPageSubscriber) []string {
+	emails := make([]string, 0, len(subs))
+	for _, s := range subs {
+		emails = append(emails, s.Email)
+	}
+
+	return emails
+}
+
+func testAppSettings(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	t.Run("GetMissingKey", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := svc.GetAppSetting(ctx, "nonexistent.key."+strconv.FormatInt(time.Now().UnixNano(), 10))
+		r.Error(err, "GetAppSetting should return an error for a missing key")
+	})
+
+	t.Run("SetAndGet", func(t *testing.T) {
+		t.Parallel()
+
+		key := "test.key." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		err := svc.SetAppSetting(ctx, key, "value1")
+		r.NoError(err, "SetAppSetting should not fail")
+
+		val, err := svc.GetAppSetting(ctx, key)
+		r.NoError(err, "GetAppSetting should not fail after set")
+		r.Equal("value1", val)
+	})
+
+	t.Run("Upsert", func(t *testing.T) {
+		t.Parallel()
+
+		key := "test.upsert." + strconv.FormatInt(time.Now().UnixNano(), 10)
+
+		err := svc.SetAppSetting(ctx, key, "first")
+		r.NoError(err)
+
+		err = svc.SetAppSetting(ctx, key, "second")
+		r.NoError(err)
+
+		val, err := svc.GetAppSetting(ctx, key)
+		r.NoError(err)
+		r.Equal("second", val, "upsert should overwrite with new value")
 	})
 }

@@ -12,6 +12,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // resolveSetup spins up an in-memory sqlite, an org, a check, an active
@@ -36,8 +38,8 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB())
-	svc := incidents.NewService(dbSvc, jobs)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
 
 	org := models.NewOrganization("resolve-test", "Resolve Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

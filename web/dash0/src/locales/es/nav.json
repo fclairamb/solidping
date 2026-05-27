@@ -8,7 +8,10 @@
   "events": "Eventos",
   "channels": "Canales",
   "statusPages": "Páginas de estado",
+  "statusUpdates": "Actualizaciones de estado",
   "badges": "Insignias",
+  "discovery": "Descubrimiento",
+  "myPages": "Mis alertas",
   "testTools": "Herramientas de prueba",
   "designReference": "Referencia de diseño",
   "new": "Nuevo",
@@ -18,6 +21,7 @@
   "members": "Miembros",
   "invitations": "Invitaciones",
   "requests": "Solicitudes",
+  "usage": "Uso",
   "settings": "Ajustes",
   "web": "Web",
   "mail": "Correo",
@@ -112,10 +116,13 @@
   "command": {
     "searchPlaceholder": "Buscar páginas y comprobaciones...",
     "noResults": "Sin resultados.",
+    "groupActions": "Acciones",
     "groupPages": "Páginas",
     "groupAccount": "Cuenta",
     "groupOrganization": "Organización",
-    "groupChecks": "Comprobaciones"
+    "groupChecks": "Comprobaciones",
+    "newCheck": "Nueva comprobación",
+    "newCheckDescription": "Crear una nueva comprobación de monitorización"
   },
   "security": "Seguridad"
 }

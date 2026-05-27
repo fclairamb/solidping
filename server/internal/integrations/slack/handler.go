@@ -13,11 +13,43 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
 
+// GetDestinations returns the list of Slack channels and DM targets available
+// for the given integration connection (identified by :uid within :org).
+//
+// Route: GET /api/v1/orgs/:org/channels/:uid/slack/destinations.
+func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	channelUID := req.Param("uid")
+
+	resp, err := h.svc.GetDestinations(req.Context(), orgSlug, channelUID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrConnectionNotFound), errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeChannelNotFound,
+				"Channel not found")
+		case errors.Is(err, ErrNotSlackChannel):
+			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+				"Channel is not of type slack")
+		case errors.Is(err, ErrSlackNotConnected):
+			return h.WriteError(writer, http.StatusConflict, base.ErrorCodeChannelNotConnected,
+				"Slack channel is not connected — install the Slack app")
+		default:
+			// Wrap Slack API failures as 502 so callers can distinguish bot-token
+			// issues from general server errors.
+			return h.WriteError(writer, http.StatusBadGateway, base.ErrorCodeInternalError,
+				"Could not connect to Slack workspace")
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, resp)
+}
+
 // Handler provides HTTP handlers for Slack integration endpoints.
 type Handler struct {
 	base.HandlerBase
-	svc *Service
-	cfg *config.Config
+	svc        *Service
+	cfg        *config.Config
+	supervisor *SlackSocketSupervisor
 }
 
 // NewHandler creates a new Slack handler.
@@ -29,6 +61,24 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// SetSocketSupervisor attaches a running Socket Mode supervisor so the
+// GetSocketStatus endpoint can surface its state. Optional — call only on
+// nodes that actually run the supervisor.
+func (h *Handler) SetSocketSupervisor(s *SlackSocketSupervisor) {
+	h.supervisor = s
+}
+
+// GetSocketStatus returns the current Slack Socket Mode supervisor status.
+//
+// Route: GET /api/v1/integrations/slack/socket/status.
+func (h *Handler) GetSocketStatus(writer http.ResponseWriter, _ bunrouter.Request) error {
+	if h.supervisor == nil {
+		return h.WriteJSON(writer, http.StatusOK, SocketStatus{Enabled: false})
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, h.supervisor.GetStatus())
+}
+
 // installErrorPage is where we send the user when an install fails. The
 // page lives in the marketing site and renders a friendly explanation
 // based on the `reason` query parameter.
@@ -38,11 +88,14 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 // fresh CSRF state and 302s to Slack. No auth required — Slack hits this
 // URL with no session.
 //
-// GET /api/v1/integrations/slack/install[?source=marketplace].
+// GET /api/v1/integrations/slack/install[?source=marketplace&channelUid=<uid>&org=<slug>].
 func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
-	source := req.URL.Query().Get("source")
+	q := req.URL.Query()
+	source := q.Get("source")
+	channelUID := q.Get("channelUid")
+	orgSlug := q.Get("org")
 
-	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source)
+	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, channelUID, orgSlug)
 	if err != nil {
 		slog.ErrorContext(req.Context(), "Failed to build Slack install URL", "error", err)
 		h.redirectInstallError(writer, req, "unknown")

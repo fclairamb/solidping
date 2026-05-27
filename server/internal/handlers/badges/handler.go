@@ -4,6 +4,7 @@ package badges
 import (
 	"errors"
 	"net/http"
+	"strconv"
 
 	"github.com/uptrace/bunrouter"
 
@@ -25,11 +26,34 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
+// parseIntParam parses an integer query parameter, clamping it within [min, max].
+// Returns 0 if the parameter is empty or invalid.
+func parseIntParam(raw string, minVal, maxVal int) (int, bool) {
+	if raw == "" {
+		return 0, false
+	}
+
+	parsed, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, false
+	}
+
+	if parsed < minVal {
+		parsed = minVal
+	}
+
+	if parsed > maxVal {
+		parsed = maxVal
+	}
+
+	return parsed, true
+}
+
 // GetBadge handles GET requests for badge images.
 func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkIdentifier := req.Param("check")
-	format := req.Param("format")
+	components := req.Param("components")
 
 	opts := BadgeOptions{
 		Period: req.URL.Query().Get("period"),
@@ -37,7 +61,15 @@ func (h *Handler) GetBadge(writer http.ResponseWriter, req bunrouter.Request) er
 		Style:  req.URL.Query().Get("style"),
 	}
 
-	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, format, opts)
+	if minWidth, ok := parseIntParam(req.URL.Query().Get("minWidth"), 0, 800); ok {
+		opts.MinWidth = minWidth
+	}
+
+	if width, ok := parseIntParam(req.URL.Query().Get("width"), 60, 800); ok {
+		opts.Width = width
+	}
+
+	svg, err := h.svc.GenerateBadge(req.Context(), orgSlug, checkIdentifier, components, opts)
 	if err != nil {
 		return h.handleError(writer, err)
 	}

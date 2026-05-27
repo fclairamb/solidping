@@ -17,6 +17,16 @@
     "saved": "Settings saved.",
     "unexpectedError": "An unexpected error occurred"
   },
+  "usage": {
+    "title": "Usage",
+    "description": "Your current plan limits and how much of each you're using.",
+    "checks": "Checks",
+    "checksPerMinute": "Checks per minute",
+    "ssoUsers": "SSO users",
+    "unlimited": "Unlimited",
+    "upgrade": "Upgrade",
+    "loadError": "Could not load usage."
+  },
   "requests": {
     "title": "Membership requests",
     "description": "Approve or reject users asking to join.",

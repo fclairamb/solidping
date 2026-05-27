@@ -83,6 +83,23 @@
     "removeFailed": "Entfernen der Prüfung fehlgeschlagen",
     "removeButton": "Entfernen"
   },
+  "subscribers": {
+    "title": "Abonnenten",
+    "description": "Personen, die E-Mail-Benachrichtigungen für diese Statusseite abonniert haben.",
+    "empty": "Noch keine Abonnenten.",
+    "email": "E-Mail",
+    "scope": "Bereich",
+    "status": "Status",
+    "actions": "Aktionen",
+    "confirmed": "Bestätigt",
+    "pending": "Ausstehend",
+    "remove": "Entfernen",
+    "cancel": "Abbrechen",
+    "removed": "Abonnent entfernt",
+    "removeError": "Entfernen des Abonnenten fehlgeschlagen",
+    "removeConfirmTitle": "Abonnent entfernen?",
+    "removeConfirmDescription": "Dieser Abonnent erhält keine Benachrichtigungen mehr. Er kann sich über die öffentliche Statusseite erneut anmelden."
+  },
   "toast": {
     "created": "Statusseite erfolgreich erstellt",
     "updated": "Statusseite erfolgreich aktualisiert",

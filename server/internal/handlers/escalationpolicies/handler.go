@@ -44,7 +44,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		errors.Is(err, ErrTargetUIDForbidden),
 		errors.Is(err, ErrRepeatRequiresAfter),
 		errors.Is(err, ErrRepeatMaxNegative),
-		errors.Is(err, ErrDelayNegative):
+		errors.Is(err, ErrDelayNegative),
+		errors.Is(err, ErrDelayTooLarge):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error())
 	default:
 		return h.WriteInternalError(writer, err)
@@ -61,7 +62,7 @@ type targetJSON struct {
 type stepJSON struct {
 	UID          string       `json:"uid"`
 	Position     int          `json:"position"`
-	DelayMinutes int          `json:"delayMinutes"`
+	DelaySeconds int          `json:"delaySeconds"`
 	Targets      []targetJSON `json:"targets"`
 }
 
@@ -71,7 +72,7 @@ type policyJSON struct {
 	Name               string     `json:"name"`
 	Description        *string    `json:"description,omitempty"`
 	RepeatMax          int        `json:"repeatMax"`
-	RepeatAfterMinutes *int       `json:"repeatAfterMinutes,omitempty"`
+	RepeatAfterSeconds *int       `json:"repeatAfterSeconds,omitempty"`
 	CreatedAt          time.Time  `json:"createdAt"`
 	UpdatedAt          time.Time  `json:"updatedAt"`
 	Steps              []stepJSON `json:"steps,omitempty"`
@@ -102,7 +103,7 @@ func toPolicyJSON(detail *PolicyDetail) policyJSON {
 		steps = append(steps, stepJSON{
 			UID:          step.Step.UID,
 			Position:     step.Step.Position,
-			DelayMinutes: step.Step.DelayMinutes,
+			DelaySeconds: step.Step.DelaySeconds,
 			Targets:      targets,
 		})
 	}
@@ -113,7 +114,7 @@ func toPolicyJSON(detail *PolicyDetail) policyJSON {
 		Name:               policy.Name,
 		Description:        policy.Description,
 		RepeatMax:          policy.RepeatMax,
-		RepeatAfterMinutes: policy.RepeatAfterMinutes,
+		RepeatAfterSeconds: policy.RepeatAfterSeconds,
 		CreatedAt:          policy.CreatedAt,
 		UpdatedAt:          policy.UpdatedAt,
 		Steps:              steps,
@@ -147,12 +148,12 @@ func (h *Handler) ListPolicies(writer http.ResponseWriter, req bunrouter.Request
 // targetBody mirrors the request shape for one target.
 type targetBody struct {
 	Type string `json:"type"`
-	UID  string `json:"uid,omitempty"`
+	UID  string `json:"targetUid,omitempty"`
 }
 
 // stepBody mirrors the request shape for one step.
 type stepBody struct {
-	DelayMinutes int          `json:"delayMinutes"`
+	DelaySeconds int          `json:"delaySeconds"`
 	Targets      []targetBody `json:"targets"`
 }
 
@@ -162,7 +163,7 @@ type CreatePolicyBody struct {
 	Name               string     `json:"name"`
 	Description        string     `json:"description"`
 	RepeatMax          int        `json:"repeatMax"`
-	RepeatAfterMinutes *int       `json:"repeatAfterMinutes"`
+	RepeatAfterSeconds *int       `json:"repeatAfterSeconds"`
 	Steps              []stepBody `json:"steps"`
 }
 
@@ -180,7 +181,7 @@ func toStepInputs(steps []stepBody) []StepInput {
 		}
 
 		out = append(out, StepInput{
-			DelayMinutes: step.DelayMinutes,
+			DelaySeconds: step.DelaySeconds,
 			Targets:      targets,
 		})
 	}
@@ -206,7 +207,7 @@ func (h *Handler) CreatePolicy(writer http.ResponseWriter, req bunrouter.Request
 		Name:               body.Name,
 		Description:        body.Description,
 		RepeatMax:          body.RepeatMax,
-		RepeatAfterMinutes: body.RepeatAfterMinutes,
+		RepeatAfterSeconds: body.RepeatAfterSeconds,
 		Steps:              toStepInputs(body.Steps),
 	})
 	if err != nil {
@@ -227,9 +228,9 @@ func (h *Handler) GetPolicy(writer http.ResponseWriter, req bunrouter.Request) e
 	if err != nil {
 		return h.handleError(writer, err)
 	}
-	slug := req.Param("slug")
+	identifier := req.Param("slug")
 
-	detail, err := h.svc.GetPolicyBySlug(req.Context(), orgUID, slug)
+	detail, err := h.svc.GetPolicyByUidOrSlug(req.Context(), orgUID, identifier)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -243,7 +244,7 @@ type UpdatePolicyBody struct {
 	Name               *string     `json:"name"`
 	Description        *string     `json:"description"`
 	RepeatMax          *int        `json:"repeatMax"`
-	RepeatAfterMinutes *int        `json:"repeatAfterMinutes"`
+	RepeatAfterSeconds *int        `json:"repeatAfterSeconds"`
 	Steps              *[]stepBody `json:"steps"`
 }
 
@@ -265,7 +266,7 @@ func (h *Handler) UpdatePolicy(writer http.ResponseWriter, req bunrouter.Request
 		Name:               body.Name,
 		Description:        body.Description,
 		RepeatMax:          body.RepeatMax,
-		RepeatAfterMinutes: body.RepeatAfterMinutes,
+		RepeatAfterSeconds: body.RepeatAfterSeconds,
 	}
 
 	if body.Steps != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
 // Service errors.
@@ -65,13 +66,15 @@ const (
 type Service struct {
 	db      db.Service
 	jobsSvc jobsvc.Service
+	clock   clock.Clock
 }
 
 // NewService creates a new incident service.
-func NewService(dbService db.Service, jobsSvc jobsvc.Service) *Service {
+func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock) *Service {
 	return &Service{
 		db:      dbService,
 		jobsSvc: jobsSvc,
+		clock:   clk,
 	}
 }
 
@@ -116,7 +119,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return fmt.Errorf("failed to find active incident: %w", lookupErr)
 	}
 
-	now := time.Now()
+	now := s.clock.Now()
 	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
 		check, isSuccess, isFailure, activeIncident, now,
 	)
@@ -329,7 +332,7 @@ func (s *Service) routeCheckResultWithIncident(
 func (s *Service) handleFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	if incident == nil && !confirmationElapsed(check, time.Now()) {
+	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
 		// Confirmation window hasn't elapsed; stay validating.
 		return nil
 	}
@@ -347,7 +350,7 @@ func (s *Service) handleFailure(
 
 	// Check if we should escalate (once per incident)
 	if incident.EscalatedAt == nil && newFailureCount >= check.EscalationThreshold {
-		now := time.Now()
+		now := s.clock.Now()
 		update.EscalatedAt = &now
 		// Emit escalation event
 		if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
@@ -374,7 +377,7 @@ func (s *Service) handleSuccess(
 		return nil
 	}
 
-	if recoveryElapsed(check, time.Now()) {
+	if recoveryElapsed(check, s.clock.Now()) {
 		return s.resolveIncident(ctx, check, result, incident)
 	}
 
@@ -536,7 +539,7 @@ func (s *Service) tryReopenIncident(
 	if cooldown == 0 {
 		return false, nil // Reopening disabled for this check
 	}
-	since := time.Now().Add(-cooldown)
+	since := s.clock.Now().Add(-cooldown)
 
 	incident, err := s.db.FindRecentlyResolvedIncidentByCheckUID(ctx, check.UID, since)
 	if err != nil {
@@ -563,7 +566,7 @@ func (s *Service) tryReopenIncident(
 func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	now := time.Now()
+	now := s.clock.Now()
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
@@ -651,7 +654,7 @@ func (s *Service) countEnabledGroupMembers(ctx context.Context, orgUID, groupUID
 func (s *Service) handleGroupFailure(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	if incident == nil && !confirmationElapsed(check, time.Now()) {
+	if incident == nil && !confirmationElapsed(check, s.clock.Now()) {
 		return nil
 	}
 
@@ -672,7 +675,7 @@ func (s *Service) updateGroupMemberOnFailure(
 		return fmt.Errorf("failed to load incident member: %w", err)
 	}
 
-	now := time.Now()
+	now := s.clock.Now()
 
 	if member == nil {
 		// New member joining an active incident.
@@ -780,7 +783,7 @@ func (s *Service) createOrReopenGroupIncident(
 
 	cooldown := calculateCooldown(check)
 	if cooldown > 0 {
-		since := time.Now().Add(-cooldown)
+		since := s.clock.Now().Add(-cooldown)
 
 		incident, err := s.db.FindRecentlyResolvedIncidentByGroupUID(ctx, *check.CheckGroupUID, since)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -835,7 +838,7 @@ func (s *Service) createGroupIncident(
 	member := &models.IncidentMemberCheck{
 		IncidentUID:      incident.UID,
 		CheckUID:         check.UID,
-		JoinedAt:         time.Now(),
+		JoinedAt:         s.clock.Now(),
 		FirstFailureAt:   result.PeriodStart,
 		LastFailureAt:    result.PeriodStart,
 		FailureCount:     1,
@@ -863,7 +866,7 @@ func (s *Service) createGroupIncident(
 func (s *Service) reopenGroupIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
-	now := time.Now()
+	now := s.clock.Now()
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
@@ -944,7 +947,7 @@ func (s *Service) handleGroupSuccess(
 		return nil
 	}
 
-	if !recoveryElapsed(check, time.Now()) {
+	if !recoveryElapsed(check, s.clock.Now()) {
 		return nil
 	}
 
@@ -1088,13 +1091,15 @@ func (s *Service) emitEvent(
 		models.EventTypeIncidentAcknowledged, models.EventTypeIncidentUnacknowledged,
 		models.EventTypeIncidentSnoozed, models.EventTypeIncidentUnsnoozed,
 		models.EventTypeIncidentEscalationFailed,
+		models.EventTypeStatusUpdateCreated, models.EventTypeStatusUpdateUpdated,
+		models.EventTypeStatusUpdateDeleted,
 		models.EventTypeOrgActivationSignupCompleted,
 		models.EventTypeOrgActivationFirstCheckCreated,
 		models.EventTypeOrgActivationFirstResultReceived,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
 		models.EventTypeOrgActivationFirstIncidentPaged:
 		// No notifications for these event types — operator actions, soft
-		// escalation failures, or activation milestones.
+		// escalation failures, status updates, or activation milestones.
 	}
 
 	return nil
@@ -1138,7 +1143,7 @@ func (s *Service) queueGroupNotifications(
 			}
 
 			seen[conn.UID] = true
-			s.enqueueNotificationJob(ctx, orgUID, conn.UID, incidentUID, eventType)
+			s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
 		}
 	}
 }
@@ -1146,7 +1151,7 @@ func (s *Service) queueGroupNotifications(
 // enqueueNotificationJob marshals the config and creates a single job row.
 // Shared between per-check and group fan-out paths.
 func (s *Service) enqueueNotificationJob(
-	ctx context.Context, orgUID, connectionUID, incidentUID string, eventType models.EventType,
+	ctx context.Context, orgUID, connectionUID, channelType, incidentUID string, eventType models.EventType,
 ) {
 	config, err := json.Marshal(jobtypes.NotificationJobConfig{
 		ConnectionUID: connectionUID,
@@ -1163,12 +1168,25 @@ func (s *Service) enqueueNotificationJob(
 		return
 	}
 
-	if _, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil); err != nil {
+	job, err := s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
+	if err != nil {
 		slog.WarnContext(ctx, "Failed to create notification job",
 			"connectionUid", connectionUID,
 			"incidentUid", incidentUID,
 			"error", err,
 		)
+
+		return
+	}
+
+	// Audit: record a pending row so we can later track delivery outcome.
+	if auditErr := s.db.CreateIncidentNotification(ctx, models.NewIncidentNotificationForJob(
+		orgUID, incidentUID, string(eventType),
+		models.IncidentNotificationSourceCheckConnection,
+		connectionUID, job.UID, channelType,
+		nil, nil,
+	)); auditErr != nil {
+		slog.WarnContext(ctx, "failed to create notification audit row", "error", auditErr)
 	}
 }
 
@@ -1188,28 +1206,7 @@ func (s *Service) queueNotifications(
 			continue
 		}
 
-		config, err := json.Marshal(jobtypes.NotificationJobConfig{
-			ConnectionUID: conn.UID,
-			IncidentUID:   incidentUID,
-			EventType:     string(eventType),
-		})
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to marshal notification config",
-				"connectionUid", conn.UID,
-				"incidentUid", incidentUID,
-				"error", err,
-			)
-			continue
-		}
-
-		_, err = s.jobsSvc.CreateJob(ctx, orgUID, string(jobdef.JobTypeNotification), config, nil)
-		if err != nil {
-			slog.WarnContext(ctx, "Failed to create notification job",
-				"connectionUid", conn.UID,
-				"incidentUid", incidentUID,
-				"error", err,
-			)
-		}
+		s.enqueueNotificationJob(ctx, orgUID, conn.UID, string(conn.Type), incidentUID, eventType)
 	}
 }
 
@@ -1724,7 +1721,7 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	}
 
 	// Update the incident
-	now := time.Now()
+	now := s.clock.Now()
 	update := models.IncidentUpdate{
 		AcknowledgedAt: &now,
 	}
@@ -1917,7 +1914,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 		return nil, fmt.Errorf("failed to get incident: %w", err)
 	}
 
-	now := time.Now()
+	now := s.clock.Now()
 	update := models.IncidentUpdate{
 		SnoozedUntil: &until,
 	}
@@ -1971,7 +1968,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 // resolveSnoozeUntil normalizes Until / Duration into a single timestamp and
 // validates the resulting window. Pulled out so SnoozeIncident stays simple.
 func (s *Service) resolveSnoozeUntil(req *SnoozeIncidentRequest) (time.Time, error) {
-	now := time.Now()
+	now := s.clock.Now()
 
 	var until time.Time
 
@@ -2096,7 +2093,7 @@ func (s *Service) resolveIncidentByOrgUID(
 		return incident, nil
 	}
 
-	now := time.Now()
+	now := s.clock.Now()
 	state := models.IncidentStateResolved
 	resolutionType := models.ResolutionTypeManual
 	update := models.IncidentUpdate{
@@ -2149,7 +2146,7 @@ func (s *Service) resolveIncidentByOrgUID(
 // unsnoozed and any error from the listing query (per-incident update
 // errors are logged and skipped).
 func (s *Service) SweepUnsnooze(ctx context.Context) (int, error) {
-	incidents, err := s.db.ListExpiredSnoozedIncidents(ctx, time.Now())
+	incidents, err := s.db.ListExpiredSnoozedIncidents(ctx, s.clock.Now())
 	if err != nil {
 		return 0, fmt.Errorf("failed to list expired snoozes: %w", err)
 	}

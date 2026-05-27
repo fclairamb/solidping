@@ -1,0 +1,67 @@
+name: multi-step-repeat
+description: "Multi-step escalation policy with repeat — asserts three webhook events in correct order within 30s"
+timeout: 60s
+cleanup: true
+
+# Requires: spec 2026-05-17-05-sub-minute-escalation-step-delays (delaySeconds support).
+# Policy has two steps: step 0 fires immediately, step 1 fires 3s later.
+# repeatAfterSeconds: 5 causes the cycle to repeat once, so three total events:
+#   1. incident.created (step 0, delay=0)
+#   2. incident.created (step 1, delay=3s)
+#   3. incident.created (repeat, step 0 again, delay=5s after cycle end)
+
+steps:
+  - kind: create_heartbeat_check
+    id: repeat-check
+    slug: "scenario-repeat-hb-{{.Timestamp}}"
+    confirmation_period_seconds: 0
+    recovery_period_seconds: 0
+    escalation_threshold: 1
+
+  - kind: create_webhook_channel
+    id: repeat-channel
+    url: "{{.ReceiverURL}}/hook/repeat-channel"
+
+  - kind: create_escalation_policy
+    id: repeat-policy
+    slug: "scenario-repeat-policy-{{.Timestamp}}"
+    repeat_max: 1
+    repeat_after_seconds: 5
+    steps:
+      - delay_seconds: 0
+        targets:
+          - type: connection
+            channel_id: repeat-channel
+      - delay_seconds: 3
+        targets:
+          - type: connection
+            channel_id: repeat-channel
+
+  - kind: assign_policy_to_check
+    check_id: repeat-check
+    policy_id: repeat-policy
+
+  - kind: send_heartbeat
+    check_id: repeat-check
+    status: down
+
+  # Step 0 fires immediately.
+  - kind: expect_webhook
+    channel_id: repeat-channel
+    timeout: 10s
+    assert:
+      event_type: incident.created
+
+  # Step 1 fires after 3s.
+  - kind: expect_webhook
+    channel_id: repeat-channel
+    timeout: 10s
+    assert:
+      event_type: incident.created
+
+  # Repeat cycle fires after another 5s (repeat_after_seconds from end of first cycle).
+  - kind: expect_webhook
+    channel_id: repeat-channel
+    timeout: 15s
+    assert:
+      event_type: incident.created

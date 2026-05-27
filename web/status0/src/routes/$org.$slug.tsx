@@ -36,5 +36,5 @@ function StatusPageRoute() {
     );
   }
 
-  return <StatusPageView page={page} />;
+  return <StatusPageView page={page} org={org} />;
 }

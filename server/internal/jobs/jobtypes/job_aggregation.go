@@ -329,10 +329,7 @@ func aggregateResults(
 				&state.maxStatus, state.statusCounts, &state.successCount, &state.totalChecks,
 				&state.lastPeriodStart, &state.lastOutput)
 		} else {
-			processAggregatedResult(
-				result, &state.totalDuration, &state.minDuration, &state.maxDuration,
-				&state.maxStatus, state.statusCounts, &state.totalChecks, &state.successCount,
-				&state.availabilitySum, &state.lastOutput)
+			processAggregatedResult(result, state, &state.lastOutput)
 		}
 
 		if result.WorkerUID != nil {
@@ -349,9 +346,39 @@ func aggregateResults(
 	// Calculate dominant status (most frequent, ties broken by higher status number)
 	dominantStatus := calculateDominantStatus(state.statusCounts)
 
+	// Resolve the average duration to persist (duration_avg). For raw data it is
+	// the mean of the raw durations; for aggregated children it is the
+	// total_checks-weighted mean of their duration_avg values. Nil when no
+	// measured duration is available for any contributing row.
+	durationAvg := resolveDurationAvg(state, avgDuration)
+
 	// Build and return aggregated result
 	return buildAggregatedResult(results, targetPeriodType, periodStart, periodEnd, state,
-		avgDuration, p95Duration, availabilityPct, dominantStatus)
+		avgDuration, p95Duration, availabilityPct, dominantStatus, durationAvg)
+}
+
+// resolveDurationAvg returns the duration_avg to persist for the aggregated row.
+// Raw rollups use the directly computed mean (only when at least one raw
+// duration was seen); aggregated rollups use the total_checks-weighted mean of
+// children's duration_avg. Returns nil when no contributing duration exists.
+func resolveDurationAvg(state *aggregationState, rawAvg float32) *float32 {
+	if state.isRawData {
+		if len(state.durations) == 0 {
+			return nil
+		}
+
+		avg := rawAvg
+
+		return &avg
+	}
+
+	if state.durationAvgWeight == 0 {
+		return nil
+	}
+
+	avg := float32(state.durationAvgWeightedSum / float64(state.durationAvgWeight))
+
+	return &avg
 }
 
 // metricAggregationType represents how a metric should be aggregated.
@@ -734,16 +761,33 @@ func processRawResult(
 // processAggregatedResult processes a single aggregated result and updates aggregation state.
 func processAggregatedResult(
 	result *models.Result,
-	totalDuration *float32,
-	minDuration, maxDuration *float32,
-	maxStatus *int,
-	statusCounts map[int]int,
-	totalChecks, successCount *int,
-	availabilitySum *float64,
+	state *aggregationState,
 	lastOutput *models.JSONMap,
 ) {
+	totalDuration := &state.totalDuration
+	minDuration := &state.minDuration
+	maxDuration := &state.maxDuration
+	maxStatus := &state.maxStatus
+	statusCounts := state.statusCounts
+	totalChecks := &state.totalChecks
+	successCount := &state.successCount
+	availabilitySum := &state.availabilitySum
+
 	if result.Duration != nil {
 		*totalDuration += *result.Duration
+	}
+
+	// total_checks-weighted mean of children's duration_avg. Children that do
+	// not carry a duration_avg (nil) are skipped entirely so they neither pull
+	// the average nor add to the weight.
+	if result.DurationAvg != nil {
+		weight := 1
+		if result.TotalChecks != nil {
+			weight = *result.TotalChecks
+		}
+
+		state.durationAvgWeightedSum += float64(*result.DurationAvg) * float64(weight)
+		state.durationAvgWeight += weight
 	}
 
 	if result.DurationMin != nil && *result.DurationMin < *minDuration {
@@ -794,6 +838,12 @@ type aggregationState struct {
 	lastPeriodStart time.Time
 	workerUIDs      map[string]bool
 	availabilitySum float64
+
+	// durationAvg tracks the total_checks-weighted average duration across
+	// children for hour/day/month rollups. For raw data the average is computed
+	// directly from the collected durations instead.
+	durationAvgWeightedSum float64
+	durationAvgWeight      int
 }
 
 // initializeAggregationState initializes the aggregation state from the first result.
@@ -856,6 +906,7 @@ func buildAggregatedResult(
 	avgDuration, p95Duration float32,
 	availabilityPct float64,
 	dominantStatus int,
+	durationAvg *float32,
 ) *models.Result {
 	// Determine worker_uid
 	var workerUID *string
@@ -887,6 +938,7 @@ func buildAggregatedResult(
 		DurationMin:      &state.minDuration,
 		DurationMax:      &state.maxDuration,
 		DurationP95:      &p95Duration,
+		DurationAvg:      durationAvg,
 		TotalChecks:      &totalChecksInt,
 		SuccessfulChecks: &successfulChecksInt,
 		AvailabilityPct:  &availabilityPct,

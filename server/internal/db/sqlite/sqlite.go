@@ -4227,3 +4227,26 @@ func (s *Service) CountSSOMembersForOrg(ctx context.Context, orgUID string) (int
 
 	return count, err
 }
+
+// ListOrgCheckRates returns (enabled, period) for all non-deleted,
+// non-internal checks of the given org. Used by the entitlements service
+// to compute usage stats and enforce MaxChecks. No SQL arithmetic — the
+// per-minute rate is summed in Go.
+func (s *Service) ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error) {
+	var rates []models.CheckRate
+
+	err := s.db.NewSelect().
+		Model((*models.Check)(nil)).
+		Column("enabled", "period").
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Where("internal = ?", false).
+		Scan(ctx, &rates)
+	if err != nil {
+		return nil, fmt.Errorf("list org check rates: %w", err)
+	}
+
+	return rates, nil
+}
+
+// ListPublicStatusUpdates is implemented in status_update.go.

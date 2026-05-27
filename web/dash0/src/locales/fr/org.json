@@ -17,6 +17,16 @@
     "saved": "Paramètres enregistrés.",
     "unexpectedError": "Une erreur inattendue s'est produite"
   },
+  "usage": {
+    "title": "Utilisation",
+    "description": "Les limites de votre offre et votre consommation actuelle.",
+    "checks": "Vérifications",
+    "checksPerMinute": "Vérifications par minute",
+    "ssoUsers": "Utilisateurs SSO",
+    "unlimited": "Illimité",
+    "upgrade": "Mettre à niveau",
+    "loadError": "Impossible de charger l'utilisation."
+  },
   "requests": {
     "title": "Demandes d'adhésion",
     "description": "Approuver ou rejeter les utilisateurs souhaitant rejoindre.",

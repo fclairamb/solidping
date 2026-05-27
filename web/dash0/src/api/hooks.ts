@@ -38,8 +38,9 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
   config?: Record<string, unknown>;
+  configPrivateKeys?: string[];
   regions?: string[];
   labels?: Record<string, string>;
   enabled?: boolean;
@@ -77,7 +78,7 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
   config: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -108,7 +109,7 @@ export interface OrgResult {
   checkUid?: string;
   checkName?: string;
   checkSlug?: string;
-  status?: "up" | "down" | "unknown" | "created";
+  status?: "up" | "down" | "unknown" | "created" | "running";
   durationMs?: number;
   durationMinMs?: number;
   durationMaxMs?: number;
@@ -869,6 +870,92 @@ export function useEvents(
   });
 }
 
+// Incident Notification types and hooks
+
+export interface IncidentNotificationUser {
+  uid: string;
+  name: string;
+}
+
+export interface IncidentNotificationConnection {
+  uid: string;
+  name: string;
+  type: string;
+}
+
+export interface IncidentNotificationIncident {
+  uid: string;
+  title: string;
+  state: "active" | "resolved";
+  startedAt: string;
+}
+
+export interface IncidentNotification {
+  uid: string;
+  incidentUid: string;
+  eventType: string;
+  source: string;
+  stepUid?: string;
+  repeatIndex?: number;
+  channelType: string;
+  status: "pending" | "sent" | "failed" | "cancelled" | "skipped";
+  skipReason?: string;
+  error?: string;
+  messageId?: string;
+  createdAt: string;
+  sentAt?: string;
+  user: IncidentNotificationUser | null;
+  connection: IncidentNotificationConnection | null;
+  incident?: IncidentNotificationIncident;
+}
+
+export function useIncidentNotifications(
+  org: string,
+  incidentUid: string,
+  options?: {
+    status?: string;
+    limit?: number;
+  }
+) {
+  return useQuery({
+    queryKey: ["incidentNotifications", org, incidentUid, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.status) params.set("status", options.status);
+      if (options?.limit) params.set("limit", options.limit.toString());
+      const query = params.toString();
+      const path = `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(path);
+      return response.data || [];
+    },
+    enabled: !!org && !!incidentUid,
+  });
+}
+
+export function useMyNotifications(
+  org: string,
+  options?: {
+    status?: string;
+    limit?: number;
+    before?: string;
+  }
+) {
+  return useQuery({
+    queryKey: ["myNotifications", org, options],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (options?.status) params.set("status", options.status);
+      if (options?.limit) params.set("limit", options.limit.toString());
+      if (options?.before) params.set("before", options.before);
+      const query = params.toString();
+      const path = `/api/v1/orgs/${org}/me/notifications${query ? `?${query}` : ""}`;
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(path);
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
 // Token types
 export interface TokenInfo {
   uid: string;
@@ -1092,6 +1179,53 @@ export function useDeleteStatusPage(org: string) {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["statusPages", org] });
+    },
+  });
+}
+
+// Status page subscriber hooks (read-only admin list + remove).
+export interface StatusPageSubscriber {
+  uid: string;
+  email: string;
+  scope: string;
+  incidentUid?: string;
+  confirmed: boolean;
+  createdAt: string;
+}
+
+export function useStatusPageSubscribers(org: string, statusPageUid: string) {
+  return useQuery({
+    queryKey: ["statusPageSubscribers", org, statusPageUid],
+    queryFn: async () => {
+      const response = await apiFetch<{
+        data?: StatusPageSubscriber[];
+        meta?: { count: number };
+      }>(`/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers`);
+      return {
+        subscribers: response.data ?? [],
+        count: response.meta?.count ?? response.data?.length ?? 0,
+      };
+    },
+    enabled: !!org && !!statusPageUid,
+  });
+}
+
+export function useDeleteStatusPageSubscriber(
+  org: string,
+  statusPageUid: string
+) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(
+        `/api/v1/orgs/${org}/status-pages/${statusPageUid}/subscribers/${uid}`,
+        { method: "DELETE" }
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["statusPageSubscribers", org, statusPageUid],
+      });
     },
   });
 }
@@ -1923,6 +2057,27 @@ export function useSetSystemParameter() {
   });
 }
 
+// Slack Socket Mode status hook
+export interface SlackSocketStatus {
+  enabled: boolean;
+  connected: boolean;
+  lastConnectedAt?: string;
+  lastError?: string;
+  teamCount?: number;
+}
+
+export function useSlackSocketStatus() {
+  return useQuery({
+    queryKey: ["slack-socket-status"],
+    queryFn: async () =>
+      apiFetch<SlackSocketStatus>(
+        "/api/v1/integrations/slack/socket/status",
+      ),
+    refetchInterval: 5000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useTestEmail() {
   return useMutation({
     mutationFn: (recipient: string) =>
@@ -2282,7 +2437,7 @@ export interface EscalationPolicyTarget {
 export interface EscalationPolicyStep {
   uid?: string;
   position: number;
-  delayMinutes: number;
+  delaySeconds: number;
   // severityUid points at the per-org Severity row that gates which
   // channel-types fire when this step pages. null/undefined means
   // "no severity filter — fall through to the target's own channel".
@@ -2392,7 +2547,7 @@ export interface EscalationPolicy {
   name: string;
   description?: string;
   repeatMax: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps?: EscalationPolicyStep[];
   createdAt?: string;
   updatedAt?: string;
@@ -2403,7 +2558,7 @@ export interface CreateEscalationPolicyRequest {
   name: string;
   description?: string;
   repeatMax: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps: EscalationPolicyStep[];
 }
 
@@ -2412,7 +2567,7 @@ export interface UpdateEscalationPolicyRequest {
   name?: string;
   description?: string;
   repeatMax?: number;
-  repeatAfterMinutes?: number | null;
+  repeatAfterSeconds?: number | null;
   steps?: EscalationPolicyStep[];
 }
 
@@ -2495,7 +2650,46 @@ export type ConnectionType =
   | "mattermost"
   | "ntfy"
   | "opsgenie"
-  | "pushover";
+  | "pushover"
+  | "freebox"
+  | "webpush";
+
+// Capabilities mirror the backend capability registry
+// (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
+// are independent: a type may be both a notification sink and a data source.
+//   - canNotify: can receive outbound notifications (acts as a "channel")
+//   - canSource: provides data that checks read from
+export interface IntegrationCapabilities {
+  canNotify: boolean;
+  canSource: boolean;
+}
+
+const NOTIFY: IntegrationCapabilities = { canNotify: true, canSource: false };
+const SOURCE: IntegrationCapabilities = { canNotify: false, canSource: true };
+
+export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
+  slack: NOTIFY,
+  discord: NOTIFY,
+  webhook: NOTIFY,
+  email: NOTIFY,
+  googlechat: NOTIFY,
+  mattermost: NOTIFY,
+  ntfy: NOTIFY,
+  opsgenie: NOTIFY,
+  pushover: NOTIFY,
+  freebox: SOURCE,
+  webpush: NOTIFY,
+};
+
+/** Whether an integration type can receive notifications (act as a channel). */
+export function canNotify(type: ConnectionType): boolean {
+  return CAPABILITIES[type]?.canNotify ?? true;
+}
+
+/** Whether an integration type provides data that checks read from. */
+export function canSource(type: ConnectionType): boolean {
+  return CAPABILITIES[type]?.canSource ?? false;
+}
 
 export interface Channel {
   uid: string;
@@ -2587,6 +2781,140 @@ export function useDeleteChannel(org: string) {
   });
 }
 
+// Standard Webhooks: per-channel signing-secret rotation and synthetic test
+// delivery. Both are webhook-only on the backend (400 otherwise).
+
+/** Result of a POST /channels/:uid/test synthetic delivery. */
+export interface WebhookTestResult {
+  success: boolean;
+  statusCode: number;
+  durationMs: number;
+  error?: string;
+}
+
+export function useRotateWebhookSecret(org: string, channelUid: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<Channel>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/rotate-secret`,
+        { method: "POST" },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["channel", org, channelUid],
+      });
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+    },
+  });
+}
+
+export function useTestWebhookChannel(org: string) {
+  return useMutation({
+    mutationFn: (channelUid: string) =>
+      apiFetch<WebhookTestResult>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/test`,
+        { method: "POST" },
+      ),
+  });
+}
+
+// Freebox pairing helpers. The Freebox API requires a one-time
+// LCD-approval step, so the pairing flow is split across two endpoints
+// rather than mapped onto the generic CRUD: POST asks the Freebox for
+// an app_token (which we encrypt and store immediately), GET polls the
+// LCD-approval status every ~2 s until it terminates.
+
+export interface StartFreeboxPairingRequest {
+  name?: string;
+  baseUrl?: string;
+}
+
+export interface FreeboxPairingResponse {
+  connectionUid: string;
+  trackId: number;
+  status: string;
+}
+
+export interface FreeboxPairingStatusResponse {
+  status: string;
+}
+
+export function useStartFreeboxPairing(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (request: StartFreeboxPairingRequest) =>
+      apiFetch<FreeboxPairingResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+    },
+  });
+}
+
+// useFreeboxPairingStatus polls the status endpoint while `enabled`
+// is true. The dashboard switches `enabled` off once the status
+// becomes terminal (granted/denied/timeout).
+export function useFreeboxPairingStatus(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxPairingStatus", org, connectionUid],
+    queryFn: () =>
+      apiFetch<FreeboxPairingStatusResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/pair/${connectionUid}/status`,
+      ),
+    enabled: enabled && !!org && !!connectionUid,
+    refetchInterval: 2000,
+  });
+}
+
+// Freebox LAN-discovery types and hooks. The endpoint surfaces hosts
+// currently visible to a paired Freebox so the operator can pre-fill
+// an ICMP check without typing an IP — see spec
+// `2026-05-24-08-freebox-lan-discovery.md`.
+
+export interface FreeboxLanHost {
+  id: string;
+  name: string;
+  ip: string;
+  hostType: string;
+  reachable: boolean;
+  lastSeen?: string;
+}
+
+export interface ListFreeboxLanHostsResponse {
+  data: FreeboxLanHost[];
+}
+
+// useFreeboxLanHosts polls the LAN-browser endpoint on demand. We do
+// not auto-refresh — the dashboard opens the picker, gets a snapshot,
+// and the user moves on. A manual refetch is one click away.
+export function useFreeboxLanHosts(
+  org: string,
+  connectionUid: string | undefined,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: ["freeboxLanHosts", org, connectionUid],
+    queryFn: async () => {
+      const response = await apiFetch<ListFreeboxLanHostsResponse>(
+        `/api/v1/orgs/${org}/integrations/freebox/${connectionUid}/lan-hosts`,
+      );
+      return response.data || [];
+    },
+    enabled: enabled && !!org && !!connectionUid,
+    staleTime: 30_000,
+  });
+}
+
 // CheckConnection is what GET /checks/$check/channels returns — a
 // flattened view of the bound channel (uid is the underlying channel
 // UID), not the join row. The TS-side name keeps "Connection" until
@@ -2628,5 +2956,512 @@ export function useSetCheckConnections(org: string, checkUid: string) {
         queryKey: ["checkConnections", org, checkUid],
       });
     },
+  });
+}
+
+// Slack destination picker types and hook
+
+export interface SlackChannel {
+  id: string;
+  name: string;
+  isPrivate: boolean;
+  isMember: boolean;
+}
+
+export interface SlackUser {
+  id: string;
+  name: string;
+  realName: string;
+}
+
+export interface SlackDestinationsResponse {
+  channels: SlackChannel[];
+  users: SlackUser[];
+}
+
+export function useSlackDestinations(
+  org: string,
+  channelUid: string,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["slack-destinations", org, channelUid],
+    queryFn: () =>
+      apiFetch<SlackDestinationsResponse>(
+        `/api/v1/orgs/${org}/channels/${channelUid}/slack/destinations`,
+      ),
+    enabled: enabled && Boolean(org && channelUid),
+    staleTime: 60_000,
+  });
+}
+
+// --- Status Update types and hooks ---
+
+export interface StatusUpdate {
+  uid: string;
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: "investigating" | "identified" | "monitoring" | "resolved" | "maintenance" | "info";
+  publishedAt: string;
+  authorUid: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStatusUpdateRequest {
+  statusPageUid: string;
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title: string;
+  bodyMarkdown: string;
+  linkUrl?: string;
+  kind: string;
+  publishedAt?: string;
+}
+
+export interface UpdateStatusUpdateRequest {
+  sectionUid?: string;
+  checkUid?: string;
+  incidentUid?: string;
+  title?: string;
+  bodyMarkdown?: string;
+  linkUrl?: string;
+  kind?: string;
+  publishedAt?: string;
+}
+
+export function useStatusUpdates(
+  org: string,
+  params: {
+    statusPage?: string;
+    section?: string;
+    check?: string;
+    incident?: string;
+    limit?: number;
+    offset?: number;
+  } = {}
+) {
+  return useQuery({
+    queryKey: ["statusUpdates", org, params],
+    queryFn: async () => {
+      const query = new URLSearchParams();
+      if (params.statusPage) query.set("statusPage", params.statusPage);
+      if (params.section) query.set("section", params.section);
+      if (params.check) query.set("check", params.check);
+      if (params.incident) query.set("incident", params.incident);
+      if (params.limit) query.set("limit", params.limit.toString());
+      if (params.offset) query.set("offset", params.offset.toString());
+      const qs = query.toString();
+      const response = await apiFetch<{ data?: StatusUpdate[] }>(
+        `/api/v1/orgs/${org}/status-updates${qs ? `?${qs}` : ""}`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useStatusUpdate(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["statusUpdate", org, uid],
+    queryFn: async () =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useUpdateStatusUpdate(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateStatusUpdateRequest) =>
+      apiFetch<StatusUpdate>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "PATCH",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+export function useDeleteStatusUpdate(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/status-updates/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["statusUpdates", org] });
+    },
+  });
+}
+
+// ── Discovery ─────────────────────────────────────────────────────────────────
+
+export interface DiscoveryScan {
+  uid: string;
+  type: string;
+  status: string;
+  config: Record<string, unknown>;
+  scheduledAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// DiscoveryScanProgress is the derived fan-out progress block returned alongside
+// a plan scan: chunk counts, an overall derived status, and the host roll-up count.
+export interface DiscoveryScanProgress {
+  totalChunks: number;
+  completedChunks: number;
+  failedChunks: number;
+  runningChunks: number;
+  pendingChunks: number;
+  derivedStatus: "pending" | "running" | "success" | "failed";
+  hostCount: number;
+}
+
+export interface SuggestedCheck {
+  type: string;
+  config: Record<string, unknown>;
+}
+
+export type DiscoverySource = "lan" | "freebox";
+
+export interface DiscoveredHost {
+  uid: string;
+  organizationUid: string;
+  jobUid: string;
+  ip: string;
+  hostname?: string;
+  openPorts: number[];
+  icmpReachable: boolean;
+  suggestedChecks: SuggestedCheck[];
+  source: DiscoverySource;
+  promotedToCheckUid?: string;
+  discoveredAt: string;
+}
+
+export interface StartDiscoveryScanRequest {
+  cidrs: string[];
+  ports?: number[];
+  timeout?: string;
+  concurrency?: number;
+}
+
+export interface PromoteCheckSpec {
+  checkType: string;
+  name?: string;
+  slug?: string;
+  period?: string;
+  extraConfig?: Record<string, unknown>;
+}
+
+export interface PromoteCandidateRequest {
+  checks: PromoteCheckSpec[];
+}
+
+export function useStartDiscoveryScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (req: StartDiscoveryScanRequest) =>
+      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
+        method: "POST",
+        body: JSON.stringify(req),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useStartFreeboxScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (channelUid: string) =>
+      apiFetch<{ data: DiscoveryScan }>(
+        `/api/v1/orgs/${org}/discovery/freebox-scans`,
+        {
+          method: "POST",
+          body: JSON.stringify({ channelUid }),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useListDiscoveryScans(org: string) {
+  return useQuery({
+    queryKey: ["discoveryScans", org],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan[] }>(`/api/v1/orgs/${org}/discovery/scans`),
+    select: (res) => res?.data ?? [],
+  });
+}
+
+// scanIsActive returns true while a scan (by its derived status, falling back to
+// the plan job's own status for legacy/standalone jobs) is still in flight.
+function scanIsActive(
+  scan?: DiscoveryScan,
+  progress?: DiscoveryScanProgress,
+): boolean {
+  const status = progress?.derivedStatus ?? scan?.status;
+  return status === "pending" || status === "running";
+}
+
+// useDiscoveryScan returns the plan job plus its derived fan-out progress block
+// (when present). It polls every 3s while the scan is active so the progress
+// indicator and host table update as chunks finish.
+export function useDiscoveryScan(org: string, jobUid: string) {
+  return useQuery({
+    queryKey: ["discoveryScan", org, jobUid],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryScan; progress?: DiscoveryScanProgress }>(
+        `/api/v1/orgs/${org}/discovery/scans/${jobUid}`,
+      ),
+    select: (res) => ({ scan: res?.data, progress: res?.progress }),
+    enabled: !!jobUid,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return scanIsActive(data?.data, data?.progress) ? 3000 : false;
+    },
+  });
+}
+
+// useCancelScan stops a running fan-out scan: cancels the plan job (if pending)
+// and drops every pending child chunk. Running children finish naturally.
+export function useCancelScan(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (jobUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/scans/${jobUid}/cancel`, {
+        method: "POST",
+      }),
+    onSuccess: (_data, jobUid) => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryScan", org, jobUid] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
+    },
+  });
+}
+
+export function useListCandidateHosts(
+  org: string,
+  opts?: { jobUid?: string; promoted?: boolean; source?: string },
+  // pollWhileActive streams hosts into the table while a fan-out scan is running
+  // (chunks land progressively), by polling the list every 3s.
+  pollWhileActive = false,
+) {
+  const params = new URLSearchParams();
+  if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
+  if (opts?.source) params.set("source", opts.source);
+  const qs = params.toString();
+
+  return useQuery({
+    queryKey: ["discoveryHosts", org, opts],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveredHost[] }>(
+        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      ),
+    select: (res) => res?.data ?? [],
+    refetchInterval: pollWhileActive ? 3000 : false,
+  });
+}
+
+export function usePromoteCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+      apiFetch<{ data: Check[] }>(
+        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        {
+          method: "POST",
+          body: JSON.stringify(req),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["checks", org] });
+    },
+  });
+}
+
+export function useDismissCandidate(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+    },
+  });
+}
+
+// Notification routes & contacts
+
+export interface NotificationContact {
+  uid: string;
+  type: string;
+  value: string;
+  label: string;
+  verifiedAt?: string;
+}
+
+export interface NotificationRoute {
+  uid: string;
+  enabled: boolean;
+  position: number;
+  contact: NotificationContact;
+  createdAt: string;
+}
+
+export interface SlackSuggestion {
+  slackUserId: string;
+  workspaceName: string;
+  channelUid: string;
+}
+
+export interface NotificationRoutesResponse {
+  data: NotificationRoute[];
+  slackSuggestion?: SlackSuggestion;
+}
+
+export function useNotificationRoutes(org: string) {
+  return useQuery({
+    queryKey: ["notificationRoutes", org],
+    queryFn: () =>
+      apiFetch<NotificationRoutesResponse>(`/api/v1/orgs/${org}/users/me/notification-routes`),
+  });
+}
+
+export function useCreateNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { type: string; value: string; label?: string }) =>
+      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-contacts`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useDeleteNotificationContact(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (contactUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-contacts/${contactUid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function usePatchNotificationRoute(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ routeUid, patch }: { routeUid: string; patch: { enabled?: boolean } }) =>
+      apiFetch<NotificationRoute>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["notificationRoutes", org] });
+    },
+  });
+}
+
+export function useTestNotificationRoute(org: string) {
+  return useMutation({
+    mutationFn: (routeUid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/users/me/notification-routes/${routeUid}/test`, {
+        method: "POST",
+      }),
+  });
+}
+
+// Entitlements hooks
+export interface EntitlementsLimits {
+  maxChecks?: number | null;
+  maxChecksPerMinute?: number | null;
+  maxSsoUsers?: number | null;
+}
+
+export interface EntitlementsUsage {
+  checks: number;
+  checksPerMinute: number;
+  ssoUsers: number;
+}
+
+export interface EntitlementsResponse {
+  limits: EntitlementsLimits;
+  usage?: EntitlementsUsage;
+  source: string;
+  stale: boolean;
+  upgradeUrl?: string;
+}
+
+export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
+  return useQuery({
+    queryKey: ["entitlements", org, opts?.withUsage ?? false],
+    queryFn: () =>
+      apiFetch<EntitlementsResponse>(
+        `/api/v1/orgs/${org}/entitlements${opts?.withUsage ? "?with=usage" : ""}`,
+      ),
+    enabled: !!org,
+    staleTime: 60 * 1000,
+  });
+}
+
+// ----- Web Push -----
+
+interface VapidPublicKeyData {
+  publicKey: string;
+}
+
+interface VapidPublicKeyResponse {
+  data: VapidPublicKeyData;
+}
+
+export function useVapidPublicKey(org: string) {
+  return useQuery({
+    queryKey: ["vapidPublicKey", org],
+    queryFn: () =>
+      apiFetch<VapidPublicKeyResponse>(
+        `/api/v1/orgs/${org}/webpush/vapid-public-key`,
+      ).then((r) => r.data),
+    enabled: !!org,
+    staleTime: Infinity, // key is stable; refetch only on mount
   });
 }

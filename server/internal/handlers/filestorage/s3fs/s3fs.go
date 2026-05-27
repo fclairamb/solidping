@@ -1,6 +1,10 @@
 // Package s3fs implements the FileStorage interface backed by S3 via
-// aws-sdk-go-v2. Credentials come from the standard AWS chain (env, IAM
-// role, shared config). The bucket and region are read from filestorage.Config.
+// aws-sdk-go-v2. It targets AWS S3 by default but also any S3-compatible store
+// (MinIO, Cloudflare R2, Garage, Ceph/RGW, Backblaze B2) when a custom endpoint
+// and/or path-style addressing are configured. Credentials default to the
+// standard AWS chain (env, IAM role, shared config); static access/secret keys
+// can be pinned via filestorage.Config for self-hosted deployments. The bucket,
+// region, endpoint and credentials are all read from filestorage.Config.
 package s3fs
 
 import (
@@ -12,6 +16,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/google/uuid"
@@ -37,24 +42,50 @@ func New(bucket, prefix string, client *s3.Client) *Backend {
 // ErrBucketRequired is returned when the S3 backend is selected but no bucket is configured.
 var ErrBucketRequired = errors.New("s3fs: S3Bucket is required")
 
+// BuildClientOptions returns the LoadDefaultConfig options and the s3.Options
+// mutators implied by cfg. It is pure — no network — so it is unit-testable.
+//
+// Region is always set. Static credentials are added only when both access and
+// secret keys are present (otherwise the ambient AWS chain is used). A custom
+// endpoint (and its path-style flag) is applied only when S3Endpoint is set,
+// which is what makes MinIO/R2/Garage/Ceph work while leaving AWS-native
+// behavior untouched by default.
+func BuildClientOptions(cfg *filestorage.Config) ([]func(*awsconfig.LoadOptions) error, []func(*s3.Options)) {
+	loadOpts := []func(*awsconfig.LoadOptions) error{awsconfig.WithRegion(cfg.S3Region)}
+	if cfg.S3AccessKey != "" && cfg.S3SecretKey != "" {
+		loadOpts = append(loadOpts, awsconfig.WithCredentialsProvider(
+			credentials.NewStaticCredentialsProvider(cfg.S3AccessKey, cfg.S3SecretKey, ""),
+		))
+	}
+
+	var s3Opts []func(*s3.Options)
+	if cfg.S3Endpoint != "" {
+		s3Opts = append(s3Opts, func(o *s3.Options) {
+			o.BaseEndpoint = aws.String(cfg.S3Endpoint)
+			o.UsePathStyle = cfg.S3UsePathStyle
+		})
+	}
+
+	return loadOpts, s3Opts
+}
+
 // Register installs the S3 factory under the "s3://" scheme. Bootstrap calls
-// this once at startup; the factory then resolves a client from the standard
-// AWS configuration each time it's invoked (cheap — only on writes).
+// this once at startup; the factory then resolves a client from configuration
+// each time it's invoked (cheap — only on writes).
 func Register() {
 	filestorage.RegisterStorageFactory(scheme, func(cfg *filestorage.Config) (filestorage.FileStorage, error) {
 		if cfg.S3Bucket == "" {
 			return nil, ErrBucketRequired
 		}
 
-		awsCfg, err := awsconfig.LoadDefaultConfig(
-			context.Background(),
-			awsconfig.WithRegion(cfg.S3Region),
-		)
+		loadOpts, s3Opts := BuildClientOptions(cfg)
+
+		awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), loadOpts...)
 		if err != nil {
 			return nil, fmt.Errorf("s3fs: load aws config: %w", err)
 		}
 
-		client := s3.NewFromConfig(awsCfg)
+		client := s3.NewFromConfig(awsCfg, s3Opts...)
 
 		return New(cfg.S3Bucket, cfg.S3Prefix, client), nil
 	})

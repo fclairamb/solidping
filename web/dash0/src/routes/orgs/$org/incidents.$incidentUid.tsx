@@ -9,9 +9,14 @@ import {
   Clock,
   ExternalLink,
   Loader2,
+  MessageSquare,
+  Pencil,
+  Plus,
   RefreshCw,
   RotateCcw,
+  Trash2,
 } from "lucide-react";
+import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import {
   useIncident,
@@ -22,11 +27,48 @@ import {
   useUnsnoozeIncident,
   useResolveIncident,
   useEvents,
+  useIncidentNotifications,
+  useStatusUpdates,
+  useStatusPages,
+  useCreateStatusUpdate,
+  useUpdateStatusUpdate,
+  useDeleteStatusUpdate,
   type Event,
   type IncidentDetail,
+  type IncidentNotification,
+  type StatusUpdate,
+  type CreateStatusUpdateRequest,
 } from "@/api/hooks";
 import { SnoozeDialog } from "@/components/incidents/snooze-dialog";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Trans } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -110,6 +152,331 @@ function TimelineItem({
         </div>
       </div>
     </div>
+  );
+}
+
+// --- Status Updates Panel ---
+
+const STATUS_UPDATE_KINDS = [
+  { value: "investigating", label: "Investigating" },
+  { value: "identified", label: "Identified" },
+  { value: "monitoring", label: "Monitoring" },
+  { value: "resolved", label: "Resolved" },
+  { value: "maintenance", label: "Maintenance" },
+  { value: "info", label: "Info" },
+];
+
+const KIND_COLORS: Record<string, string> = {
+  investigating: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  identified: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  monitoring: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
+  resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
+  maintenance: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  info: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
+};
+
+function KindBadgeInline({ kind }: { kind: string }) {
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${KIND_COLORS[kind] ?? "bg-gray-100 text-gray-800"}`}
+    >
+      {kind}
+    </span>
+  );
+}
+
+interface IncidentStatusUpdateDialogProps {
+  org: string;
+  open: boolean;
+  onClose: () => void;
+  incidentUid: string;
+  editTarget?: StatusUpdate;
+}
+
+function IncidentStatusUpdateDialog({
+  org,
+  open,
+  onClose,
+  incidentUid,
+  editTarget,
+}: IncidentStatusUpdateDialogProps) {
+  const { data: pages } = useStatusPages(org);
+  const createMutation = useCreateStatusUpdate(org);
+  const updateMutation = useUpdateStatusUpdate(org, editTarget?.uid ?? "");
+
+  const defaultPageUid = pages?.find((p) => p.isDefault)?.uid ?? pages?.[0]?.uid ?? "";
+
+  const [form, setForm] = useState<{
+    statusPageUid: string;
+    kind: string;
+    title: string;
+    bodyMarkdown: string;
+    linkUrl: string;
+    publishedAt: string;
+  }>({
+    statusPageUid: editTarget?.statusPageUid ?? defaultPageUid,
+    kind: editTarget?.kind ?? "investigating",
+    title: editTarget?.title ?? "",
+    bodyMarkdown: editTarget?.bodyMarkdown ?? "",
+    linkUrl: editTarget?.linkUrl ?? "",
+    publishedAt: editTarget
+      ? new Date(editTarget.publishedAt).toISOString().slice(0, 16)
+      : new Date().toISOString().slice(0, 16),
+  });
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      if (editTarget) {
+        await updateMutation.mutateAsync({
+          kind: form.kind,
+          title: form.title,
+          bodyMarkdown: form.bodyMarkdown,
+          linkUrl: form.linkUrl || undefined,
+          publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : undefined,
+        });
+        toast.success("Status update saved");
+      } else {
+        const req: CreateStatusUpdateRequest = {
+          statusPageUid: form.statusPageUid,
+          incidentUid,
+          kind: form.kind,
+          title: form.title,
+          bodyMarkdown: form.bodyMarkdown,
+          linkUrl: form.linkUrl || undefined,
+          publishedAt: form.publishedAt ? new Date(form.publishedAt).toISOString() : undefined,
+        };
+        await createMutation.mutateAsync(req);
+        toast.success("Status update added");
+      }
+      onClose();
+    } catch {
+      toast.error("Failed to save status update");
+    }
+  };
+
+  const isLoading = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{editTarget ? "Edit status update" : "Add status update"}</DialogTitle>
+          <DialogDescription>
+            This update will be linked to this incident on the status page.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {!editTarget && (
+            <div className="space-y-1">
+              <Label htmlFor="su-page">Status page</Label>
+              <Select
+                value={form.statusPageUid}
+                onValueChange={(v) => setForm((f) => ({ ...f, statusPageUid: v }))}
+              >
+                <SelectTrigger id="su-page">
+                  <SelectValue placeholder="Select a status page" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(pages ?? []).map((p) => (
+                    <SelectItem key={p.uid} value={p.uid}>{p.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <div className="space-y-1">
+            <Label htmlFor="su-kind">Kind</Label>
+            <Select value={form.kind} onValueChange={(v) => setForm((f) => ({ ...f, kind: v }))}>
+              <SelectTrigger id="su-kind"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {STATUS_UPDATE_KINDS.map((k) => (
+                  <SelectItem key={k.value} value={k.value}>{k.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="su-title">Title</Label>
+            <Input
+              id="su-title"
+              value={form.title}
+              onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              maxLength={200}
+              required
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="su-body">Body</Label>
+            <Textarea
+              id="su-body"
+              value={form.bodyMarkdown}
+              onChange={(e) => setForm((f) => ({ ...f, bodyMarkdown: e.target.value }))}
+              required
+              rows={3}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="su-link">Link URL (optional)</Label>
+            <Input
+              id="su-link"
+              type="url"
+              value={form.linkUrl}
+              onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="su-pub">Published at</Label>
+            <Input
+              id="su-pub"
+              type="datetime-local"
+              value={form.publishedAt}
+              onChange={(e) => setForm((f) => ({ ...f, publishedAt: e.target.value }))}
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" disabled={isLoading}>
+              {isLoading ? "Saving…" : editTarget ? "Save changes" : "Add update"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function StatusUpdatesPanel({ org, incidentUid }: { org: string; incidentUid: string }) {
+  const { data: updates, isLoading } = useStatusUpdates(org, { incident: incidentUid, limit: 50 });
+  const deleteMutation = useDeleteStatusUpdate(org);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<StatusUpdate | undefined>();
+  const [deleteUid, setDeleteUid] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!deleteUid) return;
+    try {
+      await deleteMutation.mutateAsync(deleteUid);
+      toast.success("Status update deleted");
+    } catch {
+      toast.error("Failed to delete status update");
+    } finally {
+      setDeleteUid(null);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4 text-muted-foreground" />
+            <CardTitle>Status updates</CardTitle>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditTarget(undefined);
+              setDialogOpen(true);
+            }}
+          >
+            <Plus className="h-3 w-3 mr-1" />
+            Add update
+          </Button>
+        </div>
+        <CardDescription>
+          Narrative updates published to your status page for this incident.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        ) : !updates || updates.length === 0 ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            No status updates yet for this incident.
+          </p>
+        ) : (
+          <div className="space-y-3">
+            {updates.map((u) => (
+              <div
+                key={u.uid}
+                className="flex items-start justify-between gap-3 pb-3 border-b last:border-0 last:pb-0"
+              >
+                <div className="flex items-start gap-2 min-w-0">
+                  <KindBadgeInline kind={u.kind} />
+                  <div className="min-w-0">
+                    <div className="font-medium text-sm truncate">{u.title}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatDistanceToNow(new Date(u.publishedAt), { addSuffix: true })}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7"
+                    onClick={() => {
+                      setEditTarget(u);
+                      setDialogOpen(true);
+                    }}
+                    aria-label="Edit"
+                  >
+                    <Pencil className="h-3 w-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => setDeleteUid(u.uid)}
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+
+      {dialogOpen && (
+        <IncidentStatusUpdateDialog
+          org={org}
+          open={dialogOpen}
+          onClose={() => {
+            setDialogOpen(false);
+            setEditTarget(undefined);
+          }}
+          incidentUid={incidentUid}
+          editTarget={editTarget}
+        />
+      )}
+
+      <AlertDialog open={!!deleteUid} onOpenChange={(o) => !o && setDeleteUid(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete status update?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will remove the update from the status page.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </Card>
   );
 }
 
@@ -462,6 +829,8 @@ function IncidentDetailPage() {
         </Card>
       </div>
 
+      <StatusUpdatesPanel org={org} incidentUid={incidentUid} />
+
       <BlastRadiusCard org={org} incident={incident} />
 
       {events?.data && (
@@ -473,6 +842,8 @@ function IncidentDetailPage() {
           )}
         />
       )}
+
+      <NotificationsCard org={org} incidentUid={incidentUid} />
 
       {events?.data && events.data.length > 0 && (
         <Card>
@@ -649,6 +1020,135 @@ function BlastRadiusCard({
     </Card>
   );
 }
+
+// ─── Notifications card ───────────────────────────────────────────────────────
+
+function notificationStatusVariant(
+  status: IncidentNotification["status"],
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (status) {
+    case "sent":
+      return "default";
+    case "failed":
+      return "destructive";
+    case "pending":
+      return "outline";
+    case "skipped":
+    case "cancelled":
+    default:
+      return "secondary";
+  }
+}
+
+function sourceLabel(source: string, repeatIndex?: number): string {
+  const cycle = repeatIndex !== undefined && repeatIndex > 0 ? ` (cycle ${repeatIndex + 1})` : "";
+  switch (source) {
+    case "check_connection":
+      return "Check connection";
+    case "escalation_user":
+      return `Escalation step${cycle}`;
+    case "escalation_schedule":
+      return `On-call schedule${cycle}`;
+    case "escalation_all_admins":
+      return `All admins${cycle}`;
+    case "escalation_connection":
+      return `Escalation connection${cycle}`;
+    default:
+      return source;
+  }
+}
+
+function NotificationsCard({
+  org,
+  incidentUid,
+}: {
+  org: string;
+  incidentUid: string;
+}) {
+  const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
+
+  const hasErrors = rows?.some((r) => r.error);
+
+  return (
+    <Card data-testid="notifications-card">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          Notifications
+          {rows && rows.length > 0 && (
+            <Badge variant="outline" className="text-xs">
+              {rows.length}
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>Who was notified and the delivery status.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading && <Skeleton className="h-24 w-full" />}
+        {!isLoading && (!rows || rows.length === 0) && (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No notifications recorded for this incident yet.
+          </p>
+        )}
+        {!isLoading && rows && rows.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Time</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead>Channel</TableHead>
+                {hasErrors && <TableHead>Error</TableHead>}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.uid}>
+                  <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
+                    {new Date(row.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={notificationStatusVariant(row.status)} className="text-xs capitalize">
+                      {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.user ? (
+                      <span className="font-medium">
+                        {row.user.name || row.user.uid}
+                      </span>
+                    ) : row.connection ? (
+                      <span className="flex items-center gap-1">
+                        <span className="capitalize text-muted-foreground text-xs">{row.connection.type}</span>
+                        {row.connection.name}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {sourceLabel(row.source, row.repeatIndex)}
+                  </TableCell>
+                  <TableCell className="text-sm capitalize">{row.channelType}</TableCell>
+                  {hasErrors && (
+                    <TableCell
+                      className="text-sm text-destructive max-w-[200px] truncate"
+                      title={row.error ?? undefined}
+                    >
+                      {row.error ?? ""}
+                    </TableCell>
+                  )}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Escalation timeline card ─────────────────────────────────────────────────
 
 interface EscalationTimelineCardProps {
   events: Event[];

@@ -25,6 +25,17 @@
     "timeout": "Délai dépassé",
     "error": "Erreur",
     "created": "Créé",
-    "running": "En cours"
+    "running": "En cours",
+    "recentUpdates": "Mises à jour récentes"
+  },
+  "subscribe": {
+    "title": "S'abonner aux mises à jour",
+    "emailLabel": "Adresse e-mail",
+    "emailPlaceholder": "vous@exemple.com",
+    "submit": "S'abonner",
+    "submitting": "Abonnement…",
+    "checkInbox": "Presque terminé ! Consultez votre boîte de réception pour confirmer votre abonnement.",
+    "error": "Une erreur s'est produite. Veuillez réessayer.",
+    "feedLink": "S'abonner via RSS"
   }
 }

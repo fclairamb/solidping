@@ -36,6 +36,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  getEventDescription,
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
@@ -159,12 +160,12 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const events = eventsQuery.data?.data || [];
 
   const isInitialLoading =
-    checksQuery.isLoading &&
-    incidentsQuery.isLoading &&
-    resultsQuery.isLoading &&
-    eventsQuery.isLoading;
+    checksQuery.isPending ||
+    incidentsQuery.isPending ||
+    resultsQuery.isPending ||
+    eventsQuery.isPending;
 
-  const isEmptyOrg = !checksQuery.isLoading && checks.length === 0;
+  const isEmptyOrg = !checksQuery.isPending && checks.length === 0;
 
   const enabledCount = checks.filter((c) => c.enabled !== false).length;
   const disabledCount = checks.length - enabledCount;
@@ -248,44 +249,72 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
           />
 
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <KpiTile
-              label={t("kpi.monitored")}
-              value={enabledCount}
-              icon={<ListChecks className="h-4 w-4 text-muted-foreground" />}
-              sub={
-                disabledCount > 0
-                  ? t("kpi.monitoredDisabled", { count: disabledCount })
-                  : undefined
-              }
-            />
-            <KpiTile
-              label={t("kpi.down")}
-              value={downCount}
-              icon={
-                <AlertTriangle
-                  className={`h-4 w-4 ${downCount > 0 ? "text-red-600" : "text-muted-foreground"}`}
-                />
-              }
-              valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
-              sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-            />
-            <KpiTile
-              label={t("kpi.incidents")}
-              value={incidentsCount}
-              icon={
-                <Activity
-                  className={`h-4 w-4 ${incidentsCount > 0 ? "text-yellow-600" : "text-muted-foreground"}`}
-                />
-              }
-              valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
-              sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
-            />
-            <KpiTile
-              label={t("kpi.availability")}
-              value={availabilityPct === null ? "—" : `${availabilityPct.toFixed(2)}%`}
-              icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
-              sub={availabilityPct === null ? t("kpi.availabilityNoData") : undefined}
-            />
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              className="block"
+              data-testid="kpi-tile-monitored"
+            >
+              <KpiTile
+                label={t("kpi.monitored")}
+                value={enabledCount}
+                icon={<ListChecks className="h-4 w-4 text-muted-foreground" />}
+                sub={
+                  disabledCount > 0
+                    ? t("kpi.monitoredDisabled", { count: disabledCount })
+                    : undefined
+                }
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <Link
+              to="/orgs/$org/checks"
+              params={{ org }}
+              search={{ status: "down" }}
+              className="block"
+              data-testid="kpi-tile-down"
+            >
+              <KpiTile
+                label={t("kpi.down")}
+                value={downCount}
+                icon={
+                  <AlertTriangle
+                    className={`h-4 w-4 ${downCount > 0 ? "text-red-600" : "text-muted-foreground"}`}
+                  />
+                }
+                valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
+                sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <Link
+              to="/orgs/$org/incidents"
+              params={{ org }}
+              search={{ state: "active" as const, showSuppressed: undefined }}
+              className="block"
+              data-testid="kpi-tile-incidents"
+            >
+              <KpiTile
+                label={t("kpi.incidents")}
+                value={incidentsCount}
+                icon={
+                  <Activity
+                    className={`h-4 w-4 ${incidentsCount > 0 ? "text-yellow-600" : "text-muted-foreground"}`}
+                  />
+                }
+                valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
+                sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
+                className="transition-colors hover:bg-accent/40"
+              />
+            </Link>
+            <div data-testid="kpi-tile-availability">
+              <KpiTile
+                label={t("kpi.availability")}
+                value={availabilityPct === null ? "—" : `${availabilityPct.toFixed(2)}%`}
+                icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
+                sub={availabilityPct === null ? t("kpi.availabilityNoData") : undefined}
+              />
+            </div>
           </div>
 
           <div className="grid gap-6 lg:grid-cols-2">
@@ -486,11 +515,12 @@ interface KpiTileProps {
   icon: React.ReactNode;
   sub?: string;
   valueClassName?: string;
+  className?: string;
 }
 
-function KpiTile({ label, value, icon, sub, valueClassName }: KpiTileProps) {
+function KpiTile({ label, value, icon, sub, valueClassName, className }: KpiTileProps) {
   return (
-    <Card>
+    <Card className={className}>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">
           {label}
@@ -723,22 +753,32 @@ function RecentActivityList({
           </div>
         ) : (
           <ul className="divide-y">
-            {events.map((event) => (
-              <li
-                key={event.uid}
-                className="flex items-center gap-3 py-3 text-sm"
-              >
-                <span className="shrink-0">{getEventIcon(event.eventType)}</span>
-                <span className="flex-1 truncate">
-                  {getEventLabel(event.eventType, tEvents)}
-                </span>
-                {event.createdAt ? (
-                  <span className="text-xs text-muted-foreground shrink-0">
-                    {formatRelative(new Date(event.createdAt), tickNow)}
-                  </span>
-                ) : null}
-              </li>
-            ))}
+            {events.map((event) => {
+              const description = getEventDescription(event.eventType, tEvents);
+              return (
+                <li
+                  key={event.uid}
+                  className="flex items-center gap-3 py-3 text-sm"
+                >
+                  <span className="shrink-0">{getEventIcon(event.eventType)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">
+                      {getEventLabel(event.eventType, tEvents)}
+                    </div>
+                    {description ? (
+                      <div className="text-xs text-muted-foreground truncate">
+                        {description}
+                      </div>
+                    ) : null}
+                  </div>
+                  {event.createdAt ? (
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {formatRelative(new Date(event.createdAt), tickNow)}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>
@@ -747,9 +787,9 @@ function RecentActivityList({
           to="/orgs/$org/events"
           params={{ org }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
+          data-testid="recent-activity-footer"
         >
           {t("recentActivity.footer")}
-          <ArrowRight className="h-3 w-3" />
         </Link>
       </CardFooter>
     </Card>

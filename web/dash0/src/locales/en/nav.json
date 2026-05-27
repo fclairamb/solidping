@@ -8,17 +8,22 @@
   "events": "Events",
   "channels": "Channels",
   "statusPages": "Status Pages",
+  "statusUpdates": "Status Updates",
   "badges": "Badges",
+  "discovery": "Discovery",
+  "myPages": "My pages",
   "testTools": "Test Tools",
   "designReference": "Design Reference",
   "new": "New",
   "edit": "Edit",
+  "promote": "Promote",
   "profile": "Profile",
   "security": "Security",
   "tokens": "Tokens",
   "members": "Members",
   "invitations": "Invitations",
   "requests": "Requests",
+  "usage": "Usage",
   "settings": "Settings",
   "web": "Web",
   "mail": "Mail",
@@ -113,9 +118,12 @@
   "command": {
     "searchPlaceholder": "Search pages and checks...",
     "noResults": "No results found.",
+    "groupActions": "Actions",
     "groupPages": "Pages",
     "groupAccount": "Account",
     "groupOrganization": "Organization",
-    "groupChecks": "Checks"
+    "groupChecks": "Checks",
+    "newCheck": "New Check",
+    "newCheckDescription": "Create a new monitoring check"
   }
 }

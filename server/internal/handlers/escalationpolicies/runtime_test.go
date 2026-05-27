@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/notifier"
 )
 
 func setupRuntime(t *testing.T) (db.Service, jobsvc.Service, *models.Organization) {
@@ -29,7 +30,7 @@ func setupRuntime(t *testing.T) (db.Service, jobsvc.Service, *models.Organizatio
 
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB())
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
 
 	org := models.NewOrganization("esc-runtime", "Escalation Runtime Test")
 	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
@@ -77,8 +78,8 @@ func TestScheduleEscalationCycleSchedulesAtCumulativeDelays(t *testing.T) {
 	// Each job's scheduled_at should match the cumulative delay.
 	expected := []time.Time{
 		startedAt,
-		startedAt.Add(5 * time.Minute),
-		startedAt.Add(15 * time.Minute),
+		startedAt.Add(5 * time.Second),
+		startedAt.Add(15 * time.Second),
 	}
 	gotAt := make([]time.Time, len(scheduled))
 	for i, job := range scheduled {

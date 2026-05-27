@@ -185,14 +185,18 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 	// 5. Setup job context
 	jctx := w.createJobContext(job, configBytes, logger)
 
-	// 6. Execute with panic recovery
-	jobErr := w.executeWithRecovery(ctx, jobRun, jctx)
+	// 6. Execute with panic recovery.
+	// Use a detached context so that canceling the polling context (worker
+	// shutdown) does not abort a job that is already mid-execution. The job
+	// was claimed; it should run to completion so status is recorded cleanly.
+	jobExecCtx := context.WithoutCancel(ctx)
+	jobErr := w.executeWithRecovery(jobExecCtx, jobRun, jctx)
 
 	// 7. Record stats
 	w.stats.AddMetric(jobErr == nil, time.Since(startTime), delay)
 
 	// 8. Handle result (success, retry, or fail)
-	return w.handleResult(ctx, logger, job, jobErr)
+	return w.handleResult(jobExecCtx, logger, job, jobErr)
 }
 
 func (w *JobWorker) executeWithRecovery(

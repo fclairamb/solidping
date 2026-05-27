@@ -113,7 +113,7 @@ function ChannelDetailPage() {
           )}
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <ChannelForm type={channel.type} initial={channel} onChange={setForm} />
+          <ChannelForm type={channel.type} initial={channel} onChange={setForm} org={org} channelUid={channelUid} />
           <div className="flex justify-end">
             <Button
               type="submit"

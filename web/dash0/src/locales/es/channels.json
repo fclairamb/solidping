@@ -2,8 +2,10 @@
   "title": "Canales",
   "subtitle": "Slack, webhooks, correo y más — configura cómo SolidPing te avisa.",
   "new": "Nuevo canal",
-  "newTitle": "Añadir un canal de notificación",
-  "newSubtitle": "Elige el tipo de canal a configurar.",
+  "newTitle": "Añadir una integración",
+  "newSubtitle": "Elige el tipo de integración a configurar.",
+  "groupNotify": "Canales de notificación",
+  "groupSource": "Fuentes de datos",
   "newFormSubtitle": "Configura el canal y guarda.",
   "editTitle": "Editar canal",
   "editSubtitle": "Los valores secretos se almacenan cifrados; modificarlos reemplaza el valor guardado.",
@@ -81,6 +83,7 @@
     "mattermost": "Publicar en un canal Mattermost vía webhook entrante",
     "ntfy": "Notificaciones push vía ntfy.sh",
     "opsgenie": "Avisar a guardias vía Opsgenie",
-    "pushover": "Notificaciones push móviles vía Pushover"
+    "pushover": "Notificaciones push móviles vía Pushover",
+    "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos"
   }
 }

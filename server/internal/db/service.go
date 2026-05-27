@@ -11,6 +11,31 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
+// PublicStatusUpdate holds a status update row for public status page display.
+// This type is used by ListPublicStatusUpdates and is independent of the admin
+// models so the DB layer does not need to know about the full status_updates model.
+type PublicStatusUpdate struct {
+	UID          string
+	SectionUID   *string
+	CheckUID     *string
+	IncidentUID  *string
+	Title        string
+	BodyMarkdown string
+	LinkURL      *string
+	Kind         string
+	PublishedAt  time.Time
+}
+
+// ListIncidentNotificationsFilter configures what to return from ListIncidentNotifications.
+type ListIncidentNotificationsFilter struct {
+	IncidentUID   string    // required for the per-incident endpoint; optional for user-scoped queries
+	UserUID       string    // optional: restrict to rows where user_uid = UserUID
+	ConnectionUID string    // optional: restrict to rows where connection_uid = ConnectionUID
+	Status        string    // optional: e.g. "sent", "failed"
+	Limit         int       // default 100, max 500
+	Before        time.Time // cursor: return rows created before this time (zero means no bound)
+}
+
 // Service defines the common interface for database operations.
 // Both PostgreSQL and SQLite implementations must satisfy this interface.
 //
@@ -160,6 +185,7 @@ type Service interface {
 	CreateOnCallSchedule(ctx context.Context, schedule *models.OnCallSchedule) error
 	GetOnCallSchedule(ctx context.Context, orgUID, scheduleUID string) (*models.OnCallSchedule, error)
 	GetOnCallScheduleBySlug(ctx context.Context, orgUID, slug string) (*models.OnCallSchedule, error)
+	GetOnCallScheduleByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.OnCallSchedule, error)
 	GetOnCallScheduleByICalSecret(ctx context.Context, secret string) (*models.OnCallSchedule, error)
 	ListOnCallSchedules(ctx context.Context, orgUID string) ([]*models.OnCallSchedule, error)
 	UpdateOnCallSchedule(ctx context.Context, scheduleUID string, update *models.OnCallScheduleUpdate) error
@@ -181,6 +207,7 @@ type Service interface {
 	CreateEscalationPolicy(ctx context.Context, policy *models.EscalationPolicy) error
 	GetEscalationPolicy(ctx context.Context, orgUID, policyUID string) (*models.EscalationPolicy, error)
 	GetEscalationPolicyBySlug(ctx context.Context, orgUID, slug string) (*models.EscalationPolicy, error)
+	GetEscalationPolicyByUidOrSlug(ctx context.Context, orgUID, identifier string) (*models.EscalationPolicy, error)
 	ListEscalationPolicies(ctx context.Context, orgUID string) ([]*models.EscalationPolicy, error)
 	UpdateEscalationPolicy(ctx context.Context, policyUID string, update *models.EscalationPolicyUpdate) error
 	DeleteEscalationPolicy(ctx context.Context, policyUID string) error
@@ -219,6 +246,19 @@ type Service interface {
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
+
+	// --- IncidentNotifications ---
+	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error
+	MarkIncidentNotificationSentByUID(ctx context.Context, uid string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationFailedByUID(ctx context.Context, uid string, failedAt time.Time, errMsg string) error
+	MarkIncidentNotificationSentByJob(ctx context.Context, jobUID string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationFailedByJob(
+		ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
+	) error
+	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
+	ListIncidentNotifications(
+		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
+	) ([]*models.IncidentNotificationRow, error)
 
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error
@@ -318,6 +358,34 @@ type Service interface {
 	UpdateCheckGroup(ctx context.Context, orgUID, uid string, update *models.CheckGroupUpdate) error
 	DeleteCheckGroup(ctx context.Context, uid string) error
 
+	// StatusUpdate operations
+	ListStatusUpdates(
+		ctx context.Context, orgUID string, filter models.StatusUpdatesFilter,
+	) ([]*models.StatusUpdate, error)
+	CreateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
+	GetStatusUpdateByUID(ctx context.Context, uid string) (*models.StatusUpdate, error)
+	UpdateStatusUpdate(ctx context.Context, su *models.StatusUpdate) error
+	SoftDeleteStatusUpdate(ctx context.Context, uid string) error
+
+	// StatusPageSubscriber operations (public email/RSS subscriptions)
+	CreateSubscriber(ctx context.Context, sub *models.StatusPageSubscriber) error
+	GetSubscriber(ctx context.Context, statusPageUID, uid string) (*models.StatusPageSubscriber, error)
+	GetSubscriberByConfirmToken(ctx context.Context, token string) (*models.StatusPageSubscriber, error)
+	GetSubscriberByUnsubToken(ctx context.Context, token string) (*models.StatusPageSubscriber, error)
+	FindLiveSubscriber(
+		ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
+	) (*models.StatusPageSubscriber, error)
+	FindAnySubscriber(
+		ctx context.Context, statusPageUID, email string, scope models.SubscriberScope, incidentUID *string,
+	) (*models.StatusPageSubscriber, error)
+	ConfirmSubscriber(ctx context.Context, uid string, confirmedAt time.Time) error
+	ResubscribeSubscriber(ctx context.Context, uid, confirmToken, unsubscribeToken string) error
+	SoftDeleteSubscriber(ctx context.Context, uid string) error
+	ListConfirmedSubscribers(
+		ctx context.Context, statusPageUID string, incidentUID *string,
+	) ([]*models.StatusPageSubscriber, error)
+	ListSubscribers(ctx context.Context, statusPageUID string) ([]*models.StatusPageSubscriber, error)
+
 	// StatusPage operations
 	CreateStatusPage(ctx context.Context, page *models.StatusPage) error
 	GetStatusPage(ctx context.Context, orgUID, uid string) (*models.StatusPage, error)
@@ -346,6 +414,11 @@ type Service interface {
 	ReorderStatusPageSections(ctx context.Context, statusPageUID string, orderedUIDs []string) error
 	UpdateStatusPageResource(ctx context.Context, uid string, update *models.StatusPageResourceUpdate) error
 	DeleteStatusPageResource(ctx context.Context, uid string) error
+
+	// ListPublicStatusUpdates returns recent status updates for a status page within the given
+	// history window. Returns an empty slice (not an error) when the status_updates table does
+	// not yet exist (graceful degradation before the backend spec migration is applied).
+	ListPublicStatusUpdates(ctx context.Context, statusPageUID string, historyDays int) ([]*PublicStatusUpdate, error)
 
 	// MaintenanceWindow operations
 	CreateMaintenanceWindow(ctx context.Context, window *models.MaintenanceWindow) error
@@ -394,6 +467,10 @@ type Service interface {
 	// row in user_providers. Used by the entitlements service to enforce
 	// MaxSSOUsers.
 	CountSSOMembersForOrg(ctx context.Context, orgUID string) (int, error)
+	// ListOrgCheckRates returns (enabled, period) for all non-deleted,
+	// non-internal checks of the given org. Used to compute usage stats
+	// (count + aggregate checks-per-minute) and to enforce MaxChecks.
+	ListOrgCheckRates(ctx context.Context, orgUID string) ([]models.CheckRate, error)
 
 	// Membership-request operations
 	CreateMembershipRequest(ctx context.Context, request *models.MembershipRequest) error
@@ -408,6 +485,43 @@ type Service interface {
 	ApproveMembershipRequest(
 		ctx context.Context, request *models.MembershipRequest, member *models.OrganizationMember,
 	) error
+
+	// --- UserContacts / UserNotificationRoutes ---
+
+	// ListUserContactsWithRoutes returns the ordered notification routes for a user in an org,
+	// with the Contact relation eagerly loaded. Soft-deleted contacts are excluded.
+	ListUserContactsWithRoutes(ctx context.Context, userUID, orgUID string) ([]*models.UserNotificationRoute, error)
+
+	// EnsureDefaultEmailRoute idempotently creates one email contact and one enabled route
+	// for the user in the org. Safe to call concurrently — uses INSERT … ON CONFLICT DO NOTHING.
+	EnsureDefaultEmailRoute(ctx context.Context, userUID, orgUID, email string) error
+
+	// UpsertUserContact creates or restores a contact. On conflict (same user+org+type+value)
+	// it undeletes the row and updates the label.
+	UpsertUserContact(ctx context.Context, c *models.UserContact) error
+
+	// DeleteUserContact soft-deletes a contact by UID.
+	DeleteUserContact(ctx context.Context, uid string) error
+
+	// SetRouteEnabled toggles the enabled flag on a route.
+	SetRouteEnabled(ctx context.Context, routeUID string, enabled bool) error
+
+	// ReorderRoutes sets the position of each route to its index in routeUIDs.
+	// Only routes belonging to the given user+org are affected; unknown UIDs are ignored.
+	ReorderRoutes(ctx context.Context, userUID, orgUID string, routeUIDs []string) error
+
+	// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
+	// Returns nil, nil when no Slack channel is configured.
+	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
+
+	// AppSettings operations
+
+	// GetAppSetting returns the value for the given key.
+	// Returns sql.ErrNoRows (wrapped) if the key does not exist.
+	GetAppSetting(ctx context.Context, key string) (string, error)
+
+	// SetAppSetting creates or updates a key/value pair (upsert).
+	SetAppSetting(ctx context.Context, key, value string) error
 
 	// Close closes the database connection and cleans up resources
 	io.Closer

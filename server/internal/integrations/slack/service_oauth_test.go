@@ -40,7 +40,7 @@ func TestBuildInstallURL_GeneratesValidStateAndScopes(t *testing.T) {
 	r := require.New(t)
 	ctx, svc := setupSlackService(t)
 
-	authorizeURL, err := svc.BuildInstallURL(ctx, "marketplace")
+	authorizeURL, err := svc.BuildInstallURL(ctx, "marketplace", "", "")
 	r.NoError(err)
 
 	r.True(strings.HasPrefix(authorizeURL, "https://slack.com/oauth/v2/authorize?"))
@@ -104,7 +104,7 @@ func TestHandleOAuthCallback_StateConsumedOnReuse(t *testing.T) {
 	// Slack token exchange will fail in tests), proving the state was
 	// accepted, and a second call with the same state must fail with
 	// ErrInvalidState.
-	authorizeURL, err := svc.BuildInstallURL(ctx, "")
+	authorizeURL, err := svc.BuildInstallURL(ctx, "", "", "")
 	r.NoError(err)
 
 	stateValue := extractQueryParam(t, authorizeURL, "state")

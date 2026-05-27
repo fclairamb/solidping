@@ -25,6 +25,17 @@
     "timeout": "Zeitüberschreitung",
     "error": "Fehler",
     "created": "Erstellt",
-    "running": "Läuft"
+    "running": "Läuft",
+    "recentUpdates": "Aktuelle Updates"
+  },
+  "subscribe": {
+    "title": "Updates abonnieren",
+    "emailLabel": "E-Mail-Adresse",
+    "emailPlaceholder": "sie@beispiel.com",
+    "submit": "Abonnieren",
+    "submitting": "Wird abonniert…",
+    "checkInbox": "Fast geschafft! Überprüfen Sie Ihren Posteingang, um Ihr Abonnement zu bestätigen.",
+    "error": "Etwas ist schiefgelaufen. Bitte versuchen Sie es erneut.",
+    "feedLink": "Per RSS abonnieren"
   }
 }

@@ -71,6 +71,7 @@ const (
 	ErrorCodeDependencyDuplicate       ErrorCode = "DEPENDENCY_DUPLICATE"
 	ErrorCodeDependencyInvalidKind     ErrorCode = "DEPENDENCY_INVALID_KIND"
 	ErrorCodeEntitlementExceeded       ErrorCode = "ENTITLEMENT_EXCEEDED"
+	ErrorCodeQuotaExceeded             ErrorCode = "QUOTA_EXCEEDED"
 	ErrorCodeFeatureNotEntitled        ErrorCode = "FEATURE_NOT_ENTITLED"
 	ErrorCodeEntitlementsStale         ErrorCode = "ENTITLEMENTS_STALE"
 	ErrorCodePasskeyNotFound           ErrorCode = "PASSKEY_NOT_FOUND"
@@ -78,6 +79,7 @@ const (
 	ErrorCodePasskeySessionExpired     ErrorCode = "PASSKEY_SESSION_EXPIRED"
 	ErrorCodePasskeyLastAuthMethod     ErrorCode = "PASSKEY_LAST_AUTH_METHOD"
 	ErrorCodeWebAuthnNotConfigured     ErrorCode = "WEBAUTHN_NOT_CONFIGURED"
+	ErrorCodeChannelNotConnected       ErrorCode = "CHANNEL_NOT_CONNECTED"
 )
 
 // ContextKey is the type used for context keys in middleware and handlers.

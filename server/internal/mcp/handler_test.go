@@ -220,7 +220,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 
 	tools, ok := result["tools"].([]any)
 	r.True(ok)
-	r.Len(tools, 35)
+	r.Len(tools, 36)
 
 	// Verify tool names
 	names := make(map[string]bool)

@@ -47,6 +47,9 @@ func ValidDeploymentModes() []string {
 	return []string{DeploymentModeSelfHosted, DeploymentModeSaaS}
 }
 
+// envTrue is the canonical string value that enables a boolean env var.
+const envTrue = "true"
+
 var (
 	// ErrInvalidDatabaseType is returned when the database type is invalid.
 	ErrInvalidDatabaseType = errors.New(
@@ -122,6 +125,15 @@ type SentryConfig struct {
 	Debug            bool    `koanf:"debug"`              // Enable Sentry debug logging
 }
 
+// WebPushConfig holds VAPID credentials for Web Push notifications.
+// Keys are auto-generated at first startup when not pre-provisioned.
+type WebPushConfig struct {
+	VAPIDPublicKey  string `koanf:"vapid_public_key"`
+	VAPIDPrivateKey string `koanf:"vapid_private_key"`
+	Subject         string `koanf:"subject"` // e.g. "mailto:admin@example.com"
+	Enabled         bool   `koanf:"enabled"`
+}
+
 // Config represents the application configuration structure.
 type Config struct {
 	Server      ServerConfig         `koanf:"server"`
@@ -145,6 +157,7 @@ type Config struct {
 	FileStorage FileStorageConfig    `koanf:"filestorage"`
 	App         AppConfig            `koanf:"app"`
 	Deployment  DeploymentConfig     `koanf:"deployment"`
+	WebPush     WebPushConfig        `koanf:"webpush"`
 	RunMode     string               `koanf:"runmode"`   // "test" for test mode, empty for normal mode
 	UserAgent   string               `koanf:"useragent"` // Identity string for protocol checks (SP_USERAGENT)
 	LogLevel    slog.Level           `koanf:"-"`         // Logging level (parsed from LOG_LEVEL env var)
@@ -201,14 +214,21 @@ type EmailConfig struct {
 
 // FileStorageConfig controls where File blobs are persisted. The bytes live
 // behind one of the registered backends (local FS, S3); the metadata always
-// lives in the `files` table. AWS credentials are not stored here — they
-// come from the standard AWS SDK chain (env, IAM role, shared config).
+// lives in the `files` table. By default S3 credentials come from the standard
+// AWS SDK chain (env, IAM role, shared config); set S3AccessKey/S3SecretKey to
+// pin static credentials for self-hosted S3-compatible stores. The multi-word
+// keys here are settable via env through applyFileStorageEnv (koanf's env
+// loader collapses underscores and can't reach the snake_case koanf tags).
 type FileStorageConfig struct {
-	Type      string `koanf:"type"`       // "local" (default) or "s3"
-	LocalRoot string `koanf:"local_root"` // local backend root, e.g. "./data/files"
-	S3Bucket  string `koanf:"s3_bucket"`  // S3 backend bucket name
-	S3Region  string `koanf:"s3_region"`  // S3 backend region
-	S3Prefix  string `koanf:"s3_prefix"`  // optional key prefix
+	Type           string `koanf:"type"`              // "local" (default) or "s3"
+	LocalRoot      string `koanf:"local_root"`        // local backend root, e.g. "./data/files"
+	S3Bucket       string `koanf:"s3_bucket"`         // S3 backend bucket name
+	S3Region       string `koanf:"s3_region"`         // S3 backend region
+	S3Prefix       string `koanf:"s3_prefix"`         // optional key prefix
+	S3Endpoint     string `koanf:"s3_endpoint"`       // custom endpoint, e.g. https://minio.local:9000
+	S3UsePathStyle bool   `koanf:"s3_use_path_style"` // true for MinIO/Garage/Ceph
+	S3AccessKey    string `koanf:"s3_access_key"`     // optional static cred (else AWS chain)
+	S3SecretKey    string `koanf:"s3_secret_key"`     // optional static cred — never logged
 }
 
 // AppConfig contains application-level integration settings: in-app bug
@@ -266,6 +286,11 @@ type SlackConfig struct {
 	ClientSecret     string `koanf:"client_secret"`
 	SigningSecret    string `koanf:"signing_secret"`
 	OAuthCallbackURL string `koanf:"oauth_callback_url"` // OAuth callback URL for user authentication
+	// SocketModeEnabled toggles Slack Socket Mode (outgoing WebSocket) in
+	// place of HTTPS webhook delivery. Mutually exclusive at the Slack App
+	// configuration level — Slack delivers to exactly one transport.
+	SocketModeEnabled bool   `koanf:"socket_mode_enabled"`
+	AppToken          string `koanf:"app_token"` // xapp-... App-Level Token used for Socket Mode connection
 }
 
 // JobWorkerConfig contains job worker configuration.
@@ -516,6 +541,8 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyFileStorageEnv(&cfg.FileStorage)
+	applyWebPushEnv(&cfg.WebPush)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -523,7 +550,7 @@ func Load() (*Config, error) {
 	}
 
 	// Manually read SP_DB_RESET for database reset on startup
-	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == "true" || dbReset == "1" {
+	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
 	}
 
@@ -578,6 +605,57 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
+}
+
+// applyFileStorageEnv reads SP_FILESTORAGE_S3_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so it would map
+// these to filestorage.s3.bucket / filestorage.s3.endpoint etc. and miss the
+// snake_case koanf tags ("s3_bucket", "s3_endpoint", ...). Reading them here
+// makes the whole S3 backend env-configurable for containerized self-hosters.
+func applyFileStorageEnv(cfg *FileStorageConfig) {
+	if v := os.Getenv("SP_FILESTORAGE_S3_BUCKET"); v != "" {
+		cfg.S3Bucket = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_REGION"); v != "" {
+		cfg.S3Region = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_PREFIX"); v != "" {
+		cfg.S3Prefix = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_ENDPOINT"); v != "" {
+		cfg.S3Endpoint = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_USE_PATH_STYLE"); v == envTrue || v == "1" {
+		cfg.S3UsePathStyle = true
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_ACCESS_KEY"); v != "" {
+		cfg.S3AccessKey = v
+	}
+	if v := os.Getenv("SP_FILESTORAGE_S3_SECRET_KEY"); v != "" {
+		cfg.S3SecretKey = v
+	}
+}
+
+// applyWebPushEnv reads SP_WEBPUSH_* into cfg. koanf's env loader collapses
+// every underscore in SP_*-prefixed names to a dot, so it maps
+// SP_WEBPUSH_VAPID_PUBLIC_KEY to webpush.vapid.public.key instead of
+// webpush.vapid_public_key, missing the snake_case koanf tags.
+func applyWebPushEnv(cfg *WebPushConfig) {
+	if v := os.Getenv("SP_WEBPUSH_VAPID_PUBLIC_KEY"); v != "" {
+		cfg.VAPIDPublicKey = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_VAPID_PRIVATE_KEY"); v != "" {
+		cfg.VAPIDPrivateKey = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_SUBJECT"); v != "" {
+		cfg.Subject = v
+	}
+
+	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == envTrue || v == "1" {
+		cfg.Enabled = true
+	}
 }
 
 // ComputeBugReportEnabled returns true iff a GitHub PAT and repo are configured.

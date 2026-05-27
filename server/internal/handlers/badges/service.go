@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
+	"strings"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -17,11 +19,30 @@ var (
 	ErrInvalidFormat        = errors.New("invalid badge format")
 )
 
+// Component token constants.
+const (
+	componentStatus            = "status"
+	componentAvailability      = "availability"
+	componentDuration          = "duration"
+	componentResponseTime      = "response-time"
+	componentUptimeBar         = "uptime-bar"
+	componentResponseTimeGraph = "response-time-graph"
+	statusUp                   = "up"
+	statusDown                 = "down"
+	statusUnknown              = "unknown"
+)
+
+// defaultBadgeWidth is the combined image width used when a bar or graph row is
+// present and no explicit width is requested.
+const defaultBadgeWidth = 300
+
 // BadgeOptions contains options for badge generation.
 type BadgeOptions struct {
-	Period string // "1h", "24h", "7d", "30d"
-	Label  string // Custom label (default: check name)
-	Style  string // "flat", "flat-square"
+	Period   string // "24h", "7d", "30d", "90d"
+	Label    string // Custom label (default: check name)
+	Style    string // "flat", "flat-square"
+	MinWidth int    // 0 = no minimum
+	Width    int    // combined width for bar/graph rows; 0 = use default
 }
 
 // Service provides badge generation functionality.
@@ -34,41 +55,434 @@ func NewService(dbSvc db.Service) *Service {
 	return &Service{dbSvc: dbSvc}
 }
 
-// GenerateBadge generates an SVG badge for a check.
+func isAllowedComponent(token string) bool {
+	switch token {
+	case componentStatus, componentAvailability, componentDuration, componentResponseTime,
+		componentUptimeBar, componentResponseTimeGraph:
+		return true
+	default:
+		return false
+	}
+}
+
+// isTextToken reports whether a token renders as text in row 1.
+func isTextToken(token string) bool {
+	switch token {
+	case componentStatus, componentAvailability, componentDuration, componentResponseTime:
+		return true
+	default:
+		return false
+	}
+}
+
+// parseComponents validates and returns the ordered list of component tokens.
+// Every token is optional; the only requirements are that the path segment is
+// non-empty and that each token is known and unique.
+func parseComponents(raw string) ([]string, error) {
+	parts := strings.Split(raw, ",")
+	seen := make(map[string]bool, len(parts))
+	result := make([]string, 0, len(parts))
+
+	for _, part := range parts {
+		token := strings.TrimSpace(part)
+		if !isAllowedComponent(token) {
+			return nil, ErrInvalidFormat
+		}
+
+		if seen[token] {
+			return nil, ErrInvalidFormat
+		}
+
+		seen[token] = true
+		result = append(result, token)
+	}
+
+	if len(result) == 0 {
+		return nil, ErrInvalidFormat
+	}
+
+	return result, nil
+}
+
+// GenerateBadge generates a composable multi-row SVG badge for a check.
 func (s *Service) GenerateBadge(
-	ctx context.Context, orgSlug, checkIdentifier, format string, opts BadgeOptions,
+	ctx context.Context, orgSlug, checkIdentifier, components string, opts BadgeOptions,
 ) (string, error) {
-	// 1. Resolve organization
+	// 1. Parse components first — fast validation before DB access.
+	tokens, err := parseComponents(components)
+	if err != nil {
+		return "", err
+	}
+
+	// 2. Resolve organization.
 	org, err := s.dbSvc.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		return "", ErrOrganizationNotFound
 	}
 
-	// 2. Resolve check by UID or slug (auto-detected)
+	// 3. Resolve check by UID or slug (auto-detected).
 	check, err := s.dbSvc.GetCheckByUidOrSlug(ctx, org.UID, checkIdentifier)
 	if err != nil || check == nil {
 		return "", ErrCheckNotFound
 	}
 
-	// 3. Set defaults
+	// 4. Set defaults.
 	opts = s.applyDefaults(opts, check)
 
-	// 4. Generate badge based on format
-	switch format {
-	case "status":
-		return s.generateStatusBadge(ctx, check, opts)
-	case "availability":
-		return s.generateAvailabilityBadge(ctx, org.UID, check, opts, false)
-	case "availability-duration":
-		return s.generateAvailabilityBadge(ctx, org.UID, check, opts, true)
-	default:
-		return "", ErrInvalidFormat
+	// 5. Split tokens into row-1 text tokens and bar/graph rows.
+	textTokens, hasBar, hasGraph := splitTokens(tokens)
+
+	// 6. Fetch row-1 data.
+	results, err := s.fetchResults(ctx, org.UID, check.UID, textTokens, opts.Period)
+	if err != nil {
+		return "", err
 	}
+
+	// 7. Determine combined width (0 → row-1 natural width, resolved below).
+	width := opts.MinWidth
+	if hasBar || hasGraph {
+		width = opts.Width
+		if width <= 0 {
+			width = defaultBadgeWidth
+		}
+	}
+
+	// 8. Render row 1.
+	value := s.composeValue(textTokens, results)
+	color := resolveColor(textTokens, results)
+	rows := []string{renderBadgeRow(opts.Label, value, color, opts.Style, width, 0)}
+
+	totalHeight := rowHeightText
+
+	// 9. Fetch bucket data and append bar/graph rows.
+	if hasBar || hasGraph {
+		rows, totalHeight, err = s.appendRowFragments(
+			ctx, org.UID, check.UID, opts, width, hasBar, hasGraph, rows, totalHeight,
+		)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// 10. Resolve final width to row-1 natural width for text-only badges.
+	if width <= 0 {
+		_, _, width = textWidths(opts.Label, value, opts.MinWidth)
+	}
+
+	return ComposeBadgeSVG(rows, width, totalHeight), nil
+}
+
+// splitTokens partitions parsed tokens into the row-1 text tokens and the
+// presence of the uptime-bar and response-time-graph rows. Returns
+// (textTokens, hasBar, hasGraph).
+func splitTokens(tokens []string) ([]string, bool, bool) {
+	textTokens := make([]string, 0, len(tokens))
+
+	hasBar := false
+	hasGraph := false
+
+	for _, token := range tokens {
+		switch token {
+		case componentUptimeBar:
+			hasBar = true
+		case componentResponseTimeGraph:
+			hasGraph = true
+		default:
+			if isTextToken(token) {
+				textTokens = append(textTokens, token)
+			}
+		}
+	}
+
+	return textTokens, hasBar, hasGraph
+}
+
+// appendRowFragments fetches the shared bucket data and appends the bar and
+// graph row fragments. It returns the updated rows slice and total height.
+func (s *Service) appendRowFragments(
+	ctx context.Context, orgUID, checkUID string, opts BadgeOptions,
+	width int, hasBar, hasGraph bool, rows []string, totalHeight int,
+) ([]string, int, error) {
+	availMap, durationMap, bucketStart, n, bucketDuration, err := s.fetchBucketData(
+		ctx, orgUID, checkUID, opts.Period,
+	)
+	if err != nil {
+		return rows, totalHeight, err
+	}
+
+	if hasBar {
+		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
+		yOffset := totalHeight + rowGap
+		rows = append(rows, renderUptimeBarRow(segments, width, rowHeightBar, yOffset, opts.Style))
+		totalHeight = yOffset + rowHeightBar
+	}
+
+	if hasGraph {
+		points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
+		yOffset := totalHeight + rowGap
+		rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, yOffset, opts.Style))
+		totalHeight = yOffset + rowHeightGraph
+	}
+
+	return rows, totalHeight, nil
+}
+
+// bucketAccumulator accumulates availability and duration stats for one bucket
+// across multiple result rows (potentially from different period types).
+type bucketAccumulator struct {
+	up     int
+	total  int
+	durSum float64
+	durCnt int
+}
+
+// accumulateRaw merges a raw result row into acc.
+// Returns false when the row should be skipped (created/running status).
+func (acc *bucketAccumulator) accumulateRaw(result *models.Result) {
+	if result.Status == nil {
+		return
+	}
+
+	st := models.ResultStatus(*result.Status)
+	if st == models.ResultStatusCreated || st == models.ResultStatusRunning {
+		return
+	}
+
+	acc.total++
+
+	if *result.Status == int(models.ResultStatusUp) {
+		acc.up++
+	}
+
+	if result.Duration != nil {
+		acc.durSum += float64(*result.Duration)
+		acc.durCnt++
+	}
+}
+
+// accumulateAgg merges an hour/day aggregated result row into acc.
+func (acc *bucketAccumulator) accumulateAgg(result *models.Result) {
+	if result.TotalChecks != nil {
+		acc.total += *result.TotalChecks
+	}
+
+	if result.SuccessfulChecks != nil {
+		acc.up += *result.SuccessfulChecks
+	}
+
+	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
+		acc.durSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
+		acc.durCnt += *result.TotalChecks
+	}
+}
+
+// buildBucketMaps converts the per-bucket accumulators into the availability
+// and duration maps consumed by buildBarSegments / buildGraphPoints.
+func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]float64, map[time.Time]*float64) {
+	availMap := make(map[time.Time]float64, len(accMap))
+	durationMap := make(map[time.Time]*float64, len(accMap))
+
+	for bucket, acc := range accMap {
+		if acc.total > 0 {
+			availMap[bucket] = float64(acc.up) / float64(acc.total) * 100
+		}
+
+		if acc.durCnt > 0 {
+			v := acc.durSum / float64(acc.durCnt)
+			durationMap[bucket] = &v
+		}
+	}
+
+	return availMap, durationMap
+}
+
+// fetchBucketData runs a multi-tier query (raw + hour + day) and returns
+// per-bucket availability and average-duration maps. Because the tiers cover
+// non-overlapping age bands, unioning them never double-counts.
+func (s *Service) fetchBucketData(
+	ctx context.Context, orgUID, checkUID, period string,
+) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
+	_, n, bucketDuration := uptimeBarPeriodInfo(period)
+
+	now := time.Now().UTC()
+	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
+
+	filter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        []string{checkUID},
+		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
+		PeriodStartAfter: &bucketStart,
+	}
+
+	res, err := s.dbSvc.ListResults(ctx, filter)
+	if err != nil {
+		return nil, nil, time.Time{}, 0, 0, err
+	}
+
+	accMap := make(map[time.Time]*bucketAccumulator, n)
+
+	for _, result := range res.Results {
+		bucket := result.PeriodStart.UTC().Truncate(bucketDuration)
+
+		acc := accMap[bucket]
+		if acc == nil {
+			acc = &bucketAccumulator{}
+			accMap[bucket] = acc
+		}
+
+		if result.PeriodType == models.PeriodTypeRaw {
+			acc.accumulateRaw(result)
+		} else {
+			acc.accumulateAgg(result)
+		}
+	}
+
+	availMap, durationMap := buildBucketMaps(accMap)
+
+	return availMap, durationMap, bucketStart, n, bucketDuration, nil
+}
+
+// buildBarSegments resolves the colored segments for the uptime bar row.
+func buildBarSegments(
+	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []string {
+	segments := make([]string, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			segments[i] = uptimeBarColor(pct)
+		} else {
+			segments[i] = ColorGray
+		}
+	}
+
+	return segments
+}
+
+// buildGraphPoints resolves the per-bucket average response times (oldest →
+// newest); nil entries mark buckets with no data.
+func buildGraphPoints(
+	durationMap map[time.Time]*float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []*float64 {
+	points := make([]*float64, n)
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		points[i] = durationMap[t]
+	}
+
+	return points
+}
+
+// uptimeBarPeriodInfo returns the periodType, number of segments, and bucket
+// duration for the given period string.
+func uptimeBarPeriodInfo(period string) (string, int, time.Duration) {
+	switch period {
+	case "24h":
+		return models.PeriodTypeHour, 24, time.Hour
+	case "7d":
+		return models.PeriodTypeDay, 7, 24 * time.Hour
+	case "90d":
+		return models.PeriodTypeDay, 90, 24 * time.Hour
+	default: // "30d"
+		return models.PeriodTypeDay, 30, 24 * time.Hour
+	}
+}
+
+// uptimeBarColor returns the SVG hex color for the given availability percentage.
+func uptimeBarColor(pct float64) string {
+	switch {
+	case pct >= 99.9:
+		return ColorGreen
+	case pct >= 99:
+		return ColorYellow
+	case pct >= 98:
+		return ColorOrange
+	default:
+		return ColorRed
+	}
+}
+
+// fetchResults fetches the results needed for the given tokens.
+func (s *Service) fetchResults(
+	ctx context.Context, orgUID, checkUID string, tokens []string, period string,
+) ([]*models.Result, error) {
+	needsPeriod := false
+
+	for _, token := range tokens {
+		if token == componentAvailability || token == componentResponseTime {
+			needsPeriod = true
+
+			break
+		}
+	}
+
+	if needsPeriod {
+		periodDuration := parsePeriod(period)
+		startTime := time.Now().Add(-periodDuration)
+		filter := &models.ListResultsFilter{
+			OrganizationUID:  orgUID,
+			CheckUIDs:        []string{checkUID},
+			PeriodTypes:      []string{"raw"},
+			PeriodStartAfter: &startTime,
+		}
+
+		res, err := s.dbSvc.ListResults(ctx, filter)
+		if err != nil {
+			return nil, err
+		}
+
+		return res.Results, nil
+	}
+
+	// Only status / duration — fetch latest 1 raw result.
+	filter := &models.ListResultsFilter{
+		OrganizationUID: orgUID,
+		CheckUIDs:       []string{checkUID},
+		PeriodTypes:     []string{"raw"},
+		Limit:           1,
+	}
+
+	res, err := s.dbSvc.ListResults(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	return res.Results, nil
+}
+
+// composeValue builds the badge value string from the selected tokens.
+func (s *Service) composeValue(tokens []string, results []*models.Result) string {
+	parts := make([]string, 0, len(tokens))
+
+	for _, token := range tokens {
+		switch token {
+		case componentStatus:
+			parts = append(parts, formatStatus(results))
+		case componentAvailability:
+			parts = append(parts, formatAvailability(calculateAvailability(results)))
+		case componentDuration:
+			dur, isUp, ok := calculateStatusDuration(results)
+			if ok {
+				if isUp {
+					parts = append(parts, "↑ "+formatDuration(dur))
+				} else {
+					parts = append(parts, "↓ "+formatDuration(dur))
+				}
+			}
+			// When unknown (ok=false), omit the duration component.
+		case componentResponseTime:
+			parts = append(parts, formatResponseTime(results))
+		}
+	}
+
+	return strings.Join(parts, " ")
 }
 
 func (s *Service) applyDefaults(opts BadgeOptions, check *models.Check) BadgeOptions {
 	if opts.Period == "" {
-		opts.Period = "24h"
+		opts.Period = "30d"
 	}
 
 	if opts.Label == "" && check.Name != nil {
@@ -82,78 +496,155 @@ func (s *Service) applyDefaults(opts BadgeOptions, check *models.Check) BadgeOpt
 	return opts
 }
 
-func (s *Service) generateStatusBadge(
-	ctx context.Context, check *models.Check, opts BadgeOptions,
-) (string, error) {
-	filter := &models.ListResultsFilter{
-		OrganizationUID: check.OrganizationUID,
-		CheckUIDs:       []string{check.UID},
-		PeriodTypes:     []string{"raw"},
-		Limit:           1,
+// formatStatus returns the status string for the most recent result.
+func formatStatus(results []*models.Result) string {
+	if len(results) == 0 {
+		return statusUnknown
 	}
 
-	results, err := s.dbSvc.ListResults(ctx, filter)
-	if err != nil {
-		return "", err
+	if results[0].Status == nil {
+		return statusUnknown
 	}
 
-	status := "unknown"
-	color := ColorGray
+	switch *results[0].Status {
+	case int(models.ResultStatusUp):
+		return statusUp
+	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
+		return statusDown
+	default:
+		return statusUnknown
+	}
+}
 
-	if len(results.Results) > 0 && results.Results[0].Status != nil {
-		switch *results.Results[0].Status {
-		case int(models.ResultStatusUp):
-			status = "up"
-			color = ColorGreen
-		case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
-			status = "down"
-			color = ColorRed
+// resolveColor returns the badge color based on component precedence.
+func resolveColor(tokens []string, results []*models.Result) string {
+	hasStatus := false
+	hasAvailability := false
+
+	for _, token := range tokens {
+		if token == componentStatus {
+			hasStatus = true
+		}
+
+		if token == componentAvailability {
+			hasAvailability = true
 		}
 	}
 
-	return GenerateSVG(opts.Label, status, color, opts.Style), nil
+	if hasStatus {
+		switch formatStatus(results) {
+		case statusUp:
+			return ColorGreen
+		case statusDown:
+			return ColorRed
+		default:
+			return ColorGray
+		}
+	}
+
+	if hasAvailability {
+		return availabilityColor(calculateAvailability(results))
+	}
+
+	return ColorGray
 }
 
-func (s *Service) generateAvailabilityBadge(
-	ctx context.Context, orgUID string, check *models.Check, opts BadgeOptions, showDuration bool,
-) (string, error) {
-	periodDuration := parsePeriod(opts.Period)
-	startTime := time.Now().Add(-periodDuration)
+// formatResponseTime computes the mean response time from results.
+func formatResponseTime(results []*models.Result) string {
+	var sum float64
 
-	filter := &models.ListResultsFilter{
-		OrganizationUID:  orgUID,
-		CheckUIDs:        []string{check.UID},
-		PeriodTypes:      []string{"raw"},
-		PeriodStartAfter: &startTime,
+	count := 0
+
+	for _, result := range results {
+		if result.Duration != nil {
+			sum += float64(*result.Duration)
+			count++
+		}
 	}
 
-	results, err := s.dbSvc.ListResults(ctx, filter)
-	if err != nil {
-		return "", err
+	if count == 0 {
+		return "n/a"
 	}
 
-	availability := calculateAvailability(results.Results)
-	color := availabilityColor(availability)
+	// mean is in milliseconds (Duration field stores ms, not seconds)
+	mean := sum / float64(count)
 
-	value := formatAvailability(availability)
-	if showDuration {
-		duration := s.calculateUptimeDuration(results.Results)
-		value = value + " ↑ " + formatDuration(duration)
+	if mean < 1000 {
+		return fmt.Sprintf("%dms", int(math.Round(mean)))
 	}
 
-	return GenerateSVG(opts.Label, value, color, opts.Style), nil
+	return fmt.Sprintf("%.1fs", mean/1000)
+}
+
+// calculateStatusDuration returns the time since last status change, a
+// boolean indicating whether the current status is up, and a third boolean
+// indicating whether the status is known at all.
+func calculateStatusDuration(results []*models.Result) (time.Duration, bool, bool) {
+	// Find the most recent actionable status.
+	currentStatus := -1
+
+	for _, res := range results {
+		if res.Status == nil {
+			continue
+		}
+
+		s := models.ResultStatus(*res.Status)
+		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+			continue
+		}
+
+		currentStatus = *res.Status
+
+		break
+	}
+
+	if currentStatus == -1 {
+		return 0, false, false
+	}
+
+	isUp := currentStatus == int(models.ResultStatusUp)
+
+	// Walk newest→oldest, stopping at the first transition away from currentStatus.
+	// Record the period_start of the oldest consecutive result with currentStatus.
+	lastChangeTime := time.Time{}
+	seenCount := 0
+
+	for _, res := range results {
+		if res.Status == nil {
+			continue
+		}
+
+		s := models.ResultStatus(*res.Status)
+		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
+			continue
+		}
+
+		if *res.Status != currentStatus {
+			// First result that differs — stop here.
+			break
+		}
+
+		lastChangeTime = res.PeriodStart
+		seenCount++
+	}
+
+	if seenCount == 0 {
+		return 0, isUp, false
+	}
+
+	return time.Since(lastChangeTime), isUp, true
 }
 
 func parsePeriod(period string) time.Duration {
 	switch period {
-	case "1h":
-		return time.Hour
+	case "24h":
+		return 24 * time.Hour
 	case "7d":
 		return 7 * 24 * time.Hour
-	case "30d":
+	case "90d":
+		return 90 * 24 * time.Hour
+	default: // "30d"
 		return 30 * 24 * time.Hour
-	default: // "24h"
-		return 24 * time.Hour
 	}
 }
 
@@ -170,6 +661,7 @@ func calculateAvailability(results []*models.Result) float64 {
 			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
 				continue
 			}
+
 			total++
 
 			if *result.Status == int(models.ResultStatusUp) {
@@ -204,33 +696,6 @@ func formatAvailability(pct float64) string {
 	}
 
 	return fmt.Sprintf("%.1f%%", pct)
-}
-
-func (s *Service) calculateUptimeDuration(results []*models.Result) time.Duration {
-	// Iterate from newest to oldest, find first non-up status
-	seenCount := 0
-	for _, result := range results {
-		if result.Status != nil {
-			status := models.ResultStatus(*result.Status)
-			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
-				continue
-			}
-		}
-		if result.Status != nil && *result.Status != int(models.ResultStatusUp) {
-			if seenCount == 0 {
-				return 0 // Currently down
-			}
-
-			return time.Since(result.PeriodStart)
-		}
-		seenCount++
-	}
-	// All results are up
-	if len(results) > 0 {
-		return time.Since(results[len(results)-1].PeriodStart)
-	}
-
-	return 0
 }
 
 func formatDuration(duration time.Duration) string {

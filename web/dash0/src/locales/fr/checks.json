@@ -162,7 +162,77 @@
     "docker": "Docker",
     "dockerDescription": "Surveiller la santé des conteneurs Docker",
     "browser": "Navigateur",
-    "browserDescription": "Surveiller les pages avec Chrome headless"
+    "browserDescription": "Surveiller les pages avec Chrome headless",
+    "freebox_line": "Qualité de ligne Freebox",
+    "freebox_lineDescription": "Surveiller la qualité de la ligne xDSL/FTTH via Freebox OS",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Vérifier si une IP/domaine est sur des listes de blocage DNS",
+    "sip": "SIP",
+    "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP"
+  },
+  "freebox": {
+    "discover": "Découvrir depuis Freebox",
+    "discoverTitle": "Découvrir des hôtes depuis Freebox",
+    "discoverDescription": "Choisissez un hôte visible par votre Freebox pour pré-remplir un contrôle ICMP.",
+    "searchPlaceholder": "Rechercher par nom ou IP…",
+    "loading": "Chargement des hôtes…",
+    "error": "Impossible de charger les hôtes depuis la Freebox.",
+    "retry": "Réessayer",
+    "noHosts": "Aucun hôte visible sur cette Freebox.",
+    "noMatches": "Aucun hôte ne correspond à la recherche.",
+    "reachable": "Joignable",
+    "unreachable": "Injoignable",
+    "cancel": "Annuler",
+    "useSelected": "Utiliser l'hôte sélectionné",
+    "hostType": {
+      "workstation": "Ordinateur",
+      "laptop": "Portable",
+      "smartphone": "Téléphone",
+      "tablet": "Tablette",
+      "nas": "NAS",
+      "printer": "Imprimante",
+      "player": "Lecteur multimédia",
+      "ip_camera": "Caméra",
+      "router": "Routeur",
+      "other": "Appareil"
+    }
+  },
+  "freeboxLine": {
+    "connectionUid": "Connexion Freebox",
+    "connectionUidHelp": "Sélectionnez une connexion Freebox appairée. Si vous n'en avez aucune, appairez-en une depuis les Canaux.",
+    "noConnections": "Aucune connexion Freebox appairée. Appairez-en une pour commencer.",
+    "linkType": "Type de lien",
+    "linkTypeXdsl": "xDSL / ADSL",
+    "linkTypeFtth": "FTTH Fibre",
+    "advancedThresholds": "Seuils avancés",
+    "thresholdsHelp": "Solidping signale le contrôle comme \"down\" si un seuil configuré est franchi. Laissez 0 pour désactiver un seuil.",
+    "minSyncRateDownKbps": "Débit de synchronisation minimum (Kbps)",
+    "minSnrMarginDownDb": "Marge SNR minimum (dB)",
+    "maxAttenuationDb": "Atténuation maximum (dB)",
+    "maxCrcErrorsPerRun": "Erreurs CRC max par contrôle",
+    "minRxPowerMw": "Puissance Rx min (mW)",
+    "maxRxPowerMw": "Puissance Rx max (mW)"
+  },
+  "dnsbl": {
+    "target": "IP ou nom d'hôte cible",
+    "targetHelp": "Adresse IPv4 ou nom d'hôte à vérifier auprès des listes de blocage.",
+    "blocklists": "Zones de listes de blocage",
+    "blocklistsHelp": "Optionnel. Une zone de liste de blocage DNS par ligne (ou séparées par des virgules). Laissez vide pour utiliser les valeurs par défaut (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Résolveur personnalisé",
+    "nameserverHelp": "host:port optionnel d'un résolveur récursif. Les résolveurs publics (8.8.8.8, 1.1.1.1) sont bloqués par Spamhaus, utilisez un résolveur local si nécessaire."
+  },
+  "sip": {
+    "transport": "Transport",
+    "mode": "Mode",
+    "modeOptions": "OPTIONS (joignabilité)",
+    "modeRegister": "REGISTER (authentification)",
+    "domain": "Domaine SIP",
+    "domainHelp": "Optionnel. Domaine/realm SIP pour l'adresse d'enregistrement. Par défaut, l'hôte.",
+    "username": "Identifiant",
+    "password": "Mot de passe",
+    "passwordEncrypted": "(chiffré — saisissez une nouvelle valeur pour le remplacer)",
+    "expectStatus": "Statut attendu (optionnel)",
+    "expectStatusHelp": "Optionnel. Codes de statut SIP séparés par des virgules considérés comme \"up\" (ex. 200 ou 200,405). Laissez vide pour accepter toute réponse SIP valide."
   },
   "intervals": {
     "10s": "10 secondes",
@@ -228,7 +298,7 @@
       "showingAllRegions": "Toutes les régions affichées ({{regions}})",
       "tooltipClickPoint": "Cliquer sur un point pour les détails",
       "dotClickForDetails": "Cliquer pour les détails",
-      "dotClickAgain": "Cliquer à nouveau pour ouvrir la page complète"
+      "dotClickToClose": "Cliquer pour fermer"
     },
     "resultBox": {
       "close": "Fermer",
@@ -239,7 +309,7 @@
       "region": "Région",
       "status": "Statut",
       "period": "Période",
-      "clickAgain": "Cliquer à nouveau pour ouvrir la page complète"
+      "moreDetails": "Plus de détails →"
     },
     "availability": {
       "title": "Disponibilité",
@@ -334,5 +404,8 @@
   "expectedValue": "Valeur attendue",
   "actualValue": "Valeur réelle",
   "passed": "Réussi",
-  "failed": "Échoué"
+  "failed": "Échoué",
+  "secretHeaders": "En-têtes secrets",
+  "secretHeadersDescription": "Valeurs d'en-têtes stockées chiffrées — utilisez pour les clés API et les tokens Bearer.",
+  "addSecretHeader": "Ajouter un en-tête secret"
 }

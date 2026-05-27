@@ -8,16 +8,21 @@
   "events": "Événements",
   "channels": "Canaux",
   "statusPages": "Pages de statut",
+  "statusUpdates": "Mises à jour de statut",
   "badges": "Badges",
+  "discovery": "Découverte",
+  "myPages": "Mes alertes",
   "testTools": "Outils de test",
   "designReference": "Référence design",
   "new": "Nouveau",
   "edit": "Modifier",
+  "promote": "Promotion",
   "profile": "Profil",
   "tokens": "Jetons",
   "members": "Membres",
   "invitations": "Invitations",
   "requests": "Demandes",
+  "usage": "Utilisation",
   "settings": "Paramètres",
   "web": "Web",
   "mail": "Mail",
@@ -112,10 +117,13 @@
   "command": {
     "searchPlaceholder": "Rechercher pages et contrôles...",
     "noResults": "Aucun résultat.",
+    "groupActions": "Actions",
     "groupPages": "Pages",
     "groupAccount": "Compte",
     "groupOrganization": "Organisation",
-    "groupChecks": "Contrôles"
+    "groupChecks": "Contrôles",
+    "newCheck": "Nouveau contrôle",
+    "newCheckDescription": "Créer un nouveau contrôle de monitoring"
   },
   "security": "Sécurité"
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
@@ -38,6 +39,9 @@ type NotificationJobConfig struct {
 	ConnectionUID string `json:"connectionUid"`
 	IncidentUID   string `json:"incidentUid"`
 	EventType     string `json:"eventType"` // "incident.created", "incident.resolved", "incident.escalated"
+	// JobUID is the UID of the job row itself. Populated at Sites 1+2 so that
+	// NotificationJobRun.Run can update the matching audit row by job_uid.
+	JobUID string `json:"jobUid,omitempty"`
 }
 
 // NotificationJobDefinition is the factory for notification jobs.
@@ -122,6 +126,19 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		return fmt.Errorf("%w: %s", ErrSenderNotFound, connection.Type)
 	}
 
+	// Webhook senders may auto-generate / rotate their signing secret on
+	// delivery. Inject a persistence callback so the mutated secret is written
+	// back (re-encrypted) to the channel row.
+	if ws, isWebhook := sender.(*notifications.WebhookSender); isWebhook {
+		ws.UpdateChannel = r.webhookChannelUpdater(jctx)
+	}
+
+	// Web Push senders prune dead subscriptions; inject the same persistence
+	// callback so the pruned list is written back to the channel row.
+	if wps, isWebPush := sender.(*notifications.WebPushSender); isWebPush {
+		wps.UpdateChannel = r.webhookChannelUpdater(jctx)
+	}
+
 	// Look up the org slug so the email sender can build user-facing URLs
 	// (magic-link ack endpoint). A missing org is logged but does not fail
 	// the notification — recipients still get the email, just without a
@@ -151,12 +168,8 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		"eventType", r.config.EventType,
 	)
 
-	if err := sender.Send(ctx, jctx, payload); err != nil {
-		// Network errors should be retryable
-		if notifications.IsNetworkError(err) {
-			return jobdef.NewRetryableError(err)
-		}
-		return err
+	if sendErr := r.sendAndAudit(ctx, jctx, sender, payload); sendErr != nil {
+		return sendErr
 	}
 
 	log.InfoContext(ctx, "Notification sent successfully")
@@ -168,4 +181,82 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		activation.SourceSystem, "")
 
 	return nil
+}
+
+// sendAndAudit delivers the notification and updates the audit row by job UID.
+func (r *NotificationJobRun) sendAndAudit(
+	ctx context.Context,
+	jctx *jobdef.JobContext,
+	sender notifications.Sender,
+	payload *notifications.Payload,
+) error {
+	if err := sender.Send(ctx, jctx, payload); err != nil {
+		// Network errors should be retryable — leave the audit row at pending
+		// so a subsequent retry can update it.
+		if notifications.IsNetworkError(err) {
+			_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+				ctx, jctx.Job.UID, time.Now(), err.Error(), true,
+			)
+
+			return jobdef.NewRetryableError(err)
+		}
+
+		_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
+			ctx, jctx.Job.UID, time.Now(), err.Error(), false,
+		)
+
+		return err
+	}
+
+	// Most senders have no message_id. Webhook senders set the Standard
+	// Webhooks `webhook-id` on the payload; surface it on the audit row.
+	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
+		ctx, jctx.Job.UID, time.Now(), payload.MessageID,
+	)
+
+	return nil
+}
+
+// webhookChannelUpdater returns a callback that re-encrypts a webhook
+// channel's (now-decrypted, mutated) Settings and persists them. Used by the
+// WebhookSender when it auto-generates or purges a signing secret. When
+// encryption is disabled, secrets fall back to plaintext storage (V1 behavior).
+func (r *NotificationJobRun) webhookChannelUpdater(
+	jctx *jobdef.JobContext,
+) func(ctx context.Context, channel *models.Channel) error {
+	return func(ctx context.Context, channel *models.Channel) error {
+		secrets := credentials.ConnectionSecretFields(channel.Type)
+		effective := credentials.MergeConfig(channel.Settings, nil)
+		public, private := credentials.SplitConfig(effective, secrets)
+
+		update := &models.ChannelUpdate{}
+
+		creds := jctx.Services.Credentials
+		if creds == nil || !creds.Enabled() || len(private) == 0 {
+			// Plaintext fallback: secrets stay on the public Settings map so
+			// delivery keeps working without a master key.
+			merged := credentials.MergeConfig(public, private)
+			settings := models.JSONMap(merged)
+			update.Settings = &settings
+			update.ClearSettingsPrivate = true
+		} else {
+			envelope, err := creds.EncryptForOrg(ctx, channel.OrganizationUID, private)
+			if err != nil {
+				return fmt.Errorf("encrypt webhook channel settings: %w", err)
+			}
+
+			keysJSON, err := json.Marshal(credentials.SortedKeys(private))
+			if err != nil {
+				return fmt.Errorf("marshal webhook settings private keys: %w", err)
+			}
+
+			keysStr := string(keysJSON)
+			settings := models.JSONMap(public)
+			update.Settings = &settings
+			update.SettingsPrivate = &envelope
+			update.SettingsPrivateKeys = &keysStr
+		}
+
+		return jctx.DBService.UpdateChannel(ctx, channel.UID, update)
+	}
 }

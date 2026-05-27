@@ -17,6 +17,16 @@
     "saved": "Einstellungen gespeichert.",
     "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
   },
+  "usage": {
+    "title": "Nutzung",
+    "description": "Die Grenzwerte Ihres Tarifs und Ihr aktueller Verbrauch.",
+    "checks": "Prüfungen",
+    "checksPerMinute": "Prüfungen pro Minute",
+    "ssoUsers": "SSO-Benutzer",
+    "unlimited": "Unbegrenzt",
+    "upgrade": "Upgrade",
+    "loadError": "Nutzung konnte nicht geladen werden."
+  },
   "requests": {
     "title": "Mitgliedschaftsanfragen",
     "description": "Beitrittsanfragen genehmigen oder ablehnen.",

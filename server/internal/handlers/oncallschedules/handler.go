@@ -231,7 +231,7 @@ func (h *Handler) GetSchedule(writer http.ResponseWriter, req bunrouter.Request)
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -264,7 +264,7 @@ func (h *Handler) UpdateSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -310,7 +310,7 @@ func (h *Handler) DeleteSchedule(writer http.ResponseWriter, req bunrouter.Reque
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -332,7 +332,7 @@ func (h *Handler) PreviewSchedule(writer http.ResponseWriter, req bunrouter.Requ
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -388,7 +388,7 @@ func (h *Handler) ListOverrides(writer http.ResponseWriter, req bunrouter.Reques
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -437,7 +437,7 @@ func (h *Handler) CreateOverride(writer http.ResponseWriter, req bunrouter.Reque
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -483,7 +483,7 @@ func (h *Handler) EnableICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -510,7 +510,7 @@ func (h *Handler) RotateICalFeed(writer http.ResponseWriter, req bunrouter.Reque
 
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -534,7 +534,7 @@ func (h *Handler) DisableICalFeed(writer http.ResponseWriter, req bunrouter.Requ
 	}
 	slug := req.Param("slug")
 
-	schedule, err := h.svc.GetScheduleBySlug(req.Context(), orgUID, slug)
+	schedule, err := h.svc.GetScheduleByUidOrSlug(req.Context(), orgUID, slug)
 	if err != nil {
 		return h.handleError(writer, err)
 	}

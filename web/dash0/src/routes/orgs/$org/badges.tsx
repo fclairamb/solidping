@@ -1,13 +1,11 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   BadgeCheck,
   Copy,
   Check as CheckIcon,
-  Download,
-  Image,
-  FileImage,
+  FileDown,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -24,59 +22,106 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 
-type BadgeFormat = "status" | "availability" | "availability-duration";
-type BadgePeriod = "1h" | "24h" | "7d" | "30d";
+type BadgePeriod = "24h" | "7d" | "30d" | "90d";
 type BadgeStyle = "flat" | "flat-square";
 
-const validFormats: BadgeFormat[] = ["status", "availability", "availability-duration"];
-const validPeriods: BadgePeriod[] = ["1h", "24h", "7d", "30d"];
+const componentOrder = [
+  "status",
+  "availability",
+  "duration",
+  "response-time",
+  "uptime-bar",
+  "response-time-graph",
+] as const;
+const validComponentTokens = new Set<string>(componentOrder);
+const validPeriods: BadgePeriod[] = ["24h", "7d", "30d", "90d"];
 const validStyles: BadgeStyle[] = ["flat", "flat-square"];
+
+const DEFAULT_WIDTH = 300;
 
 interface BadgeSearch {
   check?: string;
-  format?: BadgeFormat;
+  components?: string;
   period?: BadgePeriod;
   style?: BadgeStyle;
   label?: string;
+  minWidth?: number;
+  width?: number;
+}
+
+function parseComponentsString(raw: string): string[] {
+  return raw
+    .split(",")
+    .map((t) => t.trim())
+    .filter((t) => validComponentTokens.has(t));
+}
+
+function hasRowToken(tokens: string[]): boolean {
+  return tokens.includes("uptime-bar") || tokens.includes("response-time-graph");
 }
 
 export const Route = createFileRoute("/orgs/$org/badges")({
-  validateSearch: (search: Record<string, unknown>): BadgeSearch => ({
-    check: typeof search.check === "string" ? search.check : undefined,
-    format: validFormats.includes(search.format as BadgeFormat)
-      ? (search.format as BadgeFormat)
-      : undefined,
-    period: validPeriods.includes(search.period as BadgePeriod)
-      ? (search.period as BadgePeriod)
-      : undefined,
-    style: validStyles.includes(search.style as BadgeStyle)
-      ? (search.style as BadgeStyle)
-      : undefined,
-    label: typeof search.label === "string" && search.label
-      ? search.label
-      : undefined,
-  }),
+  validateSearch: (search: Record<string, unknown>): BadgeSearch => {
+    let components: string | undefined;
+    if (typeof search.components === "string" && search.components) {
+      const tokens = parseComponentsString(search.components);
+      if (tokens.length > 0 && tokens.join(",") !== "status") {
+        components = tokens.join(",");
+      }
+    }
+    const rawWidth = Number(search.width);
+    const rawMinWidth = Number(search.minWidth);
+    return {
+      check: typeof search.check === "string" ? search.check : undefined,
+      // Keep components undefined when it equals the default ("status") so
+      // TanStack Router omits it from the URL instead of serializing it.
+      components,
+      // Keep period/style undefined when they equal their defaults ("30d" / "flat")
+      // so TanStack Router omits them from the URL.
+      period: validPeriods.includes(search.period as BadgePeriod) &&
+        search.period !== "30d"
+        ? (search.period as BadgePeriod)
+        : undefined,
+      style: validStyles.includes(search.style as BadgeStyle) &&
+        search.style !== "flat"
+        ? (search.style as BadgeStyle)
+        : undefined,
+      label: typeof search.label === "string" && search.label
+        ? search.label
+        : undefined,
+      minWidth: !isNaN(rawMinWidth) && rawMinWidth >= 1 && rawMinWidth <= 800
+        ? rawMinWidth
+        : undefined,
+      width: !isNaN(rawWidth) && rawWidth >= 60 && rawWidth <= 800
+        ? rawWidth
+        : undefined,
+    };
+  },
   component: BadgesPage,
 });
 
-const badgeFormats: { value: BadgeFormat; labelKey: string; descriptionKey: string }[] = [
-  { value: "status", labelKey: "formats.status", descriptionKey: "formats.statusDescription" },
-  { value: "availability", labelKey: "formats.availability", descriptionKey: "formats.availabilityDescription" },
-  { value: "availability-duration", labelKey: "formats.availabilityDuration", descriptionKey: "formats.availabilityDurationDescription" },
-];
-
 const badgePeriods: { value: BadgePeriod; labelKey: string }[] = [
-  { value: "1h", labelKey: "periods.1h" },
   { value: "24h", labelKey: "periods.24h" },
   { value: "7d", labelKey: "periods.7d" },
   { value: "30d", labelKey: "periods.30d" },
+  { value: "90d", labelKey: "periods.90d" },
 ];
 
 const badgeStyles: { value: BadgeStyle; labelKey: string }[] = [
   { value: "flat", labelKey: "styles.flat" },
   { value: "flat-square", labelKey: "styles.flatSquare" },
 ];
+
+const componentDefs = [
+  { token: "status", labelKey: "components.status", descKey: "components.statusDescription" },
+  { token: "availability", labelKey: "components.availability", descKey: "components.availabilityDescription" },
+  { token: "duration", labelKey: "components.duration", descKey: "components.durationDescription" },
+  { token: "response-time", labelKey: "components.responseTime", descKey: "components.responseTimeDescription" },
+  { token: "uptime-bar", labelKey: "components.uptimeBar", descKey: "components.uptimeBarDescription" },
+  { token: "response-time-graph", labelKey: "components.responseTimeGraph", descKey: "components.responseTimeGraphDescription" },
+] as const;
 
 function CopyButton({ text, label }: { text: string; label: string }) {
   const { t } = useTranslation("badges");
@@ -100,37 +145,46 @@ function CopyButton({ text, label }: { text: string; label: string }) {
 function BadgePreview({
   org,
   check,
-  format,
+  components,
   period,
   style,
   customLabel,
+  minWidth,
+  width,
 }: {
   org: string;
   check: Check;
-  format: BadgeFormat;
+  components: string;
   period: BadgePeriod;
   style: BadgeStyle;
   customLabel: string;
+  minWidth: number;
+  width: number;
 }) {
   const { t } = useTranslation("badges");
   const imgRef = useRef<HTMLImageElement>(null);
   const [cacheBust, setCacheBust] = useState(() => Date.now());
 
+  const tokens = parseComponentsString(components);
+  const showRowControls = hasRowToken(tokens);
+
   const identifier = check.slug || check.uid;
   const params = new URLSearchParams();
-  if (period !== "24h") params.set("period", period);
+  if (period !== "30d") params.set("period", period);
   if (style !== "flat") params.set("style", style);
   if (customLabel) params.set("label", customLabel);
+  if (!showRowControls && minWidth > 0) params.set("minWidth", String(minWidth));
+  if (showRowControls && width !== DEFAULT_WIDTH) params.set("width", String(width));
   const query = params.toString();
 
-  const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${format}${query ? `?${query}` : ""}`;
+  const badgePath = `/api/v1/orgs/${org}/checks/${identifier}/badges/${components}${query ? `?${query}` : ""}`;
   const badgeUrl = `${window.location.origin}${badgePath}`;
 
-  const markdownCode = `![${check.name || identifier} ${format}](${badgeUrl})`;
-  const htmlCode = `<img src="${badgeUrl}" alt="${check.name || identifier} ${format}" />`;
+  const markdownCode = `![${check.name || identifier} badge](${badgeUrl})`;
+  const htmlCode = `<img src="${badgeUrl}" alt="${check.name || identifier} badge" />`;
 
   const downloadBadge = useCallback(
-    async (downloadFormat: "svg" | "png" | "jpg") => {
+    async (downloadFormat: "svg" | "png") => {
       try {
         const response = await fetch(badgePath);
         const svgText = await response.text();
@@ -140,7 +194,7 @@ function BadgePreview({
           const url = URL.createObjectURL(blob);
           const a = document.createElement("a");
           a.href = url;
-          a.download = `${identifier}-${format}.svg`;
+          a.download = `${identifier}-${components.replace(/,/g, "-")}.svg`;
           a.click();
           URL.revokeObjectURL(url);
           return;
@@ -157,25 +211,20 @@ function BadgePreview({
           canvas.height = img.naturalHeight * scale;
           const ctx = canvas.getContext("2d")!;
           ctx.scale(scale, scale);
-          if (downloadFormat === "jpg") {
-            ctx.fillStyle = "#ffffff";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-          }
           ctx.drawImage(img, 0, 0);
           URL.revokeObjectURL(svgUrl);
 
-          const mimeType = downloadFormat === "png" ? "image/png" : "image/jpeg";
           canvas.toBlob(
             (blob) => {
               if (!blob) return;
               const url = URL.createObjectURL(blob);
               const a = document.createElement("a");
               a.href = url;
-              a.download = `${identifier}-${format}.${downloadFormat}`;
+              a.download = `${identifier}-${components.replace(/,/g, "-")}.png`;
               a.click();
               URL.revokeObjectURL(url);
             },
-            mimeType,
+            "image/png",
             0.95
           );
         };
@@ -184,7 +233,7 @@ function BadgePreview({
         toast.error(t("downloadFailed"));
       }
     },
-    [badgePath, identifier, format, t]
+    [badgePath, identifier, components, t]
   );
 
   const previewUrl = `${badgePath}${query ? "&" : "?"}t=${cacheBust}`;
@@ -194,15 +243,35 @@ function BadgePreview({
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">{t("preview")}</CardTitle>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setCacheBust(Date.now())}
-            data-testid="badge-refresh-preview"
-          >
-            <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
-            {t("refresh")}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadBadge("svg")}
+              data-testid="badge-download-svg"
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+              {t("downloadSvg")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => downloadBadge("png")}
+              data-testid="badge-download-png"
+            >
+              <FileDown className="mr-1.5 h-3.5 w-3.5" />
+              {t("downloadPng")}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setCacheBust(Date.now())}
+              data-testid="badge-refresh-preview"
+            >
+              <RefreshCw className="mr-1.5 h-3.5 w-3.5" />
+              {t("refresh")}
+            </Button>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center justify-center rounded-lg border border-dashed bg-muted/30 p-3 sm:p-8">
@@ -210,32 +279,8 @@ function BadgePreview({
               ref={imgRef}
               src={previewUrl}
               alt={`${check.name || identifier} badge`}
-              className="h-5"
               data-testid="badge-preview-img"
             />
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t("download")}</CardTitle>
-          <CardDescription>{t("downloadDescription")}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("svg")} data-testid="badge-download-svg">
-              <Image className="mr-1.5 h-3.5 w-3.5" />
-              SVG
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("png")} data-testid="badge-download-png">
-              <FileImage className="mr-1.5 h-3.5 w-3.5" />
-              PNG
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => downloadBadge("jpg")} data-testid="badge-download-jpg">
-              <Download className="mr-1.5 h-3.5 w-3.5" />
-              JPG
-            </Button>
           </div>
         </CardContent>
       </Card>
@@ -286,10 +331,25 @@ function BadgesPage() {
   const navigate = useNavigate({ from: Route.fullPath });
   const { data: checks = [], isLoading, error } = useChecks(org);
 
-  const format = search.format ?? "status";
-  const period = search.period ?? "24h";
+  const components = search.components ?? "status";
+  const period = search.period ?? "30d";
   const style = search.style ?? "flat";
   const customLabel = search.label ?? "";
+  const minWidth = search.minWidth ?? 0;
+  const width = search.width ?? DEFAULT_WIDTH;
+
+  const [localWidth, setLocalWidth] = useState(String(width));
+  const [localMinWidth, setLocalMinWidth] = useState(String(minWidth));
+
+  useEffect(() => setLocalWidth(String(width)), [width]);
+  useEffect(() => setLocalMinWidth(String(minWidth)), [minWidth]);
+
+  const activeTokens = parseComponentsString(components);
+  const showRowControls = hasRowToken(activeTokens);
+  const showPeriod =
+    activeTokens.includes("availability") ||
+    activeTokens.includes("response-time") ||
+    showRowControls;
 
   const selectedCheck = search.check
     ? checks.find((c) => c.uid === search.check) ??
@@ -300,10 +360,12 @@ function BadgesPage() {
     navigate({
       search: (prev: BadgeSearch) => {
         const next = { ...prev, ...updates };
-        if (next.format === "status") delete next.format;
-        if (next.period === "24h") delete next.period;
+        if (next.components === "status") delete next.components;
+        if (next.period === "30d") delete next.period;
         if (next.style === "flat") delete next.style;
         if (!next.label) delete next.label;
+        if (!next.minWidth || next.minWidth <= 0) delete next.minWidth;
+        if (!next.width || next.width === DEFAULT_WIDTH) delete next.width;
         return next;
       },
       replace: true,
@@ -313,6 +375,31 @@ function BadgesPage() {
   const handleCheckChange = (uid: string) => {
     const check = checks.find((c) => c.uid === uid);
     updateSearch({ check: check?.slug || uid });
+  };
+
+  const handleComponentToggle = (token: string, checked: boolean) => {
+    let tokens = [...activeTokens];
+    if (checked) {
+      if (!tokens.includes(token)) {
+        // Insert in canonical order.
+        const newTokens: string[] = [];
+        for (const t of componentOrder) {
+          if (tokens.includes(t) || t === token) {
+            newTokens.push(t);
+          }
+        }
+        tokens = newTokens;
+      }
+    } else {
+      tokens = tokens.filter((t) => t !== token);
+    }
+
+    // Keep the URL non-empty: fall back to "status" when everything is off.
+    if (tokens.length === 0) {
+      tokens = ["status"];
+    }
+
+    updateSearch({ components: tokens.join(",") });
   };
 
   return (
@@ -357,28 +444,36 @@ function BadgesPage() {
             </div>
 
             <div className="space-y-2">
-              <Label>{t("format")}</Label>
-              <Select
-                value={format}
-                onValueChange={(v) => updateSearch({ format: v as BadgeFormat })}
-              >
-                <SelectTrigger data-testid="badge-format-select">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {badgeFormats.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>
-                      <div>
-                        <span>{t(f.labelKey)}</span>
-                        <span className="ml-2 text-xs text-muted-foreground">{t(f.descriptionKey)}</span>
+              <Label>{t("components")}</Label>
+              <div className="space-y-3">
+                {componentDefs.map(({ token, labelKey, descKey }) => {
+                  const checked = activeTokens.includes(token);
+                  return (
+                    <div key={token} className="flex items-start gap-3">
+                      <Checkbox
+                        id={`component-${token}`}
+                        checked={checked}
+                        onCheckedChange={(v) =>
+                          handleComponentToggle(token, v === true)
+                        }
+                        data-testid={`badge-component-${token}`}
+                      />
+                      <div className="grid gap-0.5">
+                        <label
+                          htmlFor={`component-${token}`}
+                          className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                        >
+                          {t(labelKey)}
+                        </label>
+                        <p className="text-xs text-muted-foreground">{t(descKey)}</p>
                       </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
-            {format !== "status" && (
+            {showPeriod && (
               <div className="space-y-2">
                 <Label>{t("period")}</Label>
                 <Select
@@ -418,6 +513,47 @@ function BadgesPage() {
               </Select>
             </div>
 
+            {showRowControls ? (
+              <div className="space-y-2">
+                <Label>{t("width")}</Label>
+                <Input
+                  data-testid="badge-width"
+                  type="number"
+                  min={60}
+                  max={800}
+                  step={10}
+                  value={localWidth}
+                  onChange={(e) => setLocalWidth(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(localWidth);
+                    if (!isNaN(n) && n >= 60 && n <= 800) updateSearch({ width: n });
+                    else setLocalWidth(String(width));
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label>{t("minWidth")}</Label>
+                <Input
+                  data-testid="badge-min-width"
+                  type="number"
+                  min={0}
+                  max={800}
+                  step={10}
+                  value={localMinWidth}
+                  onChange={(e) => setLocalMinWidth(e.target.value)}
+                  onBlur={() => {
+                    const n = Number(localMinWidth);
+                    if (!isNaN(n) && n >= 0 && n <= 800) updateSearch({ minWidth: n || undefined });
+                    else setLocalMinWidth(String(minWidth));
+                  }}
+                  onKeyDown={(e) => e.key === "Enter" && e.currentTarget.blur()}
+                />
+                <p className="text-xs text-muted-foreground">{t("minWidthDescription")}</p>
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label>{t("customLabel")}</Label>
               <Input
@@ -432,14 +568,18 @@ function BadgesPage() {
 
         <div>
           {selectedCheck ? (
-            <BadgePreview
-              org={org}
-              check={selectedCheck}
-              format={format}
-              period={period}
-              style={style}
-              customLabel={customLabel}
-            />
+            <div className="space-y-6">
+              <BadgePreview
+                org={org}
+                check={selectedCheck}
+                components={components}
+                period={period}
+                style={style}
+                customLabel={customLabel}
+                minWidth={minWidth}
+                width={width}
+              />
+            </div>
           ) : (
             <Card>
               <CardContent className="flex items-center justify-center py-16">

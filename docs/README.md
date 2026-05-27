@@ -9,6 +9,7 @@
 - [architecture.md](architecture.md) — System architecture: handler-service pattern, multi-tenancy, distributed checks, data model, scalability
 - [api-specification.md](api-specification.md) — Complete REST API specification: auth, orgs, users, workers, checks, results, config
 - [database-model.md](database-model.md) — Database schema with all 28 tables, columns, foreign keys, and design patterns
+- [terraform-provider-api-audit.md](terraform-provider-api-audit.md) — API completeness audit for the out-of-tree Terraform provider: per-resource lifecycle/secret/import coverage and gaps
 
 ## Features
 

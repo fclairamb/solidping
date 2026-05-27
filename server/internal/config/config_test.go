@@ -3,6 +3,8 @@ package config
 import (
 	"log/slog"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -289,4 +291,47 @@ func TestParseLogLevel(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestApplyFileStorageEnv confirms the manual reader bypasses koanf's env
+// underscore→dot collapse: every SP_FILESTORAGE_S3_* var lands on the
+// snake_case-tagged FileStorageConfig field. Uses t.Setenv, which is
+// incompatible with t.Parallel.
+func TestApplyFileStorageEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_FILESTORAGE_S3_BUCKET", "solidping")
+	t.Setenv("SP_FILESTORAGE_S3_REGION", "eu-west-3")
+	t.Setenv("SP_FILESTORAGE_S3_PREFIX", "blobs")
+	t.Setenv("SP_FILESTORAGE_S3_ENDPOINT", "https://minio.local:9000")
+	t.Setenv("SP_FILESTORAGE_S3_USE_PATH_STYLE", "true")
+	t.Setenv("SP_FILESTORAGE_S3_ACCESS_KEY", "minio")
+	t.Setenv("SP_FILESTORAGE_S3_SECRET_KEY", "minio123")
+
+	var cfg FileStorageConfig
+	applyFileStorageEnv(&cfg)
+
+	r.Equal("solidping", cfg.S3Bucket)
+	r.Equal("eu-west-3", cfg.S3Region)
+	r.Equal("blobs", cfg.S3Prefix)
+	r.Equal("https://minio.local:9000", cfg.S3Endpoint)
+	r.True(cfg.S3UsePathStyle)
+	r.Equal("minio", cfg.S3AccessKey)
+	r.Equal("minio123", cfg.S3SecretKey)
+}
+
+// TestApplyFileStorageEnv_PathStyleVariants checks the boolean parsing accepts
+// "1" and rejects other truthy-looking values.
+func TestApplyFileStorageEnv_PathStyleVariants(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_FILESTORAGE_S3_USE_PATH_STYLE", "1")
+	var c1 FileStorageConfig
+	applyFileStorageEnv(&c1)
+	r.True(c1.S3UsePathStyle)
+
+	t.Setenv("SP_FILESTORAGE_S3_USE_PATH_STYLE", "yes")
+	var c2 FileStorageConfig
+	applyFileStorageEnv(&c2)
+	r.False(c2.S3UsePathStyle)
 }

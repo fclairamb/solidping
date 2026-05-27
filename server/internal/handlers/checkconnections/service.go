@@ -16,6 +16,11 @@ var (
 	ErrCheckNotFound = errors.New("check not found")
 	// ErrConnectionNotFound is returned when the connection is not found.
 	ErrConnectionNotFound = errors.New("connection not found")
+	// ErrNotNotifyCapable is returned when an integration that cannot receive
+	// notifications (CanNotify == false, e.g. a Freebox data source) is bound
+	// to a check as a notification target. This closes the silent-no-op bug
+	// where such a binding was accepted and then dropped at send time.
+	ErrNotNotifyCapable = errors.New("integration cannot receive notifications")
 )
 
 // Service provides check-connection management functionality.
@@ -117,7 +122,8 @@ func (s *Service) SetConnections(
 		return ErrCheckNotFound
 	}
 
-	// Validate all connections exist and belong to org
+	// Validate all connections exist, belong to org, and can receive
+	// notifications (only CanNotify integrations may act as notify targets).
 	for _, connUID := range req.ConnectionUIDs {
 		conn, connErr := s.db.GetChannel(ctx, connUID)
 		if connErr != nil {
@@ -125,6 +131,9 @@ func (s *Service) SetConnections(
 		}
 		if conn.OrganizationUID != org.UID {
 			return ErrConnectionNotFound
+		}
+		if !models.CapabilitiesFor(conn.Type).CanNotify {
+			return ErrNotNotifyCapable
 		}
 	}
 
@@ -149,6 +158,10 @@ func (s *Service) AddConnection(ctx context.Context, orgSlug, checkIdentifier, c
 	conn, err := s.db.GetChannel(ctx, connectionUID)
 	if err != nil || conn.OrganizationUID != org.UID {
 		return ErrConnectionNotFound
+	}
+
+	if !models.CapabilitiesFor(conn.Type).CanNotify {
+		return ErrNotNotifyCapable
 	}
 
 	checkConn := models.NewCheckConnection(check.UID, conn.UID, org.UID)

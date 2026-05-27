@@ -131,6 +131,11 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found")
 	case errors.Is(err, ErrConnectionNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Connection not found")
+	case errors.Is(err, ErrNotNotifyCapable):
+		return h.WriteError(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"This integration cannot receive notifications.",
+		)
 	default:
 		return h.WriteInternalError(writer, err)
 	}

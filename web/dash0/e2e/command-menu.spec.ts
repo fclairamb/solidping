@@ -135,6 +135,34 @@ test.describe("Command Menu (Cmd+K)", () => {
     await expect(input).not.toBeVisible();
   });
 
+  test("should expose a New Check action and navigate to /checks/new", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await page.keyboard.press("Meta+k");
+    const input = page.locator('[cmdk-input]');
+    await expect(input).toBeVisible({ timeout: 3000 });
+
+    // Actions group should be shown with the New Check entry
+    await expect(page.getByText("Actions", { exact: true })).toBeVisible();
+    const newCheckItem = page.getByTestId("command-menu-new-check");
+    await expect(newCheckItem).toBeVisible();
+    await expect(newCheckItem).toContainText("New Check");
+    await expect(newCheckItem).toContainText("Create a new monitoring check");
+
+    // Filter by typing — entry should still be reachable
+    await input.fill("new check");
+    await expect(newCheckItem).toBeVisible();
+
+    // Selecting it should navigate to /checks/new
+    await newCheckItem.click();
+    await page.waitForURL(/\/checks\/new/, { timeout: 5000 });
+    expect(page.url()).toContain("/checks/new");
+    await expect(input).not.toBeVisible();
+  });
+
   test("should show checks and navigate to a check", async ({
     authenticatedPage,
   }) => {

@@ -162,7 +162,32 @@
     "docker": "Docker",
     "dockerDescription": "Monitorice el estado de contenedores Docker",
     "browser": "Navegador",
-    "browserDescription": "Monitorice páginas con Chrome headless"
+    "browserDescription": "Monitorice páginas con Chrome headless",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Comprobar si una IP/dominio está en listas de bloqueo DNS",
+    "sip": "SIP",
+    "sipDescription": "Comprobar la accesibilidad y el registro de un servidor SIP"
+  },
+  "dnsbl": {
+    "target": "IP o nombre de host objetivo",
+    "targetHelp": "Dirección IPv4 o nombre de host a comprobar contra las listas de bloqueo.",
+    "blocklists": "Zonas de listas de bloqueo",
+    "blocklistsHelp": "Opcional. Una zona de lista de bloqueo DNS por línea (o separadas por comas). Déjelo vacío para usar las predeterminadas (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Resolutor personalizado",
+    "nameserverHelp": "host:port opcional de un resolutor recursivo. Los resolutores públicos (8.8.8.8, 1.1.1.1) están bloqueados por Spamhaus, use un resolutor local si es necesario."
+  },
+  "sip": {
+    "transport": "Transporte",
+    "mode": "Modo",
+    "modeOptions": "OPTIONS (accesibilidad)",
+    "modeRegister": "REGISTER (autenticación)",
+    "domain": "Dominio SIP",
+    "domainHelp": "Opcional. Dominio/realm SIP para la dirección de registro. Por defecto, el host.",
+    "username": "Usuario",
+    "password": "Contraseña",
+    "passwordEncrypted": "(cifrada — introduzca un nuevo valor para reemplazarla)",
+    "expectStatus": "Estado esperado (opcional)",
+    "expectStatusHelp": "Opcional. Códigos de estado SIP separados por comas que cuentan como Up (p. ej. 200 o 200,405). Déjelo vacío para aceptar cualquier respuesta SIP válida."
   },
   "intervals": {
     "10s": "10 segundos",
@@ -228,7 +253,7 @@
       "showingAllRegions": "Mostrando todas las regiones ({{regions}})",
       "tooltipClickPoint": "Haga clic en un punto para ver detalles",
       "dotClickForDetails": "Haga clic para ver detalles",
-      "dotClickAgain": "Haga clic de nuevo para abrir la página completa"
+      "dotClickToClose": "Haga clic para cerrar"
     },
     "resultBox": {
       "close": "Cerrar",
@@ -239,7 +264,7 @@
       "region": "Región",
       "status": "Estado",
       "period": "Período",
-      "clickAgain": "Haga clic de nuevo para abrir la página completa"
+      "moreDetails": "Más detalles →"
     },
     "availability": {
       "title": "Disponibilidad",

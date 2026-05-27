@@ -3,7 +3,7 @@
 // Only the sidebar entry (nav:designReference) is translated.
 
 import { useMemo, useState } from "react";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import {
   AlertCircle,
   AlertTriangle,
@@ -27,6 +27,7 @@ import {
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/shared/page-header";
+import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -41,6 +42,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import {
   Dialog,
@@ -106,6 +113,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
   { id: "feedback", label: "Feedback" },
+  { id: "kpi-tiles", label: "KPI tiles" },
 ];
 
 function DesignReferencePage() {
@@ -127,6 +135,7 @@ function DesignReferencePage() {
       <FormsSection />
       <DataDisplaySection />
       <FeedbackSection />
+      <KpiTileSection />
     </div>
   );
 }
@@ -496,32 +505,32 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
-        <h3 className="text-sm font-medium">Back button (top-right, icon only)</h3>
+        <h3 className="text-sm font-medium">Detail page header: back button + title + actions</h3>
         <p className="text-sm text-muted-foreground">
-          When a page has a back button, it sits next to the other top-right actions and is{" "}
-          <strong>always icon-only</strong> regardless of viewport — never paired with a
-          &quot;Back&quot; label. Use{" "}
+          On detail/edit pages, compose a single flex row:{" "}
+          <strong>icon-only back button on the far left</strong>, the page{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code> with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex-1</code> in the middle,
+          and action buttons (e.g. Delete) on the far right. The back button is{" "}
+          <strong>always icon-only</strong> — never paired with a &quot;Back&quot; label. Use{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code> with{" "}
           <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
           and an <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
         </p>
         <ExampleRow
           preview={
-            <div className="flex w-full items-center justify-end gap-2">
+            <div className="flex w-full items-center gap-3">
               <Button variant="ghost" size="icon" aria-label="Back">
                 <ArrowLeft />
               </Button>
-              <Button variant="outline" aria-label="Edit">
-                <Pencil />
-                <span className="hidden sm:inline">Edit</span>
-              </Button>
-              <Button aria-label="Save">
-                <Save />
-                <span className="hidden sm:inline">Save</span>
+              <h1 className="flex-1 text-xl font-bold tracking-tight">Page title</h1>
+              <Button variant="destructive" size="sm" aria-label="Delete">
+                <Trash2 />
+                <span className="hidden sm:inline">Delete</span>
               </Button>
             </div>
           }
-          importLine={`<Button variant="ghost" size="icon" aria-label="Back">\n  <ArrowLeft />\n</Button>`}
+          importLine={`<div className="flex items-center gap-3">\n  <Button variant="ghost" size="icon" aria-label="Back">\n    <ArrowLeft />\n  </Button>\n  <h1 className="flex-1 text-3xl font-bold tracking-tight">{title}</h1>\n  <Button variant="destructive" size="sm" onClick={handleDelete}>\n    <Trash2 />\n    Delete\n  </Button>\n</div>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>
@@ -720,12 +729,6 @@ const MOCK_ROWS: MockRow[] = [
   { id: "4", name: "auth.example.com", status: "down", latency: "—" },
   { id: "5", name: "static.example.com", status: "up", latency: "42 ms" },
 ];
-
-function StatusBadge({ status }: { status: MockRow["status"] }) {
-  if (status === "up") return <Badge variant="success">up</Badge>;
-  if (status === "warning") return <Badge variant="warning">warning</Badge>;
-  return <Badge variant="destructive">down</Badge>;
-}
 
 function MockTableHeader() {
   return (
@@ -1087,6 +1090,67 @@ function BrandSection() {
           />
         </div>
       </div>
+    </Section>
+  );
+}
+
+function KpiTileSection() {
+  const { org } = Route.useParams();
+  const snippet = `import { Link } from "@tanstack/react-router";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+
+// Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
+<Link to="/orgs/$org/checks" params={{ org }} className="block">
+  <Card className="transition-colors hover:bg-accent/40">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
+      <Icon className="h-4 w-4 text-muted-foreground" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-3xl font-bold">42</div>
+      <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
+    </CardContent>
+  </Card>
+</Link>`;
+  return (
+    <Section
+      id="kpi-tiles"
+      title="KPI tiles"
+      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Whole-card hover via transition-colors hover:bg-accent/40 — no nested interactive elements inside."
+    >
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <Link
+          to="/orgs/$org/checks"
+          params={{ org }}
+          className="block"
+        >
+          <Card className="transition-colors hover:bg-accent/40">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                Monitored
+              </CardTitle>
+              <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold">42</div>
+              <p className="text-xs text-muted-foreground mt-1">2 disabled</p>
+            </CardContent>
+          </Card>
+        </Link>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Availability (static)
+            </CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold">99.98%</div>
+            <p className="text-xs text-muted-foreground mt-1">24h window</p>
+          </CardContent>
+        </Card>
+      </div>
+      <CodeSnippet code={snippet} />
     </Section>
   );
 }

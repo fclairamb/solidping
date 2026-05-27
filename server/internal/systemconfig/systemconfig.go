@@ -52,6 +52,8 @@ const (
 	KeySlackClientID            ParameterKey = "auth.slack.client_id"
 	KeySlackClientSecret        ParameterKey = "auth.slack.client_secret"
 	KeySlackSigningSecret       ParameterKey = "auth.slack.signing_secret"
+	KeySlackSocketModeEnabled   ParameterKey = "auth.slack.socket_mode_enabled"
+	KeySlackAppToken            ParameterKey = "auth.slack.app_token"
 	KeyDiscordClientID          ParameterKey = "auth.discord.client_id"
 	KeyDiscordClientSecret      ParameterKey = "auth.discord.client_secret"
 	KeyDiscordBotToken          ParameterKey = "auth.discord.bot_token"
@@ -377,6 +379,24 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Slack.SigningSecret = v
+				}
+			},
+		},
+		{
+			Key:    KeySlackSocketModeEnabled,
+			EnvVar: "SP_SLACK_SOCKET_MODE_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Slack.SocketModeEnabled = parseBool(value, cfg.Slack.SocketModeEnabled)
+			},
+		},
+		{
+			Key:    KeySlackAppToken,
+			EnvVar: "SP_SLACK_APP_TOKEN",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Slack.AppToken = v
 				}
 			},
 		},

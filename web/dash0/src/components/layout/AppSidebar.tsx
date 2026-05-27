@@ -2,6 +2,7 @@ import { Link, useLocation, useNavigate, useParams } from "@tanstack/react-route
 import {
   ArrowUpRight,
   Bell,
+  BellRing,
   Bug,
   LayoutDashboard,
   ListChecks,
@@ -13,12 +14,14 @@ import {
   BadgeCheck,
   LogOut,
   Moon,
+  Network,
   Palette,
   Sun,
   ChevronUp,
   User2,
   Building,
   Server,
+  MessageSquare,
 } from "lucide-react";
 import {
   Sidebar,
@@ -93,9 +96,19 @@ const navItems = [
     icon: Globe,
   },
   {
+    titleKey: "statusUpdates",
+    path: "/orgs/$org/status-updates" as const,
+    icon: MessageSquare,
+  },
+  {
     titleKey: "badges",
     path: "/orgs/$org/badges" as const,
     icon: BadgeCheck,
+  },
+  {
+    titleKey: "myPages",
+    path: "/orgs/$org/me/notifications" as const,
+    icon: BellRing,
   },
 ];
 
@@ -220,6 +233,26 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+        {user?.isAdmin && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith(`/orgs/${org}/discovery`)}
+                    tooltip={tNav("discovery")}
+                  >
+                    <Link to="/orgs/$org/discovery" params={{ org }}>
+                      <Network />
+                      <span>{tNav("discovery")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
         {isTestMode && (
           <SidebarGroup>
             <SidebarGroupContent>

@@ -35,10 +35,10 @@ type WebSocketConfig struct {
 
 // FromMap populates the configuration from a map.
 func (c *WebSocketConfig) FromMap(configMap map[string]any) error {
-	if urlVal, ok := configMap["url"].(string); ok {
+	if urlVal, ok := configMap[configKeyURL].(string); ok {
 		c.URL = urlVal
-	} else if configMap["url"] != nil {
-		return checkerdef.NewConfigError("url", "must be a string")
+	} else if configMap[configKeyURL] != nil {
+		return checkerdef.NewConfigError(configKeyURL, "must be a string")
 	}
 
 	if headers, ok := configMap["headers"].(map[string]string); ok {
@@ -88,7 +88,7 @@ func (c *WebSocketConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *WebSocketConfig) GetConfig() map[string]any {
 	config := map[string]any{
-		"url": c.URL,
+		configKeyURL: c.URL,
 	}
 
 	if len(c.Headers) > 0 {

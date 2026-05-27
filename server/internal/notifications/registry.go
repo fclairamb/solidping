@@ -4,8 +4,18 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// GetSender returns the sender for a connection type.
+// GetSender returns the sender for a connection type. Types that cannot
+// receive notifications (CanNotify == false in the capability registry, e.g.
+// data sources like Freebox) resolve to (nil, false) purely as a consequence
+// of their declared capabilities — there is no type-specific carve-out here.
 func GetSender(connType models.ConnectionType) (Sender, bool) {
+	if !models.CapabilitiesFor(connType).CanNotify {
+		return nil, false
+	}
+
+	// Non-notify types (e.g. freebox) are already handled by the CanNotify
+	// guard above; the default covers any unmapped notify type.
+	//nolint:exhaustive // non-notify types handled by the CanNotify guard above.
 	switch connType {
 	case models.ConnectionTypeSlack:
 		return &SlackSender{}, true
@@ -25,6 +35,8 @@ func GetSender(connType models.ConnectionType) (Sender, bool) {
 		return &OpsgenieSender{}, true
 	case models.ConnectionTypePushover:
 		return &PushoverSender{}, true
+	case models.ConnectionTypeWebPush:
+		return &WebPushSender{}, true
 	default:
 		return nil, false
 	}

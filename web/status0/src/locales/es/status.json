@@ -25,6 +25,17 @@
     "timeout": "Tiempo de espera",
     "error": "Error",
     "created": "Creado",
-    "running": "En ejecución"
+    "running": "En ejecución",
+    "recentUpdates": "Actualizaciones recientes"
+  },
+  "subscribe": {
+    "title": "Suscribirse a las actualizaciones",
+    "emailLabel": "Correo electrónico",
+    "emailPlaceholder": "tu@ejemplo.com",
+    "submit": "Suscribirse",
+    "submitting": "Suscribiendo…",
+    "checkInbox": "¡Casi listo! Revisa tu bandeja de entrada para confirmar tu suscripción.",
+    "error": "Algo salió mal. Inténtalo de nuevo.",
+    "feedLink": "Suscribirse por RSS"
   }
 }

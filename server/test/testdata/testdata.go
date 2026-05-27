@@ -3,12 +3,14 @@ package testdata
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -72,7 +74,57 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
+	// Seed a deterministic, unpromoted discovered host (with a scan) so the
+	// discovery promote flow is exercisable in test mode / e2e.
+	if err := createTestDiscoveryData(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
+	// Seed a status page so status-update E2E tests can select one in the form.
+	if err := createTestStatusPage(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
+
+	return nil
+}
+
+// createTestDiscoveryData seeds a successful network-discovery scan and one
+// unpromoted host carrying a TCP suggested check, so the promote flow can be
+// driven end-to-end without running a real scan (which can't find deterministic
+// hosts in test mode).
+func createTestDiscoveryData(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	const (
+		jobUID  = "00000000-0000-0000-0000-000000000007"
+		hostUID = "00000000-0000-0000-0000-000000000008"
+	)
+
+	// Insert the job first: discovered_hosts.job_uid is notnull.
+	job := &models.Job{
+		UID:             jobUID,
+		OrganizationUID: &orgUID,
+		Type:            string(jobdef.JobTypeNetworkDiscovery),
+		Status:          models.JobStatusSuccess,
+		ScheduledAt:     now,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+	}
+	if _, err := dbService.DB().NewInsert().Model(job).Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create test discovery job: %w", err)
+	}
+
+	host := models.NewDiscoveredHost(orgUID, jobUID, "127.0.0.1", models.DiscoverySourceLAN)
+	host.UID = hostUID
+	host.ICMPReachable = true
+	host.OpenPorts = json.RawMessage(`[8080]`)
+	host.SuggestedChecks = json.RawMessage(`[{"type":"tcp","config":{"host":"127.0.0.1","port":8080}}]`)
+	host.DiscoveredAt = now
+	if _, err := dbService.DB().NewInsert().Model(host).Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create test discovered host: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test discovery data", "jobUID", jobUID, "hostUID", hostUID)
 
 	return nil
 }
@@ -198,6 +250,33 @@ func createTestToken(
 	}
 
 	slog.InfoContext(ctx, "Created test PAT token", "uid", testToken.UID, "token", testToken.Token)
+
+	return nil
+}
+
+func createTestStatusPage(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	const uid = "00000000-0000-0000-0000-000000000009"
+
+	page := &models.StatusPage{
+		UID:              uid,
+		OrganizationUID:  orgUID,
+		Name:             "Test Status Page",
+		Slug:             "test-status-page",
+		Visibility:       "public",
+		IsDefault:        true,
+		Enabled:          true,
+		ShowAvailability: true,
+		ShowResponseTime: true,
+		HistoryDays:      90,
+		CreatedAt:        now,
+		UpdatedAt:        now,
+	}
+
+	if err := dbService.CreateStatusPage(ctx, page); err != nil {
+		return fmt.Errorf("failed to create test status page: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test status page", "uid", page.UID, "slug", page.Slug)
 
 	return nil
 }

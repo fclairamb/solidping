@@ -162,7 +162,32 @@
     "docker": "Docker",
     "dockerDescription": "Zustand von Docker-Containern überwachen",
     "browser": "Browser",
-    "browserDescription": "Seiten mit Headless-Chrome überwachen"
+    "browserDescription": "Seiten mit Headless-Chrome überwachen",
+    "dnsbl": "DNSBL",
+    "dnsblDescription": "Prüfen, ob eine IP/Domain auf DNS-Blocklisten steht",
+    "sip": "SIP",
+    "sipDescription": "Erreichbarkeit und Registrierung eines SIP-Servers prüfen"
+  },
+  "dnsbl": {
+    "target": "Ziel-IP oder Hostname",
+    "targetHelp": "IPv4-Adresse oder Hostname, der gegen die Blocklisten geprüft wird.",
+    "blocklists": "Blocklisten-Zonen",
+    "blocklistsHelp": "Optional. Eine DNS-Blocklisten-Zone pro Zeile (oder durch Komma getrennt). Leer lassen, um die Standardwerte zu verwenden (Spamhaus, SpamCop, Barracuda, UCEPROTECT).",
+    "nameserver": "Eigener Resolver",
+    "nameserverHelp": "Optional host:port eines rekursiven Resolvers. Öffentliche Resolver (8.8.8.8, 1.1.1.1) werden von Spamhaus blockiert, verwenden Sie bei Bedarf einen lokalen Resolver."
+  },
+  "sip": {
+    "transport": "Transport",
+    "mode": "Modus",
+    "modeOptions": "OPTIONS (Erreichbarkeit)",
+    "modeRegister": "REGISTER (Authentifizierung)",
+    "domain": "SIP-Domain",
+    "domainHelp": "Optional. SIP-Domain/Realm für die Adresse. Standardmäßig der Host.",
+    "username": "Benutzername",
+    "password": "Passwort",
+    "passwordEncrypted": "(verschlüsselt — neuen Wert eingeben zum Ersetzen)",
+    "expectStatus": "Erwarteter Status (optional)",
+    "expectStatusHelp": "Optional. Komma-getrennte SIP-Statuscodes, die als Up gelten (z. B. 200 oder 200,405). Leer lassen, um jede gültige SIP-Antwort zu akzeptieren."
   },
   "intervals": {
     "10s": "10 Sekunden",
@@ -228,7 +253,7 @@
       "showingAllRegions": "Alle Regionen werden angezeigt ({{regions}})",
       "tooltipClickPoint": "Punkt anklicken für Details",
       "dotClickForDetails": "Für Details anklicken",
-      "dotClickAgain": "Erneut anklicken, um die vollständige Seite zu öffnen"
+      "dotClickToClose": "Zum Schließen anklicken"
     },
     "resultBox": {
       "close": "Schließen",
@@ -239,7 +264,7 @@
       "region": "Region",
       "status": "Status",
       "period": "Zeitraum",
-      "clickAgain": "Erneut anklicken, um die vollständige Seite zu öffnen"
+      "moreDetails": "Mehr Details →"
     },
     "availability": {
       "title": "Verfügbarkeit",
