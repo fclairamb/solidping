@@ -52,7 +52,7 @@ type notificationAuditSetup struct {
 	svc    *incidents.Service
 	org    *models.Organization
 	check  *models.Check
-	conn   *models.Channel
+	conn   *models.Integration
 	logger *slog.Logger
 }
 
@@ -88,7 +88,7 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 	}
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
-	conn := models.NewChannel(org.UID, models.ConnectionTypeWebhook, "ops-webhook")
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeWebhook, "ops-webhook")
 	conn.Enabled = true
 	conn.Settings = models.JSONMap{"url": "https://example.com/hook"}
 	r.NoError(dbSvc.CreateChannel(ctx, conn))

@@ -567,13 +567,13 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
 	orgDeps.GET("", depsHandler.Graph)
 
-	// Check-channel binding routes (authentication required). Same multi-route
+	// Check-channel binding routes (authentication required). Same alias
 	// pattern as the org-level integrations block: `/integrations` is canonical
-	// going forward, `/channels` is the prior name (the notify role), and
-	// `/connections` is the original legacy path. PR-E drops `/connections`.
+	// going forward, `/channels` is the prior name (the notify role). The legacy
+	// `/connections` path was dropped in PR-E.
 	checkChannelsService := checkchannels.NewService(s.dbService)
 	checkChannelsHandler := checkchannels.NewHandler(checkChannelsService, s.config)
-	for _, suffix := range []string{"/integrations", "/channels", "/connections"} {
+	for _, suffix := range []string{"/integrations", "/channels"} {
 		orgChecks.GET("/:check"+suffix, checkChannelsHandler.ListChannels)
 		orgChecks.PUT("/:check"+suffix, checkChannelsHandler.SetChannels)
 		orgChecks.POST("/:check"+suffix+"/:connection", checkChannelsHandler.AddChannel)
@@ -790,18 +790,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Integration routes (authentication required).
 	//
-	// We expose the same handlers under `/integrations` (canonical going
-	// forward — the umbrella entity operators see in the UI), `/channels`
-	// (the prior name, kept as a one-cycle alias), and `/connections` (the
-	// original legacy name from when the table was modeled as
-	// integration_connections). PR-E drops `/connections`; a follow-up drops
-	// `/channels`.
+	// `/integrations` is canonical (the umbrella entity operators see in the
+	// UI); `/channels` is kept as a one-cycle alias (the prior name — "channel"
+	// now means the notify role). The original legacy `/connections` path was
+	// dropped in PR-E; a follow-up drops `/channels`.
 	integrationsService := integrations.NewService(s.dbService, s.services.Credentials)
 	integrationsHandler := integrations.NewHandler(integrationsService, s.config)
 	for _, prefix := range []string{
 		"/orgs/:org/integrations",
 		"/orgs/:org/channels",
-		"/orgs/:org/connections",
 	} {
 		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
 		group.GET("", integrationsHandler.ListIntegrations)
