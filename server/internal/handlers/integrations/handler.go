@@ -1,4 +1,4 @@
-package channels
+package integrations
 
 import (
 	"encoding/json"
@@ -33,8 +33,8 @@ func NewHandler(service *Service, cfg *config.Config) *Handler {
 	}
 }
 
-// ListChannels handles listing all connections of an organization.
-func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request) error {
+// ListIntegrations handles listing all connections of an organization.
+func (h *Handler) ListIntegrations(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connType := req.URL.Query().Get("type")
 
@@ -43,7 +43,7 @@ func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request
 		typeFilter = &connType
 	}
 
-	connections, err := h.svc.ListChannels(req.Context(), orgSlug, typeFilter)
+	connections, err := h.svc.ListIntegrations(req.Context(), orgSlug, typeFilter)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -51,12 +51,12 @@ func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request
 	return h.WriteJSON(writer, http.StatusOK, connections)
 }
 
-// GetChannel handles getting a specific connection by UID.
-func (h *Handler) GetChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+// GetIntegration handles getting a specific connection by UID.
+func (h *Handler) GetIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
 
-	connection, err := h.svc.GetChannel(req.Context(), orgSlug, connectionUID)
+	connection, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -64,11 +64,11 @@ func (h *Handler) GetChannel(writer http.ResponseWriter, req bunrouter.Request) 
 	return h.WriteJSON(writer, http.StatusOK, connection)
 }
 
-// CreateChannel handles creating a new connection.
-func (h *Handler) CreateChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+// CreateIntegration handles creating a new connection.
+func (h *Handler) CreateIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 
-	var createReq CreateChannelRequest
+	var createReq CreateIntegrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&createReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: invalidJSONField, Message: invalidJSONMessage},
@@ -93,7 +93,7 @@ func (h *Handler) CreateChannel(writer http.ResponseWriter, req bunrouter.Reques
 		return h.WriteValidationError(writer, "Validation error", validationErrors)
 	}
 
-	connection, err := h.svc.CreateChannel(req.Context(), orgSlug, createReq)
+	connection, err := h.svc.CreateIntegration(req.Context(), orgSlug, createReq)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -101,19 +101,19 @@ func (h *Handler) CreateChannel(writer http.ResponseWriter, req bunrouter.Reques
 	return h.WriteJSON(writer, http.StatusCreated, connection)
 }
 
-// UpdateChannel handles updating a connection.
-func (h *Handler) UpdateChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+// UpdateIntegration handles updating a connection.
+func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
 
-	var updateReq UpdateChannelRequest
+	var updateReq UpdateIntegrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&updateReq); err != nil {
 		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
 			{Name: invalidJSONField, Message: invalidJSONMessage},
 		})
 	}
 
-	connection, err := h.svc.UpdateChannel(req.Context(), orgSlug, connectionUID, updateReq)
+	connection, err := h.svc.UpdateIntegration(req.Context(), orgSlug, connectionUID, updateReq)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -121,12 +121,12 @@ func (h *Handler) UpdateChannel(writer http.ResponseWriter, req bunrouter.Reques
 	return h.WriteJSON(writer, http.StatusOK, connection)
 }
 
-// DeleteChannel handles deleting a connection.
-func (h *Handler) DeleteChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+// DeleteIntegration handles deleting a connection.
+func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
 
-	if err := h.svc.DeleteChannel(req.Context(), orgSlug, connectionUID); err != nil {
+	if err := h.svc.DeleteIntegration(req.Context(), orgSlug, connectionUID); err != nil {
 		return h.handleError(writer, err)
 	}
 
@@ -187,14 +187,14 @@ func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req bunrouter.
 	return h.WriteJSON(writer, http.StatusOK, connection)
 }
 
-// TestWebhookChannel sends a synthetic signed webhook to the channel's
+// TestWebhookIntegration sends a synthetic signed webhook to the channel's
 // configured URL and reports the outcome. Always returns HTTP 200 — the caller
 // inspects the `success` field to know whether the remote accepted it.
-func (h *Handler) TestWebhookChannel(writer http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) TestWebhookIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
 
-	result, err := h.svc.TestWebhookChannel(req.Context(), orgSlug, connectionUID)
+	result, err := h.svc.TestWebhookIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -208,7 +208,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrOrganizationNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrConnectionNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeChannelNotFound, "Connection not found")
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound, "Connection not found")
 	case errors.Is(err, ErrInvalidConnectionType):
 		return h.WriteValidationError(writer, "Invalid connection type", []base.ValidationErrorField{
 			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox"},

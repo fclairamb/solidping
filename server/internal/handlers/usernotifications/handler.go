@@ -21,7 +21,7 @@ type EmailSender interface {
 
 // SlackDMSender is the minimal interface needed to send a Slack DM test.
 type SlackDMSender interface {
-	SendDMTest(ctx context.Context, ch *models.Channel, slackUserID string) error
+	SendDMTest(ctx context.Context, ch *models.Integration, slackUserID string) error
 }
 
 // Handler exposes the user notification routes REST API.

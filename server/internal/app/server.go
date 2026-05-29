@@ -40,8 +40,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
-	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
@@ -59,6 +58,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
@@ -567,19 +567,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
 	orgDeps.GET("", depsHandler.Graph)
 
-	// Check-channel binding routes (authentication required). Same dual-route
-	// pattern as the org-level channels block: `/connections` is the legacy
-	// path, `/channels` is canonical going forward. PR-5 of spec
-	// 2026-05-07-03 drops the old path once external callers have moved.
-	checkConnectionsService := checkconnections.NewService(s.dbService)
-	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
-	for _, suffix := range []string{"/connections", "/channels"} {
-		orgChecks.GET("/:check"+suffix, checkConnectionsHandler.ListChannels)
-		orgChecks.PUT("/:check"+suffix, checkConnectionsHandler.SetConnections)
-		orgChecks.POST("/:check"+suffix+"/:connection", checkConnectionsHandler.AddConnection)
-		orgChecks.DELETE("/:check"+suffix+"/:connection", checkConnectionsHandler.RemoveConnection)
-		orgChecks.GET("/:check"+suffix+"/:connection", checkConnectionsHandler.GetConnectionSettings)
-		orgChecks.PATCH("/:check"+suffix+"/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	// Check-channel binding routes (authentication required). Same multi-route
+	// pattern as the org-level integrations block: `/integrations` is canonical
+	// going forward, `/channels` is the prior name (the notify role), and
+	// `/connections` is the original legacy path. PR-E drops `/connections`.
+	checkChannelsService := checkchannels.NewService(s.dbService)
+	checkChannelsHandler := checkchannels.NewHandler(checkChannelsService, s.config)
+	for _, suffix := range []string{"/integrations", "/channels", "/connections"} {
+		orgChecks.GET("/:check"+suffix, checkChannelsHandler.ListChannels)
+		orgChecks.PUT("/:check"+suffix, checkChannelsHandler.SetChannels)
+		orgChecks.POST("/:check"+suffix+"/:connection", checkChannelsHandler.AddChannel)
+		orgChecks.DELETE("/:check"+suffix+"/:connection", checkChannelsHandler.RemoveConnection)
+		orgChecks.GET("/:check"+suffix+"/:connection", checkChannelsHandler.GetConnectionSettings)
+		orgChecks.PATCH("/:check"+suffix+"/:connection", checkChannelsHandler.UpdateConnectionSettings)
 	}
 
 	// Badge routes (public, no authentication required)
@@ -788,40 +788,44 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
 	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
 
-	// Integration connections routes (authentication required).
+	// Integration routes (authentication required).
 	//
-	// We expose the same handlers under both `/connections` (legacy, original
-	// name from when the table was modeled as integration_connections) and
-	// `/channels` (canonical going forward — what operators see in the UI).
-	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
-	// alias is additive so the dashboard, MCP, and CLI can switch over
-	// without an external client breakage. PR-5 drops `/connections`.
-	channelsService := channels.NewService(s.dbService, s.services.Credentials)
-	channelsHandler := channels.NewHandler(channelsService, s.config)
-	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
+	// We expose the same handlers under `/integrations` (canonical going
+	// forward — the umbrella entity operators see in the UI), `/channels`
+	// (the prior name, kept as a one-cycle alias), and `/connections` (the
+	// original legacy name from when the table was modeled as
+	// integration_connections). PR-E drops `/connections`; a follow-up drops
+	// `/channels`.
+	integrationsService := integrations.NewService(s.dbService, s.services.Credentials)
+	integrationsHandler := integrations.NewHandler(integrationsService, s.config)
+	for _, prefix := range []string{
+		"/orgs/:org/integrations",
+		"/orgs/:org/channels",
+		"/orgs/:org/connections",
+	} {
 		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
-		group.GET("", channelsHandler.ListChannels)
-		group.POST("", channelsHandler.CreateChannel)
-		group.GET("/:uid", channelsHandler.GetChannel)
-		group.PATCH("/:uid", channelsHandler.UpdateChannel)
-		group.DELETE("/:uid", channelsHandler.DeleteChannel)
-		// Standard Webhooks: rotate the per-channel signing secret and send a
-		// synthetic signed test delivery. Both are webhook-only (400 otherwise).
-		group.POST("/:uid/rotate-secret", channelsHandler.RotateWebhookSecret)
-		group.POST("/:uid/test", channelsHandler.TestWebhookChannel)
+		group.GET("", integrationsHandler.ListIntegrations)
+		group.POST("", integrationsHandler.CreateIntegration)
+		group.GET("/:uid", integrationsHandler.GetIntegration)
+		group.PATCH("/:uid", integrationsHandler.UpdateIntegration)
+		group.DELETE("/:uid", integrationsHandler.DeleteIntegration)
+		// Standard Webhooks: rotate the per-integration signing secret and send
+		// a synthetic signed test delivery. Both are webhook-only (400 otherwise).
+		group.POST("/:uid/rotate-secret", integrationsHandler.RotateWebhookSecret)
+		group.POST("/:uid/test", integrationsHandler.TestWebhookIntegration)
 	}
 
 	// Freebox pairing endpoints — separate from the generic CRUD because
 	// they wrap the multi-step LCD-approval handshake. POST creates the
-	// connection in `pairing` status and asks the Freebox for an
+	// integration in `pairing` status and asks the Freebox for an
 	// app_token; GET polls until the user approves the prompt.
 	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
-	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
-	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+	orgFreebox.POST("/pair", integrationsHandler.StartFreeboxPairing)
+	orgFreebox.GET("/pair/:uid/status", integrationsHandler.GetFreeboxPairingStatus)
 	// LAN discovery: returns the list of hosts currently visible to the
 	// Freebox so the dashboard can pre-fill ICMP checks without typing.
-	// Requires a `granted` connection — see Service.ListFreeboxLanHosts.
-	orgFreebox.GET("/:uid/lan-hosts", channelsHandler.LanHostsHandler)
+	// Requires a `granted` integration — see Service.ListFreeboxLanHosts.
+	orgFreebox.GET("/:uid/lan-hosts", integrationsHandler.LanHostsHandler)
 
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
@@ -1811,7 +1815,7 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 		return
 	}
 
-	connCount, err := bun.NewSelect().Model((*models.Channel)(nil)).
+	connCount, err := bun.NewSelect().Model((*models.Integration)(nil)).
 		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
 	if err != nil {
 		return

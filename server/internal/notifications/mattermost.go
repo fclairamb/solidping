@@ -88,7 +88,7 @@ type mattermostSettings struct {
 }
 
 func (s *MattermostSender) parseSettings(payload *Payload) (*mattermostSettings, error) {
-	data, err := json.Marshal(payload.Connection.Settings)
+	data, err := json.Marshal(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing mattermost settings: %w", err)
 	}

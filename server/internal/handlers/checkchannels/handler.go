@@ -1,6 +1,6 @@
-// Package checkconnections provides HTTP handlers for managing
+// Package checkchannels provides HTTP handlers for managing
 // check-to-integration-connection associations for incident notifications.
-package checkconnections
+package checkchannels
 
 import (
 	"encoding/json"
@@ -40,8 +40,8 @@ func (h *Handler) ListChannels(writer http.ResponseWriter, req bunrouter.Request
 	return h.WriteJSON(writer, http.StatusOK, connections)
 }
 
-// SetConnections handles PUT /api/v1/orgs/:org/checks/:check/connections.
-func (h *Handler) SetConnections(writer http.ResponseWriter, req bunrouter.Request) error {
+// SetChannels handles PUT /api/v1/orgs/:org/checks/:check/connections.
+func (h *Handler) SetChannels(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkID := req.Param("check")
 
@@ -52,7 +52,7 @@ func (h *Handler) SetConnections(writer http.ResponseWriter, req bunrouter.Reque
 		})
 	}
 
-	if err := h.svc.SetConnections(req.Context(), orgSlug, checkID, setReq); err != nil {
+	if err := h.svc.SetChannels(req.Context(), orgSlug, checkID, setReq); err != nil {
 		return h.handleError(writer, err)
 	}
 
@@ -60,13 +60,13 @@ func (h *Handler) SetConnections(writer http.ResponseWriter, req bunrouter.Reque
 	return nil
 }
 
-// AddConnection handles POST /api/v1/orgs/:org/checks/:check/connections/:connection.
-func (h *Handler) AddConnection(writer http.ResponseWriter, req bunrouter.Request) error {
+// AddChannel handles POST /api/v1/orgs/:org/checks/:check/connections/:connection.
+func (h *Handler) AddChannel(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkID := req.Param("check")
 	connectionUID := req.Param("connection")
 
-	if err := h.svc.AddConnection(req.Context(), orgSlug, checkID, connectionUID); err != nil {
+	if err := h.svc.AddChannel(req.Context(), orgSlug, checkID, connectionUID); err != nil {
 		return h.handleError(writer, err)
 	}
 

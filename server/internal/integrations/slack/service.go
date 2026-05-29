@@ -144,7 +144,7 @@ func NewService(
 }
 
 // GetConnectionByTeamID retrieves a Slack connection by team ID.
-func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.Channel, error) {
+func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.Integration, error) {
 	conn, err := s.db.GetChannelByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
 	)
@@ -379,7 +379,7 @@ func (s *Service) updateExistingChannel(
 		return "", fmt.Errorf("failed to convert settings: %w", err)
 	}
 
-	update := &models.ChannelUpdate{Settings: &settingsMap}
+	update := &models.IntegrationUpdate{Settings: &settingsMap}
 	if err := s.db.UpdateChannel(ctx, channelUID, update); err != nil {
 		return "", fmt.Errorf("failed to update channel %s: %w", channelUID, err)
 	}
@@ -446,7 +446,7 @@ func (s *Service) createOrUpdateConnection(
 
 	if existingConn != nil {
 		// Update existing connection
-		update := &models.ChannelUpdate{
+		update := &models.IntegrationUpdate{
 			Settings: &settingsMap,
 		}
 		name := oauthResp.Team.Name
@@ -460,7 +460,7 @@ func (s *Service) createOrUpdateConnection(
 	}
 
 	// Create new connection
-	conn := models.NewChannel(orgUID, models.ConnectionTypeSlack, oauthResp.Team.Name)
+	conn := models.NewIntegration(orgUID, models.ConnectionTypeSlack, oauthResp.Team.Name)
 	conn.Settings = settingsMap
 
 	if err := s.db.CreateChannel(ctx, conn); err != nil {
@@ -644,7 +644,7 @@ func (s *Service) ensureOrganizationMembership(
 func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 	slackType := models.ConnectionTypeSlack
 
-	channels, err := s.db.ListChannels(ctx, &models.ListChannelsFilter{
+	channels, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{
 		Type: &slackType,
 	})
 	if err != nil {
@@ -794,7 +794,7 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 		return fmt.Errorf("failed to convert settings: %w", err)
 	}
 
-	update := &models.ChannelUpdate{
+	update := &models.IntegrationUpdate{
 		Settings: &settingsMap,
 	}
 

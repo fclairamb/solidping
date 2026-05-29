@@ -1,4 +1,4 @@
-package channels_test
+package integrations_test
 
 import (
 	"bytes"
@@ -18,7 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 )
 
@@ -56,8 +56,8 @@ func newKEK(t *testing.T) []byte {
 }
 
 type freeboxFixture struct {
-	svc     *channels.Service
-	handler *channels.Handler
+	svc     *integrations.Service
+	handler *integrations.Handler
 	router  *bunrouter.Router
 	dbSvc   db.Service
 	org     *models.Organization
@@ -80,8 +80,8 @@ func newFreeboxFixture(t *testing.T) *freeboxFixture {
 	org := models.NewOrganization("freebox-test", "Freebox Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := channels.NewService(dbSvc, creds)
-	handler := channels.NewHandler(svc, &config.Config{})
+	svc := integrations.NewService(dbSvc, creds)
+	handler := integrations.NewHandler(svc, &config.Config{})
 
 	router := bunrouter.New()
 	group := router.NewGroup("/api/v1/orgs/:org")
@@ -158,11 +158,11 @@ func TestStartFreeboxPairingCreatesChannelWithEncryptedToken(t *testing.T) {
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{Name: "Living Room", BaseURL: srv.URL},
+		integrations.StartFreeboxPairingRequest{Name: "Living Room", BaseURL: srv.URL},
 	)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
-	var resp channels.FreeboxPairingResponse
+	var resp integrations.FreeboxPairingResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.NotEmpty(resp.ConnectionUID)
 	r.Equal(17, resp.TrackID)
@@ -195,11 +195,11 @@ func TestGetFreeboxPairingStatusTransitionsToGranted(t *testing.T) {
 	// Bootstrap the channel via the start endpoint.
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{BaseURL: srv.URL},
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
 	)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
-	var start channels.FreeboxPairingResponse
+	var start integrations.FreeboxPairingResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &start))
 
 	// Now poll for status; the fake server reports granted.
@@ -209,7 +209,7 @@ func TestGetFreeboxPairingStatusTransitionsToGranted(t *testing.T) {
 	)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	var poll channels.FreeboxPairingStatusResponse
+	var poll integrations.FreeboxPairingStatusResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &poll))
 	r.Equal(models.FreeboxStatusGranted, poll.Status)
 
@@ -234,11 +234,11 @@ func TestGetFreeboxPairingStatusDeniedKeepsRow(t *testing.T) {
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{BaseURL: srv.URL},
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
 	)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
-	var start channels.FreeboxPairingResponse
+	var start integrations.FreeboxPairingResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &start))
 
 	rec = f.do(t, http.MethodGet,
@@ -247,7 +247,7 @@ func TestGetFreeboxPairingStatusDeniedKeepsRow(t *testing.T) {
 	)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	var poll channels.FreeboxPairingStatusResponse
+	var poll integrations.FreeboxPairingStatusResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &poll))
 	r.Equal(models.FreeboxStatusDenied, poll.Status)
 
@@ -263,7 +263,7 @@ func TestGetFreeboxPairingStatusRejectsNonFreeboxChannel(t *testing.T) {
 	f := newFreeboxFixture(t)
 
 	// Create a non-freebox channel directly.
-	wrong := models.NewChannel(f.org.UID, models.ConnectionTypeDiscord, "Discord")
+	wrong := models.NewIntegration(f.org.UID, models.ConnectionTypeDiscord, "Discord")
 	r.NoError(f.dbSvc.CreateChannel(t.Context(), wrong))
 
 	rec := f.do(t, http.MethodGet,
@@ -281,12 +281,12 @@ func TestStartFreeboxPairingValidatesOrg(t *testing.T) {
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/does-not-exist/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{},
+		integrations.StartFreeboxPairingRequest{},
 	)
 	r.Equal(http.StatusNotFound, rec.Code, rec.Body.String())
 }
 
-// CreateChannel through the regular CRUD must accept the new freebox
+// CreateIntegration through the regular CRUD must accept the new freebox
 // connection type — guards against forgetting to add it to the
 // validation switch.
 func TestCreateChannelAcceptsFreeboxType(t *testing.T) {
@@ -295,7 +295,7 @@ func TestCreateChannelAcceptsFreeboxType(t *testing.T) {
 	r := require.New(t)
 	f := newFreeboxFixture(t)
 
-	_, err := f.svc.CreateChannel(t.Context(), f.org.Slug, channels.CreateChannelRequest{
+	_, err := f.svc.CreateIntegration(t.Context(), f.org.Slug, integrations.CreateIntegrationRequest{
 		Type: string(models.ConnectionTypeFreebox),
 		Name: "Manual Freebox",
 	})

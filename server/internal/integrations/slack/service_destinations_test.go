@@ -20,7 +20,7 @@ func TestGetDestinationsRejectsTokenlessChannel(t *testing.T) {
 	org := models.NewOrganization("slack-dest-test", "Slack Dest Test Org")
 	r.NoError(svc.db.CreateOrganization(ctx, org))
 
-	conn := models.NewChannel(org.UID, models.ConnectionTypeSlack, "Slack")
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeSlack, "Slack")
 	// Tokenless stub: empty settings, no access_token.
 	conn.Settings = models.JSONMap{}
 	r.NoError(svc.db.CreateChannel(ctx, conn))
