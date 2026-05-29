@@ -9,11 +9,14 @@ import { AlertTriangle } from "lucide-react";
 import {
   type EscalationPolicyTarget,
   type EscalationTargetType,
-  useChannels,
+  useIntegrations,
   useMembers,
   useOnCallSchedules,
 } from "@/api/hooks";
-import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
+import {
+  IntegrationIcon,
+  integrationLabel,
+} from "@/components/integrations/integration-icon";
 import {
   Select,
   SelectContent,
@@ -180,7 +183,7 @@ function ConnectionSelect({
   onChange: (uid: string) => void;
 }) {
   const { t } = useTranslation(["escalation"]);
-  const { data: connections, isLoading } = useChannels(org);
+  const { data: connections, isLoading } = useIntegrations(org);
 
   if (isLoading) {
     return <SelectShell placeholder={t("escalation:editor.loadingTargets")} />;
@@ -192,7 +195,7 @@ function ConnectionSelect({
       <span className="text-xs text-muted-foreground">
         {t("escalation:editor.noConnections")}{" "}
         <a
-          href={`/dash0/orgs/${org}/channels/new`}
+          href={`/dash0/orgs/${org}/integrations/new`}
           className="underline text-primary hover:text-primary/80"
         >
           {t("escalation:editor.createConnection")}
@@ -217,10 +220,10 @@ function ConnectionSelect({
               className={c.enabled ? "" : "opacity-60"}
             >
               <span className="inline-flex items-center gap-2">
-                <ChannelIcon type={c.type} className="h-4 w-4" />
+                <IntegrationIcon type={c.type} className="h-4 w-4" />
                 <span>{c.name}</span>
                 <span className="text-xs text-muted-foreground">
-                  {channelLabel(c.type)}
+                  {integrationLabel(c.type)}
                 </span>
               </span>
             </SelectItem>

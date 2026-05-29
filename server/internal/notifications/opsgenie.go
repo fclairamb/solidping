@@ -62,7 +62,7 @@ type opsgenieResponder struct {
 }
 
 func (s *OpsgenieSender) parseSettings(payload *Payload) (*opsgenieSettings, error) {
-	data, err := json.Marshal(payload.Connection.Settings)
+	data, err := json.Marshal(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing opsgenie settings: %w", err)
 	}

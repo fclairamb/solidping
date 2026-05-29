@@ -91,7 +91,7 @@ type WebhookSender struct {
 	// secrets (auto-generation or expired-previous purge). When nil (e.g. in
 	// tests that don't need persistence), the sender skips persistence and
 	// logs a warning, but still signs with the in-memory secret.
-	UpdateChannel func(ctx context.Context, channel *models.Channel) error
+	UpdateChannel func(ctx context.Context, channel *models.Integration) error
 }
 
 // generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
@@ -136,7 +136,7 @@ func signRequest(secrets []string, id, timestamp string, body []byte) (string, e
 
 // Send sends a notification via webhook, signed per the Standard Webhooks spec.
 func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
-	url, ok := payload.Connection.Settings["url"].(string)
+	url, ok := payload.Integration.Settings["url"].(string)
 	if !ok || url == "" {
 		return ErrWebhookURLNotConfigured
 	}
@@ -146,7 +146,7 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return fmt.Errorf("marshaling webhook payload: %w", err)
 	}
 
-	secrets, err := s.ensureSecrets(ctx, jctx, payload.Connection)
+	secrets, err := s.ensureSecrets(ctx, jctx, payload.Integration)
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 
 	// Custom headers are added after the Standard Webhooks headers so they can
 	// override User-Agent but not the signing headers.
-	if headers, ok := payload.Connection.Settings["headers"].(map[string]any); ok {
+	if headers, ok := payload.Integration.Settings["headers"].(map[string]any); ok {
 		for k, v := range headers {
 			if str, ok := v.(string); ok {
 				if isStandardWebhookHeader(k) {
@@ -220,7 +220,7 @@ func isStandardWebhookHeader(name string) bool {
 // auto-generates a secret when none exists, purges an expired previous secret,
 // and persists any mutation through the injected UpdateChannel callback.
 func (s *WebhookSender) ensureSecrets(
-	ctx context.Context, jctx *jobdef.JobContext, channel *models.Channel,
+	ctx context.Context, jctx *jobdef.JobContext, channel *models.Integration,
 ) ([]string, error) {
 	log := s.logger(jctx)
 
@@ -275,7 +275,7 @@ func (s *WebhookSender) ensureSecrets(
 
 // previousExpired reports whether the rotation grace window for the previous
 // secret has elapsed. A missing or unparseable expiry is treated as expired.
-func (s *WebhookSender) previousExpired(channel *models.Channel) bool {
+func (s *WebhookSender) previousExpired(channel *models.Integration) bool {
 	expiryRaw, ok := channel.Settings[settingsKeySigningSecretExpiry].(string)
 	if !ok || expiryRaw == "" {
 		return true

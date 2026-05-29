@@ -1,7 +1,7 @@
-// Package channels provides HTTP handlers for notification channel management
+// Package integrations provides HTTP handlers for integration management
 // (Slack, Discord, webhook, email, etc.). The legacy `integration_connections`
 // table backs this domain — see spec 2026-05-07-03 for the rename rationale.
-package channels
+package integrations
 
 import (
 	"context"
@@ -74,7 +74,7 @@ func generateWebhookSecret() (string, error) {
 }
 
 // ensureWebhookCreateSecret returns a settings map guaranteed to contain a
-// signing secret, generating one when absent. Extracted from CreateChannel to
+// signing secret, generating one when absent. Extracted from CreateIntegration to
 // keep that function below the cyclomatic-complexity threshold.
 func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) {
 	if settings == nil {
@@ -111,8 +111,8 @@ func NewService(dbService db.Service, creds credentials.Service) *Service {
 	}
 }
 
-// ChannelResponse represents a connection in API responses.
-type ChannelResponse struct {
+// IntegrationResponse represents a connection in API responses.
+type IntegrationResponse struct {
 	UID       string         `json:"uid"`
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
@@ -130,11 +130,11 @@ type ChannelResponse struct {
 
 // ListConnectionsResponse represents the response for listing connections.
 type ListConnectionsResponse struct {
-	Data []*ChannelResponse `json:"data"`
+	Data []*IntegrationResponse `json:"data"`
 }
 
-// CreateChannelRequest represents the request to create a connection.
-type CreateChannelRequest struct {
+// CreateIntegrationRequest represents the request to create a connection.
+type CreateIntegrationRequest struct {
 	Type      string         `json:"type"`
 	Name      string         `json:"name"`
 	Enabled   *bool          `json:"enabled,omitempty"`
@@ -142,8 +142,8 @@ type CreateChannelRequest struct {
 	Settings  map[string]any `json:"settings,omitempty"`
 }
 
-// UpdateChannelRequest represents the request to update a connection.
-type UpdateChannelRequest struct {
+// UpdateIntegrationRequest represents the request to update a connection.
+type UpdateIntegrationRequest struct {
 	Name      *string        `json:"name,omitempty"`
 	Enabled   *bool          `json:"enabled,omitempty"`
 	IsDefault *bool          `json:"isDefault,omitempty"`
@@ -154,8 +154,8 @@ type UpdateChannelRequest struct {
 // already-public side: secret keys live in SettingsPrivate (encrypted) and
 // are exposed only as names via SettingsPrivateKeys so the dashboard can
 // show placeholder pills.
-func toResponse(conn *models.Channel, includeSettings bool) *ChannelResponse {
-	resp := &ChannelResponse{
+func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResponse {
+	resp := &IntegrationResponse{
 		UID:       conn.UID,
 		Type:      string(conn.Type),
 		Name:      conn.Name,
@@ -191,8 +191,8 @@ func toResponse(conn *models.Channel, includeSettings bool) *ChannelResponse {
 	return resp
 }
 
-// ListChannels returns all connections for an organization.
-func (s *Service) ListChannels(
+// ListIntegrations returns all connections for an organization.
+func (s *Service) ListIntegrations(
 	ctx context.Context, orgSlug string, connType *string,
 ) (*ListConnectionsResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -204,7 +204,7 @@ func (s *Service) ListChannels(
 		return nil, err
 	}
 
-	filter := &models.ListChannelsFilter{
+	filter := &models.ListIntegrationsFilter{
 		OrganizationUID: org.UID,
 	}
 
@@ -219,7 +219,7 @@ func (s *Service) ListChannels(
 	}
 
 	response := &ListConnectionsResponse{
-		Data: make([]*ChannelResponse, 0, len(connections)),
+		Data: make([]*IntegrationResponse, 0, len(connections)),
 	}
 
 	for _, conn := range connections {
@@ -229,10 +229,10 @@ func (s *Service) ListChannels(
 	return response, nil
 }
 
-// GetChannel returns a connection by UID.
-func (s *Service) GetChannel(
+// GetIntegration returns a connection by UID.
+func (s *Service) GetIntegration(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*ChannelResponse, error) {
+) (*IntegrationResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -274,7 +274,7 @@ func (s *Service) GetChannel(
 // them to the response Settings, removing them from SettingsPrivateKeys so the
 // dashboard renders the actual value rather than a placeholder pill.
 func (s *Service) injectSigningSecrets(
-	ctx context.Context, conn *models.Channel, resp *ChannelResponse,
+	ctx context.Context, conn *models.Integration, resp *IntegrationResponse,
 ) error {
 	effective, err := s.loadDecryptedSettings(ctx, conn)
 	if err != nil {
@@ -307,10 +307,10 @@ func (s *Service) injectSigningSecrets(
 	return nil
 }
 
-// CreateChannel creates a new connection.
-func (s *Service) CreateChannel(
-	ctx context.Context, orgSlug string, req CreateChannelRequest,
-) (*ChannelResponse, error) {
+// CreateIntegration creates a new connection.
+func (s *Service) CreateIntegration(
+	ctx context.Context, orgSlug string, req CreateIntegrationRequest,
+) (*IntegrationResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -341,7 +341,7 @@ func (s *Service) CreateChannel(
 		return nil, ErrSlackManualCreate
 	}
 
-	conn := models.NewChannel(org.UID, connType, req.Name)
+	conn := models.NewIntegration(org.UID, connType, req.Name)
 
 	if req.Enabled != nil {
 		conn.Enabled = *req.Enabled
@@ -385,10 +385,10 @@ func (s *Service) CreateChannel(
 	return resp, nil
 }
 
-// UpdateChannel updates a connection.
-func (s *Service) UpdateChannel(
-	ctx context.Context, orgSlug, connectionUID string, req UpdateChannelRequest,
-) (*ChannelResponse, error) {
+// UpdateIntegration updates a connection.
+func (s *Service) UpdateIntegration(
+	ctx context.Context, orgSlug, connectionUID string, req UpdateIntegrationRequest,
+) (*IntegrationResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -412,7 +412,7 @@ func (s *Service) UpdateChannel(
 		return nil, ErrConnectionNotFound
 	}
 
-	update := &models.ChannelUpdate{
+	update := &models.IntegrationUpdate{
 		Name:      req.Name,
 		Enabled:   req.Enabled,
 		IsDefault: req.IsDefault,
@@ -460,7 +460,7 @@ func (s *Service) UpdateChannel(
 // connection. When encryption is disabled at the server, secrets stay
 // plaintext on Settings (logged-once startup warning covers the gap).
 func (s *Service) applySettingsEncryption(
-	ctx context.Context, conn *models.Channel, effective map[string]any,
+	ctx context.Context, conn *models.Integration, effective map[string]any,
 ) error {
 	if effective == nil {
 		effective = map[string]any{}
@@ -506,7 +506,7 @@ func (s *Service) applySettingsEncryption(
 // of a connection. Used by the PATCH path so secret-preservation has the
 // existing values to merge into.
 func (s *Service) loadDecryptedSettings(
-	ctx context.Context, conn *models.Channel,
+	ctx context.Context, conn *models.Integration,
 ) (map[string]any, error) {
 	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
 		out := make(map[string]any, len(conn.Settings))
@@ -604,7 +604,7 @@ func (s *Service) StartFreeboxPairing(
 		channelName = "Freebox"
 	}
 
-	conn := models.NewChannel(org.UID, models.ConnectionTypeFreebox, channelName)
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeFreebox, channelName)
 
 	effective, err := mergeFreeboxSettings(settings, &models.FreeboxPrivateSettings{
 		AppToken: authResult.AppToken,
@@ -664,7 +664,7 @@ func (s *Service) CheckFreeboxPairingStatus(
 // cyclomatic-complexity threshold.
 func (s *Service) loadPairingChannel(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*models.Channel, *models.FreeboxSettings, error) {
+) (*models.Integration, *models.FreeboxSettings, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -752,7 +752,7 @@ func mergeFreeboxSettings(
 // loads the existing decrypted secrets, replaces the public side, and
 // goes back through the standard split-and-encrypt pipeline.
 func (s *Service) persistFreeboxSettings(
-	ctx context.Context, conn *models.Channel, settings *models.FreeboxSettings,
+	ctx context.Context, conn *models.Integration, settings *models.FreeboxSettings,
 ) error {
 	existing, err := s.loadDecryptedSettings(ctx, conn)
 	if err != nil {
@@ -777,7 +777,7 @@ func (s *Service) persistFreeboxSettings(
 		return err
 	}
 
-	update := &models.ChannelUpdate{
+	update := &models.IntegrationUpdate{
 		Settings:             &conn.Settings,
 		SettingsPrivate:      conn.SettingsPrivate,
 		SettingsPrivateKeys:  conn.SettingsPrivateKeys,
@@ -787,8 +787,8 @@ func (s *Service) persistFreeboxSettings(
 	return s.db.UpdateChannel(ctx, conn.UID, update)
 }
 
-// DeleteChannel deletes a connection.
-func (s *Service) DeleteChannel(ctx context.Context, orgSlug, connectionUID string) error {
+// DeleteIntegration deletes a connection.
+func (s *Service) DeleteIntegration(ctx context.Context, orgSlug, connectionUID string) error {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -815,7 +815,7 @@ func (s *Service) DeleteChannel(ctx context.Context, orgSlug, connectionUID stri
 	return s.db.DeleteChannel(ctx, connectionUID)
 }
 
-// WebhookTestResult is returned by TestWebhookChannel. Success reports whether
+// WebhookTestResult is returned by TestWebhookIntegration. Success reports whether
 // the remote endpoint accepted the delivery (2xx). The handler always returns
 // HTTP 200; the caller inspects Success.
 type WebhookTestResult struct {
@@ -826,10 +826,10 @@ type WebhookTestResult struct {
 }
 
 // loadWebhookChannel resolves the org + connection and asserts the channel is
-// a webhook. Shared by RotateWebhookSecret and TestWebhookChannel.
+// a webhook. Shared by RotateWebhookSecret and TestWebhookIntegration.
 func (s *Service) loadWebhookChannel(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*models.Channel, error) {
+) (*models.Integration, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -860,17 +860,17 @@ func (s *Service) loadWebhookChannel(
 }
 
 // persistChannelSettings re-splits/encrypts the given effective (decrypted)
-// settings onto the channel and writes them. Mirrors the UpdateChannel PATCH
+// settings onto the channel and writes them. Mirrors the UpdateIntegration PATCH
 // persistence path but for an already-merged settings map.
 func (s *Service) persistChannelSettings(
-	ctx context.Context, conn *models.Channel, effective map[string]any,
+	ctx context.Context, conn *models.Integration, effective map[string]any,
 ) error {
 	if err := s.applySettingsEncryption(ctx, conn, effective); err != nil {
 		return err
 	}
 
 	settings := conn.Settings
-	update := &models.ChannelUpdate{
+	update := &models.IntegrationUpdate{
 		Settings:             &settings,
 		SettingsPrivate:      conn.SettingsPrivate,
 		SettingsPrivateKeys:  conn.SettingsPrivateKeys,
@@ -885,7 +885,7 @@ func (s *Service) persistChannelSettings(
 // secret is generated. Receivers can verify against either during the window.
 func (s *Service) RotateWebhookSecret(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*ChannelResponse, error) {
+) (*IntegrationResponse, error) {
 	conn, err := s.loadWebhookChannel(ctx, orgSlug, connectionUID)
 	if err != nil {
 		return nil, err
@@ -927,9 +927,9 @@ func (s *Service) RotateWebhookSecret(
 	return resp, nil
 }
 
-// TestWebhookChannel sends a synthetic signed webhook to the configured URL
+// TestWebhookIntegration sends a synthetic signed webhook to the configured URL
 // using the same delivery path as a real notification, and reports the outcome.
-func (s *Service) TestWebhookChannel(
+func (s *Service) TestWebhookIntegration(
 	ctx context.Context, orgSlug, connectionUID string,
 ) (*WebhookTestResult, error) {
 	conn, err := s.loadWebhookChannel(ctx, orgSlug, connectionUID)
@@ -958,11 +958,11 @@ func (s *Service) TestWebhookChannel(
 			Name: &stubName,
 			Type: "http",
 		},
-		Connection: conn,
+		Integration: conn,
 	}
 
 	sender := &notifications.WebhookSender{
-		UpdateChannel: func(ctx context.Context, channel *models.Channel) error {
+		UpdateChannel: func(ctx context.Context, channel *models.Integration) error {
 			merged := make(map[string]any, len(channel.Settings))
 			for k, v := range channel.Settings {
 				merged[k] = v

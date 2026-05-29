@@ -58,7 +58,7 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 
 // parseSettings extracts and validates Slack settings from the payload.
 func (s *SlackSender) parseSettings(payload *Payload) (*models.SlackSettings, string, error) {
-	settings, err := models.SlackSettingsFromJSONMap(payload.Connection.Settings)
+	settings, err := models.SlackSettingsFromJSONMap(payload.Integration.Settings)
 	if err != nil {
 		return nil, "", fmt.Errorf("parsing slack settings: %w", err)
 	}

@@ -60,7 +60,7 @@ func createConnectionViaAPI(t *testing.T, ts *TestServer) string {
 	t.Helper()
 
 	status, body := authedRequestWithBody(t, ts, http.MethodPost,
-		"/api/v1/orgs/"+TestOrgSlug+"/connections",
+		"/api/v1/orgs/"+TestOrgSlug+"/integrations",
 		map[string]any{
 			"name": "E2E Webhook",
 			"type": "webhook",

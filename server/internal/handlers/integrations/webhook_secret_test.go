@@ -1,4 +1,4 @@
-package channels_test
+package integrations_test
 
 import (
 	"context"
@@ -13,7 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 )
 
 const (
@@ -22,7 +22,7 @@ const (
 	secretExpiryKey   = "signingSecretPreviousExpiry"
 )
 
-func newWebhookTestSvc(t *testing.T) (*channels.Service, *models.Organization, context.Context) {
+func newWebhookTestSvc(t *testing.T) (*integrations.Service, *models.Organization, context.Context) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -40,7 +40,7 @@ func newWebhookTestSvc(t *testing.T) (*channels.Service, *models.Organization, c
 	org := models.NewOrganization(slug, "Webhook Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	return channels.NewService(dbSvc, creds), org, ctx
+	return integrations.NewService(dbSvc, creds), org, ctx
 }
 
 // sanitizeSlug derives a valid org slug (lowercase alphanumeric, capped length)
@@ -69,7 +69,7 @@ func TestCreateWebhookChannel_GeneratesSecret(t *testing.T) {
 	r := require.New(t)
 	svc, org, ctx := newWebhookTestSvc(t)
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "webhook",
 		Name:     "hook",
 		Settings: map[string]any{"url": "https://example.com/hook"},
@@ -82,7 +82,7 @@ func TestCreateWebhookChannel_GeneratesSecret(t *testing.T) {
 
 	// GET must also surface the (decrypted) secret, and it must not appear in
 	// the placeholder-only SettingsPrivateKeys list.
-	got, err := svc.GetChannel(ctx, org.Slug, created.UID)
+	got, err := svc.GetIntegration(ctx, org.Slug, created.UID)
 	r.NoError(err)
 	gotSecret, ok := got.Settings[secretKey].(string)
 	r.True(ok)
@@ -98,7 +98,7 @@ func TestRotateWebhookSecret_CyclesSecrets(t *testing.T) {
 	r := require.New(t)
 	svc, org, ctx := newWebhookTestSvc(t)
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "webhook",
 		Name:     "hook",
 		Settings: map[string]any{"url": "https://example.com/hook"},
@@ -126,14 +126,14 @@ func TestRotateWebhookSecret_CyclesSecrets(t *testing.T) {
 	r.WithinDuration(time.Now().Add(24*time.Hour), expiry, 2*time.Minute)
 }
 
-// TestRotateWebhookSecret_WrongType rejects rotation on non-webhook channels.
+// TestRotateWebhookSecret_WrongType rejects rotation on non-webhook integrations.
 func TestRotateWebhookSecret_WrongType(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	svc, org, ctx := newWebhookTestSvc(t)
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "discord",
 		Name:     "disc",
 		Settings: map[string]any{"webhook_url": "https://discord.example/hook"},
@@ -141,7 +141,7 @@ func TestRotateWebhookSecret_WrongType(t *testing.T) {
 	r.NoError(err)
 
 	_, err = svc.RotateWebhookSecret(ctx, org.Slug, created.UID)
-	r.ErrorIs(err, channels.ErrNotWebhookChannel)
+	r.ErrorIs(err, integrations.ErrNotWebhookChannel)
 }
 
 // TestTestWebhookChannel_Success delivers to a 200 endpoint and asserts the
@@ -159,14 +159,14 @@ func TestTestWebhookChannel_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "webhook",
 		Name:     "hook",
 		Settings: map[string]any{"url": srv.URL},
 	})
 	r.NoError(err)
 
-	result, err := svc.TestWebhookChannel(ctx, org.Slug, created.UID)
+	result, err := svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
 	r.NoError(err)
 	r.True(result.Success)
 	r.Equal(200, result.StatusCode)
@@ -188,14 +188,14 @@ func TestTestWebhookChannel_Failure(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "webhook",
 		Name:     "hook",
 		Settings: map[string]any{"url": srv.URL},
 	})
 	r.NoError(err)
 
-	result, err := svc.TestWebhookChannel(ctx, org.Slug, created.UID)
+	result, err := svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
 	r.NoError(err, "test endpoint never returns an error for a remote failure")
 	r.False(result.Success)
 	r.Equal(500, result.StatusCode)
@@ -209,13 +209,13 @@ func TestTestWebhookChannel_WrongType(t *testing.T) {
 	r := require.New(t)
 	svc, org, ctx := newWebhookTestSvc(t)
 
-	created, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type:     "discord",
 		Name:     "disc",
 		Settings: map[string]any{"webhook_url": "https://discord.example/hook"},
 	})
 	r.NoError(err)
 
-	_, err = svc.TestWebhookChannel(ctx, org.Slug, created.UID)
-	r.ErrorIs(err, channels.ErrNotWebhookChannel)
+	_, err = svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
+	r.ErrorIs(err, integrations.ErrNotWebhookChannel)
 }

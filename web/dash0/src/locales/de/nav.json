@@ -6,7 +6,7 @@
   "onCall": "Bereitschaft",
   "escalationPolicies": "Eskalationsrichtlinien",
   "events": "Ereignisse",
-  "channels": "Kanäle",
+  "integrations": "Integrationen",
   "statusPages": "Statusseiten",
   "statusUpdates": "Statusaktualisierungen",
   "badges": "Abzeichen",

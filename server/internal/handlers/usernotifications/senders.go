@@ -48,7 +48,7 @@ func NewSlackDMSenderAdapter() *SlackDMSenderAdapter {
 
 // SendDMTest sends a test DM to slackUserID using the org's Slack bot token.
 func (a *SlackDMSenderAdapter) SendDMTest(
-	ctx context.Context, ch *models.Channel, slackUserID string,
+	ctx context.Context, ch *models.Integration, slackUserID string,
 ) error {
 	settings, err := models.SlackSettingsFromJSONMap(ch.Settings)
 	if err != nil {

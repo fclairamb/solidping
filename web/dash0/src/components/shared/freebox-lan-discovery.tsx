@@ -22,7 +22,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { cn } from "@/lib/utils";
 import {
   useFreeboxLanHosts,
-  type Channel,
+  type Integration,
   type FreeboxLanHost,
 } from "@/api/hooks";
 
@@ -35,7 +35,7 @@ interface FreeboxLanDiscoveryProps {
   onOpenChange: (open: boolean) => void;
   // Granted Freebox connections available on the org. The picker
   // renders a connection selector when more than one is supplied.
-  channels: Channel[];
+  channels: Integration[];
   onSelect: (host: FreeboxLanHost) => void;
 }
 

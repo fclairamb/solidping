@@ -34,36 +34,39 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
-  useChannels,
-  useDeleteChannel,
-  type Channel,
+  useIntegrations,
+  useDeleteIntegration,
+  type Integration,
   type ConnectionType,
 } from "@/api/hooks";
-import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
+import {
+  IntegrationIcon,
+  integrationLabel,
+} from "@/components/integrations/integration-icon";
 
-export const Route = createFileRoute("/orgs/$org/channels/")({
-  component: ChannelsListPage,
+export const Route = createFileRoute("/orgs/$org/integrations/")({
+  component: IntegrationsListPage,
 });
 
-function ChannelsListPage() {
-  const { t } = useTranslation("channels");
+function IntegrationsListPage() {
+  const { t } = useTranslation("integrations");
   const { org } = Route.useParams();
   const {
-    data: channels,
+    data: integrations,
     isLoading,
     isRefetching,
     refetch,
-  } = useChannels(org);
-  const deleteMutation = useDeleteChannel(org);
+  } = useIntegrations(org);
+  const deleteMutation = useDeleteIntegration(org);
 
   const [search, setSearch] = useState("");
-  const [pendingDelete, setPendingDelete] = useState<Channel | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Integration | null>(null);
 
   const onConfirmDelete = () => {
     if (!pendingDelete) return;
     deleteMutation.mutate(pendingDelete.uid, {
       onSuccess: () => {
-        toast.success(t("deleted", "Channel deleted"));
+        toast.success(t("deleted", "Integration deleted"));
         setPendingDelete(null);
       },
       onError: () => toast.error(t("deleteFailed", "Delete failed")),
@@ -71,16 +74,17 @@ function ChannelsListPage() {
   };
 
   const filtered = useMemo(() => {
-    const list = channels || [];
+    const list = integrations || [];
     if (!search.trim()) return list;
     const q = search.toLowerCase();
     return list.filter(
       (c) =>
         c.name.toLowerCase().includes(q) || c.type.toLowerCase().includes(q),
     );
-  }, [channels, search]);
+  }, [integrations, search]);
 
-  const showEmptyState = !isLoading && channels && channels.length === 0;
+  const showEmptyState =
+    !isLoading && integrations && integrations.length === 0;
 
   return (
     <div className="space-y-6">
@@ -88,7 +92,7 @@ function ChannelsListPage() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Bell className="h-7 w-7 text-muted-foreground" />
-            {t("title", "Channels")}
+            {t("title", "Integrations")}
           </h1>
           <p className="text-muted-foreground">
             {t(
@@ -97,10 +101,12 @@ function ChannelsListPage() {
             )}
           </p>
         </div>
-        <Button asChild aria-label={t("new", "New channel")}>
-          <Link to="/orgs/$org/channels/new" params={{ org }}>
+        <Button asChild aria-label={t("new", "New integration")}>
+          <Link to="/orgs/$org/integrations/new" params={{ org }}>
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t("new", "New channel")}</span>
+            <span className="hidden sm:inline">
+              {t("new", "New integration")}
+            </span>
           </Link>
         </Button>
       </div>
@@ -112,7 +118,7 @@ function ChannelsListPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("deleteConfirmTitle", "Delete channel?")}
+              {t("deleteConfirmTitle", "Delete integration?")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDelete
@@ -150,7 +156,7 @@ function ChannelsListPage() {
               size="icon"
               onClick={() => refetch()}
               disabled={isRefetching}
-              data-testid="channels-refresh"
+              data-testid="integrations-refresh"
             >
               <RefreshCw
                 className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
@@ -182,7 +188,7 @@ function ChannelsListPage() {
                     <Row
                       key={c.uid}
                       org={org}
-                      channel={c}
+                      integration={c}
                       onDelete={() => setPendingDelete(c)}
                     />
                   ))}
@@ -197,17 +203,17 @@ function ChannelsListPage() {
 }
 
 function EmptyState({ org }: { org: string }) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
   const quick: ConnectionType[] = ["slack", "discord", "email", "webhook"];
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>{t("empty.title", "No channels yet")}</CardTitle>
+        <CardTitle>{t("empty.title", "No integrations yet")}</CardTitle>
         <CardDescription>
           {t(
             "empty.body",
-            "Add a channel to start receiving notifications. Pick one to get going:",
+            "Add an integration to start receiving notifications. Pick one to get going:",
           )}
         </CardDescription>
       </CardHeader>
@@ -215,12 +221,12 @@ function EmptyState({ org }: { org: string }) {
         {quick.map((type) => (
           <Button key={type} variant="outline" size="sm" asChild>
             <Link
-              to="/orgs/$org/channels/new"
+              to="/orgs/$org/integrations/new"
               params={{ org }}
               search={{ type }}
             >
-              <ChannelIcon type={type} className="h-4 w-4 mr-1" />
-              {channelLabel(type)}
+              <IntegrationIcon type={type} className="h-4 w-4 mr-1" />
+              {integrationLabel(type)}
             </Link>
           </Button>
         ))}
@@ -231,34 +237,34 @@ function EmptyState({ org }: { org: string }) {
 
 interface RowProps {
   org: string;
-  channel: Channel;
+  integration: Integration;
   onDelete: () => void;
 }
 
-function Row({ org, channel, onDelete }: RowProps) {
-  const { t } = useTranslation("channels");
+function Row({ org, integration, onDelete }: RowProps) {
+  const { t } = useTranslation("integrations");
 
   return (
     <TableRow>
       <TableCell>
         <Link
-          to="/orgs/$org/channels/$channelUid"
-          params={{ org, channelUid: channel.uid }}
+          to="/orgs/$org/integrations/$integrationUid"
+          params={{ org, integrationUid: integration.uid }}
           className="flex items-center gap-2 font-medium hover:underline"
         >
-          <ChannelIcon type={channel.type} className="h-4 w-4" />
-          {channel.name}
+          <IntegrationIcon type={integration.type} className="h-4 w-4" />
+          {integration.name}
         </Link>
       </TableCell>
       <TableCell>
-        <Badge variant="outline">{channelLabel(channel.type)}</Badge>
+        <Badge variant="outline">{integrationLabel(integration.type)}</Badge>
       </TableCell>
       <TableCell className="text-sm">
         <div className="flex items-center gap-2">
-          <Badge variant={channel.enabled ? "default" : "secondary"}>
-            {channel.enabled ? t("status.enabled", "Enabled") : t("status.disabled", "Disabled")}
+          <Badge variant={integration.enabled ? "default" : "secondary"}>
+            {integration.enabled ? t("status.enabled", "Enabled") : t("status.disabled", "Disabled")}
           </Badge>
-          {channel.isDefault && (
+          {integration.isDefault && (
             <span title={t("default", "Default")}>
               <Star className="h-3 w-3 fill-yellow-500 stroke-yellow-600" />
             </span>
@@ -267,14 +273,14 @@ function Row({ org, channel, onDelete }: RowProps) {
       </TableCell>
       <TableCell className="text-sm text-muted-foreground">—</TableCell>
       <TableCell className="text-sm text-muted-foreground">
-        {new Date(channel.updatedAt).toLocaleDateString()}
+        {new Date(integration.updatedAt).toLocaleDateString()}
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
           <Button asChild variant="ghost" size="icon" aria-label={t("actions.edit", "Edit")}>
             <Link
-              to="/orgs/$org/channels/$channelUid"
-              params={{ org, channelUid: channel.uid }}
+              to="/orgs/$org/integrations/$integrationUid"
+              params={{ org, integrationUid: integration.uid }}
             >
               <Pencil className="h-4 w-4" />
             </Link>
