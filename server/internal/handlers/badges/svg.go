@@ -28,7 +28,7 @@ const (
 	rowHeightGraph = 40
 	rowGap         = 4
 
-	// uptimeBarColorHeight is the height of the coloured strip at the top of the
+	// uptimeBarColorHeight is the height of the colored strip at the top of the
 	// uptime-bar row; the remaining height holds the per-segment label band.
 	uptimeBarColorHeight = 20
 	// uptimeBarLabelBaseline is the text baseline (relative to the row's yOffset)
@@ -139,7 +139,7 @@ func renderBadgeRow(label, value, valueColor, style string, width, yOffset int) 
 }
 
 // renderUptimeBarRow renders an N-segment availability strip as a positioned
-// <g> fragment translated to yOffset. The coloured strip occupies the top
+// <g> fragment translated to yOffset. The colored strip occupies the top
 // uptimeBarColorHeight px; the remaining height is a label band holding the
 // per-segment time labels. labels carries one entry per segment (empty string =
 // no label for that slot); a nil/short slice renders no labels.
@@ -151,7 +151,7 @@ func renderUptimeBarRow(segments, labels []string, width, height, yOffset int, s
 
 	radius := borderRadius(style)
 
-	// The coloured strip never exceeds the row height (defensive when callers
+	// The colored strip never exceeds the row height (defensive when callers
 	// pass a small height, e.g. the standalone-SVG test wrapper).
 	colorHeight := uptimeBarColorHeight
 	if colorHeight > height {
@@ -261,15 +261,15 @@ func renderGraphGrid(actualMin, actualMax float64, width int, yAt func(float64) 
 		gridVals = append(gridVals, actualMin)
 	}
 
-	for _, gv := range gridVals {
-		y := yAt(gv)
+	for _, gridValue := range gridVals {
+		gridY := yAt(gridValue)
 		fmt.Fprintf(grid,
 			`    <line x1="0" y1="%.1f" x2="%d" y2="%.1f" stroke="#ccc" stroke-width="0.5" stroke-dasharray="2,2"/>`,
-			y, width, y)
+			gridY, width, gridY)
 		fmt.Fprintln(grid)
 		fmt.Fprintf(grid,
 			`    <text x="%d" y="%.1f" fill="#888" font-family="%s" font-size="7" text-anchor="end">%s</text>`,
-			width-2, y-1, fontFamily, escapeXML(formatDurationMs(gv)))
+			width-2, gridY-1, fontFamily, escapeXML(formatDurationMs(gridValue)))
 		fmt.Fprintln(grid)
 	}
 }
