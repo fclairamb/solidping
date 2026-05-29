@@ -77,7 +77,7 @@ type ntfySettings struct {
 }
 
 func (s *NtfySender) parseSettings(payload *Payload) (*ntfySettings, error) {
-	data, err := json.Marshal(payload.Connection.Settings)
+	data, err := json.Marshal(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing ntfy settings: %w", err)
 	}

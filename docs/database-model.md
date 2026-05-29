@@ -15,9 +15,9 @@ organizations (root)
 │   ├── check_jobs (1:n per region)
 │   ├── results (1:many check results)
 │   ├── incidents (1:many downtime periods)
-│   └── check_connections (M2M to integrations)
-├── integration_connections
-│   └── check_connections (M2M to checks)
+│   └── check_channels (M2M to integrations)
+├── integrations
+│   └── check_channels (M2M to checks)
 ├── status_pages
 │   └── status_page_sections
 │       └── status_page_resources (links to checks)
@@ -418,14 +418,15 @@ Key-value state storage for notifications, tokens, and distributed locking.
 
 ## Integration & Notification Tables
 
-### integration_connections
-Generic table for all integration connections (Slack, webhook, email, etc.).
+### integrations
+Generic table for all integrations (Slack, webhook, email, Freebox, etc.).
+Renamed from `integration_connections` in migration 035.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | organization_uid | uuid | FK to organizations |
-| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, opsgenie, pushover |
+| type | varchar | Integration type: slack, discord, webhook, email, googlechat, mattermost, ntfy, opsgenie, pushover, freebox |
 | name | varchar | Human-readable name |
 | enabled | boolean | Whether active |
 | is_default | boolean | Auto-attach to new checks |
@@ -435,20 +436,22 @@ Generic table for all integration connections (Slack, webhook, email, etc.).
 
 ---
 
-### check_connections
-Junction table linking checks to integration connections for notifications.
+### check_channels
+Junction table linking checks to the integrations they notify through. Renamed
+from `check_connections` in migration 035 (the binding keeps the "channel" name
+to match the notify-role taxonomy); FK column `connection_uid` → `integration_uid`.
 
 | Column | Type | Description |
 |--------|------|-------------|
 | uid | uuid PK | Primary key |
 | check_uid | uuid | FK to checks |
-| connection_uid | uuid | FK to integration_connections |
+| integration_uid | uuid | FK to integrations |
 | organization_uid | uuid | FK to organizations |
 | settings | jsonb | Per-check override settings (e.g., Slack channel override) |
 
 **Foreign Keys**:
 - `check_uid` → checks(uid)
-- `connection_uid` → integration_connections(uid)
+- `integration_uid` → integrations(uid)
 - `organization_uid` → organizations(uid)
 
 ---

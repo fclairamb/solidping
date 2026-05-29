@@ -1,4 +1,4 @@
-package channels_test
+package integrations_test
 
 import (
 	"testing"
@@ -8,7 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 )
 
 // TestCreateChannelRejectsSlackType verifies that the manual create endpoint
@@ -30,13 +30,13 @@ func TestCreateChannelRejectsSlackType(t *testing.T) {
 	org := models.NewOrganization("slack-create-test", "Slack Create Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := channels.NewService(dbSvc, creds)
+	svc := integrations.NewService(dbSvc, creds)
 
-	_, err = svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	_, err = svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type: "slack",
 		Name: "x",
 	})
-	r.ErrorIs(err, channels.ErrSlackManualCreate)
+	r.ErrorIs(err, integrations.ErrSlackManualCreate)
 }
 
 // TestCreateChannelAllowsNonSlackType is a guard so the Slack rejection does
@@ -58,9 +58,9 @@ func TestCreateChannelAllowsNonSlackType(t *testing.T) {
 	org := models.NewOrganization("webhook-create-test", "Webhook Create Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := channels.NewService(dbSvc, creds)
+	svc := integrations.NewService(dbSvc, creds)
 
-	resp, err := svc.CreateChannel(ctx, org.Slug, channels.CreateChannelRequest{
+	resp, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type: "webhook",
 		Name: "hook",
 		Settings: map[string]any{

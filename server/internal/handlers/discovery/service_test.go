@@ -75,7 +75,7 @@ func startFakeFreebox(t *testing.T) *httptest.Server {
 	return srv
 }
 
-func (f *discoveryFixture) newFreeboxChannel(t *testing.T, baseURL, status string) *models.Channel {
+func (f *discoveryFixture) newFreeboxChannel(t *testing.T, baseURL, status string) *models.Integration {
 	t.Helper()
 
 	r := require.New(t)
@@ -85,7 +85,7 @@ func (f *discoveryFixture) newFreeboxChannel(t *testing.T, baseURL, status strin
 	r.NoError(err)
 	m["appToken"] = "permanent-token"
 
-	conn := models.NewChannel(f.org.UID, models.ConnectionTypeFreebox, "Freebox")
+	conn := models.NewIntegration(f.org.UID, models.ConnectionTypeFreebox, "Freebox")
 	conn.Settings = m
 	r.NoError(f.dbSvc.CreateChannel(t.Context(), conn))
 

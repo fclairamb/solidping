@@ -86,8 +86,8 @@ const navItems = [
     icon: Calendar,
   },
   {
-    titleKey: "channels",
-    path: "/orgs/$org/channels" as const,
+    titleKey: "integrations",
+    path: "/orgs/$org/integrations" as const,
     icon: Bell,
   },
   {

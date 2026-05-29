@@ -165,7 +165,7 @@ func (s *Service) ListIncidentNotifications(
 		ColumnExpr("i.started_at AS incident_started_at").
 		ColumnExpr("c.name AS check_name").
 		Join("LEFT JOIN users u ON u.uid = n.user_uid").
-		Join("LEFT JOIN integration_connections ic ON ic.uid = n.connection_uid").
+		Join("LEFT JOIN integrations ic ON ic.uid = n.connection_uid").
 		Join("LEFT JOIN incidents i ON i.uid = n.incident_uid").
 		Join("LEFT JOIN checks c ON c.uid = i.check_uid").
 		Where("n.organization_uid = ?", orgUID)

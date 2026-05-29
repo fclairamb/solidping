@@ -2863,14 +2863,14 @@ func (s *Service) DeleteOrgParameter(ctx context.Context, orgUID, key string) er
 // IntegrationConnection operations
 
 // CreateChannel creates a new integration connection.
-func (s *Service) CreateChannel(ctx context.Context, conn *models.Channel) error {
+func (s *Service) CreateChannel(ctx context.Context, conn *models.Integration) error {
 	_, err := s.db.NewInsert().Model(conn).Exec(ctx)
 	return err
 }
 
 // GetChannel retrieves an integration connection by UID.
-func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, error) {
-	conn := new(models.Channel)
+func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Integration, error) {
+	conn := new(models.Integration)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2887,8 +2887,8 @@ func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, 
 // GetChannelByProperty retrieves a connection by a settings property.
 func (s *Service) GetChannelByProperty(
 	ctx context.Context, connType, propertyName, propertyValue string,
-) (*models.Channel, error) {
-	conn := new(models.Channel)
+) (*models.Integration, error) {
+	conn := new(models.Integration)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2905,9 +2905,9 @@ func (s *Service) GetChannelByProperty(
 
 // ListChannels lists integration connections with optional filtering.
 func (s *Service) ListChannels(
-	ctx context.Context, filter *models.ListChannelsFilter,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+	ctx context.Context, filter *models.ListIntegrationsFilter,
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	query := s.db.NewSelect().
 		Model(&connections).
@@ -2930,10 +2930,10 @@ func (s *Service) ListChannels(
 
 // UpdateChannel updates an integration connection.
 func (s *Service) UpdateChannel(
-	ctx context.Context, uid string, update *models.ChannelUpdate,
+	ctx context.Context, uid string, update *models.IntegrationUpdate,
 ) error {
 	query := s.db.NewUpdate().
-		Model((*models.Channel)(nil)).
+		Model((*models.Integration)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
@@ -2973,7 +2973,7 @@ func (s *Service) UpdateChannel(
 // DeleteChannel soft-deletes an integration connection.
 func (s *Service) DeleteChannel(ctx context.Context, uid string) error {
 	_, err := s.db.NewUpdate().
-		Model((*models.Channel)(nil)).
+		Model((*models.Integration)(nil)).
 		Set("deleted_at = ?", time.Now()).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2995,7 +2995,7 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 	_, err := s.db.NewDelete().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Exec(ctx)
 
 	return err
@@ -3004,15 +3004,15 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 // ListChannelsForCheck returns all connections associated with a check.
 func (s *Service) ListChannelsForCheck(
 	ctx context.Context, checkUID string,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	err := s.db.NewSelect().
 		Model(&connections).
-		Join("INNER JOIN check_connections cc ON cc.connection_uid = integration_connection.uid").
+		Join("INNER JOIN check_channels cc ON cc.integration_uid = integration.uid").
 		Where("cc.check_uid = ?", checkUID).
-		Where("integration_connection.deleted_at IS NULL").
-		Order("integration_connection.created_at DESC").
+		Where("integration.deleted_at IS NULL").
+		Order("integration.created_at DESC").
 		Scan(ctx)
 
 	return connections, err
@@ -3053,8 +3053,8 @@ func (s *Service) SetCheckConnections(ctx context.Context, checkUID string, conn
 // ListDefaultChannels returns all default connections for an organization.
 func (s *Service) ListDefaultChannels(
 	ctx context.Context, orgUID string,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -3075,7 +3075,7 @@ func (s *Service) UpdateCheckConnection(
 	query := s.db.NewUpdate().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.Settings != nil {
@@ -3108,7 +3108,7 @@ func (s *Service) GetCheckConnection(
 	err := s.db.NewSelect().
 		Model(&checkConn).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Scan(ctx)
 	if err != nil {
 		return nil, err
