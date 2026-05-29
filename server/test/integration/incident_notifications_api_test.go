@@ -57,7 +57,7 @@ func setupIncidentNotificationRows(t *testing.T, ts *TestServer) string {
 	const testUserUID = "10000000-0000-0000-0000-000000000002" // pre-seeded by testhelper
 
 	// Create a channel (connection).
-	conn := models.NewChannel(orgUID, models.ConnectionTypeWebhook, "notif-test-conn")
+	conn := models.NewIntegration(orgUID, models.ConnectionTypeWebhook, "notif-test-conn")
 	r.NoError(dbSvc.CreateChannel(ctx, conn))
 
 	// Seed a user notification row (status=sent).
