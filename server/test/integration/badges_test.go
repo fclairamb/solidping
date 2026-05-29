@@ -233,7 +233,8 @@ func TestBadges_UptimeBarRow(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// uptime-bar alone: name title row + bar strip. H = 20 + 4 + 20 = 44.
+	// uptime-bar alone: name title row + bar strip (now 30px incl. label band).
+	// H = 20 + 4 + 30 = 54.
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
 		"/checks/badge-test-check/badges/uptime-bar"
 	resp, err := fetchBadge(ctx, url)
@@ -248,7 +249,7 @@ func TestBadges_UptimeBarRow(t *testing.T) {
 
 	svg := string(body)
 	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
-	r.Contains(svg, `height="44"`)
+	r.Contains(svg, `height="54"`)
 	r.Contains(svg, "Badge Test Check")
 }
 
@@ -287,7 +288,8 @@ func TestBadges_AllSixRows(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// status,uptime-bar,response-time-graph: 3 rows. H = 20 + 4 + 20 + 4 + 40 = 88.
+	// status,uptime-bar,response-time-graph: 3 rows (bar now 30px incl. label
+	// band). H = 20 + 4 + 30 + 4 + 40 = 98.
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
 		"/checks/badge-test-check/badges/status,uptime-bar,response-time-graph?period=30d"
 	resp, err := fetchBadge(ctx, url)
@@ -300,7 +302,7 @@ func TestBadges_AllSixRows(t *testing.T) {
 	r.NoError(err)
 
 	svg := string(body)
-	r.Contains(svg, `height="88"`)
+	r.Contains(svg, `height="98"`)
 	r.Contains(svg, `width="300"`) // default combined width
 }
 

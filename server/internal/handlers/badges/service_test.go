@@ -881,7 +881,7 @@ func TestComputeUptimeBarLabels30d(t *testing.T) {
 	labels := computeUptimeBarLabels(bucketStart, 30, 24*time.Hour)
 
 	r.Len(labels, 30)
-	// First segment is always labelled.
+	// First segment is always labeled.
 	r.Equal("Jan 7", labels[0])
 	// The next Monday is 2026-01-12, i.e. index 5.
 	r.Equal("Jan 12", labels[5])
@@ -899,7 +899,7 @@ func TestComputeUptimeBarLabels90d(t *testing.T) {
 	labels := computeUptimeBarLabels(bucketStart, 90, 24*time.Hour)
 
 	r.Len(labels, 90)
-	// First segment is always labelled with its month.
+	// First segment is always labeled with its month.
 	r.Equal("Jan", labels[0])
 	// Feb 1 is 17 days after Jan 15, i.e. index 17.
 	r.Equal("Feb", labels[17])
@@ -943,7 +943,7 @@ func TestRenderUptimeBarRowLabels(t *testing.T) {
 	labels := []string{"Mon", "", "Wed"}
 	row := renderUptimeBarRow(segments, labels, 300, rowHeightBar, 0, "flat")
 
-	// Coloured strip uses the fixed colour height, not the full row height.
+	// Colored strip uses the fixed color height, not the full row height.
 	r.Contains(row, `height="20"`)
 	// Only the two non-empty labels render as <text>.
 	r.Equal(2, strings.Count(row, "<text"))

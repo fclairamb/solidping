@@ -362,37 +362,68 @@ func buildBarSegments(
 }
 
 // computeUptimeBarLabels returns one label per uptime-bar segment, anchoring the
-// coloured strip in time. The label set depends on the period (derived from
+// colored strip in time. The label set depends on the period (derived from
 // bucketDuration and n): weekday names for 7d, 6-hour ticks for 24h, week
 // boundaries for 30d, and month boundaries for 90d. Slots without a label hold
 // an empty string. This is a pure function (no DB access).
 func computeUptimeBarLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
-	labels := make([]string, n)
-
 	switch {
 	case bucketDuration == 24*time.Hour && n == 7:
-		for i := range n {
-			labels[i] = bucketStart.Add(time.Duration(i) * bucketDuration).Weekday().String()[:3]
-		}
+		return weekdayLabels(bucketStart, n, bucketDuration)
 	case bucketDuration == time.Hour && n == 24:
-		for i := range n {
-			if i%6 == 0 {
-				labels[i] = fmt.Sprintf("%dh", i)
-			}
-		}
+		return hourTickLabels(n)
 	case bucketDuration == 24*time.Hour && n == 30:
-		for i := range n {
-			t := bucketStart.Add(time.Duration(i) * bucketDuration)
-			if i == 0 || t.Weekday() == time.Monday {
-				labels[i] = t.Format("Jan 2")
-			}
-		}
+		return weekBoundaryLabels(bucketStart, n, bucketDuration)
 	case bucketDuration == 24*time.Hour && n == 90:
-		for i := range n {
-			t := bucketStart.Add(time.Duration(i) * bucketDuration)
-			if i == 0 || t.Day() == 1 {
-				labels[i] = t.Format("Jan")
-			}
+		return monthBoundaryLabels(bucketStart, n, bucketDuration)
+	default:
+		return make([]string, n)
+	}
+}
+
+// weekdayLabels labels every segment with its 3-letter weekday name (7d).
+func weekdayLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		labels[i] = bucketStart.Add(time.Duration(i) * bucketDuration).Weekday().String()[:3]
+	}
+
+	return labels
+}
+
+// hourTickLabels labels every 6th segment with an hour mark (24h).
+func hourTickLabels(n int) []string {
+	labels := make([]string, n)
+	for i := range n {
+		if i%6 == 0 {
+			labels[i] = fmt.Sprintf("%dh", i)
+		}
+	}
+
+	return labels
+}
+
+// weekBoundaryLabels labels the first segment and every Monday with "Jan 2" (30d).
+func weekBoundaryLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if i == 0 || t.Weekday() == time.Monday {
+			labels[i] = t.Format("Jan 2")
+		}
+	}
+
+	return labels
+}
+
+// monthBoundaryLabels labels the first segment and each month's first day with
+// its 3-letter month name (90d).
+func monthBoundaryLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if i == 0 || t.Day() == 1 {
+			labels[i] = t.Format("Jan")
 		}
 	}
 
