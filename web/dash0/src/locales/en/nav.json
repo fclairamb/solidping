@@ -6,7 +6,7 @@
   "onCall": "On-call",
   "escalationPolicies": "Escalation policies",
   "events": "Events",
-  "channels": "Channels",
+  "integrations": "Integrations",
   "statusPages": "Status Pages",
   "statusUpdates": "Status Updates",
   "badges": "Badges",

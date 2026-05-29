@@ -1,7 +1,7 @@
 {
-  "title": "Canales",
+  "title": "Integraciones",
   "subtitle": "Slack, webhooks, correo y más — configura cómo SolidPing te avisa.",
-  "new": "Nuevo canal",
+  "new": "Nueva integración",
   "newTitle": "Añadir una integración",
   "newSubtitle": "Elige el tipo de integración a configurar.",
   "groupNotify": "Canales de notificación",

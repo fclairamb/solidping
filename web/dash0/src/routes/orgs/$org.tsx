@@ -41,7 +41,7 @@ import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   useCheck,
-  useChannel,
+  useIntegration,
   useEscalationPolicy,
   useFeatures,
   useIncident,
@@ -108,7 +108,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
   const isStatusUpdates = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-updates"));
-  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
+  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/integrations"));
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
@@ -131,9 +131,9 @@ function Breadcrumbs({ org }: { org: string }) {
   // empty/wrong-section param so each hook only fetches when its branch is
   // active. on-call and escalation share the param name `slug`, so dispatch
   // by section flag here too.
-  const { data: connection } = useChannel(
+  const { data: connection } = useIntegration(
     org,
-    isChannels ? (params.channelUid ?? "") : "",
+    isChannels ? (params.integrationUid ?? "") : "",
   );
   const { data: onCallSchedule } = useOnCallSchedule(
     org,
@@ -413,16 +413,16 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isChannels) {
-    const channelUid = params.channelUid;
-    const isNew = routeIds.has("/orgs/$org/channels/new");
-    const channelName = connection?.name || channelUid?.slice(0, 8);
+    const integrationUid = params.integrationUid;
+    const isNew = routeIds.has("/orgs/$org/integrations/new");
+    const integrationName = connection?.name || integrationUid?.slice(0, 8);
 
     return (
       <>
-        {channelUid || isNew ? (
-          <Link to="/orgs/$org/channels" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("channels")}</Link>
+        {integrationUid || isNew ? (
+          <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("integrations")}</Link>
         ) : (
-          <span className={activeClass}><Bell className={iconClass} />{t("channels")}</span>
+          <span className={activeClass}><Bell className={iconClass} />{t("integrations")}</span>
         )}
         {isNew && (
           <>
@@ -430,10 +430,10 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("new")}</span>
           </>
         )}
-        {channelUid && (
+        {integrationUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{channelName}</span>
+            <span className={activeClass}>{integrationName}</span>
           </>
         )}
       </>

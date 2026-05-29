@@ -51,7 +51,7 @@ const pages: PageEntry[] = [
   { titleKey: "onCall", path: "/orgs/$org/on-call", icon: CalendarClock, group: "pages" },
   { titleKey: "escalationPolicies", path: "/orgs/$org/escalation-policies", icon: ArrowUpRight, group: "pages" },
   { titleKey: "events", path: "/orgs/$org/events", icon: Calendar, group: "pages" },
-  { titleKey: "channels", path: "/orgs/$org/channels", icon: Bell, group: "pages" },
+  { titleKey: "integrations", path: "/orgs/$org/integrations", icon: Bell, group: "pages" },
   { titleKey: "statusPages", path: "/orgs/$org/status-pages", icon: Globe, group: "pages" },
   { titleKey: "badges", path: "/orgs/$org/badges", icon: BadgeCheck, group: "pages" },
   { titleKey: "profile", path: "/orgs/$org/account/profile", icon: User2, group: "account" },
