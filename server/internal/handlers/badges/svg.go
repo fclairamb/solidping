@@ -2,6 +2,7 @@ package badges
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -23,9 +24,16 @@ const fontFamily = "DejaVu Sans,Verdana,Geneva,sans-serif"
 // Row heights (px) for the composable multi-row badge.
 const (
 	rowHeightText  = 20
-	rowHeightBar   = 20
+	rowHeightBar   = 30
 	rowHeightGraph = 40
 	rowGap         = 4
+
+	// uptimeBarColorHeight is the height of the colored strip at the top of the
+	// uptime-bar row; the remaining height holds the per-segment label band.
+	uptimeBarColorHeight = 20
+	// uptimeBarLabelBaseline is the text baseline (relative to the row's yOffset)
+	// for the per-segment labels in the bottom label band.
+	uptimeBarLabelBaseline = 28
 )
 
 // borderRadius returns the corner radius for the given style.
@@ -131,8 +139,11 @@ func renderBadgeRow(label, value, valueColor, style string, width, yOffset int) 
 }
 
 // renderUptimeBarRow renders an N-segment availability strip as a positioned
-// <g> fragment translated to yOffset.
-func renderUptimeBarRow(segments []string, width, height, yOffset int, style string) string {
+// <g> fragment translated to yOffset. The colored strip occupies the top
+// uptimeBarColorHeight px; the remaining height is a label band holding the
+// per-segment time labels. labels carries one entry per segment (empty string =
+// no label for that slot); a nil/short slice renders no labels.
+func renderUptimeBarRow(segments, labels []string, width, height, yOffset int, style string) string {
 	n := len(segments)
 	if n == 0 {
 		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, yOffset)
@@ -140,13 +151,20 @@ func renderUptimeBarRow(segments []string, width, height, yOffset int, style str
 
 	radius := borderRadius(style)
 
+	// The colored strip never exceeds the row height (defensive when callers
+	// pass a small height, e.g. the standalone-SVG test wrapper).
+	colorHeight := uptimeBarColorHeight
+	if colorHeight > height {
+		colorHeight = height
+	}
+
 	// Segment width: integer division, last segment gets remaining pixels.
 	gaps := n - 1
 	availableWidth := width - gaps
 	segWidth := availableWidth / n
 	lastSegWidth := availableWidth - segWidth*(n-1)
 
-	var rects strings.Builder
+	var rects, labelText strings.Builder
 
 	posX := 0
 	for idx, color := range segments {
@@ -155,8 +173,17 @@ func renderUptimeBarRow(segments []string, width, height, yOffset int, style str
 			rectWidth = lastSegWidth
 		}
 
-		fmt.Fprintf(&rects, `      <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, height, color)
+		fmt.Fprintf(&rects, `      <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, colorHeight, color)
 		fmt.Fprintln(&rects)
+
+		if idx < len(labels) && labels[idx] != "" {
+			centerX := posX + rectWidth/2
+			fmt.Fprintf(&labelText,
+				`    <text x="%d" y="%d" fill="#777" font-family="%s" font-size="7" text-anchor="middle">%s</text>`,
+				centerX, uptimeBarLabelBaseline, fontFamily, escapeXML(labels[idx]))
+			fmt.Fprintln(&labelText)
+		}
+
 		posX += rectWidth + 1
 	}
 
@@ -166,7 +193,7 @@ func renderUptimeBarRow(segments []string, width, height, yOffset int, style str
     </clipPath>
     <g clip-path="url(#bar%d)">
 %s    </g>
-  </g>`, yOffset, yOffset, width, height, radius, yOffset, rects.String())
+%s  </g>`, yOffset, yOffset, width, colorHeight, radius, yOffset, rects.String(), labelText.String())
 }
 
 // paddedRange applies 10% padding around [minV, maxV] so the line never
@@ -224,6 +251,40 @@ func renderGraphSegments(
 	}
 }
 
+// renderGraphGrid emits the horizontal Y-axis gridlines and their right-edge
+// value labels into grid. It draws one line at the actual (unpadded) maximum and
+// one at the actual minimum; when the series is flat (actualMin == actualMax) a
+// single line is drawn. Lines sit behind the chart data.
+func renderGraphGrid(actualMin, actualMax float64, width int, yAt func(float64) float64, grid *strings.Builder) {
+	gridVals := []float64{actualMax}
+	if actualMin != actualMax {
+		gridVals = append(gridVals, actualMin)
+	}
+
+	for _, gridValue := range gridVals {
+		gridY := yAt(gridValue)
+		fmt.Fprintf(grid,
+			`    <line x1="0" y1="%.1f" x2="%d" y2="%.1f" stroke="#ccc" stroke-width="0.5" stroke-dasharray="2,2"/>`,
+			gridY, width, gridY)
+		fmt.Fprintln(grid)
+		fmt.Fprintf(grid,
+			`    <text x="%d" y="%.1f" fill="#888" font-family="%s" font-size="7" text-anchor="end">%s</text>`,
+			width-2, gridY-1, fontFamily, escapeXML(formatDurationMs(gridValue)))
+		fmt.Fprintln(grid)
+	}
+}
+
+// formatDurationMs formats a millisecond response-time value the same way as
+// formatResponseTime: integer milliseconds below 1000 ms, one decimal second
+// above (e.g. "304ms", "1.2s").
+func formatDurationMs(ms float64) string {
+	if ms < 1000 {
+		return fmt.Sprintf("%dms", int(math.Round(ms)))
+	}
+
+	return fmt.Sprintf("%.1fs", ms/1000)
+}
+
 // renderResponseTimeGraphRow renders a filled-area response-time graph as a
 // positioned <g> fragment translated to yOffset. points holds per-bucket
 // average response times oldest→newest; nil entries are gaps (no data) that
@@ -232,7 +293,7 @@ func renderGraphSegments(
 func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, style string) string {
 	radius := borderRadius(style)
 
-	minV, maxV, hasData := pointsRange(points)
+	actualMin, actualMax, hasData := pointsRange(points)
 	if !hasData {
 		// No data at all: render an empty framed area.
 		return fmt.Sprintf(`  <g transform="translate(0,%d)">
@@ -240,7 +301,7 @@ func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, s
   </g>`, yOffset, width, height, radius)
 	}
 
-	minV, maxV = paddedRange(minV, maxV)
+	minV, maxV := paddedRange(actualMin, actualMax)
 
 	n := len(points)
 	xStep := 0.0
@@ -262,22 +323,24 @@ func renderResponseTimeGraphRow(points []*float64, width, height, yOffset int, s
 		return float64(height) - frac*float64(height)
 	}
 
-	var defs, areas, lines, dots strings.Builder
+	var defs, grid, areas, lines, dots strings.Builder
 
 	fmt.Fprintf(&defs, `    <linearGradient id="grad%d" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="%s" stop-opacity="0.4"/>
       <stop offset="1" stop-color="%s" stop-opacity="0"/>
     </linearGradient>`, yOffset, ColorGraph, ColorGraph)
 
+	renderGraphGrid(actualMin, actualMax, width, yAt, &grid)
 	renderGraphSegments(buildGraphSegments(points), points, xAt, yAt, height, yOffset, &areas, &lines, &dots)
 
+	// Grid renders before the area/line/dot fragments so it sits behind the data.
 	return fmt.Sprintf(`  <g transform="translate(0,%d)">
     <defs>
 %s
     </defs>
     <rect width="%d" height="%d" rx="%s" fill="#f5f5f5"/>
-%s%s%s  </g>`, yOffset, defs.String(), width, height, radius,
-		areas.String(), lines.String(), dots.String())
+%s%s%s%s  </g>`, yOffset, defs.String(), width, height, radius,
+		grid.String(), areas.String(), lines.String(), dots.String())
 }
 
 // pointsRange returns the min and max of the non-nil points and whether any
@@ -357,7 +420,7 @@ func GenerateSVG(label, value, valueColor, style string, minWidth int) string {
 // GenerateUptimeBarSVG creates a standalone uptime-bar SVG. Thin wrapper over
 // renderUptimeBarRow + ComposeBadgeSVG, kept for the existing test surface.
 func GenerateUptimeBarSVG(segments []string, width, height int, style string) string {
-	row := renderUptimeBarRow(segments, width, height, 0, style)
+	row := renderUptimeBarRow(segments, nil, width, height, 0, style)
 
 	return ComposeBadgeSVG([]string{row}, width, height)
 }
