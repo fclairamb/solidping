@@ -43,7 +43,7 @@ type Phase = "input" | "polling" | "granted" | "denied" | "timeout" | "error";
  * error.
  */
 export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
   const navigate = useNavigate();
 
   const [name, setName] = useState("Freebox");
@@ -82,8 +82,8 @@ export function FreeboxForm({ org, onPaired, onCancel }: FreeboxFormProps) {
     }
 
     navigate({
-      to: "/orgs/$org/channels/$channelUid",
-      params: { org, channelUid: connectionUid },
+      to: "/orgs/$org/integrations/$integrationUid",
+      params: { org, integrationUid: connectionUid },
     });
   }, [effectivePhase, connectionUid, navigate, onPaired, org, t]);
 
@@ -269,7 +269,7 @@ interface PairingFailureProps {
 }
 
 function PairingFailure({ phase, onRetry, retryLabel }: PairingFailureProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
 
   const message = useMemo(() => {
     if (phase === "timeout") {

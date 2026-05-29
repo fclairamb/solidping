@@ -57,8 +57,8 @@ function SlackInstallComplete() {
 
         if (data.channelUid) {
           navigate({
-            to: "/orgs/$org/channels/$channelUid",
-            params: { org: data.orgSlug, channelUid: data.channelUid },
+            to: "/orgs/$org/integrations/$integrationUid",
+            params: { org: data.orgSlug, integrationUid: data.channelUid },
             replace: true,
           });
         } else {

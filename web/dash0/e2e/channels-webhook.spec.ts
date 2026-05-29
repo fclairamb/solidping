@@ -48,7 +48,7 @@ test.describe("Standard Webhooks channel form", () => {
       "https://example.com/hook",
     );
 
-    await page.goto(`orgs/test/channels/${uid}`);
+    await page.goto(`orgs/test/integrations/${uid}`);
     await page.waitForLoadState("networkidle");
 
     const secretInput = page.getByTestId("webhook-signing-secret");
@@ -76,7 +76,7 @@ test.describe("Standard Webhooks channel form", () => {
       "https://example.com/hook",
     );
 
-    await page.goto(`orgs/test/channels/${uid}`);
+    await page.goto(`orgs/test/integrations/${uid}`);
     await page.waitForLoadState("networkidle");
 
     const secretInput = page.getByTestId("webhook-signing-secret");
@@ -113,7 +113,7 @@ test.describe("Standard Webhooks channel form", () => {
     // Intercept the test-delivery call so the assertion does not depend on a
     // real outbound HTTP request.
     await page.route(
-      `**/api/v1/orgs/test/channels/${uid}/test`,
+      `**/api/v1/orgs/test/integrations/${uid}/test`,
       async (route) => {
         if (route.request().method() === "POST") {
           await route.fulfill({
@@ -131,7 +131,7 @@ test.describe("Standard Webhooks channel form", () => {
       },
     );
 
-    await page.goto(`orgs/test/channels/${uid}`);
+    await page.goto(`orgs/test/integrations/${uid}`);
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("webhook-send-test").click();
@@ -157,7 +157,7 @@ test.describe("Standard Webhooks channel form", () => {
     );
 
     await page.route(
-      `**/api/v1/orgs/test/channels/${uid}/test`,
+      `**/api/v1/orgs/test/integrations/${uid}/test`,
       async (route) => {
         if (route.request().method() === "POST") {
           await route.fulfill({
@@ -176,7 +176,7 @@ test.describe("Standard Webhooks channel form", () => {
       },
     );
 
-    await page.goto(`orgs/test/channels/${uid}`);
+    await page.goto(`orgs/test/integrations/${uid}`);
     await page.waitForLoadState("networkidle");
 
     await page.getByTestId("webhook-send-test").click();

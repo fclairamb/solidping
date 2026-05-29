@@ -2691,7 +2691,7 @@ export function canSource(type: ConnectionType): boolean {
   return CAPABILITIES[type]?.canSource ?? false;
 }
 
-export interface Channel {
+export interface Integration {
   uid: string;
   type: ConnectionType;
   name: string;
@@ -2703,7 +2703,7 @@ export interface Channel {
   updatedAt: string;
 }
 
-export interface CreateChannelRequest {
+export interface CreateIntegrationRequest {
   type: ConnectionType;
   name: string;
   enabled?: boolean;
@@ -2711,19 +2711,19 @@ export interface CreateChannelRequest {
   settings?: Record<string, unknown>;
 }
 
-export interface UpdateChannelRequest {
+export interface UpdateIntegrationRequest {
   name?: string;
   enabled?: boolean;
   isDefault?: boolean;
   settings?: Record<string, unknown>;
 }
 
-export function useChannels(org: string) {
+export function useIntegrations(org: string) {
   return useQuery({
-    queryKey: ["channels", org],
+    queryKey: ["integrations", org],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: Channel[] }>(
-        `/api/v1/orgs/${org}/channels`,
+      const response = await apiFetch<{ data?: Integration[] }>(
+        `/api/v1/orgs/${org}/integrations`,
       );
       return response.data || [];
     },
@@ -2731,60 +2731,61 @@ export function useChannels(org: string) {
   });
 }
 
-export function useChannel(org: string, uid: string) {
+export function useIntegration(org: string, uid: string) {
   return useQuery({
-    queryKey: ["channel", org, uid],
-    queryFn: () => apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`),
+    queryKey: ["integration", org, uid],
+    queryFn: () =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations/${uid}`),
     enabled: !!org && !!uid,
   });
 }
 
-export function useCreateChannel(org: string) {
+export function useCreateIntegration(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: CreateChannelRequest) =>
-      apiFetch<Channel>(`/api/v1/orgs/${org}/channels`, {
+    mutationFn: (request: CreateIntegrationRequest) =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations`, {
         method: "POST",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-export function useUpdateChannel(org: string, uid: string) {
+export function useUpdateIntegration(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: UpdateChannelRequest) =>
-      apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`, {
+    mutationFn: (request: UpdateIntegrationRequest) =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations/${uid}`, {
         method: "PATCH",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
-      queryClient.invalidateQueries({ queryKey: ["channel", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
+      queryClient.invalidateQueries({ queryKey: ["integration", org, uid] });
     },
   });
 }
 
-export function useDeleteChannel(org: string) {
+export function useDeleteIntegration(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/channels/${uid}`, {
+      apiFetch<void>(`/api/v1/orgs/${org}/integrations/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-// Standard Webhooks: per-channel signing-secret rotation and synthetic test
-// delivery. Both are webhook-only on the backend (400 otherwise).
+// Standard Webhooks: per-integration signing-secret rotation and synthetic
+// test delivery. Both are webhook-only on the backend (400 otherwise).
 
-/** Result of a POST /channels/:uid/test synthetic delivery. */
+/** Result of a POST /integrations/:uid/test synthetic delivery. */
 export interface WebhookTestResult {
   success: boolean;
   statusCode: number;
@@ -2792,28 +2793,28 @@ export interface WebhookTestResult {
   error?: string;
 }
 
-export function useRotateWebhookSecret(org: string, channelUid: string) {
+export function useRotateWebhookSecret(org: string, integrationUid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<Channel>(
-        `/api/v1/orgs/${org}/channels/${channelUid}/rotate-secret`,
+      apiFetch<Integration>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/rotate-secret`,
         { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["channel", org, channelUid],
+        queryKey: ["integration", org, integrationUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-export function useTestWebhookChannel(org: string) {
+export function useTestWebhookIntegration(org: string) {
   return useMutation({
-    mutationFn: (channelUid: string) =>
+    mutationFn: (integrationUid: string) =>
       apiFetch<WebhookTestResult>(
-        `/api/v1/orgs/${org}/channels/${channelUid}/test`,
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/test`,
         { method: "POST" },
       ),
   });
@@ -2852,7 +2853,7 @@ export function useStartFreeboxPairing(org: string) {
         },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }

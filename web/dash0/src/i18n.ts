@@ -17,7 +17,7 @@ import enFeedback from "./locales/en/feedback.json";
 import enDependencies from "./locales/en/dependencies.json";
 import enOncall from "./locales/en/oncall.json";
 import enEscalation from "./locales/en/escalation.json";
-import enChannels from "./locales/en/channels.json";
+import enIntegrations from "./locales/en/integrations.json";
 import enDiscovery from "./locales/en/discovery.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
@@ -35,7 +35,7 @@ import frFeedback from "./locales/fr/feedback.json";
 import frDependencies from "./locales/fr/dependencies.json";
 import frOncall from "./locales/fr/oncall.json";
 import frEscalation from "./locales/fr/escalation.json";
-import frChannels from "./locales/fr/channels.json";
+import frIntegrations from "./locales/fr/integrations.json";
 import frDiscovery from "./locales/fr/discovery.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
@@ -53,7 +53,7 @@ import deFeedback from "./locales/de/feedback.json";
 import deDependencies from "./locales/de/dependencies.json";
 import deOncall from "./locales/de/oncall.json";
 import deEscalation from "./locales/de/escalation.json";
-import deChannels from "./locales/de/channels.json";
+import deIntegrations from "./locales/de/integrations.json";
 import deDiscovery from "./locales/de/discovery.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
@@ -71,7 +71,7 @@ import esFeedback from "./locales/es/feedback.json";
 import esDependencies from "./locales/es/dependencies.json";
 import esOncall from "./locales/es/oncall.json";
 import esEscalation from "./locales/es/escalation.json";
-import esChannels from "./locales/es/channels.json";
+import esIntegrations from "./locales/es/integrations.json";
 import esDiscovery from "./locales/es/discovery.json";
 
 i18n
@@ -96,7 +96,7 @@ i18n
         dependencies: enDependencies,
         oncall: enOncall,
         escalation: enEscalation,
-        channels: enChannels,
+        integrations: enIntegrations,
         discovery: enDiscovery,
       },
       fr: {
@@ -116,7 +116,7 @@ i18n
         dependencies: frDependencies,
         oncall: frOncall,
         escalation: frEscalation,
-        channels: frChannels,
+        integrations: frIntegrations,
         discovery: frDiscovery,
       },
       de: {
@@ -136,7 +136,7 @@ i18n
         dependencies: deDependencies,
         oncall: deOncall,
         escalation: deEscalation,
-        channels: deChannels,
+        integrations: deIntegrations,
         discovery: deDiscovery,
       },
       es: {
@@ -156,7 +156,7 @@ i18n
         dependencies: esDependencies,
         oncall: esOncall,
         escalation: esEscalation,
-        channels: esChannels,
+        integrations: esIntegrations,
         discovery: esDiscovery,
       },
     },

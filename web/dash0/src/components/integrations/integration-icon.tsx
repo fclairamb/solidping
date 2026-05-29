@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import type { ConnectionType } from "@/api/hooks";
 
-interface ChannelIconProps {
+interface IntegrationIconProps {
   type: ConnectionType;
   className?: string;
 }
@@ -30,16 +30,16 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   webpush: BellRing,
 };
 
-export function ChannelIcon({ type, className }: ChannelIconProps) {
+export function IntegrationIcon({ type, className }: IntegrationIconProps) {
   const Icon = ICONS[type] ?? Webhook;
   return <Icon className={className} aria-hidden="true" />;
 }
 
-export function channelIconComponent(type: ConnectionType) {
+export function integrationIconComponent(type: ConnectionType) {
   return ICONS[type] ?? Webhook;
 }
 
-export function channelLabel(type: ConnectionType): string {
+export function integrationLabel(type: ConnectionType): string {
   switch (type) {
     case "slack":
       return "Slack";

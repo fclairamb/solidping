@@ -11,7 +11,7 @@ async function getAuthToken(page: Page): Promise<string> {
 }
 
 async function deleteConnection(page: Page, token: string, uid: string) {
-  await page.request.delete(`${API_BASE}/api/v1/orgs/test/channels/${uid}`, {
+  await page.request.delete(`${API_BASE}/api/v1/orgs/test/integrations/${uid}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
 }
@@ -34,7 +34,7 @@ test.describe("Slack destination picker", () => {
     const channelUid = "11111111-1111-1111-1111-111111111111";
 
     await page.route(
-      `**/api/v1/orgs/test/channels/${channelUid}`,
+      `**/api/v1/orgs/test/integrations/${channelUid}`,
       async (route) => {
         if (route.request().method() === "GET") {
           await route.fulfill({
@@ -84,7 +84,7 @@ test.describe("Slack destination picker", () => {
     // Intercept the PATCH request to capture the body
     let patchBody: Record<string, unknown> = {};
     await page.route(
-      `**/api/v1/orgs/test/channels/${channelUid}`,
+      `**/api/v1/orgs/test/integrations/${channelUid}`,
       async (route) => {
         if (route.request().method() === "PATCH") {
           const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -112,7 +112,7 @@ test.describe("Slack destination picker", () => {
     );
 
     // Navigate to the channel edit page
-    await page.goto(`orgs/test/channels/${channelUid}`);
+    await page.goto(`orgs/test/integrations/${channelUid}`);
     await page.waitForLoadState("networkidle");
 
     // Open the channel combobox and pick "alerts"
@@ -141,11 +141,11 @@ test.describe("Notification Channels", () => {
     const token = await getAuthToken(page);
 
     // 1. Create a webhook channel via the UI
-    await page.goto("orgs/test/channels");
+    await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
 
-    await page.getByRole("link", { name: /new channel/i }).first().click();
-    await page.waitForURL((url) => url.pathname.endsWith("/channels/new"));
+    await page.getByRole("link", { name: /new integration/i }).first().click();
+    await page.waitForURL((url) => url.pathname.endsWith("/integrations/new"));
 
     // Pick webhook type
     await page.getByRole("button", { name: /^webhook\b/i }).click();
@@ -155,11 +155,11 @@ test.describe("Notification Channels", () => {
     await page
       .getByLabel(/webhook url/i)
       .fill("https://example.com/webhook");
-    await page.getByRole("button", { name: /create channel/i }).click();
+    await page.getByRole("button", { name: /create integration/i }).click();
 
     // Should land on detail page (UUID, not /channels/new — which also matches [^/]+).
     await page.waitForURL((url) =>
-      /\/channels\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
+      /\/integrations\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(
         url.pathname,
       ),
     );
@@ -167,7 +167,7 @@ test.describe("Notification Channels", () => {
     const channelUid = detailUrl.split("/").pop()!;
 
     // 2. Channel appears in the list
-    await page.goto("orgs/test/channels");
+    await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
     await expect(page.getByText(channelName)).toBeVisible();
 
@@ -227,14 +227,14 @@ test.describe("Notification Channels", () => {
     ).toBe(false);
 
     // 5. Delete the channel via the UI
-    await page.goto(`orgs/test/channels/${channelUid}`);
+    await page.goto(`orgs/test/integrations/${channelUid}`);
     await page.waitForLoadState("networkidle");
-    await page.getByRole("button", { name: /delete channel/i }).click();
+    await page.getByRole("button", { name: /delete integration/i }).click();
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
     await dialog.getByRole("button", { name: /delete/i }).click();
 
-    await page.waitForURL((url) => url.pathname.endsWith("/channels"));
+    await page.waitForURL((url) => url.pathname.endsWith("/integrations"));
     await expect(page.getByText(channelName)).toHaveCount(0);
 
     // Cleanup
@@ -246,7 +246,7 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto("orgs/test/channels/new");
+    await page.goto("orgs/test/integrations/new");
     await page.waitForLoadState("networkidle");
 
     // The picker is split into two capability groups.
@@ -273,7 +273,7 @@ test.describe("Notification Channels", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto("orgs/test/channels/new?type=webpush");
+    await page.goto("orgs/test/integrations/new?type=webpush");
     await page.waitForLoadState("networkidle");
 
     // The WebPushChannelPanel should be rendered.
@@ -294,7 +294,7 @@ test.describe("Notification Channels", () => {
 
     // Wipe existing connections for a deterministic picker.
     const existing = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/channels`, {
+      .get(`${API_BASE}/api/v1/orgs/test/integrations`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((r) => r.json());
@@ -305,7 +305,7 @@ test.describe("Notification Channels", () => {
     // Create one notify integration (webhook) and one source (freebox).
     const webhookName = `E2E Notify Webhook ${Date.now()}`;
     const webhookResp = await page.request.post(
-      `${API_BASE}/api/v1/orgs/test/channels`,
+      `${API_BASE}/api/v1/orgs/test/integrations`,
       {
         headers: { Authorization: `Bearer ${token}` },
         data: {
@@ -319,7 +319,7 @@ test.describe("Notification Channels", () => {
 
     const freeboxName = `E2E Freebox Source ${Date.now()}`;
     const freeboxResp = await page.request.post(
-      `${API_BASE}/api/v1/orgs/test/channels`,
+      `${API_BASE}/api/v1/orgs/test/integrations`,
       {
         headers: { Authorization: `Bearer ${token}` },
         data: { type: "freebox", name: freeboxName },
@@ -374,7 +374,7 @@ test.describe("Notification Channels", () => {
 
     // Wipe any existing connections so the empty state shows
     const list = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/channels`, {
+      .get(`${API_BASE}/api/v1/orgs/test/integrations`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       .then((r) => r.json());

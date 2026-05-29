@@ -15,34 +15,36 @@ import {
 import { ArrowLeft, Loader2, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  useChannel,
-  useUpdateChannel,
-  useDeleteChannel,
+  useIntegration,
+  useUpdateIntegration,
+  useDeleteIntegration,
 } from "@/api/hooks";
-import { channelIconComponent } from "@/components/channels/channel-icon";
+import { integrationIconComponent } from "@/components/integrations/integration-icon";
 import { PageHeader } from "@/components/shared/page-header";
 import {
-  ChannelForm,
-  type ChannelFormState,
-} from "@/components/channels/channel-form";
+  IntegrationForm,
+  type IntegrationFormState,
+} from "@/components/integrations/integration-form";
 
-export const Route = createFileRoute("/orgs/$org/channels/$channelUid")({
-  component: ChannelDetailPage,
+export const Route = createFileRoute(
+  "/orgs/$org/integrations/$integrationUid",
+)({
+  component: IntegrationDetailPage,
 });
 
-function ChannelDetailPage() {
-  const { t } = useTranslation("channels");
-  const { org, channelUid } = Route.useParams();
+function IntegrationDetailPage() {
+  const { t } = useTranslation("integrations");
+  const { org, integrationUid } = Route.useParams();
   const navigate = useNavigate();
 
-  const { data: channel, isLoading } = useChannel(org, channelUid);
-  const update = useUpdateChannel(org, channelUid);
-  const remove = useDeleteChannel(org);
+  const { data: integration, isLoading } = useIntegration(org, integrationUid);
+  const update = useUpdateIntegration(org, integrationUid);
+  const remove = useDeleteIntegration(org);
 
-  const [form, setForm] = useState<ChannelFormState | null>(null);
+  const [form, setForm] = useState<IntegrationFormState | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
 
-  if (isLoading || !channel) {
+  if (isLoading || !integration) {
     return (
       <div className="flex items-center justify-center py-12">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
@@ -60,36 +62,36 @@ function ChannelDetailPage() {
         isDefault: form.isDefault,
         settings: form.settings,
       });
-      toast.success(t("saved", "Channel updated"));
+      toast.success(t("saved", "Integration updated"));
     } catch {
-      toast.error(t("saveFailed", "Failed to update channel"));
+      toast.error(t("saveFailed", "Failed to update integration"));
     }
   };
 
   const handleDelete = async () => {
     try {
-      await remove.mutateAsync(channelUid);
-      toast.success(t("deleted", "Channel deleted"));
-      navigate({ to: "/orgs/$org/channels", params: { org } });
+      await remove.mutateAsync(integrationUid);
+      toast.success(t("deleted", "Integration deleted"));
+      navigate({ to: "/orgs/$org/integrations", params: { org } });
     } catch {
       toast.error(t("deleteFailed", "Delete failed"));
     }
   };
 
   const saveLabel = t("save", "Save changes");
-  const deleteLabel = t("delete", "Delete channel");
-  const backLabel = t("backToList", "Back to channels");
+  const deleteLabel = t("delete", "Delete integration");
+  const backLabel = t("backToList", "Back to integrations");
 
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
-        icon={channelIconComponent(channel.type)}
-        title={channel.name}
+        icon={integrationIconComponent(integration.type)}
+        title={integration.name}
         iconClassName="bg-transparent"
         actions={
           <>
             <Button asChild variant="ghost" size="icon" aria-label={backLabel}>
-              <Link to="/orgs/$org/channels" params={{ org }}>
+              <Link to="/orgs/$org/integrations" params={{ org }}>
                 <ArrowLeft />
               </Link>
             </Button>
@@ -113,7 +115,13 @@ function ChannelDetailPage() {
           )}
         </p>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <ChannelForm type={channel.type} initial={channel} onChange={setForm} org={org} channelUid={channelUid} />
+          <IntegrationForm
+            type={integration.type}
+            initial={integration}
+            onChange={setForm}
+            org={org}
+            channelUid={integrationUid}
+          />
           <div className="flex justify-end">
             <Button
               type="submit"
@@ -137,7 +145,7 @@ function ChannelDetailPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {t("deleteConfirm.title", "Delete this channel?")}
+              {t("deleteConfirm.title", "Delete this integration?")}
             </AlertDialogTitle>
             <AlertDialogDescription>
               {t(

@@ -10,7 +10,7 @@ test.describe("Slack install-only channel", () => {
   }) => {
     const page = authenticatedPage;
 
-    await page.goto("orgs/test/channels/new");
+    await page.goto("orgs/test/integrations/new");
     await page.waitForLoadState("networkidle");
 
     // Pick the Slack tile.
@@ -23,7 +23,7 @@ test.describe("Slack install-only channel", () => {
 
     // No "Create channel" submit button is rendered for Slack.
     await expect(
-      page.getByRole("button", { name: /create channel/i }),
+      page.getByRole("button", { name: /create integration/i }),
     ).toHaveCount(0);
 
     // Clicking Install triggers a navigation to the install endpoint. Stub it
@@ -53,7 +53,7 @@ test.describe("Slack install-only channel", () => {
     const channelUid = "22222222-2222-2222-2222-222222222222";
 
     await page.route(
-      `**/api/v1/orgs/test/channels/${channelUid}`,
+      `**/api/v1/orgs/test/integrations/${channelUid}`,
       async (route) => {
         if (route.request().method() === "GET") {
           await route.fulfill({
@@ -95,7 +95,7 @@ test.describe("Slack install-only channel", () => {
       },
     );
 
-    await page.goto(`orgs/test/channels/${channelUid}`);
+    await page.goto(`orgs/test/integrations/${channelUid}`);
     await page.waitForLoadState("networkidle");
 
     // The not-connected CTA is visible with the install button.

@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type {
-  Channel,
+  Integration,
   ConnectionType,
   SlackChannel,
   SlackUser,
@@ -29,34 +29,34 @@ import type {
 import {
   useSlackDestinations,
   useRotateWebhookSecret,
-  useTestWebhookChannel,
+  useTestWebhookIntegration,
 } from "@/api/hooks";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 
-export interface ChannelFormState {
+export interface IntegrationFormState {
   name: string;
   enabled: boolean;
   isDefault: boolean;
   settings: Record<string, unknown>;
 }
 
-interface ChannelFormProps {
+interface IntegrationFormProps {
   type: ConnectionType;
-  initial?: Channel | null;
+  initial?: Integration | null;
   initialName?: string;
-  onChange: (state: ChannelFormState) => void;
+  onChange: (state: IntegrationFormState) => void;
   /** Org slug — passed through to the Slack destination picker */
   org?: string;
   /** Channel UID — if provided, enables the live Slack destination picker */
   channelUid?: string;
 }
 
-// ChannelForm is the type-dispatched edit surface. Common fields render
+// IntegrationForm is the type-dispatched edit surface. Common fields render
 // once; a per-type panel slots in below for the channel-specific
 // settings. Each panel keeps its own narrow shape — no anything-goes
 // JSON editor.
-export function ChannelForm({ type, initial, initialName, onChange, org, channelUid }: ChannelFormProps) {
-  const { t } = useTranslation("channels");
+export function IntegrationForm({ type, initial, initialName, onChange, org, channelUid }: IntegrationFormProps) {
+  const { t } = useTranslation("integrations");
   const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
@@ -132,7 +132,7 @@ interface PerTypePanelProps {
 }
 
 function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePanelProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
 
   const update = (key: string, value: unknown) =>
     onChange({ ...settings, [key]: value });
@@ -293,7 +293,7 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
 // the actual pairing happens on the dedicated create flow and cannot
 // be retried from here (re-pairing creates a new channel row).
 function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> }) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
   const status = typeof settings.status === "string" ? settings.status : "";
   const baseUrl = typeof settings.baseUrl === "string" ? settings.baseUrl : "";
 
@@ -337,7 +337,7 @@ interface WebPushChannelPanelProps {
 
 /** Manages the list of browser subscriptions for a webpush org channel. */
 function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPushChannelPanelProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
 
   const subs: WebPushSub[] = Array.isArray(settings.subscriptions)
     ? (settings.subscriptions as WebPushSub[])
@@ -414,9 +414,9 @@ interface WebhookSigningPanelProps {
 // (retrievable, not a one-time reveal), with copy + rotate actions, a
 // rotation-in-progress banner, and a "send test" button reporting the result.
 function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
   const rotate = useRotateWebhookSecret(org, channelUid);
-  const test = useTestWebhookChannel(org);
+  const test = useTestWebhookIntegration(org);
 
   const [copied, setCopied] = useState(false);
   const [testResult, setTestResult] = useState<WebhookTestResult | null>(null);
@@ -586,7 +586,7 @@ interface SlackDestinationPanelProps {
 }
 
 function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDestinationPanelProps) {
-  const { t } = useTranslation("channels");
+  const { t } = useTranslation("integrations");
 
   // If no org/channelUid, we're on the new-channel page (Slack OAuth not yet complete).
   const isEditMode = Boolean(org && channelUid);
