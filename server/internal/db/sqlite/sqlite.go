@@ -2989,7 +2989,7 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 	_, err := s.db.NewDelete().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Exec(ctx)
 
 	return err
@@ -3003,10 +3003,10 @@ func (s *Service) ListChannelsForCheck(
 
 	err := s.db.NewSelect().
 		Model(&connections).
-		Join("INNER JOIN check_connections cc ON cc.connection_uid = integration_connection.uid").
+		Join("INNER JOIN check_channels cc ON cc.integration_uid = integration.uid").
 		Where("cc.check_uid = ?", checkUID).
-		Where("integration_connection.deleted_at IS NULL").
-		Order("integration_connection.created_at DESC").
+		Where("integration.deleted_at IS NULL").
+		Order("integration.created_at DESC").
 		Scan(ctx)
 
 	return connections, err
@@ -3069,7 +3069,7 @@ func (s *Service) UpdateCheckConnection(
 	query := s.db.NewUpdate().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.Settings != nil {
@@ -3102,7 +3102,7 @@ func (s *Service) GetCheckConnection(
 	err := s.db.NewSelect().
 		Model(&checkConn).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Scan(ctx)
 	if err != nil {
 		return nil, err

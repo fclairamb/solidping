@@ -266,3 +266,93 @@ func TestMigrationDiscoveredHostsSourceRoundTrip(t *testing.T) {
 	r.NoError(err, "030 up SQL must re-apply cleanly")
 	r.True(hasSource(), "source column must be back after re-applying up migration")
 }
+
+// TestMigrationRenameIntegrationsRoundTrip verifies migration 035 renames the
+// integration_connections / check_connections tables (and the connection_uid
+// column) to integrations / check_channels / integration_uid, and that the down
+// migration reverses it cleanly while preserving row data.
+func TestMigrationRenameIntegrationsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	tableExists := func(name string) bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name,
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	colExists := func(table, col string) bool {
+		type c struct {
+			Name string `bun:"name"`
+		}
+		var cols []c
+		r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info(?)", table).Scan(ctx, &cols))
+		for _, x := range cols {
+			if x.Name == col {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	// After Initialize (all migrations up), the new names exist and the old
+	// names are gone.
+	r.True(tableExists("integrations"), "integrations table should exist after migrations")
+	r.True(tableExists("check_channels"), "check_channels table should exist after migrations")
+	r.False(tableExists("integration_connections"), "old integration_connections table should be gone")
+	r.False(tableExists("check_connections"), "old check_connections table should be gone")
+	r.True(colExists("check_channels", "integration_uid"), "check_channels.integration_uid should exist")
+	r.False(colExists("check_channels", "connection_uid"), "old connection_uid column should be gone")
+
+	// Seed a row through the renamed schema to prove it is usable.
+	orgUID := uuid.New().String()
+	intUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "ri-org", "RI Org",
+	).Exec(ctx)
+	r.NoError(err)
+	_, err = svc.db.NewRaw(
+		"INSERT INTO integrations (uid, organization_uid, type, name) VALUES (?, ?, ?, ?)",
+		intUID, orgUID, "webhook", "Hook",
+	).Exec(ctx)
+	r.NoError(err)
+
+	// Apply the down migration and verify the reversal.
+	downSQL, err := fs.ReadFile(migrationsFS,
+		"migrations/035_rename_integration_connections_to_integrations.down.sql")
+	r.NoError(err)
+	_, err = svc.db.ExecContext(ctx, string(downSQL))
+	r.NoError(err, "035 down SQL must execute cleanly")
+	r.True(tableExists("integration_connections"), "integration_connections must be back after down")
+	r.True(tableExists("check_connections"), "check_connections must be back after down")
+	r.False(tableExists("integrations"), "integrations must be gone after down")
+	r.True(colExists("check_connections", "connection_uid"), "connection_uid column must be back after down")
+
+	// The seeded row survives the rename round-trip.
+	var name string
+	r.NoError(svc.db.NewRaw(
+		"SELECT name FROM integration_connections WHERE uid = ?", intUID,
+	).Scan(ctx, &name))
+	r.Equal("Hook", name, "row data must survive the down migration")
+
+	// Re-apply the up migration to confirm idempotent round-trip.
+	upSQL, err := fs.ReadFile(migrationsFS,
+		"migrations/035_rename_integration_connections_to_integrations.up.sql")
+	r.NoError(err)
+	_, err = svc.db.ExecContext(ctx, string(upSQL))
+	r.NoError(err, "035 up SQL must re-apply cleanly")
+	r.True(tableExists("integrations"), "integrations must be back after re-applying up")
+	r.True(colExists("check_channels", "integration_uid"), "integration_uid must be back after re-applying up")
+}

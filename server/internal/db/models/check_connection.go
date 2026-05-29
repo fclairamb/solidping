@@ -4,13 +4,19 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
-// CheckConnection represents the many-to-many relationship between checks and connections.
+// CheckConnection represents the many-to-many relationship between checks and
+// the integrations they notify through. Backed by the `check_channels` table
+// (the binding keeps the "channel" name to match the notify-role taxonomy); the
+// FK column is `integration_uid`. The Go field name ConnectionUID is retained.
 type CheckConnection struct {
+	bun.BaseModel `bun:"table:check_channels,alias:check_channel"`
+
 	UID             string    `bun:"uid,pk,type:varchar(36)"`
 	CheckUID        string    `bun:"check_uid,notnull"`
-	ConnectionUID   string    `bun:"connection_uid,notnull"`
+	ConnectionUID   string    `bun:"integration_uid,notnull"`
 	OrganizationUID string    `bun:"organization_uid,notnull"`
 	Settings        *JSONMap  `bun:"settings,type:jsonb"`
 	CreatedAt       time.Time `bun:"created_at,notnull,default:current_timestamp"`
@@ -18,7 +24,7 @@ type CheckConnection struct {
 
 	// Relations (optional, for eager loading)
 	Check        *Check        `bun:"rel:belongs-to,join:check_uid=uid"`
-	Connection   *Integration  `bun:"rel:belongs-to,join:connection_uid=uid"`
+	Connection   *Integration  `bun:"rel:belongs-to,join:integration_uid=uid"`
 	Organization *Organization `bun:"rel:belongs-to,join:organization_uid=uid"`
 }
 

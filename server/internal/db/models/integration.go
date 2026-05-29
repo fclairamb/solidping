@@ -60,14 +60,9 @@ func CapabilitiesFor(t ConnectionType) Capabilities {
 // Integration represents a stored, per-org, credentialed connection to a
 // third-party system — Slack, Discord, email, generic webhook, Freebox, etc.
 // It is the umbrella entity; when an integration can receive notifications
-// (CanNotify) it plays the "channel" role. The legacy table name
-// `integration_connections` is preserved via the bun tag until the DB-rename
-// migration (PR-D) ships.
+// (CanNotify) it plays the "channel" role. Backed by the `integrations` table.
 type Integration struct {
-	// Both the table name and the SQL alias are pinned to the legacy name so
-	// existing raw queries and joins keep matching. The DB-rename spec
-	// (PR-D) drops these tags when it renames the underlying table.
-	bun.BaseModel `bun:"table:integration_connections,alias:integration_connection"`
+	bun.BaseModel `bun:"table:integrations,alias:integration"`
 
 	UID             string         `bun:"uid,pk,type:varchar(36)"`
 	OrganizationUID string         `bun:"organization_uid,notnull"`
