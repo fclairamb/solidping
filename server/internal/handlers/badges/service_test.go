@@ -603,6 +603,48 @@ func TestRenderResponseTimeGraphRow(t *testing.T) {
 		r.Contains(row, "translate(0,0)")
 	})
 
+	t.Run("renders two gridlines with value labels for a varying series", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(100), f(304), f(150)}, 300, 40, 0, "flat")
+		// One line at actualMax, one at actualMin.
+		r.Equal(2, strings.Count(row, "<line "))
+		r.Contains(row, `stroke="#ccc"`)
+		r.Contains(row, `stroke-dasharray="2,2"`)
+		// Value labels for the unpadded min/max.
+		r.Contains(row, ">304ms<")
+		r.Contains(row, ">100ms<")
+		r.Contains(row, `fill="#888"`)
+		r.Contains(row, `text-anchor="end"`)
+		// Grid renders before the area/line data.
+		r.Less(strings.Index(row, "<line "), strings.Index(row, "<path"))
+		r.Less(strings.Index(row, "<line "), strings.Index(row, "<polyline"))
+	})
+
+	t.Run("flat series renders a single gridline", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{f(150), f(150), f(150)}, 300, 40, 0, "flat")
+		r.Equal(1, strings.Count(row, "<line "))
+		r.Equal(1, strings.Count(row, ">150ms<"))
+	})
+
+	t.Run("single point renders a single gridline", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{nil, f(200), nil}, 300, 40, 0, "flat")
+		r.Equal(1, strings.Count(row, "<line "))
+		r.Contains(row, ">200ms<")
+	})
+
+	t.Run("no data renders no gridlines", func(t *testing.T) {
+		t.Parallel()
+
+		row := renderResponseTimeGraphRow([]*float64{nil, nil}, 300, 40, 0, "flat")
+		r.NotContains(row, "<line ")
+		r.NotContains(row, "<text")
+	})
+
 	t.Run("nil gap produces a line break (two polylines)", func(t *testing.T) {
 		t.Parallel()
 
@@ -784,4 +826,141 @@ func TestBucketAccumulatorSkipsCreatedRunning(t *testing.T) {
 
 	r.Equal(1, acc.total)
 	r.Equal(0, acc.up)
+}
+
+func TestComputeUptimeBarLabels7d(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Wednesday 2026-01-07 as bucketStart.
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	labels := computeUptimeBarLabels(bucketStart, 7, 24*time.Hour)
+
+	r.Len(labels, 7)
+	r.Equal("Wed", labels[0])
+
+	for i, l := range labels {
+		r.NotEmpty(l, "label %d should be non-empty", i)
+		r.Len(l, 3, "label %d should be 3 chars", i)
+	}
+
+	// Sequential weekdays.
+	r.Equal([]string{"Wed", "Thu", "Fri", "Sat", "Sun", "Mon", "Tue"}, labels)
+}
+
+func TestComputeUptimeBarLabels24h(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	labels := computeUptimeBarLabels(bucketStart, 24, time.Hour)
+
+	r.Len(labels, 24)
+	r.Equal("0h", labels[0])
+	r.Equal("6h", labels[6])
+	r.Equal("12h", labels[12])
+	r.Equal("18h", labels[18])
+
+	for i, l := range labels {
+		if i%6 != 0 {
+			r.Empty(l, "label %d should be empty", i)
+		}
+	}
+}
+
+func TestComputeUptimeBarLabels30d(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Start on a Wednesday so we can verify both the first-segment label and a
+	// Monday boundary label.
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	labels := computeUptimeBarLabels(bucketStart, 30, 24*time.Hour)
+
+	r.Len(labels, 30)
+	// First segment is always labeled.
+	r.Equal("Jan 7", labels[0])
+	// The next Monday is 2026-01-12, i.e. index 5.
+	r.Equal("Jan 12", labels[5])
+	// A non-boundary, non-first segment is empty.
+	r.Empty(labels[1])
+}
+
+func TestComputeUptimeBarLabels90d(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// Start mid-January so the first-of-month boundary (Feb 1) lands inside.
+	bucketStart := time.Date(2026, 1, 15, 0, 0, 0, 0, time.UTC)
+	labels := computeUptimeBarLabels(bucketStart, 90, 24*time.Hour)
+
+	r.Len(labels, 90)
+	// First segment is always labeled with its month.
+	r.Equal("Jan", labels[0])
+	// Feb 1 is 17 days after Jan 15, i.e. index 17.
+	r.Equal("Feb", labels[17])
+	// A non-boundary day is empty.
+	r.Empty(labels[1])
+}
+
+func TestComputeUptimeBarLabelsUnknownPeriod(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	// A combination that matches no case yields all-empty labels of length n.
+	labels := computeUptimeBarLabels(time.Now(), 5, 12*time.Hour)
+	r.Len(labels, 5)
+
+	for _, l := range labels {
+		r.Empty(l)
+	}
+}
+
+func TestFormatDurationMs(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("304ms", formatDurationMs(304.0))
+	r.Equal("0ms", formatDurationMs(0.0))
+	r.Equal("999ms", formatDurationMs(999.0))
+	r.Equal("1000ms", formatDurationMs(999.6)) // rounds up but stays below the 1000 threshold input
+	r.Equal("1.0s", formatDurationMs(1000.0))
+	r.Equal("1.2s", formatDurationMs(1200.0))
+}
+
+func TestRenderUptimeBarRowLabels(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	segments := []string{ColorGreen, ColorGreen, ColorGreen}
+	labels := []string{"Mon", "", "Wed"}
+	row := renderUptimeBarRow(segments, labels, 300, rowHeightBar, 0, "flat")
+
+	// Colored strip uses the fixed color height, not the full row height.
+	r.Contains(row, `height="20"`)
+	// Only the two non-empty labels render as <text>.
+	r.Equal(2, strings.Count(row, "<text"))
+	r.Contains(row, ">Mon<")
+	r.Contains(row, ">Wed<")
+	r.Contains(row, `fill="#777"`)
+	r.Contains(row, `font-size="7"`)
+	r.Contains(row, `text-anchor="middle"`)
+	r.Contains(row, `y="28"`)
+}
+
+func TestRenderUptimeBarRowNoLabels(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	segments := []string{ColorGreen, ColorGreen}
+	row := renderUptimeBarRow(segments, nil, 300, rowHeightBar, 0, "flat")
+	r.NotContains(row, "<text")
 }
