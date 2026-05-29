@@ -70,7 +70,7 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 	}
 
 	// Extract recipients from settings
-	recipientList, ok := payload.Connection.Settings["recipients"].([]any)
+	recipientList, ok := payload.Integration.Settings["recipients"].([]any)
 	if !ok || len(recipientList) == 0 {
 		return ErrNoRecipientsConfigured
 	}
@@ -86,7 +86,7 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return ErrNoValidRecipients
 	}
 
-	prefix, _ := payload.Connection.Settings["subject_prefix"].(string)
+	prefix, _ := payload.Integration.Settings["subject_prefix"].(string)
 
 	// For events that produce an actionable incident (created/escalated/
 	// reopened), send one personalized email per recipient so each can carry

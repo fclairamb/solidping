@@ -103,7 +103,7 @@ func newFbDiscoveryFixture(t *testing.T, baseURL, status string) *fbDiscoveryFix
 	r.NoError(err)
 	m["appToken"] = "permanent-token"
 
-	conn := models.NewChannel(org.UID, models.ConnectionTypeFreebox, "Freebox")
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeFreebox, "Freebox")
 	conn.Settings = m
 	r.NoError(dbSvc.CreateChannel(ctx, conn))
 

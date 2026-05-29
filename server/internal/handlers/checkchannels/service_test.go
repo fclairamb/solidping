@@ -1,4 +1,4 @@
-package checkconnections_test
+package checkchannels_test
 
 import (
 	"context"
@@ -8,13 +8,13 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
-	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
 )
 
 // testSetup spins up an in-memory SQLite DB with one org, one check, and the
 // supplied integration connections, returning the service and the org/check.
-func testSetup(t *testing.T, conns ...*models.Channel) (
-	context.Context, *checkconnections.Service, *models.Organization, *models.Check,
+func testSetup(t *testing.T, conns ...*models.Integration) (
+	context.Context, *checkchannels.Service, *models.Organization, *models.Check,
 ) {
 	t.Helper()
 	ctx := t.Context()
@@ -36,7 +36,7 @@ func testSetup(t *testing.T, conns ...*models.Channel) (
 		r.NoError(dbSvc.CreateChannel(ctx, conn))
 	}
 
-	return ctx, checkconnections.NewService(dbSvc), org, check
+	return ctx, checkchannels.NewService(dbSvc), org, check
 }
 
 // TestSetConnectionsRejectsNonNotifyIntegration verifies binding a Freebox
@@ -46,13 +46,13 @@ func TestSetConnectionsRejectsNonNotifyIntegration(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	freebox := models.NewChannel("", models.ConnectionTypeFreebox, "Home Freebox")
+	freebox := models.NewIntegration("", models.ConnectionTypeFreebox, "Home Freebox")
 	ctx, svc, org, check := testSetup(t, freebox)
 
-	err := svc.SetConnections(ctx, org.Slug, check.UID, checkconnections.SetConnectionsRequest{
+	err := svc.SetChannels(ctx, org.Slug, check.UID, checkchannels.SetConnectionsRequest{
 		ConnectionUIDs: []string{freebox.UID},
 	})
-	r.ErrorIs(err, checkconnections.ErrNotNotifyCapable)
+	r.ErrorIs(err, checkchannels.ErrNotNotifyCapable)
 }
 
 // TestAddConnectionRejectsNonNotifyIntegration is the single-add variant of
@@ -61,11 +61,11 @@ func TestAddConnectionRejectsNonNotifyIntegration(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	freebox := models.NewChannel("", models.ConnectionTypeFreebox, "Home Freebox")
+	freebox := models.NewIntegration("", models.ConnectionTypeFreebox, "Home Freebox")
 	ctx, svc, org, check := testSetup(t, freebox)
 
-	err := svc.AddConnection(ctx, org.Slug, check.UID, freebox.UID)
-	r.ErrorIs(err, checkconnections.ErrNotNotifyCapable)
+	err := svc.AddChannel(ctx, org.Slug, check.UID, freebox.UID)
+	r.ErrorIs(err, checkchannels.ErrNotNotifyCapable)
 }
 
 // TestSetConnectionsAllowsNotifyIntegration is the positive guard: a
@@ -74,10 +74,10 @@ func TestSetConnectionsAllowsNotifyIntegration(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	webhook := models.NewChannel("", models.ConnectionTypeWebhook, "Ops webhook")
+	webhook := models.NewIntegration("", models.ConnectionTypeWebhook, "Ops webhook")
 	ctx, svc, org, check := testSetup(t, webhook)
 
-	err := svc.SetConnections(ctx, org.Slug, check.UID, checkconnections.SetConnectionsRequest{
+	err := svc.SetChannels(ctx, org.Slug, check.UID, checkchannels.SetConnectionsRequest{
 		ConnectionUIDs: []string{webhook.UID},
 	})
 	r.NoError(err)
@@ -93,10 +93,10 @@ func TestAddConnectionAllowsNotifyIntegration(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	webhook := models.NewChannel("", models.ConnectionTypeWebhook, "Ops webhook")
+	webhook := models.NewIntegration("", models.ConnectionTypeWebhook, "Ops webhook")
 	ctx, svc, org, check := testSetup(t, webhook)
 
-	r.NoError(svc.AddConnection(ctx, org.Slug, check.UID, webhook.UID))
+	r.NoError(svc.AddChannel(ctx, org.Slug, check.UID, webhook.UID))
 }
 
 // TestSetConnectionsRejectsMixedWhenOneIsNonNotify verifies that a batch with
@@ -105,12 +105,12 @@ func TestSetConnectionsRejectsMixedWhenOneIsNonNotify(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	webhook := models.NewChannel("", models.ConnectionTypeWebhook, "Ops webhook")
-	freebox := models.NewChannel("", models.ConnectionTypeFreebox, "Home Freebox")
+	webhook := models.NewIntegration("", models.ConnectionTypeWebhook, "Ops webhook")
+	freebox := models.NewIntegration("", models.ConnectionTypeFreebox, "Home Freebox")
 	ctx, svc, org, check := testSetup(t, webhook, freebox)
 
-	err := svc.SetConnections(ctx, org.Slug, check.UID, checkconnections.SetConnectionsRequest{
+	err := svc.SetChannels(ctx, org.Slug, check.UID, checkchannels.SetConnectionsRequest{
 		ConnectionUIDs: []string{webhook.UID, freebox.UID},
 	})
-	r.ErrorIs(err, checkconnections.ErrNotNotifyCapable)
+	r.ErrorIs(err, checkchannels.ErrNotNotifyCapable)
 }

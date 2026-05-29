@@ -153,11 +153,11 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 
 	// 5. Build notification payload
 	payload := &notifications.Payload{
-		EventType:  r.config.EventType,
-		Incident:   incident,
-		Check:      check,
-		Connection: connection,
-		OrgSlug:    orgSlug,
+		EventType:   r.config.EventType,
+		Incident:    incident,
+		Check:       check,
+		Integration: connection,
+		OrgSlug:     orgSlug,
 	}
 
 	// 6. Send notification
@@ -223,13 +223,13 @@ func (r *NotificationJobRun) sendAndAudit(
 // encryption is disabled, secrets fall back to plaintext storage (V1 behavior).
 func (r *NotificationJobRun) webhookChannelUpdater(
 	jctx *jobdef.JobContext,
-) func(ctx context.Context, channel *models.Channel) error {
-	return func(ctx context.Context, channel *models.Channel) error {
+) func(ctx context.Context, channel *models.Integration) error {
+	return func(ctx context.Context, channel *models.Integration) error {
 		secrets := credentials.ConnectionSecretFields(channel.Type)
 		effective := credentials.MergeConfig(channel.Settings, nil)
 		public, private := credentials.SplitConfig(effective, secrets)
 
-		update := &models.ChannelUpdate{}
+		update := &models.IntegrationUpdate{}
 
 		creds := jctx.Services.Credentials
 		if creds == nil || !creds.Enabled() || len(private) == 0 {

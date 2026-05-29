@@ -1,4 +1,4 @@
-package channels_test
+package integrations_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 )
 
@@ -88,11 +88,11 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 	// granted by polling our fake server.
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{BaseURL: srv.URL},
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
 	)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
-	var start channels.FreeboxPairingResponse
+	var start integrations.FreeboxPairingResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &start))
 
 	rec = f.do(t, http.MethodGet,
@@ -109,7 +109,7 @@ func TestLanHostsHandlerReturnsFilteredList(t *testing.T) {
 	)
 	r.Equal(http.StatusOK, rec.Code, rec.Body.String())
 
-	var resp channels.ListLanHostsResponse
+	var resp integrations.ListLanHostsResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.Len(resp.Data, 1, "router must be filtered out")
 	r.Equal("ether-aa", resp.Data[0].ID)
@@ -130,11 +130,11 @@ func TestLanHostsHandlerRejectsChannelStillPairing(t *testing.T) {
 
 	rec := f.do(t, http.MethodPost,
 		"/api/v1/orgs/"+f.org.Slug+"/integrations/freebox/pair",
-		channels.StartFreeboxPairingRequest{BaseURL: srv.URL},
+		integrations.StartFreeboxPairingRequest{BaseURL: srv.URL},
 	)
 	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
 
-	var start channels.FreeboxPairingResponse
+	var start integrations.FreeboxPairingResponse
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &start))
 
 	// Channel is still in `pairing` — the LAN-hosts endpoint must
@@ -156,7 +156,7 @@ func TestLanHostsHandlerRejectsNonFreeboxChannel(t *testing.T) {
 	f.router.GET("/api/v1/orgs/:org/integrations/freebox/:uid/lan-hosts", f.handler.LanHostsHandler)
 
 	// Discord channel — not a Freebox.
-	other := models.NewChannel(f.org.UID, models.ConnectionTypeDiscord, "Discord")
+	other := models.NewIntegration(f.org.UID, models.ConnectionTypeDiscord, "Discord")
 	r.NoError(f.dbSvc.CreateChannel(t.Context(), other))
 
 	rec := f.do(t, http.MethodGet,

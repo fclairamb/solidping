@@ -3,31 +3,31 @@ package mcp
 import (
 	"context"
 
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 )
 
-func listConnectionsDef() ToolDefinition {
+func listIntegrationsDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "list_connections",
-		Description: "List notification connections (Slack, webhook, email) configured for the " +
+		Name: "list_integrations",
+		Description: "List integrations (Slack, webhook, email, …) configured for the " +
 			"organization. Use this to discover what notification channels are available " +
 			"before attaching them to a check.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Filter by connection type. Allowed: slack, webhook, email. " +
+				"Filter by integration type. Allowed: slack, webhook, email. " +
 					"Example: \"slack\".",
 			),
 		}, nil),
 	}
 }
 
-func (h *Handler) toolListConnections(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
+func (h *Handler) toolListIntegrations(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	var connType *string
 	if v := getStringArg(args, "type"); v != "" {
 		connType = &v
 	}
 
-	result, err := h.connectionsSvc.ListChannels(ctx, orgSlug, connType)
+	result, err := h.integrationsSvc.ListIntegrations(ctx, orgSlug, connType)
 	if err != nil {
 		return errorResult(err.Error())
 	}
@@ -35,19 +35,19 @@ func (h *Handler) toolListConnections(ctx context.Context, orgSlug string, args 
 	return marshalResult(result)
 }
 
-func createConnectionDef() ToolDefinition {
+func createIntegrationDef() ToolDefinition {
 	return ToolDefinition{
-		Name: "create_connection",
-		Description: "Create a new notification connection (Slack, webhook, or email) that can " +
+		Name: "create_integration",
+		Description: "Create a new integration (Slack, webhook, or email) that can " +
 			"be attached to checks for incident notifications.",
 		InputSchema: objectSchema(map[string]any{
 			schemaKeyType: stringProp(
-				"Connection type. Allowed: slack, webhook, email. Example: \"webhook\".",
+				"Integration type. Allowed: slack, webhook, email. Example: \"webhook\".",
 			),
 			schemaKeyName:    stringProp("Display name shown in the UI, e.g. \"Engineering Slack\"."),
-			schemaKeyEnabled: boolProp("Whether the connection is active. Default true."),
+			schemaKeyEnabled: boolProp("Whether the integration is active. Default true."),
 			"isDefault": boolProp(
-				"If true, the connection is auto-attached to newly-created checks.",
+				"If true, the integration is auto-attached to newly-created checks.",
 			),
 			"settings": objectProp(
 				"Type-specific settings. For webhook: {\"webhookUrl\":\"https://...\"}. " +
@@ -58,14 +58,14 @@ func createConnectionDef() ToolDefinition {
 	}
 }
 
-func (h *Handler) toolCreateConnection(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
+func (h *Handler) toolCreateIntegration(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult {
 	connType := getStringArg(args, "type")
 	name := getStringArg(args, "name")
 	if connType == "" || name == "" {
 		return errorResult("type and name are required")
 	}
 
-	req := channels.CreateChannelRequest{
+	req := integrations.CreateIntegrationRequest{
 		Type:      connType,
 		Name:      name,
 		Enabled:   getBoolArg(args, "enabled"),
@@ -73,7 +73,7 @@ func (h *Handler) toolCreateConnection(ctx context.Context, orgSlug string, args
 		Settings:  getMapArg(args, "settings"),
 	}
 
-	result, err := h.connectionsSvc.CreateChannel(ctx, orgSlug, req)
+	result, err := h.integrationsSvc.CreateIntegration(ctx, orgSlug, req)
 	if err != nil {
 		return errorResult(err.Error())
 	}

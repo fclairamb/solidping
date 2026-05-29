@@ -52,10 +52,10 @@ func webPushFakeSubJSON(t *testing.T, serverURL string) string {
 }
 
 // webPushChannel builds a minimal Channel with the given subscriptions in Settings.
-func webPushChannel(t *testing.T, subs ...map[string]any) *models.Channel {
+func webPushChannel(t *testing.T, subs ...map[string]any) *models.Integration {
 	t.Helper()
 
-	ch := &models.Channel{
+	ch := &models.Integration{
 		UID:  "ch-test",
 		Type: models.ConnectionTypeWebPush,
 		Settings: models.JSONMap{
@@ -80,14 +80,14 @@ func webPushJobCtx(pub, priv string) *jobdef.JobContext {
 }
 
 // webPushPayload builds a minimal Payload for WebPushSender.Send.
-func webPushPayload(ch *models.Channel) *Payload {
+func webPushPayload(ch *models.Integration) *Payload {
 	checkName := "MyCheck"
 
 	return &Payload{
-		EventType:  eventTypeIncidentCreated,
-		Incident:   &models.Incident{UID: "inc-1"},
-		Check:      &models.Check{Name: &checkName},
-		Connection: ch,
+		EventType:   eventTypeIncidentCreated,
+		Incident:    &models.Incident{UID: "inc-1"},
+		Check:       &models.Check{Name: &checkName},
+		Integration: ch,
 	}
 }
 
@@ -114,7 +114,7 @@ func TestWebPushSender_Send_AllSucceed(t *testing.T) {
 
 	updateCalled := false
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, _ *models.Channel) error {
+		UpdateChannel: func(_ context.Context, _ *models.Integration) error {
 			updateCalled = true
 
 			return nil
@@ -152,10 +152,10 @@ func TestWebPushSender_Send_OneGone410(t *testing.T) {
 		webPushFakeSub(t, srv2.URL, "Expired browser"),
 	)
 
-	var updatedChannel *models.Channel
+	var updatedChannel *models.Integration
 
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, ch *models.Channel) error {
+		UpdateChannel: func(_ context.Context, ch *models.Integration) error {
 			updatedChannel = ch
 
 			return nil
@@ -202,7 +202,7 @@ func TestWebPushSender_Send_NoSubscriptions(t *testing.T) {
 
 	updateCalled := false
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, _ *models.Channel) error {
+		UpdateChannel: func(_ context.Context, _ *models.Integration) error {
 			updateCalled = true
 
 			return nil

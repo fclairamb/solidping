@@ -313,23 +313,23 @@ type Service interface {
 	ListSystemParameters(ctx context.Context) ([]*models.Parameter, error)
 
 	// IntegrationConnection operations
-	CreateChannel(ctx context.Context, conn *models.Channel) error
-	GetChannel(ctx context.Context, uid string) (*models.Channel, error)
+	CreateChannel(ctx context.Context, conn *models.Integration) error
+	GetChannel(ctx context.Context, uid string) (*models.Integration, error)
 	GetChannelByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
-	) (*models.Channel, error)
+	) (*models.Integration, error)
 	ListChannels(
-		ctx context.Context, filter *models.ListChannelsFilter,
-	) ([]*models.Channel, error)
-	UpdateChannel(ctx context.Context, uid string, update *models.ChannelUpdate) error
+		ctx context.Context, filter *models.ListIntegrationsFilter,
+	) ([]*models.Integration, error)
+	UpdateChannel(ctx context.Context, uid string, update *models.IntegrationUpdate) error
 	DeleteChannel(ctx context.Context, uid string) error
 
 	// CheckConnection operations
 	CreateCheckConnection(ctx context.Context, conn *models.CheckConnection) error
 	DeleteCheckConnection(ctx context.Context, checkUID, connectionUID string) error
-	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Channel, error)
+	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Integration, error)
 	SetCheckConnections(ctx context.Context, checkUID string, connectionUIDs []string) error
-	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Channel, error)
+	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Integration, error)
 	UpdateCheckConnection(ctx context.Context, checkUID, connectionUID string, update *models.CheckConnectionUpdate) error
 	GetCheckConnection(ctx context.Context, checkUID, connectionUID string) (*models.CheckConnection, error)
 	ListCheckConnectionsWithSettings(ctx context.Context, checkUID string) ([]*models.CheckConnection, error)
@@ -512,7 +512,7 @@ type Service interface {
 
 	// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
 	// Returns nil, nil when no Slack channel is configured.
-	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
+	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error)
 
 	// AppSettings operations
 

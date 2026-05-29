@@ -96,7 +96,7 @@ func testPayload(connSettings models.JSONMap) *Payload {
 			Name: &name,
 			Type: "http",
 		},
-		Connection: &models.Channel{
+		Integration: &models.Integration{
 			UID:             "chan-1",
 			OrganizationUID: "org-1",
 			Type:            models.ConnectionTypeWebhook,
@@ -245,7 +245,7 @@ func TestWebhookSender_Send_AutoGeneratesSecret(t *testing.T) {
 
 	called := false
 	sender := &WebhookSender{
-		UpdateChannel: func(_ context.Context, ch *models.Channel) error {
+		UpdateChannel: func(_ context.Context, ch *models.Integration) error {
 			called = true
 			secret, ok := ch.Settings[settingsKeySigningSecret].(string)
 			r.True(ok)
@@ -260,7 +260,7 @@ func TestWebhookSender_Send_AutoGeneratesSecret(t *testing.T) {
 	r.True(strings.HasPrefix(got.Get(headerWebhookSignature), "v1,"))
 
 	// The channel's in-memory settings now carry the generated secret.
-	secret, ok := payload.Connection.Settings[settingsKeySigningSecret].(string)
+	secret, ok := payload.Integration.Settings[settingsKeySigningSecret].(string)
 	r.True(ok)
 	r.True(strings.HasPrefix(secret, webhookSecretPrefix))
 }
@@ -348,7 +348,7 @@ func TestWebhookSender_Send_ExpiredPreviousSecretPurged(t *testing.T) {
 
 	purged := false
 	sender := &WebhookSender{
-		UpdateChannel: func(_ context.Context, ch *models.Channel) error {
+		UpdateChannel: func(_ context.Context, ch *models.Integration) error {
 			purged = true
 			_, hasPrev := ch.Settings[settingsKeySigningSecretPrevious]
 			_, hasExp := ch.Settings[settingsKeySigningSecretExpiry]

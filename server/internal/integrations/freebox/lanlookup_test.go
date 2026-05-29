@@ -46,7 +46,7 @@ func newLanlookupFixture(t *testing.T) *lanlookupFixture {
 
 // newGrantedFreeboxChannel creates a granted Freebox channel whose BaseURL
 // points at baseURL and whose plaintext appToken is set on Settings.
-func (f *lanlookupFixture) newGrantedFreeboxChannel(t *testing.T, baseURL, status string) *models.Channel {
+func (f *lanlookupFixture) newGrantedFreeboxChannel(t *testing.T, baseURL, status string) *models.Integration {
 	t.Helper()
 
 	r := require.New(t)
@@ -60,7 +60,7 @@ func (f *lanlookupFixture) newGrantedFreeboxChannel(t *testing.T, baseURL, statu
 	r.NoError(err)
 	m["appToken"] = "permanent-token"
 
-	conn := models.NewChannel(f.org.UID, models.ConnectionTypeFreebox, "Freebox")
+	conn := models.NewIntegration(f.org.UID, models.ConnectionTypeFreebox, "Freebox")
 	conn.Settings = m
 	r.NoError(f.dbSvc.CreateChannel(t.Context(), conn))
 
@@ -170,7 +170,7 @@ func TestListLanHostsForChannelNonFreebox(t *testing.T) {
 	r := require.New(t)
 	f := newLanlookupFixture(t)
 
-	other := models.NewChannel(f.org.UID, models.ConnectionTypeDiscord, "Discord")
+	other := models.NewIntegration(f.org.UID, models.ConnectionTypeDiscord, "Discord")
 	r.NoError(f.dbSvc.CreateChannel(t.Context(), other))
 
 	_, err := freebox.ListLanHostsForChannel(t.Context(), f.dbSvc, f.creds, f.org.UID, other.UID)

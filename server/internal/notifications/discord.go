@@ -37,7 +37,7 @@ func (ds *DiscordSender) Send(ctx context.Context, _ *jobdef.JobContext, payload
 
 // parseSettings extracts and validates Discord settings from the payload.
 func (ds *DiscordSender) parseSettings(payload *Payload) (*models.DiscordSettings, error) {
-	settings, err := models.DiscordSettingsFromJSONMap(payload.Connection.Settings)
+	settings, err := models.DiscordSettingsFromJSONMap(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing discord settings: %w", err)
 	}

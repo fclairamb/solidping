@@ -22,7 +22,7 @@ type WebPushSender struct {
 	// UpdateChannel, when non-nil, is called after pruning to persist the
 	// updated subscriptions list back to the channel row. Wired by the
 	// notification job runner.
-	UpdateChannel func(ctx context.Context, channel *models.Channel) error
+	UpdateChannel func(ctx context.Context, channel *models.Integration) error
 }
 
 // webPushSubscription is the per-subscription shape stored in
@@ -45,7 +45,7 @@ func (s *WebPushSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return ErrWebPushNotConfigured
 	}
 
-	subs, err := parseSubscriptions(payload.Connection.Settings)
+	subs, err := parseSubscriptions(payload.Integration.Settings)
 	if err != nil {
 		return err
 	}
@@ -92,10 +92,10 @@ func (s *WebPushSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 	}
 
 	if len(goneEndpoints) > 0 {
-		pruneSubscriptions(payload.Connection, goneEndpoints)
+		pruneSubscriptions(payload.Integration, goneEndpoints)
 
 		if s.UpdateChannel != nil {
-			if updateErr := s.UpdateChannel(ctx, payload.Connection); updateErr != nil {
+			if updateErr := s.UpdateChannel(ctx, payload.Integration); updateErr != nil {
 				slog.WarnContext(ctx, "webpush: failed to persist pruned subscriptions",
 					"error", updateErr)
 			}
@@ -126,7 +126,7 @@ func parseSubscriptions(settings models.JSONMap) ([]webPushSubscription, error) 
 }
 
 // pruneSubscriptions removes the listed endpoints from the channel settings.
-func pruneSubscriptions(channel *models.Channel, goneEndpoints []string) {
+func pruneSubscriptions(channel *models.Integration, goneEndpoints []string) {
 	gone := make(map[string]bool, len(goneEndpoints))
 	for _, e := range goneEndpoints {
 		gone[e] = true

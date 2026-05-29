@@ -146,8 +146,8 @@ func (s *Service) ReorderRoutes(ctx context.Context, userUID, orgUID string, rou
 }
 
 // GetSlackChannelForOrg returns the first enabled Slack channel for the org.
-func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error) {
-	var channel models.Channel
+func (s *Service) GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error) {
+	var channel models.Integration
 
 	err := s.db.NewSelect().
 		Model(&channel).

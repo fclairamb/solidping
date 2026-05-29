@@ -1,4 +1,4 @@
-package checkconnections
+package checkchannels
 
 import (
 	"context"
@@ -105,8 +105,8 @@ func (s *Service) ListChannels(
 	return response, nil
 }
 
-// SetConnections replaces all connections for a check.
-func (s *Service) SetConnections(
+// SetChannels replaces all connections for a check.
+func (s *Service) SetChannels(
 	ctx context.Context, orgSlug, checkIdentifier string, req SetConnectionsRequest,
 ) error {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -140,8 +140,8 @@ func (s *Service) SetConnections(
 	return s.db.SetCheckConnections(ctx, check.UID, req.ConnectionUIDs)
 }
 
-// AddConnection adds a connection to a check.
-func (s *Service) AddConnection(ctx context.Context, orgSlug, checkIdentifier, connectionUID string) error {
+// AddChannel adds a connection to a check.
+func (s *Service) AddChannel(ctx context.Context, orgSlug, checkIdentifier, connectionUID string) error {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
