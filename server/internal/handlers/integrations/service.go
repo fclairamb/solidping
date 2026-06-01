@@ -11,16 +11,24 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/uptrace/bun"
+
 	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
+	"github.com/fclairamb/solidping/server/internal/webpush"
 )
 
 var (
@@ -46,8 +54,12 @@ var (
 	// token and is permanently broken.
 	ErrSlackManualCreate = errors.New("slack channels are added by installing the Slack app")
 	// ErrNotWebhookChannel is returned when a webhook-only operation
-	// (rotate-secret, test) targets a channel of a different type.
+	// (rotate-secret) targets a channel of a different type.
 	ErrNotWebhookChannel = errors.New("channel is not a webhook connection")
+	// ErrIntegrationNotNotifiable is returned when a test-notification is
+	// requested for an integration whose type cannot send notifications
+	// (e.g. a data source like Freebox).
+	ErrIntegrationNotNotifiable = errors.New("integration type cannot send notifications")
 )
 
 // Signing-secret lifecycle constants (Standard Webhooks). The secret format is
@@ -101,13 +113,28 @@ type Service struct {
 	// creds is always non-nil — its .Enabled() reports whether a master
 	// key is configured. Used to encrypt secret fields in Settings.
 	creds credentials.Service
+	// registry and appConfig are used by TestIntegration to build the same
+	// JobContext the notification job runner uses, so senders that depend on
+	// shared services (email, web push) work from the test path too. They may
+	// be nil in unit tests that only exercise sender types which ignore the
+	// JobContext (webhook, discord, …).
+	registry  *services.Registry
+	appConfig *config.Config
 }
 
-// NewService creates a new connections service.
-func NewService(dbService db.Service, creds credentials.Service) *Service {
+// NewService creates a new connections service. registry and cfg may be nil
+// when test-notification dispatch is not required (e.g. unit tests).
+func NewService(
+	dbService db.Service,
+	creds credentials.Service,
+	registry *services.Registry,
+	cfg *config.Config,
+) *Service {
 	return &Service{
-		db:    dbService,
-		creds: creds,
+		db:        dbService,
+		creds:     creds,
+		registry:  registry,
+		appConfig: cfg,
 	}
 }
 
@@ -815,19 +842,21 @@ func (s *Service) DeleteIntegration(ctx context.Context, orgSlug, connectionUID 
 	return s.db.DeleteChannel(ctx, connectionUID)
 }
 
-// WebhookTestResult is returned by TestWebhookIntegration. Success reports whether
-// the remote endpoint accepted the delivery (2xx). The handler always returns
-// HTTP 200; the caller inspects Success.
-type WebhookTestResult struct {
+// IntegrationTestResult is returned by TestIntegration. Success reports whether
+// the integration delivered the sample notification. StatusCode carries the HTTP
+// status for HTTP-based integrations (e.g. webhooks); it is 0 for senders with
+// no such concept. The handler always returns HTTP 200; the caller inspects
+// Success.
+type IntegrationTestResult struct {
 	Success    bool   `json:"success"`
 	StatusCode int    `json:"statusCode"`
 	DurationMs int64  `json:"durationMs"`
 	Error      string `json:"error,omitempty"`
 }
 
-// loadWebhookChannel resolves the org + connection and asserts the channel is
-// a webhook. Shared by RotateWebhookSecret and TestWebhookIntegration.
-func (s *Service) loadWebhookChannel(
+// loadChannel resolves the org + connection and verifies the connection belongs
+// to the org. Shared by the operations that act on a single connection.
+func (s *Service) loadChannel(
 	ctx context.Context, orgSlug, connectionUID string,
 ) (*models.Integration, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
@@ -850,6 +879,19 @@ func (s *Service) loadWebhookChannel(
 
 	if conn.OrganizationUID != org.UID {
 		return nil, ErrConnectionNotFound
+	}
+
+	return conn, nil
+}
+
+// loadWebhookChannel resolves the org + connection and asserts the channel is
+// a webhook. Used by RotateWebhookSecret.
+func (s *Service) loadWebhookChannel(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*models.Integration, error) {
+	conn, err := s.loadChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
 	}
 
 	if conn.Type != models.ConnectionTypeWebhook {
@@ -927,18 +969,25 @@ func (s *Service) RotateWebhookSecret(
 	return resp, nil
 }
 
-// TestWebhookIntegration sends a synthetic signed webhook to the configured URL
-// using the same delivery path as a real notification, and reports the outcome.
-func (s *Service) TestWebhookIntegration(
+// TestIntegration sends a sample notification through the integration's real
+// sender — the same delivery path a live incident takes — and reports the
+// outcome. Works for every notification type; data-source-only types (e.g.
+// Freebox) are rejected with ErrIntegrationNotNotifiable.
+func (s *Service) TestIntegration(
 	ctx context.Context, orgSlug, connectionUID string,
-) (*WebhookTestResult, error) {
-	conn, err := s.loadWebhookChannel(ctx, orgSlug, connectionUID)
+) (*IntegrationTestResult, error) {
+	conn, err := s.loadChannel(ctx, orgSlug, connectionUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Merge decrypted secrets into Settings so the sender can sign, exactly
-	// like the notification job runner does before dispatch.
+	if !models.CapabilitiesFor(conn.Type).CanNotify {
+		return nil, ErrIntegrationNotNotifiable
+	}
+
+	// Merge decrypted secrets into Settings so the sender has its tokens /
+	// signing secret, exactly like the notification job runner does before
+	// dispatch.
 	effective, err := s.loadDecryptedSettings(ctx, conn)
 	if err != nil {
 		return nil, err
@@ -946,37 +995,32 @@ func (s *Service) TestWebhookIntegration(
 
 	conn.Settings = models.JSONMap(effective)
 
-	now := time.Now()
-	stubName := "test-check"
-	payload := &notifications.Payload{
-		EventType: "incident.created",
-		Incident: &models.Incident{
-			StartedAt:    now,
-			FailureCount: 1,
-		},
-		Check: &models.Check{
-			Name: &stubName,
-			Type: "http",
-		},
-		Integration: conn,
+	// Web Push is special: WebPushSender.Send swallows per-subscription errors
+	// as non-fatal (production behavior — keep trying remaining subs). For a
+	// manual test we want strict feedback: fail loudly on the first error so the
+	// user knows something is wrong.
+	if conn.Type == models.ConnectionTypeWebPush {
+		return s.testWebPushDelivery(ctx, conn, orgSlug)
 	}
 
-	sender := &notifications.WebhookSender{
-		UpdateChannel: func(ctx context.Context, channel *models.Integration) error {
-			merged := make(map[string]any, len(channel.Settings))
-			for k, v := range channel.Settings {
-				merged[k] = v
-			}
-
-			return s.persistChannelSettings(ctx, channel, merged)
-		},
+	sender, ok := notifications.GetSender(conn.Type)
+	if !ok {
+		return nil, ErrIntegrationNotNotifiable
 	}
+
+	// Senders that mutate their settings on delivery (webhook signing-secret
+	// auto-generation/rotation, web push dead-subscription pruning) need a
+	// persistence callback so the change is written back to the channel row.
+	s.injectChannelUpdater(sender)
+
+	payload := buildTestPayload(conn, orgSlug)
+	jctx := s.testJobContext(conn)
 
 	start := time.Now()
-	sendErr := sender.Send(ctx, nil, payload)
+	sendErr := sender.Send(ctx, jctx, payload)
 	durationMs := time.Since(start).Milliseconds()
 
-	result := &WebhookTestResult{
+	result := &IntegrationTestResult{
 		Success:    sendErr == nil,
 		DurationMs: durationMs,
 	}
@@ -991,6 +1035,200 @@ func (s *Service) TestWebhookIntegration(
 	result.StatusCode = 200
 
 	return result, nil
+}
+
+// webPushTestSub mirrors the per-subscription shape stored in
+// Settings["subscriptions"] — minimal fields needed for webpush.Send.
+type webPushTestSub struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
+		P256dh string `json:"p256dh"`
+		Auth   string `json:"auth"`
+	} `json:"keys"`
+}
+
+// webPushSubsFromSettings extracts the subscriptions slice from the
+// integration's Settings map.
+func webPushSubsFromSettings(settings models.JSONMap) ([]webPushTestSub, error) {
+	raw, ok := settings["subscriptions"]
+	if !ok {
+		return nil, nil
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("marshal webpush subscriptions: %w", err)
+	}
+
+	var subs []webPushTestSub
+	if err := json.Unmarshal(data, &subs); err != nil {
+		return nil, fmt.Errorf("unmarshal webpush subscriptions: %w", err)
+	}
+
+	return subs, nil
+}
+
+// testWebPushDelivery sends a test push to every subscription and fails on the
+// first error, giving the user immediate, accurate feedback. This is stricter
+// than WebPushSender.Send (which swallows per-sub errors for production use).
+func (s *Service) testWebPushDelivery(
+	ctx context.Context, conn *models.Integration, orgSlug string,
+) (*IntegrationTestResult, error) {
+	if s.registry == nil || s.registry.WebPushOptions.VAPIDPublicKey == "" {
+		return nil, notifications.ErrWebPushNotConfigured
+	}
+
+	subs, err := webPushSubsFromSettings(conn.Settings)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(subs) == 0 {
+		return &IntegrationTestResult{
+			Success: false,
+			Error:   "no subscriptions — subscribe a browser on the integration page first",
+		}, nil
+	}
+
+	opts := s.registry.WebPushOptions
+
+	msg := webpush.Message{
+		Title: "[TEST] SolidPing",
+		Body:  "Test push notification from SolidPing. If you see this, push delivery is working.",
+		URL:   "/dash0/orgs/" + orgSlug,
+	}
+
+	start := time.Now()
+
+	var successCount, failCount int
+	var firstErrMsg string
+
+	for i := range subs {
+		subJSON, marshalErr := json.Marshal(subs[i])
+		if marshalErr != nil {
+			slog.WarnContext(ctx, "webpush test: failed to marshal subscription; skipping",
+				"endpoint", subs[i].Endpoint, "error", marshalErr)
+
+			continue
+		}
+
+		if errMsg := webPushSendErrMsg(webpush.Send(ctx, opts, string(subJSON), msg)); errMsg != "" {
+			failCount++
+
+			if firstErrMsg == "" {
+				firstErrMsg = errMsg
+			}
+		} else {
+			successCount++
+		}
+	}
+
+	durationMs := time.Since(start).Milliseconds()
+
+	if successCount == 0 {
+		// Every subscription failed.
+		return &IntegrationTestResult{
+			Success:    false,
+			DurationMs: durationMs,
+			Error:      firstErrMsg,
+		}, nil
+	}
+
+	result := &IntegrationTestResult{
+		Success:    true,
+		StatusCode: 201,
+		DurationMs: durationMs,
+	}
+
+	if failCount > 0 {
+		// Partial success: at least one browser received the push, others failed.
+		// Surface the failure so the user can re-subscribe the affected browser.
+		result.Error = fmt.Sprintf("%d/%d delivered; %d failed — %s",
+			successCount, successCount+failCount, failCount, firstErrMsg)
+	}
+
+	return result, nil
+}
+
+// webPushSendErrMsg converts a webpush send error to a string, returning ""
+// when err is nil. Extracted to avoid nilerr false-positives on the return path.
+func webPushSendErrMsg(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
+}
+
+// injectChannelUpdater wires a persistence callback into senders that mutate
+// their channel settings during delivery. Other sender types are left untouched.
+func (s *Service) injectChannelUpdater(sender notifications.Sender) {
+	updater := func(ctx context.Context, channel *models.Integration) error {
+		merged := make(map[string]any, len(channel.Settings))
+		for k, v := range channel.Settings {
+			merged[k] = v
+		}
+
+		return s.persistChannelSettings(ctx, channel, merged)
+	}
+
+	switch sn := sender.(type) {
+	case *notifications.WebhookSender:
+		sn.UpdateChannel = updater
+	case *notifications.WebPushSender:
+		sn.UpdateChannel = updater
+	}
+}
+
+// testJobContext builds the JobContext senders receive during a test send. It
+// mirrors the notification job runner's context so service-backed senders
+// (email, web push, Slack threading) work from the test path. registry and
+// appConfig may be nil in unit tests that only exercise context-free senders.
+func (s *Service) testJobContext(conn *models.Integration) *jobdef.JobContext {
+	orgUID := conn.OrganizationUID
+
+	var bunDB *bun.DB
+	if s.db != nil {
+		bunDB = s.db.DB()
+	}
+
+	return &jobdef.JobContext{
+		OrganizationUID: &orgUID,
+		DB:              bunDB,
+		DBService:       s.db,
+		Services:        s.registry,
+		AppConfig:       s.appConfig,
+		Logger: slog.Default().With(
+			"op", "integration-test", "integrationType", string(conn.Type)),
+	}
+}
+
+// buildTestPayload returns a sample "incident created" payload describing a
+// fake check, used by TestIntegration. The check is named so recipients can
+// tell at a glance it's a manual test rather than a real outage.
+func buildTestPayload(conn *models.Integration, orgSlug string) *notifications.Payload {
+	now := time.Now()
+	checkName := "SolidPing test"
+	title := "Test notification from SolidPing"
+
+	return &notifications.Payload{
+		EventType: "incident.created",
+		Incident: &models.Incident{
+			UID:             uuid.NewString(),
+			OrganizationUID: conn.OrganizationUID,
+			State:           models.IncidentStateActive,
+			StartedAt:       now,
+			FailureCount:    1,
+			Title:           &title,
+		},
+		Check: &models.Check{
+			UID:  uuid.NewString(),
+			Name: &checkName,
+			Type: "http",
+		},
+		Integration: conn,
+		OrgSlug:     orgSlug,
+	}
 }
 
 // statusCodeFromErr extracts the HTTP status from a webhook request-failed

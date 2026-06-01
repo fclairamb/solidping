@@ -24,12 +24,12 @@ import type {
   ConnectionType,
   SlackChannel,
   SlackUser,
-  WebhookTestResult,
+  IntegrationTestResult,
 } from "@/api/hooks";
 import {
   useSlackDestinations,
   useRotateWebhookSecret,
-  useTestWebhookIntegration,
+  useTestIntegration,
 } from "@/api/hooks";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
 
@@ -119,6 +119,94 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
           onCheckedChange={setIsDefault}
         />
       </div>
+
+      {/* Test delivery — available on every notifiable integration once it
+          exists (channelUid present). Freebox is a data source, not a
+          notification target, so it has nothing to test. */}
+      {channelUid && type !== "freebox" && (
+        <TestNotificationSection org={org} channelUid={channelUid} />
+      )}
+    </div>
+  );
+}
+
+interface TestNotificationSectionProps {
+  org?: string;
+  channelUid: string;
+}
+
+// TestNotificationSection sends a sample notification through the saved
+// integration and shows whether it was delivered. It tests the persisted
+// settings, so unsaved form edits are not reflected until saved.
+function TestNotificationSection({ org, channelUid }: TestNotificationSectionProps) {
+  const { t } = useTranslation("integrations");
+  const test = useTestIntegration(org ?? "");
+  const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
+    null,
+  );
+
+  function handleTest() {
+    test.mutate(channelUid, {
+      onSuccess: (res) => setTestResult(res),
+      onError: (err) =>
+        setTestResult({
+          success: false,
+          statusCode: 0,
+          durationMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    });
+  }
+
+  return (
+    <div
+      className="space-y-2 rounded border p-3"
+      data-testid="integration-test-section"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label className="font-medium">
+            {t("form.testTitle", "Send a test notification")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "form.testHelp",
+              "Deliver a sample alert to confirm this integration is wired up. Save your changes first — the test uses the saved settings.",
+            )}
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={test.isPending}
+          onClick={handleTest}
+          data-testid="webhook-send-test"
+        >
+          {test.isPending ? (
+            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+          ) : (
+            <Send className="mr-1 h-4 w-4" />
+          )}
+          {t("form.sendTest", "Send test")}
+        </Button>
+      </div>
+      {testResult && (
+        <Badge
+          variant={testResult.success ? "success" : "destructive"}
+          data-testid="webhook-test-result"
+        >
+          {testResult.success
+            ? testResult.error
+              ? `${testResult.durationMs} ms — ${testResult.error}`
+              : testResult.statusCode
+                ? `${testResult.statusCode} OK · ${testResult.durationMs} ms`
+                : `${t("form.testDelivered", "Delivered")} · ${testResult.durationMs} ms`
+            : `${testResult.statusCode || "—"} · ${testResult.durationMs} ms${
+                testResult.error ? ` — ${testResult.error}` : ""
+              }`}
+        </Badge>
+      )}
     </div>
   );
 }
@@ -416,10 +504,8 @@ interface WebhookSigningPanelProps {
 function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelProps) {
   const { t } = useTranslation("integrations");
   const rotate = useRotateWebhookSecret(org, channelUid);
-  const test = useTestWebhookIntegration(org);
 
   const [copied, setCopied] = useState(false);
-  const [testResult, setTestResult] = useState<WebhookTestResult | null>(null);
 
   const secret =
     typeof settings.signingSecret === "string" ? settings.signingSecret : "";
@@ -437,19 +523,6 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
     } catch {
       // Clipboard may be unavailable (insecure context) — silently ignore.
     }
-  }
-
-  function handleTest() {
-    test.mutate(channelUid, {
-      onSuccess: (res) => setTestResult(res),
-      onError: (err) =>
-        setTestResult({
-          success: false,
-          statusCode: 0,
-          durationMs: 0,
-          error: err instanceof Error ? err.message : String(err),
-        }),
-    });
   }
 
   return (
@@ -540,36 +613,6 @@ function WebhookSigningPanel({ settings, org, channelUid }: WebhookSigningPanelP
           {t("form.rotationBannerHint", "Remove it early by rotating again.")}
         </div>
       )}
-
-      <div className="flex items-center gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={test.isPending}
-          onClick={handleTest}
-          data-testid="webhook-send-test"
-        >
-          {test.isPending ? (
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="mr-1 h-4 w-4" />
-          )}
-          {t("form.sendTest", "Send test")}
-        </Button>
-        {testResult && (
-          <Badge
-            variant={testResult.success ? "success" : "destructive"}
-            data-testid="webhook-test-result"
-          >
-            {testResult.success
-              ? `${testResult.statusCode} OK · ${testResult.durationMs} ms`
-              : `${testResult.statusCode || "—"} · ${testResult.durationMs} ms${
-                  testResult.error ? ` — ${testResult.error}` : ""
-                }`}
-          </Badge>
-        )}
-      </div>
     </div>
   );
 }
