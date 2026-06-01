@@ -2782,11 +2782,12 @@ export function useDeleteIntegration(org: string) {
   });
 }
 
-// Standard Webhooks: per-integration signing-secret rotation and synthetic
-// test delivery. Both are webhook-only on the backend (400 otherwise).
+// Per-integration signing-secret rotation (webhook-only) and the
+// test-notification delivery (available for every notifiable integration).
 
-/** Result of a POST /integrations/:uid/test synthetic delivery. */
-export interface WebhookTestResult {
+/** Result of a POST /integrations/:uid/test sample delivery. statusCode is the
+ *  HTTP status for HTTP-based integrations (webhooks); 0 otherwise. */
+export interface IntegrationTestResult {
   success: boolean;
   statusCode: number;
   durationMs: number;
@@ -2810,10 +2811,13 @@ export function useRotateWebhookSecret(org: string, integrationUid: string) {
   });
 }
 
-export function useTestWebhookIntegration(org: string) {
+/** Sends a sample notification through any notifiable integration to verify it
+ *  delivers. Returns the outcome; the backend always responds 200, so inspect
+ *  `success`. */
+export function useTestIntegration(org: string) {
   return useMutation({
     mutationFn: (integrationUid: string) =>
-      apiFetch<WebhookTestResult>(
+      apiFetch<IntegrationTestResult>(
         `/api/v1/orgs/${org}/integrations/${integrationUid}/test`,
         { method: "POST" },
       ),

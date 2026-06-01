@@ -794,7 +794,8 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// UI); `/channels` is kept as a one-cycle alias (the prior name — "channel"
 	// now means the notify role). The original legacy `/connections` path was
 	// dropped in PR-E; a follow-up drops `/channels`.
-	integrationsService := integrations.NewService(s.dbService, s.services.Credentials)
+	integrationsService := integrations.NewService(
+		s.dbService, s.services.Credentials, s.services, s.config)
 	integrationsHandler := integrations.NewHandler(integrationsService, s.config)
 	for _, prefix := range []string{
 		"/orgs/:org/integrations",
@@ -806,10 +807,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		group.GET("/:uid", integrationsHandler.GetIntegration)
 		group.PATCH("/:uid", integrationsHandler.UpdateIntegration)
 		group.DELETE("/:uid", integrationsHandler.DeleteIntegration)
-		// Standard Webhooks: rotate the per-integration signing secret and send
-		// a synthetic signed test delivery. Both are webhook-only (400 otherwise).
+		// Standard Webhooks: rotate the per-integration signing secret
+		// (webhook-only, 400 otherwise).
 		group.POST("/:uid/rotate-secret", integrationsHandler.RotateWebhookSecret)
-		group.POST("/:uid/test", integrationsHandler.TestWebhookIntegration)
+		// Send a sample notification through any notifiable integration to
+		// verify it's wired correctly (400 for data-source-only types).
+		group.POST("/:uid/test", integrationsHandler.TestIntegration)
 	}
 
 	// Freebox pairing endpoints — separate from the generic CRUD because

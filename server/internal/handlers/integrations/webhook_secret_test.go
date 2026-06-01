@@ -40,7 +40,7 @@ func newWebhookTestSvc(t *testing.T) (*integrations.Service, *models.Organizatio
 	org := models.NewOrganization(slug, "Webhook Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	return integrations.NewService(dbSvc, creds), org, ctx
+	return integrations.NewService(dbSvc, creds, nil, nil), org, ctx
 }
 
 // sanitizeSlug derives a valid org slug (lowercase alphanumeric, capped length)
@@ -166,7 +166,7 @@ func TestTestWebhookChannel_Success(t *testing.T) {
 	})
 	r.NoError(err)
 
-	result, err := svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
+	result, err := svc.TestIntegration(ctx, org.Slug, created.UID)
 	r.NoError(err)
 	r.True(result.Success)
 	r.Equal(200, result.StatusCode)
@@ -195,27 +195,27 @@ func TestTestWebhookChannel_Failure(t *testing.T) {
 	})
 	r.NoError(err)
 
-	result, err := svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
+	result, err := svc.TestIntegration(ctx, org.Slug, created.UID)
 	r.NoError(err, "test endpoint never returns an error for a remote failure")
 	r.False(result.Success)
 	r.Equal(500, result.StatusCode)
 	r.NotEmpty(result.Error)
 }
 
-// TestTestWebhookChannel_WrongType rejects testing a non-webhook channel.
-func TestTestWebhookChannel_WrongType(t *testing.T) {
+// TestTestIntegration_NotNotifiable rejects testing a data-source-only
+// integration (e.g. Freebox), which has no sender to deliver through.
+func TestTestIntegration_NotNotifiable(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	svc, org, ctx := newWebhookTestSvc(t)
 
 	created, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
-		Type:     "discord",
-		Name:     "disc",
-		Settings: map[string]any{"webhook_url": "https://discord.example/hook"},
+		Type: "freebox",
+		Name: "fbx",
 	})
 	r.NoError(err)
 
-	_, err = svc.TestWebhookIntegration(ctx, org.Slug, created.UID)
-	r.ErrorIs(err, integrations.ErrNotWebhookChannel)
+	_, err = svc.TestIntegration(ctx, org.Slug, created.UID)
+	r.ErrorIs(err, integrations.ErrIntegrationNotNotifiable)
 }

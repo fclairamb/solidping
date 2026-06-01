@@ -80,7 +80,7 @@ func newFreeboxFixture(t *testing.T) *freeboxFixture {
 	org := models.NewOrganization("freebox-test", "Freebox Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := integrations.NewService(dbSvc, creds)
+	svc := integrations.NewService(dbSvc, creds, nil, nil)
 	handler := integrations.NewHandler(svc, &config.Config{})
 
 	router := bunrouter.New()

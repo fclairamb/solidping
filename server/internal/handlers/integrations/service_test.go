@@ -30,7 +30,7 @@ func TestCreateChannelRejectsSlackType(t *testing.T) {
 	org := models.NewOrganization("slack-create-test", "Slack Create Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := integrations.NewService(dbSvc, creds)
+	svc := integrations.NewService(dbSvc, creds, nil, nil)
 
 	_, err = svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type: "slack",
@@ -58,7 +58,7 @@ func TestCreateChannelAllowsNonSlackType(t *testing.T) {
 	org := models.NewOrganization("webhook-create-test", "Webhook Create Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := integrations.NewService(dbSvc, creds)
+	svc := integrations.NewService(dbSvc, creds, nil, nil)
 
 	resp, err := svc.CreateIntegration(ctx, org.Slug, integrations.CreateIntegrationRequest{
 		Type: "webhook",

@@ -653,6 +653,14 @@ func applyWebPushEnv(cfg *WebPushConfig) {
 		cfg.Subject = v
 	}
 
+	// The VAPID "sub" claim is required by some push services (e.g. Firefox's
+	// Mozilla push service returns 403 when it is absent). Default to the
+	// SolidPing landing page; self-hosted operators can override via
+	// SP_WEBPUSH_SUBJECT.
+	if cfg.Subject == "" {
+		cfg.Subject = "https://solidping.io"
+	}
+
 	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == envTrue || v == "1" {
 		cfg.Enabled = true
 	}

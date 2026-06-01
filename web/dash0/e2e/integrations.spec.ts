@@ -404,4 +404,63 @@ test.describe("Notification Channels", () => {
 
     await deleteCheck(page, token, check.uid);
   });
+
+  test("send-test is available on a non-webhook integration", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Discord is a notify-capable type that had no test button before the
+    // generic test-notification feature — it now gets one like every other
+    // notification integration.
+    const name = `E2E Discord ${Date.now()}`;
+    const resp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/integrations`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "discord",
+          name,
+          settings: { webhook_url: "https://discord.example/hook" },
+        },
+      },
+    );
+    const integration = await resp.json();
+
+    // Mock the delivery so the test never hits the network.
+    await page.route(
+      `**/api/v1/orgs/test/integrations/${integration.uid}/test`,
+      async (route) => {
+        if (route.request().method() === "POST") {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              success: true,
+              statusCode: 200,
+              durationMs: 12,
+            }),
+          });
+          return;
+        }
+        await route.continue();
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${integration.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    // The generic test section renders for this non-webhook integration.
+    await expect(page.getByTestId("integration-test-section")).toBeVisible();
+
+    await page.getByTestId("webhook-send-test").click();
+
+    const badge = page.getByTestId("webhook-test-result");
+    await expect(badge).toBeVisible();
+    await expect(badge).toContainText("200 OK");
+    await expect(badge).toContainText("12 ms");
+
+    await deleteConnection(page, token, integration.uid);
+  });
 });

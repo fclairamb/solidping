@@ -187,14 +187,14 @@ func (h *Handler) RotateWebhookSecret(writer http.ResponseWriter, req bunrouter.
 	return h.WriteJSON(writer, http.StatusOK, connection)
 }
 
-// TestWebhookIntegration sends a synthetic signed webhook to the channel's
-// configured URL and reports the outcome. Always returns HTTP 200 — the caller
-// inspects the `success` field to know whether the remote accepted it.
-func (h *Handler) TestWebhookIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
+// TestIntegration sends a sample notification through the integration and
+// reports the outcome. Always returns HTTP 200 for a notifiable integration —
+// the caller inspects the `success` field to know whether delivery worked.
+func (h *Handler) TestIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
 
-	result, err := h.svc.TestWebhookIntegration(req.Context(), orgSlug, connectionUID)
+	result, err := h.svc.TestIntegration(req.Context(), orgSlug, connectionUID)
 	if err != nil {
 		return h.handleError(writer, err)
 	}
@@ -222,6 +222,9 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	case errors.Is(err, ErrNotWebhookChannel):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Channel is not a webhook connection")
+	case errors.Is(err, ErrIntegrationNotNotifiable):
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"This integration type cannot send notifications")
 	case errors.Is(err, ErrSlackManualCreate):
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"Slack channels are added by installing the Slack app")

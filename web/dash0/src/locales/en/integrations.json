@@ -75,7 +75,11 @@
     "slackOauthHint": "Slack channels are configured via the Slack OAuth install. The bot will populate workspace and channel names on completion.",
     "slackNotConnectedTitle": "Slack workspace not connected",
     "slackNotConnectedBody": "This channel has no linked Slack workspace. Install the SolidPing Slack app to connect one.",
-    "slackConnectButton": "Install Slack app"
+    "slackConnectButton": "Install Slack app",
+    "testTitle": "Send a test notification",
+    "testHelp": "Deliver a sample alert to confirm this integration is wired up. Save your changes first — the test uses the saved settings.",
+    "sendTest": "Send test",
+    "testDelivered": "Delivered"
   },
   "freebox": {
     "name": "Freebox",

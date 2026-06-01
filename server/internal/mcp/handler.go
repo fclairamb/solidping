@@ -104,14 +104,16 @@ func NewHandler(
 	entSvc *entcore.Service,
 ) *Handler {
 	handler := &Handler{
-		checksSvc:       checks.NewService(dbService, eventNotifier, creds, entSvc),
-		checkTypesSvc:   checkTypesSvc,
-		resultsSvc:      results.NewService(dbService),
-		incidentsSvc:    incidents.NewService(dbService, jobSvc, clock.Real{}),
-		eventsSvc:       events.NewService(dbService),
-		statusPagesSvc:  statuspages.NewService(dbService),
-		maintenanceSvc:  maintenancewindows.NewService(dbService),
-		integrationsSvc: integrations.NewService(dbService, creds),
+		checksSvc:      checks.NewService(dbService, eventNotifier, creds, entSvc),
+		checkTypesSvc:  checkTypesSvc,
+		resultsSvc:     results.NewService(dbService),
+		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}),
+		eventsSvc:      events.NewService(dbService),
+		statusPagesSvc: statuspages.NewService(dbService),
+		maintenanceSvc: maintenancewindows.NewService(dbService),
+		// nil registry/config: the MCP surface manages integrations but does
+		// not dispatch test notifications, which is the only path needing them.
+		integrationsSvc: integrations.NewService(dbService, creds, nil, nil),
 		checkGroupsSvc:  checkgroups.NewService(dbService),
 		regionsSvc:      regionshandler.NewService(dbService),
 		dbService:       dbService,
