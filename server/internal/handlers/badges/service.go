@@ -213,8 +213,9 @@ func (s *Service) appendRowFragments(
 	if hasBar {
 		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
 		labels := computeUptimeBarLabels(bucketStart, n, bucketDuration)
+		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration)
 		yOffset := totalHeight + rowGap
-		rows = append(rows, renderUptimeBarRow(segments, labels, width, rowHeightBar, yOffset, opts.Style))
+		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
 	}
 
@@ -379,6 +380,41 @@ func computeUptimeBarLabels(bucketStart time.Time, n int, bucketDuration time.Du
 	default:
 		return make([]string, n)
 	}
+}
+
+// computeUptimeBarValues returns the per-segment availability percentage to
+// overlay inside each colored bar. Only the 7d layout (7 daily buckets) has
+// bars wide enough to fit a percentage, so every other period returns an
+// all-empty slice (no overlay). Segments with no data (gray) get an empty
+// string. This is a pure function (no DB access).
+func computeUptimeBarValues(
+	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+) []string {
+	values := make([]string, n)
+
+	if bucketDuration != 24*time.Hour || n != 7 {
+		return values
+	}
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			values[i] = formatBarPercent(pct)
+		}
+	}
+
+	return values
+}
+
+// formatBarPercent formats an availability percentage for the compact in-bar
+// overlay: whole numbers render without decimals ("100%"), everything else to
+// one decimal ("98.6%").
+func formatBarPercent(pct float64) string {
+	if pct == math.Trunc(pct) {
+		return fmt.Sprintf("%.0f%%", pct)
+	}
+
+	return fmt.Sprintf("%.1f%%", pct)
 }
 
 // weekdayLabels labels every segment with its 3-letter weekday name (7d).

@@ -921,6 +921,90 @@ func TestComputeUptimeBarLabelsUnknownPeriod(t *testing.T) {
 	}
 }
 
+func TestComputeUptimeBarValues7d(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+
+	// Three days have data, the rest are missing → empty (gray) overlay.
+	availMap := map[time.Time]float64{
+		bucketStart:              100,  // whole number → no decimals
+		bucketStart.Add(2 * day): 98.6, // fractional → one decimal
+		bucketStart.Add(4 * day): 0,    // outage day
+	}
+
+	values := computeUptimeBarValues(availMap, bucketStart, 7, day)
+
+	r.Len(values, 7)
+	r.Equal("100%", values[0])
+	r.Empty(values[1])
+	r.Equal("98.6%", values[2])
+	r.Empty(values[3])
+	r.Equal("0%", values[4])
+	r.Empty(values[5])
+	r.Empty(values[6])
+}
+
+func TestComputeUptimeBarValuesNon7dIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+
+	// 24h, 30d and 90d bars are too thin for an in-bar percentage → all-empty.
+	for _, tc := range []struct {
+		n        int
+		duration time.Duration
+	}{
+		{24, time.Hour},
+		{30, 24 * time.Hour},
+		{90, 24 * time.Hour},
+	} {
+		availMap := map[time.Time]float64{bucketStart: 99.5}
+		values := computeUptimeBarValues(availMap, bucketStart, tc.n, tc.duration)
+		r.Len(values, tc.n)
+
+		for i, v := range values {
+			r.Empty(v, "n=%d duration=%s value %d should be empty", tc.n, tc.duration, i)
+		}
+	}
+}
+
+func TestFormatBarPercent(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("100%", formatBarPercent(100))
+	r.Equal("0%", formatBarPercent(0))
+	r.Equal("99%", formatBarPercent(99))
+	r.Equal("98.6%", formatBarPercent(98.6))
+	r.Equal("99.9%", formatBarPercent(99.857))
+}
+
+func TestRenderUptimeBarRowOverlay(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	segments := []string{ColorGreen, ColorRed, ColorGray}
+	labels := []string{"Mon", "Tue", "Wed"}
+	barValues := []string{"100%", "0%", ""}
+	row := renderUptimeBarRow(segments, labels, barValues, 300, rowHeightBar, 0, "flat")
+
+	// The two non-empty overlays render (white text + dark shadow = 2 each),
+	// plus the three weekday labels → 7 <text> elements total.
+	r.Contains(row, ">100%<")
+	r.Contains(row, ">0%<")
+	r.Contains(row, `font-size="9"`)
+	r.Contains(row, `fill="#fff"`)
+	r.Equal(7, strings.Count(row, "<text"))
+}
+
 func TestFormatDurationMs(t *testing.T) {
 	t.Parallel()
 
@@ -941,7 +1025,7 @@ func TestRenderUptimeBarRowLabels(t *testing.T) {
 
 	segments := []string{ColorGreen, ColorGreen, ColorGreen}
 	labels := []string{"Mon", "", "Wed"}
-	row := renderUptimeBarRow(segments, labels, 300, rowHeightBar, 0, "flat")
+	row := renderUptimeBarRow(segments, labels, nil, 300, rowHeightBar, 0, "flat")
 
 	// Colored strip uses the fixed color height, not the full row height.
 	r.Contains(row, `height="20"`)
@@ -961,6 +1045,6 @@ func TestRenderUptimeBarRowNoLabels(t *testing.T) {
 	r := require.New(t)
 
 	segments := []string{ColorGreen, ColorGreen}
-	row := renderUptimeBarRow(segments, nil, 300, rowHeightBar, 0, "flat")
+	row := renderUptimeBarRow(segments, nil, nil, 300, rowHeightBar, 0, "flat")
 	r.NotContains(row, "<text")
 }

@@ -138,12 +138,29 @@ func renderBadgeRow(label, value, valueColor, style string, width, yOffset int) 
 	)
 }
 
+// barOverlayText returns one centered <text> element (a percentage label drawn
+// inside an uptime bar) at the given fill and optional fill-opacity, terminated
+// by a newline. The value is XML-escaped.
+func barOverlayText(centerX, baseline int, fill, opacity, value string) string {
+	opacityAttr := ""
+	if opacity != "" {
+		opacityAttr = ` fill-opacity="` + opacity + `"`
+	}
+
+	return fmt.Sprintf(
+		`      <text x="%d" y="%d" fill="%s"%s font-family="%s" `+
+			`font-size="9" text-anchor="middle">%s</text>`+"\n",
+		centerX, baseline, fill, opacityAttr, fontFamily, escapeXML(value))
+}
+
 // renderUptimeBarRow renders an N-segment availability strip as a positioned
 // <g> fragment translated to yOffset. The colored strip occupies the top
 // uptimeBarColorHeight px; the remaining height is a label band holding the
 // per-segment time labels. labels carries one entry per segment (empty string =
-// no label for that slot); a nil/short slice renders no labels.
-func renderUptimeBarRow(segments, labels []string, width, height, yOffset int, style string) string {
+// no label for that slot); a nil/short slice renders no labels. barValues, when
+// set for a segment, is drawn as a centered percentage overlay inside that
+// segment's colored bar — only periods with bars wide enough (7d) populate it.
+func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOffset int, style string) string {
 	n := len(segments)
 	if n == 0 {
 		return fmt.Sprintf(`  <g transform="translate(0,%d)"></g>`, yOffset)
@@ -175,6 +192,16 @@ func renderUptimeBarRow(segments, labels []string, width, height, yOffset int, s
 
 		fmt.Fprintf(&rects, `      <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, colorHeight, color)
 		fmt.Fprintln(&rects)
+
+		// In-bar percentage overlay (populated only for periods whose bars are
+		// wide enough to fit it, e.g. 7d). A dark shadow behind the white text
+		// keeps it legible on the lighter segment colors.
+		if idx < len(barValues) && barValues[idx] != "" {
+			centerX := posX + rectWidth/2
+			textY := colorHeight/2 + 4
+			rects.WriteString(barOverlayText(centerX, textY+1, "#010101", ".3", barValues[idx]))
+			rects.WriteString(barOverlayText(centerX, textY, "#fff", "", barValues[idx]))
+		}
 
 		if idx < len(labels) && labels[idx] != "" {
 			centerX := posX + rectWidth/2
@@ -420,7 +447,7 @@ func GenerateSVG(label, value, valueColor, style string, minWidth int) string {
 // GenerateUptimeBarSVG creates a standalone uptime-bar SVG. Thin wrapper over
 // renderUptimeBarRow + ComposeBadgeSVG, kept for the existing test surface.
 func GenerateUptimeBarSVG(segments []string, width, height int, style string) string {
-	row := renderUptimeBarRow(segments, nil, width, height, 0, style)
+	row := renderUptimeBarRow(segments, nil, nil, width, height, 0, style)
 
 	return ComposeBadgeSVG([]string{row}, width, height)
 }
