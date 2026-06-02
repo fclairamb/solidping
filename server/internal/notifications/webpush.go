@@ -62,7 +62,7 @@ func (s *WebPushSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 	msg := webpush.Message{
 		Title: title,
 		Body:  body,
-		URL:   "",
+		URL:   buildWebPushURL(payload),
 	}
 
 	var goneEndpoints []string
@@ -143,6 +143,25 @@ func pruneSubscriptions(channel *models.Integration, goneEndpoints []string) {
 	}
 
 	channel.Settings["subscriptions"] = remaining
+}
+
+// buildWebPushURL returns the in-app path the notification should open on
+// click — the incident detail page when an incident is present, otherwise the
+// org dashboard. A non-empty value is also what gives each incident a distinct
+// service-worker notification tag (the SW derives the tag from this URL), so
+// updates for different incidents don't collapse into one notification.
+func buildWebPushURL(payload *Payload) string {
+	if payload.OrgSlug == "" {
+		return ""
+	}
+
+	base := "/dash0/orgs/" + payload.OrgSlug
+
+	if payload.Incident != nil && payload.Incident.UID != "" {
+		return base + "/incidents/" + payload.Incident.UID
+	}
+
+	return base
 }
 
 // buildWebPushContent returns (title, body) for a push notification.
