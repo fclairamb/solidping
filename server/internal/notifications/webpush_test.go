@@ -173,6 +173,48 @@ func TestWebPushSender_Send_OneGone410(t *testing.T) {
 	r.Contains(remaining[0].Endpoint, srv1.URL, "the surviving endpoint should be srv1")
 }
 
+// TestBuildWebPushURL verifies the click-through / tag URL is non-empty and
+// points at the incident detail page. A non-empty URL is what gives each
+// incident a distinct service-worker tag; an empty one made Chrome reject the
+// notification (renotify requires a non-empty tag).
+func TestBuildWebPushURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload *Payload
+		want    string
+	}{
+		{
+			name:    "incident present",
+			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{UID: "inc-1"}},
+			want:    "/dash0/orgs/acme/incidents/inc-1",
+		},
+		{
+			name:    "no incident falls back to org dashboard",
+			payload: &Payload{OrgSlug: "acme"},
+			want:    "/dash0/orgs/acme",
+		},
+		{
+			name:    "incident without uid falls back to org dashboard",
+			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{}},
+			want:    "/dash0/orgs/acme",
+		},
+		{
+			name:    "missing org slug yields empty url",
+			payload: &Payload{Incident: &models.Incident{UID: "inc-1"}},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, buildWebPushURL(tt.payload))
+		})
+	}
+}
+
 // TestWebPushSender_Send_NoVAPIDKeys verifies that the sender returns
 // ErrWebPushNotConfigured when VAPID keys are absent.
 func TestWebPushSender_Send_NoVAPIDKeys(t *testing.T) {
