@@ -189,6 +189,41 @@ function ConventionsSection() {
             . Other per-row actions live on the edit page, not in the row.
           </p>
         </div>
+        <div className="rounded-md border bg-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Delete is always red, always a trash bin</h3>
+          <p className="text-sm text-muted-foreground">
+            Every delete (or otherwise irreversible) action is rendered in red
+            and paired with the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+            (trash bin) icon — no exceptions. Use a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Button variant=&quot;destructive&quot;</code>{" "}
+            for standalone/prominent buttons, an icon button with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
+            in row actions, and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+            on the delete item inside a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>
+            . Both colors resolve to the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">--destructive</code>{" "}
+            token so dark mode stays correct. The destructive red is reserved
+            for destructive actions — never use it for a neutral or primary
+            action, and never delete with a different icon or a muted color.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="destructive" aria-label="Delete">
+              <Trash2 />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:text-destructive"
+              aria-label="Delete row"
+            >
+              <Trash2 />
+            </Button>
+          </div>
+        </div>
       </div>
     </Section>
   );

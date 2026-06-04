@@ -43,12 +43,15 @@ If the server is running on port 4000, apply code changes directly — `make dev
 > [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx).
 >
 > It renders every shipped primitive (buttons, alerts, dialogs, tables, forms, name+slug pairs…) with the exact import line alongside it. **Reuse those components and patterns** — don't reach for a raw Radix primitive or a custom implementation if the design reference already ships what you need.
+>
+> **This is mandatory for _any_ frontend change** — new pages, tweaks to existing UI, or one-off components alike. Always start from [`web/dash0/src/routes/orgs/$org/design-reference.tsx`](web/dash0/src/routes/orgs/$org/design-reference.tsx); it is the single source of truth for components and conventions. If a needed primitive or pattern is missing, add it to the reference page as part of your change so the catalog stays canonical.
 
 Additional frontend rules:
 - **All pages must be fully usable on mobile** — use responsive layouts, avoid fixed widths, ensure touch targets are large enough.
 - **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `docs/conventions/frontend-errors.md`.
 - Editing always navigates to a dedicated route (`/<resource>/new`, `/<resource>/$id`) — never in a modal dialog.
 - Row actions: prefer two ghost icon buttons (`Pencil` / `Trash2`) over a `MoreVertical` menu.
+- **Delete is always red, always a trash bin** — every delete/irreversible action uses the `Trash2` icon in the destructive red (`variant="destructive"`, or `text-destructive` for icon buttons and dropdown items). Never delete with a different icon or color, and never use destructive red for non-destructive actions.
 
 ## REST API conventions
 - Wrap list responses in `{ "data": [...] }`, never return a bare array.
