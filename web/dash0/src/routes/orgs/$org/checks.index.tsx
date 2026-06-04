@@ -81,7 +81,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { LabelInput } from "@/components/shared/label-input";
+import { LabelFilter } from "@/components/shared/label-filter";
 import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -825,22 +825,19 @@ function ChecksIndexPage() {
             className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
           />
         </Button>
-        <div className="flex flex-1 min-w-[260px] flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Labels:</span>
-          <div className="flex-1 min-w-[200px]">
-            <LabelInput
-              org={org}
-              value={labelFilters}
-              onChange={(next) => {
-                const serialized = serializeLabelsParam(next);
-                void navigate({
-                  search: (prev) => ({ ...prev, labels: serialized || undefined }),
-                  replace: true,
-                });
-              }}
-              placeholder={{ key: "filter by key…", value: "value…" }}
-            />
-          </div>
+          <LabelFilter
+            org={org}
+            value={labelFilters}
+            onChange={(next) => {
+              const serialized = serializeLabelsParam(next);
+              void navigate({
+                search: (prev) => ({ ...prev, labels: serialized || undefined }),
+                replace: true,
+              });
+            }}
+          />
           {Object.keys(labelFilters).length > 0 && (
             <Button
               variant="ghost"

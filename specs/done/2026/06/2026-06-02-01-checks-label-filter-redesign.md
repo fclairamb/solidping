@@ -185,3 +185,53 @@ Manual:
   form's authoring control is acceptable as-is, so it stays out of scope to
   keep this change small and low-risk. A separate follow-up could polish the
   form control (merge the boxes, lose the floating colon) if desired.
+
+## Implementation Plan
+
+1. **Extract shared label constants/helpers** into
+   `web/dash0/src/components/shared/label-shared.ts`: `KEY_REGEX`, `VALUE_MAX`,
+   `SUGGESTION_DEBOUNCE_MS`, `SUGGESTION_LIMIT`, the `KEY_ERROR` copy, and the
+   `useDebounced` hook. Update `label-input.tsx` to import from this module
+   instead of declaring them locally (no behavior change — `check-labels.spec.ts`
+   stays green untouched).
+
+2. **New `LabelFilter` component** at
+   `web/dash0/src/components/shared/label-filter.tsx` exporting `LabelFilter`
+   with `{ org, value, onChange }`:
+   - Applied chips: lift the `Badge variant="secondary"` + `X` remove markup
+     from `LabelInput`, keep `data-testid="label-chips"` and
+     `label-chip-remove-{key}`.
+   - A `+ Label` trigger: `Button variant="outline" size="sm"` with a `Tags`
+     lucide icon, `data-testid="label-filter-trigger"`, opening a single
+     `Popover`.
+   - Inside, a guided two-step `cmdk` `Command`. Step `"key"`: list key
+     suggestions (`useLabelSuggestions(org, { q })`) with counts on the right
+     plus a "Use \"typed\"" item when the typed value passes `KEY_REGEX` and is
+     not already a suggestion. Test IDs `label-filter-key-input`,
+     `label-filter-key-use-typed`. Picking an already-filtered key shows an
+     inline "already filtering by this key" hint and does not advance.
+   - Step `"value"`: header shows `‹ key :` with a back action
+     (`data-testid="label-filter-back"`) returning to step `"key"`; list value
+     suggestions (`useLabelSuggestions(org, { key, q })`) with counts plus a
+     "Use \"typed\"" item for 1–`VALUE_MAX` chars. Test IDs
+     `label-filter-value-input`, `label-filter-value-use-typed`.
+   - Selecting a value calls `onChange({ ...value, [key]: val })` and resets the
+     popover to step `"key"` (stays open) so several filters can be stacked.
+   - Reuse `KEY_REGEX`/`VALUE_MAX`/`useDebounced`/constants from
+     `label-shared.ts`.
+
+3. **Wire into the toolbar** at `checks.index.tsx`: replace the `LabelInput`
+   block (and its `min-w-[200px]` wrapper + `placeholder` prop) with
+   `<LabelFilter org value onChange />` keeping the exact same `onChange` body
+   (`serializeLabelsParam` → `navigate`) and the existing `clear-label-filters`
+   button. Swap the import.
+
+4. **Design reference**: add a `LabelFilter` example section (with its import
+   line) to `design-reference.tsx` and register it in `SECTIONS`.
+
+5. **E2E coverage**: add `web/dash0/e2e/check-label-filter.spec.ts` covering:
+   pick key+value → chip + `?labels=key:value`; add a second pair → both
+   comma-separated; remove a chip → URL updates; "Clear filters" empties
+   `?labels`; deep-link `?labels=env:prod` renders the chip on load.
+
+6. **QA**: `make build-backend build-client lint-back test`; fix and commit.
