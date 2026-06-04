@@ -214,3 +214,46 @@ func (s *Service) ListIncidentNotifications(
 
 	return out, nil
 }
+
+// GetIncidentNotification returns a single notification row for an org and
+// incident, with user/connection/incident/check joined inline (mirroring the
+// join used by ListIncidentNotifications). Returns sql.ErrNoRows when the
+// notification does not exist within the given org and incident.
+func (s *Service) GetIncidentNotification(
+	ctx context.Context, orgUID, incidentUID, notifUID string,
+) (*models.IncidentNotificationRow, error) {
+	var raw incidentNotificationRawRow
+
+	err := s.db.NewSelect().
+		TableExpr("incident_notifications AS n").
+		ColumnExpr("n.*").
+		ColumnExpr("u.name AS user_name").
+		ColumnExpr("ic.name AS connection_name").
+		ColumnExpr("ic.type AS connection_type").
+		ColumnExpr("i.title AS incident_title").
+		ColumnExpr("i.state AS incident_state").
+		ColumnExpr("i.started_at AS incident_started_at").
+		ColumnExpr("c.name AS check_name").
+		Join("LEFT JOIN users u ON u.uid = n.user_uid").
+		Join("LEFT JOIN integrations ic ON ic.uid = n.connection_uid").
+		Join("LEFT JOIN incidents i ON i.uid = n.incident_uid").
+		Join("LEFT JOIN checks c ON c.uid = i.check_uid").
+		Where("n.organization_uid = ?", orgUID).
+		Where("n.incident_uid = ?", incidentUID).
+		Where("n.uid = ?", notifUID).
+		Scan(ctx, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.IncidentNotificationRow{
+		IncidentNotification: raw.IncidentNotification,
+		UserName:             raw.UserName,
+		ConnectionName:       raw.ConnectionName,
+		ConnectionType:       raw.ConnectionType,
+		IncidentTitle:        raw.IncidentTitle,
+		IncidentState:        raw.IncidentState,
+		IncidentStartedAt:    raw.IncidentStartedAt,
+		CheckName:            raw.CheckName,
+	}, nil
+}
