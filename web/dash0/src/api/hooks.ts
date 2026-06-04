@@ -904,6 +904,9 @@ export interface IncidentNotification {
   messageId?: string;
   createdAt: string;
   sentAt?: string;
+  failedAt?: string;
+  cancelledAt?: string;
+  jobUid?: string;
   user: IncidentNotificationUser | null;
   connection: IncidentNotificationConnection | null;
   incident?: IncidentNotificationIncident;
@@ -929,6 +932,22 @@ export function useIncidentNotifications(
       return response.data || [];
     },
     enabled: !!org && !!incidentUid,
+  });
+}
+
+export function useIncidentNotification(
+  org: string,
+  incidentUid: string,
+  notifUid: string
+) {
+  return useQuery<IncidentNotification>({
+    queryKey: ["incidentNotification", org, incidentUid, notifUid],
+    queryFn: () =>
+      apiFetch<IncidentNotification>(
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`
+      ),
+    enabled: !!org && !!incidentUid && !!notifUid,
+    staleTime: Infinity,
   });
 }
 
