@@ -56,7 +56,7 @@ func newKEK(t *testing.T) []byte {
 // encrypted under the org DEK, mirroring what applySettingsEncryption would
 // have written before the registry fix.
 func seedEncryptedConnection(
-	t *testing.T, ctx context.Context, dbSvc *sqlite.Service, creds credentials.Service,
+	ctx context.Context, t *testing.T, dbSvc *sqlite.Service, creds credentials.Service,
 	org *models.Organization, connType models.ConnectionType,
 	public, private map[string]any,
 ) *models.Integration {
@@ -99,7 +99,7 @@ func TestReconcileConnectionRegistry_DemotesWebhookURL(t *testing.T) {
 
 	// Seed a webhook with url + signingSecret + auth_token all encrypted, as
 	// the old registry would have stored them.
-	conn := seedEncryptedConnection(t, ctx, dbSvc, creds, org, models.ConnectionTypeWebhook,
+	conn := seedEncryptedConnection(ctx, t, dbSvc, creds, org, models.ConnectionTypeWebhook,
 		map[string]any{},
 		map[string]any{
 			"url":           "https://example.com/hook",
@@ -153,7 +153,7 @@ func TestReconcileConnectionRegistry_NullsPrivateWhenOnlyURL(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
 	// Discord stored only webhook_url (its sole former secret) encrypted.
-	conn := seedEncryptedConnection(t, ctx, dbSvc, creds, org, models.ConnectionTypeDiscord,
+	conn := seedEncryptedConnection(ctx, t, dbSvc, creds, org, models.ConnectionTypeDiscord,
 		map[string]any{},
 		map[string]any{"webhook_url": "https://discord.example/hook"})
 
@@ -187,7 +187,7 @@ func TestReconcileConnectionRegistry_Idempotent(t *testing.T) {
 	org := models.NewOrganization("reconcile-idem", "Reconcile Idempotent Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	conn := seedEncryptedConnection(t, ctx, dbSvc, creds, org, models.ConnectionTypeWebhook,
+	conn := seedEncryptedConnection(ctx, t, dbSvc, creds, org, models.ConnectionTypeWebhook,
 		map[string]any{},
 		map[string]any{
 			"url":           "https://example.com/hook",
