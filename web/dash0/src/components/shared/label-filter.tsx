@@ -36,15 +36,14 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
   const keyInputRef = useRef<HTMLInputElement>(null);
   const valueInputRef = useRef<HTMLInputElement>(null);
 
-  // Reset to a clean step-1 state whenever the popover closes.
-  useEffect(() => {
-    if (!open) {
-      setStep("key");
-      setActiveKey("");
-      setKeyDraft("");
-      setValueDraft("");
-    }
-  }, [open]);
+  // Reset to a clean step-1 state. Called when the popover closes (in the
+  // onOpenChange handler, not an effect) and after applying a filter.
+  const resetPicker = () => {
+    setStep("key");
+    setActiveKey("");
+    setKeyDraft("");
+    setValueDraft("");
+  };
 
   // Focus the relevant input when the step changes (popover suppresses
   // auto-focus so cmdk keyboard nav keeps working).
@@ -66,10 +65,7 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
   const applyValue = (key: string, val: string) => {
     onChange({ ...value, [key]: val });
     // Stay open and reset to step 1 so several filters can be stacked quickly.
-    setStep("key");
-    setActiveKey("");
-    setKeyDraft("");
-    setValueDraft("");
+    resetPicker();
   };
 
   const chooseKey = (key: string) => {
@@ -107,7 +103,13 @@ export function LabelFilter({ org, value, onChange }: LabelFilterProps) {
         </div>
       )}
 
-      <Popover open={open} onOpenChange={setOpen}>
+      <Popover
+        open={open}
+        onOpenChange={(next) => {
+          setOpen(next);
+          if (!next) resetPicker();
+        }}
+      >
         <PopoverTrigger asChild>
           <Button
             type="button"
