@@ -30,6 +30,8 @@
   "escalated": "Escalated",
   "fallbackTitle": "Incident",
   "actions": {
+    "back": "Back to incidents",
+    "refresh": "Refresh",
     "acknowledge": "Acknowledge",
     "unacknowledge": "Unacknowledge",
     "snooze": "Snooze…",
