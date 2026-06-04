@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronRight,
   Copy,
   Eye,
   Info,
@@ -113,6 +114,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "kpi-tiles", label: "KPI tiles" },
@@ -136,6 +138,7 @@ function DesignReferencePage() {
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
+      <CollapsibleCodeSection />
       <FeedbackSection />
       <LabelFilterSection />
       <KpiTileSection />
@@ -897,6 +900,85 @@ function DataDisplaySection() {
       <CodeSnippet
         code={`import {\n  Table,\n  TableBody,\n  TableCell,\n  TableHead,\n  TableHeader,\n  TableRow,\n} from "@/components/ui/table";\nimport { Skeleton } from "@/components/ui/skeleton";\nimport { useDebounce } from "@/lib/use-debounce";`}
       />
+    </Section>
+  );
+}
+
+/** ReferenceCollapsibleCode mirrors the CollapsibleCode used on the notification
+ * delivery detail page: a native <details>/<summary> disclosure wrapping a
+ * monospace block with a copy affordance. Keyboard-accessible and mobile-safe
+ * with no JS-driven layout. Reuse this pattern for long, optional payloads
+ * (request/response bodies, raw JSON) that should default to collapsed. */
+function ReferenceCollapsibleCode({
+  label,
+  value,
+  defaultOpen = false,
+}: {
+  label: string;
+  value: string;
+  defaultOpen?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard requires a secure context; the value stays visible to copy by hand.
+    }
+  };
+
+  return (
+    <details className="group rounded-md border" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
+          <span className="truncate font-medium">{label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            void onCopy();
+          }}
+          aria-label={copied ? "Copied" : `Copy ${label}`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        </button>
+      </summary>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t bg-muted p-3 font-mono text-xs">
+        {value}
+      </pre>
+    </details>
+  );
+}
+
+function CollapsibleCodeSection() {
+  return (
+    <Section
+      id="collapsible-code"
+      title="Collapsible code"
+      description="A native <details> disclosure wrapping a copyable monospace block. Use for long, optional payloads (webhook request/response bodies, raw JSON) that should default collapsed but stay one click from view. Keyboard- and touch-friendly; no extra dependency. Lives inline on the notification delivery detail page."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-2">
+          <ReferenceCollapsibleCode
+            label="Request payload"
+            value={`{\n  "type": "incident.created",\n  "data": { "incident": { "uid": "018e…" } }\n}`}
+          />
+          <ReferenceCollapsibleCode
+            label="Response body"
+            value={`{ "error": "service unavailable" }`}
+            defaultOpen
+          />
+        </div>
+        <CodeSnippet
+          code={`// Native disclosure + copy. Default collapsed; pass defaultOpen for failures.\n<details className="group rounded-md border">\n  <summary>…<ChevronRight className="group-open:rotate-90" />…</summary>\n  <pre className="font-mono text-xs">{value}</pre>\n</details>`}
+        />
+      </div>
     </Section>
   );
 }
