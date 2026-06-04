@@ -14,7 +14,9 @@ import (
 
 // newURLTestSvc builds an integrations service over an in-memory SQLite DB,
 // with encryption either enabled or disabled, plus an isolated org.
-func newURLTestSvc(t *testing.T, encryptionEnabled bool) (*integrations.Service, *models.Organization, context.Context) {
+func newURLTestSvc(
+	t *testing.T, encryptionEnabled bool,
+) (*integrations.Service, *models.Organization, context.Context) {
 	t.Helper()
 
 	ctx := t.Context()
@@ -48,7 +50,6 @@ func TestGetIntegration_WebhookURLRendered(t *testing.T) {
 	t.Parallel()
 
 	for _, enc := range []bool{false, true} {
-		enc := enc
 		name := "encryptionOff"
 		if enc {
 			name = "encryptionOn"
@@ -100,8 +101,6 @@ func TestGetIntegration_WebhookURLFieldRendered(t *testing.T) {
 
 	for _, enc := range []bool{false, true} {
 		for _, connType := range types {
-			enc := enc
-			connType := connType
 			name := connType + "-encryptionOff"
 			if enc {
 				name = connType + "-encryptionOn"
