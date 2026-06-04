@@ -91,6 +91,11 @@ type NotificationDetail struct {
 	FailedAt    *time.Time `json:"failedAt,omitempty"`
 	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
 	JobUID      *string    `json:"jobUid,omitempty"`
+
+	// DeliveryDetails carries the structured per-attempt artifacts (HTTP status,
+	// stripped URL, capped request/response bodies, duration). Omitted for rows
+	// captured before the feature and for channels that produce no artifacts.
+	DeliveryDetails *models.DeliveryDetails `json:"deliveryDetails,omitempty"`
 }
 
 // ListFilter is passed by the handler to scope the DB query.
@@ -254,5 +259,6 @@ func toNotificationDetail(src *models.IncidentNotificationRow) *NotificationDeta
 		FailedAt:        src.FailedAt,
 		CancelledAt:     src.CanceledAt,
 		JobUID:          src.JobUID,
+		DeliveryDetails: src.DeliveryDetails,
 	}
 }

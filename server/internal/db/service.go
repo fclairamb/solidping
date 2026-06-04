@@ -251,9 +251,12 @@ type Service interface {
 	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error
 	MarkIncidentNotificationSentByUID(ctx context.Context, uid string, sentAt time.Time, messageID string) error
 	MarkIncidentNotificationFailedByUID(ctx context.Context, uid string, failedAt time.Time, errMsg string) error
-	MarkIncidentNotificationSentByJob(ctx context.Context, jobUID string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationSentByJob(
+		ctx context.Context, jobUID string, sentAt time.Time, messageID string, details *models.DeliveryDetails,
+	) error
 	MarkIncidentNotificationFailedByJob(
 		ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
+		details *models.DeliveryDetails,
 	) error
 	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
 	ListIncidentNotifications(

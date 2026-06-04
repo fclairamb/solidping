@@ -26,6 +26,12 @@ type Payload struct {
 	// message identifier for the audit row (e.g. the Standard Webhooks
 	// `webhook-id`). Empty for senders that have no such concept.
 	MessageID string
+	// DeliveryDetails is set by a sender after a delivery attempt (success or
+	// failure) to surface structured artifacts — HTTP status code, the request
+	// URL with secrets stripped, capped request/response bodies, duration — for
+	// the audit row. Nil for senders/attempts that produce no artifacts.
+	// Senders MUST never place secrets (signing secret, auth header) here.
+	DeliveryDetails *models.DeliveryDetails
 }
 
 // Sender is the interface for sending notifications via different channels.
