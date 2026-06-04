@@ -3,8 +3,13 @@ package models
 import (
 	"database/sql/driver"
 	"encoding/json"
+	"errors"
 	"fmt"
 )
+
+// ErrDeliveryDetailsScanType is returned when DeliveryDetails.Scan receives a
+// value of an unexpected SQL type.
+var ErrDeliveryDetailsScanType = errors.New("unsupported type for DeliveryDetails.Scan")
 
 // DeliveryDetailsBodyCap is the maximum number of bytes retained for a captured
 // request or response body before persistence. Bodies larger than this are
@@ -76,7 +81,7 @@ func (d *DeliveryDetails) Scan(value any) error {
 	case string:
 		data = []byte(v)
 	default:
-		return fmt.Errorf("unsupported type for DeliveryDetails.Scan: %T", value)
+		return fmt.Errorf("%w: %T", ErrDeliveryDetailsScanType, value)
 	}
 
 	if len(data) == 0 {

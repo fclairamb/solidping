@@ -163,20 +163,40 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 	// Expose the webhook-id as the message id so the audit layer can record it.
 	payload.MessageID = webhookID
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := buildWebhookRequest(ctx, url, body, payload.Integration.Settings,
+		webhookHeaders{id: webhookID, timestamp: webhookTimestamp, signature: signature})
 	if err != nil {
-		return fmt.Errorf("creating webhook request: %w", err)
+		return err
 	}
 
-	req.Header.Set(headerWebhookID, webhookID)
-	req.Header.Set(headerWebhookTimestamp, webhookTimestamp)
-	req.Header.Set(headerWebhookSignature, signature)
+	return s.sendAndCapture(req, url, body, payload)
+}
+
+// webhookHeaders carries the three Standard Webhooks signing header values.
+type webhookHeaders struct {
+	id        string
+	timestamp string
+	signature string
+}
+
+// buildWebhookRequest constructs the signed POST request and applies the
+// Standard Webhooks headers plus any non-reserved custom headers. Custom headers
+// may override User-Agent but never the three signing headers.
+func buildWebhookRequest(
+	ctx context.Context, url string, body []byte, settings models.JSONMap, hdr webhookHeaders,
+) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating webhook request: %w", err)
+	}
+
+	req.Header.Set(headerWebhookID, hdr.id)
+	req.Header.Set(headerWebhookTimestamp, hdr.timestamp)
+	req.Header.Set(headerWebhookSignature, hdr.signature)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SolidPing/1.0")
 
-	// Custom headers are added after the Standard Webhooks headers so they can
-	// override User-Agent but not the signing headers.
-	if headers, ok := payload.Integration.Settings["headers"].(map[string]any); ok {
+	if headers, ok := settings["headers"].(map[string]any); ok {
 		for k, v := range headers {
 			if str, ok := v.(string); ok {
 				if isStandardWebhookHeader(k) {
@@ -187,11 +207,16 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		}
 	}
 
+	return req, nil
+}
+
+// sendAndCapture performs the HTTP request and records structured delivery
+// artifacts onto the payload (on both success and failure). The request URL is
+// stripped of its query string and credentials before being recorded; the
+// signing secret and any auth/custom headers are never stored.
+func (s *WebhookSender) sendAndCapture(req *http.Request, url string, body []byte, payload *Payload) error {
 	client := &http.Client{Timeout: webhookTimeout}
 
-	// Capture structured delivery artifacts on both success and failure. The
-	// request URL is stripped of its query string and credentials before being
-	// recorded; the signing secret and any auth/custom headers are never stored.
 	details := &models.DeliveryDetails{
 		RequestURL:  redactURL(url),
 		RequestBody: models.CapBody(body),
