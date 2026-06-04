@@ -1796,6 +1796,21 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 			"connectionsMigrated", stats.ConnectionsMigrated)
 	}
 
+	// One-shot URL backfill: demote webhook url / *_webhook_url from the
+	// encrypted blob to public settings so the edit form renders them.
+	// Idempotent — skips rows already reconciled.
+	recStats, recErr := credmigrate.ReconcileConnectionRegistry(
+		ctx, s.dbService, s.services.Credentials, credmigrate.Options{Logger: slog.Default()},
+	)
+	if recErr != nil {
+		return fmt.Errorf("reconcile connection url registry: %w", recErr)
+	}
+
+	if recStats.ConnectionsReconciled > 0 {
+		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
+			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
 	return nil
 }
 
