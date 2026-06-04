@@ -33,25 +33,29 @@ const (
 type IncidentNotification struct {
 	bun.BaseModel `bun:"table:incident_notifications"`
 
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	OrganizationUID string     `bun:"organization_uid,notnull,type:varchar(36)"`
-	IncidentUID     string     `bun:"incident_uid,notnull,type:varchar(36)"`
-	EventType       string     `bun:"event_type,notnull"`
-	StepUID         *string    `bun:"step_uid,type:varchar(36)"`
-	RepeatIndex     *int       `bun:"repeat_index"`
-	Source          string     `bun:"source,notnull"`
-	UserUID         *string    `bun:"user_uid,type:varchar(36)"`
-	ConnectionUID   *string    `bun:"connection_uid,type:varchar(36)"`
-	ChannelType     string     `bun:"channel_type,notnull"`
-	Status          string     `bun:"status,notnull"`
-	SkipReason      *string    `bun:"skip_reason"`
-	Error           *string    `bun:"error"`
-	JobUID          *string    `bun:"job_uid,type:varchar(36)"`
-	MessageID       *string    `bun:"message_id"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-	SentAt          *time.Time `bun:"sent_at"`
-	CanceledAt      *time.Time `bun:"cancelled_at"` //nolint:misspell // DB column uses British English
-	FailedAt        *time.Time `bun:"failed_at"`
+	UID             string  `bun:"uid,pk,type:varchar(36)"`
+	OrganizationUID string  `bun:"organization_uid,notnull,type:varchar(36)"`
+	IncidentUID     string  `bun:"incident_uid,notnull,type:varchar(36)"`
+	EventType       string  `bun:"event_type,notnull"`
+	StepUID         *string `bun:"step_uid,type:varchar(36)"`
+	RepeatIndex     *int    `bun:"repeat_index"`
+	Source          string  `bun:"source,notnull"`
+	UserUID         *string `bun:"user_uid,type:varchar(36)"`
+	ConnectionUID   *string `bun:"connection_uid,type:varchar(36)"`
+	ChannelType     string  `bun:"channel_type,notnull"`
+	Status          string  `bun:"status,notnull"`
+	SkipReason      *string `bun:"skip_reason"`
+	Error           *string `bun:"error"`
+	JobUID          *string `bun:"job_uid,type:varchar(36)"`
+	MessageID       *string `bun:"message_id"`
+	// DeliveryDetails holds structured per-attempt artifacts (HTTP status,
+	// stripped URL, capped request/response bodies, duration). NULL for rows
+	// from before the feature and for channels that produce no artifacts.
+	DeliveryDetails *DeliveryDetails `bun:"delivery_details,type:jsonb,nullzero"`
+	CreatedAt       time.Time        `bun:"created_at,notnull,default:current_timestamp"`
+	SentAt          *time.Time       `bun:"sent_at"`
+	CanceledAt      *time.Time       `bun:"cancelled_at"` //nolint:misspell // DB column uses British English
+	FailedAt        *time.Time       `bun:"failed_at"`
 }
 
 // IncidentNotificationRow is the read-side DTO returned by ListIncidentNotifications.

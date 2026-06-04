@@ -118,4 +118,121 @@ test.describe("Notification delivery detail", () => {
     await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
     await expect(page.getByText("Delivery timeline")).toBeVisible();
   });
+
+  // Capture-notification-delivery-artifacts criteria 1/2/3: a failed webhook
+  // surfaces the Delivery section with a status-code badge, the duration, the
+  // stripped request URL, and copyable request/response bodies. The notification
+  // GET is mocked so the assertion is deterministic and does not depend on
+  // driving a real failed delivery through the job pipeline.
+  test("failed webhook renders the Delivery section with status, bodies and url", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+
+    const incidentUid = "11111111-1111-1111-1111-111111111111";
+    const notifUid = "22222222-2222-2222-2222-222222222222";
+
+    await page.route(
+      `**/api/v1/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            uid: notifUid,
+            incidentUid,
+            eventType: "incident.created",
+            source: "check_connection",
+            channelType: "webhook",
+            status: "failed",
+            error: "webhook request failed: status 503",
+            createdAt: "2026-06-02T10:00:00Z",
+            failedAt: "2026-06-02T10:00:01Z",
+            jobUid: "33333333-3333-3333-3333-333333333333",
+            user: null,
+            connection: { uid: "c-1", name: "Prod hook", type: "webhook" },
+            deliveryDetails: {
+              httpStatusCode: 503,
+              requestUrl: "https://hooks.example.com/incidents",
+              requestBody: '{"type":"incident.created","data":{}}',
+              responseBody: '{"error":"service unavailable"}',
+              durationMs: 1234,
+              responseHeaders: { "Retry-After": "120" },
+            },
+          }),
+        });
+      },
+    );
+
+    await page.goto(
+      `/dash0/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
+    );
+    await page.waitForLoadState("networkidle");
+
+    // The Delivery section is present with the status-code badge and duration.
+    await expect(page.getByText("Delivery", { exact: true })).toBeVisible();
+    await expect(page.getByText("503", { exact: true })).toBeVisible();
+    await expect(page.getByText("1234 ms")).toBeVisible();
+    await expect(
+      page.getByText("https://hooks.example.com/incidents"),
+    ).toBeVisible();
+
+    // The response body is copyable: expand and copy it.
+    const responseSummary = page.getByText("Response body");
+    await expect(responseSummary).toBeVisible();
+    await page
+      .getByRole("button", { name: /Copy Response body/i })
+      .click();
+    const clip = await page.evaluate(() => navigator.clipboard.readText());
+    expect(clip).toContain("service unavailable");
+
+    // The request payload is also offered as a collapsible.
+    await expect(page.getByText("Request payload")).toBeVisible();
+  });
+
+  // Criterion 5: a notification with no deliveryDetails (older row / unsupported
+  // channel) renders the page with NO Delivery section — no crash, no empty box.
+  test("notification without delivery details shows no Delivery section", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const incidentUid = "44444444-4444-4444-4444-444444444444";
+    const notifUid = "55555555-5555-5555-5555-555555555555";
+
+    await page.route(
+      `**/api/v1/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            uid: notifUid,
+            incidentUid,
+            eventType: "incident.created",
+            source: "escalation_user",
+            channelType: "email",
+            status: "sent",
+            createdAt: "2026-06-02T10:00:00Z",
+            sentAt: "2026-06-02T10:00:02Z",
+            user: { uid: "u-1", name: "On-call" },
+            connection: null,
+          }),
+        });
+      },
+    );
+
+    await page.goto(
+      `/dash0/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
+    );
+    await page.waitForLoadState("networkidle");
+
+    // The page renders normally...
+    await expect(page.getByRole("heading", { name: "Notification" })).toBeVisible();
+    await expect(page.getByText("Delivery timeline")).toBeVisible();
+    // ...but the Delivery section (exact "Delivery" card title) is absent.
+    await expect(page.getByText("Delivery", { exact: true })).toHaveCount(0);
+  });
 });

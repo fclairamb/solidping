@@ -1155,12 +1155,14 @@ func (m *mockDBService) MarkIncidentNotificationFailedByUID(_ context.Context, _
 	return nil
 }
 
-func (m *mockDBService) MarkIncidentNotificationSentByJob(_ context.Context, _ string, _ time.Time, _ string) error {
+func (m *mockDBService) MarkIncidentNotificationSentByJob(
+	_ context.Context, _ string, _ time.Time, _ string, _ *models.DeliveryDetails,
+) error {
 	return nil
 }
 
 func (m *mockDBService) MarkIncidentNotificationFailedByJob(
-	_ context.Context, _ string, _ time.Time, _ string, _ bool,
+	_ context.Context, _ string, _ time.Time, _ string, _ bool, _ *models.DeliveryDetails,
 ) error {
 	return nil
 }

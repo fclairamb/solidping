@@ -58,15 +58,22 @@ func (s *Service) MarkIncidentNotificationFailedByUID(
 }
 
 // MarkIncidentNotificationSentByJob updates the audit row matching job_uid to
-// status=sent. Used by NotificationJobRun.Run.
+// status=sent. Used by NotificationJobRun.Run. When details is non-nil the
+// captured delivery artifacts are persisted alongside the status transition.
 func (s *Service) MarkIncidentNotificationSentByJob(
-	ctx context.Context, jobUID string, sentAt time.Time, messageID string,
+	ctx context.Context, jobUID string, sentAt time.Time, messageID string, details *models.DeliveryDetails,
 ) error {
-	_, err := s.db.NewUpdate().
+	query := s.db.NewUpdate().
 		TableExpr("incident_notifications").
 		Set("status = ?", models.IncidentNotificationStatusSent).
 		Set("sent_at = ?", sentAt).
-		Set("message_id = ?", messageID).
+		Set("message_id = ?", messageID)
+
+	if details != nil {
+		query = query.Set("delivery_details = ?", details)
+	}
+
+	_, err := query.
 		Where("job_uid = ? AND status = ?", jobUID, models.IncidentNotificationStatusPending).
 		Exec(ctx)
 	if err != nil {
@@ -81,17 +88,24 @@ func (s *Service) MarkIncidentNotificationSentByJob(
 // when false the row transitions to failed.
 func (s *Service) MarkIncidentNotificationFailedByJob(
 	ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
+	details *models.DeliveryDetails,
 ) error {
 	if retryable {
 		// Leave the row at pending so a retry can update it.
 		return nil
 	}
 
-	_, err := s.db.NewUpdate().
+	query := s.db.NewUpdate().
 		TableExpr("incident_notifications").
 		Set("status = ?", models.IncidentNotificationStatusFailed).
 		Set("failed_at = ?", failedAt).
-		Set("error = ?", errMsg).
+		Set("error = ?", errMsg)
+
+	if details != nil {
+		query = query.Set("delivery_details = ?", details)
+	}
+
+	_, err := query.
 		Where("job_uid = ? AND status = ?", jobUID, models.IncidentNotificationStatusPending).
 		Exec(ctx)
 	if err != nil {

@@ -414,6 +414,187 @@ func TestWebhookSender_URLKeyResolution(t *testing.T) {
 	})
 }
 
+// TestWebhookSender_Send_CapturesDeliveryDetailsOnFailure verifies that a
+// non-2xx response populates payload.DeliveryDetails with the status code, the
+// capped response body, the request payload, a non-empty duration, and the
+// allowlisted response headers. (Acceptance criterion 1.)
+func TestWebhookSender_Send_CapturesDeliveryDetailsOnFailure(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/problem+json")
+		w.Header().Set("Retry-After", "120")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"error":"service unavailable"}`))
+	}))
+	defer srv.Close()
+
+	secret, err := generateWebhookSecret()
+	r.NoError(err)
+
+	payload := testPayload(models.JSONMap{
+		"url":                    srv.URL,
+		settingsKeySigningSecret: secret,
+	})
+
+	sender := &WebhookSender{}
+	err = sender.Send(context.Background(), newJobCtx(), payload)
+	r.ErrorIs(err, ErrWebhookRequestFailed)
+
+	d := payload.DeliveryDetails
+	r.NotNil(d, "delivery details must be captured on failure")
+	r.Equal(http.StatusServiceUnavailable, d.HTTPStatusCode)
+	r.Contains(d.ResponseBody, "service unavailable")
+	r.NotEmpty(d.RequestBody, "the sent payload must be captured")
+	r.Contains(d.RequestBody, "incident.created")
+	r.GreaterOrEqual(d.DurationMs, int64(0))
+	r.Equal("120", d.ResponseHeaders["Retry-After"])
+	r.Equal("application/problem+json", d.ResponseHeaders["Content-Type"])
+}
+
+// TestWebhookSender_Send_CapturesDeliveryDetailsOnSuccess verifies that a 2xx
+// response also records artifacts (status + duration + request payload) so a
+// successful delivery is inspectable too.
+func TestWebhookSender_Send_CapturesDeliveryDetailsOnSuccess(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+
+	secret, err := generateWebhookSecret()
+	r.NoError(err)
+
+	payload := testPayload(models.JSONMap{
+		"url":                    srv.URL,
+		settingsKeySigningSecret: secret,
+	})
+
+	sender := &WebhookSender{}
+	r.NoError(sender.Send(context.Background(), newJobCtx(), payload))
+
+	d := payload.DeliveryDetails
+	r.NotNil(d)
+	r.Equal(http.StatusOK, d.HTTPStatusCode)
+	r.Contains(d.ResponseBody, "ok")
+	r.NotEmpty(d.RequestBody)
+}
+
+// TestWebhookSender_Send_DeliveryDetailsNeverLeakSecrets is the privacy
+// assertion (acceptance criterion 3): the signing secret, the Authorization
+// header, custom secret headers, and URL credentials/query string must never
+// appear anywhere in the captured DeliveryDetails. The marshaled JSON is
+// scanned end-to-end so a leak in any field is caught.
+func TestWebhookSender_Send_DeliveryDetailsNeverLeakSecrets(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`forbidden`))
+	}))
+	defer srv.Close()
+
+	secret := "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
+	const authToken = "Bearer super-secret-token-123"
+	const customSecret = "x-custom-api-key-value-456"
+
+	// A URL carrying userinfo credentials and a secret query string.
+	leakyURL := "http://user:p4ssw0rd@" +
+		srv.Listener.Addr().String() + "/hook?token=qsSecretXYZ&signature=abc"
+
+	payload := testPayload(models.JSONMap{
+		"url":                    leakyURL,
+		settingsKeySigningSecret: secret,
+		"headers": map[string]any{
+			"Authorization": authToken,
+			"X-Api-Key":     customSecret,
+		},
+	})
+
+	sender := &WebhookSender{}
+	err := sender.Send(context.Background(), newJobCtx(), payload)
+	r.ErrorIs(err, ErrWebhookRequestFailed)
+
+	d := payload.DeliveryDetails
+	r.NotNil(d)
+
+	// Serialize the whole struct and assert no secret material survives.
+	blob, marshalErr := json.Marshal(d)
+	r.NoError(marshalErr)
+	serialized := string(blob)
+
+	r.NotContains(serialized, secret, "signing secret must never be stored")
+	r.NotContains(serialized, "p4ssw0rd", "URL credentials must never be stored")
+	r.NotContains(serialized, "qsSecretXYZ", "URL query string must never be stored")
+	r.NotContains(serialized, "signature=abc", "URL query string must never be stored")
+	r.NotContains(serialized, authToken, "Authorization header must never be stored")
+	r.NotContains(serialized, customSecret, "custom secret headers must never be stored")
+
+	// The stored URL keeps only host + path.
+	r.NotContains(d.RequestURL, "@")
+	r.NotContains(d.RequestURL, "?")
+	r.Contains(d.RequestURL, "/hook")
+}
+
+// TestRedactURL covers URL stripping in isolation: query strings and userinfo
+// credentials are removed while scheme://host/path is retained; a malformed URL
+// never echoes its raw form.
+func TestRedactURL(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{"plain", "https://hooks.example.com/path", "https://hooks.example.com/path"},
+		{"query stripped", "https://h.example.com/p?token=abc", "https://h.example.com/p"},
+		{"userinfo stripped", "https://user:pass@h.example.com/p", "https://h.example.com/p"},
+		{"both stripped", "https://u:pw@h.example.com/p?x=1", "https://h.example.com/p"},
+		{"port kept", "http://h.example.com:8080/p", "http://h.example.com:8080/p"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			sub := require.New(t)
+			got := redactURL(tc.in)
+			sub.Equal(tc.want, got)
+			sub.NotContains(got, "token=")
+			sub.NotContains(got, "pass")
+			sub.NotContains(got, "@")
+		})
+	}
+}
+
+// TestCapBody verifies the 16 KB cap is applied and a truncation marker is
+// appended for oversized bodies.
+func TestCapBody(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	small := []byte("hello")
+	r.Equal("hello", models.CapBody(small))
+
+	oversized := make([]byte, models.DeliveryDetailsBodyCap+100)
+	for i := range oversized {
+		oversized[i] = 'a'
+	}
+	capped := models.CapBody(oversized)
+	r.LessOrEqual(len(capped), models.DeliveryDetailsBodyCap+len("\n…[truncated]"))
+	r.Contains(capped, "truncated")
+}
+
 // TestWebhookSender_Send_RelapseIncludesRecoveryPeriod verifies the recovery
 // period is included once a relapse has occurred.
 func TestWebhookSender_Send_RelapseIncludesRecoveryPeriod(t *testing.T) {

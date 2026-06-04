@@ -6,7 +6,9 @@ import {
   Copy,
   Ban,
   CheckCircle2,
+  ChevronRight,
   Clock,
+  Timer,
   XCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -133,6 +135,149 @@ function TargetSection({
   }
 
   return <span className="text-muted-foreground">—</span>;
+}
+
+/** Maps an HTTP status code to a Badge variant: 2xx success, 4xx/5xx error,
+ * everything else neutral. */
+function statusCodeVariant(
+  code: number,
+): "default" | "secondary" | "destructive" | "outline" {
+  if (code >= 200 && code < 300) return "default";
+  if (code >= 400) return "destructive";
+  return "secondary";
+}
+
+/** A collapsible monospace block with a copy-to-clipboard affordance, built on
+ * native <details>/<summary> so it stays keyboard-accessible and works on
+ * mobile without any JS-driven layout. Used for request/response bodies that
+ * can be long. */
+function CollapsibleCode({
+  label,
+  value,
+  defaultOpen = false,
+}: {
+  label: string;
+  value: string;
+  defaultOpen?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard requires a secure context; the value stays visible to copy by hand.
+    }
+  };
+
+  return (
+    <details className="group rounded-md border" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
+          <span className="truncate font-medium">{label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            void onCopy();
+          }}
+          aria-label={copied ? "Copied" : `Copy ${label}`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        </button>
+      </summary>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t bg-muted p-3 font-mono text-xs">
+        {value}
+      </pre>
+    </details>
+  );
+}
+
+/** The Delivery section: HTTP status badge, duration, stripped request URL, and
+ * collapsible copyable request/response bodies plus any allowlisted response
+ * headers. Rendered only when delivery artifacts were captured — returns null
+ * otherwise so older rows and non-HTTP channels show no empty box. */
+function DeliverySection({ notif }: { notif: IncidentNotification }) {
+  const d = notif.deliveryDetails;
+  if (!d) return null;
+
+  const hasAny =
+    d.httpStatusCode !== undefined ||
+    d.durationMs !== undefined ||
+    Boolean(d.requestUrl) ||
+    Boolean(d.requestBody) ||
+    Boolean(d.responseBody) ||
+    (d.responseHeaders && Object.keys(d.responseHeaders).length > 0);
+
+  if (!hasAny) return null;
+
+  const headerEntries = d.responseHeaders
+    ? Object.entries(d.responseHeaders)
+    : [];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Delivery</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4 text-sm">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          {d.httpStatusCode !== undefined && d.httpStatusCode > 0 && (
+            <span className="flex items-center gap-2">
+              <span className="text-muted-foreground">Status:</span>
+              <Badge variant={statusCodeVariant(d.httpStatusCode)}>
+                {d.httpStatusCode}
+              </Badge>
+            </span>
+          )}
+          {d.durationMs !== undefined && (
+            <span className="flex items-center gap-1.5 text-muted-foreground">
+              <Timer className="h-4 w-4" />
+              <span>{d.durationMs} ms</span>
+            </span>
+          )}
+        </div>
+
+        {d.requestUrl && (
+          <div className="space-y-1">
+            <div className="text-muted-foreground text-xs">Request URL</div>
+            <CopyableValue value={d.requestUrl} label="request URL" />
+          </div>
+        )}
+
+        {d.requestBody && (
+          <CollapsibleCode label="Request payload" value={d.requestBody} />
+        )}
+
+        {d.responseBody && (
+          <CollapsibleCode
+            label="Response body"
+            value={d.responseBody}
+            defaultOpen={notif.status === "failed"}
+          />
+        )}
+
+        {headerEntries.length > 0 && (
+          <div className="space-y-1">
+            <div className="text-muted-foreground text-xs">Response headers</div>
+            <div className="space-y-1">
+              {headerEntries.map(([name, val]) => (
+                <div key={name} className="flex flex-wrap gap-x-2 font-mono text-xs">
+                  <span className="text-muted-foreground">{name}:</span>
+                  <span className="break-all">{val}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 function NotificationDetailPage() {
@@ -273,6 +418,8 @@ function NotificationDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      <DeliverySection notif={data} />
 
       {hasIdentifiers && (
         <Card>

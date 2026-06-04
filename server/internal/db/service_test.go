@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -79,6 +80,83 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("AppSettings", func(t *testing.T) {
 		testAppSettings(ctx, t, svc)
 	})
+
+	t.Run("IncidentNotificationDeliveryDetails", func(t *testing.T) {
+		testIncidentNotificationDeliveryDetails(ctx, t, svc)
+	})
+}
+
+// testIncidentNotificationDeliveryDetails is the cross-engine parity guard for
+// the delivery_details column (acceptance criterion 4): a failed delivery
+// persists structured artifacts that round-trip identically on Postgres and
+// SQLite, and a row without details reads back as nil — no crash, no empty box.
+func testIncidentNotificationDeliveryDetails(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("dd-notif-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "dd-notif-check", "http")
+	r.NoError(svc.CreateCheck(ctx, check))
+
+	incident := models.NewIncident(org.UID, check.UID, time.Now(), "outage")
+	r.NoError(svc.CreateIncident(ctx, incident))
+
+	// Row WITH delivery details, written via the by-job failure path.
+	jobUID := uuid.New().String()
+	withDetails := models.NewIncidentNotificationForJob(
+		org.UID, incident.UID, "incident.created",
+		models.IncidentNotificationSourceCheckConnection,
+		"conn-1", jobUID, "webhook", nil, nil,
+	)
+	// No real integration row exists in this harness; clear the FK so the
+	// connection_uid -> integrations(uid) constraint is not exercised.
+	withDetails.ConnectionUID = nil
+	r.NoError(svc.CreateIncidentNotification(ctx, withDetails))
+
+	details := &models.DeliveryDetails{
+		HTTPStatusCode: 503,
+		RequestURL:     "https://hooks.example.com/path",
+		RequestBody:    `{"type":"incident.created"}`,
+		ResponseBody:   `{"error":"unavailable"}`,
+		DurationMs:     42,
+		ResponseHeaders: map[string]string{
+			"Retry-After": "120",
+		},
+	}
+	r.NoError(svc.MarkIncidentNotificationFailedByJob(
+		ctx, jobUID, time.Now(), "webhook request failed: status 503", false, details,
+	))
+
+	got, err := svc.GetIncidentNotification(ctx, org.UID, incident.UID, withDetails.UID)
+	r.NoError(err)
+	r.NotNil(got.DeliveryDetails, "delivery details must persist and read back")
+	r.Equal(503, got.DeliveryDetails.HTTPStatusCode)
+	r.Equal("https://hooks.example.com/path", got.DeliveryDetails.RequestURL)
+	r.Contains(got.DeliveryDetails.RequestBody, "incident.created")
+	r.Contains(got.DeliveryDetails.ResponseBody, "unavailable")
+	r.Equal(int64(42), got.DeliveryDetails.DurationMs)
+	r.Equal("120", got.DeliveryDetails.ResponseHeaders["Retry-After"])
+	r.Equal(models.IncidentNotificationStatusFailed, got.Status)
+
+	// Row WITHOUT delivery details reads back as nil (pre-feature / unsupported
+	// channel), proving the column is genuinely nullable on both engines.
+	jobUID2 := uuid.New().String()
+	noDetails := models.NewIncidentNotificationForJob(
+		org.UID, incident.UID, "incident.created",
+		models.IncidentNotificationSourceCheckConnection,
+		"conn-1", jobUID2, "email", nil, nil,
+	)
+	noDetails.ConnectionUID = nil
+	r.NoError(svc.CreateIncidentNotification(ctx, noDetails))
+	r.NoError(svc.MarkIncidentNotificationSentByJob(ctx, jobUID2, time.Now(), "msg-1", nil))
+
+	gotNil, err := svc.GetIncidentNotification(ctx, org.UID, incident.UID, noDetails.UID)
+	r.NoError(err)
+	r.Nil(gotNil.DeliveryDetails, "a row written without details must read back nil")
+	r.Equal(models.IncidentNotificationStatusSent, gotNil.Status)
 }
 
 func testEscalationPolicyByUIDOrSlug(ctx context.Context, t *testing.T, svc db.Service) {
