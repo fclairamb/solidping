@@ -35,7 +35,6 @@ import {
   useDeleteStatusUpdate,
   type Event,
   type IncidentDetail,
-  type IncidentNotification,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -89,6 +88,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import {
+  notificationStatusVariant,
+  sourceLabel,
+} from "@/lib/notifications";
 
 export const Route = createFileRoute("/orgs/$org/incidents/$incidentUid")({
   component: IncidentDetailPage,
@@ -1023,41 +1026,6 @@ function BlastRadiusCard({
 
 // ─── Notifications card ───────────────────────────────────────────────────────
 
-function notificationStatusVariant(
-  status: IncidentNotification["status"],
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "sent":
-      return "default";
-    case "failed":
-      return "destructive";
-    case "pending":
-      return "outline";
-    case "skipped":
-    case "cancelled":
-    default:
-      return "secondary";
-  }
-}
-
-function sourceLabel(source: string, repeatIndex?: number): string {
-  const cycle = repeatIndex !== undefined && repeatIndex > 0 ? ` (cycle ${repeatIndex + 1})` : "";
-  switch (source) {
-    case "check_connection":
-      return "Check connection";
-    case "escalation_user":
-      return `Escalation step${cycle}`;
-    case "escalation_schedule":
-      return `On-call schedule${cycle}`;
-    case "escalation_all_admins":
-      return `All admins${cycle}`;
-    case "escalation_connection":
-      return `Escalation connection${cycle}`;
-    default:
-      return source;
-  }
-}
-
 function NotificationsCard({
   org,
   incidentUid,
@@ -1065,9 +1033,16 @@ function NotificationsCard({
   org: string;
   incidentUid: string;
 }) {
+  const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
 
   const hasErrors = rows?.some((r) => r.error);
+
+  const openNotification = (notifUid: string) =>
+    navigate({
+      to: "/orgs/$org/incidents/$incidentUid/notifications/$notificationUid",
+      params: { org, incidentUid, notificationUid: notifUid },
+    });
 
   return (
     <Card data-testid="notifications-card">
@@ -1103,7 +1078,20 @@ function NotificationsCard({
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.uid}>
+                <TableRow
+                  key={row.uid}
+                  role="link"
+                  tabIndex={0}
+                  className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                  onClick={() => openNotification(row.uid)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openNotification(row.uid);
+                    }
+                  }}
+                  data-testid="notification-row"
+                >
                   <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
                     {new Date(row.createdAt).toLocaleString()}
                   </TableCell>

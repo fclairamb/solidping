@@ -637,6 +637,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	incidentNotifService := incidentnotifications.NewService(s.dbService)
 	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
 	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
+	orgIncidents.GET("/:uid/notifications/:notifUid", incidentNotifHandler.GetForIncident)
 	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
 		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
 	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).

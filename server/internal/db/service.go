@@ -259,6 +259,9 @@ type Service interface {
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
 	) ([]*models.IncidentNotificationRow, error)
+	GetIncidentNotification(
+		ctx context.Context, orgUID, incidentUID, notifUID string,
+	) (*models.IncidentNotificationRow, error)
 
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error

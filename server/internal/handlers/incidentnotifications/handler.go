@@ -36,6 +36,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrIncidentNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
+	case errors.Is(err, ErrNotificationNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification not found")
 	case errors.Is(err, ErrForbidden):
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
 	default:
@@ -90,6 +92,25 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req bunrouter.Requ
 	}
 
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
+
+// GetForIncident handles
+// GET /api/v1/orgs/:org/incidents/:uid/notifications/:notifUid.
+func (h *Handler) GetForIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	incidentUID := req.Param("uid")
+	notifUID := req.Param("notifUid")
+
+	detail, err := h.svc.GetForIncident(req.Context(), orgUID, incidentUID, notifUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, detail)
 }
 
 // ListForUser handles GET /api/v1/orgs/:org/users/:uid/notifications.
