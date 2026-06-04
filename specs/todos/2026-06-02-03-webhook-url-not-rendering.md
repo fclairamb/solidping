@@ -151,3 +151,22 @@ Details:
 - `server/internal/credmigrate/credmigrate.go` — pattern + invocation points for the backfill.
 - `server/internal/app/server.go:1772-1799`, `server/main.go:235-291` — backfill wiring.
 - `web/dash0/src/components/integrations/integration-form.tsx` — confirms no frontend change needed.
+
+## Implementation Plan
+
+1. **Registry fix** (`conn_secrets.go`): drop `url` from `ConnectionTypeWebhook`;
+   remove the discord/googlechat/mattermost entries (their only secret was
+   `webhook_url`); delete the now-unused `connKeyWebhookURL` constant.
+2. **Backfill** (`credmigrate/reconcile.go`): `ReconcileConnectionRegistry`
+   walks every org's connections, skips rows without a URL key still in
+   `settings_private_keys`, reconstitutes plaintext via
+   `MergeConfig(public, DecryptForOrg(private))`, re-splits with `SplitConfig`
+   against the new registry, re-encrypts remaining secrets (or nulls the
+   private columns via `IntegrationUpdate.ClearSettingsPrivate`), idempotent,
+   no-op when encryption disabled.
+3. **Wiring**: call the backfill from `MaybeAutoMigrateEncryption` (server.go)
+   and the `encrypt-credentials` CLI (main.go).
+4. **Tests**: integrations GetIntegration url/webhook_url for all four types
+   (encryption on/off); credentials registry no longer reports url/webhook_url;
+   credmigrate backfill (move, key removal, remaining-secret retention,
+   private-null, idempotency, disabled no-op).
