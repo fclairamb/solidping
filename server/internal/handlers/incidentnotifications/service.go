@@ -82,6 +82,17 @@ type incidentSubObject struct {
 	StartedAt time.Time `json:"startedAt"`
 }
 
+// NotificationDetail is the single-notification DTO. It is NotificationRow plus
+// the lifecycle/identifier fields that are stored but not surfaced in the list:
+// failedAt, cancelledAt and jobUid.
+type NotificationDetail struct {
+	NotificationRow
+
+	FailedAt    *time.Time `json:"failedAt,omitempty"`
+	CancelledAt *time.Time `json:"cancelledAt,omitempty"`
+	JobUID      *string    `json:"jobUid,omitempty"`
+}
+
 // ListFilter is passed by the handler to scope the DB query.
 type ListFilter struct {
 	IncidentUID   string
@@ -110,6 +121,40 @@ func (s *Service) ListForIncident(
 	filter.IncidentUID = incidentUID
 
 	return s.list(ctx, orgUID, filter)
+}
+
+// ErrNotificationNotFound is returned when the notification does not exist
+// within the given org and incident.
+var ErrNotificationNotFound = errors.New("notification not found")
+
+// GetForIncident returns a single notification by UID, scoped to the org and
+// incident. The org/incident pair is validated first (an unknown incident
+// yields ErrIncidentNotFound), then the single row is fetched (an unknown
+// notification yields ErrNotificationNotFound). A notification belonging to a
+// different org or incident is treated as not found — existence is never leaked
+// across tenants.
+func (s *Service) GetForIncident(
+	ctx context.Context, orgUID, incidentUID, notifUID string,
+) (*NotificationDetail, error) {
+	_, err := s.db.GetIncident(ctx, orgUID, incidentUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrIncidentNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	row, err := s.db.GetIncidentNotification(ctx, orgUID, incidentUID, notifUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotificationNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return toNotificationDetail(row), nil
 }
 
 // ListForUser returns notifications across all incidents for a specific user.
@@ -201,4 +246,13 @@ func toNotificationRow(src *models.IncidentNotificationRow) *NotificationRow {
 	}
 
 	return row
+}
+
+func toNotificationDetail(src *models.IncidentNotificationRow) *NotificationDetail {
+	return &NotificationDetail{
+		NotificationRow: *toNotificationRow(src),
+		FailedAt:        src.FailedAt,
+		CancelledAt:     src.CanceledAt,
+		JobUID:          src.JobUID,
+	}
 }
