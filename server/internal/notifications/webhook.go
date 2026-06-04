@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -188,21 +189,88 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 
 	client := &http.Client{Timeout: webhookTimeout}
 
+	// Capture structured delivery artifacts on both success and failure. The
+	// request URL is stripped of its query string and credentials before being
+	// recorded; the signing secret and any auth/custom headers are never stored.
+	details := &models.DeliveryDetails{
+		RequestURL:  redactURL(url),
+		RequestBody: models.CapBody(body),
+	}
+
+	start := time.Now()
 	resp, err := client.Do(req)
+	details.DurationMs = time.Since(start).Milliseconds()
+
 	if err != nil {
+		// Transport error (no response): keep the partial details (url, body,
+		// duration) so the failure is still debuggable.
+		payload.DeliveryDetails = details
+
 		return fmt.Errorf("sending webhook: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, models.DeliveryDetailsBodyCap+1))
 
+	details.HTTPStatusCode = resp.StatusCode
+	details.ResponseBody = models.CapBody(respBody)
+	details.ResponseHeaders = allowlistedResponseHeaders(resp.Header)
+	payload.DeliveryDetails = details
+
+	if resp.StatusCode >= 300 {
 		return fmt.Errorf("%w: status %d: %s", ErrWebhookRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil
+}
+
+// allowlistedResponseHeaders extracts a small, fixed set of safe response
+// headers worth surfacing for debugging. Request-side secret headers are never
+// read here — only the receiver's response headers, and only the allowlist.
+func allowlistedResponseHeaders(h http.Header) map[string]string {
+	allow := []string{"Retry-After", "Content-Type"}
+
+	out := make(map[string]string, len(allow))
+	for _, name := range allow {
+		if v := h.Get(name); v != "" {
+			out[name] = v
+		}
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	return out
+}
+
+// redactURL strips the query string and any userinfo (credentials) from a URL,
+// returning scheme://host/path. A URL that fails to parse falls back to its host
+// portion only, never the raw string, so credentials in a malformed URL still
+// cannot leak.
+func redactURL(raw string) string {
+	parsed, err := neturl.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		// Fall back to the host:port prefix at best; never echo the raw URL.
+		if i := strings.Index(raw, "?"); i >= 0 {
+			raw = raw[:i]
+		}
+		if at := strings.LastIndex(raw, "@"); at >= 0 {
+			raw = raw[at+1:]
+		}
+
+		return raw
+	}
+
+	redacted := neturl.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host, // host:port only — User (credentials) is dropped
+		Path:   parsed.Path,
+	}
+
+	return redacted.String()
 }
 
 // isStandardWebhookHeader reports whether a custom header would clobber one of
