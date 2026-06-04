@@ -280,12 +280,22 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("encrypt-credentials failed: %w", err)
 	}
 
+	// Reconcile URL fields to public settings (idempotent one-shot backfill).
+	recStats, recErr := credmigrate.ReconcileConnectionRegistry(ctx, dbSvc, creds, credmigrate.Options{
+		DryRun: dryRun,
+		Logger: slog.Default(),
+	})
+	if recErr != nil {
+		return fmt.Errorf("encrypt-credentials reconcile failed: %w", recErr)
+	}
+
 	slog.InfoContext(ctx, "encrypt-credentials done",
 		"dryRun", dryRun,
 		"checksScanned", stats.ChecksScanned,
 		"checksMigrated", stats.ChecksMigrated,
 		"connectionsScanned", stats.ConnectionsScanned,
-		"connectionsMigrated", stats.ConnectionsMigrated)
+		"connectionsMigrated", stats.ConnectionsMigrated,
+		"connectionsReconciled", recStats.ConnectionsReconciled)
 
 	return nil
 }
