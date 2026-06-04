@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -113,6 +114,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
   { id: "feedback", label: "Feedback" },
+  { id: "label-filter", label: "Label filter" },
   { id: "kpi-tiles", label: "KPI tiles" },
 ];
 
@@ -135,6 +137,7 @@ function DesignReferencePage() {
       <FormsSection />
       <DataDisplaySection />
       <FeedbackSection />
+      <LabelFilterSection />
       <KpiTileSection />
     </div>
   );
@@ -1125,6 +1128,44 @@ function BrandSection() {
           />
         </div>
       </div>
+    </Section>
+  );
+}
+
+function LabelFilterSection() {
+  const { org } = Route.useParams();
+  const [labels, setLabels] = useState<Record<string, string>>({
+    env: "prod",
+  });
+  const snippet = `import { LabelFilter } from "@/components/shared/label-filter";
+
+// Faceted label picker for list toolbars. Applied filters render as removable
+// chips; the compact "+ Label" trigger opens one popover with a guided two-step
+// cmdk list (pick a key, then pick/type a value). Selecting a value applies
+// immediately — no Add button. The caller owns URL serialization via onChange.
+<LabelFilter
+  org={org}
+  value={labelFilters}
+  onChange={(next) => {
+    const serialized = serializeLabelsParam(next);
+    void navigate({
+      search: (prev) => ({ ...prev, labels: serialized || undefined }),
+      replace: true,
+    });
+  }}
+/>`;
+  return (
+    <Section
+      id="label-filter"
+      title="Label filter"
+      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Applied filters are removable chips; the compact + Label trigger opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
+    >
+      <ExampleRow
+        preview={
+          <LabelFilter org={org} value={labels} onChange={setLabels} />
+        }
+        importLine={snippet}
+      />
     </Section>
   );
 }
