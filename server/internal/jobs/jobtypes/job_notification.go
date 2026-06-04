@@ -195,23 +195,24 @@ func (r *NotificationJobRun) sendAndAudit(
 		// so a subsequent retry can update it.
 		if notifications.IsNetworkError(err) {
 			_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
-				ctx, jctx.Job.UID, time.Now(), err.Error(), true,
+				ctx, jctx.Job.UID, time.Now(), err.Error(), true, payload.DeliveryDetails,
 			)
 
 			return jobdef.NewRetryableError(err)
 		}
 
 		_ = jctx.DBService.MarkIncidentNotificationFailedByJob(
-			ctx, jctx.Job.UID, time.Now(), err.Error(), false,
+			ctx, jctx.Job.UID, time.Now(), err.Error(), false, payload.DeliveryDetails,
 		)
 
 		return err
 	}
 
 	// Most senders have no message_id. Webhook senders set the Standard
-	// Webhooks `webhook-id` on the payload; surface it on the audit row.
+	// Webhooks `webhook-id` on the payload; surface it on the audit row, along
+	// with any captured delivery artifacts.
 	_ = jctx.DBService.MarkIncidentNotificationSentByJob(
-		ctx, jctx.Job.UID, time.Now(), payload.MessageID,
+		ctx, jctx.Job.UID, time.Now(), payload.MessageID, payload.DeliveryDetails,
 	)
 
 	return nil
