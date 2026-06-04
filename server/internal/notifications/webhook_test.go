@@ -503,7 +503,7 @@ func TestWebhookSender_Send_DeliveryDetailsNeverLeakSecrets(t *testing.T) {
 	defer srv.Close()
 
 	secret := "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw"
-	const authToken = "Bearer super-secret-token-123" //nolint:gosec // test fixture, not a real credential
+	const authToken = "Bearer super-secret-token-123"
 	const customSecret = "x-custom-api-key-value-456"
 
 	// A URL carrying userinfo credentials and a secret query string.

@@ -30,13 +30,16 @@ func TestDeliveryDetails_ValueScanRoundTrip(t *testing.T) {
 	stored, err := original.Value()
 	r.NoError(err)
 
+	storedStr, ok := stored.(string)
+	r.True(ok, "Value must produce a JSON string")
+
 	// Scan from the string form (SQLite) and the []byte form (Postgres jsonb).
 	var fromString DeliveryDetails
-	r.NoError(fromString.Scan(stored))
+	r.NoError(fromString.Scan(storedStr))
 	r.Equal(*original, fromString)
 
 	var fromBytes DeliveryDetails
-	r.NoError(fromBytes.Scan([]byte(stored.(string))))
+	r.NoError(fromBytes.Scan([]byte(storedStr)))
 	r.Equal(*original, fromBytes)
 }
 
