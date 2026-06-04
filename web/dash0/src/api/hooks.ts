@@ -890,6 +890,20 @@ export interface IncidentNotificationIncident {
   startedAt: string;
 }
 
+/** Structured per-attempt delivery artifacts captured by the channel sender
+ * (webhook today; other channels fill what they can). Every field is optional;
+ * the whole object is absent for pre-feature rows and channels that produce no
+ * artifacts. Secrets (signing secret, auth headers, URL credentials) are never
+ * present — they are stripped server-side before persistence. */
+export interface NotificationDeliveryDetails {
+  httpStatusCode?: number;
+  requestUrl?: string;
+  requestBody?: string;
+  responseBody?: string;
+  durationMs?: number;
+  responseHeaders?: Record<string, string>;
+}
+
 export interface IncidentNotification {
   uid: string;
   incidentUid: string;
@@ -907,6 +921,7 @@ export interface IncidentNotification {
   failedAt?: string;
   cancelledAt?: string;
   jobUid?: string;
+  deliveryDetails?: NotificationDeliveryDetails;
   user: IncidentNotificationUser | null;
   connection: IncidentNotificationConnection | null;
   incident?: IncidentNotificationIncident;
