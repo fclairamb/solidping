@@ -98,7 +98,7 @@ func TestGetForIncidentHandlerFound(t *testing.T) {
 	r.Equal("failed", body["status"])
 	r.Equal("webhook request failed: status 429", body["error"])
 	r.NotEmpty(body["failedAt"])
-	// A failed notification was never sent or cancelled.
+	// A failed notification was never sent or canceled.
 	r.Nil(body["sentAt"])
 	r.Nil(body["cancelledAt"])
 }

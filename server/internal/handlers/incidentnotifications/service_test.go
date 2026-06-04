@@ -87,7 +87,7 @@ func TestGetForIncidentFound(t *testing.T) {
 	r.Equal("msg-123", *detail.MessageID)
 	r.NotNil(detail.User)
 	r.Equal("Alice", detail.User.Name)
-	// A sent notification has no failed/cancelled timestamps.
+	// A sent notification has no failed/canceled timestamps.
 	r.Nil(detail.FailedAt)
 	r.Nil(detail.CancelledAt)
 }
