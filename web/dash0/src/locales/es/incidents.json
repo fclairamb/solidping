@@ -30,6 +30,8 @@
   "escalated": "Escalado",
   "fallbackTitle": "Incidente",
   "actions": {
+    "back": "Volver a incidentes",
+    "refresh": "Actualizar",
     "acknowledge": "Reconocer",
     "unacknowledge": "Anular reconocimiento",
     "snooze": "Posponer…",

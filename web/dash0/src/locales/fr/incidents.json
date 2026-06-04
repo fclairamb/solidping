@@ -30,6 +30,8 @@
   "escalated": "Escaladé",
   "fallbackTitle": "Incident",
   "actions": {
+    "back": "Retour aux incidents",
+    "refresh": "Actualiser",
     "acknowledge": "Acquitter",
     "unacknowledge": "Annuler l'acquittement",
     "snooze": "Mettre en pause…",
