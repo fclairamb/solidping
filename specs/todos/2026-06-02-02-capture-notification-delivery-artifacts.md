@@ -123,3 +123,49 @@ channel-shaped and belongs in JSON.
 4. SQLite and Postgres behave identically.
 5. Rows without details (pre-migration / unsupported channel) render the page
    without the Delivery section — no crash, no empty box.
+
+## Implementation Plan
+
+### Backend
+1. **Migration 036** — `036_incident_notification_delivery_details.(up|down).sql`
+   in both `postgres/migrations` and `sqlite/migrations`. Adds one nullable
+   `delivery_details` column: Postgres `jsonb`, SQLite `text`. Down drops it.
+2. **Model field** — add `DeliveryDetails *models.DeliveryDetails` to
+   `IncidentNotification` (`delivery_details,type:jsonb,nullzero`). Define a typed
+   `DeliveryDetails` struct in `models` with `Value`/`Scan` (driver.Valuer /
+   sql.Scanner) so it persists as JSON on both engines. All fields `omitempty`.
+3. **Sender DeliveryResult** — carry structured delivery info back via a
+   `DeliveryDetails *models.DeliveryDetails` field on `notifications.Payload`
+   (same side-channel pattern as the existing `MessageID`), avoiding a breaking
+   change to the `Sender` interface across all 11 senders.
+4. **webhook.go capture + redaction** — in `Send`, measure duration, capture
+   `httpStatusCode`, `requestUrl` (host+path only — query string and userinfo
+   stripped via a `redactURL` helper), `requestBody` (capped 16 KB), and
+   `responseBody` (capped 16 KB, read on every response not just non-2xx).
+   Allowlist a small set of response headers (`Retry-After`, `Content-Type`).
+   Never store the signing secret, `Authorization`, or custom headers.
+5. **DB read/write parity** — extend `MarkIncidentNotificationSentByJob` and
+   `MarkIncidentNotificationFailedByJob` (postgres + sqlite + `db.Service`
+   interface) to also set `delivery_details`. The notification job
+   (`sendAndAudit`) passes `payload.DeliveryDetails` through. `GetIncidentNotification`
+   already does `n.*` so the column is read automatically.
+6. **DTO** — add `DeliveryDetails *models.DeliveryDetails` (JSON key
+   `deliveryDetails,omitempty`) to `NotificationDetail` and map it in
+   `toNotificationDetail`.
+
+### Frontend
+7. **Type** — add `deliveryDetails?: DeliveryDetails` to the `IncidentNotification`
+   interface in `hooks.ts`.
+8. **Delivery section** — on the detail page add a Delivery card rendered only
+   when `deliveryDetails` is present: status-code badge, durationMs, requestUrl,
+   request payload (collapsible `<details>`, monospace, copyable), response body
+   (collapsible, copyable), and any allowlisted response headers. Hidden entirely
+   when absent. Add a Collapsible entry to the design reference.
+
+### Tests
+9. **Unit** — webhook sender test: a failing webhook (non-2xx) populates
+   `DeliveryDetails` with status code + capped response body + request payload,
+   and a test asserting the signing secret / Authorization header / URL
+   credentials never appear in the stored details.
+10. **e2e** — extend `notification-detail.spec.ts`: a failed webhook surfaces the
+    Delivery section with a status-code badge and copyable bodies.
