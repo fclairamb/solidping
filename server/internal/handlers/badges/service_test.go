@@ -936,7 +936,8 @@ func TestComputeUptimeBarValues7d(t *testing.T) {
 		bucketStart.Add(4 * day): 0,    // outage day
 	}
 
-	values := computeUptimeBarValues(availMap, bucketStart, 7, day)
+	// 7d / 300 px → segWidth (300-6)/7 = 42 > 30 → overlay populated.
+	values := computeUptimeBarValues(availMap, bucketStart, 7, day, 300)
 
 	r.Len(values, 7)
 	r.Equal("100%", values[0])
@@ -948,6 +949,29 @@ func TestComputeUptimeBarValues7d(t *testing.T) {
 	r.Empty(values[6])
 }
 
+func TestComputeUptimeBarValues7dNarrowWidthIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+
+	availMap := map[time.Time]float64{
+		bucketStart:              100,
+		bucketStart.Add(2 * day): 98.6,
+		bucketStart.Add(4 * day): 0,
+	}
+
+	// 7d / 200 px → segWidth (200-6)/7 = 27 <= 30 → no overlay.
+	values := computeUptimeBarValues(availMap, bucketStart, 7, day, 200)
+	r.Len(values, 7)
+
+	for i, v := range values {
+		r.Empty(v, "value %d should be empty for narrow 7d badge", i)
+	}
+}
+
 func TestComputeUptimeBarValuesNon7dIsEmpty(t *testing.T) {
 	t.Parallel()
 
@@ -955,7 +979,9 @@ func TestComputeUptimeBarValuesNon7dIsEmpty(t *testing.T) {
 
 	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
 
-	// 24h, 30d and 90d bars are too thin for an in-bar percentage → all-empty.
+	// At 300 px, 24h/30d/90d bars are too thin for an in-bar percentage:
+	//   24h → (300-23)/24 = 11 px, 30d → (300-29)/30 = 9 px, 90d → (300-89)/90 = 2 px.
+	// All <= 30 → all-empty.
 	for _, tc := range []struct {
 		n        int
 		duration time.Duration
@@ -965,11 +991,49 @@ func TestComputeUptimeBarValuesNon7dIsEmpty(t *testing.T) {
 		{90, 24 * time.Hour},
 	} {
 		availMap := map[time.Time]float64{bucketStart: 99.5}
-		values := computeUptimeBarValues(availMap, bucketStart, tc.n, tc.duration)
+		values := computeUptimeBarValues(availMap, bucketStart, tc.n, tc.duration, 300)
 		r.Len(values, tc.n)
 
 		for i, v := range values {
 			r.Empty(v, "n=%d duration=%s value %d should be empty", tc.n, tc.duration, i)
+		}
+	}
+}
+
+// TestComputeUptimeBarValuesSegWidthThreshold pins the exact 30 px boundary
+// independent of period: the overlay appears only when segWidth > 30.
+func TestComputeUptimeBarValuesSegWidthThreshold(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	bucketStart := time.Date(2026, 1, 7, 0, 0, 0, 0, time.UTC)
+	day := 24 * time.Hour
+
+	for _, tc := range []struct {
+		name     string
+		n        int
+		width    int
+		segWidth int
+		show     bool
+	}{
+		// (width - (n-1)) / n
+		{"7d/300px=42", 7, 300, 42, true},
+		{"7d/200px=27", 7, 200, 27, false},
+		{"30d/300px=9", 30, 300, 9, false},
+		{"24h/300px=11", 24, 300, 11, false},
+		// Boundary: exactly 30 is suppressed (<=), 31 shows (>).
+		{"5segs/154px=30", 5, 154, 30, false},
+		{"5segs/159px=31", 5, 159, 31, true},
+	} {
+		availMap := map[time.Time]float64{bucketStart: 99.5}
+		values := computeUptimeBarValues(availMap, bucketStart, tc.n, day, tc.width)
+		r.Len(values, tc.n)
+
+		if tc.show {
+			r.Equal("99.5%", values[0], "%s: expected overlay (segWidth=%d)", tc.name, tc.segWidth)
+		} else {
+			r.Empty(values[0], "%s: expected no overlay (segWidth=%d)", tc.name, tc.segWidth)
 		}
 	}
 }
