@@ -213,7 +213,7 @@ func (s *Service) appendRowFragments(
 	if hasBar {
 		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
 		labels := computeUptimeBarLabels(bucketStart, n, bucketDuration)
-		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration)
+		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration, width)
 		yOffset := totalHeight + rowGap
 		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
@@ -382,17 +382,33 @@ func computeUptimeBarLabels(bucketStart time.Time, n int, bucketDuration time.Du
 	}
 }
 
+// uptimeBarOverlayMinSegWidth is the minimum rendered segment width (px) at
+// which a per-segment availability percentage is overlaid inside the bar.
+// Below this, segments are too narrow to fit the text. 30 px matches the prior
+// implicit behaviour (7d/300px shows at 42 px, 7d/200px hides at 27 px).
+const uptimeBarOverlayMinSegWidth = 30
+
 // computeUptimeBarValues returns the per-segment availability percentage to
-// overlay inside each colored bar. Only the 7d layout (7 daily buckets) has
-// bars wide enough to fit a percentage, so every other period returns an
-// all-empty slice (no overlay). Segments with no data (gray) get an empty
-// string. This is a pure function (no DB access).
+// overlay inside each colored bar. The overlay only appears when each segment is
+// rendered wide enough to fit the text — i.e. the minimum segment width exceeds
+// uptimeBarOverlayMinSegWidth — regardless of the active period or badge width.
+// renderUptimeBarRow splits the bar into n segments with 1-px gaps, so
+// segWidth = (width - (n - 1)) / n (integer division; the last segment absorbs
+// the remainder and is therefore always >= segWidth). When segments are too
+// narrow, every period returns an all-empty slice (no overlay). Segments with no
+// data (gray) get an empty string. This is a pure function (no DB access).
 func computeUptimeBarValues(
 	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+	width int,
 ) []string {
 	values := make([]string, n)
 
-	if bucketDuration != 24*time.Hour || n != 7 {
+	// Only overlay text when segments are wide enough to fit it.
+	segWidth := 0
+	if n > 0 {
+		segWidth = (width - (n - 1)) / n
+	}
+	if segWidth <= uptimeBarOverlayMinSegWidth {
 		return values
 	}
 
