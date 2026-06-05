@@ -385,7 +385,7 @@ func computeUptimeBarLabels(bucketStart time.Time, n int, bucketDuration time.Du
 // uptimeBarOverlayMinSegWidth is the minimum rendered segment width (px) at
 // which a per-segment availability percentage is overlaid inside the bar.
 // Below this, segments are too narrow to fit the text. 30 px matches the prior
-// implicit behaviour (7d/300px shows at 42 px, 7d/200px hides at 27 px).
+// implicit behavior (7d/300px shows at 42 px, 7d/200px hides at 27 px).
 const uptimeBarOverlayMinSegWidth = 30
 
 // computeUptimeBarValues returns the per-segment availability percentage to
