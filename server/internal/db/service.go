@@ -229,18 +229,21 @@ type Service interface {
 	CountFailingIncidentMembers(ctx context.Context, incidentUID string) (int, error)
 
 	// Check status update
-	UpdateCheckStatus(
-		ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
-	) error
-	// UpdateCheckIncidentClocks updates the time-based incident clocks
-	// (first_failure_at / first_success_since_failure_at) for a check.
-	// Tri-state: nil + !clear means leave as-is; nil + clear writes NULL;
-	// non-nil writes the value. See spec
-	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
-	UpdateCheckIncidentClocks(
-		ctx context.Context, checkUID string,
-		firstFailureAt *time.Time, clearFirstFailure bool,
-		firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+	//
+	// UpdateCheckStatusAndClocks writes the check's status, streak,
+	// status_changed_at and both incident clocks (first_failure_at /
+	// first_success_since_failure_at) in a single atomic UPDATE. statusChangedAt
+	// is written only when non-nil. The clock fields use the IncidentClockUpdate
+	// tri-state: nil + !clear leaves the column untouched, nil + clear writes
+	// NULL, non-nil writes the value. updated_at is written once. See spec
+	// 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
+	UpdateCheckStatusAndClocks(
+		ctx context.Context,
+		checkUID string,
+		status models.CheckStatus,
+		streak int,
+		statusChangedAt *time.Time,
+		clocks models.IncidentClockUpdate,
 	) error
 
 	// Event operations
@@ -436,7 +439,13 @@ type Service interface {
 	DeleteMaintenanceWindow(ctx context.Context, orgUID, uid string) error
 	SetMaintenanceWindowChecks(ctx context.Context, windowUID string, checkUIDs, checkGroupUIDs []string) error
 	ListMaintenanceWindowChecks(ctx context.Context, windowUID string) ([]*models.MaintenanceWindowCheck, error)
-	IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error)
+	// ListMaintenanceWindowsForCheck returns every non-deleted maintenance
+	// window linked to the check (directly or via its group), without
+	// evaluating recurrence or filtering by start time. Callers decide
+	// active/inactive via models.IsActiveAt. Returns the raw window rows so an
+	// in-process TTL cache can re-evaluate them at the current clock without
+	// re-querying. See spec 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
+	ListMaintenanceWindowsForCheck(ctx context.Context, checkUID string) ([]*models.MaintenanceWindow, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error

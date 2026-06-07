@@ -90,9 +90,11 @@ func (s *validatingSetup) submit(t *testing.T, status models.ResultStatus) {
 // after the configured period passes; we'd otherwise need a fake clock.
 func (s *validatingSetup) backdateFirstFailure(t *testing.T, ago time.Duration) {
 	t.Helper()
+	c := s.reload(t)
 	past := time.Now().Add(-ago)
-	require.NoError(t, s.dbSvc.UpdateCheckIncidentClocks(
-		t.Context(), s.check.UID, &past, false, nil, false,
+	require.NoError(t, s.dbSvc.UpdateCheckStatusAndClocks(
+		t.Context(), s.check.UID, c.Status, c.StatusStreak, nil,
+		models.IncidentClockUpdate{FirstFailureAt: &past},
 	))
 	s.check.FirstFailureAt = &past
 }
@@ -214,4 +216,68 @@ func TestRecoveryFlapResetsClock(t *testing.T) {
 		"failure during recovery window clears first_success_since_failure_at")
 	r.True(s.hasActiveIncident(t),
 		"incident remains open after flap")
+}
+
+// TestUpdateCheckStatusAndClocksTriState pins the tri-state clock semantics of
+// the merged UPDATE for all three branches per field, against the real sqlite
+// backend: nil + !clear leaves the column untouched, nil + clear writes NULL,
+// non-nil writes the value. It also confirms status/streak/status_changed_at
+// land in the same call.
+func TestUpdateCheckStatusAndClocksTriState(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	s := newValidatingSetup(t, 0)
+	ctx := t.Context()
+
+	// Seed both clocks with known non-nil values via the merged UPDATE.
+	seedFail := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Second)
+	seedSucc := time.Now().Add(-5 * time.Minute).UTC().Truncate(time.Second)
+	r.NoError(s.dbSvc.UpdateCheckStatusAndClocks(
+		ctx, s.check.UID, models.CheckStatusDown, 3, nil,
+		models.IncidentClockUpdate{FirstFailureAt: &seedFail, FirstSuccessSinceFailureAt: &seedSucc},
+	))
+
+	c := s.reload(t)
+	r.Equal(models.CheckStatusDown, c.Status, "non-nil status written")
+	r.Equal(3, c.StatusStreak, "streak written")
+	r.NotNil(c.FirstFailureAt)
+	r.NotNil(c.FirstSuccessSinceFailureAt)
+	r.WithinDuration(seedFail, c.FirstFailureAt.UTC(), time.Second, "non-nil clock value written")
+	r.WithinDuration(seedSucc, c.FirstSuccessSinceFailureAt.UTC(), time.Second)
+
+	// Branch (a) nil + !clear → both clock columns must stay untouched.
+	r.NoError(s.dbSvc.UpdateCheckStatusAndClocks(
+		ctx, s.check.UID, models.CheckStatusValidating, 4, nil,
+		models.IncidentClockUpdate{},
+	))
+	c = s.reload(t)
+	r.Equal(models.CheckStatusValidating, c.Status)
+	r.Equal(4, c.StatusStreak)
+	r.NotNil(c.FirstFailureAt, "nil + !clear must leave first_failure_at untouched")
+	r.NotNil(c.FirstSuccessSinceFailureAt, "nil + !clear must leave first_success_since_failure_at untouched")
+	r.WithinDuration(seedFail, c.FirstFailureAt.UTC(), time.Second)
+	r.WithinDuration(seedSucc, c.FirstSuccessSinceFailureAt.UTC(), time.Second)
+
+	// Branch (b) nil + clear → both clock columns must become NULL.
+	r.NoError(s.dbSvc.UpdateCheckStatusAndClocks(
+		ctx, s.check.UID, models.CheckStatusUp, 1, nil,
+		models.IncidentClockUpdate{ClearFirstFailureAt: true, ClearFirstSuccessSinceFailureAt: true},
+	))
+	c = s.reload(t)
+	r.Nil(c.FirstFailureAt, "nil + clear must write NULL to first_failure_at")
+	r.Nil(c.FirstSuccessSinceFailureAt, "nil + clear must write NULL to first_success_since_failure_at")
+
+	// Branch (c) non-nil again on a now-NULL column → value written.
+	newFail := time.Now().Add(-1 * time.Minute).UTC().Truncate(time.Second)
+	changedAt := time.Now().UTC().Truncate(time.Second)
+	r.NoError(s.dbSvc.UpdateCheckStatusAndClocks(
+		ctx, s.check.UID, models.CheckStatusDown, 2, &changedAt,
+		models.IncidentClockUpdate{FirstFailureAt: &newFail},
+	))
+	c = s.reload(t)
+	r.NotNil(c.FirstFailureAt, "non-nil must write the value")
+	r.WithinDuration(newFail, c.FirstFailureAt.UTC(), time.Second)
+	r.Nil(c.FirstSuccessSinceFailureAt, "untouched-on-this-call column stays NULL")
+	r.NotNil(c.StatusChangedAt, "non-nil statusChangedAt written")
+	r.WithinDuration(changedAt, c.StatusChangedAt.UTC(), time.Second)
 }
