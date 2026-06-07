@@ -272,6 +272,24 @@ func TestClaimJobs(t *testing.T) {
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should return empty slice when no jobs available")
 	})
+
+	t.Run("AttachesCheckAtClaimTime", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-9*time.Second), nil)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(jobs), 2)
+
+		for _, j := range jobs {
+			require.NotNil(t, j.Check, "every claimed job must have its check attached")
+			assert.Equal(t, j.CheckUID, j.Check.UID, "attached check must match the job's check_uid")
+			assert.Equal(t, j.OrganizationUID, j.Check.OrganizationUID)
+		}
+	})
 }
 
 //nolint:paralleltest // Test shares database state
@@ -363,6 +381,19 @@ func TestClaimJobsForCheck(t *testing.T) {
 		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, uuid.NewString())
 		require.NoError(t, err)
 		assert.Empty(t, jobs)
+	})
+
+	t.Run("AttachesCheckAtClaimTime", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		target := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+
+		jobs, err := svc.ClaimJobsForCheck(ctx, worker.UID, nil, target.CheckUID)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1)
+		require.NotNil(t, jobs[0].Check, "express-claimed job must have its check attached")
+		assert.Equal(t, target.CheckUID, jobs[0].Check.UID)
 	})
 }
 
