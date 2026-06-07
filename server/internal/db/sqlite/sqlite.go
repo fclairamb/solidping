@@ -3865,18 +3865,19 @@ func (s *Service) ListMaintenanceWindowChecks(
 	return checks, err
 }
 
-// IsCheckInActiveMaintenance checks if a check is currently in an active maintenance window.
-// It checks both direct check associations and check group associations.
-func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
-	now := time.Now()
-
-	// Find all maintenance windows linked to this check (directly or via group)
+// ListMaintenanceWindowsForCheck returns every non-deleted maintenance window
+// linked to the check directly or via its group. It does not filter by start
+// time or evaluate recurrence — callers decide active/inactive via
+// models.IsActiveAt so an in-process TTL cache can re-evaluate the same rows at
+// a later clock (including windows that only become active after the fetch).
+func (s *Service) ListMaintenanceWindowsForCheck(
+	ctx context.Context, checkUID string,
+) ([]*models.MaintenanceWindow, error) {
 	var windows []*models.MaintenanceWindow
 
 	err := s.db.NewSelect().
 		Model(&windows).
 		Where("deleted_at IS NULL").
-		Where("start_at <= ?", now).
 		Where(`uid IN (
 			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
 			WHERE mwc.check_uid = ?
@@ -3887,16 +3888,10 @@ func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID strin
 		)`, checkUID, checkUID).
 		Scan(ctx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	for _, window := range windows {
-		if models.IsActiveAt(window, now) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return windows, nil
 }
 
 // CreateFile inserts a new file row.

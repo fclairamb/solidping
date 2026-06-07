@@ -995,7 +995,9 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 	panic("not implemented")
 }
 
-func (m *mockDBService) IsCheckInActiveMaintenance(_ context.Context, _ string) (bool, error) {
+func (m *mockDBService) ListMaintenanceWindowsForCheck(
+	_ context.Context, _ string,
+) ([]*models.MaintenanceWindow, error) {
 	panic("not implemented")
 }
 

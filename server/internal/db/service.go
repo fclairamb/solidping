@@ -439,7 +439,13 @@ type Service interface {
 	DeleteMaintenanceWindow(ctx context.Context, orgUID, uid string) error
 	SetMaintenanceWindowChecks(ctx context.Context, windowUID string, checkUIDs, checkGroupUIDs []string) error
 	ListMaintenanceWindowChecks(ctx context.Context, windowUID string) ([]*models.MaintenanceWindowCheck, error)
-	IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error)
+	// ListMaintenanceWindowsForCheck returns every non-deleted maintenance
+	// window linked to the check (directly or via its group), without
+	// evaluating recurrence or filtering by start time. Callers decide
+	// active/inactive via models.IsActiveAt. Returns the raw window rows so an
+	// in-process TTL cache can re-evaluate them at the current clock without
+	// re-querying. See spec 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
+	ListMaintenanceWindowsForCheck(ctx context.Context, checkUID string) ([]*models.MaintenanceWindow, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error
