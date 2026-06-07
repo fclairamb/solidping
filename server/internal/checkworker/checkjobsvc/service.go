@@ -174,7 +174,7 @@ func attachChecks(ctx context.Context, tx bun.Tx, jobs []*models.CheckJob) error
 	var checks []*models.Check
 	if err := tx.NewSelect().
 		Model(&checks).
-		Where("uid IN (?)", bun.In(checkUIDs)).
+		Where("uid IN (?)", bun.List(checkUIDs)).
 		Where("deleted_at IS NULL").
 		Scan(ctx); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
