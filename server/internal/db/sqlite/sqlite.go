@@ -2309,8 +2309,20 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 	return incidents, nil
 }
 
-func (s *Service) UpdateCheckStatus(
-	ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
+// UpdateCheckStatusAndClocks writes the check's status, streak,
+// status_changed_at and both incident clocks in a single atomic UPDATE,
+// replacing the former separate UpdateCheckStatus + UpdateCheckIncidentClocks
+// round-trips. statusChangedAt is written only when non-nil. The clock fields
+// use IncidentClockUpdate's tri-state (nil + !clear leaves the column
+// untouched, nil + clear writes NULL, non-nil writes the value). updated_at is
+// written once.
+func (s *Service) UpdateCheckStatusAndClocks(
+	ctx context.Context,
+	checkUID string,
+	status models.CheckStatus,
+	streak int,
+	statusChangedAt *time.Time,
+	clocks models.IncidentClockUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
@@ -2320,47 +2332,19 @@ func (s *Service) UpdateCheckStatus(
 		Set("status_streak = ?", streak).
 		Set("updated_at = ?", time.Now())
 
-	if changedAt != nil {
-		query = query.Set("status_changed_at = ?", *changedAt)
+	if statusChangedAt != nil {
+		query = query.Set("status_changed_at = ?", *statusChangedAt)
 	}
 
-	_, err := query.Exec(ctx)
-
-	return err
-}
-
-// UpdateCheckIncidentClocks persists the FirstFailureAt and
-// FirstSuccessSinceFailureAt timestamps used by the time-based incident
-// state machine. nil set/true clear behaves as a tri-state: nil and
-// !clear means "leave as-is" (we do not write the column at all).
-func (s *Service) UpdateCheckIncidentClocks(
-	ctx context.Context, checkUID string,
-	firstFailureAt *time.Time, clearFirstFailure bool,
-	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
-) error {
-	query := s.db.NewUpdate().
-		Model((*models.Check)(nil)).
-		Where("uid = ?", checkUID).
-		Where("deleted_at IS NULL").
-		Set("updated_at = ?", time.Now())
-
-	wrote := false
-	if firstFailureAt != nil {
-		query = query.Set("first_failure_at = ?", *firstFailureAt)
-		wrote = true
-	} else if clearFirstFailure {
+	if clocks.FirstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *clocks.FirstFailureAt)
+	} else if clocks.ClearFirstFailureAt {
 		query = query.Set("first_failure_at = NULL")
-		wrote = true
 	}
-	if firstSuccessSinceFailureAt != nil {
-		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
-		wrote = true
-	} else if clearFirstSuccessSinceFailure {
+	if clocks.FirstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *clocks.FirstSuccessSinceFailureAt)
+	} else if clocks.ClearFirstSuccessSinceFailureAt {
 		query = query.Set("first_success_since_failure_at = NULL")
-		wrote = true
-	}
-	if !wrote {
-		return nil
 	}
 
 	_, err := query.Exec(ctx)

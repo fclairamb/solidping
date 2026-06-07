@@ -756,14 +756,8 @@ func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *model
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateCheckStatus(
-	_ context.Context, _ string, _ models.CheckStatus, _ int, _ *time.Time,
-) error {
-	panic("not implemented")
-}
-
-func (m *mockDBService) UpdateCheckIncidentClocks(
-	_ context.Context, _ string, _ *time.Time, _ bool, _ *time.Time, _ bool,
+func (m *mockDBService) UpdateCheckStatusAndClocks(
+	_ context.Context, _ string, _ models.CheckStatus, _ int, _ *time.Time, _ models.IncidentClockUpdate,
 ) error {
 	panic("not implemented")
 }

@@ -126,16 +126,13 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	clocks := deriveIncidentClocks(check, isSuccess, isFailure, activeIncident, now)
 
-	// Update check status in database
-	if err := s.db.UpdateCheckStatus(ctx, check.UID, newStatus, newStreak, statusChangedAt); err != nil {
-		return fmt.Errorf("failed to update check status: %w", err)
-	}
-	if err := s.db.UpdateCheckIncidentClocks(
-		ctx, check.UID,
-		clocks.FirstFailureAt, clocks.ClearFirstFailureAt,
-		clocks.FirstSuccessSinceFailureAt, clocks.ClearFirstSuccessSinceFailureAt,
+	// Update check status and incident clocks in one atomic UPDATE. Writing
+	// both together means a mid-write crash can no longer leave status updated
+	// but clocks stale.
+	if err := s.db.UpdateCheckStatusAndClocks(
+		ctx, check.UID, newStatus, newStreak, statusChangedAt, clocks,
 	); err != nil {
-		return fmt.Errorf("failed to update check incident clocks: %w", err)
+		return fmt.Errorf("failed to update check status and clocks: %w", err)
 	}
 
 	// Update local check object for incident logic
@@ -149,24 +146,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
 }
 
-// incidentClocks captures the FirstFailureAt / FirstSuccessSinceFailureAt
-// transition for this result. Tri-state per field: a non-nil pointer sets
-// the column, a true Clear* flag sets it to NULL, and the zero value
-// leaves the column untouched.
-type incidentClocks struct {
-	FirstFailureAt                  *time.Time
-	ClearFirstFailureAt             bool
-	FirstSuccessSinceFailureAt      *time.Time
-	ClearFirstSuccessSinceFailureAt bool
-}
-
 // deriveIncidentClocks computes the FirstFailureAt and
 // FirstSuccessSinceFailureAt transitions for this result. The flap-reset
-// rule is encoded by clearing one when the other is set.
+// rule is encoded by clearing one when the other is set. The returned
+// models.IncidentClockUpdate is tri-state per field: a non-nil pointer sets
+// the column, a true Clear* flag sets it to NULL, and the zero value leaves
+// the column untouched.
 func deriveIncidentClocks(
 	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident, now time.Time,
-) incidentClocks {
-	out := incidentClocks{}
+) models.IncidentClockUpdate {
+	out := models.IncidentClockUpdate{}
 	switch {
 	case isFailure && activeIncident == nil:
 		// First failure (or continuing pre-incident streak): arm the
@@ -199,7 +188,7 @@ func deriveIncidentClocks(
 
 // applyClocks mirrors deriveIncidentClocks's tri-state into the in-memory
 // Check, so handleFailure/handleSuccess can read the just-written values.
-func applyClocks(check *models.Check, clocks incidentClocks, _ time.Time) {
+func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.Time) {
 	if clocks.FirstFailureAt != nil {
 		t := *clocks.FirstFailureAt
 		check.FirstFailureAt = &t
