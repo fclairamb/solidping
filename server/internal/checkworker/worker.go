@@ -678,11 +678,19 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 
 // processIncidents handles incident creation/resolution based on check results.
 func (r *CheckWorker) processIncidents(ctx context.Context, checkJob *models.CheckJob, result *models.Result) {
-	// Fetch the check to get threshold configuration
-	check, err := r.dbService.GetCheck(ctx, checkJob.OrganizationUID, checkJob.CheckUID)
-	if err != nil {
-		r.logger.WarnContext(ctx, "Failed to fetch check for incident processing", "error", err)
-		return
+	// The check is normally attached at claim time (see checkjobsvc.attachChecks)
+	// so the incident hot path avoids a per-result GetCheck round-trip. Fall back
+	// to a fetch only when it is missing (e.g. claimed before this change, or a
+	// batch-fetch scan failure left it nil).
+	check := checkJob.Check
+	if check == nil {
+		var err error
+		check, err = r.dbService.GetCheck(ctx, checkJob.OrganizationUID, checkJob.CheckUID)
+		if err != nil {
+			r.logger.WarnContext(ctx, "Failed to fetch check for incident processing", "error", err)
+
+			return
+		}
 	}
 
 	if err := r.incidentSvc.ProcessCheckResult(ctx, check, result); err != nil {
