@@ -2318,8 +2318,17 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 	return incidents, nil
 }
 
-func (s *Service) UpdateCheckStatus(
-	ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
+// UpdateCheckStatusAndClocks writes the check's status, streak,
+// status_changed_at and both incident clocks in a single atomic UPDATE,
+// replacing the former separate UpdateCheckStatus + UpdateCheckIncidentClocks
+// round-trips. See sqlite.go for the tri-state semantics.
+func (s *Service) UpdateCheckStatusAndClocks(
+	ctx context.Context,
+	checkUID string,
+	status models.CheckStatus,
+	streak int,
+	statusChangedAt *time.Time,
+	clocks models.IncidentClockUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
@@ -2329,46 +2338,19 @@ func (s *Service) UpdateCheckStatus(
 		Set("status_streak = ?", streak).
 		Set("updated_at = ?", time.Now())
 
-	if changedAt != nil {
-		query = query.Set("status_changed_at = ?", *changedAt)
+	if statusChangedAt != nil {
+		query = query.Set("status_changed_at = ?", *statusChangedAt)
 	}
 
-	_, err := query.Exec(ctx)
-
-	return err
-}
-
-// UpdateCheckIncidentClocks persists the FirstFailureAt and
-// FirstSuccessSinceFailureAt timestamps used by the time-based incident
-// state machine. See sqlite.go for the tri-state semantics.
-func (s *Service) UpdateCheckIncidentClocks(
-	ctx context.Context, checkUID string,
-	firstFailureAt *time.Time, clearFirstFailure bool,
-	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
-) error {
-	query := s.db.NewUpdate().
-		Model((*models.Check)(nil)).
-		Where("uid = ?", checkUID).
-		Where("deleted_at IS NULL").
-		Set("updated_at = ?", time.Now())
-
-	wrote := false
-	if firstFailureAt != nil {
-		query = query.Set("first_failure_at = ?", *firstFailureAt)
-		wrote = true
-	} else if clearFirstFailure {
+	if clocks.FirstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *clocks.FirstFailureAt)
+	} else if clocks.ClearFirstFailureAt {
 		query = query.Set("first_failure_at = NULL")
-		wrote = true
 	}
-	if firstSuccessSinceFailureAt != nil {
-		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
-		wrote = true
-	} else if clearFirstSuccessSinceFailure {
+	if clocks.FirstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *clocks.FirstSuccessSinceFailureAt)
+	} else if clocks.ClearFirstSuccessSinceFailureAt {
 		query = query.Set("first_success_since_failure_at = NULL")
-		wrote = true
-	}
-	if !wrote {
-		return nil
 	}
 
 	_, err := query.Exec(ctx)
@@ -3887,18 +3869,18 @@ func (s *Service) ListMaintenanceWindowChecks(
 	return checks, err
 }
 
-// IsCheckInActiveMaintenance checks if a check is currently in an active maintenance window.
-// It checks both direct check associations and check group associations.
-func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
-	now := time.Now()
-
-	// Find all maintenance windows linked to this check (directly or via group)
+// ListMaintenanceWindowsForCheck returns every non-deleted maintenance window
+// linked to the check directly or via its group. See sqlite.go for the
+// rationale (no start-time filter / no recurrence evaluation so a TTL cache can
+// re-evaluate the rows at a later clock).
+func (s *Service) ListMaintenanceWindowsForCheck(
+	ctx context.Context, checkUID string,
+) ([]*models.MaintenanceWindow, error) {
 	var windows []*models.MaintenanceWindow
 
 	err := s.db.NewSelect().
 		Model(&windows).
 		Where("deleted_at IS NULL").
-		Where("start_at <= ?", now).
 		Where(`uid IN (
 			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
 			WHERE mwc.check_uid = ?
@@ -3909,16 +3891,10 @@ func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID strin
 		)`, checkUID, checkUID).
 		Scan(ctx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	for _, window := range windows {
-		if models.IsActiveAt(window, now) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return windows, nil
 }
 
 // CreateFile inserts a new file row.

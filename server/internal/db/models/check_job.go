@@ -28,6 +28,12 @@ type CheckJob struct {
 	LeaseExpiresAt    *time.Time         `bun:"lease_expires_at"`
 	LeaseStarts       int                `bun:"lease_starts,notnull,default:0"`
 	UpdatedAt         time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
+
+	// Check is the check this job executes, populated at claim time by
+	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
+	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").
+	// May be nil if the check was deleted between scheduling and claim.
+	Check *Check `bun:"-"`
 }
 
 // NewCheckJob creates a new check job with generated UID.
