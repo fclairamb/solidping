@@ -84,6 +84,87 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("IncidentNotificationDeliveryDetails", func(t *testing.T) {
 		testIncidentNotificationDeliveryDetails(ctx, t, svc)
 	})
+
+	t.Run("UpdateCheckStatusAndClocksTriState", func(t *testing.T) {
+		testUpdateCheckStatusAndClocksTriState(ctx, t, svc)
+	})
+}
+
+// testUpdateCheckStatusAndClocksTriState is the cross-engine parity guard for
+// the merged status+clocks UPDATE (acceptance criterion 1): all three tri-state
+// branches per clock column must behave identically on Postgres and SQLite —
+// nil + !clear leaves the column untouched, nil + clear writes NULL, non-nil
+// writes the value — and status/streak/status_changed_at land in the same call.
+func testUpdateCheckStatusAndClocksTriState(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("tristate-clocks-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "tristate-clocks-check", "http")
+	r.NoError(svc.CreateCheck(ctx, check))
+
+	reload := func() *models.Check {
+		got, err := svc.GetCheck(ctx, org.UID, check.UID)
+		r.NoError(err)
+
+		return got
+	}
+
+	// Seed both clocks with known non-nil values via the merged UPDATE.
+	seedFail := time.Now().Add(-10 * time.Minute).UTC().Truncate(time.Second)
+	seedSucc := time.Now().Add(-5 * time.Minute).UTC().Truncate(time.Second)
+	r.NoError(svc.UpdateCheckStatusAndClocks(
+		ctx, check.UID, models.CheckStatusDown, 3, nil,
+		models.IncidentClockUpdate{FirstFailureAt: &seedFail, FirstSuccessSinceFailureAt: &seedSucc},
+	))
+
+	c := reload()
+	r.Equal(models.CheckStatusDown, c.Status, "non-nil status written")
+	r.Equal(3, c.StatusStreak, "streak written")
+	r.NotNil(c.FirstFailureAt)
+	r.NotNil(c.FirstSuccessSinceFailureAt)
+	r.WithinDuration(seedFail, c.FirstFailureAt.UTC(), time.Second, "non-nil clock value written")
+	r.WithinDuration(seedSucc, c.FirstSuccessSinceFailureAt.UTC(), time.Second)
+
+	// Branch (a) nil + !clear → both clock columns must stay untouched.
+	r.NoError(svc.UpdateCheckStatusAndClocks(
+		ctx, check.UID, models.CheckStatusValidating, 4, nil,
+		models.IncidentClockUpdate{},
+	))
+	c = reload()
+	r.Equal(models.CheckStatusValidating, c.Status)
+	r.Equal(4, c.StatusStreak)
+	r.NotNil(c.FirstFailureAt, "nil + !clear must leave first_failure_at untouched")
+	r.NotNil(c.FirstSuccessSinceFailureAt, "nil + !clear must leave first_success_since_failure_at untouched")
+	r.WithinDuration(seedFail, c.FirstFailureAt.UTC(), time.Second)
+	r.WithinDuration(seedSucc, c.FirstSuccessSinceFailureAt.UTC(), time.Second)
+
+	// Branch (b) nil + clear → both clock columns must become NULL.
+	r.NoError(svc.UpdateCheckStatusAndClocks(
+		ctx, check.UID, models.CheckStatusUp, 1, nil,
+		models.IncidentClockUpdate{ClearFirstFailureAt: true, ClearFirstSuccessSinceFailureAt: true},
+	))
+	c = reload()
+	r.Nil(c.FirstFailureAt, "nil + clear must write NULL to first_failure_at")
+	r.Nil(c.FirstSuccessSinceFailureAt, "nil + clear must write NULL to first_success_since_failure_at")
+
+	// Branch (c) non-nil again on a now-NULL column → value written, plus
+	// status_changed_at lands in the same call and the untouched column stays NULL.
+	newFail := time.Now().Add(-1 * time.Minute).UTC().Truncate(time.Second)
+	changedAt := time.Now().UTC().Truncate(time.Second)
+	r.NoError(svc.UpdateCheckStatusAndClocks(
+		ctx, check.UID, models.CheckStatusDown, 2, &changedAt,
+		models.IncidentClockUpdate{FirstFailureAt: &newFail},
+	))
+	c = reload()
+	r.NotNil(c.FirstFailureAt, "non-nil must write the value")
+	r.WithinDuration(newFail, c.FirstFailureAt.UTC(), time.Second)
+	r.Nil(c.FirstSuccessSinceFailureAt, "untouched-on-this-call column stays NULL")
+	r.NotNil(c.StatusChangedAt, "non-nil statusChangedAt written")
+	r.WithinDuration(changedAt, c.StatusChangedAt.UTC(), time.Second)
 }
 
 // testIncidentNotificationDeliveryDetails is the cross-engine parity guard for
