@@ -74,7 +74,7 @@ func TestMaintenanceWindowTTLCache(t *testing.T) {
 	submit := func() {
 		result := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 0)
 		r.NoError(dbSvc.CreateResult(ctx, result))
-		r.NoError(svc.ProcessCheckResult(context.Background(), check, result))
+		r.NoError(svc.ProcessCheckResult(ctx, check, result))
 	}
 
 	// First result at t0: window inactive -> incident processing runs (the
@@ -94,7 +94,7 @@ func TestMaintenanceWindowTTLCache(t *testing.T) {
 	r.True(window.StartAt.Before(fakeClock.Now()), "window has started on the fake clock")
 	r.Less(fakeClock.Now().Sub(start), 60*time.Second, "still inside the TTL")
 
-	r.NoError(svc.ProcessCheckResult(context.Background(),
+	r.NoError(svc.ProcessCheckResult(ctx,
 		check, models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0)))
 	r.Equal(int64(1), counting.mwFetches.Load(),
 		"a window becoming active mid-TTL must be detected from the cache, no re-fetch")
@@ -104,7 +104,7 @@ func TestMaintenanceWindowTTLCache(t *testing.T) {
 	fakeClock.Advance(30 * time.Second)
 	r.GreaterOrEqual(fakeClock.Now().Sub(start), 60*time.Second, "past the TTL boundary")
 
-	r.NoError(svc.ProcessCheckResult(context.Background(),
+	r.NoError(svc.ProcessCheckResult(ctx,
 		check, models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0)))
 	r.Equal(int64(2), counting.mwFetches.Load(),
 		"a result past the TTL must re-fetch exactly once")
