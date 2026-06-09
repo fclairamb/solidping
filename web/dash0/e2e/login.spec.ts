@@ -176,3 +176,167 @@ test.describe("Login Flow", () => {
     });
   });
 });
+
+const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
+
+// Fetches /auth/providers so the config-dependent tests can decide whether
+// the test backend actually has an OAuth provider / passkeys configured, and
+// skip gracefully (covered by manual browser verification) when it doesn't.
+async function fetchAuthCapabilities(
+  baseURL: string | undefined,
+): Promise<{ providers: { type: string; name: string }[]; passkeysEnabled: boolean }> {
+  const root = (baseURL ?? "http://localhost:4000/dash0/").replace(
+    /\/dash0\/?$/,
+    "",
+  );
+  const res = await fetch(`${root}/api/v1/auth/providers`);
+  const body = (await res.json()) as {
+    data?: { type: string; name: string }[];
+    passkeysEnabled?: boolean;
+  };
+  return {
+    providers: body.data ?? [],
+    passkeysEnabled: body.passkeysEnabled ?? false,
+  };
+}
+
+test.describe("Login: remember last auth method", () => {
+  test("promotes the password form (badge + email autofocus) when password was last used", async ({
+    page,
+  }) => {
+    // Seed the last-used method before the app boots so the login page reads
+    // it on mount.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.setItem(key, "password");
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // The "Last used" badge renders next to the Sign in button for password.
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+
+    // The email field is autofocused for the returning password user.
+    await expect(page.getByTestId("login-email")).toBeFocused();
+
+    // No promoted top slot for the password case (the form is already primary).
+    await expect(page.getByTestId("login-last-used")).toHaveCount(0);
+  });
+
+  test("renders the default layout with no badge when there is no memory", async ({
+    page,
+  }) => {
+    // Ensure storage is clean before the app boots.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.removeItem(key);
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Default layout: the form is visible but nothing is promoted/badged.
+    await expect(page.getByTestId("login-submit")).toBeVisible();
+    await expect(page.getByTestId("login-last-used")).toHaveCount(0);
+    await expect(page.getByTestId("login-last-used-badge")).toHaveCount(0);
+  });
+
+  test("records 'password' after a successful password login", async ({
+    page,
+  }) => {
+    // Start from a clean slate.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.removeItem(key);
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+
+    // Wait for redirect away from login to the authenticated area.
+    await page.waitForURL((url) => !url.pathname.includes("/login"), {
+      timeout: 10000,
+    });
+
+    const stored = await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      LAST_AUTH_METHOD_KEY,
+    );
+    expect(stored).toBe("password");
+  });
+
+  test("promotes the last-used OAuth provider and removes it from the grid", async ({
+    page,
+    baseURL,
+  }) => {
+    const { providers } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      providers.length === 0,
+      "no OAuth provider configured on the test backend",
+    );
+    const provider = providers[0];
+
+    await page.addInitScript(
+      ([key, value]) => {
+        window.localStorage.setItem(key, value);
+      },
+      [LAST_AUTH_METHOD_KEY, `oauth:${provider.type}`],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Promoted top slot with the brand button + "Last used" badge.
+    await expect(page.getByTestId("login-last-used")).toBeVisible();
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+    await expect(
+      page.getByTestId(`login-oauth-${provider.type}-promoted`),
+    ).toBeVisible();
+
+    // The provider is de-duplicated: the plain grid button is gone.
+    await expect(page.getByTestId(`login-oauth-${provider.type}`)).toHaveCount(
+      0,
+    );
+  });
+
+  test("promotes the passkey button when passkey was last used", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      !passkeysEnabled,
+      "passkeys are not enabled on the test backend",
+    );
+
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.setItem(key, "passkey");
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Promoted passkey button + badge at the top; the bottom duplicate hidden.
+    await expect(page.getByTestId("login-last-used")).toBeVisible();
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+    await expect(
+      page.getByTestId("passkey-login-button-promoted"),
+    ).toBeVisible();
+    await expect(page.getByTestId("passkey-login-button")).toHaveCount(0);
+  });
+});

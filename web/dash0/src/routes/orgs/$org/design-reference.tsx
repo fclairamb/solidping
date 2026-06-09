@@ -15,6 +15,7 @@ import {
   Copy,
   Eye,
   Info,
+  KeyRound,
   Moon,
   MoreVertical,
   Palette,
@@ -587,6 +588,28 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Badge } from "@/components/ui/badge";`}
+        />
+
+        <h3 className="text-sm font-medium">Button with &quot;Last used&quot; badge</h3>
+        <p className="text-sm text-muted-foreground">
+          The promoted-slot pattern used on the login page: a full-width action
+          button carries an inline{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">secondary</code>{" "}
+          Badge marking the option a returning user picked last. Keep the badge
+          last in the button and spaced with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ml-2</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <Button variant="outline" className="w-full">
+              <KeyRound className="mr-2 h-4 w-4" />
+              Sign in with passkey
+              <Badge variant="secondary" className="ml-2">
+                Last used
+              </Badge>
+            </Button>
+          }
+          importLine={`import { Button } from "@/components/ui/button";\nimport { Badge } from "@/components/ui/badge";\n\n<Button variant="outline" className="w-full">\n  <KeyRound className="mr-2 h-4 w-4" />\n  Sign in with passkey\n  <Badge variant="secondary" className="ml-2">Last used</Badge>\n</Button>`}
         />
       </div>
     </Section>
