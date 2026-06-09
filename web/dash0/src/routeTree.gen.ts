@@ -94,7 +94,7 @@ import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
-import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid.notifications.$notificationUid'
+import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
 import { Route as OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport } from './routes/orgs/$org/discovery.$jobUid.$hostUid.promote'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
@@ -551,9 +551,9 @@ const OrgsOrgChecksCheckUidEditRoute =
   } as any)
 const OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute =
   OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport.update({
-    id: '/notifications/$notificationUid',
-    path: '/notifications/$notificationUid',
-    getParentRoute: () => OrgsOrgIncidentsIncidentUidRoute,
+    id: '/$incidentUid_/notifications/$notificationUid',
+    path: '/$incidentUid/notifications/$notificationUid',
+    getParentRoute: () => OrgsOrgIncidentsRoute,
   } as any)
 const OrgsOrgDiscoveryJobUidHostUidPromoteRoute =
   OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport.update({
@@ -607,7 +607,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
-  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRouteWithChildren
+  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
@@ -682,7 +682,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
-  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRouteWithChildren
+  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
@@ -771,7 +771,7 @@ export interface FileRoutesById {
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
   '/orgs/$org/escalation-policies/$slug': typeof OrgsOrgEscalationPoliciesSlugRoute
   '/orgs/$org/escalation-policies/new': typeof OrgsOrgEscalationPoliciesNewRoute
-  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRouteWithChildren
+  '/orgs/$org/incidents/$incidentUid': typeof OrgsOrgIncidentsIncidentUidRoute
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
@@ -820,7 +820,7 @@ export interface FileRoutesById {
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
   '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
-  '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
+  '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -1075,7 +1075,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
     | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
-    | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
+    | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -1687,12 +1687,12 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgChecksCheckUidEditRouteImport
       parentRoute: typeof OrgsOrgChecksCheckUidRoute
     }
-    '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': {
-      id: '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
-      path: '/notifications/$notificationUid'
+    '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': {
+      id: '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
+      path: '/$incidentUid/notifications/$notificationUid'
       fullPath: '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
       preLoaderRoute: typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport
-      parentRoute: typeof OrgsOrgIncidentsIncidentUidRoute
+      parentRoute: typeof OrgsOrgIncidentsRoute
     }
     '/orgs/$org/discovery/$jobUid/$hostUid/promote': {
       id: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
@@ -1815,30 +1815,17 @@ const OrgsOrgEscalationPoliciesRouteWithChildren =
     OrgsOrgEscalationPoliciesRouteChildren,
   )
 
-interface OrgsOrgIncidentsIncidentUidRouteChildren {
+interface OrgsOrgIncidentsRouteChildren {
+  OrgsOrgIncidentsIncidentUidRoute: typeof OrgsOrgIncidentsIncidentUidRoute
+  OrgsOrgIncidentsIndexRoute: typeof OrgsOrgIncidentsIndexRoute
   OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute: typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 
-const OrgsOrgIncidentsIncidentUidRouteChildren: OrgsOrgIncidentsIncidentUidRouteChildren =
-  {
-    OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute:
-      OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute,
-  }
-
-const OrgsOrgIncidentsIncidentUidRouteWithChildren =
-  OrgsOrgIncidentsIncidentUidRoute._addFileChildren(
-    OrgsOrgIncidentsIncidentUidRouteChildren,
-  )
-
-interface OrgsOrgIncidentsRouteChildren {
-  OrgsOrgIncidentsIncidentUidRoute: typeof OrgsOrgIncidentsIncidentUidRouteWithChildren
-  OrgsOrgIncidentsIndexRoute: typeof OrgsOrgIncidentsIndexRoute
-}
-
 const OrgsOrgIncidentsRouteChildren: OrgsOrgIncidentsRouteChildren = {
-  OrgsOrgIncidentsIncidentUidRoute:
-    OrgsOrgIncidentsIncidentUidRouteWithChildren,
+  OrgsOrgIncidentsIncidentUidRoute: OrgsOrgIncidentsIncidentUidRoute,
   OrgsOrgIncidentsIndexRoute: OrgsOrgIncidentsIndexRoute,
+  OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute:
+    OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute,
 }
 
 const OrgsOrgIncidentsRouteWithChildren =
