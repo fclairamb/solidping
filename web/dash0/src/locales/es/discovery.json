@@ -58,6 +58,7 @@
   "promoted_success": "Host promovido a comprobación",
   "promoted_failed": "Error al promover el host",
   "back": "Volver",
+  "refresh": "Actualizar",
   "scanDetails": "Detalles del escaneo",
   "cidrs": "CIDRs",
   "startedAt": "Iniciado el",

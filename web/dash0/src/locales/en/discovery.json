@@ -58,6 +58,7 @@
   "promoted_success": "Host promoted to check",
   "promoted_failed": "Failed to promote host",
   "back": "Back",
+  "refresh": "Refresh",
   "scanDetails": "Scan Details",
   "cidrs": "CIDRs",
   "startedAt": "Started at",

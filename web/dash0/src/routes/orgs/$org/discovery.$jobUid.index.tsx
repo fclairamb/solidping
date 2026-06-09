@@ -176,11 +176,6 @@ function ScanDetailPage() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Button asChild variant="ghost" size="icon">
-            <Link to="/orgs/$org/discovery" params={{ org }}>
-              <ArrowLeft className="h-4 w-4" />
-            </Link>
-          </Button>
           <div>
             <h1 className="text-2xl font-bold tracking-tight">{t("scanDetails")}</h1>
             {scan && (
@@ -194,6 +189,11 @@ function ScanDetailPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="ghost" size="icon" aria-label={t("back")}>
+            <Link to="/orgs/$org/discovery" params={{ org }}>
+              <ArrowLeft className="h-4 w-4" />
+            </Link>
+          </Button>
           {canStop && (
             <Button
               variant="destructive"
@@ -207,11 +207,12 @@ function ScanDetailPage() {
           )}
           <Button
             variant="outline"
-            size="icon"
             onClick={() => { void refetchScan(); void refetchHosts(); }}
             disabled={isLoading}
+            aria-label={t("refresh")}
           >
-            <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+            <span className="hidden sm:inline">{t("refresh")}</span>
           </Button>
         </div>
       </div>
