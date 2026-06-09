@@ -200,6 +200,83 @@ async function fetchAuthCapabilities(
   };
 }
 
+test.describe("Login: forgot-password link placement", () => {
+  test("renders the forgot-password link on the password label row", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    // The link is inline with the Password label, above the password input.
+    const forgotLink = page.getByRole("link", { name: /forgot/i });
+    await expect(forgotLink).toBeVisible();
+
+    // It points at /forgot-password.
+    await expect(forgotLink).toHaveAttribute("href", /\/forgot-password/);
+
+    // It sits above the password field (label row), not after the form.
+    const linkBox = await forgotLink.boundingBox();
+    const passwordBox = await page.getByTestId("login-password").boundingBox();
+    expect(linkBox).not.toBeNull();
+    expect(passwordBox).not.toBeNull();
+    expect(linkBox!.y).toBeLessThan(passwordBox!.y);
+  });
+
+  test("carries the typed email as the email search param", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    // Type an email, then follow the forgot-password link.
+    await page.getByTestId("login-email").fill("someone@example.com");
+
+    const forgotLink = page.getByRole("link", { name: /forgot/i });
+    await forgotLink.click();
+
+    await page.waitForURL(/\/forgot-password/, { timeout: 10000 });
+
+    const url = new URL(page.url());
+    expect(url.pathname).toContain("/forgot-password");
+    expect(url.searchParams.get("email")).toBe("someone@example.com");
+  });
+});
+
+test.describe("Login: passkey sign-in link", () => {
+  test("the passkey control is a clickable text link that triggers the flow", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(!passkeysEnabled, "passkeys are not enabled on the test backend");
+
+    // Count the begin-ceremony requests. A background conditional-UI ceremony
+    // may also fire one on mount, so we assert the click *adds* a request
+    // rather than waiting for the first one.
+    let beginCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/api/v1/auth/passkeys/login/begin")) beginCount++;
+    });
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Not promoted (no last-used memory) → the text-link control is rendered.
+    const passkeyButton = page.getByTestId("passkey-login-button");
+    await expect(passkeyButton).toBeVisible();
+
+    const before = beginCount;
+    await passkeyButton.click();
+
+    // Clicking it kicks off a (new) passkey ceremony.
+    await expect(() => expect(beginCount).toBeGreaterThan(before)).toPass({
+      timeout: 10000,
+    });
+  });
+});
+
 test.describe("Login: remember last auth method", () => {
   test("promotes the password form (badge + email autofocus) when password was last used", async ({
     page,
