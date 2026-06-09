@@ -778,7 +778,7 @@ function ActiveIncidentsList({
   const { t } = useTranslation("dashboard");
 
   return (
-    <Card>
+    <Card data-testid="active-incidents">
       <CardHeader>
         <CardTitle>{t("activeIncidents.title")}</CardTitle>
       </CardHeader>

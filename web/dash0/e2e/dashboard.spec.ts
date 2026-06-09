@@ -314,8 +314,9 @@ test.describe("Dashboard", () => {
     await expect(glance.getByText("Beta Web")).toBeVisible();
     await expect(glance.getByText("Gamma Job")).toBeVisible();
 
-    // No active-incidents card in the healthy state.
-    await expect(page.getByText("Active incidents", { exact: true })).toHaveCount(0);
+    // No active-incidents card in the healthy state (the KPI tile of the same
+    // name still exists; the card is gated on incidentsCount > 0).
+    await expect(page.getByTestId("active-incidents")).toHaveCount(0);
 
     // Footer references the total count and links to the checks list.
     const footer = page.getByTestId("checks-glance-footer");
@@ -385,11 +386,12 @@ test.describe("Dashboard", () => {
     await expect(glance).toBeVisible({ timeout: 10000 });
 
     // Incidents card is present and shows the incident.
-    const incidentTitle = page.getByText("Database latency spike");
-    await expect(incidentTitle).toBeVisible();
+    const incidentsCard = page.getByTestId("active-incidents");
+    await expect(incidentsCard).toBeVisible();
+    await expect(incidentsCard.getByText("Database latency spike")).toBeVisible();
 
     // Incidents card sits above the glance card in document order (higher = lower y).
-    const incidentBox = await incidentTitle.boundingBox();
+    const incidentBox = await incidentsCard.boundingBox();
     const glanceBox = await glance.boundingBox();
     expect(incidentBox).not.toBeNull();
     expect(glanceBox).not.toBeNull();
