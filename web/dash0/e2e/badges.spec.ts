@@ -482,6 +482,42 @@ test.describe("Badges", () => {
       .toBe("500");
   });
 
+  test("back-to-check link is shown for the selected check and navigates to it", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const checkName = `Badge Back Link ${Date.now()}`;
+    const check = await createCheck(page, token, checkName);
+
+    await page.goto(`/dash0/orgs/test/badges?check=${check.slug}`);
+    await page.waitForLoadState("networkidle");
+
+    // Link is visible, shows the check name, and uses the back arrow.
+    const backLink = page.getByTestId("badge-back-to-check");
+    await expect(backLink).toBeVisible();
+    await expect(backLink).toHaveText(checkName);
+
+    // Clicking navigates to the canonical check detail route keyed on uid.
+    await backLink.click();
+    await page.waitForURL(`**/dash0/orgs/test/checks/${check.uid}`);
+    expect(new URL(page.url()).pathname).toBe(
+      `/dash0/orgs/test/checks/${check.uid}`
+    );
+  });
+
+  test("back-to-check link is absent when no check is selected", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`/dash0/orgs/test/badges`);
+    await page.waitForLoadState("networkidle");
+
+    // No check selected → the back link must not exist.
+    await expect(page.getByTestId("badge-back-to-check")).toHaveCount(0);
+  });
+
   test("downloads SVG of a multi-row badge", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
