@@ -577,7 +577,7 @@ function LoginPage() {
           ) : (
             <>
               {(promotedProvider || promotePasskey) && (
-                <div className="mb-4" data-testid="login-last-used">
+                <div className="mb-3" data-testid="login-last-used">
                   {promotedProvider ? (
                     (() => {
                       const Icon = PROVIDER_ICONS[promotedProvider.type];
@@ -621,7 +621,7 @@ function LoginPage() {
                       </Badge>
                     </Button>
                   )}
-                  <div className="relative my-4">
+                  <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
                     </div>
@@ -635,7 +635,7 @@ function LoginPage() {
               )}
 
               {hasGridProviders && (
-                <div className="mb-4">
+                <div className="mb-3">
                   <div className="grid grid-cols-2 gap-2">
                     {gridProviders.map((provider) => {
                       const Icon = PROVIDER_ICONS[provider.type];
@@ -655,7 +655,7 @@ function LoginPage() {
                       );
                     })}
                   </div>
-                  <div className="relative my-4">
+                  <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
                     </div>
@@ -688,7 +688,16 @@ function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">{tc("password")}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">{tc("password")}</Label>
+                    <Link
+                      to="/forgot-password"
+                      search={{ email: email || undefined }}
+                      className="text-sm text-muted-foreground hover:underline"
+                    >
+                      {t("forgotPassword")}
+                    </Link>
+                  </div>
                   <PasswordInput
                     id="password"
                     autoComplete="current-password"
@@ -729,27 +738,19 @@ function LoginPage() {
                 {passkeysEnabled &&
                   browserSupportsWebAuthn() &&
                   !promotePasskey && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-full"
-                      onClick={handlePasskeyLogin}
-                      disabled={isLoading}
-                      data-testid="passkey-login-button"
-                    >
-                      <KeyRound className="mr-2 h-4 w-4" />
-                      {t("twoFactor.signInWithPasskey")}
-                    </Button>
+                    <div className="text-center">
+                      <button
+                        type="button"
+                        onClick={handlePasskeyLogin}
+                        disabled={isLoading}
+                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:underline disabled:opacity-50"
+                        data-testid="passkey-login-button"
+                      >
+                        <KeyRound className="h-3.5 w-3.5" />
+                        {t("twoFactor.signInWithPasskey")}
+                      </button>
+                    </div>
                   )}
-                <div className="text-center">
-                  <Link
-                    to="/forgot-password"
-                    search={{ email: email || undefined }}
-                    className="text-sm text-muted-foreground hover:underline"
-                  >
-                    {t("forgotPassword")}
-                  </Link>
-                </div>
               </form>
             </>
           )}
