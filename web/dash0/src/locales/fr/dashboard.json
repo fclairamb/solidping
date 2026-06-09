@@ -51,10 +51,10 @@
     "availability": "Disponibilité 24h",
     "availabilityNoData": "Pas encore de données"
   },
-  "needsAttention": {
-    "title": "Nécessite votre attention",
-    "footer": "Voir toutes les sondes →",
-    "empty": "Tout est en ligne",
+  "glance": {
+    "title": "Sondes en un coup d'œil",
+    "footer_one": "Voir {{count}} sonde →",
+    "footer_other": "Voir les {{count}} sondes →",
     "since": "depuis {{time}}"
   },
   "activeIncidents": {
