@@ -32,6 +32,7 @@ import {
   finishPasskeyLogin,
   getAuthProviders,
 } from "@/api/passkeys";
+import { classifyPasskeyError } from "@/lib/passkey-error";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -326,11 +327,20 @@ function LoginPage() {
       setLastAuthMethod("passkey");
       routeResult(result);
     } catch (err) {
-      // The user-cancel path — silent. Anything else gets surfaced.
-      if (err instanceof Error && err.name === "NotAllowedError") {
-        return;
+      // Surface a precise, passkey-specific message instead of the generic
+      // "unexpected error" banner. User-cancel stays silent.
+      switch (classifyPasskeyError(err)) {
+        case "cancelled":
+          return; // silent
+        case "domainMismatch":
+          setError(t("passkeyDomainMismatch"));
+          return;
+        case "failed":
+          setError(t("passkeyFailed"));
+          return;
+        default:
+          reportError(err); // ApiError / generic
       }
-      reportError(err);
     } finally {
       setIsLoading(false);
     }
@@ -364,8 +374,11 @@ function LoginPage() {
         routeResult(result);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof Error && err.name !== "NotAllowedError") {
-          // Conditional UI is best-effort; log only in dev console.
+        const kind = classifyPasskeyError(err);
+        // Conditional UI is best-effort; log only in dev console. Stay quiet on
+        // user-cancel and on a domain mismatch (a misconfigured RP ID would
+        // otherwise spam the console on every page load).
+        if (kind !== "cancelled" && kind !== "domainMismatch") {
           console.warn("conditional UI failed", err);
         }
       }
