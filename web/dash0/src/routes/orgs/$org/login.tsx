@@ -577,7 +577,7 @@ function LoginPage() {
           ) : (
             <>
               {(promotedProvider || promotePasskey) && (
-                <div className="mb-4" data-testid="login-last-used">
+                <div className="mb-3" data-testid="login-last-used">
                   {promotedProvider ? (
                     (() => {
                       const Icon = PROVIDER_ICONS[promotedProvider.type];
@@ -621,7 +621,7 @@ function LoginPage() {
                       </Badge>
                     </Button>
                   )}
-                  <div className="relative my-4">
+                  <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
                     </div>
@@ -635,7 +635,7 @@ function LoginPage() {
               )}
 
               {hasGridProviders && (
-                <div className="mb-4">
+                <div className="mb-3">
                   <div className="grid grid-cols-2 gap-2">
                     {gridProviders.map((provider) => {
                       const Icon = PROVIDER_ICONS[provider.type];
@@ -655,7 +655,7 @@ function LoginPage() {
                       );
                     })}
                   </div>
-                  <div className="relative my-4">
+                  <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
                     </div>
