@@ -1,4 +1,104 @@
-import { test, expect } from "./fixtures";
+import { test, expect, type Page } from "./fixtures";
+
+// --- Helpers for the "Checks at a glance" tests -------------------------------
+// These tests mock the dashboard's data endpoints so the glance card is
+// deterministic regardless of seeded data or background polling. The dashboard
+// issues two /results queries (periodType=day for the KPI, periodType=hour for
+// the uptime strips); we serve both from one route handler.
+
+interface MockCheck {
+  uid: string;
+  name: string;
+  status: "up" | "down";
+  enabled?: boolean;
+  lastStatusChangeTime?: string;
+}
+
+function hourlyResultsFor(checkUid: string, availabilityPct: number) {
+  // 24 hourly buckets ending now, all with the same availability + latency.
+  return Array.from({ length: 24 }, (_, i) => ({
+    uid: `${checkUid}-h${i}`,
+    checkUid,
+    periodType: "hour",
+    periodStart: new Date(Date.now() - (23 - i) * 3600_000).toISOString(),
+    status: availabilityPct >= 100 ? "up" : "down",
+    availabilityPct,
+    durationMs: 142,
+    totalChecks: 60,
+    successfulChecks: Math.round((availabilityPct / 100) * 60),
+  }));
+}
+
+async function mockDashboard(
+  page: Page,
+  opts: { checks: MockCheck[]; incidents?: unknown[] },
+) {
+  const checks = opts.checks.map((c) => ({
+    uid: c.uid,
+    name: c.name,
+    type: "http",
+    enabled: c.enabled ?? true,
+    status: c.status,
+    lastResult: { status: c.status, durationMs: 142 },
+    lastStatusChange: c.lastStatusChangeTime
+      ? { status: c.status, time: c.lastStatusChangeTime }
+      : undefined,
+  }));
+
+  await page.route("**/api/v1/orgs/*/checks*", (route) => {
+    const url = route.request().url();
+    if (!url.includes("/checks")) return route.continue();
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: checks, pagination: { total: checks.length } }),
+    });
+  });
+
+  await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: opts.incidents ?? [],
+        pagination: { total: (opts.incidents ?? []).length },
+      }),
+    }),
+  );
+
+  await page.route("**/api/v1/orgs/*/results*", (route) => {
+    const url = route.request().url();
+    if (!url.includes("/results")) return route.continue();
+    const isHour = url.includes("periodType=hour");
+    const data = isHour
+      ? opts.checks.flatMap((c) =>
+          hourlyResultsFor(c.uid, c.status === "up" ? 100 : 0),
+        )
+      : opts.checks.map((c) => ({
+          uid: `${c.uid}-day`,
+          checkUid: c.uid,
+          periodType: "day",
+          periodStart: new Date().toISOString(),
+          status: c.status,
+          availabilityPct: c.status === "up" ? 100 : 0,
+          totalChecks: 60,
+          successfulChecks: c.status === "up" ? 60 : 0,
+        }));
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data, pagination: { total: data.length } }),
+    });
+  });
+
+  await page.route("**/api/v1/orgs/*/events*", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ data: [], pagination: { total: 0 } }),
+    }),
+  );
+}
 
 test.describe("Dashboard", () => {
   test("should land on org dashboard after login", async ({
@@ -185,5 +285,114 @@ test.describe("Dashboard", () => {
     await expect(availabilityTile).toBeVisible();
     const tag = await availabilityTile.evaluate((el) => el.tagName.toLowerCase());
     expect(tag).not.toBe("a");
+  });
+
+  test("healthy org: glance card lists checks with strips, no incidents card, footer links to /checks", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "11111111-1111-1111-1111-111111111111", name: "Alpha API", status: "up" },
+        { uid: "22222222-2222-2222-2222-222222222222", name: "Beta Web", status: "up" },
+        { uid: "33333333-3333-3333-3333-333333333333", name: "Gamma Job", status: "up" },
+      ],
+      incidents: [],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    // Glance card is present and lists the seeded checks.
+    const glance = page.getByTestId("checks-glance");
+    await expect(glance).toBeVisible({ timeout: 10000 });
+    await expect(glance.getByText("Checks at a glance")).toBeVisible();
+
+    const rows = page.getByTestId("glance-row");
+    await expect(rows).toHaveCount(3);
+    await expect(glance.getByText("Alpha API")).toBeVisible();
+    await expect(glance.getByText("Beta Web")).toBeVisible();
+    await expect(glance.getByText("Gamma Job")).toBeVisible();
+
+    // No active-incidents card in the healthy state.
+    await expect(page.getByText("Active incidents", { exact: true })).toHaveCount(0);
+
+    // Footer references the total count and links to the checks list.
+    const footer = page.getByTestId("checks-glance-footer");
+    await expect(footer).toBeVisible();
+    await expect(footer).toContainText("3");
+    await footer.click();
+    await page.waitForLoadState("networkidle");
+    expect(page.url()).toMatch(/\/orgs\/test\/checks\/?$/);
+  });
+
+  test("a down check sorts first with a destructive badge and a since timestamp", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", name: "Healthy One", status: "up" },
+        {
+          uid: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+          name: "Broken Service",
+          status: "down",
+          lastStatusChangeTime: new Date(Date.now() - 12 * 60 * 1000).toISOString(),
+        },
+      ],
+      incidents: [],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const glance = page.getByTestId("checks-glance");
+    await expect(glance).toBeVisible({ timeout: 10000 });
+
+    const rows = page.getByTestId("glance-row");
+    await expect(rows).toHaveCount(2);
+
+    // Down check sorts first.
+    await expect(rows.first()).toContainText("Broken Service");
+
+    // It carries a destructive status badge (down) and a "since" timestamp.
+    await expect(rows.first().getByText("down", { exact: true })).toBeVisible();
+    await expect(rows.first()).toContainText("since");
+  });
+
+  test("with an active incident, the incidents card renders above the glance card", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await mockDashboard(page, {
+      checks: [
+        { uid: "cccccccc-cccc-cccc-cccc-cccccccccccc", name: "Watched Service", status: "up" },
+      ],
+      incidents: [
+        {
+          uid: "dddddddd-dddd-dddd-dddd-dddddddddddd",
+          title: "Database latency spike",
+          state: "active",
+          startedAt: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
+        },
+      ],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const glance = page.getByTestId("checks-glance");
+    await expect(glance).toBeVisible({ timeout: 10000 });
+
+    // Incidents card is present and shows the incident.
+    const incidentTitle = page.getByText("Database latency spike");
+    await expect(incidentTitle).toBeVisible();
+
+    // Incidents card sits above the glance card in document order (higher = lower y).
+    const incidentBox = await incidentTitle.boundingBox();
+    const glanceBox = await glance.boundingBox();
+    expect(incidentBox).not.toBeNull();
+    expect(glanceBox).not.toBeNull();
+    expect(incidentBox!.y).toBeLessThan(glanceBox!.y);
   });
 });
