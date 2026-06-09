@@ -98,6 +98,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useDebounce } from "@/lib/use-debounce";
 import { slugify } from "@/lib/utils";
 
@@ -119,6 +120,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
   { id: "kpi-tiles", label: "KPI tiles" },
+  { id: "uptime-strip", label: "Uptime strip" },
 ];
 
 function DesignReferencePage() {
@@ -143,6 +145,7 @@ function DesignReferencePage() {
       <FeedbackSection />
       <LabelFilterSection />
       <KpiTileSection />
+      <UptimeStripSection />
     </div>
   );
 }
@@ -1330,6 +1333,51 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
             <p className="text-xs text-muted-foreground mt-1">24h window</p>
           </CardContent>
         </Card>
+      </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
+function UptimeStripSection() {
+  // 24 hourly buckets, oldest → newest. A mix of full uptime, a partial hour,
+  // a down hour, and a couple of no-data hours to exercise every cell color.
+  const buckets = Array.from({ length: 24 }, (_, i) => {
+    const periodStart = new Date(
+      Date.now() - (23 - i) * 60 * 60 * 1000,
+    ).toISOString();
+    let availabilityPct: number | undefined = 100;
+    if (i === 22 || i === 23) availabilityPct = undefined; // most recent hours: no data yet
+    else if (i === 10) availabilityPct = 0; // a full outage hour
+    else if (i === 11) availabilityPct = 66.7; // a partially-degraded hour
+    return {
+      periodStart,
+      availabilityPct,
+      durationMs: availabilityPct === undefined ? undefined : 120 + i,
+    };
+  });
+  const snippet = `import { UptimeStrip } from "@/components/ui/uptime-strip";
+
+// Pure presentational: pass hourly buckets (oldest → newest), no fetching.
+// Cell color: green at 100%, yellow in between, red at 0%, gray for no data.
+<UptimeStrip
+  buckets={[
+    { periodStart, availabilityPct, durationMs },
+    // ...one per hour
+  ]}
+/>`;
+  return (
+    <Section
+      id="uptime-strip"
+      title="Uptime strip"
+      description="A compact 24-hour availability sparkline used in the dashboard's Checks-at-a-glance rows. One cell per hour, oldest → newest; color comes from each bucket's availabilityPct. Hover a cell for the hour, availability %, and average latency. Presentational only — group results by check and pass buckets down."
+    >
+      <div className="rounded-md border bg-card p-4 space-y-4">
+        <UptimeStrip buckets={buckets} />
+        <p className="text-xs text-muted-foreground">
+          Mostly green with one outage hour (red), one degraded hour (yellow),
+          and the two most recent hours awaiting data (gray).
+        </p>
       </div>
       <CodeSnippet code={snippet} />
     </Section>
