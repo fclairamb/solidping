@@ -207,7 +207,7 @@ test.describe("Incidents", () => {
 
     // The notification detail page renders its content.
     await expect(
-      page.getByRole("heading", { name: "Notification" }),
+      page.getByRole("heading", { name: "Notification", exact: true }),
     ).toBeVisible();
     await expect(page.getByText("Delivery timeline")).toBeVisible();
 
