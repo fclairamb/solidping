@@ -46,9 +46,33 @@ Manual: `make dev-test`, open an incident with notifications, click a row,
 confirm the detail page; desktop + mobile, light + dark.
 
 ## Implementation Plan
-1. Add a `data-testid` to the notification detail page's root/heading if one is
-   needed for a stable assertion (this is the only plausible production tweak).
-2. Add the e2e case in `e2e/incidents.spec.ts` per Testing, reusing existing
-   incident/notification seeding helpers.
-3. Verify: `make test-dash`; if the test reveals a real defect, file a follow-up
-   spec and link it here.
+
+The click-through feature is already fully built (incident detail
+`NotificationsCard` → per-notification detail route). This spec locks it with a
+**deterministic** E2E assertion. The existing
+`e2e/notification-detail.spec.ts` test ("clicking a notification row opens the
+deep-linkable detail") covers the happy path but *skips* whenever the test org
+has no incident carrying notification rows — which is the default state, since
+nothing seeds an incident notification. To make the assertion run reliably we
+seed one in test mode.
+
+1. **Seed an incident with a notification (backend, test mode only).** Extend
+   `server/test/testdata/CreateTestData` to create, on deterministic UIDs in the
+   `test` org: a check, an active incident on that check (with a title), and one
+   `IncidentNotification` row (a failed webhook delivery, so the detail page also
+   exercises the error + delivery surfaces). Use the existing
+   `db.Service.CreateCheck` / `CreateIncident` / `CreateIncidentNotification`
+   methods. This only runs under `SP_RUNMODE=test`, the mode the E2E suite boots.
+2. **Add the deterministic E2E case in `e2e/incidents.spec.ts`** per Testing:
+   open the seeded incident detail page, assert at least one `notification-row`
+   is present, click the first row, assert the URL matches
+   `…/incidents/<uid>/notifications/<uid>` and the detail page renders (the
+   "Notification" heading and "Delivery timeline"), then assert the back
+   affordance (`aria-label="Back to incident"`) returns to the incident detail
+   page. No `test.skip` fallback — the seed guarantees data.
+3. No production UI tweak is needed: the notification detail page already exposes
+   a stable `role="heading" name="Notification"` and a `Back to incident`
+   aria-label; the incident detail `NotificationsCard` already tags rows with
+   `data-testid="notification-row"`.
+4. Verify: `make build`, `make test`, `make test-dash`. If the test reveals a
+   real defect, file a follow-up spec and link it here.
