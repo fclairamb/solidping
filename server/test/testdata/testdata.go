@@ -85,6 +85,12 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
+	// Seed an active incident carrying one notification so the
+	// incident-notification click-through E2E has deterministic data to drive.
+	if err := createTestIncidentNotification(ctx, dbService, testOrg.UID, now); err != nil {
+		return err
+	}
+
 	slog.InfoContext(ctx, "Test data creation completed successfully")
 
 	return nil
@@ -277,6 +283,72 @@ func createTestStatusPage(ctx context.Context, dbService db.Service, orgUID stri
 	}
 
 	slog.InfoContext(ctx, "Created test status page", "uid", page.UID, "slug", page.Slug)
+
+	return nil
+}
+
+// createTestIncidentNotification seeds a check, an active incident on that
+// check, and one failed-webhook notification on the incident. This gives the
+// incident-notification click-through E2E deterministic data: the incident
+// appears in the list, its detail page renders a notification row, and clicking
+// that row opens the per-notification detail page (which also exercises the
+// error + delivery surfaces because the row is a failed delivery).
+func createTestIncidentNotification(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
+	const (
+		checkUID    = "00000000-0000-0000-0000-000000000012"
+		incidentUID = "00000000-0000-0000-0000-000000000013"
+		notifUID    = "00000000-0000-0000-0000-000000000014"
+	)
+
+	check := models.NewCheck(orgUID, "notified-check", "http")
+	check.UID = checkUID
+	name := "Notified Check"
+	check.Name = &name
+	check.Config = models.JSONMap{"url": "https://example.com"}
+	check.Status = models.CheckStatusDown
+	check.StatusChangedAt = &now
+	check.CreatedAt = now
+	check.UpdatedAt = now
+	if err := dbService.CreateCheck(ctx, check); err != nil {
+		return fmt.Errorf("failed to create test notified check: %w", err)
+	}
+
+	incident := models.NewIncident(orgUID, checkUID, now, "Notified Check is down")
+	incident.UID = incidentUID
+	incident.CreatedAt = now
+	incident.UpdatedAt = now
+	if err := dbService.CreateIncident(ctx, incident); err != nil {
+		return fmt.Errorf("failed to create test incident: %w", err)
+	}
+
+	failedAt := now.Add(time.Second)
+	errMsg := "webhook request failed: status 503"
+	notif := &models.IncidentNotification{
+		UID:             notifUID,
+		OrganizationUID: orgUID,
+		IncidentUID:     incidentUID,
+		EventType:       "incident.created",
+		Source:          models.IncidentNotificationSourceCheckConnection,
+		ChannelType:     "webhook",
+		Status:          models.IncidentNotificationStatusFailed,
+		Error:           &errMsg,
+		DeliveryDetails: &models.DeliveryDetails{
+			HTTPStatusCode:  503,
+			RequestURL:      "https://hooks.example.com/incidents",
+			RequestBody:     `{"type":"incident.created","data":{}}`,
+			ResponseBody:    `{"error":"service unavailable"}`,
+			DurationMs:      1234,
+			ResponseHeaders: map[string]string{"Retry-After": "120"},
+		},
+		CreatedAt: now,
+		FailedAt:  &failedAt,
+	}
+	if err := dbService.CreateIncidentNotification(ctx, notif); err != nil {
+		return fmt.Errorf("failed to create test incident notification: %w", err)
+	}
+
+	slog.InfoContext(ctx, "Created test incident notification",
+		"checkUID", checkUID, "incidentUID", incidentUID, "notifUID", notifUID)
 
 	return nil
 }

@@ -31,7 +31,7 @@ import {
 } from "@/lib/notifications";
 
 export const Route = createFileRoute(
-  "/orgs/$org/incidents/$incidentUid/notifications/$notificationUid",
+  "/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid",
 )({
   component: NotificationDetailPage,
 });
