@@ -51,10 +51,10 @@
     "availability": "Verfügbarkeit 24 Std.",
     "availabilityNoData": "Noch keine Daten"
   },
-  "needsAttention": {
-    "title": "Erfordert Aufmerksamkeit",
-    "footer": "Alle Prüfungen anzeigen →",
-    "empty": "Alles läuft",
+  "glance": {
+    "title": "Prüfungen auf einen Blick",
+    "footer_one": "{{count}} Prüfung anzeigen →",
+    "footer_other": "Alle {{count}} Prüfungen anzeigen →",
     "since": "seit {{time}}"
   },
   "activeIncidents": {

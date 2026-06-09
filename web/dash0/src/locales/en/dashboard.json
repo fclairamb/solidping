@@ -51,10 +51,10 @@
     "availability": "24h availability",
     "availabilityNoData": "No data yet"
   },
-  "needsAttention": {
-    "title": "Needs attention",
-    "footer": "View all checks →",
-    "empty": "Everything is up",
+  "glance": {
+    "title": "Checks at a glance",
+    "footer_one": "View {{count}} check →",
+    "footer_other": "View all {{count}} checks →",
     "since": "since {{time}}"
   },
   "activeIncidents": {
