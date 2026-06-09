@@ -340,3 +340,54 @@ test.describe("Login: remember last auth method", () => {
     await expect(page.getByTestId("passkey-login-button")).toHaveCount(0);
   });
 });
+
+test.describe("Login: passkey error handling", () => {
+  test("shows the domain-mismatch message (not the generic error) on an RP-ID mismatch", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      !passkeysEnabled,
+      "passkeys are not enabled on the test backend",
+    );
+
+    // Intercept the begin ceremony and rewrite the WebAuthn options' rpId to a
+    // domain that is not valid for the page's origin. The browser then throws a
+    // SecurityError during navigator.credentials.get(), which
+    // @simplewebauthn/browser maps to ERROR_INVALID_RP_ID. No virtual
+    // authenticator is needed — the RP-ID check precedes authenticator
+    // interaction. This also covers the background conditional-UI ceremony,
+    // whose failure must stay silent.
+    await page.route(
+      "**/api/v1/auth/passkeys/login/begin",
+      async (route) => {
+        const response = await route.fetch();
+        const body = (await response.json()) as {
+          options?: { publicKey?: { rpId?: string } };
+          session?: string;
+        };
+        if (body.options?.publicKey) {
+          body.options.publicKey.rpId = "example.com";
+        }
+        await route.fulfill({ response, json: body });
+      },
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // The explicit passkey button must be present (not promoted, since no
+    // last-used memory is seeded).
+    const passkeyButton = page.getByTestId("passkey-login-button");
+    await expect(passkeyButton).toBeVisible();
+    await passkeyButton.click();
+
+    // The destructive Alert appears with the domain-mismatch copy — explicitly
+    // NOT the generic unexpected-error text.
+    const error = page.getByTestId("login-error");
+    await expect(error).toBeVisible({ timeout: 5000 });
+    await expect(error).toContainText("domain");
+    await expect(error).not.toContainText("unexpected error");
+  });
+});
