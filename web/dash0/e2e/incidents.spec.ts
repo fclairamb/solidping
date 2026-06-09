@@ -177,6 +177,50 @@ test.describe("Incidents", () => {
     });
   });
 
+  test("clicking a notification row opens the notification detail and back returns to the incident", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Deterministically seeded in test mode (server/test/testdata): an active
+    // incident with one failed-webhook notification.
+    const incidentUid = "00000000-0000-0000-0000-000000000013";
+
+    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.waitForLoadState("networkidle");
+
+    // We're on the incident detail page and the Notifications card is present.
+    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("notifications-card")).toBeVisible();
+
+    // At least one notification row is present; click the first one.
+    const notifRow = page.getByTestId("notification-row").first();
+    await expect(notifRow).toBeVisible();
+    await notifRow.scrollIntoViewIfNeeded();
+    await notifRow.click();
+
+    // The URL is now the per-notification detail route under this incident.
+    const notifUrlRe = new RegExp(
+      `/incidents/${incidentUid}/notifications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+    );
+    await page.waitForURL(notifUrlRe, { timeout: 10000 });
+
+    // The notification detail page renders its content.
+    await expect(
+      page.getByRole("heading", { name: "Notification", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Delivery timeline")).toBeVisible();
+
+    // The back affordance returns to the incident detail page.
+    await page.getByRole("button", { name: "Back to incident" }).click();
+    await page.waitForURL(
+      new RegExp(`/incidents/${incidentUid}$`),
+      { timeout: 10000 },
+    );
+    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("notifications-card")).toBeVisible();
+  });
+
   test("should navigate back from incident detail to list", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
