@@ -128,3 +128,50 @@ sign in with each available method, return to the login page, confirm the method
 promoted with the "Last used" badge and that switching methods updates the memory.
 Also confirm the new design-reference entry at
 `http://localhost:4000/dash0/orgs/default/design-reference`.
+
+## Implementation Plan
+
+1. **Helper module** `web/dash0/src/lib/last-auth-method.ts`
+   - Const `LAST_AUTH_METHOD_KEY = "solidping_last_auth_method"`.
+   - `getLastAuthMethod(): string | null` — SSR guard (`typeof window === "undefined"`)
+     + try/catch (private mode / disabled storage), returns `null` on any failure.
+   - `setLastAuthMethod(method: string): void` — same guards, swallows write errors.
+   - Mirrors `getToken`/`setToken` (`api/client.ts`) and the FirstResultCelebration
+     localStorage pattern (`components/dashboard/dashboard-page.tsx`).
+
+2. **Login page** `web/dash0/src/routes/orgs/$org/login.tsx`
+   - Import helper + `Badge` (`@/components/ui/badge`).
+   - Read `getLastAuthMethod()` once via `useState(() => ...)`.
+   - Compute `promotedProvider` (last-used `oauth:<type>` still present in `providers`)
+     and `promotePasskey` (last-used `passkey` and passkeys enabled + browser supports
+     WebAuthn). Never promote an unavailable method.
+   - Render a promoted top slot (`data-testid="login-last-used"`) inside the non-2FA /
+     non-org-picker branch:
+     - OAuth: full-width "Continue with <Name>" button + brand icon + "Last used"
+       `Badge` (`data-testid="login-last-used-badge"`), wired to `handleOAuthLogin`.
+     - Passkey: full-width passkey button + "Last used" badge, wired to
+       `handlePasskeyLogin`.
+   - De-dupe: filter the promoted provider out of `providers.map(...)`; hide the bottom
+     passkey button when passkey is promoted.
+   - Password case: no top slot. Show the "Last used" badge next to the "Sign in"
+     button (`data-testid="login-last-used-badge"`) and autofocus the email field.
+   - Record the choice: `setLastAuthMethod("oauth:<type>")` in `handleOAuthLogin` before
+     redirect; `setLastAuthMethod("password")` in `handleSubmit` after `login()` resolves;
+     `setLastAuthMethod("passkey")` in `handlePasskeyLogin` and the conditional-UI success
+     path after a successful ceremony.
+
+3. **i18n** — add `"lastUsed"` to the `auth` namespace in all four locales:
+   `en` "Last used", `de` "Zuletzt verwendet", `es` "Usado por última vez",
+   `fr` "Utilisé en dernier".
+
+4. **Design reference** `web/dash0/src/routes/orgs/$org/design-reference.tsx`
+   - Add a "Button with 'Last used' badge" example to the Buttons & badges section,
+     showing the promoted-slot pattern (button carrying an inline secondary Badge) with
+     its import line.
+
+5. **Playwright E2E** `web/dash0/e2e/login.spec.ts` (extend existing patterns)
+   - Deterministic: password-rendering (seed `password`, assert badge visible + email
+     focused), no-memory (cleared storage → no slot/badge), recording (log in as test
+     user → `localStorage` is `password`).
+   - Config-dependent: OAuth promotion + passkey promotion, guarded to skip gracefully
+     when the test backend lacks the provider/passkey capability.
