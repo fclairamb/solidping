@@ -688,7 +688,16 @@ function LoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">{tc("password")}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">{tc("password")}</Label>
+                    <Link
+                      to="/forgot-password"
+                      search={{ email: email || undefined }}
+                      className="text-sm text-muted-foreground hover:underline"
+                    >
+                      {t("forgotPassword")}
+                    </Link>
+                  </div>
                   <PasswordInput
                     id="password"
                     autoComplete="current-password"
@@ -741,15 +750,6 @@ function LoginPage() {
                       {t("twoFactor.signInWithPasskey")}
                     </Button>
                   )}
-                <div className="text-center">
-                  <Link
-                    to="/forgot-password"
-                    search={{ email: email || undefined }}
-                    className="text-sm text-muted-foreground hover:underline"
-                  >
-                    {t("forgotPassword")}
-                  </Link>
-                </div>
               </form>
             </>
           )}
