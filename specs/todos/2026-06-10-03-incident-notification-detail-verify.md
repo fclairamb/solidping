@@ -27,6 +27,19 @@ No production-code change is expected. If writing the test surfaces a genuine
 gap (broken navigation, empty detail page for some notification status), capture
 it as a separate follow-up spec rather than expanding this one.
 
+### Defect found and fixed while locking the behaviour
+Writing the deterministic E2E surfaced a real routing bug, contradicting the
+"feature already works" premise: the per-notification detail route was nested
+under the incident detail **leaf** route (`incidents.$incidentUid.tsx`), which
+renders no `<Outlet/>`. Clicking a notification row changed the URL to
+`/incidents/<uid>/notifications/<uid>` but kept rendering the incident page — the
+notification detail never appeared. The fix was small and in-scope (making the
+click-through actually open the detail page): rename the route file to the
+TanStack flatten form `incidents.$incidentUid_.notifications.$notificationUid.tsx`
+so it becomes a sibling under the `/incidents` layout outlet. The URL and route
+params are unchanged. The new E2E now asserts the detail page actually renders,
+so this can't silently regress again.
+
 ## Testing
 dash0 Playwright E2E (`web/dash0/e2e/`); incident coverage lives in
 `e2e/incidents.spec.ts` (add a notifications-detail case there, or a focused
