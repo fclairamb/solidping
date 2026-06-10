@@ -196,6 +196,61 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
+  // A stable, seeded completed scan — lets the detail-header tests load the
+  // detail page directly without creating a scan (which is gated by the
+  // one-active-scan-per-org rule and would flake when other tests run first).
+  const SEEDED_SCAN_UID = "00000000-0000-0000-0000-000000000007";
+
+  // Detail-page header: the back arrow lives as the leftmost item of the
+  // right-aligned action cluster (not on the far left), and the Refresh button
+  // is a full labelled button on desktop, icon-only on mobile.
+  test("detail header places the back arrow in the right cluster and labels refresh on desktop", async ({
+    page,
+  }) => {
+    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    // The back arrow is rendered (ghost icon button with aria-label "Back").
+    const backButton = page.getByRole("link", { name: /^back$/i });
+    await expect(backButton).toBeVisible();
+
+    // It sits inside the right-aligned cluster, *after* the title, not before
+    // it. Compare horizontal position: the back button is to the right of the
+    // "Scan Details" heading.
+    const heading = page.getByRole("heading", { name: /scan details/i });
+    const headingBox = await heading.boundingBox();
+    const backBox = await backButton.boundingBox();
+    expect(headingBox).not.toBeNull();
+    expect(backBox).not.toBeNull();
+    expect(backBox!.x).toBeGreaterThan(headingBox!.x);
+
+    // At desktop width the Refresh button shows its "Refresh" label.
+    const refreshLabel = page.getByText(/^refresh$/i);
+    await expect(refreshLabel).toBeVisible();
+
+    // The back arrow navigates back to the discovery index.
+    await backButton.click();
+    await page.waitForURL(/\/discovery$/);
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+  });
+
+  test("detail header refresh button is icon-only on mobile widths", async ({ page }) => {
+    // Narrow the viewport below the Tailwind `sm` (640px) breakpoint.
+    await page.setViewportSize({ width: 390, height: 800 });
+
+    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    // The Refresh button is still present (accessible via its aria-label) but
+    // its text label is hidden at mobile width.
+    await expect(
+      page.getByRole("button", { name: /^refresh$/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/^refresh$/i)).toBeHidden();
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
