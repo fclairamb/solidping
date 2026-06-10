@@ -200,7 +200,7 @@ function StatusUpdatesIndexPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
             <Megaphone className="h-7 w-7 text-muted-foreground" />
@@ -217,7 +217,7 @@ function StatusUpdatesIndexPage() {
             data-testid="status-updates-new"
           >
             <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">New update</span>
+            New update
           </Link>
         </Button>
       </div>
