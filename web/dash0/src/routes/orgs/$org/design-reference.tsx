@@ -17,9 +17,11 @@ import {
   Info,
   KeyRound,
   Moon,
+  Globe,
   MoreVertical,
   Palette,
   Pencil,
+  Plus,
   RotateCw,
   Save,
   Search,
@@ -389,21 +391,85 @@ function PageThemeToggle() {
 }
 
 function PageHeaderSection() {
+  const listHeaderSnippet = `// Canonical list-page header. Inline icon + title, right-aligned primary action.
+<div className="flex items-center justify-between">
+  <div>
+    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+      <Globe className="h-7 w-7 text-muted-foreground" />
+      Status pages
+    </h1>
+    <p className="text-muted-foreground">Optional one-line subtitle.</p>
+  </div>
+  <Button asChild>
+    <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+      <Plus className="mr-2 h-4 w-4" />
+      New page
+    </Link>
+  </Button>
+</div>`;
   return (
     <Section
       id="page-header"
       title="Page header"
-      description="The icon-on-left + title + optional description + right-aligned actions pattern. Use it for new pages; existing inline headers will adopt it over time."
+      description="The canonical list-page header: an inline icon + title on the left, an optional muted subtitle below it, and the primary action right-aligned with its label visible at all widths. This is what almost every list page ships (checks, status-pages, status-updates, me/notifications) — copy it for new list pages rather than reaching for the boxed PageHeader component."
     >
       <div className="rounded-md border bg-card p-4">
-        <PageHeader
-          icon={Palette}
-          title="Example page title"
-          description="A short subtitle that explains what the page is for."
-          actions={<Button size="sm">Primary action</Button>}
-        />
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
+              <Globe className="h-7 w-7 text-muted-foreground" />
+              Status pages
+            </h1>
+            <p className="text-muted-foreground">
+              Optional one-line subtitle that explains what the page is for.
+            </p>
+          </div>
+          <Button>
+            <Plus className="mr-2 h-4 w-4" />
+            New page
+          </Button>
+        </div>
       </div>
-      <CodeSnippet code={`import { PageHeader } from "@/components/shared/page-header";`} />
+      <CodeSnippet code={listHeaderSnippet} />
+      <p className="text-sm text-muted-foreground">
+        Notes: keep the title{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">text-3xl font-bold tracking-tight</code>{" "}
+        with an inline{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">h-7 w-7 text-muted-foreground</code>{" "}
+        icon; the primary action keeps its{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>{" "}
+        label at every width (it is a single prominent button, not a row of
+        collapsing actions). The detail/edit-page header — back arrow inside the
+        right-aligned action cluster — is documented in{" "}
+        <a href="#buttons-badges" className="underline">
+          Buttons &amp; badges
+        </a>
+        .
+      </p>
+      <div className="rounded-md border border-dashed bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Legacy:</strong> the boxed{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+          component (
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">@/components/shared/page-header</code>
+          ) renders a bordered icon tile and is kept only where a boxed icon is
+          intentional (e.g. the header at the top of this very page). Do not
+          reach for it on new list pages — use the inline pattern above so the
+          app stays consistent.
+        </p>
+      </div>
+      <div className="rounded-md border border-dashed bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Follow-up (out of scope here):</strong>{" "}
+          documentation alone is what let these headers drift. Extracting shared{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">ListPageHeader</code>{" "}
+          and{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">DetailPageHeader</code>{" "}
+          components — consumed by this reference page and the real routes —
+          would enforce these patterns by construction far better than a
+          showcase. Recommended as a separate spec.
+        </p>
+      </div>
     </Section>
   );
 }
@@ -550,32 +616,63 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
-        <h3 className="text-sm font-medium">Detail page header: back button + title + actions</h3>
+        <h3 className="text-sm font-medium">Detail page header: title block + right-aligned action cluster (back arrow first)</h3>
         <p className="text-sm text-muted-foreground">
-          On detail/edit pages, compose a single flex row:{" "}
-          <strong>icon-only back button on the far left</strong>, the page{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code> with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex-1</code> in the middle,
-          and action buttons (e.g. Delete) on the far right. The back button is{" "}
-          <strong>always icon-only</strong> — never paired with a &quot;Back&quot; label. Use{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code> with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
-          and an <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
+          On detail/edit pages, compose a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex items-start justify-between gap-3</code>{" "}
+          row. The <strong>left</strong> is the title block — the page{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
+          plus any subtitle/status — wrapped in{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+          so it truncates instead of shoving the actions off-screen. The{" "}
+          <strong>right</strong> is a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex gap-2 shrink-0</code>{" "}
+          cluster whose <strong>first child is the icon-only ghost back button</strong>,
+          followed by the page actions (View / Edit / Delete, Refresh, …). The
+          back arrow is <strong>not</strong> on the far left — it leads the
+          right-aligned cluster. It is{" "}
+          <strong>always icon-only</strong> — never paired with a &quot;Back&quot;
+          label. Use{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code>{" "}
+          with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;ghost&quot; size=&quot;icon&quot;</code>{" "}
+          and an{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
+          A trailing Refresh button labels itself on desktop and collapses to
+          the icon below{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
         </p>
         <ExampleRow
           preview={
-            <div className="flex w-full items-center gap-3">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <h1 className="flex-1 text-xl font-bold tracking-tight">Page title</h1>
-              <Button variant="destructive" size="sm" aria-label="Delete">
-                <Trash2 />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
+            <div className="flex w-full items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                  Page title
+                </h1>
+                <p className="mt-1 truncate text-muted-foreground">
+                  Optional subtitle / status
+                </p>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button variant="ghost" size="icon" aria-label="Back">
+                  <ArrowLeft />
+                </Button>
+                <Button variant="outline" size="sm" aria-label="Edit">
+                  <Pencil className="sm:mr-2 h-4 w-4" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+                <Button variant="outline" aria-label="Refresh">
+                  <RotateCw className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Refresh</span>
+                </Button>
+                <Button variant="destructive" size="sm" aria-label="Delete">
+                  <Trash2 />
+                  <span className="hidden sm:inline">Delete</span>
+                </Button>
+              </div>
             </div>
           }
-          importLine={`<div className="flex items-center gap-3">\n  <Button variant="ghost" size="icon" aria-label="Back">\n    <ArrowLeft />\n  </Button>\n  <h1 className="flex-1 text-3xl font-bold tracking-tight">{title}</h1>\n  <Button variant="destructive" size="sm" onClick={handleDelete}>\n    <Trash2 />\n    Delete\n  </Button>\n</div>`}
+          importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    <Button variant="outline" size="sm" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="sm:mr-2 h-4 w-4" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" size="sm" onClick={handleDelete}>\n      <Trash2 />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>
