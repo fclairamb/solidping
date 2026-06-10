@@ -58,6 +58,7 @@
   "promoted_success": "Host als Prüfung gefördert",
   "promoted_failed": "Host konnte nicht gefördert werden",
   "back": "Zurück",
+  "refresh": "Aktualisieren",
   "scanDetails": "Scan-Details",
   "cidrs": "CIDRs",
   "startedAt": "Gestartet am",

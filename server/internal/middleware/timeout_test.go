@@ -66,6 +66,49 @@ func TestRequestTimeout_WriteHeaderThenWriteBodyReachesWire(t *testing.T) {
 	r.JSONEq(`{"accessToken":"abc"}`, w.Body.String())
 }
 
+// Regression: a handler that times out keeps running in the background and may
+// still touch the response writer's headers (e.g. the rate-limiter writes
+// Content-Type / Retry-After on its 429 path) at the same moment the timeout
+// middleware writes its 504. Both used to mutate the *same* http.Header map,
+// which the Go runtime aborts with "fatal error: concurrent map writes" and
+// crashed the whole server. The handler must now own a private header map, so
+// this races cleanly under `go test -race`.
+func TestRequestTimeout_HandlerHeaderWriteAfterTimeoutDoesNotRace(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	released := make(chan struct{})
+	racing := func(w http.ResponseWriter, req bunrouter.Request) error {
+		<-req.Context().Done() // wait until the middleware has timed us out
+		// Hammer the header map the way a late rate-limiter rejection would,
+		// concurrently with the middleware committing its 504.
+		for i := 0; i < 500; i++ {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Retry-After", "60")
+			w.WriteHeader(http.StatusTooManyRequests)
+			_, _ = w.Write([]byte(`{"code":"RATE_LIMITED"}`))
+		}
+		close(released)
+		return nil
+	}
+	handler := middleware.RequestTimeout(20 * time.Millisecond)(racing)
+
+	w := httptest.NewRecorder()
+	// While the request is in flight the middleware writes the 504 on the main
+	// goroutine; the handler concurrently mutates headers on the background one.
+	// The point of the test is that this does not trigger a concurrent map
+	// write — the run is executed under `-race` in CI.
+	_ = handler(w, newBunRequest("30.0.0.6", "/api/v1/orgs/default/checks"))
+	<-released // ensure the racing handler has finished before the test ends
+
+	// Whichever side won the claim, the client sees exactly one coherent
+	// response (never a corrupted mix), and the runtime did not abort.
+	r.Contains(
+		[]int{http.StatusGatewayTimeout, http.StatusTooManyRequests},
+		w.Code,
+	)
+}
+
 func TestRequestTimeout_Disabled(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
