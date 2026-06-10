@@ -69,7 +69,17 @@ test.describe("Incident notifications", () => {
     await page.waitForLoadState("networkidle");
 
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "My pages" })).toBeVisible();
+
+    // The header uses the inline icon + bold title pattern shared by the other
+    // list pages: a level-1 heading with the text-3xl font-bold treatment, not
+    // the boxed PageHeader chrome.
+    const h1 = page.getByRole("heading", { level: 1, name: "My pages" });
+    await expect(h1).toBeVisible();
+    await expect(h1).toHaveClass(/text-3xl/);
+    await expect(h1).toHaveClass(/font-bold/);
+    await expect(
+      page.getByText("Incidents you were paged for, in reverse chronological order.")
+    ).toBeVisible();
   });
 
   test("My pages sidebar entry navigates to the correct page", async ({
