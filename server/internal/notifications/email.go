@@ -63,23 +63,62 @@ var (
 // EmailSender sends notifications via email.
 type EmailSender struct{}
 
+// extractRecipients resolves the email recipient list from an integration's
+// "to" setting. It is defensive about the underlying value type: a JSONB load
+// yields []any, while in-memory construction (tests, future callers) may yield
+// []string. Both are accepted, with element-level string filtering so non-string
+// entries are skipped.
+//
+// The boolean return reports whether the "to" key was present and non-empty —
+// distinguishing "no recipients configured at all" (ok=false →
+// ErrNoRecipientsConfigured) from "configured but no element is a usable string"
+// (ok=true, len==0 → ErrNoValidRecipients).
+func extractRecipients(raw any) ([]string, bool) {
+	switch list := raw.(type) {
+	case []any:
+		if len(list) == 0 {
+			return nil, false
+		}
+
+		out := make([]string, 0, len(list))
+		for _, r := range list {
+			if addr, ok := r.(string); ok && addr != "" {
+				out = append(out, addr)
+			}
+		}
+
+		return out, true
+	case []string:
+		if len(list) == 0 {
+			return nil, false
+		}
+
+		out := make([]string, 0, len(list))
+		for _, addr := range list {
+			if addr != "" {
+				out = append(out, addr)
+			}
+		}
+
+		return out, true
+	default:
+		return nil, false
+	}
+}
+
 // Send sends a notification via email.
 func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	if jctx.Services.EmailSender == nil {
 		return ErrEmailSenderNotConfigured
 	}
 
-	// Extract recipients from settings
-	recipientList, ok := payload.Integration.Settings["recipients"].([]any)
-	if !ok || len(recipientList) == 0 {
+	// Extract recipients from the canonical "to" settings key. The dashboard
+	// writes recipients under "to" (see integration-form.tsx), and the rest of
+	// the email subsystem (email.Recipients.To, the generic email job's
+	// `to` field) uses the same key — so "to" is the canonical storage key.
+	emailAddresses, ok := extractRecipients(payload.Integration.Settings["to"])
+	if !ok {
 		return ErrNoRecipientsConfigured
-	}
-
-	emailAddresses := make([]string, 0, len(recipientList))
-	for _, r := range recipientList {
-		if emailAddr, ok := r.(string); ok {
-			emailAddresses = append(emailAddresses, emailAddr)
-		}
 	}
 
 	if len(emailAddresses) == 0 {
