@@ -72,7 +72,8 @@
     "pushoverToken": "App-Token",
     "opsgenieKey": "API-Schlüssel",
     "opsgenieTeam": "Team (optional)",
-    "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss."
+    "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
+    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
   },
   "hint": {
     "slack": "Slack-Workspace über OAuth verbinden",

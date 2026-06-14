@@ -72,7 +72,8 @@
     "pushoverToken": "Token de la app",
     "opsgenieKey": "Clave API",
     "opsgenieTeam": "Equipo (opcional)",
-    "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar."
+    "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar.",
+    "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados."
   },
   "hint": {
     "slack": "Conectar un espacio de Slack vía OAuth",
