@@ -13,10 +13,8 @@ import {
   Globe,
   BadgeCheck,
   LogOut,
-  Moon,
   Network,
   Palette,
-  Sun,
   ChevronUp,
   User2,
   Building,
@@ -44,10 +42,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/contexts/AuthContext";
 import { useVersion } from "@/api/hooks";
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { Logo } from "@/components/ui/logo";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 const navItems = [
   {
@@ -125,42 +123,6 @@ const testNavItems = [
   },
 ];
 
-
-function getInitialTheme(): "light" | "dark" {
-  const stored = localStorage.getItem("theme");
-  const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-  return stored === "dark" || (!stored && prefersDark) ? "dark" : "light";
-}
-
-export function ThemeToggle() {
-  const { t } = useTranslation();
-  const [theme, setTheme] = useState<"light" | "dark">(getInitialTheme);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle("dark", theme === "dark");
-  }, [theme]);
-
-  const toggleTheme = () => {
-    const newTheme = theme === "light" ? "dark" : "light";
-    setTheme(newTheme);
-    localStorage.setItem("theme", newTheme);
-  };
-
-  return (
-    <button
-      data-testid="theme-toggle"
-      onClick={toggleTheme}
-      className="inline-flex items-center justify-center rounded-md text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground h-9 w-9"
-      aria-label={theme === "light" ? t("switchToDarkMode") : t("switchToLightMode")}
-    >
-      {theme === "light" ? (
-        <Moon className="h-4 w-4" />
-      ) : (
-        <Sun className="h-4 w-4" />
-      )}
-    </button>
-  );
-}
 
 export function AppSidebar() {
   const { t } = useTranslation();

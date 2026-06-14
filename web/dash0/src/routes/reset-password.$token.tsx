@@ -9,6 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 
 import { Logo } from "@/components/ui/logo";
+import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { useResetPassword } from "@/api/hooks";
 
 export const Route = createFileRoute("/reset-password/$token")({
@@ -46,7 +47,7 @@ function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
@@ -124,6 +125,6 @@ function ResetPasswordPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AuthSplitLayout>
   );
 }
