@@ -50,10 +50,28 @@ import {
   useStatusPage,
   useStatusUpdate,
 } from "@/api/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import type { IncidentNotification } from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
 import { useTranslation } from "react-i18next";
+
+/** Parses the `?from=` search param used by the notification detail route. */
+function parseNotificationFrom(
+  from: string | undefined,
+): { type: "incident" | "integration"; uid: string } | null {
+  if (!from) return null;
+  const colonIdx = from.indexOf(":");
+  if (colonIdx === -1) return null;
+  const type = from.slice(0, colonIdx);
+  const uid = from.slice(colonIdx + 1);
+  if (!uid) return null;
+  if (type === "incident" || type === "integration") {
+    return { type, uid };
+  }
+  return null;
+}
 
 function hasOAuthTokenInURL(): boolean {
   const params = new URLSearchParams(window.location.search);
@@ -115,6 +133,7 @@ function Breadcrumbs({ org }: { org: string }) {
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
   const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
+  const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -148,6 +167,91 @@ function Breadcrumbs({ org }: { org: string }) {
     org,
     isStatusUpdates ? (params.updateUid ?? "") : "",
   );
+
+  // Notification detail breadcrumb — read from query cache (no extra fetch)
+  const queryClient = useQueryClient();
+  const notifDetailMatch = isNotificationDetail
+    ? matches.find((m) => m.routeId === "/orgs/$org/notifications/$notificationUid")
+    : undefined;
+  const notifFromParam = notifDetailMatch
+    ? (notifDetailMatch.search as { from?: string } | undefined)?.from
+    : undefined;
+  const notifFrom = isNotificationDetail ? parseNotificationFrom(notifFromParam) : null;
+  const cachedNotif = isNotificationDetail
+    ? queryClient.getQueryData<IncidentNotification>([
+        "orgNotification",
+        org,
+        params.notificationUid ?? "",
+      ])
+    : undefined;
+
+  if (isNotificationDetail) {
+    const notifLabel = "Notification";
+    if (notifFrom?.type === "incident") {
+      const incidentLabel =
+        cachedNotif?.incident?.title ||
+        (notifFrom.uid.length >= 8 ? notifFrom.uid.slice(0, 8) : notifFrom.uid);
+      return (
+        <>
+          <Link
+            to="/orgs/$org/incidents"
+            params={{ org }}
+            search={{ state: "all" as const, showSuppressed: undefined }}
+            className={linkClass}
+          >
+            <AlertTriangle className={iconClass} />
+            {t("incidents")}
+          </Link>
+          <BreadcrumbSeparator />
+          <Link
+            to="/orgs/$org/incidents/$incidentUid"
+            params={{ org, incidentUid: notifFrom.uid }}
+            className={linkClass}
+          >
+            {incidentLabel}
+          </Link>
+          <BreadcrumbSeparator />
+          <span className={activeClass}>{notifLabel}</span>
+        </>
+      );
+    }
+
+    if (notifFrom?.type === "integration") {
+      const integrationLabel =
+        cachedNotif?.connection?.name ||
+        (notifFrom.uid.length >= 8 ? notifFrom.uid.slice(0, 8) : notifFrom.uid);
+      return (
+        <>
+          <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}>
+            <Bell className={iconClass} />
+            {t("integrations")}
+          </Link>
+          <BreadcrumbSeparator />
+          <Link
+            to="/orgs/$org/integrations/$integrationUid"
+            params={{ org, integrationUid: notifFrom.uid }}
+            className={linkClass}
+          >
+            {integrationLabel}
+          </Link>
+          <BreadcrumbSeparator />
+          <span className={activeClass}>{notifLabel}</span>
+        </>
+      );
+    }
+
+    // No ?from — show Integrations > Notification as default context
+    return (
+      <>
+        <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}>
+          <Bell className={iconClass} />
+          {t("integrations")}
+        </Link>
+        <BreadcrumbSeparator />
+        <span className={activeClass}>{notifLabel}</span>
+      </>
+    );
+  }
 
   if (isDashboard) {
     return (
