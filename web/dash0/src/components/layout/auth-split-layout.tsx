@@ -4,6 +4,7 @@ import { CheckCircle2 } from "lucide-react";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { Logo } from "@/components/ui/logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { LanguageSwitcher } from "@/components/shared/language-switcher";
 
 // Bright, luminous lift of the brand crimson — readable on the dark aurora.
 const ACCENT = "text-[oklch(0.82_0.13_5)]";
@@ -26,9 +27,12 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative grid min-h-screen bg-background lg:grid-cols-2">
-      {/* Theme toggle — pinned top-right, sits over the form column on every
-          breakpoint (the aurora panel is hidden below lg). */}
-      <ThemeToggle className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground" />
+      {/* Language + theme controls — pinned top-right, over the form column on
+          every breakpoint (the aurora panel is hidden below lg). */}
+      <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
+        <LanguageSwitcher />
+        <ThemeToggle className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground" />
+      </div>
 
       {/* Brand aurora marketing panel — large screens only. */}
       <AuroraPanel className="hidden p-12 lg:block xl:p-16">
