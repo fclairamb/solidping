@@ -1,6 +1,9 @@
 package badges
 
 import (
+	"math"
+	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1111,4 +1114,51 @@ func TestRenderUptimeBarRowNoLabels(t *testing.T) {
 	segments := []string{ColorGreen, ColorGreen}
 	row := renderUptimeBarRow(segments, nil, nil, 300, rowHeightBar, 0, "flat")
 	r.NotContains(row, "<text")
+}
+
+// TestRenderUptimeBarRowEvenWidths is a regression test for the 24h uptime-bar
+// last-segment width bug: the rounding remainder must be spread evenly across
+// the segments so no single segment (notably the current-hour one) renders
+// wider than the rest. Before the fix, n=24/width=300 produced 23 segments at
+// 11 px and a last segment at 24 px.
+func TestRenderUptimeBarRowEvenWidths(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const (
+		n     = 24
+		width = 300
+	)
+
+	segments := make([]string, n)
+	for i := range segments {
+		segments[i] = ColorGray
+	}
+
+	row := renderUptimeBarRow(segments, nil, nil, width, rowHeightBar, 0, "flat")
+
+	widthRe := regexp.MustCompile(`<rect x="\d+" width="(\d+)"`)
+	matches := widthRe.FindAllStringSubmatch(row, -1)
+	r.Len(matches, n, "expected one <rect> per segment")
+
+	minW, maxW, sum := math.MaxInt, 0, 0
+	for _, m := range matches {
+		w, err := strconv.Atoi(m[1])
+		r.NoError(err)
+
+		if w < minW {
+			minW = w
+		}
+
+		if w > maxW {
+			maxW = w
+		}
+
+		sum += w
+	}
+
+	r.LessOrEqual(maxW-minW, 1, "segment widths must differ by at most 1px")
+	// Segment widths plus the (n-1) 1-px gaps sum to exactly the bar width.
+	r.Equal(width, sum+(n-1))
 }
