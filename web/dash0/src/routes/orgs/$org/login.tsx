@@ -739,18 +739,17 @@ function LoginPage() {
                 {passkeysEnabled &&
                   browserSupportsWebAuthn() &&
                   !promotePasskey && (
-                    <div className="text-center">
-                      <button
-                        type="button"
-                        onClick={handlePasskeyLogin}
-                        disabled={isLoading}
-                        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:underline disabled:opacity-50"
-                        data-testid="passkey-login-button"
-                      >
-                        <KeyRound className="h-3.5 w-3.5" />
-                        {t("twoFactor.signInWithPasskey")}
-                      </button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handlePasskeyLogin}
+                      disabled={isLoading}
+                      data-testid="passkey-login-button"
+                    >
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      {t("twoFactor.signInWithPasskey")}
+                    </Button>
                   )}
               </form>
             </>
