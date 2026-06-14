@@ -130,18 +130,18 @@ func (d *emailDelivery) record(recipients []string, res *email.SendResult) {
 		d.firstMessageID = res.MessageID
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "recipients: %s", strings.Join(recipients, ", "))
+	var entry strings.Builder
+	fmt.Fprintf(&entry, "recipients: %s", strings.Join(recipients, ", "))
 
 	if res.MessageID != "" {
-		fmt.Fprintf(&b, "\nmessage-id: %s", res.MessageID)
+		fmt.Fprintf(&entry, "\nmessage-id: %s", res.MessageID)
 	}
 
 	if res.ServerResponse != "" {
-		fmt.Fprintf(&b, "\nserver: %s", res.ServerResponse)
+		fmt.Fprintf(&entry, "\nserver: %s", res.ServerResponse)
 	}
 
-	d.transcript = append(d.transcript, b.String())
+	d.transcript = append(d.transcript, entry.String())
 }
 
 // apply writes the accumulated identifiers and transcript onto the payload so

@@ -17,6 +17,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
+// errFakeSendFailed is the static error returned by fakeEmailSender when it is
+// configured to fail, satisfying the err113 linter (no dynamic errors).
+var errFakeSendFailed = errors.New("fake: send failed")
+
 // fakeEmailSender is a test double for email.Sender that records the messages it
 // was asked to send, so a test can assert the resolved recipients without
 // sending real mail. It synthesizes a per-send Message-ID and SMTP server
@@ -33,7 +37,7 @@ func (f *fakeEmailSender) Send(_ context.Context, msg *email.Message) (*email.Se
 	f.sent = append(f.sent, msg)
 
 	if f.failAfter > 0 && len(f.sent) == f.failAfter {
-		return nil, errors.New("fake: send failed")
+		return nil, errFakeSendFailed
 	}
 
 	key := strings.Join(msg.Recipients.To, ",")
