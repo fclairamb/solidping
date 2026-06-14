@@ -97,4 +97,76 @@ test.describe("Check Detail Page", () => {
       fullPage: true,
     });
   });
+
+  test("header has a Badges button and labeled actions that collapse on mobile", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check so we have a detail page to visit
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Badges ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/badges-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The Badges button is rendered as an asChild <Link>, so it is an anchor
+    // reachable by its accessible name (aria-label) whose href points at the
+    // badges builder with this check pre-selected via ?check=<slug>.
+    const badgesLink = page.getByRole("link", { name: "Badges" });
+    await expect(badgesLink).toBeVisible();
+    await expect(badgesLink).toHaveAttribute(
+      "href",
+      /\/orgs\/test\/badges\?check=/,
+    );
+
+    // Desktop viewport: every action shows its text label alongside the icon.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
+    await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
+    await expect(badgesLink.getByText("Badges")).toBeVisible();
+    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
+
+    // The leading back button stays icon-only (no visible "Back" label).
+    const backButton = page.getByRole("button", { name: "Back to checks" });
+    await expect(backButton).toBeVisible();
+
+    // Mobile viewport: the label <span>s collapse (hidden) while every button
+    // remains reachable by its aria-label, and the header does not overflow.
+    await page.setViewportSize({ width: 390, height: 812 });
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
+    await expect(page.getByLabel("Clone").getByText("Clone")).toBeHidden();
+    await expect(badgesLink.getByText("Badges")).toBeHidden();
+    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeHidden();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeHidden();
+
+    // Buttons themselves stay present (by aria-label) on mobile.
+    await expect(page.getByLabel("Edit")).toBeVisible();
+    await expect(badgesLink).toBeVisible();
+    await expect(backButton).toBeVisible();
+
+    const hasOverflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+    );
+    expect(hasOverflow).toBe(false);
+
+    await page.screenshot({
+      path: "test-results/screenshots/check-detail-actions-mobile.png",
+      fullPage: true,
+    });
+  });
 });
