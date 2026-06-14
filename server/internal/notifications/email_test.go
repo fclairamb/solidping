@@ -2,12 +2,16 @@ package notifications
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -15,15 +19,31 @@ import (
 
 // fakeEmailSender is a test double for email.Sender that records the messages it
 // was asked to send, so a test can assert the resolved recipients without
-// sending real mail.
+// sending real mail. It synthesizes a per-send Message-ID and SMTP server
+// response derived from the recipients so callers can assert the audit-row
+// artifacts the real sender now surfaces.
 type fakeEmailSender struct {
 	sent []*email.Message
+	// failAfter, when > 0, makes the Nth send (1-indexed) return an error after
+	// the preceding sends succeed, exercising the partial-batch path.
+	failAfter int
 }
 
 func (f *fakeEmailSender) Send(_ context.Context, msg *email.Message) (*email.SendResult, error) {
 	f.sent = append(f.sent, msg)
 
-	return &email.SendResult{Sent: true, Message: "fake: email sent"}, nil
+	if f.failAfter > 0 && len(f.sent) == f.failAfter {
+		return nil, errors.New("fake: send failed")
+	}
+
+	key := strings.Join(msg.Recipients.To, ",")
+
+	return &email.SendResult{
+		Sent:           true,
+		Message:        "fake: email sent",
+		MessageID:      "mid-" + key,
+		ServerResponse: "250 2.0.0 Ok: queued as Q-" + key,
+	}, nil
 }
 
 // TestEmailSender_Send_RecipientResolution pins recipient resolution from the
@@ -123,4 +143,107 @@ func TestEmailSender_Send_RecipientResolution(t *testing.T) {
 			r.Equal(tt.wantTo, sender.sent[0].Recipients.To)
 		})
 	}
+}
+
+// TestEmailSender_Send_CapturesDeliveryArtifacts pins that a successful send
+// surfaces the SMTP Message-ID and per-recipient server response on the payload
+// so the notification audit row can prove the message was handed off.
+func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
+	t.Parallel()
+
+	checkName := "API health"
+
+	t.Run("broadcast send records first message id and transcript", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		sender := &fakeEmailSender{}
+		s := &EmailSender{}
+		payload := &Payload{
+			EventType: "incident.updated", // non-ack → single broadcast send
+			Check:     &models.Check{Name: &checkName, Type: "http"},
+			Integration: &models.Integration{
+				Settings: models.JSONMap{"to": []any{"a@x.test", "b@y.test"}},
+			},
+		}
+
+		jctx := &jobdef.JobContext{
+			Services: &services.Registry{EmailSender: sender},
+			Logger:   slog.Default(),
+		}
+
+		r.NoError(s.Send(context.Background(), jctx, payload))
+
+		r.Equal("mid-a@x.test,b@y.test", payload.MessageID)
+		r.NotNil(payload.DeliveryDetails)
+		r.Contains(payload.DeliveryDetails.ResponseBody, "recipients: a@x.test, b@y.test")
+		r.Contains(payload.DeliveryDetails.ResponseBody, "message-id: mid-a@x.test,b@y.test")
+		r.Contains(payload.DeliveryDetails.ResponseBody, "server: 250 2.0.0 Ok: queued as Q-a@x.test,b@y.test")
+	})
+
+	t.Run("per-recipient send records first id and every server response", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		sender := &fakeEmailSender{}
+		s := &EmailSender{}
+		payload := &Payload{
+			EventType: eventTypeIncidentCreated, // ack event → one send per recipient
+			Check:     &models.Check{Name: &checkName, Type: "http"},
+			Incident:  &models.Incident{UID: "inc-1", StartedAt: time.Now()},
+			Integration: &models.Integration{
+				Settings: models.JSONMap{"to": []any{"a@x.test", "b@y.test"}},
+			},
+		}
+
+		jctx := &jobdef.JobContext{
+			Services:  &services.Registry{EmailSender: sender},
+			AppConfig: &config.Config{},
+			Logger:    slog.Default(),
+		}
+
+		r.NoError(s.Send(context.Background(), jctx, payload))
+
+		r.Len(sender.sent, 2, "one send per recipient")
+		// First Message-ID is the correlation handle stored on the row.
+		r.Equal("mid-a@x.test", payload.MessageID)
+		r.NotNil(payload.DeliveryDetails)
+		// The transcript carries every recipient's own server response.
+		r.Contains(payload.DeliveryDetails.ResponseBody, "server: 250 2.0.0 Ok: queued as Q-a@x.test")
+		r.Contains(payload.DeliveryDetails.ResponseBody, "server: 250 2.0.0 Ok: queued as Q-b@y.test")
+	})
+
+	t.Run("partial batch failure still records delivered recipients", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		sender := &fakeEmailSender{failAfter: 2} // first recipient sends, second fails
+		s := &EmailSender{}
+		payload := &Payload{
+			EventType: eventTypeIncidentCreated,
+			Check:     &models.Check{Name: &checkName, Type: "http"},
+			Incident:  &models.Incident{UID: "inc-1", StartedAt: time.Now()},
+			Integration: &models.Integration{
+				Settings: models.JSONMap{"to": []any{"a@x.test", "b@y.test"}},
+			},
+		}
+
+		jctx := &jobdef.JobContext{
+			Services:  &services.Registry{EmailSender: sender},
+			AppConfig: &config.Config{},
+			Logger:    slog.Default(),
+		}
+
+		// The send short-circuits on the failing recipient and returns the error.
+		r.Error(s.Send(context.Background(), jctx, payload))
+
+		// The recipient that did go out is still surfaced for the audit row.
+		r.Equal("mid-a@x.test", payload.MessageID)
+		r.NotNil(payload.DeliveryDetails)
+		r.Contains(payload.DeliveryDetails.ResponseBody, "recipients: a@x.test")
+		r.NotContains(payload.DeliveryDetails.ResponseBody, "Q-b@y.test")
+	})
 }

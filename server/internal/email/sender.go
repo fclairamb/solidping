@@ -41,8 +41,16 @@ type SendResult struct {
 	Sent    bool   `json:"sent"`
 	Message string `json:"message"`
 	// MessageID is the RFC 5322 Message-ID auto-stamped by go-mail (or set by
-	// the caller). Brackets are stripped so the JSON value is a plain id.
+	// the caller). Brackets are stripped so the JSON value is a plain id. This
+	// header is generated locally when composing the message, so it is a
+	// correlation handle — not proof of delivery.
 	MessageID string `json:"messageId,omitempty"`
+	// ServerResponse is the SMTP server's reply to the final DATA command,
+	// typically carrying the relay's queue id (e.g. "250 2.0.0 Ok: queued as
+	// 4F2a1B"). The exact format is server-specific, so callers must parse it
+	// themselves. Empty when the server returned nothing. This proves the
+	// message was accepted by the next hop — not that it reached the inbox.
+	ServerResponse string `json:"serverResponse,omitempty"`
 }
 
 // Send delivers an email. Returns nil immediately if email is disabled (no-op).
@@ -214,16 +222,19 @@ func (s *SMTPSender) sendMessage(ctx context.Context, mailMsg *mail.Msg, msg *Me
 	}
 
 	messageID := strings.Trim(mailMsg.GetMessageID(), "<>")
+	serverResponse := strings.TrimSpace(mailMsg.ServerResponse())
 
 	s.logger.InfoContext(ctx, "email sent successfully",
 		"to", msg.Recipients.To,
 		"subject", msg.Subject,
 		"messageId", messageID,
+		"serverResponse", serverResponse,
 	)
 
 	return &SendResult{
-		Sent:      true,
-		Message:   "email sent successfully",
-		MessageID: messageID,
+		Sent:           true,
+		Message:        "email sent successfully",
+		MessageID:      messageID,
+		ServerResponse: serverResponse,
 	}, nil
 }

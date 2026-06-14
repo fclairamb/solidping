@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/incidentlinks"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -106,6 +107,59 @@ func extractRecipients(raw any) ([]string, bool) {
 	}
 }
 
+// emailDelivery accumulates the outcome of one or more SMTP sends for a single
+// notification audit row. A notification to an email integration fans out to one
+// send per recipient (ackable events) or one broadcast send (resolved); either
+// way we surface the first RFC Message-ID on the row (as a correlation handle)
+// and a transcript of every send — recipients, Message-ID, and the SMTP server's
+// queue response — in the delivery details.
+type emailDelivery struct {
+	firstMessageID string
+	transcript     []string
+}
+
+// record appends one send's outcome. res is nil when Send errored before
+// producing a result; a no-op (Sent=false, e.g. email disabled) is also skipped
+// so a disabled-email notification produces no misleading delivery artifacts.
+func (d *emailDelivery) record(recipients []string, res *email.SendResult) {
+	if res == nil || !res.Sent {
+		return
+	}
+
+	if d.firstMessageID == "" {
+		d.firstMessageID = res.MessageID
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "recipients: %s", strings.Join(recipients, ", "))
+
+	if res.MessageID != "" {
+		fmt.Fprintf(&b, "\nmessage-id: %s", res.MessageID)
+	}
+
+	if res.ServerResponse != "" {
+		fmt.Fprintf(&b, "\nserver: %s", res.ServerResponse)
+	}
+
+	d.transcript = append(d.transcript, b.String())
+}
+
+// apply writes the accumulated identifiers and transcript onto the payload so
+// the job runner persists them on the audit row. Called via defer so a partial
+// batch (some recipients delivered, then a failure) still surfaces what got
+// through. elapsed is the wall-clock time of the whole send attempt.
+func (d *emailDelivery) apply(payload *Payload, elapsed time.Duration) {
+	if len(d.transcript) == 0 {
+		return
+	}
+
+	payload.MessageID = d.firstMessageID
+	payload.DeliveryDetails = &models.DeliveryDetails{
+		DurationMs:   elapsed.Milliseconds(),
+		ResponseBody: models.CapBody([]byte(strings.Join(d.transcript, "\n\n"))),
+	}
+}
+
 // Send sends a notification via email.
 func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
 	if jctx.Services.EmailSender == nil {
@@ -127,12 +181,20 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 
 	prefix, _ := payload.Integration.Settings["subject_prefix"].(string)
 
+	// Surface what we actually sent on the audit row — the first Message-ID and a
+	// per-send transcript with each SMTP server response — regardless of how the
+	// send below returns (success, or a partial batch that then failed).
+	del := &emailDelivery{}
+	start := time.Now()
+
+	defer func() { del.apply(payload, time.Since(start)) }()
+
 	// For events that produce an actionable incident (created/escalated/
 	// reopened), send one personalized email per recipient so each can carry
 	// its own one-click ack link. Resolved goes out as a single broadcast —
 	// there's nothing to ack.
 	if canAckEvent(payload.EventType) {
-		return s.sendPerRecipient(ctx, jctx, payload, emailAddresses, prefix)
+		return s.sendPerRecipient(ctx, jctx, payload, emailAddresses, prefix, del)
 	}
 
 	content := s.buildEmailContent(payload, "")
@@ -148,7 +210,8 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		Text:       content.textBody,
 	}
 
-	_, err := jctx.Services.EmailSender.Send(ctx, msg)
+	res, err := jctx.Services.EmailSender.Send(ctx, msg)
+	del.record(emailAddresses, res)
 
 	return err
 }
@@ -157,12 +220,15 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 // link ack URL. The first send error short-circuits — the job runner will
 // retry the whole batch, which is fine because email delivery itself is
 // idempotent at the recipient level (worst case: a duplicate notification).
+// Each send's outcome is recorded into del before a failure short-circuits, so
+// the audit row still reflects the recipients that were delivered.
 func (s *EmailSender) sendPerRecipient(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
 	payload *Payload,
 	recipients []string,
 	prefix string,
+	del *emailDelivery,
 ) error {
 	exp := payload.Incident.StartedAt.Add(ackTokenTTL)
 	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
@@ -183,7 +249,10 @@ func (s *EmailSender) sendPerRecipient(
 			Text:       content.textBody,
 		}
 
-		if _, err := jctx.Services.EmailSender.Send(ctx, msg); err != nil {
+		res, err := jctx.Services.EmailSender.Send(ctx, msg)
+		del.record([]string{recipient}, res)
+
+		if err != nil {
 			return err
 		}
 	}
