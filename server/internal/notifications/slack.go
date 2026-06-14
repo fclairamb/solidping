@@ -206,6 +206,9 @@ func formatDuration(dur time.Duration) string {
 		return fmt.Sprintf("%d minutes", mins)
 	}
 	hours := int(dur.Hours())
+	if hours >= 24 {
+		return formatDurationDays(hours)
+	}
 	mins := int(dur.Minutes()) % 60
 	if hours == 1 {
 		if mins == 0 {
@@ -217,6 +220,27 @@ func formatDuration(dur time.Duration) string {
 		return fmt.Sprintf("%d hours", hours)
 	}
 	return fmt.Sprintf("%d hours %d minutes", hours, mins)
+}
+
+// formatDurationDays formats a duration of 24 hours or more as days plus
+// remaining hours. Minutes are dropped at this granularity. Both units use
+// correct singular/plural forms.
+func formatDurationDays(hours int) string {
+	days := hours / 24
+	remHours := hours % 24
+
+	dayPart := fmt.Sprintf("%d days", days)
+	if days == 1 {
+		dayPart = "1 day"
+	}
+
+	if remHours == 0 {
+		return dayPart
+	}
+	if remHours == 1 {
+		return dayPart + " 1 hour"
+	}
+	return fmt.Sprintf("%s %d hours", dayPart, remHours)
 }
 
 // formatTimestamp formats a time for display in Slack.
