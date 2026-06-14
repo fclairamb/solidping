@@ -46,12 +46,11 @@ import {
   useFeatures,
   useIncident,
   useOnCallSchedule,
+  useOrgNotification,
   useResult,
   useStatusPage,
   useStatusUpdate,
 } from "@/api/hooks";
-import { useQueryClient } from "@tanstack/react-query";
-import type { IncidentNotification } from "@/api/hooks";
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
@@ -168,8 +167,7 @@ function Breadcrumbs({ org }: { org: string }) {
     isStatusUpdates ? (params.updateUid ?? "") : "",
   );
 
-  // Notification detail breadcrumb — read from query cache (no extra fetch)
-  const queryClient = useQueryClient();
+  // Notification detail breadcrumb — subscribe to the same query the page uses
   const notifDetailMatch = isNotificationDetail
     ? matches.find((m) => m.routeId === "/orgs/$org/notifications/$notificationUid")
     : undefined;
@@ -177,13 +175,10 @@ function Breadcrumbs({ org }: { org: string }) {
     ? (notifDetailMatch.search as { from?: string } | undefined)?.from
     : undefined;
   const notifFrom = isNotificationDetail ? parseNotificationFrom(notifFromParam) : null;
-  const cachedNotif = isNotificationDetail
-    ? queryClient.getQueryData<IncidentNotification>([
-        "orgNotification",
-        org,
-        params.notificationUid ?? "",
-      ])
-    : undefined;
+  const { data: cachedNotif } = useOrgNotification(
+    org,
+    isNotificationDetail ? (params.notificationUid ?? "") : "",
+  );
 
   if (isNotificationDetail) {
     const notifLabel = "Notification";
