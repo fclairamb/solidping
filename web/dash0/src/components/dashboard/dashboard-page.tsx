@@ -363,7 +363,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
                     : undefined
                 }
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -383,7 +383,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
                 sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -403,7 +403,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
                 sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <div data-testid="kpi-tile-availability">

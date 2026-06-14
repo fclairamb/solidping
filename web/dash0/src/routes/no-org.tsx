@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
+import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { AlertCircle, Loader2, X } from "lucide-react";
 import { ApiError, setToken } from "@/api/client";
 import {
@@ -38,15 +39,17 @@ function NoOrgPage() {
   return (
     <div className="min-h-screen bg-background p-4 sm:p-8 flex flex-col items-center">
       <div className="w-full max-w-4xl space-y-6">
-        <div className="text-center">
-          <div className="flex justify-center mb-3">
-            <Logo size={64} />
+        <AuroraPanel className="rounded-3xl p-8 sm:p-10">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <Logo size={56} />
+            <h1 className="text-2xl font-semibold tracking-tight">
+              {t("noOrg.welcome")}
+            </h1>
+            <p className="max-w-prose text-sm text-white/70">
+              {t("noOrg.subtitle")}
+            </p>
           </div>
-          <h1 className="text-2xl font-semibold">{t("noOrg.welcome")}</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            {t("noOrg.subtitle")}
-          </p>
-        </div>
+        </AuroraPanel>
 
         <div className="grid gap-4 md:grid-cols-2">
           <CreateOrgCard />

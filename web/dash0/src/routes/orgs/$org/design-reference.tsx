@@ -54,6 +54,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
+import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
   Dialog,
   DialogContent,
@@ -115,6 +116,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
   { id: "brand", label: "Brand" },
+  { id: "elevation", label: "Elevation & aurora" },
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
@@ -140,6 +142,7 @@ function DesignReferencePage() {
       <BreadcrumbsSection />
       <ColorTokensSection />
       <BrandSection />
+      <ElevationSection />
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
@@ -1337,6 +1340,56 @@ function BrandSection() {
   );
 }
 
+function ElevationSection() {
+  return (
+    <Section
+      id="elevation"
+      title="Elevation, aurora & glass"
+      description="Depth tokens that add polish without adding a new color. Tinted shadows carry the primary hue and are already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Tinted elevation (shadows carry the primary hue, auto-adapt to dark)
+        </h3>
+        <ExampleRow
+          preview={
+            <>
+              <div className="rounded-xl border bg-card px-4 py-3 text-sm shadow-card">
+                shadow-card
+              </div>
+              <div className="rounded-lg bg-primary px-4 py-3 text-sm text-primary-foreground shadow-primary">
+                shadow-primary
+              </div>
+            </>
+          }
+          importLine={`// Defined in index.css @theme; color-mix keeps them tracking --primary.\n<div className="shadow-card" />      {/* cards, KPI tiles — soft ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Aurora panel + glass card</h3>
+        <ExampleRow
+          preview={
+            <AuroraPanel className="h-52 w-full rounded-xl">
+              <div className="flex h-full items-center justify-center p-6">
+                <div className="glass space-y-1 rounded-2xl p-5">
+                  <p className="text-sm font-semibold text-white">
+                    Glass on aurora
+                  </p>
+                  <p className="text-xs text-white/70">
+                    white/8 fill · blur 12 · white/18 border
+                  </p>
+                </div>
+              </div>
+            </AuroraPanel>
+          }
+          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";\n\n// Marketing surfaces only. Always dark; renders white text. The \`glass\`\n// utility (index.css) is the frosted card that sits on top.\n<AuroraPanel className="min-h-screen p-12">\n  <div className="glass rounded-3xl p-8">…</div>\n</AuroraPanel>\n\n// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,\n// which renders this aurora + the marketing copy + the theme toggle.\nimport { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function LabelFilterSection() {
   const { org } = Route.useParams();
   const [labels, setLabels] = useState<Record<string, string>>({
@@ -1382,7 +1435,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
 <Link to="/orgs/$org/checks" params={{ org }} className="block">
-  <Card className="transition-colors hover:bg-accent/40">
+  <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
       <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
       <Icon className="h-4 w-4 text-muted-foreground" />
@@ -1397,7 +1450,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
     <Section
       id="kpi-tiles"
       title="KPI tiles"
-      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Whole-card hover via transition-colors hover:bg-accent/40 — no nested interactive elements inside."
+      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) — no nested interactive elements inside."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
@@ -1405,7 +1458,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
           params={{ org }}
           className="block"
         >
-          <Card className="transition-colors hover:bg-accent/40">
+          <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Monitored
