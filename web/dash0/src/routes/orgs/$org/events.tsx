@@ -4,6 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
+  getEventCheckName,
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
@@ -165,7 +166,7 @@ function EventsPage() {
                           search={{ graphPeriod: undefined, graphFull: undefined }}
                           className="text-xs text-primary hover:underline"
                         >
-                          {t("links.check")}
+                          {getEventCheckName(event) ?? t("links.check")}
                         </Link>
                       )}
                       {event.incidentUid && (

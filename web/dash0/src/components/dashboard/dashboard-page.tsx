@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { UptimeStrip, type UptimeBucket } from "@/components/ui/uptime-strip";
 import {
+  getEventCheckName,
   getEventDescription,
   getEventIcon,
   getEventLabel,
@@ -872,6 +873,7 @@ function RecentActivityList({
           <ul className="divide-y">
             {events.map((event) => {
               const description = getEventDescription(event.eventType, tEvents);
+              const checkName = getEventCheckName(event);
               return (
                 <li
                   key={event.uid}
@@ -882,7 +884,22 @@ function RecentActivityList({
                     <div className="truncate">
                       {getEventLabel(event.eventType, tEvents)}
                     </div>
-                    {description ? (
+                    {checkName ? (
+                      <div className="text-xs truncate">
+                        {event.checkUid ? (
+                          <Link
+                            to="/orgs/$org/checks/$checkUid"
+                            params={{ org, checkUid: event.checkUid }}
+                            search={{ graphPeriod: undefined, graphFull: undefined }}
+                            className="text-primary hover:underline"
+                          >
+                            {checkName}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">{checkName}</span>
+                        )}
+                      </div>
+                    ) : description ? (
                       <div className="text-xs text-muted-foreground truncate">
                         {description}
                       </div>

@@ -246,6 +246,11 @@ test.describe("Dashboard", () => {
     if (await label.first().isVisible().catch(() => false)) {
       await expect(desc.first()).toBeVisible();
     }
+
+    // The check.created event surfaces the check's name as a link to its detail page.
+    const nameLink = page.getByRole("link", { name: "Activation feed probe" });
+    await expect(nameLink.first()).toBeVisible();
+    await expect(nameLink.first()).toHaveAttribute("href", /\/checks\//);
   });
 
   test("KPI tiles navigate to the right list pages", async ({

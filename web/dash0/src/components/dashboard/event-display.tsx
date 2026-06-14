@@ -33,3 +33,12 @@ export function getEventDescription(
   if (!eventType) return "";
   return t(`descriptions.${eventType}`, { defaultValue: "" });
 }
+
+// getEventCheckName returns the check's name captured in the event payload when
+// the event was recorded, or undefined when no check name was captured.
+export function getEventCheckName(event: {
+  payload?: Record<string, unknown>;
+}): string | undefined {
+  const name = event.payload?.check_name;
+  return typeof name === "string" && name.length > 0 ? name : undefined;
+}
