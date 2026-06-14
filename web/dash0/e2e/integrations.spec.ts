@@ -463,4 +463,60 @@ test.describe("Notification Channels", () => {
 
     await deleteConnection(page, token, integration.uid);
   });
+
+  test("Save and Send-test buttons are complements of unsaved-changes state", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // A plain webhook integration so the generic test section renders.
+    const name = `E2E ButtonStates ${Date.now()}`;
+    const resp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/integrations`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "webhook",
+          name,
+          settings: { url: "https://example.com/webhook" },
+        },
+      },
+    );
+    const integration = await resp.json();
+
+    await page.goto(`orgs/test/integrations/${integration.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    const saveBtn = page.getByTestId("integration-save");
+    const sendTest = page.getByTestId("webhook-send-test");
+
+    // 1. Freshly-loaded (clean) integration: Save disabled, Send test enabled.
+    await expect(saveBtn).toBeDisabled();
+    await expect(sendTest).toBeEnabled();
+
+    // Tooltip is absent while Send test is enabled — hovering shows nothing.
+    await sendTest.hover();
+    await expect(page.getByTestId("webhook-send-test-tooltip")).toHaveCount(0);
+
+    // 2. Edit the name → dirty: Save enabled, Send test disabled.
+    await page.getByLabel("Name").fill(`${name} edited`);
+    await expect(saveBtn).toBeEnabled();
+    await expect(sendTest).toBeDisabled();
+
+    // 3. Hovering the disabled Send test surfaces the explanatory tooltip.
+    //    The trigger is the focusable wrapper span around the button.
+    await sendTest.locator("..").hover();
+    await expect(
+      page.getByTestId("webhook-send-test-tooltip"),
+    ).toBeVisible();
+
+    // 4. Save → back to clean: Save disabled, Send test enabled again.
+    await saveBtn.click();
+    await page.waitForLoadState("networkidle");
+    await expect(saveBtn).toBeDisabled();
+    await expect(sendTest).toBeEnabled();
+
+    await deleteConnection(page, token, integration.uid);
+  });
 });
