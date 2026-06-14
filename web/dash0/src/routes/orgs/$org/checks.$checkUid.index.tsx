@@ -4,6 +4,7 @@ import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import {
   ArrowLeft,
+  BadgeCheck,
   Check as CheckIcon,
   Clock,
   Copy,
@@ -514,20 +515,23 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <Link
-            to="/orgs/$org/checks/$checkUid/edit"
-            params={{ org, checkUid }}
+          <Button
+            asChild
+            variant="outline"
             aria-label={t("checks:edit")}
           >
-            <Button variant="outline" size="icon">
-              <Pencil className="h-4 w-4" />
-            </Button>
-          </Link>
+            <Link
+              to="/orgs/$org/checks/$checkUid/edit"
+              params={{ org, checkUid }}
+            >
+              <Pencil className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t("checks:edit")}</span>
+            </Link>
+          </Button>
           <Button
             variant="outline"
-            size="icon"
+            aria-label={t("checks:detail.clone") ?? "Clone"}
             disabled={cloneCheck.isPending}
-            title={t("checks:detail.clone") ?? "Clone"}
             onClick={async () => {
               try {
                 const newCheck = await cloneCheck.mutateAsync(checkUid);
@@ -541,22 +545,42 @@ function CheckDetailPage() {
               }
             }}
           >
-            <Copy className="h-4 w-4" />
+            <Copy className="h-4 w-4 sm:mr-2" />
+            <span className="hidden sm:inline">{t("checks:detail.clone")}</span>
+          </Button>
+          <Button
+            asChild
+            variant="outline"
+            aria-label={t("checks:detail.badges") ?? "Badges"}
+          >
+            <Link
+              to="/orgs/$org/badges"
+              params={{ org }}
+              search={{ check: check.slug ?? checkUid }}
+            >
+              <BadgeCheck className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t("checks:detail.badges")}</span>
+            </Link>
           </Button>
           <Button
             variant="outline"
-            size="icon"
+            aria-label={t("checks:detail.refresh") ?? "Refresh"}
             onClick={() => refetch()}
             disabled={isRefetching}
           >
             <RefreshCw
-              className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+              className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
             />
+            <span className="hidden sm:inline">{t("checks:detail.refresh")}</span>
           </Button>
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="icon">
-                <Trash2 className="h-4 w-4" />
+              <Button
+                variant="destructive"
+                aria-label={t("checks:detail.delete") ?? "Delete"}
+              >
+                <Trash2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t("checks:detail.delete")}</span>
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
