@@ -1653,7 +1653,7 @@ func TestFormatDuration(t *testing.T) {
 		{name: "two days five hours", duration: 53 * time.Hour, expected: "2 days 5 hours"},
 		{name: "one day twenty-three hours", duration: 47 * time.Hour, expected: "1 day 23 hours"},
 		// Minutes are dropped at the days scale.
-		{name: "one day one hour and minutes drops minutes", duration: 25*time.Hour + 59*time.Minute, expected: "1 day 1 hour"},
+		{name: "one day one hour drops minutes", duration: 25*time.Hour + 59*time.Minute, expected: "1 day 1 hour"},
 		{name: "one day zero hours with minutes drops minutes", duration: 24*time.Hour + 30*time.Minute, expected: "1 day"},
 	}
 

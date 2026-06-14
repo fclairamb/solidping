@@ -222,6 +222,9 @@ func formatDuration(dur time.Duration) string {
 	return fmt.Sprintf("%d hours %d minutes", hours, mins)
 }
 
+// oneDay is the singular day label used by formatDurationDays.
+const oneDay = "1 day"
+
 // formatDurationDays formats a duration of 24 hours or more as days plus
 // remaining hours. Minutes are dropped at this granularity. Both units use
 // correct singular/plural forms.
@@ -231,7 +234,7 @@ func formatDurationDays(hours int) string {
 
 	dayPart := fmt.Sprintf("%d days", days)
 	if days == 1 {
-		dayPart = "1 day"
+		dayPart = oneDay
 	}
 
 	if remHours == 0 {
