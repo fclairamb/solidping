@@ -198,6 +198,20 @@ function IntegrationDetailPage() {
     }
   };
 
+  // Unsaved-changes flag. `form` is null only on the first render before
+  // IntegrationForm's mount effect fires onChange — treat null as not dirty so
+  // Save stays disabled and Send test stays enabled on a freshly-loaded
+  // integration. settings is compared with JSON.stringify: edits mutate it as
+  // `{ ...settings, [key]: value }`, preserving key order, so the serialized
+  // comparison is stable for this form.
+  const isDirty =
+    form != null &&
+    (form.name !== integration.name ||
+      form.enabled !== integration.enabled ||
+      form.isDefault !== integration.isDefault ||
+      JSON.stringify(form.settings) !==
+        JSON.stringify(integration.settings ?? {}));
+
   const saveLabel = t("save", "Save changes");
   const deleteLabel = t("delete", "Delete integration");
   const backLabel = t("backToList", "Back to integrations");
@@ -241,12 +255,14 @@ function IntegrationDetailPage() {
             onChange={setForm}
             org={org}
             channelUid={integrationUid}
+            canTest={!isDirty}
           />
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={update.isPending || !form?.name}
+              disabled={update.isPending || !form?.name || !isDirty}
               aria-label={saveLabel}
+              data-testid="integration-save"
             >
               {update.isPending ? (
                 <Loader2 className="animate-spin" />
