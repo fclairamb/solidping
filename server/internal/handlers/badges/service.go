@@ -301,13 +301,21 @@ func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]flo
 // fetchBucketData runs a multi-tier query (raw + hour + day) and returns
 // per-bucket availability and average-duration maps. Because the tiers cover
 // non-overlapping age bands, unioning them never double-counts.
+//
+// The window spans n buckets ending at the current, in-progress bucket, so a
+// freshly-created check shows its data immediately: the current bucket is filled
+// from raw rows (via accumulateRaw) until the hourly rollup runs, mirroring how
+// the status page synthesizes "today" from raw rows.
 func (s *Service) fetchBucketData(
 	ctx context.Context, orgUID, checkUID, period string,
 ) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
 	_, n, bucketDuration := uptimeBarPeriodInfo(period)
 
 	now := time.Now().UTC()
-	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
+	// Anchor on the current bucket: the last of the n segments is now.Truncate,
+	// the oldest is (n-1) buckets earlier. Using -(n-1) rather than -n keeps the
+	// in-progress bucket inside the rendered window.
+	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 
 	filter := &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
