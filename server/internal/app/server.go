@@ -642,6 +642,10 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
 	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
 		GET("/notifications", incidentNotifHandler.ListForMe)
+	// Org-level notification endpoints (flat, no incident required)
+	orgNotifs := api.NewGroup("/orgs/:org/notifications").Use(authMiddleware.RequireAuth)
+	orgNotifs.GET("", incidentNotifHandler.ListByOrg)
+	orgNotifs.GET("/:notifUid", incidentNotifHandler.GetByOrg)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)

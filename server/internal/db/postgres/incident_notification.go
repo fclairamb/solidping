@@ -271,3 +271,43 @@ func (s *Service) GetIncidentNotification(
 		CheckName:            raw.CheckName,
 	}, nil
 }
+
+// GetOrgNotification returns a single notification row scoped only by org UID
+// (no incident required). Returns sql.ErrNoRows when not found.
+func (s *Service) GetOrgNotification(
+	ctx context.Context, orgUID, notifUID string,
+) (*models.IncidentNotificationRow, error) {
+	var raw incidentNotificationRawRow
+
+	err := s.db.NewSelect().
+		TableExpr("incident_notifications AS n").
+		ColumnExpr("n.*").
+		ColumnExpr("u.name AS user_name").
+		ColumnExpr("ic.name AS connection_name").
+		ColumnExpr("ic.type AS connection_type").
+		ColumnExpr("i.title AS incident_title").
+		ColumnExpr("i.state AS incident_state").
+		ColumnExpr("i.started_at AS incident_started_at").
+		ColumnExpr("c.name AS check_name").
+		Join("LEFT JOIN users u ON u.uid = n.user_uid").
+		Join("LEFT JOIN integrations ic ON ic.uid = n.connection_uid").
+		Join("LEFT JOIN incidents i ON i.uid = n.incident_uid").
+		Join("LEFT JOIN checks c ON c.uid = i.check_uid").
+		Where("n.organization_uid = ?", orgUID).
+		Where("n.uid = ?", notifUID).
+		Scan(ctx, &raw)
+	if err != nil {
+		return nil, err
+	}
+
+	return &models.IncidentNotificationRow{
+		IncidentNotification: raw.IncidentNotification,
+		UserName:             raw.UserName,
+		ConnectionName:       raw.ConnectionName,
+		ConnectionType:       raw.ConnectionType,
+		IncidentTitle:        raw.IncidentTitle,
+		IncidentState:        raw.IncidentState,
+		IncidentStartedAt:    raw.IncidentStartedAt,
+		CheckName:            raw.CheckName,
+	}, nil
+}

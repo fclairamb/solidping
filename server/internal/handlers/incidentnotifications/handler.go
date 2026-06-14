@@ -113,6 +113,57 @@ func (h *Handler) GetForIncident(writer http.ResponseWriter, req bunrouter.Reque
 	return h.WriteJSON(writer, http.StatusOK, detail)
 }
 
+// GetByOrg handles GET /api/v1/orgs/:org/notifications/:notifUid.
+// Fetches a single notification scoped only by org UID (no incident required).
+func (h *Handler) GetByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	notifUID := req.Param("notifUid")
+
+	detail, err := h.svc.GetByOrg(req.Context(), orgUID, notifUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, detail)
+}
+
+// ListByOrg handles GET /api/v1/orgs/:org/notifications?connectionUid=&limit=.
+// Requires connectionUid; returns 400 if absent. Defaults limit to 10, max 50.
+func (h *Handler) ListByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	connectionUID := req.URL.Query().Get("connectionUid")
+	if connectionUID == "" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"connectionUid query parameter is required")
+	}
+
+	limit := 10
+	if v := req.URL.Query().Get("limit"); v != "" {
+		if n, err2 := strconv.Atoi(v); err2 == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := h.svc.ListByConnection(req.Context(), orgUID, connectionUID, limit)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
+
 // ListForUser handles GET /api/v1/orgs/:org/users/:uid/notifications.
 // Admins can query any user; regular members can only query themselves.
 func (h *Handler) ListForUser(writer http.ResponseWriter, req bunrouter.Request) error {
