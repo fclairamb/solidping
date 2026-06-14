@@ -175,20 +175,21 @@ func renderUptimeBarRow(segments, labels, barValues []string, width, height, yOf
 		colorHeight = height
 	}
 
-	// Segment width: integer division, last segment gets remaining pixels.
+	// Segment widths are distributed evenly: the rounding remainder is spread
+	// across the bar instead of piling onto the last segment.
 	gaps := n - 1
 	availableWidth := width - gaps
-	segWidth := availableWidth / n
-	lastSegWidth := availableWidth - segWidth*(n-1)
 
 	var rects, labelText strings.Builder
 
 	posX := 0
 	for idx, color := range segments {
-		rectWidth := segWidth
-		if idx == n-1 {
-			rectWidth = lastSegWidth
-		}
+		// Even distribution: each segment spans
+		//   floor((idx+1)*availableWidth/n) - floor(idx*availableWidth/n)
+		// so widths differ by at most 1px and the segment widths plus the
+		// (n-1) 1-px gaps sum to exactly width, with the last segment's right
+		// edge landing on width.
+		rectWidth := (idx+1)*availableWidth/n - idx*availableWidth/n
 
 		fmt.Fprintf(&rects, `      <rect x="%d" width="%d" height="%d" fill="%s"/>`, posX, rectWidth, colorHeight, color)
 		fmt.Fprintln(&rects)
