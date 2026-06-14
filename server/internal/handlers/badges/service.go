@@ -401,8 +401,9 @@ const uptimeBarOverlayMinSegWidth = 30
 // rendered wide enough to fit the text — i.e. the minimum segment width exceeds
 // uptimeBarOverlayMinSegWidth — regardless of the active period or badge width.
 // renderUptimeBarRow splits the bar into n segments with 1-px gaps, so
-// segWidth = (width - (n - 1)) / n (integer division; the last segment absorbs
-// the remainder and is therefore always >= segWidth). When segments are too
+// segWidth = (width - (n - 1)) / n (integer division). The remainder is spread
+// evenly across the segments, so this floor is the minimum segment width and
+// individual segment widths differ by at most 1px. When segments are too
 // narrow, every period returns an all-empty slice (no overlay). Segments with no
 // data (gray) get an empty string. This is a pure function (no DB access).
 func computeUptimeBarValues(
