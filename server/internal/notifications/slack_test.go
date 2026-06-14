@@ -1623,3 +1623,46 @@ func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)
+
+func TestFormatDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		// Sub-24h regression guards.
+		{name: "seconds", duration: 30 * time.Second, expected: "30 seconds"},
+		{name: "one minute", duration: time.Minute, expected: "1 minute"},
+		{name: "minutes", duration: 5 * time.Minute, expected: "5 minutes"},
+		{name: "one hour", duration: time.Hour, expected: "1 hour"},
+		{name: "one hour and minutes", duration: time.Hour + 30*time.Minute, expected: "1 hour 30 minutes"},
+		{name: "hours only", duration: 5 * time.Hour, expected: "5 hours"},
+		{name: "hours and minutes", duration: 5*time.Hour + 12*time.Minute, expected: "5 hours 12 minutes"},
+		{name: "just under a day", duration: 23*time.Hour + 59*time.Minute, expected: "23 hours 59 minutes"},
+		// Day-scale rows from the spec.
+		{name: "exactly one day", duration: 24 * time.Hour, expected: "1 day"},
+		{name: "one day one hour", duration: 25 * time.Hour, expected: "1 day 1 hour"},
+		{name: "one day three hours", duration: 27 * time.Hour, expected: "1 day 3 hours"},
+		{name: "ten days", duration: 240 * time.Hour, expected: "10 days"},
+		{name: "239h36m rounds to 9 days 23 hours", duration: 239*time.Hour + 36*time.Minute, expected: "9 days 23 hours"},
+		// Singular/plural boundary cases.
+		{name: "two days zero hours", duration: 48 * time.Hour, expected: "2 days"},
+		{name: "two days one hour", duration: 49 * time.Hour, expected: "2 days 1 hour"},
+		{name: "two days five hours", duration: 53 * time.Hour, expected: "2 days 5 hours"},
+		{name: "one day twenty-three hours", duration: 47 * time.Hour, expected: "1 day 23 hours"},
+		// Minutes are dropped at the days scale.
+		{name: "one day one hour drops minutes", duration: 25*time.Hour + 59*time.Minute, expected: "1 day 1 hour"},
+		{name: "one day zero hours with minutes drops minutes", duration: 24*time.Hour + 30*time.Minute, expected: "1 day"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			r.Equal(tt.expected, formatDuration(tt.duration))
+		})
+	}
+}
