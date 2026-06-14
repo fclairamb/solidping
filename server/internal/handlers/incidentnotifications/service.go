@@ -182,8 +182,6 @@ func (s *Service) GetByOrg(
 
 // ListByConnection returns notifications filtered by connection_uid. Requires
 // a non-empty connectionUID (caller must validate).
-//
-//nolint:gocritic // filter passed by value intentionally
 func (s *Service) ListByConnection(
 	ctx context.Context, orgUID, connectionUID string, limit int,
 ) ([]*NotificationRow, error) {

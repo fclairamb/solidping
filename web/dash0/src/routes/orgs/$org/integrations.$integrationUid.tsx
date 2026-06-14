@@ -12,12 +12,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, Loader2, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, ExternalLink, Loader2, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useIntegration,
   useUpdateIntegration,
   useDeleteIntegration,
+  useIntegrationNotifications,
+  type IncidentNotification,
 } from "@/api/hooks";
 import { integrationIconComponent } from "@/components/integrations/integration-icon";
 import { PageHeader } from "@/components/shared/page-header";
@@ -25,12 +27,131 @@ import {
   IntegrationForm,
   type IntegrationFormState,
 } from "@/components/integrations/integration-form";
+import { Badge } from "@/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { notificationStatusVariant } from "@/lib/notifications";
 
 export const Route = createFileRoute(
   "/orgs/$org/integrations/$integrationUid",
 )({
   component: IntegrationDetailPage,
 });
+
+/** Recent notifications delivered through a specific integration. */
+function RecentNotificationsSection({
+  org,
+  integrationUid,
+}: {
+  org: string;
+  integrationUid: string;
+}) {
+  const { data: rows, isLoading, error } = useIntegrationNotifications(
+    org,
+    integrationUid,
+    10,
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Recent notifications</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        )}
+        {!isLoading && error && (
+          <p className="text-sm text-destructive py-4 text-center">
+            Failed to load notifications.
+          </p>
+        )}
+        {!isLoading && !error && (!rows || rows.length === 0) && (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No notifications sent through this integration yet.
+          </p>
+        )}
+        {!isLoading && !error && rows && rows.length > 0 && (
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Status</TableHead>
+                <TableHead>Channel</TableHead>
+                <TableHead>Event</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead className="w-8" />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row: IncidentNotification) => (
+                <TableRow key={row.uid}>
+                  <TableCell>
+                    <Badge
+                      variant={notificationStatusVariant(row.status)}
+                      className="text-xs capitalize"
+                    >
+                      {row.status}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-sm capitalize">
+                    {row.channelType}
+                  </TableCell>
+                  <TableCell className="text-sm font-mono">
+                    {row.eventType}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {row.user ? (
+                      row.user.name || row.user.uid
+                    ) : row.connection ? (
+                      row.connection.name
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell
+                    className="text-sm whitespace-nowrap text-muted-foreground"
+                    title={row.createdAt}
+                  >
+                    {new Date(row.createdAt).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      to="/orgs/$org/notifications/$notificationUid"
+                      params={{ org, notificationUid: row.uid }}
+                      search={{ from: `integration:${integrationUid}` }}
+                      aria-label="View notification detail"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 function IntegrationDetailPage() {
   const { t } = useTranslation("integrations");
@@ -140,6 +261,8 @@ function IntegrationDetailPage() {
           </div>
         </form>
       </div>
+
+      <RecentNotificationsSection org={org} integrationUid={integrationUid} />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
