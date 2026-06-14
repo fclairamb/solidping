@@ -27,13 +27,6 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="relative grid min-h-screen bg-background lg:grid-cols-2">
-      {/* Language + theme controls — pinned top-right, over the form column on
-          every breakpoint (the aurora panel is hidden below lg). */}
-      <div className="absolute right-4 top-4 z-20 flex items-center gap-1">
-        <LanguageSwitcher />
-        <ThemeToggle className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground" />
-      </div>
-
       {/* Brand aurora marketing panel — large screens only. */}
       <AuroraPanel className="hidden p-12 lg:block xl:p-16">
         <Logo size={32} variant="wordmark" className="text-white" />
@@ -61,7 +54,16 @@ export function AuthSplitLayout({ children }: { children: React.ReactNode }) {
       </AuroraPanel>
 
       {/* Form / card column. */}
-      <div className="flex items-center justify-center p-4">{children}</div>
+      <div className="flex items-center justify-center p-4">
+        <div className="relative w-full max-w-md">
+          {/* Language + theme controls — pinned to the card's top-right corner. */}
+          <div className="absolute right-2 top-2 z-20 flex items-center gap-1">
+            <LanguageSwitcher />
+            <ThemeToggle className="inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground" />
+          </div>
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
