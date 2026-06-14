@@ -72,6 +72,7 @@ import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$o
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
+import { Route as OrgsOrgNotificationsNotificationUidRouteImport } from './routes/orgs/$org/notifications.$notificationUid'
 import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
 import { Route as OrgsOrgIntegrationsNewRouteImport } from './routes/orgs/$org/integrations.new'
 import { Route as OrgsOrgIntegrationsIntegrationUidRouteImport } from './routes/orgs/$org/integrations.$integrationUid'
@@ -428,6 +429,12 @@ const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
+const OrgsOrgNotificationsNotificationUidRoute =
+  OrgsOrgNotificationsNotificationUidRouteImport.update({
+    id: '/notifications/$notificationUid',
+    path: '/notifications/$notificationUid',
+    getParentRoute: () => OrgsOrgRoute,
+  } as any)
 const OrgsOrgMeNotificationsRoute = OrgsOrgMeNotificationsRouteImport.update({
   id: '/notifications',
   path: '/notifications',
@@ -611,6 +618,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
+  '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -686,6 +694,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
+  '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -775,6 +784,7 @@ export interface FileRoutesById {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
+  '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -867,6 +877,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/me/notifications'
+    | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -942,6 +953,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/me/notifications'
+    | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
@@ -1030,6 +1042,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/me/notifications'
+    | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -1532,6 +1545,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/on-call/$slug'
       preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
+    }
+    '/orgs/$org/notifications/$notificationUid': {
+      id: '/orgs/$org/notifications/$notificationUid'
+      path: '/notifications/$notificationUid'
+      fullPath: '/orgs/$org/notifications/$notificationUid'
+      preLoaderRoute: typeof OrgsOrgNotificationsNotificationUidRouteImport
+      parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/me/notifications': {
       id: '/orgs/$org/me/notifications'
@@ -2040,6 +2060,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgStatusUpdatesRoute: typeof OrgsOrgStatusUpdatesRouteWithChildren
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
+  OrgsOrgNotificationsNotificationUidRoute: typeof OrgsOrgNotificationsNotificationUidRoute
   OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
 }
 
@@ -2063,6 +2084,8 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgStatusUpdatesRoute: OrgsOrgStatusUpdatesRouteWithChildren,
   OrgsOrgTestRoute: OrgsOrgTestRouteWithChildren,
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
+  OrgsOrgNotificationsNotificationUidRoute:
+    OrgsOrgNotificationsNotificationUidRoute,
   OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,
 }
 

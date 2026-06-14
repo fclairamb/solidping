@@ -268,6 +268,12 @@ type Service interface {
 	GetIncidentNotification(
 		ctx context.Context, orgUID, incidentUID, notifUID string,
 	) (*models.IncidentNotificationRow, error)
+	// GetOrgNotification fetches a single notification scoped only by org UID
+	// (no incident required). Returns sql.ErrNoRows when the notification does
+	// not exist within the given org.
+	GetOrgNotification(
+		ctx context.Context, orgUID, notifUID string,
+	) (*models.IncidentNotificationRow, error)
 
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error
