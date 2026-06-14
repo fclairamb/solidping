@@ -75,7 +75,8 @@
     "slackOauthHint": "Les canaux Slack sont configurés via l'installation OAuth Slack. Le bot remplira les noms d'espace et de canal à la fin.",
     "slackNotConnectedTitle": "Espace de travail Slack non connecté",
     "slackNotConnectedBody": "Ce canal n'est lié à aucun espace de travail Slack. Installez l'application Slack SolidPing pour en connecter un.",
-    "slackConnectButton": "Installer l'application Slack"
+    "slackConnectButton": "Installer l'application Slack",
+    "testNeedsSave": "Enregistrez d'abord vos modifications — le test utilise les paramètres enregistrés."
   },
   "freebox": {
     "name": "Freebox",

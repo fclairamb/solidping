@@ -18,6 +18,11 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
   Integration,
@@ -49,13 +54,19 @@ interface IntegrationFormProps {
   org?: string;
   /** Channel UID — if provided, enables the live Slack destination picker */
   channelUid?: string;
+  /**
+   * Whether the Send-test button may run. The test always uses the persisted
+   * settings, so the edit page passes `!isDirty` here to block testing while
+   * there are unsaved edits. Defaults to true (e.g. the create flow).
+   */
+  canTest?: boolean;
 }
 
 // IntegrationForm is the type-dispatched edit surface. Common fields render
 // once; a per-type panel slots in below for the channel-specific
 // settings. Each panel keeps its own narrow shape — no anything-goes
 // JSON editor.
-export function IntegrationForm({ type, initial, initialName, onChange, org, channelUid }: IntegrationFormProps) {
+export function IntegrationForm({ type, initial, initialName, onChange, org, channelUid, canTest = true }: IntegrationFormProps) {
   const { t } = useTranslation("integrations");
   const [name, setName] = useState(initial?.name || initialName || "");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
@@ -124,7 +135,11 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
           exists (channelUid present). Freebox is a data source, not a
           notification target, so it has nothing to test. */}
       {channelUid && type !== "freebox" && (
-        <TestNotificationSection org={org} channelUid={channelUid} />
+        <TestNotificationSection
+          org={org}
+          channelUid={channelUid}
+          canTest={canTest}
+        />
       )}
     </div>
   );
@@ -133,12 +148,18 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
 interface TestNotificationSectionProps {
   org?: string;
   channelUid: string;
+  /**
+   * Whether testing is allowed. Disabled while the form has unsaved edits,
+   * because the test runs against the persisted settings, not the current
+   * (unsaved) form state.
+   */
+  canTest?: boolean;
 }
 
 // TestNotificationSection sends a sample notification through the saved
 // integration and shows whether it was delivered. It tests the persisted
 // settings, so unsaved form edits are not reflected until saved.
-function TestNotificationSection({ org, channelUid }: TestNotificationSectionProps) {
+function TestNotificationSection({ org, channelUid, canTest = true }: TestNotificationSectionProps) {
   const { t } = useTranslation("integrations");
   const test = useTestIntegration(org ?? "");
   const [testResult, setTestResult] = useState<IntegrationTestResult | null>(
@@ -171,25 +192,43 @@ function TestNotificationSection({ org, channelUid }: TestNotificationSectionPro
           <p className="text-xs text-muted-foreground">
             {t(
               "form.testHelp",
-              "Deliver a sample alert to confirm this integration is wired up. Save your changes first — the test uses the saved settings.",
+              "Deliver a sample alert to confirm this integration is wired up. The test uses the saved settings.",
             )}
           </p>
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={test.isPending}
-          onClick={handleTest}
-          data-testid="webhook-send-test"
-        >
-          {test.isPending ? (
-            <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-          ) : (
-            <Send className="mr-1 h-4 w-4" />
+        {/* A natively-disabled button emits no hover events, so the tooltip
+            trigger wraps the button in a focusable span. The tooltip warns
+            only when disabled due to unsaved edits (not while a test is in
+            flight). */}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canTest || test.isPending}
+                onClick={handleTest}
+                data-testid="webhook-send-test"
+              >
+                {test.isPending ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-1 h-4 w-4" />
+                )}
+                {t("form.sendTest", "Send test")}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {!canTest && (
+            <TooltipContent data-testid="webhook-send-test-tooltip">
+              {t(
+                "form.testNeedsSave",
+                "Save your changes first — the test uses the saved settings.",
+              )}
+            </TooltipContent>
           )}
-          {t("form.sendTest", "Send test")}
-        </Button>
+        </Tooltip>
       </div>
       {testResult && (
         <Badge
