@@ -12,7 +12,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { ArrowLeft, ExternalLink, Loader2, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Loader2, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useIntegration,
@@ -59,6 +59,7 @@ function RecentNotificationsSection({
   org: string;
   integrationUid: string;
 }) {
+  const navigate = useNavigate();
   const { data: rows, isLoading, error } = useIntegrationNotifications(
     org,
     integrationUid,
@@ -97,12 +98,21 @@ function RecentNotificationsSection({
                 <TableHead>Event</TableHead>
                 <TableHead>Target</TableHead>
                 <TableHead>Created</TableHead>
-                <TableHead className="w-8" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {rows.map((row: IncidentNotification) => (
-                <TableRow key={row.uid}>
+                <TableRow
+                  key={row.uid}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() =>
+                    navigate({
+                      to: "/orgs/$org/notifications/$notificationUid",
+                      params: { org, notificationUid: row.uid },
+                      search: { from: `integration:${integrationUid}` },
+                    })
+                  }
+                >
                   <TableCell>
                     <Badge
                       variant={notificationStatusVariant(row.status)}
@@ -131,17 +141,6 @@ function RecentNotificationsSection({
                     title={row.createdAt}
                   >
                     {new Date(row.createdAt).toLocaleString()}
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      to="/orgs/$org/notifications/$notificationUid"
-                      params={{ org, notificationUid: row.uid }}
-                      search={{ from: `integration:${integrationUid}` }}
-                      aria-label="View notification detail"
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" />
-                    </Link>
                   </TableCell>
                 </TableRow>
               ))}

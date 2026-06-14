@@ -216,6 +216,11 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
   const d = notif.deliveryDetails;
   if (!d) return null;
 
+  // Email is SMTP, not HTTP: the captured "response body" is the per-recipient
+  // transcript of SMTP server replies, so we relabel and add the honest caveat
+  // that acceptance by the relay is not proof of inbox delivery.
+  const isEmail = notif.channelType === "email";
+
   const hasAny =
     d.httpStatusCode !== undefined ||
     d.durationMs !== undefined ||
@@ -266,7 +271,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
 
         {d.responseBody && (
           <CollapsibleCode
-            label="Response body"
+            label={isEmail ? "SMTP server response" : "Response body"}
             value={d.responseBody}
             defaultOpen={notif.status === "failed"}
           />
@@ -284,6 +289,13 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
               ))}
             </div>
           </div>
+        )}
+
+        {isEmail && (
+          <p className="text-muted-foreground text-xs">
+            “Sent” means the mail server accepted the message for relay — it does
+            not confirm the message reached the recipient&apos;s inbox.
+          </p>
         )}
       </CardContent>
     </Card>

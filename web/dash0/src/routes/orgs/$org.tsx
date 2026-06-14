@@ -179,11 +179,19 @@ function Breadcrumbs({ org }: { org: string }) {
     org,
     isNotificationDetail ? (params.notificationUid ?? "") : "",
   );
+  // Fetch the source incident so the link shows the check name (e.g. "Test
+  // API"), matching the incident page's own breadcrumb, rather than the
+  // incident title ("… is down").
+  const { data: notifIncident } = useIncident(
+    org,
+    notifFrom?.type === "incident" ? notifFrom.uid : "",
+  );
 
   if (isNotificationDetail) {
     const notifLabel = "Notification";
     if (notifFrom?.type === "incident") {
       const incidentLabel =
+        notifIncident?.checkName ||
         cachedNotif?.incident?.title ||
         (notifFrom.uid.length >= 8 ? notifFrom.uid.slice(0, 8) : notifFrom.uid);
       return (
