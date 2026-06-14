@@ -966,6 +966,44 @@ export function useIncidentNotification(
   });
 }
 
+/** Fetch a single notification by UID, scoped to the org (no incidentUid required).
+ * Query key: ["orgNotification", org, notifUid] — the breadcrumb reads from
+ * this key to avoid an extra fetch when the page has already loaded. */
+export function useOrgNotification(org: string, notifUid: string) {
+  return useQuery<IncidentNotification>({
+    queryKey: ["orgNotification", org, notifUid],
+    queryFn: () =>
+      apiFetch<IncidentNotification>(
+        `/api/v1/orgs/${org}/notifications/${notifUid}`
+      ),
+    enabled: !!org && !!notifUid,
+    staleTime: Infinity,
+  });
+}
+
+/** List the last `limit` notifications delivered through an integration.
+ * Calls GET /api/v1/orgs/:org/notifications?connectionUid=&limit= */
+export function useIntegrationNotifications(
+  org: string,
+  integrationUid: string,
+  limit = 10
+) {
+  return useQuery({
+    queryKey: ["integrationNotifications", org, integrationUid, limit],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        connectionUid: integrationUid,
+        limit: String(limit),
+      });
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(
+        `/api/v1/orgs/${org}/notifications?${params.toString()}`
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!integrationUid,
+  });
+}
+
 export function useMyNotifications(
   org: string,
   options?: {

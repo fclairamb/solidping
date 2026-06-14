@@ -129,7 +129,7 @@ func (s *Service) ListForIncident(
 }
 
 // ErrNotificationNotFound is returned when the notification does not exist
-// within the given org and incident.
+// within the given org (and, for the incident-scoped variant, the incident).
 var ErrNotificationNotFound = errors.New("notification not found")
 
 // GetForIncident returns a single notification by UID, scoped to the org and
@@ -160,6 +160,37 @@ func (s *Service) GetForIncident(
 	}
 
 	return toNotificationDetail(row), nil
+}
+
+// GetByOrg returns a single notification by UID, scoped only to the org (no
+// incident required). A notification belonging to a different org is treated
+// as not found — existence is never leaked across tenants.
+func (s *Service) GetByOrg(
+	ctx context.Context, orgUID, notifUID string,
+) (*NotificationDetail, error) {
+	row, err := s.db.GetOrgNotification(ctx, orgUID, notifUID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrNotificationNotFound
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return toNotificationDetail(row), nil
+}
+
+// ListByConnection returns notifications filtered by connection_uid. Requires
+// a non-empty connectionUID (caller must validate).
+func (s *Service) ListByConnection(
+	ctx context.Context, orgUID, connectionUID string, limit int,
+) ([]*NotificationRow, error) {
+	filter := ListFilter{
+		ConnectionUID: connectionUID,
+		Limit:         limit,
+	}
+
+	return s.list(ctx, orgUID, filter)
 }
 
 // ListForUser returns notifications across all incidents for a specific user.

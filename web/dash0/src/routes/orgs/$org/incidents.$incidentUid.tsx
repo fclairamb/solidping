@@ -1056,8 +1056,9 @@ function NotificationsCard({
 
   const openNotification = (notifUid: string) =>
     navigate({
-      to: "/orgs/$org/incidents/$incidentUid/notifications/$notificationUid",
-      params: { org, incidentUid, notificationUid: notifUid },
+      to: "/orgs/$org/notifications/$notificationUid",
+      params: { org, notificationUid: notifUid },
+      search: { from: `incident:${incidentUid}` },
     });
 
   return (

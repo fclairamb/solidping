@@ -489,6 +489,32 @@ if (isFooBar) {
     </span>
   );
 }`;
+  const contextualSnippet = `// Context-driven breadcrumb: reads ?from= to show the correct parent.
+// Example: the notification detail route (/orgs/$org/notifications/$notificationUid)
+// uses three variants depending on the ?from= search param:
+
+// 1. No ?from= → Integrations > Notification
+<Link to="/orgs/$org/integrations" ...><Bell />Integrations</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// 2. ?from=incident:{uid} → Incidents > {incident title} > Notification
+<Link to="/orgs/$org/incidents" ...><AlertTriangle />Incidents</Link>
+<BreadcrumbSeparator />
+<Link to="/orgs/$org/incidents/$incidentUid" ...>{incidentLabel}</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// 3. ?from=integration:{uid} → Integrations > {integration name} > Notification
+<Link to="/orgs/$org/integrations" ...><Bell />Integrations</Link>
+<BreadcrumbSeparator />
+<Link to="/orgs/$org/integrations/$integrationUid" ...>{integrationLabel}</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// The label falls back to uid.slice(0,8) when the page is cold (direct nav,
+// no prior fetch). The cached data comes from queryClient.getQueryData(["orgNotification", ...])
+// — no waterfall, no extra network request.`;
   return (
     <Section
       id="breadcrumbs"
@@ -504,6 +530,20 @@ if (isFooBar) {
         </p>
       </div>
       <CodeSnippet code={snippet} />
+      <div className="rounded-md border bg-card p-4 space-y-2">
+        <p className="text-sm font-medium">Context-driven breadcrumbs with <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=</code></p>
+        <p className="text-sm text-muted-foreground">
+          When a detail page can be reached from multiple parent surfaces, encode the
+          navigation context in a <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=type:uid</code> search
+          param (e.g. <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=incident:abc123</code> or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=integration:xyz</code>).
+          The breadcrumb reads the param and renders the matching parent chain. Label resolution
+          uses the query cache — no extra fetch. The notification detail route
+          (<code className="rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/notifications/$notificationUid</code>) is
+          the canonical example of this pattern.
+        </p>
+      </div>
+      <CodeSnippet code={contextualSnippet} />
     </Section>
   );
 }

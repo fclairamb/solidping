@@ -202,3 +202,72 @@ The section sits after the form/save button, with a `CardHeader` labelled
 - [ ] Incident page notification links updated
 - [ ] Integration page "Recent notifications" section
 - [ ] Design reference updated with new breadcrumb example and notification table pattern if new primitives introduced
+
+## Implementation Plan
+
+### Step 1 — Backend: new org-level notification endpoints
+
+Add two new handler methods to the existing `incidentnotifications` package:
+
+1. **`GetByOrg`** — `GET /api/v1/orgs/:org/notifications/:notifUid`
+   - New service method `GetByOrg(ctx, orgUID, notifUID)` that calls `db.GetIncidentNotification` without the `incidentUID` filter (add `GetOrgNotification` to the db interface + postgres/sqlite impls).
+   - Handler method translates errors to HTTP.
+   
+2. **`ListByOrg`** — `GET /api/v1/orgs/:org/notifications?connectionUid=&limit=`
+   - Requires `connectionUid` query param (400 if absent).
+   - Defaults `limit` to 10, max 50.
+   - Reuses `service.list()` with only `ConnectionUID` + `Limit` set.
+   - Returns `{ "data": [...] }`.
+
+3. Register both under a new group `/api/v1/orgs/:org/notifications` in `server.go`.
+
+4. Add handler tests for both new endpoints.
+
+### Step 2 — DB layer: `GetOrgNotification`
+
+Add `GetOrgNotification(ctx, orgUID, notifUID string)` to:
+- `db/service.go` interface
+- `db/postgres/incident_notification.go` (same join as `GetIncidentNotification` minus the `incident_uid` WHERE clause)
+- `db/sqlite/incident_notification.go` (same)
+
+### Step 3 — Frontend: new API hooks
+
+Add to `web/dash0/src/api/hooks.ts`:
+- `useOrgNotification(org, notifUid)` — calls `GET /api/v1/orgs/:org/notifications/:notifUid`, query key `["orgNotification", org, notifUid]`
+- `useIntegrationNotifications(org, integrationUid, limit?)` — calls `GET /api/v1/orgs/:org/notifications?connectionUid={integrationUid}&limit={limit}`, query key `["integrationNotifications", org, integrationUid, limit]`
+
+### Step 4 — Frontend: new flat route
+
+Create `web/dash0/src/routes/orgs/$org/notifications.$notificationUid.tsx`:
+- Copies content of the old notification detail page
+- Uses `useOrgNotification` instead of `useIncidentNotification`
+- Adds `validateSearch: z.object({ from: z.string().optional() })`
+- `parseFrom(from?)` helper: splits on `:`, returns `{ type, uid }` or `null`
+- Back button: if `from` parsed → navigate to parent; else → `/orgs/$org/incidents`
+- Error backTo: same logic as back button
+
+### Step 5 — Frontend: redirect old route
+
+Replace content of `incidents.$incidentUid_.notifications.$notificationUid.tsx` with a redirect component that builds the new URL with `?from=incident:{incidentUid}`.
+
+### Step 6 — Frontend: breadcrumb update
+
+In `$org.tsx` `Breadcrumbs()`:
+- Add `isNotificationDetail` branch (route id `/orgs/$org/notifications/$notificationUid`)
+- Read search params from the notification detail match to get `from`
+- Use `queryClient.getQueryData(["orgNotification", org, notificationUid])` for the cached notification
+- Render three variants: no `?from`, `?from=incident:*`, `?from=integration:*`
+- Add `useQueryClient` import
+
+### Step 7 — Frontend: update incident page links
+
+In `incidents.$incidentUid.tsx`, change `openNotification` to navigate to:
+`/orgs/$org/notifications/$notificationUid?from=incident:{incidentUid}`
+
+### Step 8 — Frontend: integration page "Recent notifications" section
+
+In `integrations.$integrationUid.tsx`:
+- Add `RecentNotificationsSection` component that calls `useIntegrationNotifications`
+- Columns: Status badge, Channel type, Event type, Target, Created at, Link icon → detail with `?from=integration:{integrationUid}`
+- Empty / loading / error states as specified
+- Append after the save button form, before the delete dialog
