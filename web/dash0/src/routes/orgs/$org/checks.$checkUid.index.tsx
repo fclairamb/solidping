@@ -12,6 +12,7 @@ import {
   Loader2,
   MoreVertical,
   Pencil,
+  Power,
   RefreshCw,
   Trash2,
   X,
@@ -389,6 +390,21 @@ function CheckDetailPage() {
     }
   };
 
+  const handleToggleEnabled = async () => {
+    if (!check) return;
+    const next = !check.enabled;
+    try {
+      await updateCheck.mutateAsync({ enabled: next });
+      toast.success(
+        next
+          ? (t("checks:detail.enableToast") ?? "Check enabled")
+          : (t("checks:detail.disableToast") ?? "Check disabled"),
+      );
+    } catch {
+      toast.error(t("checks:detail.toggleFailed") ?? "Failed to update check");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -551,6 +567,23 @@ function CheckDetailPage() {
             </Button>
             <Button
               variant="outline"
+              aria-label={
+                check.enabled
+                  ? (t("checks:detail.disable") ?? "Disable")
+                  : (t("checks:detail.enable") ?? "Enable")
+              }
+              disabled={updateCheck.isPending}
+              onClick={handleToggleEnabled}
+            >
+              <Power className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">
+                {check.enabled
+                  ? t("checks:detail.disable")
+                  : t("checks:detail.enable")}
+              </span>
+            </Button>
+            <Button
+              variant="outline"
               aria-label={t("checks:detail.clone") ?? "Clone"}
               disabled={cloneCheck.isPending}
               onClick={handleClone}
@@ -624,6 +657,15 @@ function CheckDetailPage() {
                     <BadgeCheck className="mr-2 h-4 w-4" />
                     {t("checks:detail.badges")}
                   </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={updateCheck.isPending}
+                  onClick={handleToggleEnabled}
+                >
+                  <Power className="mr-2 h-4 w-4" />
+                  {check.enabled
+                    ? t("checks:detail.disable")
+                    : t("checks:detail.enable")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={cloneCheck.isPending}

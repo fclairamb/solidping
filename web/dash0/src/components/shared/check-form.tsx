@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
@@ -192,6 +193,7 @@ function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: 
 
 export interface CheckFormData {
   type?: CheckType;
+  enabled?: boolean;
   name?: string;
   slug?: string;
   checkGroupUid?: string;
@@ -290,6 +292,7 @@ export function CheckForm({
   }
 
   const [type, setType] = useState<CheckType>(initialType);
+  const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
@@ -1050,6 +1053,7 @@ export function CheckForm({
     try {
       await onSubmit({
         type: mode === "create" ? type : undefined,
+        enabled,
         name: mode === "edit" ? name : (name || undefined),
         slug: mode === "edit" ? slug : (slug || undefined),
         checkGroupUid: checkGroupUid || (mode === "edit" ? "" : undefined),
@@ -2066,6 +2070,21 @@ export function CheckForm({
             <CardTitle className="text-base">General</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="check-enabled">Enabled</Label>
+                <p className="text-xs text-muted-foreground">
+                  Disabled checks are not scheduled and never run.
+                </p>
+              </div>
+              <Switch
+                id="check-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                data-testid="check-enabled-switch"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="period">
                 {isPassiveType(type) ? "Expected Interval" : "Check Interval"}

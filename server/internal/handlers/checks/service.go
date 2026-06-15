@@ -2453,7 +2453,7 @@ func (s *Service) importSingleCheck(
 
 // CloneCheckRequest carries the optional overrides for the clone endpoint.
 // All fields are optional — an empty body produces a clone with safe defaults
-// (`(copy)` suffix on name, `-copy` suffix on slug, enabled=false).
+// (`(copy)` suffix on name, `-copy` suffix on slug, enabled=true).
 type CloneCheckRequest struct {
 	Name          *string `json:"name,omitempty"`
 	Slug          *string `json:"slug,omitempty"`
@@ -2579,7 +2579,9 @@ func (s *Service) cloneBuildCheck(
 	clone.EscalationPolicyUID = source.EscalationPolicyUID
 	clone.CheckGroupUID = resolveCloneGroup(source, req)
 
-	clone.Enabled = false
+	// A clone is enabled by default so it starts running immediately, like a
+	// normal create. An explicit `enabled` in the request still wins.
+	clone.Enabled = true
 	if req != nil && req.Enabled != nil {
 		clone.Enabled = *req.Enabled
 	}

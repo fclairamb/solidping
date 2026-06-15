@@ -82,6 +82,7 @@ function CheckEditPage() {
       }
       onSubmit={async (data) => {
         await updateCheck.mutateAsync({
+          enabled: data.enabled,
           name: data.name,
           slug: data.slug,
           checkGroupUid: data.checkGroupUid,
