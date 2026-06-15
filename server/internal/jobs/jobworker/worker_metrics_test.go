@@ -137,7 +137,7 @@ func TestHandleResultOutcome(t *testing.T) {
 		{
 			name:        "retryable but retries exhausted -> failed",
 			jobErr:      retryableErr(),
-			retryCount:  maxRetryCount,
+			retryCount:  jobsvc.MaxRetryCount,
 			wantOutcome: outcomeFailed,
 			wantStatus:  models.JobStatusFailed,
 		},

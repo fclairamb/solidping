@@ -18,8 +18,11 @@ import (
 )
 
 const (
-	// maxRetryCount is the maximum number of retries allowed for a job.
-	maxRetryCount = 2
+	// MaxRetryCount is the maximum number of retries allowed for a job (so 3
+	// attempts total: original + 2 retries). Exported so the stuck-job reaper
+	// and the worker share a single source of truth for the cap instead of
+	// duplicating the literal.
+	MaxRetryCount = 2
 
 	// eventTypeJobCreated is the notifier event type emitted when a new job is
 	// created and ready to run soon. PgEventNotifier converts "." to "_" so the
@@ -565,7 +568,7 @@ func (s *serviceImpl) UpdateJobStatus(
 // RetryJob creates a new job from a failed job.
 // Copies config, increments retry_count, sets previous_job_uid.
 func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job) (*models.Job, error) {
-	if job.RetryCount >= maxRetryCount {
+	if job.RetryCount >= MaxRetryCount {
 		return nil, ErrMaxRetriesReached
 	}
 

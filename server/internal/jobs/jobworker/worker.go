@@ -27,11 +27,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/stats"
 )
 
-const (
-	// maxRetryCount is the maximum number of retries allowed for a job.
-	maxRetryCount = 2
-)
-
 // JobWorker executes jobs from the queue.
 type JobWorker struct {
 	db        *bun.DB
@@ -265,7 +260,7 @@ func (w *JobWorker) handleResult(
 
 	logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "error", err)
 
-	if jobdef.IsRetryable(err) && job.RetryCount < maxRetryCount {
+	if jobdef.IsRetryable(err) && job.RetryCount < jobsvc.MaxRetryCount {
 		// Retryable error and retries remaining: create retry job
 		retryJob, retryErr := w.jobSvc.RetryJob(ctx, job)
 		if retryErr != nil {
