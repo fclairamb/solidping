@@ -1695,6 +1695,17 @@ func (s *Server) startJobWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Job worker error", "error", err)
 		}
 	}()
+
+	// Start the queue-depth sampler that publishes solidping_jobs_queue_depth.
+	sampler := jobworker.NewQueueDepthSampler(s.jobSvc)
+
+	s.workersWg.Add(1)
+	go func() {
+		defer s.workersWg.Done()
+		if err := sampler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
+		}
+	}()
 }
 
 // startCheckWorker starts the configured number of check runner goroutines.

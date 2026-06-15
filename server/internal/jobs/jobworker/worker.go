@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
 )
 
@@ -158,6 +159,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(`{"error": "unknown job type"}`))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("%w: %s", ErrUnknownJobType, job.Type)
 	}
@@ -168,6 +170,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(fmt.Sprintf(`{"error": "invalid config: %q}`, err.Error())))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("failed to marshal job config: %w", err)
 	}
@@ -178,6 +181,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(fmt.Sprintf(`{"error": %q}`, err.Error())))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("failed to create job run: %w", err)
 	}
@@ -193,10 +197,33 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 	jobErr := w.executeWithRecovery(jobExecCtx, jobRun, jctx)
 
 	// 7. Record stats
-	w.stats.AddMetric(jobErr == nil, time.Since(startTime), delay)
+	duration := time.Since(startTime)
+	w.stats.AddMetric(jobErr == nil, duration, delay)
 
-	// 8. Handle result (success, retry, or fail)
-	return w.handleResult(jobExecCtx, logger, job, jobErr)
+	// 8. Handle result (success, retry, or fail). The outcome returned matches
+	// the terminal status written by UpdateJobStatus, so the metric and the DB
+	// row never disagree.
+	outcome, resultErr := w.handleResult(jobExecCtx, logger, job, jobErr)
+	w.recordJobMetrics(job.Type, outcome, duration, delay)
+
+	return resultErr
+}
+
+// Job outcome label values for Prometheus, matching the terminal job status.
+const (
+	outcomeSuccess = "success"
+	outcomeRetried = "retried"
+	outcomeFailed  = "failed"
+)
+
+// recordJobMetrics records the processed counter, duration histogram, and
+// scheduling-delay histogram for one processed job. Recording is unconditional
+// — metric collection stays on even when the /metrics endpoint is gated by
+// SP_PROMETHEUS_ENABLED.
+func (w *JobWorker) recordJobMetrics(jobType, outcome string, duration, delay time.Duration) {
+	prommetrics.RecordJobProcessed(jobType, outcome)
+	prommetrics.RecordJobDuration(jobType, outcome, duration.Seconds())
+	prommetrics.RecordJobSchedulingDelay(jobType, delay.Seconds())
 }
 
 func (w *JobWorker) executeWithRecovery(
@@ -213,7 +240,13 @@ func (w *JobWorker) executeWithRecovery(
 	return job.Run(ctx, jctx)
 }
 
-func (w *JobWorker) handleResult(ctx context.Context, logger *slog.Logger, job *models.Job, err error) error {
+// handleResult writes the terminal job status and returns the outcome label
+// ("success" | "retried" | "failed") matching that status, plus any error from
+// the status update. The returned outcome drives the Prometheus metrics so they
+// can never disagree with the DB row.
+func (w *JobWorker) handleResult(
+	ctx context.Context, logger *slog.Logger, job *models.Job, err error,
+) (string, error) {
 	if err == nil {
 		// Success: mark job as successful with output from job execution
 		logger.InfoContext(ctx, "Job completed successfully", "job_uid", job.UID)
@@ -227,7 +260,7 @@ func (w *JobWorker) handleResult(ctx context.Context, logger *slog.Logger, job *
 			}
 		}
 
-		return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusSuccess, output)
+		return outcomeSuccess, w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusSuccess, output)
 	}
 
 	logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "error", err)
@@ -244,12 +277,12 @@ func (w *JobWorker) handleResult(ctx context.Context, logger *slog.Logger, job *
 				"scheduled_at", retryJob.ScheduledAt)
 		}
 		// Mark original as retried
-		return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusRetried,
+		return outcomeRetried, w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusRetried,
 			json.RawMessage(fmt.Sprintf(`{"error": %q, "retried": true}`, err.Error())))
 	}
 
 	// Non-retryable error or max retries reached: mark as failed
-	return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
+	return outcomeFailed, w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 		json.RawMessage(fmt.Sprintf(`{"error": %q}`, err.Error())))
 }
 

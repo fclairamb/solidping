@@ -78,6 +78,13 @@ type Service interface {
 	// RetryJob creates a new job from a failed job
 	// Copies config, increments nb_tries, sets previous_job_uid
 	RetryJob(ctx context.Context, job *models.Job) (*models.Job, error)
+
+	// CountQueueDepth returns the number of live (deleted_at IS NULL) jobs in the
+	// queue per status, across all organizations. Only "pending" and "running"
+	// statuses are returned; both keys are always present (zero-filled) so a
+	// drained status reports 0 rather than going stale. Used by the queue-depth
+	// metrics sampler.
+	CountQueueDepth(ctx context.Context) (map[models.JobStatus]int, error)
 }
 
 // ListJobsOptions contains filtering options for listing jobs.
@@ -236,6 +243,46 @@ func (s *serviceImpl) createNewJob(
 	}
 
 	return job, nil
+}
+
+// queueDepthCount is a scan target for the queue-depth GROUP BY status query.
+type queueDepthCount struct {
+	Status string `bun:"status"`
+	Count  int    `bun:"count"`
+}
+
+// CountQueueDepth runs one cheap GROUP BY status query over the jobs table and
+// returns per-status live counts. Both "pending" and "running" keys are always
+// present (zero-filled) so absent statuses report 0 instead of a stale value.
+func (s *serviceImpl) CountQueueDepth(ctx context.Context) (map[models.JobStatus]int, error) {
+	// Zero-fill the statuses we expose so a drained status reports 0.
+	depth := map[models.JobStatus]int{
+		models.JobStatusPending: 0,
+		models.JobStatusRunning: 0,
+	}
+
+	var counts []queueDepthCount
+
+	err := s.db.NewSelect().
+		Model((*models.Job)(nil)).
+		Column("status").
+		ColumnExpr("COUNT(*) AS count").
+		Where("deleted_at IS NULL").
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Group("status").
+		Scan(ctx, &counts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to count queue depth: %w", err)
+	}
+
+	for _, c := range counts {
+		status := models.JobStatus(c.Status)
+		if _, ok := depth[status]; ok {
+			depth[status] = c.Count
+		}
+	}
+
+	return depth, nil
 }
 
 // GetJob retrieves a job by UID.

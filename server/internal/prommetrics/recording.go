@@ -101,3 +101,28 @@ func RecordCheckStage(stage string, durationSeconds float64) {
 func RecordClaimJobsOutcome(outcome string) {
 	ClaimJobsResult.WithLabelValues(outcome).Inc()
 }
+
+// RecordJobProcessed increments the processed-jobs counter for the given
+// job type and terminal outcome ("success" | "retried" | "failed").
+func RecordJobProcessed(jobType, outcome string) {
+	JobsProcessed.WithLabelValues(jobType, outcome).Inc()
+}
+
+// RecordJobDuration observes a background job's execution duration in seconds,
+// labeled by job type and terminal outcome.
+func RecordJobDuration(jobType, outcome string, seconds float64) {
+	JobDuration.WithLabelValues(jobType, outcome).Observe(seconds)
+}
+
+// RecordJobSchedulingDelay observes the delay (in seconds, clamped >= 0)
+// between a job's scheduled time and when it actually started running.
+func RecordJobSchedulingDelay(jobType string, seconds float64) {
+	JobSchedulingDelay.WithLabelValues(jobType).Observe(seconds)
+}
+
+// SetJobsQueueDepth sets the queue-depth gauge for the given status
+// ("pending" | "running"). Callers must zero-fill statuses with no rows so a
+// drained status reports 0 rather than going stale.
+func SetJobsQueueDepth(status string, count float64) {
+	JobsQueueDepth.WithLabelValues(status).Set(count)
+}
