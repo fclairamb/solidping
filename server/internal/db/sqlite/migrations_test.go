@@ -33,11 +33,11 @@ func TestMigrationsEmbedded(t *testing.T) {
 	require.NoError(t, err)
 	t.Logf("Found %d embedded migration files", len(files))
 
-	// Verify the initial migration is embedded
-	assert.Contains(t, files, "migrations/001_initial.up.sql",
-		"initial up migration must be embedded")
-	assert.Contains(t, files, "migrations/001_initial.down.sql",
-		"initial down migration must be embedded")
+	// Verify the v0.1.0 consolidated baseline migration is embedded
+	assert.Contains(t, files, "migrations/001_v0_1_0.up.sql",
+		"v0.1.0 baseline up migration must be embedded")
+	assert.Contains(t, files, "migrations/001_v0_1_0.down.sql",
+		"v0.1.0 baseline down migration must be embedded")
 }
 
 // TestMigrationCreatesIncidentColumns verifies that after running migrations,
@@ -197,10 +197,9 @@ func TestMigrationDiscoveredHostsSource(t *testing.T) {
 		"old per-ip unique index must be dropped")
 }
 
-// TestMigrationDiscoveredHostsSourceRoundTrip verifies that (a) a row inserted
-// without an explicit source is backfilled to 'lan' by the column DEFAULT, and
-// (b) the 030 down migration rolls back cleanly and 030 can be re-applied.
-func TestMigrationDiscoveredHostsSourceRoundTrip(t *testing.T) {
+// TestMigrationDiscoveredHostsSourceDefault verifies that a row inserted without
+// an explicit source defaults to 'lan' (column DEFAULT in the consolidated baseline).
+func TestMigrationDiscoveredHostsSourceDefault(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -212,8 +211,6 @@ func TestMigrationDiscoveredHostsSourceRoundTrip(t *testing.T) {
 
 	r.NoError(svc.Initialize(ctx))
 
-	// Seed an org + job + a discovered_hosts row WITHOUT specifying source, so
-	// only the DEFAULT 'lan' applies — the backfill path for pre-existing rows.
 	orgUID := uuid.New().String()
 	jobUID := uuid.New().String()
 	_, err = svc.db.NewRaw(
@@ -235,43 +232,12 @@ func TestMigrationDiscoveredHostsSourceRoundTrip(t *testing.T) {
 	var src string
 	r.NoError(svc.db.NewRaw("SELECT source FROM discovered_hosts WHERE ip = ?", "192.168.1.99").Scan(ctx, &src))
 	r.Equal("lan", src, "rows inserted without a source must default to 'lan'")
-
-	hasSource := func() bool {
-		type col struct {
-			Name string `bun:"name"`
-		}
-		var cols []col
-		r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('discovered_hosts')").Scan(ctx, &cols))
-		for _, c := range cols {
-			if c.Name == "source" {
-				return true
-			}
-		}
-
-		return false
-	}
-
-	// Verify the 030 down + up SQL by executing them directly against the live
-	// schema: down must drop the column cleanly, up must re-add it.
-	downSQL, err := fs.ReadFile(migrationsFS, "migrations/030_discovered_hosts_source.down.sql")
-	r.NoError(err)
-	upSQL, err := fs.ReadFile(migrationsFS, "migrations/030_discovered_hosts_source.up.sql")
-	r.NoError(err)
-
-	_, err = svc.db.ExecContext(ctx, string(downSQL))
-	r.NoError(err, "030 down SQL must execute cleanly")
-	r.False(hasSource(), "source column must be gone after down migration")
-
-	_, err = svc.db.ExecContext(ctx, string(upSQL))
-	r.NoError(err, "030 up SQL must re-apply cleanly")
-	r.True(hasSource(), "source column must be back after re-applying up migration")
 }
 
-// TestMigrationRenameIntegrationsRoundTrip verifies migration 035 renames the
-// integration_connections / check_connections tables (and the connection_uid
-// column) to integrations / check_channels / integration_uid, and that the down
-// migration reverses it cleanly while preserving row data.
-func TestMigrationRenameIntegrationsRoundTrip(t *testing.T) {
+// TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated
+// v0.1.0 migration the integration-related tables use their final names
+// (integrations / check_channels / integration_uid) and the old names are absent.
+func TestMigrationIntegrationsSchemaFinalState(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -307,16 +273,15 @@ func TestMigrationRenameIntegrationsRoundTrip(t *testing.T) {
 		return false
 	}
 
-	// After Initialize (all migrations up), the new names exist and the old
-	// names are gone.
+	// The consolidated baseline uses the final names from day one.
 	r.True(tableExists("integrations"), "integrations table should exist after migrations")
 	r.True(tableExists("check_channels"), "check_channels table should exist after migrations")
-	r.False(tableExists("integration_connections"), "old integration_connections table should be gone")
-	r.False(tableExists("check_connections"), "old check_connections table should be gone")
+	r.False(tableExists("integration_connections"), "old integration_connections table should not exist")
+	r.False(tableExists("check_connections"), "old check_connections table should not exist")
 	r.True(colExists("check_channels", "integration_uid"), "check_channels.integration_uid should exist")
-	r.False(colExists("check_channels", "connection_uid"), "old connection_uid column should be gone")
+	r.False(colExists("check_channels", "connection_uid"), "old connection_uid column should not exist")
 
-	// Seed a row through the renamed schema to prove it is usable.
+	// Verify rows can be inserted using the final names.
 	orgUID := uuid.New().String()
 	intUID := uuid.New().String()
 	_, err = svc.db.NewRaw(
@@ -329,30 +294,9 @@ func TestMigrationRenameIntegrationsRoundTrip(t *testing.T) {
 	).Exec(ctx)
 	r.NoError(err)
 
-	// Apply the down migration and verify the reversal.
-	downSQL, err := fs.ReadFile(migrationsFS,
-		"migrations/035_rename_integration_connections_to_integrations.down.sql")
-	r.NoError(err)
-	_, err = svc.db.ExecContext(ctx, string(downSQL))
-	r.NoError(err, "035 down SQL must execute cleanly")
-	r.True(tableExists("integration_connections"), "integration_connections must be back after down")
-	r.True(tableExists("check_connections"), "check_connections must be back after down")
-	r.False(tableExists("integrations"), "integrations must be gone after down")
-	r.True(colExists("check_connections", "connection_uid"), "connection_uid column must be back after down")
-
-	// The seeded row survives the rename round-trip.
 	var name string
 	r.NoError(svc.db.NewRaw(
-		"SELECT name FROM integration_connections WHERE uid = ?", intUID,
+		"SELECT name FROM integrations WHERE uid = ?", intUID,
 	).Scan(ctx, &name))
-	r.Equal("Hook", name, "row data must survive the down migration")
-
-	// Re-apply the up migration to confirm idempotent round-trip.
-	upSQL, err := fs.ReadFile(migrationsFS,
-		"migrations/035_rename_integration_connections_to_integrations.up.sql")
-	r.NoError(err)
-	_, err = svc.db.ExecContext(ctx, string(upSQL))
-	r.NoError(err, "035 up SQL must re-apply cleanly")
-	r.True(tableExists("integrations"), "integrations must be back after re-applying up")
-	r.True(colExists("check_channels", "integration_uid"), "integration_uid must be back after re-applying up")
+	r.Equal("Hook", name, "row must be readable from integrations table")
 }

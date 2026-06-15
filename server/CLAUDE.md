@@ -61,7 +61,7 @@ The Go backend follows a clean architecture pattern with strict separation of co
   - Services are injected into handlers, never the reverse
 - **`internal/handlers/base/`**: Common handler functionality (`HandlerBase`) for error handling and JSON responses
 - **`internal/models/`**: Bun ORM models for database entities with custom types
-- **`internal/migrations/`**: Database migration files
+- **`internal/db/postgres/migrations/`** and **`internal/db/sqlite/migrations/`**: Database migration files (one consolidated `NNN_vX_Y_Z.up.sql` per release)
 - **`internal/middleware/`**: Authentication, CORS, logging, and organization context
 - **`internal/config/`**: Configuration management using koanf (YAML + environment variables)
 
