@@ -218,7 +218,7 @@ export function AppSidebar() {
                     isActive={location.pathname.startsWith(`/orgs/${org}/jobs`)}
                     tooltip={tNav("jobs")}
                   >
-                    <Link to="/orgs/$org/jobs" params={{ org }}>
+                    <Link to="/orgs/$org/jobs" params={{ org }} search={{ tab: "jobs" }}>
                       <Workflow />
                       <span>{tNav("jobs")}</span>
                     </Link>
