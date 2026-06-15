@@ -237,3 +237,66 @@ state labels, toggle labels, empty states) to **all** locales
 7. **i18n**: `jobs` namespace across all locales + nav key.
 8. **E2E** per Testing; then `bun run lint`, `make test-dash`, `make test`,
    manual mobile + dark-mode pass.
+
+## Implementation Plan (detailed — by implementing agent)
+
+Backend uses **bunrouter** + **Bun ORM**; handler signature is
+`func(http.ResponseWriter, bunrouter.Request) error`. Org is resolved by
+`RequireOrgAccess` into context (`middleware.GetOrganizationFromContext`) — handlers
+must use the resolved `org.UID` (the `:org` URL param is the **slug**, not the UID).
+
+### Step 1 — Backend: check-jobs read service + handler
+- New package `server/internal/handlers/checkjobs/` with `service.go` + `handler.go`.
+- `Service.ListCheckJobs(ctx, orgUID, opts)` and `GetCheckJob(ctx, uid)` (org-scoped
+  when orgUID non-empty; all-orgs when empty for system mode). Query `check_jobs`,
+  order by `scheduled_at`, paginate (limit/offset). Eager-load the `Check` for name.
+- `DerivedState(cj, now)` helper: idle / in-flight / stalled / crash-looping.
+- **Redaction**: build a `CheckJobView` DTO that NEVER includes `config_private`/
+  `config_private_keys` values — only `encryptedKeys []string` (the key names parsed
+  from `config_private_keys` JSON) + `encrypted bool`. JSON wrapped `{data: ...}`.
+- Handler reads org from context, super-admin gated handlers omit org filter.
+
+### Step 2 — Backend: stats + system jobs + org-admin gate
+- Stats DTO: background `{pending, running, failed24h}` + check schedule
+  `{total, dueNow, inFlight, stalled, crashLooping}`. One `GROUP BY status` for jobs
+  (last 24h for failed) + counting queries for check_jobs.
+- New `server/internal/handlers/jobsadmin/` (stats + system jobs view) OR extend the
+  checkjobs service with stats. Keep jobs system-view reusing `jobsvc.ListJobs` with
+  empty orgUID (add an all-orgs path) + a stats method.
+- **`RequireOrgAdmin` middleware** added to `middleware/auth.go`: after RequireOrgAccess,
+  load member via `GetMemberByUserAndOrg(user.UID, org.UID)`; allow if
+  `member.Role == admin` OR `user.SuperAdmin`. 403 otherwise.
+- Register routes in `server.go`:
+  - org: `GET /orgs/:org/jobs/stats`, `GET /orgs/:org/check-jobs`,
+    `GET /orgs/:org/check-jobs/:uid` (RequireAuth + RequireOrgAccess + RequireOrgAdmin).
+  - system: `GET /system/jobs`, `GET /system/jobs/:uid`, `GET /system/jobs/stats`,
+    `GET /system/check-jobs`, `GET /system/check-jobs/:uid` (RequireAuth + RequireSuperAdmin).
+
+### Step 3 — Backend tests
+- `service_test.go` + `handler_test.go` (testcontainers, table-driven, `t.Parallel()`,
+  `testify/require`). Cover derived-state, pagination, `{data}` wrap, redaction
+  (config_private set → no secret values), auth matrix (viewer/user → 403 on admin
+  endpoints; non-super-admin → 403 on /system; super-admin → all orgs + NULL jobs).
+
+### Step 4 — Frontend hooks (`web/dash0/src/api/hooks.ts`)
+- `useJobsStats(org, {allOrgs})`, `useBackgroundJobs(org, {allOrgs, status, type, ...})`,
+  `useCheckSchedule(org, {allOrgs, ...})`, `useBackgroundJob(org, uid, {allOrgs})`,
+  `useCheckJob(org, uid, {allOrgs})`. URL selects `/system/*` vs `/orgs/:org/*` by
+  `allOrgs`. Adaptive `refetchInterval`: 2500ms when active
+  (`pending+running+inFlight+dueNow>0`), else 15000ms; `refetchIntervalInBackground:false`.
+
+### Step 5 — Frontend routes (TanStack file-based)
+- `jobs.tsx` (admin guard + Outlet), `jobs.index.tsx` (overview strip + Tabs +
+  super-admin toggle + filters + pagination), `jobs.$jobUid.tsx` (bg-job detail),
+  `jobs.check.$checkJobUid.tsx` (check-job detail). Run codegen for routeTree.
+
+### Step 6 — Sidebar + design-reference
+- Add admin nav entry (Workflow icon) below Discovery in `AppSidebar.tsx`.
+- Add any new primitive (read-only JSON block / stat tile) to `design-reference.tsx`
+  if not already shipped; otherwise reuse Card/Badge/Table/StatusBadge.
+
+### Step 7 — i18n
+- `jobs.json` in en/fr/es/de + `jobs` key in each `nav.json`; register in `i18n.ts`.
+
+### Step 8 — E2E + QA
+- Playwright specs in `web/dash0/e2e/`; then build-backend, build-client, lint-back, test.
