@@ -1,0 +1,85 @@
+{
+  "title": "Jobs",
+  "subtitle": "Live-Beobachtbarkeit für Hintergrund-Jobs und den Check-Zeitplan.",
+  "refresh": "Aktualisieren",
+  "back": "Zurück",
+  "scope": {
+    "thisOrg": "Diese Org.",
+    "allOrgs": "Alle Org. (System)"
+  },
+  "overview": {
+    "title": "Aktivitätsübersicht",
+    "pending": "Ausstehend",
+    "running": "Läuft",
+    "failed24h": "Fehlgeschlagen (24 Std.)",
+    "scheduled": "Geplant",
+    "dueNow": "Jetzt fällig",
+    "inFlight": "In Bearbeitung",
+    "stalled": "Hängend",
+    "crashLooping": "Absturzschleife"
+  },
+  "tabs": {
+    "backgroundJobs": "Hintergrund-Jobs",
+    "checkSchedule": "Check-Zeitplan"
+  },
+  "filters": {
+    "status": "Status",
+    "type": "Typ",
+    "allStatuses": "Alle Status",
+    "allTypes": "Alle Typen"
+  },
+  "status": {
+    "pending": "Ausstehend",
+    "running": "Läuft",
+    "success": "Erfolgreich",
+    "retried": "Wiederholt",
+    "failed": "Fehlgeschlagen"
+  },
+  "state": {
+    "idle": "Inaktiv",
+    "inFlight": "In Bearbeitung",
+    "stalled": "Hängend",
+    "crashLooping": "Absturzschleife"
+  },
+  "columns": {
+    "type": "Typ",
+    "status": "Status",
+    "org": "Org.",
+    "scheduled": "Geplant",
+    "retries": "Wiederholungen",
+    "updated": "Aktualisiert",
+    "check": "Check",
+    "region": "Region",
+    "state": "Zustand",
+    "period": "Intervall",
+    "nextRun": "Nächster Lauf",
+    "leaseWorker": "Lease-Worker",
+    "leaseExpiry": "Lease-Ablauf",
+    "attempts": "Versuche"
+  },
+  "detail": {
+    "backgroundJobTitle": "Hintergrund-Job",
+    "checkJobTitle": "Zeitplan-Job",
+    "meta": "Details",
+    "config": "Konfiguration",
+    "output": "Ausgabe",
+    "retryChain": "Wiederholungskette",
+    "noConfig": "Keine Konfiguration",
+    "noOutput": "Keine Ausgabe",
+    "encryptedKeys": "Verschlüsselte Schlüssel",
+    "noEncryptedKeys": "Keine",
+    "secretsHidden": "Geheime Werte werden nie offengelegt — nur die Namen der verschlüsselten Schlüssel werden angezeigt.",
+    "viewCheck": "Check anzeigen",
+    "thisJob": "dieser Job"
+  },
+  "labels": {
+    "system": "System",
+    "none": "—"
+  },
+  "empty": {
+    "backgroundJobs": "Keine Hintergrund-Jobs gefunden.",
+    "checkSchedule": "Keine geplanten Checks gefunden."
+  },
+  "notFound": "Job nicht gefunden.",
+  "loadError": "Jobs konnten nicht geladen werden."
+}

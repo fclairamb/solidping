@@ -1,0 +1,85 @@
+{
+  "title": "Tâches",
+  "subtitle": "Observabilité en direct des tâches d'arrière-plan et du planning des contrôles.",
+  "refresh": "Actualiser",
+  "back": "Retour",
+  "scope": {
+    "thisOrg": "Cette org.",
+    "allOrgs": "Toutes les org. (système)"
+  },
+  "overview": {
+    "title": "Aperçu de l'activité",
+    "pending": "En attente",
+    "running": "En cours",
+    "failed24h": "Échecs (24 h)",
+    "scheduled": "Planifiés",
+    "dueNow": "À exécuter",
+    "inFlight": "En vol",
+    "stalled": "Bloqués",
+    "crashLooping": "En boucle d'échec"
+  },
+  "tabs": {
+    "backgroundJobs": "Tâches d'arrière-plan",
+    "checkSchedule": "Planning des contrôles"
+  },
+  "filters": {
+    "status": "Statut",
+    "type": "Type",
+    "allStatuses": "Tous les statuts",
+    "allTypes": "Tous les types"
+  },
+  "status": {
+    "pending": "En attente",
+    "running": "En cours",
+    "success": "Réussi",
+    "retried": "Réessayé",
+    "failed": "Échec"
+  },
+  "state": {
+    "idle": "Inactif",
+    "inFlight": "En vol",
+    "stalled": "Bloqué",
+    "crashLooping": "En boucle d'échec"
+  },
+  "columns": {
+    "type": "Type",
+    "status": "Statut",
+    "org": "Org.",
+    "scheduled": "Planifié",
+    "retries": "Réessais",
+    "updated": "Mis à jour",
+    "check": "Contrôle",
+    "region": "Région",
+    "state": "État",
+    "period": "Période",
+    "nextRun": "Prochaine exéc.",
+    "leaseWorker": "Worker du bail",
+    "leaseExpiry": "Expiration du bail",
+    "attempts": "Tentatives"
+  },
+  "detail": {
+    "backgroundJobTitle": "Tâche d'arrière-plan",
+    "checkJobTitle": "Tâche de planning",
+    "meta": "Détails",
+    "config": "Configuration",
+    "output": "Sortie",
+    "retryChain": "Chaîne de réessais",
+    "noConfig": "Aucune configuration",
+    "noOutput": "Aucune sortie",
+    "encryptedKeys": "Clés chiffrées",
+    "noEncryptedKeys": "Aucune",
+    "secretsHidden": "Les valeurs secrètes ne sont jamais exposées — seuls les noms des clés chiffrées sont affichés.",
+    "viewCheck": "Voir le contrôle",
+    "thisJob": "cette tâche"
+  },
+  "labels": {
+    "system": "système",
+    "none": "—"
+  },
+  "empty": {
+    "backgroundJobs": "Aucune tâche d'arrière-plan trouvée.",
+    "checkSchedule": "Aucun contrôle planifié trouvé."
+  },
+  "notFound": "Tâche introuvable.",
+  "loadError": "Échec du chargement des tâches."
+}
