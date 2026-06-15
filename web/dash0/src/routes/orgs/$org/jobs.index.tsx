@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Activity, RefreshCw, Workflow } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 
@@ -59,7 +59,27 @@ const JOB_TYPES = [
   "freebox_lan_discovery",
 ] as const;
 
+const JOB_TABS = ["jobs", "schedule"] as const;
+type JobsTab = (typeof JOB_TABS)[number];
+
+type JobsSearch = {
+  tab: JobsTab;
+  allOrgs?: true;
+  status?: string;
+  type?: string;
+};
+
 export const Route = createFileRoute("/orgs/$org/jobs/")({
+  validateSearch: (search: Record<string, unknown>): JobsSearch => ({
+    tab: JOB_TABS.includes(search.tab as JobsTab) ? (search.tab as JobsTab) : "jobs",
+    allOrgs: search.allOrgs === true || search.allOrgs === "true" ? true : undefined,
+    status: (JOB_STATUSES as readonly string[]).includes(search.status as string)
+      ? (search.status as string)
+      : undefined,
+    type: (JOB_TYPES as readonly string[]).includes(search.type as string)
+      ? (search.type as string)
+      : undefined,
+  }),
   component: JobsIndexPage,
 });
 
@@ -117,11 +137,36 @@ function JobsIndexPage() {
   const { t } = useTranslation("jobs");
   const { org } = Route.useParams();
   const { user } = useAuth();
+  const { tab, allOrgs: allOrgsSearch, status, type } = Route.useSearch();
+  const navigate = useNavigate();
 
-  const [allOrgs, setAllOrgs] = useState(false);
-  const [tab, setTab] = useState<"jobs" | "schedule">("jobs");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const allOrgs = allOrgsSearch ?? false;
+  const statusFilter = status ?? "all";
+  const typeFilter = type ?? "all";
+
+  // The tab is the page's core navigation element, so switching it pushes a
+  // history entry (browser back/forward moves between tabs, deep links work).
+  const setTab = (value: JobsTab) =>
+    void navigate({ to: ".", search: (prev) => ({ ...prev, tab: value }) });
+  // Scope and filters are refinements, so they replace the current entry.
+  const setAllOrgs = (value: boolean) =>
+    void navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, allOrgs: value ? true : undefined }),
+      replace: true,
+    });
+  const setStatusFilter = (value: string) =>
+    void navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, status: value === "all" ? undefined : value }),
+      replace: true,
+    });
+  const setTypeFilter = (value: string) =>
+    void navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, type: value === "all" ? undefined : value }),
+      replace: true,
+    });
 
   const scope = useMemo(() => ({ allOrgs }), [allOrgs]);
 
