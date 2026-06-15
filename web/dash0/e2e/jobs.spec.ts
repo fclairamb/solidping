@@ -45,6 +45,38 @@ test.describe("Admin Jobs page", () => {
     ).toHaveAttribute("aria-selected", "true");
   });
 
+  test("tab selection drives the URL, survives reload, and back/forward works", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/jobs");
+    // Default tab is background jobs; URL carries no schedule marker yet.
+    await expect(
+      page.getByRole("tab", { name: /background jobs/i }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    // Switching to the schedule tab must be reflected in the URL (deep-linkable).
+    await page.getByRole("tab", { name: /check schedule/i }).click();
+    await page.waitForURL(/[?&]tab=schedule/);
+
+    // A reload keeps us on the schedule tab — the URL is the source of truth.
+    await page.reload();
+    await expect(
+      page.getByRole("tab", { name: /check schedule/i }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    // Browser back returns to the background-jobs tab (tab change pushed history).
+    await page.goBack();
+    await expect(
+      page.getByRole("tab", { name: /background jobs/i }),
+    ).toHaveAttribute("aria-selected", "true");
+
+    // Deep-linking straight to a tab works too.
+    await page.goto("/dash0/orgs/test/jobs?tab=schedule");
+    await expect(
+      page.getByRole("tab", { name: /check schedule/i }),
+    ).toHaveAttribute("aria-selected", "true");
+  });
+
   test("background-jobs tab exposes status and type filters", async ({ page }) => {
     await page.goto("/dash0/orgs/test/jobs");
     // The status & type filters are Radix Select comboboxes.
