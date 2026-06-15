@@ -37,6 +37,7 @@ import {
   useTestIntegration,
 } from "@/api/hooks";
 import { WebPushEnableButton } from "@/components/notifications/WebPushEnableButton";
+import { deriveDeviceLabel } from "@/lib/browser-detection";
 
 export interface IntegrationFormState {
   name: string;
@@ -481,7 +482,10 @@ function WebPushChannelPanel({ settings, onChange, org, isEdit: _isEdit }: WebPu
       // Deduplicate by endpoint.
       const already = subs.some((s) => s.endpoint === parsed.endpoint);
       if (!already) {
-        onChange({ ...settings, subscriptions: [...subs, parsed] });
+        onChange({
+          ...settings,
+          subscriptions: [...subs, { ...parsed, label: deriveDeviceLabel() }],
+        });
       }
     } catch {
       // ignore malformed JSON
