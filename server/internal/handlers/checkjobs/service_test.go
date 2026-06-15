@@ -29,7 +29,7 @@ func newTestService(t *testing.T) (context.Context, *require.Assertions, *sqlite
 	return ctx, r, dbSvc, checkjobs.NewService(dbSvc.DB())
 }
 
-func ptrStr(s string) *string { return &s }
+func ptrStr(s string) *string        { return &s }
 func ptrTime(t time.Time) *time.Time { return &t }
 
 // newCheck creates a check with auto check-job creation disabled so tests can
@@ -69,7 +69,7 @@ func TestDerivedStateComputation(t *testing.T) {
 		return cj.UID
 	}
 
-	idleUID := mk(func(cj *models.CheckJob) {})
+	idleUID := mk(func(_ *models.CheckJob) {})
 	inFlightUID := mk(func(cj *models.CheckJob) {
 		cj.LeaseExpiresAt = ptrTime(now.Add(30 * time.Second))
 	})
@@ -231,8 +231,8 @@ func TestStats(t *testing.T) {
 	mkJob(models.JobStatusPending, 0)
 	mkJob(models.JobStatusPending, 0)
 	mkJob(models.JobStatusRunning, 0)
-	mkJob(models.JobStatusFailed, time.Hour)           // within 24h
-	mkJob(models.JobStatusFailed, 48*time.Hour)        // outside 24h, excluded
+	mkJob(models.JobStatusFailed, time.Hour)    // within 24h
+	mkJob(models.JobStatusFailed, 48*time.Hour) // outside 24h, excluded
 	mkJob(models.JobStatusSuccess, 0)
 
 	now := time.Now()

@@ -3542,3 +3542,211 @@ export function useVapidPublicKey(org: string) {
     staleTime: Infinity, // key is stable; refetch only on mount
   });
 }
+
+// ---------------------------------------------------------------------------
+// Admin Jobs observability (spec 2026-06-15-05)
+// Read-only views over the background-jobs queue and the check schedule.
+// All hooks accept `allOrgs` to switch between the org-scoped endpoints and
+// the super-admin /system endpoints, and adapt their poll rate to activity.
+// ---------------------------------------------------------------------------
+
+// Poll fast while the instance is busy so the page visibly tracks activity;
+// poll slowly (not off) when idle so new activity still surfaces.
+const JOBS_ACTIVE_INTERVAL_MS = 2500;
+const JOBS_IDLE_INTERVAL_MS = 15000;
+
+export interface BackgroundJob {
+  uid: string;
+  organizationUid: string | null;
+  type: string;
+  config: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  status: "pending" | "running" | "success" | "retried" | "failed";
+  retryCount: number;
+  scheduledAt: string;
+  previousJobUid: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CheckJobState = "idle" | "inFlight" | "stalled" | "crashLooping";
+
+export interface CheckScheduleJob {
+  uid: string;
+  organizationUid: string;
+  checkUid: string;
+  checkName: string | null;
+  region: string | null;
+  type: string;
+  config: Record<string, unknown> | null;
+  encryptedKeys: string[];
+  encrypted: boolean;
+  periodSeconds: number;
+  scheduledAt: string | null;
+  leaseWorkerUid: string | null;
+  leaseExpiresAt: string | null;
+  leaseStarts: number;
+  updatedAt: string;
+  state: CheckJobState;
+}
+
+export interface JobsStats {
+  jobs: {
+    pending: number;
+    running: number;
+    failed24h: number;
+  };
+  checks: {
+    total: number;
+    dueNow: number;
+    inFlight: number;
+    stalled: number;
+    crashLooping: number;
+  };
+}
+
+// jobsStatsAreActive reports whether the instance is busy enough to warrant a
+// fast poll. Feeds the adaptive refetchInterval across all jobs hooks.
+function jobsStatsAreActive(stats?: JobsStats): boolean {
+  if (!stats) return false;
+  return (
+    stats.jobs.pending +
+      stats.jobs.running +
+      stats.checks.inFlight +
+      stats.checks.dueNow >
+    0
+  );
+}
+
+function jobsAdaptiveInterval(active: boolean): number {
+  return active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS;
+}
+
+interface JobsScope {
+  allOrgs?: boolean;
+}
+
+// useJobsStats fetches the activity overview and drives adaptive refresh.
+export function useJobsStats(org: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["jobsStats", org, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: JobsStats }>(
+        allOrgs
+          ? `/api/v1/system/jobs/stats`
+          : `/api/v1/orgs/${org}/jobs/stats`,
+      ).then((r) => r.data),
+    enabled: !!org,
+    refetchInterval: (query) =>
+      jobsAdaptiveInterval(jobsStatsAreActive(query.state.data as JobsStats | undefined)),
+    refetchIntervalInBackground: false,
+  });
+}
+
+interface BackgroundJobsOptions extends JobsScope {
+  status?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+  active?: boolean;
+}
+
+// useBackgroundJobs lists background jobs (admin/super-admin).
+export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJobs", org, opts],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.type) params.set("type", opts.type);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.offset) params.set("offset", String(opts.offset));
+      const qs = params.toString();
+      const base = allOrgs
+        ? `/api/v1/system/jobs`
+        : `/api/v1/orgs/${org}/admin/jobs`;
+      return apiFetch<{ data: BackgroundJob[] }>(
+        `${base}${qs ? `?${qs}` : ""}`,
+      ).then((r) => r.data ?? []);
+    },
+    enabled: !!org,
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+interface CheckScheduleOptions extends JobsScope {
+  limit?: number;
+  offset?: number;
+  active?: boolean;
+}
+
+// useCheckSchedule lists check-schedule rows (admin/super-admin).
+export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["checkSchedule", org, opts],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.offset) params.set("offset", String(opts.offset));
+      const qs = params.toString();
+      const base = allOrgs
+        ? `/api/v1/system/check-jobs`
+        : `/api/v1/orgs/${org}/check-jobs`;
+      return apiFetch<{ data: CheckScheduleJob[] }>(
+        `${base}${qs ? `?${qs}` : ""}`,
+      ).then((r) => r.data ?? []);
+    },
+    enabled: !!org,
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+// useBackgroundJob fetches a single background job's detail.
+export function useBackgroundJob(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJob", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: BackgroundJob }>(
+        allOrgs
+          ? `/api/v1/system/jobs/${uid}`
+          : `/api/v1/orgs/${org}/admin/jobs/${uid}`,
+      ).then((r) => r.data),
+    enabled: !!org && !!uid,
+  });
+}
+
+// useBackgroundJobChain fetches the ordered retry chain a job belongs to.
+export function useBackgroundJobChain(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJobChain", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: BackgroundJob[] }>(
+        allOrgs
+          ? `/api/v1/system/jobs/${uid}/chain`
+          : `/api/v1/orgs/${org}/admin/jobs/${uid}/chain`,
+      ).then((r) => r.data ?? []),
+    enabled: !!org && !!uid,
+  });
+}
+
+// useCheckJob fetches a single check-schedule row's detail.
+export function useCheckJob(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["checkJob", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: CheckScheduleJob }>(
+        allOrgs
+          ? `/api/v1/system/check-jobs/${uid}`
+          : `/api/v1/orgs/${org}/check-jobs/${uid}`,
+      ).then((r) => r.data),
+    enabled: !!org && !!uid,
+  });
+}

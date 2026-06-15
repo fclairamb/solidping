@@ -20,6 +20,7 @@ import {
   Building,
   Server,
   MessageSquare,
+  Workflow,
 } from "lucide-react";
 import {
   Sidebar,
@@ -208,6 +209,18 @@ export function AppSidebar() {
                     <Link to="/orgs/$org/discovery" params={{ org }}>
                       <Network />
                       <span>{tNav("discovery")}</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    isActive={location.pathname.startsWith(`/orgs/${org}/jobs`)}
+                    tooltip={tNav("jobs")}
+                  >
+                    <Link to="/orgs/$org/jobs" params={{ org }}>
+                      <Workflow />
+                      <span>{tNav("jobs")}</span>
                     </Link>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

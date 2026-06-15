@@ -113,16 +113,16 @@ func NewService(db *bun.DB) Service {
 }
 
 // computeState derives the lease-based state of a check job.
-func computeState(cj *models.CheckJob, now time.Time) DerivedState {
-	if cj.LeaseStarts > crashLoopThreshold {
+func computeState(checkJob *models.CheckJob, now time.Time) DerivedState {
+	if checkJob.LeaseStarts > crashLoopThreshold {
 		return StateCrashLooping
 	}
 
-	if cj.LeaseExpiresAt == nil {
+	if checkJob.LeaseExpiresAt == nil {
 		return StateIdle
 	}
 
-	if cj.LeaseExpiresAt.After(now) {
+	if checkJob.LeaseExpiresAt.After(now) {
 		return StateInFlight
 	}
 
@@ -151,24 +151,24 @@ func parseEncryptedKeys(raw *string) []string {
 
 // toView converts a check_jobs row into the redacted API view. checkName, when
 // non-nil, is the resolved name of the associated check.
-func toView(cj *models.CheckJob, checkName *string, now time.Time) *CheckJobView {
+func toView(checkJob *models.CheckJob, checkName *string, now time.Time) *CheckJobView {
 	return &CheckJobView{
-		UID:             cj.UID,
-		OrganizationUID: cj.OrganizationUID,
-		CheckUID:        cj.CheckUID,
+		UID:             checkJob.UID,
+		OrganizationUID: checkJob.OrganizationUID,
+		CheckUID:        checkJob.CheckUID,
 		CheckName:       checkName,
-		Region:          cj.Region,
-		Type:            cj.Type,
-		Config:          cj.Config,
-		EncryptedKeys:   parseEncryptedKeys(cj.ConfigPrivateKeys),
-		Encrypted:       cj.Encrypted,
-		PeriodSeconds:   int64(time.Duration(cj.Period).Seconds()),
-		ScheduledAt:     cj.ScheduledAt,
-		LeaseWorkerUID:  cj.LeaseWorkerUID,
-		LeaseExpiresAt:  cj.LeaseExpiresAt,
-		LeaseStarts:     cj.LeaseStarts,
-		UpdatedAt:       cj.UpdatedAt,
-		State:           computeState(cj, now),
+		Region:          checkJob.Region,
+		Type:            checkJob.Type,
+		Config:          checkJob.Config,
+		EncryptedKeys:   parseEncryptedKeys(checkJob.ConfigPrivateKeys),
+		Encrypted:       checkJob.Encrypted,
+		PeriodSeconds:   int64(time.Duration(checkJob.Period).Seconds()),
+		ScheduledAt:     checkJob.ScheduledAt,
+		LeaseWorkerUID:  checkJob.LeaseWorkerUID,
+		LeaseExpiresAt:  checkJob.LeaseExpiresAt,
+		LeaseStarts:     checkJob.LeaseStarts,
+		UpdatedAt:       checkJob.UpdatedAt,
+		State:           computeState(checkJob, now),
 	}
 }
 
@@ -188,7 +188,7 @@ func (s *serviceImpl) checkNames(ctx context.Context, checkUIDs []string) (map[s
 	err := s.db.NewSelect().
 		Model((*models.Check)(nil)).
 		Column("uid", "name").
-		Where("uid IN (?)", bun.In(checkUIDs)).
+		Where("uid IN (?)", bun.List(checkUIDs)).
 		Scan(ctx, &checks)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve check names: %w", err)
@@ -227,9 +227,9 @@ func (s *serviceImpl) ListCheckJobs(
 	}
 
 	checkUIDs := make([]string, 0, len(rows))
-	for _, cj := range rows {
-		if cj.CheckUID != "" {
-			checkUIDs = append(checkUIDs, cj.CheckUID)
+	for _, checkJob := range rows {
+		if checkJob.CheckUID != "" {
+			checkUIDs = append(checkUIDs, checkJob.CheckUID)
 		}
 	}
 
@@ -241,18 +241,18 @@ func (s *serviceImpl) ListCheckJobs(
 	now := time.Now()
 	views := make([]*CheckJobView, 0, len(rows))
 
-	for _, cj := range rows {
-		views = append(views, toView(cj, names[cj.CheckUID], now))
+	for _, checkJob := range rows {
+		views = append(views, toView(checkJob, names[checkJob.CheckUID], now))
 	}
 
 	return views, nil
 }
 
 func (s *serviceImpl) GetCheckJob(ctx context.Context, orgUID, uid string) (*CheckJobView, error) {
-	var cj models.CheckJob
+	var checkJob models.CheckJob
 
 	query := s.db.NewSelect().
-		Model(&cj).
+		Model(&checkJob).
 		Where("uid = ?", uid)
 
 	if orgUID != "" {
@@ -266,12 +266,12 @@ func (s *serviceImpl) GetCheckJob(ctx context.Context, orgUID, uid string) (*Che
 		return nil, fmt.Errorf("failed to get check job: %w", err)
 	}
 
-	names, err := s.checkNames(ctx, []string{cj.CheckUID})
+	names, err := s.checkNames(ctx, []string{checkJob.CheckUID})
 	if err != nil {
 		return nil, err
 	}
 
-	return toView(&cj, names[cj.CheckUID], time.Now()), nil
+	return toView(&checkJob, names[checkJob.CheckUID], time.Now()), nil
 }
 
 // jobStatusCount is a scan target for the GROUP BY status query.
