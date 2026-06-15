@@ -63,7 +63,14 @@ func (r *StartupJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error 
 	}
 
 	// Ensure snooze sweep job exists (global, not per-org)
-	return r.ensureSnoozeSweepJob(ctx, jctx)
+	if err := r.ensureSnoozeSweepJob(ctx, jctx); err != nil {
+		return err
+	}
+
+	// Ensure stuck-job reaper exists (global, not per-org). Running it at
+	// startup gives an immediate first sweep after a deploy — exactly when
+	// orphaned 'running' jobs appear.
+	return r.ensureStuckJobReaperJob(ctx, jctx)
 }
 
 // ensureDefaultOrganization creates a default organization if none exists.
@@ -376,6 +383,28 @@ func (r *StartupJobRun) ensureSnoozeSweepJob(ctx context.Context, jctx *jobdef.J
 		log.InfoContext(ctx, "Failed to create snooze sweep job (non-fatal)", "error", err)
 	} else {
 		log.InfoContext(ctx, "Ensured snooze sweep job exists")
+	}
+
+	return nil
+}
+
+// ensureStuckJobReaperJob provisions a global stuck-job reaper. The job
+// reschedules itself; this just ensures the very first one exists.
+func (r *StartupJobRun) ensureStuckJobReaperJob(ctx context.Context, jctx *jobdef.JobContext) error {
+	log := jctx.Logger
+
+	if jctx.Services == nil || jctx.Services.Jobs == nil {
+		log.InfoContext(ctx, "Skipping stuck-job reaper provisioning (services not available)")
+		return nil
+	}
+
+	log.InfoContext(ctx, "Ensuring stuck-job reaper exists")
+
+	_, err := jctx.Services.Jobs.CreateJob(ctx, "", string(jobdef.JobTypeStuckJobReaper), nil, nil)
+	if err != nil {
+		log.InfoContext(ctx, "Failed to create stuck-job reaper job (non-fatal)", "error", err)
+	} else {
+		log.InfoContext(ctx, "Ensured stuck-job reaper exists")
 	}
 
 	return nil

@@ -126,3 +126,20 @@ func RecordJobSchedulingDelay(jobType string, seconds float64) {
 func SetJobsQueueDepth(status string, count float64) {
 	JobsQueueDepth.WithLabelValues(status).Set(count)
 }
+
+// RecordJobReaped increments the reaped-jobs counter by n for the given outcome
+// ("retried" | "failed"). n is the number of jobs reaped in one sweep with that
+// outcome; a zero n is a no-op.
+func RecordJobReaped(outcome string, n int) {
+	if n <= 0 {
+		return
+	}
+	JobsReaped.WithLabelValues(outcome).Add(float64(n))
+}
+
+// RecordJobLeaseLost increments the lease-lost counter for the given job type.
+// Called when a worker's terminal write is discarded because the reaper already
+// transitioned the job out of 'running'.
+func RecordJobLeaseLost(jobType string) {
+	JobsLeaseLost.WithLabelValues(jobType).Inc()
+}

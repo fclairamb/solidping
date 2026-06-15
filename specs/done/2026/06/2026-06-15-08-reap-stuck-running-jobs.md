@@ -220,5 +220,65 @@ Add `solidping_jobs_reaped_total{outcome}` next to the existing job-outcome metr
 - `server/internal/jobs/jobworker/worker.go` — `maxRetryCount` (share it), guarded terminal write in `handleResult`
 - `server/internal/db/models/job.go` — status enum (no change for MVP)
 - Config struct + `SP_` env reader — `jobs.stuck_timeout`, `jobs.reaper_interval`
+
+## Implementation Plan
+
+Final agreed design (per "My honest opinion"): terminal state is **`failed`** (no new
+status, no migration), recovery rides the **existing** retry chain + `maxRetryCount`, the
+worker terminal write is guarded against clobbering the reaper, and reaping is observable via
+log + a Prometheus counter.
+
+1. **Config** (`internal/config/config.go`)
+   - New `JobsConfig` struct with `StuckTimeout` (default 15m) and `ReaperInterval` (default 1m),
+     added to `Config` as `Jobs JobsConfig \`koanf:"jobs"\``, with defaults set in `Load`.
+   - Manual `SP_` env reader `applyJobsEnv` for `SP_JOBS_STUCK_TIMEOUT` and
+     `SP_JOBS_REAPER_INTERVAL` (multi-word koanf keys collapse under the env loader,
+     per project_koanf_env_quirk).
+
+2. **Share the retry cap** (`jobsvc`): export `MaxRetryCount` from `jobsvc` (was the unexported
+   `maxRetryCount = 2`), and have `jobworker` reference `jobsvc.MaxRetryCount` instead of its own
+   duplicate literal so reaper + worker agree on the cap.
+
+3. **Metric** (`internal/prommetrics`): add
+   `solidping_jobs_reaped_total{outcome="retried|failed"}` (`JobsReaped` collector +
+   `RecordJobReaped` helper, registered in `allCollectors`). Add a `solidping_jobs_lease_lost_total`
+   counter + `RecordJobLeaseLost` for the anti-clobber path (§5).
+
+4. **Service method** `ReapStuckJobs(ctx, timeout) (ReapResult{Retried,Failed}, error)` in
+   `jobsvc`:
+   - Select live `status='running'` jobs with `updated_at < now()-timeout`.
+   - For each, branch on `RetryCount < MaxRetryCount`:
+     - remaining → `RetryJob` (atomic `retried` flip + backoff clone), but first atomically
+       re-assert `status='running' AND updated_at < cutoff` via a guarded UPDATE (RowsAffected==0
+       ⇒ skip) so a concurrent transition is a no-op;
+     - cap reached → guarded UPDATE to `failed` with
+       `{"error":"stuck: no update within <timeout>","reason":"stuck_timeout"}`.
+   - Returns per-outcome counts.
+
+5. **Guard the worker terminal write** (anti-clobber): add
+   `CompleteRunningJob(ctx, job, status, output)` to `jobsvc` that asserts `status='running'` in
+   the WHERE; `RowsAffected==0` ⇒ return `ErrJobLeaseLost`. `handleResult` in `jobworker` uses it
+   for the success / retried-original / failed terminal writes; on `ErrJobLeaseLost` it logs
+   `"job lease lost, result discarded"`, records `RecordJobLeaseLost`, and does **not** error the
+   worker.
+
+6. **New job type** `stuck_job_reaper`:
+   - `jobdef.JobTypeStuckJobReaper` constant.
+   - register in `jobtypes/registry.go`.
+   - `jobtypes/job_stuck_job_reaper.go` modeled on `job_snooze_sweep.go`: reads timeout +
+     interval from `jctx.AppConfig.Jobs` (with sane fallbacks), calls
+     `jctx.Services.Jobs.ReapStuckJobs`, records `RecordJobReaped` per outcome, `WarnContext` when
+     count > 0, then reschedules itself one interval out (guarded on `Services != nil`).
+
+7. **Provision at startup** (`jobtypes/job_startup.go`): `ensureStuckJobReaperJob`, called from
+   startup `Run` alongside the other ensures — gives an immediate first sweep after a deploy.
+
+8. **Tests** (SQLite + Postgres via the existing service test harness):
+   - retried branch (clone with retry_count+1), failed branch (output.reason==stuck_timeout),
+     within-timeout untouched, non-running statuses never reaped, anti-clobber (reaper wins,
+     worker `CompleteRunningJob` ⇒ ErrJobLeaseLost, status unchanged).
+   - metrics helper smoke test + worker-fake interface conformance update.
+
+9. **QA**: `make build-backend build-dash0 lint-back test`.
 </content>
 </invoke>

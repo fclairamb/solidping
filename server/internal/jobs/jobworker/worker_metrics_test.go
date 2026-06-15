@@ -27,6 +27,7 @@ type fakeJobSvc struct {
 	waitJob    *models.Job
 	lastStatus models.JobStatus
 	retryErr   error
+	leaseLost  bool
 }
 
 func (f *fakeJobSvc) GetJobWait(_ context.Context) (*models.Job, error) {
@@ -40,6 +41,23 @@ func (f *fakeJobSvc) UpdateJobStatus(
 	job.Status = status
 
 	return nil
+}
+
+func (f *fakeJobSvc) CompleteRunningJob(
+	_ context.Context, job *models.Job, status models.JobStatus, _ json.RawMessage,
+) error {
+	if f.leaseLost {
+		return jobsvc.ErrJobLeaseLost
+	}
+
+	f.lastStatus = status
+	job.Status = status
+
+	return nil
+}
+
+func (f *fakeJobSvc) ReapStuckJobs(_ context.Context, _ time.Duration) (jobsvc.ReapResult, error) {
+	return jobsvc.ReapResult{}, errNotImplemented
 }
 
 func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job) (*models.Job, error) {
@@ -137,7 +155,7 @@ func TestHandleResultOutcome(t *testing.T) {
 		{
 			name:        "retryable but retries exhausted -> failed",
 			jobErr:      retryableErr(),
-			retryCount:  maxRetryCount,
+			retryCount:  jobsvc.MaxRetryCount,
 			wantOutcome: outcomeFailed,
 			wantStatus:  models.JobStatusFailed,
 		},
@@ -159,6 +177,55 @@ func TestHandleResultOutcome(t *testing.T) {
 			r.NoError(err)
 			r.Equal(tt.wantOutcome, outcome)
 			r.Equal(tt.wantStatus, svc.lastStatus)
+		})
+	}
+}
+
+// TestHandleResultLeaseLost verifies that when the reaper has already moved a
+// job out of 'running', the worker's terminal write is discarded: handleResult
+// returns no error, increments the lease-lost metric, and does not clobber the
+// status (the fake never records lastStatus on a lease-lost completion).
+func TestHandleResultLeaseLost(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name        string
+		jobType     string
+		jobErr      error
+		retryCount  int
+		wantOutcome string
+	}{
+		// Distinct job types so the per-type lease-lost counter is isolated
+		// across these parallel subtests (no shared-label race).
+		{name: "success lost to reaper", jobType: "lease-lost-success", jobErr: nil, wantOutcome: outcomeSuccess},
+		{
+			name: "retried lost to reaper", jobType: "lease-lost-retried",
+			jobErr: retryableErr(), retryCount: 0, wantOutcome: outcomeRetried,
+		},
+		{name: "failed lost to reaper", jobType: "lease-lost-failed", jobErr: errTerminal, wantOutcome: outcomeFailed},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			job := models.NewJob(nil, tc.jobType)
+			job.RetryCount = tc.retryCount
+
+			before := testutil.ToFloat64(prommetrics.JobsLeaseLost.WithLabelValues(job.Type))
+
+			svc := &fakeJobSvc{leaseLost: true}
+			w := newTestWorker(svc)
+
+			outcome, err := w.handleResult(context.Background(), w.logger, job, tc.jobErr)
+			r.NoError(err, "a lost lease must not error the worker")
+			r.Equal(tc.wantOutcome, outcome)
+			r.Empty(string(svc.lastStatus), "no terminal status should be recorded when the lease is lost")
+
+			after := testutil.ToFloat64(prommetrics.JobsLeaseLost.WithLabelValues(job.Type))
+			r.InDelta(before+1, after, 0.0001, "lease-lost metric should increment once")
 		})
 	}
 }
