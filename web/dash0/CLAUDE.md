@@ -161,6 +161,23 @@ may stay inline, but anything with a multi-field form goes through a route.
 auditing existing pages, treat `<Dialog>` containing an edit form as a bug
 to migrate.
 
+### A page's core navigation belongs in the URL
+
+The element that switches what a page is showing — its tabs, and the
+scope/status filters that go with them — must live in the URL as search
+params, not in `useState`. Like editing, this makes the view bookmarkable
+and deep-linkable, makes browser back/forward move between views, and makes
+the state survive a refresh. A page whose tabs are local React state is a
+bug to migrate, even when the tabs are a Radix `<Tabs>` component.
+
+**How to apply:** declare a `validateSearch` on the route (normalize each
+param to a safe default), read it with `Route.useSearch()`, and write it
+with `useNavigate({ to: ".", search: (prev) => ({ ...prev, ... }) })` —
+mirror `incidents.index.tsx` and `jobs.index.tsx`. The primary navigation
+(the tab) should push a history entry so back/forward cycles tabs; pass
+`replace: true` only for incidental refinements (filters, scope toggles)
+so they don't spam history.
+
 ### Row actions: icons, not menus
 
 In list/table rows, prefer two ghost icon buttons (`Pencil` for edit,
