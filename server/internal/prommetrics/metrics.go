@@ -264,6 +264,30 @@ var (
 		[]string{labelStatus},
 	)
 
+	// JobsReaped counts jobs the stuck-job reaper recovered, by outcome
+	// ("retried" = rescheduled via the retry chain, "failed" = retry cap
+	// reached). A spike signals worker instability (orphaned jobs from
+	// restarts/crashes/deploys), not normal operation.
+	JobsReaped = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_jobs_reaped_total",
+			Help: "Total background jobs recovered by the stuck-job reaper, by outcome (retried, failed)",
+		},
+		[]string{labelOutcome},
+	)
+
+	// JobsLeaseLost counts terminal job writes the worker discarded because the
+	// reaper had already moved the row out of 'running' (the worker lost its
+	// job to the reaper). Non-zero means the stuck-timeout is firing on jobs
+	// that were still alive — consider raising SP_JOBS_STUCK_TIMEOUT.
+	JobsLeaseLost = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_jobs_lease_lost_total",
+			Help: "Worker terminal writes discarded because the reaper already transitioned the job, by job type",
+		},
+		[]string{labelJobType},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -275,6 +299,7 @@ var (
 		DBQueryDuration, DBBusyRetries,
 		CheckStageDuration, ClaimJobsResult,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
+		JobsReaped, JobsLeaseLost,
 	}
 )
 
