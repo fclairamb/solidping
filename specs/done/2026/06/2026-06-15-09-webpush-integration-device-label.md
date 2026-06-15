@@ -66,3 +66,18 @@ form it must be extracted to a shared utility.
 - Existing subscriptions (stored without a label) still show "Browser" gracefully.
 - The personal notification routes page (`/account/notifications`) continues to work correctly,
   importing `deriveDeviceLabel` from the shared utility.
+
+## Implementation Plan
+
+1. **Extract shared util** — create `web/dash0/src/lib/browser-detection.ts` exporting
+   `deriveDeviceLabel(): string` (moved verbatim from `account.notifications.tsx`, lines
+   74-104), with its doc comment.
+2. **Update existing caller** — in `account.notifications.tsx`, remove the local
+   `deriveDeviceLabel` definition and import it from `@/lib/browser-detection`. No behavior
+   change.
+3. **Stamp label in integration form** — in `WebPushChannelPanel.handleSubscription`
+   (`web/dash0/src/components/integrations/integration-form.tsx`), import `deriveDeviceLabel`
+   from `@/lib/browser-detection` and attach `label: deriveDeviceLabel()` to the parsed
+   subscription before appending it to `settings.subscriptions`. The list keeps its
+   `{sub.label || "Browser"}` fallback for legacy/unstamped subs.
+4. **QA** — run `make build-backend build-dash0 lint-back test`; ensure no new eslint errors.
