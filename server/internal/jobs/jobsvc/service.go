@@ -38,6 +38,8 @@ type JobOptions struct {
 }
 
 // Service provides job queue operations.
+//
+//nolint:interfacebloat // Complete job-queue API: create/claim/complete/retry/reap/list.
 type Service interface {
 	// CreateJob creates a new job and notifies waiting runners.
 	// If bounceDelay is provided:
@@ -718,6 +720,7 @@ func (s *serviceImpl) ReapStuckJobs(ctx context.Context, timeout time.Duration) 
 			continue
 		}
 
+		//nolint:exhaustive // reapOneStuckJob only ever returns retried, failed, or "" (lost race).
 		switch outcome {
 		case models.JobStatusRetried:
 			result.Retried++

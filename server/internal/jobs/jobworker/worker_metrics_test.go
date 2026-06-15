@@ -225,7 +225,7 @@ func TestHandleResultLeaseLost(t *testing.T) {
 			r.Empty(string(svc.lastStatus), "no terminal status should be recorded when the lease is lost")
 
 			after := testutil.ToFloat64(prommetrics.JobsLeaseLost.WithLabelValues(job.Type))
-			r.Equal(before+1, after, "lease-lost metric should increment once")
+			r.InDelta(before+1, after, 0.0001, "lease-lost metric should increment once")
 		})
 	}
 }

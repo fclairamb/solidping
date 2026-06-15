@@ -85,7 +85,7 @@ func TestStuckJobReaperRunReapsAndReschedules(t *testing.T) {
 
 	// Reaped metric advanced.
 	after := testutil.ToFloat64(prommetrics.JobsReaped.WithLabelValues("retried"))
-	r.Equal(before+1, after)
+	r.InDelta(before+1, after, 0.0001)
 
 	// The runner rescheduled itself: a pending stuck_job_reaper job now exists.
 	pending, err := countPendingReaperJobs(t.Context(), dbSvc)
