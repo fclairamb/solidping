@@ -98,12 +98,13 @@ test.describe("Check Detail Page", () => {
     });
   });
 
-  test("header has a Badges button and labeled actions that collapse on mobile", async ({
+  test("header shows the full inline toolbar on desktop and collapses to an overflow menu on mobile", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
 
-    // Create a check so we have a detail page to visit
+    // Create a check so we have a detail page to visit. Use a deliberately long
+    // name so we exercise title truncation at narrow widths.
     await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
     await page.waitForURL(/\/checks/);
     await page.waitForLoadState("networkidle");
@@ -112,30 +113,30 @@ test.describe("Check Detail Page", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
-    const checkName = `E2E Badges ${Date.now()}`;
+    const checkName = `E2E Overflow ${Date.now()} ${"Very Long Check Name ".repeat(4)}`;
     await page.getByTestId("check-name-input").fill(checkName);
-    await page.getByTestId("check-url-input").fill("https://example.com/badges-test");
+    await page.getByTestId("check-url-input").fill("https://example.com/overflow-test");
     await page.getByTestId("check-submit-button").click();
 
     await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
     await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
 
-    // The Badges button is rendered as an asChild <Link>, so it is an anchor
-    // reachable by its accessible name (aria-label) whose href points at the
-    // badges builder with this check pre-selected via ?check=<slug>.
+    // ---- Desktop viewport (>= md): the full inline toolbar is visible and the
+    // ⋯ overflow trigger is hidden. ----
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const moreActions = page.getByRole("button", { name: "More actions" });
+    await expect(moreActions).toBeHidden();
+
+    // Each inline action shows its icon + label. The Badges button is an
+    // asChild <Link> (anchor) pointing at the badges builder with ?check=<slug>.
     const badgesLink = page.getByRole("link", { name: "Badges" });
     await expect(badgesLink).toBeVisible();
-    await expect(badgesLink).toHaveAttribute(
-      "href",
-      /\/orgs\/test\/badges\?check=/,
-    );
-
-    // Desktop viewport: every action shows its text label alongside the icon.
-    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(badgesLink).toHaveAttribute("href", /\/orgs\/test\/badges\?check=/);
+    await expect(badgesLink.getByText("Badges")).toBeVisible();
     await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
     await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
-    await expect(badgesLink.getByText("Badges")).toBeVisible();
     await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
     await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
 
@@ -143,20 +144,22 @@ test.describe("Check Detail Page", () => {
     const backButton = page.getByRole("button", { name: "Back to checks" });
     await expect(backButton).toBeVisible();
 
-    // Mobile viewport: the label <span>s collapse (hidden) while every button
-    // remains reachable by its aria-label, and the header does not overflow.
+    // ---- Mobile viewport (< md): only the back arrow + ⋯ overflow button show.
+    // The inline Edit/Clone/Refresh/Delete buttons collapse away. ----
     await page.setViewportSize({ width: 390, height: 812 });
-    await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
-    await expect(page.getByLabel("Clone").getByText("Clone")).toBeHidden();
-    await expect(badgesLink.getByText("Badges")).toBeHidden();
-    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeHidden();
-    await expect(page.getByLabel("Delete").getByText("Delete")).toBeHidden();
 
-    // Buttons themselves stay present (by aria-label) on mobile.
-    await expect(page.getByLabel("Edit")).toBeVisible();
-    await expect(badgesLink).toBeVisible();
     await expect(backButton).toBeVisible();
+    await expect(moreActions).toBeVisible();
 
+    // The inline labeled action buttons are gone on mobile (the whole md:flex
+    // cluster is display:none). getByLabel("Delete") matches the inline button;
+    // it must be hidden now.
+    await expect(page.getByLabel("Delete")).toBeHidden();
+    await expect(page.getByLabel("Edit")).toBeHidden();
+    await expect(page.getByLabel("Clone")).toBeHidden();
+    await expect(page.getByLabel("Refresh")).toBeHidden();
+
+    // The header must not overflow horizontally even with a long check name.
     const hasOverflow = await page.evaluate(
       () =>
         document.documentElement.scrollWidth >
@@ -164,9 +167,25 @@ test.describe("Check Detail Page", () => {
     );
     expect(hasOverflow).toBe(false);
 
+    // Opening the overflow menu reveals every action.
+    await moreActions.click();
+    const menu = page.getByRole("menu");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Badges" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Clone" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Refresh" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Delete" })).toBeVisible();
+
     await page.screenshot({
       path: "test-results/screenshots/check-detail-actions-mobile.png",
       fullPage: true,
     });
+
+    // Delete from the menu opens the confirm dialog.
+    await menu.getByRole("menuitem", { name: "Delete" }).click();
+    await expect(
+      page.getByRole("alertdialog").getByText("Delete Check"),
+    ).toBeVisible();
   });
 });

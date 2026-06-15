@@ -186,7 +186,7 @@ function BackButton({ org, allOrgs }: { org: string; allOrgs: boolean }) {
         navigate({
           to: "/orgs/$org/jobs",
           params: { org },
-          search: allOrgs ? { allOrgs: true } : {},
+          search: allOrgs ? { tab: "jobs", allOrgs: true } : { tab: "jobs" },
         })
       }
     >

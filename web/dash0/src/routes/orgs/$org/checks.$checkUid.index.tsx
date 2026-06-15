@@ -10,6 +10,7 @@ import {
   Copy,
   ExternalLink,
   Loader2,
+  MoreVertical,
   Pencil,
   RefreshCw,
   Trash2,
@@ -45,8 +46,14 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -369,6 +376,19 @@ function CheckDetailPage() {
     }
   };
 
+  const handleClone = async () => {
+    try {
+      const newCheck = await cloneCheck.mutateAsync(checkUid);
+      toast.success(t("checks:detail.cloned") ?? "Check cloned");
+      navigate({
+        to: "/orgs/$org/checks/$checkUid/edit",
+        params: { org, checkUid: newCheck.uid! },
+      });
+    } catch {
+      toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -418,14 +438,28 @@ function CheckDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className={`h-3 w-3 rounded-full ${statusColor}`} />
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
                 {check.name || check.slug || check.uid?.slice(0, 8)}
               </h1>
+              <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
+                {check.type}
+              </Badge>
+              {isPendingFirstRun && (
+                <Badge
+                  variant="outline"
+                  className="hidden shrink-0 gap-1 text-muted-foreground sm:inline-flex"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("checks:detail.pendingFirstRun")}
+                </Badge>
+              )}
+            </div>
               {check.slug && !editingSlug && (
                 <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
@@ -490,21 +524,9 @@ function CheckDetailPage() {
                   </Link>
                 </div>
               )}
-            </div>
-            <Badge variant="outline">{check.type}</Badge>
-            {isPendingFirstRun && (
-              <Badge
-                variant="outline"
-                className="gap-1 text-muted-foreground"
-                aria-live="polite"
-              >
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t("checks:detail.pendingFirstRun")}
-              </Badge>
-            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -515,74 +537,124 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <Button
-            asChild
-            variant="outline"
-            aria-label={t("checks:edit")}
-          >
-            <Link
-              to="/orgs/$org/checks/$checkUid/edit"
-              params={{ org, checkUid }}
-            >
-              <Pencil className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t("checks:edit")}</span>
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            aria-label={t("checks:detail.clone") ?? "Clone"}
-            disabled={cloneCheck.isPending}
-            onClick={async () => {
-              try {
-                const newCheck = await cloneCheck.mutateAsync(checkUid);
-                toast.success(t("checks:detail.cloned") ?? "Check cloned");
-                navigate({
-                  to: "/orgs/$org/checks/$checkUid/edit",
-                  params: { org, checkUid: newCheck.uid! },
-                });
-              } catch {
-                toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
-              }
-            }}
-          >
-            <Copy className="h-4 w-4 sm:mr-2" />
-            <span className="hidden sm:inline">{t("checks:detail.clone")}</span>
-          </Button>
-          <Button
-            asChild
-            variant="outline"
-            aria-label={t("checks:detail.badges") ?? "Badges"}
-          >
-            <Link
-              to="/orgs/$org/badges"
-              params={{ org }}
-              search={{ check: check.slug ?? checkUid }}
-            >
-              <BadgeCheck className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t("checks:detail.badges")}</span>
-            </Link>
-          </Button>
-          <Button
-            variant="outline"
-            aria-label={t("checks:detail.refresh") ?? "Refresh"}
-            onClick={() => refetch()}
-            disabled={isRefetching}
-          >
-            <RefreshCw
-              className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
-            />
-            <span className="hidden sm:inline">{t("checks:detail.refresh")}</span>
-          </Button>
-          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogTrigger asChild>
-              <Button
-                variant="destructive"
-                aria-label={t("checks:detail.delete") ?? "Delete"}
+
+          {/* Full inline toolbar — md and up (icon + label) */}
+          <div className="hidden items-center gap-2 md:flex">
+            <Button asChild variant="outline" aria-label={t("checks:edit")}>
+              <Link
+                to="/orgs/$org/checks/$checkUid/edit"
+                params={{ org, checkUid }}
               >
-                <Trash2 className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t("checks:detail.delete")}</span>
-              </Button>
-            </AlertDialogTrigger>
+                <Pencil className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t("checks:edit")}</span>
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              aria-label={t("checks:detail.clone") ?? "Clone"}
+              disabled={cloneCheck.isPending}
+              onClick={handleClone}
+            >
+              <Copy className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t("checks:detail.clone")}</span>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              aria-label={t("checks:detail.badges") ?? "Badges"}
+            >
+              <Link
+                to="/orgs/$org/badges"
+                params={{ org }}
+                search={{ check: check.slug ?? checkUid }}
+              >
+                <BadgeCheck className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">{t("checks:detail.badges")}</span>
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              aria-label={t("checks:detail.refresh") ?? "Refresh"}
+              onClick={() => refetch()}
+              disabled={isRefetching}
+            >
+              <RefreshCw
+                className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
+              />
+              <span className="hidden sm:inline">{t("checks:detail.refresh")}</span>
+            </Button>
+            <Button
+              variant="destructive"
+              aria-label={t("checks:detail.delete") ?? "Delete"}
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">{t("checks:detail.delete")}</span>
+            </Button>
+          </div>
+
+          {/* Compact overflow — below md */}
+          <div className="md:hidden">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  aria-label={t("checks:detail.moreActions") ?? "More actions"}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/orgs/$org/checks/$checkUid/edit"
+                    params={{ org, checkUid }}
+                  >
+                    <Pencil className="mr-2 h-4 w-4" />
+                    {t("checks:edit")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link
+                    to="/orgs/$org/badges"
+                    params={{ org }}
+                    search={{ check: check.slug ?? checkUid }}
+                  >
+                    <BadgeCheck className="mr-2 h-4 w-4" />
+                    {t("checks:detail.badges")}
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={cloneCheck.isPending}
+                  onClick={handleClone}
+                >
+                  <Copy className="mr-2 h-4 w-4" />
+                  {t("checks:detail.clone")}
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={isRefetching}
+                  onClick={() => refetch()}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+                  />
+                  {t("checks:detail.refresh")}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => setDeleteOpen(true)}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  {t("checks:detail.delete")}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {/* Triggerless, controlled delete dialog */}
+          <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t("checks:detail.deleteTitle")}</AlertDialogTitle>

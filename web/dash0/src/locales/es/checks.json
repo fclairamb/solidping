@@ -302,6 +302,7 @@
     "clone": "Clonar",
     "badges": "Insignias",
     "refresh": "Actualizar",
+    "moreActions": "Más acciones",
     "cloned": "Comprobación clonada — lista para editar",
     "cloneFailed": "No se pudo clonar la comprobación",
     "descriptionLabel": "Descripción",
