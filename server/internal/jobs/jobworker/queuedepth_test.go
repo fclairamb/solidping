@@ -100,7 +100,7 @@ func TestQueueDepthSamplerZeroFill(t *testing.T) {
 }
 
 // TestQueueDepthSamplerRunStops verifies Run primes the gauge immediately and
-// returns context.Canceled when the context is cancelled.
+// returns context.Canceled when the context is canceled.
 func TestQueueDepthSamplerRunStops(t *testing.T) {
 	t.Parallel()
 

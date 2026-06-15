@@ -268,7 +268,7 @@ func (s *serviceImpl) CountQueueDepth(ctx context.Context) (map[models.JobStatus
 		Column("status").
 		ColumnExpr("COUNT(*) AS count").
 		Where("deleted_at IS NULL").
-		Where("status IN (?)", bun.In([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Group("status").
 		Scan(ctx, &counts)
 	if err != nil {

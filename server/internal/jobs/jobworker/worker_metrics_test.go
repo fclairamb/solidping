@@ -53,36 +53,44 @@ func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job) (*models.Job, 
 func (f *fakeJobSvc) CreateJob(
 	_ context.Context, _, _ string, _ json.RawMessage, _ *jobsvc.JobOptions,
 ) (*models.Job, error) {
-	return nil, errors.New("not implemented")
+	return nil, errNotImplemented
 }
 
 func (f *fakeJobSvc) GetJob(_ context.Context, _ string) (*models.Job, error) {
-	return nil, errors.New("not implemented")
+	return nil, errNotImplemented
 }
 
 func (f *fakeJobSvc) ListJobs(
 	_ context.Context, _ string, _ jobsvc.ListJobsOptions,
 ) ([]*models.Job, error) {
-	return nil, errors.New("not implemented")
+	return nil, errNotImplemented
 }
 
 func (f *fakeJobSvc) CancelJob(_ context.Context, _ string) error {
-	return errors.New("not implemented")
+	return errNotImplemented
 }
 
 func (f *fakeJobSvc) CancelPendingForIncident(
 	_ context.Context, _ string, _ *time.Time,
 ) (int64, error) {
-	return 0, errors.New("not implemented")
+	return 0, errNotImplemented
 }
 
 func (f *fakeJobSvc) CountQueueDepth(_ context.Context) (map[models.JobStatus]int, error) {
-	return nil, errors.New("not implemented")
+	return nil, errNotImplemented
 }
+
+// Static sentinel errors for the fake service and test cases (err113 linter
+// disallows dynamic errors.New in non-trivial code).
+var (
+	errNotImplemented = errors.New("not implemented")
+	errTransient      = errors.New("transient")
+	errTerminal       = errors.New("terminal failure")
+)
 
 // retryableErr is a job error that the worker should classify as "retried".
 func retryableErr() error {
-	return jobdef.NewRetryableError(errors.New("transient"))
+	return jobdef.NewRetryableError(errTransient)
 }
 
 func newTestWorker(svc *fakeJobSvc) *JobWorker {
@@ -122,7 +130,7 @@ func TestHandleResultOutcome(t *testing.T) {
 		},
 		{
 			name:        "non-retryable error -> failed",
-			jobErr:      errors.New("boom"),
+			jobErr:      errTerminal,
 			wantOutcome: outcomeFailed,
 			wantStatus:  models.JobStatusFailed,
 		},

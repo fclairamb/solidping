@@ -218,7 +218,7 @@ var (
 	)
 
 	// JobsProcessed counts background-jobs processed by the job worker,
-	// labelled by job_type and terminal outcome (success | retried | failed).
+	// labeled by job_type and terminal outcome (success | retried | failed).
 	// job_type is bounded by the jobdef enum; never use job_uid, org, or error
 	// text as labels (cardinality).
 	JobsProcessed = prometheus.NewCounterVec(
@@ -230,7 +230,7 @@ var (
 	)
 
 	// JobDuration observes background-job execution wall-clock duration in
-	// seconds, labelled by job_type and outcome. Buckets span fast webhooks to
+	// seconds, labeled by job_type and outcome. Buckets span fast webhooks to
 	// slow discovery fan-outs.
 	JobDuration = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{

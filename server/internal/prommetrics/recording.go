@@ -109,7 +109,7 @@ func RecordJobProcessed(jobType, outcome string) {
 }
 
 // RecordJobDuration observes a background job's execution duration in seconds,
-// labelled by job type and terminal outcome.
+// labeled by job type and terminal outcome.
 func RecordJobDuration(jobType, outcome string, seconds float64) {
 	JobDuration.WithLabelValues(jobType, outcome).Observe(seconds)
 }
