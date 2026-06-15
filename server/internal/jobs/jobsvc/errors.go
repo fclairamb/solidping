@@ -18,4 +18,10 @@ var (
 
 	// ErrMaxRetriesReached is returned when a job has reached its retry limit.
 	ErrMaxRetriesReached = errors.New("max retries reached (3 attempts total)")
+
+	// ErrJobLeaseLost is returned by CompleteRunningJob when the job is no
+	// longer in 'running' — the stuck-job reaper (or another actor) already
+	// transitioned it, so the worker's terminal write must be discarded rather
+	// than clobbering the reaper's decision.
+	ErrJobLeaseLost = errors.New("job no longer running, terminal write discarded")
 )

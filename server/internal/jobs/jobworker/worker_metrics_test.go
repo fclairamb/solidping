@@ -27,6 +27,7 @@ type fakeJobSvc struct {
 	waitJob    *models.Job
 	lastStatus models.JobStatus
 	retryErr   error
+	leaseLost  bool
 }
 
 func (f *fakeJobSvc) GetJobWait(_ context.Context) (*models.Job, error) {
@@ -40,6 +41,23 @@ func (f *fakeJobSvc) UpdateJobStatus(
 	job.Status = status
 
 	return nil
+}
+
+func (f *fakeJobSvc) CompleteRunningJob(
+	_ context.Context, job *models.Job, status models.JobStatus, _ json.RawMessage,
+) error {
+	if f.leaseLost {
+		return jobsvc.ErrJobLeaseLost
+	}
+
+	f.lastStatus = status
+	job.Status = status
+
+	return nil
+}
+
+func (f *fakeJobSvc) ReapStuckJobs(_ context.Context, _ time.Duration) (jobsvc.ReapResult, error) {
+	return jobsvc.ReapResult{}, errNotImplemented
 }
 
 func (f *fakeJobSvc) RetryJob(_ context.Context, job *models.Job) (*models.Job, error) {

@@ -78,9 +78,29 @@ type Service interface {
 	// UpdateJobStatus updates job status to running/success/failed
 	UpdateJobStatus(ctx context.Context, job *models.Job, status models.JobStatus, output json.RawMessage) error
 
+	// CompleteRunningJob writes a terminal status from the worker, guarded so it
+	// only applies while the job is still 'running'. If the stuck-job reaper (or
+	// any other actor) already moved the row out of 'running', the write affects
+	// zero rows and ErrJobLeaseLost is returned — the worker lost its job to the
+	// reaper and must discard its result rather than clobber the reaper's
+	// decision. This is the anti-clobber guard for the lease-collision race.
+	CompleteRunningJob(
+		ctx context.Context, job *models.Job, status models.JobStatus, output json.RawMessage,
+	) error
+
 	// RetryJob creates a new job from a failed job
 	// Copies config, increments nb_tries, sets previous_job_uid
 	RetryJob(ctx context.Context, job *models.Job) (*models.Job, error)
+
+	// ReapStuckJobs recovers jobs stuck in 'running' whose updated_at is older
+	// than now-timeout (orphaned by a dead/redeployed worker, since nothing
+	// bumps updated_at mid-run). Each stuck job rides the existing retry chain:
+	// if retries remain it is marked 'retried' and a backoff clone is scheduled,
+	// otherwise it is marked 'failed' with reason "stuck_timeout". The
+	// transition re-asserts the stuck condition atomically so a concurrent
+	// reaper run or the original worker finishing is a no-op. Returns per-outcome
+	// counts.
+	ReapStuckJobs(ctx context.Context, timeout time.Duration) (ReapResult, error)
 
 	// CountQueueDepth returns the number of live (deleted_at IS NULL) jobs in the
 	// queue per status, across all organizations. Only "pending" and "running"
@@ -536,6 +556,44 @@ func (s *serviceImpl) UpdateJobStatus(
 	status models.JobStatus,
 	output json.RawMessage,
 ) error {
+	_, err := s.writeJobStatus(ctx, job, status, output, "")
+
+	return err
+}
+
+// CompleteRunningJob writes a terminal status guarded on the job still being
+// 'running'. Zero rows affected means the reaper (or another actor) already
+// transitioned the job — return ErrJobLeaseLost so the worker discards its
+// result instead of clobbering the reaper's decision.
+func (s *serviceImpl) CompleteRunningJob(
+	ctx context.Context,
+	job *models.Job,
+	status models.JobStatus,
+	output json.RawMessage,
+) error {
+	rows, err := s.writeJobStatus(ctx, job, status, output, models.JobStatusRunning)
+	if err != nil {
+		return err
+	}
+
+	if rows == 0 {
+		return ErrJobLeaseLost
+	}
+
+	return nil
+}
+
+// writeJobStatus performs the status update. When expectedStatus is non-empty
+// the update re-asserts `status = expectedStatus` in the WHERE clause (the
+// optimistic guard) and the caller can inspect RowsAffected to detect a lost
+// race. On success the in-memory job is updated to match.
+func (s *serviceImpl) writeJobStatus(
+	ctx context.Context,
+	job *models.Job,
+	status models.JobStatus,
+	output json.RawMessage,
+	expectedStatus models.JobStatus,
+) (int64, error) {
 	now := time.Now()
 
 	update := s.db.NewUpdate().
@@ -544,25 +602,36 @@ func (s *serviceImpl) UpdateJobStatus(
 		Set("updated_at = ?", now).
 		Where("uid = ?", job.UID)
 
+	if expectedStatus != "" {
+		update = update.Where("status = ?", expectedStatus)
+	}
+
 	if output != nil {
 		var outputMap models.JSONMap
 		if err := json.Unmarshal(output, &outputMap); err != nil {
-			return fmt.Errorf("invalid output: %w", err)
+			return 0, fmt.Errorf("invalid output: %w", err)
 		}
 
 		update = update.Set("output = ?", outputMap)
 	}
 
-	_, err := update.Exec(ctx)
+	result, err := update.Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to update job status: %w", err)
+		return 0, fmt.Errorf("failed to update job status: %w", err)
 	}
 
-	// Update job object
-	job.Status = status
-	job.UpdatedAt = now
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get rows affected: %w", err)
+	}
 
-	return nil
+	// Only reflect the change in memory when a row actually moved.
+	if rows > 0 {
+		job.Status = status
+		job.UpdatedAt = now
+	}
+
+	return rows, nil
 }
 
 // RetryJob creates a new job from a failed job.
@@ -578,7 +647,13 @@ func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job) (*models.Jo
 		return nil, fmt.Errorf("failed to mark job as retried: %w", err)
 	}
 
-	// Create retry job
+	return s.createRetryClone(ctx, job)
+}
+
+// createRetryClone inserts a backoff clone of job with retry_count+1 and
+// previous_job_uid set. Used by both RetryJob (worker path) and ReapStuckJobs
+// (reaper path) so the clone shape and backoff schedule stay identical.
+func (s *serviceImpl) createRetryClone(ctx context.Context, job *models.Job) (*models.Job, error) {
 	retryJob := models.NewJob(job.OrganizationUID, job.Type)
 	retryJob.Config = job.Config
 	retryJob.RetryCount = job.RetryCount + 1
@@ -590,12 +665,160 @@ func (s *serviceImpl) RetryJob(ctx context.Context, job *models.Job) (*models.Jo
 		retryJob.ScheduledAt = time.Now().Add(backoff[job.RetryCount])
 	}
 
-	_, err = s.db.NewInsert().
-		Model(retryJob).
-		Exec(ctx)
-	if err != nil {
+	if _, err := s.db.NewInsert().Model(retryJob).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("failed to create retry job: %w", err)
 	}
 
 	return retryJob, nil
+}
+
+// ReapResult reports how many stuck jobs were recovered in one sweep, split by
+// terminal outcome.
+type ReapResult struct {
+	// Retried is the number of stuck jobs flipped to 'retried' with a backoff
+	// clone scheduled (retries remained).
+	Retried int
+	// Failed is the number of stuck jobs flipped to 'failed' with reason
+	// "stuck_timeout" (retry cap reached).
+	Failed int
+}
+
+// stuckTimeoutReasonFmt is the output written on a job failed by the reaper for
+// exhausting retries while stuck. The "reason" key keeps stuck-timeout failures
+// machine-distinguishable from error-failures without inventing a new status.
+const stuckTimeoutReasonFmt = `{"error":"stuck: no update within %s","reason":"stuck_timeout"}`
+
+// ReapStuckJobs recovers jobs stuck in 'running' beyond the timeout. See the
+// interface doc for the contract. Each transition re-asserts the stuck
+// condition atomically (RowsAffected check), so a concurrent reaper run or the
+// original worker finishing first is a no-op rather than a double-action.
+func (s *serviceImpl) ReapStuckJobs(ctx context.Context, timeout time.Duration) (ReapResult, error) {
+	cutoff := time.Now().Add(-timeout)
+
+	var stuck []*models.Job
+
+	err := s.db.NewSelect().
+		Model(&stuck).
+		Where("status = ?", models.JobStatusRunning).
+		Where("updated_at < ?", cutoff).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return ReapResult{}, fmt.Errorf("failed to list stuck jobs: %w", err)
+	}
+
+	var result ReapResult
+
+	for _, job := range stuck {
+		outcome, reapErr := s.reapOneStuckJob(ctx, job, cutoff, timeout)
+		if reapErr != nil {
+			// Log and continue: one bad row must not abort the whole sweep.
+			slog.WarnContext(ctx, "failed to reap stuck job", "job_uid", job.UID, "error", reapErr)
+
+			continue
+		}
+
+		switch outcome {
+		case models.JobStatusRetried:
+			result.Retried++
+		case models.JobStatusFailed:
+			result.Failed++
+		default:
+			// Lost the race (already transitioned) — counted as neither.
+		}
+	}
+
+	return result, nil
+}
+
+// reapOneStuckJob atomically claims one stuck job (re-asserting status='running'
+// AND updated_at < cutoff) and transitions it. Returns the terminal status
+// applied, or an empty status when the row was already transitioned by someone
+// else (RowsAffected == 0).
+func (s *serviceImpl) reapOneStuckJob(
+	ctx context.Context, job *models.Job, cutoff time.Time, timeout time.Duration,
+) (models.JobStatus, error) {
+	if job.RetryCount < MaxRetryCount {
+		// Retries remain: atomically claim the row by flipping running -> retried,
+		// re-asserting the stuck condition so a concurrent transition is a no-op.
+		claimed, err := s.claimStuckJob(ctx, job, models.JobStatusRetried, cutoff, nil)
+		if err != nil {
+			return "", err
+		}
+
+		if !claimed {
+			return "", nil
+		}
+
+		if _, err := s.createRetryClone(ctx, job); err != nil {
+			return "", err
+		}
+
+		return models.JobStatusRetried, nil
+	}
+
+	// Retry cap reached: fail the job with a machine-readable reason.
+	output := json.RawMessage(fmt.Sprintf(stuckTimeoutReasonFmt, timeout.String()))
+
+	claimed, err := s.claimStuckJob(ctx, job, models.JobStatusFailed, cutoff, output)
+	if err != nil {
+		return "", err
+	}
+
+	if !claimed {
+		return "", nil
+	}
+
+	return models.JobStatusFailed, nil
+}
+
+// claimStuckJob performs the guarded transition of a single stuck job to status,
+// re-asserting `status='running' AND updated_at < cutoff`. Returns true when the
+// row moved (claimed by us), false when it was already transitioned. On a claim
+// the in-memory job is updated so callers (e.g. createRetryClone) see the new
+// state.
+func (s *serviceImpl) claimStuckJob(
+	ctx context.Context,
+	job *models.Job,
+	status models.JobStatus,
+	cutoff time.Time,
+	output json.RawMessage,
+) (bool, error) {
+	now := time.Now()
+
+	update := s.db.NewUpdate().
+		Model(job).
+		Set("status = ?", status).
+		Set("updated_at = ?", now).
+		Where("uid = ?", job.UID).
+		Where("status = ?", models.JobStatusRunning).
+		Where("updated_at < ?", cutoff)
+
+	if output != nil {
+		var outputMap models.JSONMap
+		if err := json.Unmarshal(output, &outputMap); err != nil {
+			return false, fmt.Errorf("invalid output: %w", err)
+		}
+
+		update = update.Set("output = ?", outputMap)
+	}
+
+	res, err := update.Exec(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to claim stuck job: %w", err)
+	}
+
+	rows, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return false, nil
+	}
+
+	job.Status = status
+	job.UpdatedAt = now
+
+	return true, nil
 }
