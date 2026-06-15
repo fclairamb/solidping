@@ -347,6 +347,7 @@
     "clone": "Cloner",
     "badges": "Badges",
     "refresh": "Actualiser",
+    "moreActions": "Plus d'actions",
     "cloned": "Contrôle cloné — prêt à modifier",
     "cloneFailed": "Échec du clonage du contrôle",
     "descriptionLabel": "Description",
