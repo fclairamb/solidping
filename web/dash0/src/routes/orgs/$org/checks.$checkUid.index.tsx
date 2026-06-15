@@ -10,7 +10,6 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  MoreVertical,
   Pencil,
   Power,
   RefreshCw,
@@ -48,13 +47,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   Table,
   TableBody,
@@ -554,19 +546,27 @@ function CheckDetailPage() {
             <ArrowLeft className="h-4 w-4" />
           </Button>
 
-          {/* Full inline toolbar — md and up (icon + label) */}
-          <div className="hidden items-center gap-2 md:flex">
-            <Button asChild variant="outline" aria-label={t("checks:edit")}>
+          {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
+          <div className="flex items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:edit")}
+            >
               <Link
                 to="/orgs/$org/checks/$checkUid/edit"
                 params={{ org, checkUid }}
               >
-                <Pencil className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t("checks:edit")}</span>
+                <Pencil className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">{t("checks:edit")}</span>
               </Link>
             </Button>
             <Button
               variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
               aria-label={
                 check.enabled
                   ? (t("checks:detail.disable") ?? "Disable")
@@ -575,8 +575,8 @@ function CheckDetailPage() {
               disabled={updateCheck.isPending}
               onClick={handleToggleEnabled}
             >
-              <Power className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">
+              <Power className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">
                 {check.enabled
                   ? t("checks:detail.disable")
                   : t("checks:detail.enable")}
@@ -584,16 +584,20 @@ function CheckDetailPage() {
             </Button>
             <Button
               variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
               aria-label={t("checks:detail.clone") ?? "Clone"}
               disabled={cloneCheck.isPending}
               onClick={handleClone}
             >
-              <Copy className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t("checks:detail.clone")}</span>
+              <Copy className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">{t("checks:detail.clone")}</span>
             </Button>
             <Button
               asChild
               variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
               aria-label={t("checks:detail.badges") ?? "Badges"}
             >
               <Link
@@ -601,98 +605,33 @@ function CheckDetailPage() {
                 params={{ org }}
                 search={{ check: check.slug ?? checkUid }}
               >
-                <BadgeCheck className="h-4 w-4 sm:mr-2" />
-                <span className="hidden sm:inline">{t("checks:detail.badges")}</span>
+                <BadgeCheck className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">{t("checks:detail.badges")}</span>
               </Link>
             </Button>
             <Button
               variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
               aria-label={t("checks:detail.refresh") ?? "Refresh"}
               onClick={() => refetch()}
               disabled={isRefetching}
             >
               <RefreshCw
-                className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
+                className={`h-4 w-4 lg:mr-2 ${isRefetching ? "animate-spin" : ""}`}
               />
-              <span className="hidden sm:inline">{t("checks:detail.refresh")}</span>
+              <span className="hidden lg:inline">{t("checks:detail.refresh")}</span>
             </Button>
             <Button
               variant="destructive"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
               aria-label={t("checks:detail.delete") ?? "Delete"}
               onClick={() => setDeleteOpen(true)}
             >
-              <Trash2 className="h-4 w-4 sm:mr-2" />
-              <span className="hidden sm:inline">{t("checks:detail.delete")}</span>
+              <Trash2 className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">{t("checks:detail.delete")}</span>
             </Button>
-          </div>
-
-          {/* Compact overflow — below md */}
-          <div className="md:hidden">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  aria-label={t("checks:detail.moreActions") ?? "More actions"}
-                >
-                  <MoreVertical className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem asChild>
-                  <Link
-                    to="/orgs/$org/checks/$checkUid/edit"
-                    params={{ org, checkUid }}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    {t("checks:edit")}
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                  <Link
-                    to="/orgs/$org/badges"
-                    params={{ org }}
-                    search={{ check: check.slug ?? checkUid }}
-                  >
-                    <BadgeCheck className="mr-2 h-4 w-4" />
-                    {t("checks:detail.badges")}
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={updateCheck.isPending}
-                  onClick={handleToggleEnabled}
-                >
-                  <Power className="mr-2 h-4 w-4" />
-                  {check.enabled
-                    ? t("checks:detail.disable")
-                    : t("checks:detail.enable")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={cloneCheck.isPending}
-                  onClick={handleClone}
-                >
-                  <Copy className="mr-2 h-4 w-4" />
-                  {t("checks:detail.clone")}
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  disabled={isRefetching}
-                  onClick={() => refetch()}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
-                  />
-                  {t("checks:detail.refresh")}
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  className="text-destructive focus:text-destructive"
-                  onClick={() => setDeleteOpen(true)}
-                >
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  {t("checks:detail.delete")}
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
           </div>
 
           {/* Triggerless, controlled delete dialog */}

@@ -124,3 +124,33 @@ in the file.
 ## Files referenced
 
 - `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx` — the only file changed.
+
+## Implementation Plan
+
+All work is in `web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`.
+
+1. **Always-visible inline toolbar.** Change the toolbar wrapper from
+   `hidden items-center gap-2 md:flex` to `flex items-center gap-2` so the 6 buttons
+   (Edit, Enable/Disable, Clone, Badges, Refresh, Delete) are always rendered inline.
+
+2. **Compact, icon-only below `lg`.** On each of the 6 buttons add `size="icon"` plus
+   `className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"` so they are icon squares below `lg`
+   and return to natural padded width at `lg+`. Delete keeps `variant="destructive"`.
+   For `asChild`/`<Link>` buttons the size+className stay on `<Button>` (shadcn forwards
+   them). Merge `lg:h-9 lg:w-auto lg:px-4 lg:py-2` into the existing className on the
+   Delete button if needed.
+
+3. **Label breakpoint `sm` → `lg`.** Change every label span `hidden sm:inline` →
+   `hidden lg:inline`, and every icon margin `sm:mr-2` → `lg:mr-2` (Refresh icon keeps
+   its conditional `animate-spin`). Labels and icon spacing only appear at `lg+`.
+
+4. **Remove the overflow dropdown.** Delete the entire `<div className="md:hidden">…</div>`
+   block containing the `DropdownMenu` and all its items.
+
+5. **Clean up imports.** Remove `MoreVertical` from lucide imports and the entire
+   `DropdownMenu*` import block (verified used only inside the removed overflow block).
+
+6. **Back arrow unchanged.** The `ArrowLeft` ghost icon button stays as-is.
+
+7. **QA.** `make build-backend build-dash0 lint-back test`; ensure no new eslint errors
+   and tsc passes (hard gate for frontend types).
