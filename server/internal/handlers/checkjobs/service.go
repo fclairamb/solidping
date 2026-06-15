@@ -364,14 +364,12 @@ func (s *serviceImpl) checkJobStats(ctx context.Context, orgUID string, out *Che
 
 	out.Total = total
 
-	// Due now: scheduled in the past and not currently leased.
+	// Due now: scheduled in the past and not leased at all. Rows whose lease
+	// has *expired* are counted as "stalled" instead, keeping the two tiles
+	// disjoint.
 	dueNow, err := newBase().
 		Where("scheduled_at <= ?", now).
-		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
-			return q.
-				WhereOr("lease_expires_at IS NULL").
-				WhereOr("lease_expires_at < ?", now)
-		}).
+		Where("lease_expires_at IS NULL").
 		Where("lease_starts <= ?", crashLoopThreshold).
 		Count(ctx)
 	if err != nil {
