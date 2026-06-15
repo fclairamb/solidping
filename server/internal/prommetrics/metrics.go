@@ -18,6 +18,7 @@ const (
 	labelMethod       = "method"
 	labelRoute        = "route"
 	labelOutcome      = "outcome"
+	labelJobType      = "job_type"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
@@ -216,6 +217,53 @@ var (
 		[]string{labelOutcome},
 	)
 
+	// JobsProcessed counts background-jobs processed by the job worker,
+	// labelled by job_type and terminal outcome (success | retried | failed).
+	// job_type is bounded by the jobdef enum; never use job_uid, org, or error
+	// text as labels (cardinality).
+	JobsProcessed = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_jobs_processed_total",
+			Help: "Total background jobs processed, by type and outcome",
+		},
+		[]string{labelJobType, labelOutcome},
+	)
+
+	// JobDuration observes background-job execution wall-clock duration in
+	// seconds, labelled by job_type and outcome. Buckets span fast webhooks to
+	// slow discovery fan-outs.
+	JobDuration = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_job_duration_seconds",
+			Help:    "Background job execution duration in seconds, by type and outcome",
+			Buckets: []float64{0.01, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		},
+		[]string{labelJobType, labelOutcome},
+	)
+
+	// JobSchedulingDelay observes the delay between a job's scheduled_at and the
+	// time it actually started running (clamped >= 0) — the queue-lateness
+	// signal, mirroring solidping_check_scheduling_delay_seconds.
+	JobSchedulingDelay = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "solidping_job_scheduling_delay_seconds",
+			Help:    "Delay between a job's scheduled time and when it started running",
+			Buckets: []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 300},
+		},
+		[]string{labelJobType},
+	)
+
+	// JobsQueueDepth is the point-in-time backlog of background jobs by status
+	// (pending | running). Set by a periodic sampler that zero-fills statuses
+	// with no rows so a drained status drops to 0 rather than going stale.
+	JobsQueueDepth = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_jobs_queue_depth",
+			Help: "Background-job queue depth by status (pending, running)",
+		},
+		[]string{labelStatus},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -226,6 +274,7 @@ var (
 		HTTPRequestDuration, HTTPRequestsTotal,
 		DBQueryDuration, DBBusyRetries,
 		CheckStageDuration, ClaimJobsResult,
+		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
 	}
 )
 
