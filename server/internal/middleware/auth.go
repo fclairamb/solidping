@@ -174,6 +174,44 @@ func GetClaimsFromContext(ctx context.Context) (*auth.Claims, bool) {
 	return claims, claimsOK
 }
 
+// RequireOrgAdmin is a middleware that requires the authenticated user to be an
+// admin of the organization (member with role "admin") or a super admin.
+// Must be used after RequireAuth and RequireOrgAccess (it relies on the
+// organization being resolved into the context).
+func (m *AuthMiddleware) RequireOrgAdmin(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
+	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+		user, userOK := GetUserFromContext(req.Context())
+		if !userOK {
+			return m.WriteError(
+				writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized, "Authentication required")
+		}
+
+		// Super admins are always allowed.
+		if user.SuperAdmin {
+			return next(writer, req)
+		}
+
+		org, orgOK := GetOrganizationFromContext(req.Context())
+		if !orgOK {
+			return m.WriteError(
+				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Organization context missing")
+		}
+
+		member, err := m.dbService.GetMemberByUserAndOrg(req.Context(), user.UID, org.UID)
+		if err != nil {
+			return m.WriteError(
+				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
+		}
+
+		if member.Role != models.MemberRoleAdmin {
+			return m.WriteError(
+				writer, http.StatusForbidden, base.ErrorCodeForbidden, "Admin access required")
+		}
+
+		return next(writer, req)
+	}
+}
+
 // RequireSuperAdmin is a middleware that requires the user to be a super admin.
 // Must be used after RequireAuth.
 func (m *AuthMiddleware) RequireSuperAdmin(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {

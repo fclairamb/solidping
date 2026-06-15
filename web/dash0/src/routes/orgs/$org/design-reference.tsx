@@ -30,9 +30,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -125,6 +128,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "label-filter", label: "Label filter" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
+  { id: "jobs-primitives", label: "Jobs primitives" },
 ];
 
 function DesignReferencePage() {
@@ -151,6 +155,7 @@ function DesignReferencePage() {
       <LabelFilterSection />
       <KpiTileSection />
       <UptimeStripSection />
+      <JobsPrimitivesSection />
     </div>
   );
 }
@@ -1593,6 +1598,58 @@ function ColorTokensSection() {
             <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
           ))}
         </div>
+      </div>
+    </Section>
+  );
+}
+
+function JobsPrimitivesSection() {
+  const [tab, setTab] = useState("first");
+
+  return (
+    <Section
+      id="jobs-primitives"
+      title="Jobs primitives"
+      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), and a read-only JSON viewer for config/output blocks."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Stat tile</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ StatTile }"} from "@/components/shared/stat-tile"
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile label="Pending" value={3} tone="info" />
+          <StatTile label="Running" value={1} tone="info" />
+          <StatTile label="Failed (24h)" value={2} tone="destructive" />
+          <StatTile label="In-flight" value={5} tone="success" />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Tabs</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ Tabs, TabsList, TabsTrigger, TabsContent }"} from "@/components/ui/tabs"
+        </p>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="first">First</TabsTrigger>
+            <TabsTrigger value="second">Second</TabsTrigger>
+          </TabsList>
+          <TabsContent value="first">
+            <div className="rounded-md border bg-card p-4 text-sm">First panel</div>
+          </TabsContent>
+          <TabsContent value="second">
+            <div className="rounded-md border bg-card p-4 text-sm">Second panel</div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">JSON viewer</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ JsonViewer }"} from "@/components/shared/json-viewer"
+        </p>
+        <JsonViewer value={{ url: "https://example.com", timeout: 5000 }} />
       </div>
     </Section>
   );

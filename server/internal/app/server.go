@@ -43,6 +43,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -60,6 +61,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/jobsadmin"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
@@ -491,6 +493,32 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgJobsGroup.GET("", jobHandler.ListJobs)
 	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
 	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
+
+	// Admin Jobs observability (spec 2026-06-15-05). Read-only views over the
+	// background-jobs queue and the check-schedule (check_jobs) table. Org
+	// endpoints require org admin; /system endpoints require super admin.
+	checkJobsSvc := checkjobs.NewService(s.dbService.DB())
+	checkJobsHandler := checkjobs.NewHandler(checkJobsSvc, s.config)
+	jobsAdminSvc := jobsadmin.NewService(s.dbService.DB())
+	jobsAdminHandler := jobsadmin.NewHandler(jobsAdminSvc, s.config)
+
+	orgJobsAdmin := api.NewGroup("/orgs/:org").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgJobsAdmin.GET("/jobs/stats", checkJobsHandler.Stats)
+	orgJobsAdmin.GET("/admin/jobs", jobsAdminHandler.ListOrgJobs)
+	orgJobsAdmin.GET("/admin/jobs/:uid", jobsAdminHandler.GetOrgJob)
+	orgJobsAdmin.GET("/admin/jobs/:uid/chain", jobsAdminHandler.GetOrgJobChain)
+	orgJobsAdmin.GET("/check-jobs", checkJobsHandler.ListCheckJobs)
+	orgJobsAdmin.GET("/check-jobs/:uid", checkJobsHandler.GetCheckJob)
+
+	systemJobsGroup := api.NewGroup("/system").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireSuperAdmin)
+	systemJobsGroup.GET("/jobs/stats", checkJobsHandler.SystemStats)
+	systemJobsGroup.GET("/jobs", jobsAdminHandler.ListSystemJobs)
+	systemJobsGroup.GET("/jobs/:uid", jobsAdminHandler.GetSystemJob)
+	systemJobsGroup.GET("/jobs/:uid/chain", jobsAdminHandler.GetSystemJobChain)
+	systemJobsGroup.GET("/check-jobs", checkJobsHandler.ListSystemCheckJobs)
+	systemJobsGroup.GET("/check-jobs/:uid", checkJobsHandler.GetSystemCheckJob)
 
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
