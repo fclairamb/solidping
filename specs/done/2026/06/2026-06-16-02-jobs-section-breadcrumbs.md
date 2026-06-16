@@ -194,3 +194,24 @@ by every other branch.
 - `web/dash0/src/components/layout/AppSidebar.tsx` — reference for the `Workflow`
   icon + `nav:jobs` label (no change).
 - `web/dash0/src/locales/{en,de,es,fr}/nav.json` — existing `jobs` key (no change).
+
+## Implementation Plan
+
+All work is in `web/dash0/src/routes/orgs/$org.tsx`, inside the `Breadcrumbs`
+component. Single commit (one file), broken into the spec's six steps:
+
+1. **Imports** — add `Workflow` to the `lucide-react` import block, and add
+   `useCheckJob` + `useBackgroundJob` to the `@/api/hooks` import group.
+2. **Section flags** — add `isJobs`, `isCheckJobDetail`, `isBackgroundJobDetail`
+   alongside the other `is…` flags at the top of `Breadcrumbs`.
+3. **Scope resolution** — derive `jobsMatch` / `jobsAllOrgs` from the active Jobs
+   match's `search` so the `Jobs` link preserves `allOrgs`.
+4. **Leaf fetches** — call `useCheckJob` / `useBackgroundJob`, each gated on its
+   detail flag (pass `""` otherwise to disable), with `{ allOrgs: jobsAllOrgs }`.
+5. **Render branch** — add the `if (isJobs) { … }` branch (after `isDiscovery`):
+   active `Jobs` span on the list page, `<Link>` back to `/orgs/$org/jobs`
+   (search preserves `allOrgs`, `tab: "jobs"`) + leaf crumb on detail pages.
+   Leaf = `checkJob.checkName` / `backgroundJob.type`, falling back to the first
+   8 chars of the uid.
+
+QA: `make build-client lint-back test` + dash0 `bun run lint` / tsc gate.

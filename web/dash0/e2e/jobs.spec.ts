@@ -143,6 +143,44 @@ test.describe("Admin Jobs page", () => {
     }
   });
 
+  test("list page shows a Jobs breadcrumb in the header bar", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/jobs");
+    await expect(page.getByRole("heading", { name: /^jobs$/i })).toBeVisible();
+    // The shared breadcrumb bar (rendered by the org layout) carries the Jobs
+    // crumb. On the list page it is an active (non-link) crumb, so scoping to
+    // the header and asserting the text is present is enough.
+    await expect(page.locator("header").getByText(/^jobs$/i)).toBeVisible();
+  });
+
+  test("check-job detail extends the breadcrumb and the Jobs crumb links back", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/jobs");
+    await page.getByRole("tab", { name: /check schedule/i }).click();
+
+    const firstRowLink = page.getByRole("table").getByRole("link").first();
+
+    // Only drill in when the test org has at least one scheduled check.
+    if (await firstRowLink.isVisible().catch(() => false)) {
+      await firstRowLink.click();
+      await page.waitForURL(/\/jobs\/check\/[0-9a-f-]{36}/);
+
+      // The breadcrumb is extended: the Jobs crumb is now a link back to the
+      // list, alongside a leaf crumb for the check.
+      const jobsCrumb = page
+        .locator("header")
+        .getByRole("link", { name: /^jobs$/i });
+      await expect(jobsCrumb).toBeVisible();
+
+      // Clicking the Jobs crumb returns to the list on the jobs tab.
+      await jobsCrumb.click();
+      await page.waitForURL(/\/jobs\/?(\?|$)/);
+      await expect(
+        page.getByRole("heading", { name: /^jobs$/i }),
+      ).toBeVisible();
+    }
+  });
+
   test("page has no runtime errors on load", async ({ page }) => {
     const errors: Error[] = [];
     page.on("pageerror", (e) => errors.push(e));
