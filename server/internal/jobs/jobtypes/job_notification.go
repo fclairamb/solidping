@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/activation"
@@ -139,25 +140,14 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		wps.UpdateChannel = r.webhookChannelUpdater(jctx)
 	}
 
-	// Look up the org slug so the email sender can build user-facing URLs
-	// (magic-link ack endpoint). A missing org is logged but does not fail
-	// the notification — recipients still get the email, just without a
-	// one-click ack link.
-	var orgSlug string
-	if org, orgErr := jctx.DBService.GetOrganization(ctx, connection.OrganizationUID); orgErr == nil {
-		orgSlug = org.Slug
-	} else {
-		log.WarnContext(ctx, "Failed to load org slug for notification URLs",
-			"orgUid", connection.OrganizationUID, "error", orgErr)
-	}
-
 	// 5. Build notification payload
 	payload := &notifications.Payload{
 		EventType:   r.config.EventType,
 		Incident:    incident,
 		Check:       check,
 		Integration: connection,
-		OrgSlug:     orgSlug,
+		OrgSlug:     r.lookupOrgSlug(ctx, jctx, log, connection.OrganizationUID),
+		AppBaseURL:  appBaseURL(jctx),
 	}
 
 	// 6. Send notification
@@ -181,6 +171,34 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		activation.SourceSystem, "")
 
 	return nil
+}
+
+// lookupOrgSlug resolves the organization slug so senders can build
+// user-facing URLs (email magic-link ack endpoint, Slack dashboard links).
+// A missing org is logged but does not fail the notification — recipients
+// still get notified, just without one-click links.
+func (r *NotificationJobRun) lookupOrgSlug(
+	ctx context.Context, jctx *jobdef.JobContext, log *slog.Logger, orgUID string,
+) string {
+	org, err := jctx.DBService.GetOrganization(ctx, orgUID)
+	if err != nil {
+		log.WarnContext(ctx, "Failed to load org slug for notification URLs",
+			"orgUid", orgUID, "error", err)
+		return ""
+	}
+
+	return org.Slug
+}
+
+// appBaseURL returns the application base URL from the job context's app
+// config, or "" when no config is present. Senders treat an empty base URL as
+// "no dashboard links", so this keeps notification dispatch nil-safe.
+func appBaseURL(jctx *jobdef.JobContext) string {
+	if jctx.AppConfig == nil {
+		return ""
+	}
+
+	return jctx.AppConfig.Server.BaseURL
 }
 
 // sendAndAudit delivers the notification and updates the audit row by job UID.
