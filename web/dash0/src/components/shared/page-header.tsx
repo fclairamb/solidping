@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 type PageHeaderProps = {
   icon: LucideIcon;
   title: string;
-  description?: string;
+  description?: ReactNode;
   actions?: ReactNode;
   className?: string;
   iconClassName?: string;
