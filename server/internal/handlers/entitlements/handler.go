@@ -254,6 +254,7 @@ func (h *Handler) mergePartial(
 		Limits:       current.Limits,
 		Source:       input.Source,
 		DisplayName:  current.DisplayName,
+		DisplayEmoji: current.DisplayEmoji,
 		ExpiresAt:    current.ExpiresAt,
 		LastSyncedAt: current.LastSyncedAt,
 	}
@@ -262,6 +263,9 @@ func (h *Handler) mergePartial(
 
 	if input.DisplayName != nil {
 		out.DisplayName = input.DisplayName
+	}
+	if input.DisplayEmoji != nil {
+		out.DisplayEmoji = input.DisplayEmoji
 	}
 	if input.ExternalRef != nil {
 		out.ExternalRef = input.ExternalRef

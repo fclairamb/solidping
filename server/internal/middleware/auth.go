@@ -3,6 +3,7 @@ package middleware
 
 import (
 	"context"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -45,6 +46,12 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 	return func(writer http.ResponseWriter, req bunrouter.Request) error {
 		slog.Debug("RequireAuth middleware called", "path", req.URL.Path)
 
+		// A request already authorized by ServiceTokenBypass carries no user
+		// JWT — let it through for the handler to attribute.
+		if isServiceAuthorized(req.Context()) {
+			return next(writer, req)
+		}
+
 		token := extractToken(req.Request)
 		if token == "" {
 			return m.WriteError(
@@ -78,6 +85,11 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 func (m *AuthMiddleware) RequireOrgAccess(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(writer http.ResponseWriter, req bunrouter.Request) error {
 		slog.Debug("RequireOrgAccess middleware called", "path", req.URL.Path)
+
+		// Trusted service requests are cross-org by design; skip membership.
+		if isServiceAuthorized(req.Context()) {
+			return next(writer, req)
+		}
 
 		orgSlug := req.Param("org")
 		if orgSlug == "" {
@@ -131,6 +143,63 @@ func (m *AuthMiddleware) RequireOrgAccess(next bunrouter.HandlerFunc) bunrouter.
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// serviceAuthContextKey marks a request authorized via a shared service token
+// (see ServiceTokenBypass). RequireAuth and RequireOrgAccess treat such
+// requests as already trusted and skip their user-centric checks.
+type serviceAuthContextKey struct{}
+
+// ServiceTokenBypass authorizes a request as a trusted internal service when
+// its bearer token matches the secret stored in the named system parameter
+// (e.g. the billing service's entitlements.service_token). It records that on
+// the request context so a following RequireAuth + RequireOrgAccess become
+// no-ops, then the downstream handler attributes the call and applies any
+// finer-grained gating. Every other request passes through untouched and is
+// authenticated normally. Place this before RequireAuth on the group.
+//
+// The parameter key is passed in rather than imported to avoid an import
+// cycle with the handler package that owns it.
+func (m *AuthMiddleware) ServiceTokenBypass(
+	paramKey string,
+) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc {
+	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
+		return func(writer http.ResponseWriter, req bunrouter.Request) error {
+			if token := extractToken(req.Request); token != "" {
+				expected := m.systemParamString(req.Context(), paramKey)
+				if expected != "" && subtle.ConstantTimeCompare([]byte(token), []byte(expected)) == 1 {
+					ctx := context.WithValue(req.Context(), serviceAuthContextKey{}, true)
+
+					return next(writer, req.WithContext(ctx))
+				}
+			}
+
+			return next(writer, req)
+		}
+	}
+}
+
+// isServiceAuthorized reports whether ServiceTokenBypass already authorized
+// this request as a trusted internal service.
+func isServiceAuthorized(ctx context.Context) bool {
+	v, _ := ctx.Value(serviceAuthContextKey{}).(bool)
+
+	return v
+}
+
+// systemParamString reads a string-valued system parameter, returning "" when
+// absent or on error (callers then fall back to user authentication).
+func (m *AuthMiddleware) systemParamString(ctx context.Context, key string) string {
+	param, err := m.dbService.GetSystemParameter(ctx, key)
+	if err != nil || param == nil {
+		return ""
+	}
+
+	if v, ok := param.Value["value"].(string); ok {
+		return v
+	}
+
+	return ""
 }
 
 // extractToken extracts the authentication token from the request.

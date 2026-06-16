@@ -22,6 +22,7 @@ If the server is running on port 4000, apply code changes directly — `make dev
 | `make build` | Build everything |
 | `make dev` | Hot-reload backend + dash0 + status0 |
 | `make dev-test` | Same, with `SP_RUNMODE=test` |
+| `make dev-saas` | Same, in SaaS mode — pairs with `../solidping-billing` `make dev` (see SaaS mode below) |
 | `make test` | Run backend tests |
 | `make test-dash` | Run dash0 Playwright tests |
 | `make lint` | Lint backend + dash |
@@ -35,6 +36,24 @@ If the server is running on port 4000, apply code changes directly — `make dev
 |---|---|---|---|
 | Normal | `admin@solidping.com` | `solidpass` | `default` |
 | Test (`SP_RUNMODE=test`) | `test@test.com` | `test` | `test` |
+
+## SaaS mode & entitlements
+
+`SP_DEPLOYMENT_MODE=saas` switches per-org defaults to the SaaS tier and lets a
+separate billing service (`../solidping-billing`) drive plan upgrades. Per-org
+limits live in `org_entitlements` (`maxChecks`, `maxSsoUsers`,
+`maxChecksPerMinute`) plus display-only plan identity (`displayName`,
+`displayEmoji`, e.g. "🚀 Team") — both shown on the org **Usage** page
+(`/orgs/$org/organization/usage`).
+
+The billing service writes entitlements via `PUT /api/v1/orgs/:org/entitlements`,
+authenticated with the `entitlements.service_token` system parameter. That
+token is a shared secret, not a JWT, so the route uses the `ServiceTokenBypass`
+middleware (`internal/middleware/auth.go`) to let it through ahead of the normal
+`RequireAuth` chain. `make dev-saas` seeds the SaaS system parameters from
+`SP_ENTITLEMENTS_SERVICE_TOKEN` and `SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE` (the
+dashboard "Upgrade" link target); run it alongside `../solidping-billing`
+`make dev` for the full upgrade loop. See `server/internal/app/saas.go`.
 
 ## Frontend UI conventions
 

@@ -29,6 +29,7 @@ type Entitlements struct {
 	Limits       Limits                   `json:"limits"`
 	Source       models.EntitlementSource `json:"source"`
 	DisplayName  *string                  `json:"displayName,omitempty"`
+	DisplayEmoji *string                  `json:"displayEmoji,omitempty"`
 	ExternalRef  *string                  `json:"externalRef,omitempty"`
 	Metadata     map[string]any           `json:"metadata,omitempty"`
 	ExpiresAt    *time.Time               `json:"expiresAt,omitempty"`
@@ -42,6 +43,7 @@ type Resolved struct {
 	Limits       Limits                   `json:"limits"`
 	Source       models.EntitlementSource `json:"source"`
 	DisplayName  *string                  `json:"displayName,omitempty"`
+	DisplayEmoji *string                  `json:"displayEmoji,omitempty"`
 	ExpiresAt    *time.Time               `json:"expiresAt,omitempty"`
 	LastSyncedAt *time.Time               `json:"lastSyncedAt,omitempty"`
 	Stale        bool                     `json:"stale"`

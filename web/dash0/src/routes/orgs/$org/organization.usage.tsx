@@ -77,6 +77,20 @@ function UsagePage() {
           <p className="text-sm text-destructive">{t("usage.loadError")}</p>
         ) : (
           <>
+            <div
+              className="flex items-center justify-between gap-2 border-b pb-4"
+              data-testid="current-plan"
+            >
+              <span className="text-sm text-muted-foreground">{t("usage.plan")}</span>
+              <span className="flex items-center gap-1.5 text-sm font-semibold">
+                {data.displayEmoji && (
+                  <span aria-hidden className="text-base leading-none">
+                    {data.displayEmoji}
+                  </span>
+                )}
+                {data.displayName ?? t("usage.freePlan")}
+              </span>
+            </div>
             <div className="space-y-5">
               <UsageRow
                 label={t("usage.checks")}

@@ -803,12 +803,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (service token preferred for SaaS billing service; admin user
-	// fallback gated by entitlements.admin_writes_enabled). The plain
-	// GET endpoint is open to any authenticated org member, so we wrap
-	// the group with RequireAuth + RequireOrgAccess; the handler then
-	// applies a stricter check on writes.
+	// fallback gated by entitlements.admin_writes_enabled). The billing
+	// service authenticates with the entitlements.service_token shared
+	// secret (not a JWT). ServiceTokenBypass marks a matching request as a
+	// trusted service so the following RequireAuth + RequireOrgAccess become
+	// no-ops (cross-org writes); every other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
+		//nolint:contextcheck // factory marks the request context; bunrouter threads it via req.WithContext down the chain
+		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
 	orgEntitlements.GET("", entitlementsHandler.Get)

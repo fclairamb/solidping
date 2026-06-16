@@ -3507,6 +3507,9 @@ export interface EntitlementsResponse {
   source: string;
   stale: boolean;
   upgradeUrl?: string;
+  /** Plan identity supplied by the billing service (display-only). */
+  displayName?: string | null;
+  displayEmoji?: string | null;
 }
 
 export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {

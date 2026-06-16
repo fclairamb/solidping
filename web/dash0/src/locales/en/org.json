@@ -20,6 +20,8 @@
   "usage": {
     "title": "Usage",
     "description": "Your current plan limits and how much of each you're using.",
+    "plan": "Current plan",
+    "freePlan": "Free",
     "checks": "Checks",
     "checksPerMinute": "Checks per minute",
     "ssoUsers": "SSO users",
