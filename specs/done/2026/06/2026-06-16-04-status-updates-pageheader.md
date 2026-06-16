@@ -85,3 +85,27 @@ Bring the Status Updates **list** page header into line with the canonical
 - Run the dash0 e2e suite (`make test-dash`) — if the `-03` style/e2e test
   enumerates pages that must use `PageHeader`, add Status Updates to it so the
   catalog and the route stay in agreement.
+
+## Implementation Plan
+
+1. **Migrate the list header to `PageHeader`** in
+   `web/dash0/src/routes/orgs/$org/status-updates.index.tsx`:
+   - Add `import { PageHeader } from "@/components/shared/page-header";`.
+   - Replace the hand-rolled `<div className="flex items-center justify-between">…</div>`
+     header block (lines ~203-223) with
+     `<PageHeader icon={Megaphone} title="Status updates" description="Publish narrative updates on your status pages." actions={…} />`,
+     mirroring `status-pages.index.tsx` (use `className="flex-wrap"`).
+   - Move the existing `Button asChild` + `Link` (to `/orgs/$org/status-updates/new`,
+     `Plus` icon, "New update" label, `data-testid="status-updates-new"`) verbatim
+     into the `actions` prop.
+   - Keep the `Megaphone` import (still used by the empty-state at ~line 355) and
+     the filters row exactly as-is.
+
+2. **e2e audit**: inspect `web/dash0/e2e/` for any `-03` style/catalog test that
+   enumerates the set of pages required to use `PageHeader`. If one exists, add
+   the Status Updates route. The existing `status-updates.spec.ts` already
+   exercises the `data-testid="status-updates-new"` selector, which the migration
+   preserves; verify no header-specific assertion breaks.
+
+3. **QA**: `make build-backend lint-back test` + dash0 frontend build
+   (`make build-dash0`). Fix any fallout.
