@@ -1,37 +1,59 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="SolidPing">
   <title>SolidPing</title>
   <defs>
-    <linearGradient id="shieldFill" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#f06292"/>
-      <stop offset="100%" stop-color="#c2185b"/>
+    <linearGradient id="sf" x1="0.18" y1="0" x2="0.55" y2="1">
+      <stop offset="0%" stop-color="#ff8ca8"/>
+      <stop offset="46%" stop-color="#fb4f7b"/>
+      <stop offset="100%" stop-color="#dc2c58"/>
     </linearGradient>
+    <linearGradient id="gl" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="40%" stop-color="#ffffff" stop-opacity="0.04"/>
+      <stop offset="54%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+    <path id="s" d="M 128 22
+      C 150 28, 178 40, 200 49
+      C 212 54, 224 56, 224 70
+      C 224 90, 223 110, 219 128
+      C 213 162, 188 192, 144 218
+      C 138 222, 132 226, 128 228
+      C 124 226, 118 222, 112 218
+      C 68 192, 43 162, 37 128
+      C 33 110, 32 90, 32 70
+      C 32 56, 44 54, 56 49
+      C 78 40, 106 28, 128 22 Z"/>
+    <filter id="ds" x="-20%" y="-20%" width="140%" height="145%">
+      <feDropShadow dx="0" dy="4" stdDeviation="3" flood-color="#a50e44" flood-opacity="0.45"/>
+    </filter>
+    <filter id="sh" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2.5" stdDeviation="2.2" flood-color="#7d0e3b" flood-opacity="0.3"/>
+    </filter>
   </defs>
-  <!-- Shield body. The viewBox is 256x256 to match the original
-       res/logo.png; refine the path against the live mark when
-       hand-authoring is needed. -->
-  <path d="M128 16
-           C 96 32, 64 40, 32 40
-           L 32 128
-           C 32 184, 80 224, 128 240
-           C 176 224, 224 184, 224 128
-           L 224 40
-           C 192 40, 160 32, 128 16 Z"
-        fill="url(#shieldFill)" stroke="#9c1454" stroke-width="3"/>
-  <!-- EKG / pulse line forming a checkmark. White with rounded caps so
-       it reads at sidebar size (16–24 px). -->
-  <path d="M48 132
-           L 88 132
-           L 104 96
-           L 124 168
-           L 144 116
-           L 160 144
-           L 176 116
-           L 200 132"
-        fill="none" stroke="#ffffff" stroke-width="14"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <!-- Small check accent at the top right of the pulse, matching the
-       PNG's checkmark notch. -->
-  <path d="M168 100 L 184 116 L 208 84"
-        fill="none" stroke="#ffffff" stroke-width="14"
-        stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Shield: soft-pointed crest top, rounded shoulders, gloss + outer shadow. -->
+  <g transform="translate(1.92 1.95) scale(0.985)">
+    <use href="#s" fill="url(#sf)" stroke="#c41a54" stroke-width="1.5" filter="url(#ds)"/>
+    <use href="#s" fill="url(#gl)"/>
+    <path d="M 128 31
+      C 148 37, 173 48, 192 56
+      C 204 60, 216 62, 216 75
+      C 216 92, 215 110, 211 128
+      C 206 159, 184 187, 143 211
+      C 138 215, 132 218, 128 220
+      C 124 218, 118 215, 113 211
+      C 72 187, 50 159, 45 128
+      C 41 110, 40 92, 40 75
+      C 40 62, 52 60, 62 56
+      C 82 48, 108 37, 128 31 Z"
+      fill="none" stroke="#ff7fa0" stroke-width="3.5" stroke-opacity="0.9"/>
+  </g>
+
+  <!-- EKG pulse: flat, twin spikes around a deep valley, settle to baseline. -->
+  <path d="M 40 127 L 62 127 L 80 132 L 100 81 L 126 162 L 144 124 L 168 136 L 210 127"
+    fill="none" stroke="#ffffff" stroke-width="12"
+    stroke-linecap="round" stroke-linejoin="round" filter="url(#sh)"/>
+  <!-- Checkmark, top-right, clear above the pulse. -->
+  <path d="M 146 93 L 170 106 L 210 75"
+    fill="none" stroke="#ffffff" stroke-width="13"
+    stroke-linecap="round" stroke-linejoin="round" filter="url(#sh)"/>
 </svg>
