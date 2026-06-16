@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 
 export const Route = createFileRoute("/orgs/$org/on-call/")({
   component: OnCallListPage,
@@ -74,21 +75,20 @@ function OnCallListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <CalendarClock className="h-7 w-7 text-muted-foreground" />
-            {t("oncall:list.title")}
-          </h1>
-          <p className="text-muted-foreground">{t("oncall:list.subtitle")}</p>
-        </div>
-        <Button asChild aria-label={t("oncall:list.create")}>
-          <Link to="/orgs/$org/on-call/new" params={{ org }}>
-            <Plus />
-            <span className="hidden sm:inline">{t("oncall:list.create")}</span>
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        icon={CalendarClock}
+        title={t("oncall:list.title")}
+        description={t("oncall:list.subtitle")}
+        actions={
+          <Button asChild aria-label={t("oncall:list.create")}>
+            <Link to="/orgs/$org/on-call/new" params={{ org }}>
+              <Plus />
+              <span className="hidden sm:inline">{t("oncall:list.create")}</span>
+            </Link>
+          </Button>
+        }
+        className="flex-wrap"
+      />
 
       <div className="flex flex-wrap items-center justify-end gap-4">
         <Button
