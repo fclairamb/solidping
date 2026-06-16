@@ -158,6 +158,7 @@ func (r *NotificationJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) e
 		Check:       check,
 		Integration: connection,
 		OrgSlug:     orgSlug,
+		AppBaseURL:  jctx.AppConfig.Server.BaseURL,
 	}
 
 	// 6. Send notification
