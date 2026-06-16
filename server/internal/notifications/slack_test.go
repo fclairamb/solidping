@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,8 +13,12 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
+
+// ptr returns a pointer to v, for building model fields in tests.
+func ptr[T any](v T) *T { return &v }
 
 // errDatabaseError is a test error for database failures.
 var errDatabaseError = errors.New("database error")
@@ -1623,6 +1628,159 @@ func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)
+
+// collectBlockText flattens all mrkdwn text from a message's attachment blocks
+// (section field text, section text, and context element text) into one string
+// so tests can assert on rendered link patterns regardless of block layout.
+func collectBlockText(msg *slack.MessageResponse) string {
+	var sb strings.Builder
+	for _, att := range msg.Attachments {
+		for _, block := range att.Blocks {
+			if block.Text != nil {
+				sb.WriteString(block.Text.Text)
+				sb.WriteString("\n")
+			}
+			for _, field := range block.Fields {
+				sb.WriteString(field.Text)
+				sb.WriteString("\n")
+			}
+			for _, el := range block.Elements {
+				if ce, ok := el.(slack.ContextElement); ok {
+					sb.WriteString(ce.Text)
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+	return sb.String()
+}
+
+func TestSlackSender_DashboardLinks(t *testing.T) {
+	t.Parallel()
+
+	const (
+		baseURL  = "https://app.example.com"
+		orgSlug  = "acme"
+		checkSlg = "api-health"
+		incUID   = "incident-789"
+	)
+
+	checkName := "API Health"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg
+	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incUID
+
+	newPayload := func(eventType string) *Payload {
+		return &Payload{
+			EventType:  eventType,
+			OrgSlug:    orgSlug,
+			AppBaseURL: baseURL,
+			Incident: &models.Incident{
+				UID:          incUID,
+				StartedAt:    time.Now().Add(-5 * time.Minute),
+				FailureCount: 3,
+			},
+			Check: &models.Check{
+				Name: &checkName,
+				Slug: ptr(checkSlg),
+			},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		build     func(s *SlackSender, p *Payload) *slack.MessageResponse
+		eventType string
+		// wantCheckLinks is the number of times the check link must appear
+		// (Monitor field + Monitor context tag).
+		wantCheckLinks int
+		// wantIncidentLinks is the minimum number of incident links expected.
+		wantIncidentLinks int
+	}{
+		{
+			name:              "incident created",
+			eventType:         eventTypeIncidentCreated,
+			build:             func(s *SlackSender, p *Payload) *slack.MessageResponse { return s.buildIncidentCreatedMessage(p) },
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+		{
+			name:              "incident escalated",
+			eventType:         eventTypeIncidentEscalated,
+			build:             func(s *SlackSender, p *Payload) *slack.MessageResponse { return s.buildIncidentEscalatedMessage(p) },
+			wantCheckLinks:    1,
+			wantIncidentLinks: 2,
+		},
+		{
+			name:              "resolved update",
+			eventType:         eventTypeIncidentResolved,
+			build:             func(s *SlackSender, p *Payload) *slack.MessageResponse { return s.buildResolvedUpdateMessage(p) },
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+		{
+			name:              "reopened update",
+			eventType:         eventTypeIncidentReopened,
+			build:             func(s *SlackSender, p *Payload) *slack.MessageResponse { return s.buildReopenedUpdateMessage(p) },
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			sender := &SlackSender{}
+			msg := tt.build(sender, newPayload(tt.eventType))
+			r.NotNil(msg)
+
+			text := collectBlockText(msg)
+			r.GreaterOrEqual(strings.Count(text, checkLink), tt.wantCheckLinks,
+				"expected at least %d check dashboard links, got text: %s", tt.wantCheckLinks, text)
+			r.GreaterOrEqual(strings.Count(text, incidentLink), tt.wantIncidentLinks,
+				"expected at least %d incident dashboard links, got text: %s", tt.wantIncidentLinks, text)
+
+			// The monitor field links the check name explicitly.
+			r.Contains(text, checkLink+"|"+checkName+">",
+				"monitor field must link the check name")
+		})
+	}
+}
+
+func TestSlackSender_DashboardLinks_EmptyBaseURLFallback(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	checkName := "API Health"
+	payload := &Payload{
+		EventType:  eventTypeIncidentCreated,
+		OrgSlug:    "acme",
+		AppBaseURL: "", // no base URL -> no links
+		Incident: &models.Incident{
+			UID:       "incident-789",
+			StartedAt: time.Now().Add(-5 * time.Minute),
+		},
+		Check: &models.Check{
+			Name: &checkName,
+			Slug: ptr("api-health"),
+		},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildIncidentCreatedMessage(payload)
+	r.NotNil(msg)
+
+	text := collectBlockText(msg)
+	// No mrkdwn link syntax should appear when the base URL is empty.
+	r.NotContains(text, "<https://", "no dashboard links expected with empty base URL")
+	r.NotContains(text, "/dash0/orgs/", "no dashboard URLs expected with empty base URL")
+	// Plain-text monitor name and tags must still be present.
+	r.Contains(text, "*Monitor:*\n"+checkName, "monitor name must remain as plain text")
+	r.Contains(text, ":warning: Incident", "incident tag must remain as plain text")
+	r.Contains(text, ":large_blue_circle: Monitor", "monitor tag must remain as plain text")
+}
 
 func TestFormatDuration(t *testing.T) {
 	t.Parallel()
