@@ -616,7 +616,8 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: slackLink(incidentURL, ":white_check_mark: Resolved") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
+					Text: slackLink(incidentURL, ":white_check_mark: Resolved") +
+						"  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
 		},
