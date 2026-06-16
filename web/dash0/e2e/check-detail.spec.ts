@@ -98,7 +98,7 @@ test.describe("Check Detail Page", () => {
     });
   });
 
-  test("header shows the full inline toolbar on desktop and collapses to an overflow menu on mobile", async ({
+  test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -131,7 +131,7 @@ test.describe("Check Detail Page", () => {
 
     // Each inline action shows its icon + label. The Badges button is an
     // asChild <Link> (anchor) pointing at the badges builder with ?check=<slug>.
-    const badgesLink = page.getByRole("link", { name: "Badges" });
+    const badgesLink = page.getByLabel("Badges");
     await expect(badgesLink).toBeVisible();
     await expect(badgesLink).toHaveAttribute("href", /\/orgs\/test\/badges\?check=/);
     await expect(badgesLink.getByText("Badges")).toBeVisible();
@@ -144,20 +144,22 @@ test.describe("Check Detail Page", () => {
     const backButton = page.getByRole("button", { name: "Back to checks" });
     await expect(backButton).toBeVisible();
 
-    // ---- Mobile viewport (< md): only the back arrow + ⋯ overflow button show.
-    // The inline Edit/Clone/Refresh/Delete buttons collapse away. ----
+    // ---- Mobile viewport (< lg): the action buttons never collapse into an
+    // overflow menu. They stay inline and shrink to icon-only (text labels
+    // hide); there is no ⋯ "More actions" trigger. ----
     await page.setViewportSize({ width: 390, height: 812 });
 
     await expect(backButton).toBeVisible();
-    await expect(moreActions).toBeVisible();
+    await expect(moreActions).toBeHidden();
 
-    // The inline labeled action buttons are gone on mobile (the whole md:flex
-    // cluster is display:none). getByLabel("Delete") matches the inline button;
-    // it must be hidden now.
-    await expect(page.getByLabel("Delete")).toBeHidden();
-    await expect(page.getByLabel("Edit")).toBeHidden();
-    await expect(page.getByLabel("Clone")).toBeHidden();
-    await expect(page.getByLabel("Refresh")).toBeHidden();
+    // The inline action buttons remain visible (icon-only); only their text
+    // labels are hidden below lg.
+    await expect(page.getByLabel("Edit")).toBeVisible();
+    await expect(page.getByLabel("Clone")).toBeVisible();
+    await expect(page.getByLabel("Refresh")).toBeVisible();
+    await expect(page.getByLabel("Delete")).toBeVisible();
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeHidden();
 
     // The header must not overflow horizontally even with a long check name.
     const hasOverflow = await page.evaluate(
@@ -167,23 +169,13 @@ test.describe("Check Detail Page", () => {
     );
     expect(hasOverflow).toBe(false);
 
-    // Opening the overflow menu reveals every action.
-    await moreActions.click();
-    const menu = page.getByRole("menu");
-    await expect(menu).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Edit" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Badges" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Clone" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Refresh" })).toBeVisible();
-    await expect(menu.getByRole("menuitem", { name: "Delete" })).toBeVisible();
-
     await page.screenshot({
       path: "test-results/screenshots/check-detail-actions-mobile.png",
       fullPage: true,
     });
 
-    // Delete from the menu opens the confirm dialog.
-    await menu.getByRole("menuitem", { name: "Delete" }).click();
+    // The inline Delete button opens the confirm dialog directly.
+    await page.getByLabel("Delete").click();
     await expect(
       page.getByRole("alertdialog").getByText("Delete Check"),
     ).toBeVisible();

@@ -694,6 +694,7 @@ function LoginPage() {
                     <Link
                       to="/forgot-password"
                       search={{ email: email || undefined }}
+                      reloadDocument
                       className="text-sm text-muted-foreground hover:underline"
                     >
                       {t("forgotPassword")}

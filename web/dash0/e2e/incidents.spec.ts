@@ -199,9 +199,10 @@ test.describe("Incidents", () => {
     await notifRow.scrollIntoViewIfNeeded();
     await notifRow.click();
 
-    // The URL is now the per-notification detail route under this incident.
+    // Clicking a notification row now opens the flat notification route with a
+    // ?from=incident:<uid> source marker (not the legacy nested route).
     const notifUrlRe = new RegExp(
-      `/incidents/${incidentUid}/notifications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+      `/orgs/test/notifications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\?from=incident%3A${incidentUid}`,
     );
     await page.waitForURL(notifUrlRe, { timeout: 10000 });
 

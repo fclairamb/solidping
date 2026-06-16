@@ -81,11 +81,20 @@ test.describe("Notification delivery detail", () => {
       return;
     }
 
-    let foundRow = false;
+    // Collect incident hrefs while still on the list (navigating away inside the
+    // loop would detach the incident-row locators).
+    const hrefs: string[] = [];
     for (let i = 0; i < Math.min(count, 5); i++) {
-      const link = incidentRows.nth(i).getByRole("link").first();
-      const href = await link.getAttribute("href");
-      if (!href) continue;
+      const href = await incidentRows
+        .nth(i)
+        .getByRole("link")
+        .first()
+        .getAttribute("href");
+      if (href) hrefs.push(href);
+    }
+
+    let foundRow = false;
+    for (const href of hrefs) {
       await page.goto(`/dash0${href.replace(/^\/dash0/, "")}`);
       await page.waitForLoadState("networkidle");
 
@@ -104,11 +113,11 @@ test.describe("Notification delivery detail", () => {
     }
 
     // The URL changes to the flat notification route (not the old nested route).
-    await page.waitForURL(FLAT_NOTIF_RE, { timeout: 10000 });
+    await page.waitForURL(/[?&]from=incident/, { timeout: 10000 });
     const detailUrl = page.url();
 
-    // The URL must contain ?from=incident:...
-    expect(detailUrl).toMatch(/\?from=incident:/);
+    // The URL must contain ?from=incident:... (the colon is %-encoded in the URL).
+    expect(decodeURIComponent(detailUrl)).toMatch(/\?from=incident:/);
     // And use the new flat path (no /incidents/ segment before /notifications/).
     expect(detailUrl).toMatch(/\/orgs\/test\/notifications\//);
 
@@ -181,9 +190,10 @@ test.describe("Notification delivery detail", () => {
       `/dash0/orgs/test/incidents/${incidentUid}/notifications/${notifUid}`,
     );
     // The redirect fires: URL should now be the flat route.
-    await page.waitForURL(FLAT_NOTIF_RE, { timeout: 10000 });
-    expect(page.url()).toContain(`/notifications/${notifUid}`);
-    expect(page.url()).toContain(`?from=incident:${incidentUid}`);
+    await page.waitForURL(/[?&]from=incident/, { timeout: 10000 });
+    const decoded = decodeURIComponent(page.url());
+    expect(decoded).toContain(`/notifications/${notifUid}`);
+    expect(decoded).toContain(`?from=incident:${incidentUid}`);
   });
 
   // Capture-notification-delivery-artifacts criteria 1/2/3: a failed webhook

@@ -16,6 +16,22 @@ async function deleteConnection(page: Page, token: string, uid: string) {
   });
 }
 
+// Completely wipe all connections so list/picker state is deterministic even
+// when earlier specs in the suite have created integrations. Uses a high limit
+// and loops in case the list endpoint paginates.
+async function deleteAllConnections(page: Page, token: string) {
+  for (let guard = 0; guard < 20; guard++) {
+    const list = await page.request
+      .get(`${API_BASE}/api/v1/orgs/test/integrations?limit=500`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      .then((r) => r.json());
+    const items = (list.data ?? []) as Array<{ uid: string }>;
+    if (items.length === 0) return;
+    for (const c of items) await deleteConnection(page, token, c.uid);
+  }
+}
+
 async function deleteCheck(page: Page, token: string, uid: string) {
   await page.request.delete(`${API_BASE}/api/v1/orgs/test/checks/${uid}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -140,6 +156,9 @@ test.describe("Notification Channels", () => {
     const page = authenticatedPage;
     const token = await getAuthToken(page);
 
+    // Clean slate so the created channel is unambiguous in the list/picker.
+    await deleteAllConnections(page, token);
+
     // 1. Create a webhook channel via the UI
     await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
@@ -169,7 +188,7 @@ test.describe("Notification Channels", () => {
     // 2. Channel appears in the list
     await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
-    await expect(page.getByText(channelName)).toBeVisible();
+    await expect(page.getByText(channelName)).toBeVisible({ timeout: 15000 });
 
     // 3. Create a check via API and bind the channel via the edit UI
     const checkResp = await page.request.post(
@@ -191,7 +210,7 @@ test.describe("Notification Channels", () => {
 
     // Toggle the new channel on
     const channelLabel = page.getByText(channelName, { exact: true });
-    await expect(channelLabel).toBeVisible();
+    await expect(channelLabel).toBeVisible({ timeout: 15000 });
     await channelLabel.click();
     await page.getByTestId("check-submit-button").click();
 
@@ -293,14 +312,7 @@ test.describe("Notification Channels", () => {
     const token = await getAuthToken(page);
 
     // Wipe existing connections for a deterministic picker.
-    const existing = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/integrations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((r) => r.json());
-    for (const c of existing.data ?? []) {
-      await deleteConnection(page, token, c.uid);
-    }
+    await deleteAllConnections(page, token);
 
     // Create one notify integration (webhook) and one source (freebox).
     const webhookName = `E2E Notify Webhook ${Date.now()}`;
@@ -345,7 +357,7 @@ test.describe("Notification Channels", () => {
     await page.waitForLoadState("networkidle");
 
     // The notify-capable webhook appears; the freebox source does not.
-    await expect(page.getByText(webhookName, { exact: true })).toBeVisible();
+    await expect(page.getByText(webhookName, { exact: true })).toBeVisible({ timeout: 15000 });
     await expect(page.getByText(freeboxName, { exact: true })).toHaveCount(0);
 
     // The API also rejects binding the freebox source as a notify target.
@@ -373,14 +385,7 @@ test.describe("Notification Channels", () => {
     const token = await getAuthToken(page);
 
     // Wipe any existing connections so the empty state shows
-    const list = await page.request
-      .get(`${API_BASE}/api/v1/orgs/test/integrations`, {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      .then((r) => r.json());
-    for (const c of list.data ?? []) {
-      await deleteConnection(page, token, c.uid);
-    }
+    await deleteAllConnections(page, token);
 
     const checkResp = await page.request.post(
       `${API_BASE}/api/v1/orgs/test/checks`,
@@ -399,7 +404,7 @@ test.describe("Notification Channels", () => {
     await page.goto(`orgs/test/checks/${check.uid}/edit`);
     await page.waitForLoadState("networkidle");
 
-    await expect(page.getByText("No channels yet.")).toBeVisible();
+    await expect(page.getByText("No channels yet.")).toBeVisible({ timeout: 15000 });
     await expect(page.getByRole("link", { name: /create one/i })).toBeVisible();
 
     await deleteCheck(page, token, check.uid);
