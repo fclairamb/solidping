@@ -29,6 +29,7 @@ import {
   Palette,
   Server,
   User2,
+  Workflow,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -40,7 +41,9 @@ import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  useBackgroundJob,
   useCheck,
+  useCheckJob,
   useIntegration,
   useEscalationPolicy,
   useFeatures,
@@ -131,6 +134,9 @@ function Breadcrumbs({ org }: { org: string }) {
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
   const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
+  const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
+  const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
+  const isBackgroundJobDetail = routeIds.has("/orgs/$org/jobs/$jobUid");
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
   const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
@@ -165,6 +171,24 @@ function Breadcrumbs({ org }: { org: string }) {
   const { data: statusUpdate } = useStatusUpdate(
     org,
     isStatusUpdates ? (params.updateUid ?? "") : "",
+  );
+  // Jobs section — resolve the active match's `allOrgs` scope so the `Jobs`
+  // link round-trips it, then fetch the leaf label only on a detail route.
+  const jobsMatch = isJobs
+    ? matches.find((m) => m.routeId.startsWith("/orgs/$org/jobs"))
+    : undefined;
+  const jobsAllOrgs = Boolean(
+    (jobsMatch?.search as { allOrgs?: boolean } | undefined)?.allOrgs,
+  );
+  const { data: checkJob } = useCheckJob(
+    org,
+    isCheckJobDetail ? (params.checkJobUid ?? "") : "",
+    { allOrgs: jobsAllOrgs },
+  );
+  const { data: backgroundJob } = useBackgroundJob(
+    org,
+    isBackgroundJobDetail ? (params.jobUid ?? "") : "",
+    { allOrgs: jobsAllOrgs },
   );
 
   // Notification detail breadcrumb — subscribe to the same query the page uses
@@ -658,6 +682,42 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("promote")}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isJobs) {
+    const isDetail = isCheckJobDetail || isBackgroundJobDetail;
+    const leaf = isCheckJobDetail
+      ? checkJob?.checkName || params.checkJobUid?.slice(0, 8)
+      : isBackgroundJobDetail
+        ? backgroundJob?.type || params.jobUid?.slice(0, 8)
+        : null;
+
+    return (
+      <>
+        {isDetail ? (
+          <Link
+            to="/orgs/$org/jobs"
+            params={{ org }}
+            search={jobsAllOrgs ? { tab: "jobs", allOrgs: true } : { tab: "jobs" }}
+            className={linkClass}
+          >
+            <Workflow className={iconClass} />
+            {t("jobs")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Workflow className={iconClass} />
+            {t("jobs")}
+          </span>
+        )}
+        {isDetail && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{leaf}</span>
           </>
         )}
       </>
