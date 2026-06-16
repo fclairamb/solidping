@@ -399,56 +399,58 @@ function PageThemeToggle() {
 }
 
 function PageHeaderSection() {
-  const listHeaderSnippet = `// Canonical list-page header. Inline icon + title, right-aligned primary action.
-<div className="flex items-center justify-between">
-  <div>
-    <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-      <Globe className="h-7 w-7 text-muted-foreground" />
-      Status pages
-    </h1>
-    <p className="text-muted-foreground">Optional one-line subtitle.</p>
-  </div>
-  <Button asChild>
-    <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-      <Plus className="mr-2 h-4 w-4" />
-      New page
-    </Link>
-  </Button>
-</div>`;
+  const pageHeaderSnippet = `// Canonical page header for every list and section page.
+// Boxed muted icon tile, text-2xl title, optional subtitle, right-aligned actions.
+import { PageHeader } from "@/components/shared/page-header";
+
+<PageHeader
+  icon={Globe}
+  title="Status pages"
+  description="Optional one-line subtitle."
+  actions={
+    <Button asChild>
+      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+        <Plus className="mr-2 h-4 w-4" />
+        New page
+      </Link>
+    </Button>
+  }
+  className="flex-wrap"
+/>`;
   return (
     <Section
       id="page-header"
       title="Page header"
-      description="The canonical list-page header: an inline icon + title on the left, an optional muted subtitle below it, and the primary action right-aligned with its label visible at all widths. This is what almost every list page ships (checks, status-pages, status-updates, me/notifications) — copy it for new list pages rather than reaching for the boxed PageHeader component."
+      description="The boxed PageHeader component (@/components/shared/page-header) is the canonical header for every list and section page. Pass icon, title, an optional description, and right-aligned actions; it renders a rounded muted icon tile, a text-2xl font-semibold title, the muted subtitle below, and the actions on the right. Discovery, checks, incidents, status-pages, on-call, integrations, badges, me/notifications and the rest all ship it — use it for every new page rather than hand-rolling an inline header."
     >
       <div className="rounded-md border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-              <Globe className="h-7 w-7 text-muted-foreground" />
-              Status pages
-            </h1>
-            <p className="text-muted-foreground">
-              Optional one-line subtitle that explains what the page is for.
-            </p>
-          </div>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            New page
-          </Button>
-        </div>
+        <PageHeader
+          icon={Globe}
+          title="Status pages"
+          description="Optional one-line subtitle that explains what the page is for."
+          actions={
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New page
+            </Button>
+          }
+          className="flex-wrap"
+        />
       </div>
-      <CodeSnippet code={listHeaderSnippet} />
+      <CodeSnippet code={pageHeaderSnippet} />
       <p className="text-sm text-muted-foreground">
-        Notes: keep the title{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">text-3xl font-bold tracking-tight</code>{" "}
-        with an inline{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">h-7 w-7 text-muted-foreground</code>{" "}
-        icon; the primary action keeps its{" "}
-        <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>{" "}
-        label at every width (it is a single prominent button, not a row of
-        collapsing actions). The detail/edit-page header — back arrow inside the
-        right-aligned action cluster — is documented in{" "}
+        Notes: pass the same per-page Lucide icon you would have rendered
+        inline — <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        wraps it in the muted tile for you. Put the primary action(s) that used
+        to sit in the header row (e.g.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>,
+        export/import, a refresh button) into the{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
+        prop; leave filter/search toolbars on their own row below the header.
+        Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
+        so actions wrap instead of overflowing on mobile. The detail/edit-page
+        header — back arrow inside the right-aligned action cluster — is
+        documented in{" "}
         <a href="#buttons-badges" className="underline">
           Buttons &amp; badges
         </a>
@@ -456,26 +458,17 @@ function PageHeaderSection() {
       </p>
       <div className="rounded-md border border-dashed bg-muted/30 p-4">
         <p className="text-sm text-muted-foreground">
-          <strong className="text-foreground">Legacy:</strong> the boxed{" "}
+          <strong className="text-foreground">Legacy (retired):</strong> the
+          inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;h1 className="text-3xl font-bold …"&gt;
+          </code>{" "}
+          header with an inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">h-7 w-7</code>{" "}
+          icon is no longer canonical. Do not reach for it on new pages — and
+          migrate any remaining inline headers to{" "}
           <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
-          component (
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">@/components/shared/page-header</code>
-          ) renders a bordered icon tile and is kept only where a boxed icon is
-          intentional (e.g. the header at the top of this very page). Do not
-          reach for it on new list pages — use the inline pattern above so the
-          app stays consistent.
-        </p>
-      </div>
-      <div className="rounded-md border border-dashed bg-muted/30 p-4">
-        <p className="text-sm text-muted-foreground">
-          <strong className="text-foreground">Follow-up (out of scope here):</strong>{" "}
-          documentation alone is what let these headers drift. Extracting shared{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">ListPageHeader</code>{" "}
-          and{" "}
-          <code className="rounded bg-muted px-1 py-0.5 text-xs">DetailPageHeader</code>{" "}
-          components — consumed by this reference page and the real routes —
-          would enforce these patterns by construction far better than a
-          showcase. Recommended as a separate spec.
+          so the app stays consistent.
         </p>
       </div>
     </Section>
