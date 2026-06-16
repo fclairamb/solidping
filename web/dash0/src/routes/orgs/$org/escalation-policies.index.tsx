@@ -39,6 +39,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 
 export const Route = createFileRoute("/orgs/$org/escalation-policies/")({
   component: EscalationPoliciesListPage,
@@ -97,23 +98,20 @@ function EscalationPoliciesListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ArrowUpRight className="h-7 w-7 text-muted-foreground" />
-            {t("escalation:list.title")}
-          </h1>
-          <p className="text-muted-foreground">
-            {t("escalation:list.subtitle")}
-          </p>
-        </div>
-        <Button asChild>
-          <Link to="/orgs/$org/escalation-policies/new" params={{ org }}>
-            <Plus className="h-4 w-4 mr-1" />
-            {t("escalation:list.create")}
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        icon={ArrowUpRight}
+        title={t("escalation:list.title")}
+        description={t("escalation:list.subtitle")}
+        actions={
+          <Button asChild>
+            <Link to="/orgs/$org/escalation-policies/new" params={{ org }}>
+              <Plus className="h-4 w-4 mr-1" />
+              {t("escalation:list.create")}
+            </Link>
+          </Button>
+        }
+        className="flex-wrap"
+      />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">

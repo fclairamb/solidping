@@ -220,3 +220,13 @@ title at `text-2xl`, so change all three assertions to `/text-2xl/`. The
 - `web/dash0/src/routes/orgs/$org/me.notifications.tsx`
 - `web/dash0/src/routes/orgs/$org/design-reference.tsx` — flip canonical guidance.
 - `web/dash0/e2e/listing-pages-style.spec.ts` — `text-3xl` → `text-2xl` (3 spots).
+
+## Implementation Plan
+
+1. **PageHeader primitive**: widen `description?: string` → `description?: ReactNode` in `page-header.tsx`.
+2. **Migrate each list page** to `<PageHeader icon title description actions className="flex-wrap" />`, dropping the inline `<h1>`/`<p>` markup and moving header-row actions into `actions`:
+   - Dashboard (`components/dashboard/dashboard-page.tsx`) — JSX description (bold orgName), refresh cluster in actions.
+   - Checks, Incidents, Dependencies, On-call, Escalation policies, Events, Integrations, Status Pages, Badges (keep back-link above), My Pages (`me.notifications.tsx`, hardcoded strings, keep data-testid).
+3. **Rewrite the design reference** `PageHeaderSection` so `PageHeader` is canonical and inline `text-3xl` is retired/legacy; remove the follow-up shared-component note.
+4. **Update e2e** `listing-pages-style.spec.ts`: `text-3xl` → `text-2xl` (3 assertions).
+5. **QA**: `make fmt`, build backend + dash0, lint, test; fix until green.

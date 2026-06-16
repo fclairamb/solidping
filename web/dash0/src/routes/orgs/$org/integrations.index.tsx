@@ -5,6 +5,7 @@ import { Bell, Pencil, Plus, RefreshCw, Search, Star, Trash2 } from "lucide-reac
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,28 +89,25 @@ function IntegrationsListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Bell className="h-7 w-7 text-muted-foreground" />
-            {t("title", "Integrations")}
-          </h1>
-          <p className="text-muted-foreground">
-            {t(
-              "subtitle",
-              "Slack, webhooks, email, and more — wire how SolidPing reaches you.",
-            )}
-          </p>
-        </div>
-        <Button asChild aria-label={t("new", "New integration")}>
-          <Link to="/orgs/$org/integrations/new" params={{ org }}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">
-              {t("new", "New integration")}
-            </span>
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        icon={Bell}
+        title={t("title", "Integrations")}
+        description={t(
+          "subtitle",
+          "Slack, webhooks, email, and more — wire how SolidPing reaches you.",
+        )}
+        actions={
+          <Button asChild aria-label={t("new", "New integration")}>
+            <Link to="/orgs/$org/integrations/new" params={{ org }}>
+              <Plus className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {t("new", "New integration")}
+              </span>
+            </Link>
+          </Button>
+        }
+        className="flex-wrap"
+      />
 
       <AlertDialog
         open={!!pendingDelete}

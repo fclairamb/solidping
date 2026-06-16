@@ -12,6 +12,7 @@ import {
 import { toast } from "sonner";
 import { useChecks, type Check } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import {
@@ -405,7 +406,7 @@ function BadgesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="space-y-2">
         {selectedCheck && (
           <Link
             to="/orgs/$org/checks/$checkUid"
@@ -418,11 +419,12 @@ function BadgesPage() {
             {selectedCheck.name || selectedCheck.slug || selectedCheck.uid.slice(0, 8)}
           </Link>
         )}
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <BadgeCheck className="h-7 w-7 text-muted-foreground" />
-          {t("title")}
-        </h1>
-        <p className="text-muted-foreground">{t("subtitle")}</p>
+        <PageHeader
+          icon={BadgeCheck}
+          title={t("title")}
+          description={t("subtitle")}
+          className="flex-wrap"
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-[400px_1fr]">

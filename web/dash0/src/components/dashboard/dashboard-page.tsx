@@ -44,6 +44,7 @@ import {
 } from "@/components/dashboard/event-display";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
+import { PageHeader } from "@/components/shared/page-header";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
@@ -306,31 +307,32 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <LayoutDashboard className="h-7 w-7 text-muted-foreground" />
-            {tNav("dashboard")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        icon={LayoutDashboard}
+        title={tNav("dashboard")}
+        description={
+          <>
             <span className="font-medium text-foreground">{orgName}</span>
             {" — "}
             {t("subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          {updatedLabel ? <span>{updatedLabel}</span> : null}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={refreshAll}
-            disabled={isRefetching}
-            aria-label={t("refresh")}
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            {updatedLabel ? <span>{updatedLabel}</span> : null}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={refreshAll}
+              disabled={isRefetching}
+              aria-label={t("refresh")}
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        }
+        className="flex-wrap"
+      />
 
       {isInitialLoading ? (
         <DashboardSkeleton />
