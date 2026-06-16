@@ -156,6 +156,35 @@ func getCheckName(check *models.Check) string {
 	return "Unknown check"
 }
 
+// checkDashURL builds the SolidPing dashboard URL for a check's detail page.
+// Returns "" when any required component is missing so callers fall back to
+// plain text.
+func checkDashURL(baseURL, orgSlug string, check *models.Check) string {
+	if baseURL == "" || orgSlug == "" || check == nil || check.Slug == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", baseURL, orgSlug, *check.Slug)
+}
+
+// incidentDashURL builds the SolidPing dashboard URL for an incident's detail
+// page. Returns "" when any required component is missing so callers fall back
+// to plain text.
+func incidentDashURL(baseURL, orgSlug string, incident *models.Incident) string {
+	if baseURL == "" || orgSlug == "" || incident == nil || incident.UID == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/dash0/orgs/%s/incidents/%s", baseURL, orgSlug, incident.UID)
+}
+
+// slackLink wraps text in a Slack mrkdwn hyperlink when a URL is available,
+// falling back to the plain text unchanged when url is empty.
+func slackLink(url, text string) string {
+	if url == "" {
+		return text
+	}
+	return fmt.Sprintf("<%s|%s>", url, text)
+}
+
 // getCheckURL returns the URL from the check config for HTTP checks.
 func getCheckURL(check *models.Check) string {
 	if check.Config == nil {
