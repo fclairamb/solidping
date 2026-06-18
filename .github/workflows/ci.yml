@@ -213,16 +213,21 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      # Note: no --with-deps. The ubuntu-24.04 runner already ships Playwright's
+      # browser system libraries, so --with-deps only triggers a fragile apt run
+      # that can hang on the dpkg lock; killing it mid-apt orphans apt-get holding
+      # that lock and breaks every retry. We only need the browser download here,
+      # which is fast and reliable.
       - name: Install Playwright browsers
         run: |
           for attempt in 1 2 3; do
-            if timeout 90 bunx playwright install chromium --with-deps; then
+            if timeout 90 bunx playwright install chromium; then
               exit 0
             fi
-            echo "Playwright install attempt $attempt failed or timed out (likely apt mirror DNS); retrying after 30s..."
-            sleep 30
+            echo "Playwright browser download attempt $attempt failed or timed out; retrying after 10s..."
+            sleep 10
           done
-          echo "Playwright install failed after 3 attempts"
+          echo "Playwright browser download failed after 3 attempts"
           exit 1
 
       - name: Download solidping binary
