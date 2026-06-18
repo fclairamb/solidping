@@ -86,7 +86,13 @@ func (s *serviceImpl) ClaimJobs(
 		}
 
 		// Update each job with lease info
-		return s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres)
+		if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+			return err
+		}
+
+		// Attach each job's check so the incident hot path can skip a
+		// per-result GetCheck. Same tx so claim + fetch are one round-trip pair.
+		return attachChecks(ctx, tx, jobs)
 	})
 	prommetrics.RecordCheckStage("claim", time.Since(claimStart).Seconds())
 
@@ -131,7 +137,11 @@ func (s *serviceImpl) ClaimJobsForCheck(
 			return nil
 		}
 
-		return s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres)
+		if err := s.updateJobsWithLease(ctx, tx, jobs, workerUID, now, isPostgres); err != nil {
+			return err
+		}
+
+		return attachChecks(ctx, tx, jobs)
 	})
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -142,6 +152,48 @@ func (s *serviceImpl) ClaimJobsForCheck(
 	}
 
 	return jobs, nil
+}
+
+// attachChecks fetches every claimed job's check in one batched SELECT inside
+// the claim transaction and stitches each *models.Check onto job.Check. This
+// amortizes the per-result GetCheck the incident hot path used to issue. A
+// missing check (deleted between scheduling and claim) simply leaves job.Check
+// nil; the worker falls back to GetCheck for that case. A scan failure is not
+// fatal — leaving every Check nil degrades to the old per-result fetch path.
+func attachChecks(ctx context.Context, tx bun.Tx, jobs []*models.CheckJob) error {
+	checkUIDs := make([]string, 0, len(jobs))
+	seen := make(map[string]struct{}, len(jobs))
+	for _, j := range jobs {
+		if _, ok := seen[j.CheckUID]; ok {
+			continue
+		}
+		seen[j.CheckUID] = struct{}{}
+		checkUIDs = append(checkUIDs, j.CheckUID)
+	}
+
+	var checks []*models.Check
+	if err := tx.NewSelect().
+		Model(&checks).
+		Where("uid IN (?)", bun.List(checkUIDs)).
+		Where("deleted_at IS NULL").
+		Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+
+		return fmt.Errorf("failed to batch-fetch checks for claimed jobs: %w", err)
+	}
+
+	byUID := make(map[string]*models.Check, len(checks))
+	for _, c := range checks {
+		byUID[c.UID] = c
+	}
+
+	for _, j := range jobs {
+		j.Check = byUID[j.CheckUID]
+	}
+
+	return nil
 }
 
 // selectAvailableJobsForCheck mirrors selectAvailableJobs but pins the

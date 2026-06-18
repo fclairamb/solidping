@@ -158,7 +158,7 @@ func migrateConnections(
 ) (rowStats, error) {
 	stats := rowStats{}
 
-	conns, err := dbSvc.ListChannels(ctx, &models.ListChannelsFilter{
+	conns, err := dbSvc.ListChannels(ctx, &models.ListIntegrationsFilter{
 		OrganizationUID: org.UID,
 	})
 	if err != nil {
@@ -203,7 +203,7 @@ func migrateConnections(
 
 		keysStr := string(keysJSON)
 		publicMap := models.JSONMap(public)
-		update := &models.ChannelUpdate{
+		update := &models.IntegrationUpdate{
 			Settings:            &publicMap,
 			SettingsPrivate:     &envelope,
 			SettingsPrivateKeys: &keysStr,

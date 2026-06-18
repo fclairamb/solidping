@@ -11,13 +11,17 @@ import {
   ArrowRight,
   Check,
   CheckCircle2,
+  ChevronRight,
   Copy,
   Eye,
   Info,
+  KeyRound,
   Moon,
+  Globe,
   MoreVertical,
   Palette,
   Pencil,
+  Plus,
   RotateCw,
   Save,
   Search,
@@ -26,8 +30,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { JsonViewer } from "@/components/shared/json-viewer";
+import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
+import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   AlertDialog,
@@ -49,6 +57,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
+import { AuroraPanel } from "@/components/ui/aurora-panel";
 import {
   Dialog,
   DialogContent,
@@ -95,6 +104,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import { UptimeStrip } from "@/components/ui/uptime-strip";
 import { useDebounce } from "@/lib/use-debounce";
 import { slugify } from "@/lib/utils";
 
@@ -109,11 +119,16 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "breadcrumbs", label: "Breadcrumbs" },
   { id: "color-tokens", label: "Color tokens" },
   { id: "brand", label: "Brand" },
+  { id: "elevation", label: "Elevation & aurora" },
   { id: "buttons-badges", label: "Buttons & badges" },
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
+  { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
+  { id: "label-filter", label: "Label filter" },
   { id: "kpi-tiles", label: "KPI tiles" },
+  { id: "uptime-strip", label: "Uptime strip" },
+  { id: "jobs-primitives", label: "Jobs primitives" },
 ];
 
 function DesignReferencePage() {
@@ -131,11 +146,16 @@ function DesignReferencePage() {
       <BreadcrumbsSection />
       <ColorTokensSection />
       <BrandSection />
+      <ElevationSection />
       <ButtonsBadgesSection />
       <FormsSection />
       <DataDisplaySection />
+      <CollapsibleCodeSection />
       <FeedbackSection />
+      <LabelFilterSection />
       <KpiTileSection />
+      <UptimeStripSection />
+      <JobsPrimitivesSection />
     </div>
   );
 }
@@ -188,6 +208,41 @@ function ConventionsSection() {
             <code className="rounded bg-muted px-1 py-0.5 text-xs">AlertDialog</code>
             . Other per-row actions live on the edit page, not in the row.
           </p>
+        </div>
+        <div className="rounded-md border bg-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold">Delete is always red, always a trash bin</h3>
+          <p className="text-sm text-muted-foreground">
+            Every delete (or otherwise irreversible) action is rendered in red
+            and paired with the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+            (trash bin) icon — no exceptions. Use a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">Button variant=&quot;destructive&quot;</code>{" "}
+            for standalone/prominent buttons, an icon button with{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive</code>{" "}
+            in row actions, and{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+            on the delete item inside a{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>
+            . Both colors resolve to the{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-xs">--destructive</code>{" "}
+            token so dark mode stays correct. The destructive red is reserved
+            for destructive actions — never use it for a neutral or primary
+            action, and never delete with a different icon or a muted color.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button variant="destructive" aria-label="Delete">
+              <Trash2 />
+              <span className="hidden sm:inline">Delete</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:text-destructive"
+              aria-label="Delete row"
+            >
+              <Trash2 />
+            </Button>
+          </div>
         </div>
       </div>
     </Section>
@@ -344,21 +399,218 @@ function PageThemeToggle() {
 }
 
 function PageHeaderSection() {
+  const pageHeaderSnippet = `// Canonical page header for every list and section page.
+// Boxed muted icon tile, text-2xl title, optional subtitle, right-aligned actions.
+import { PageHeader } from "@/components/shared/page-header";
+
+<PageHeader
+  icon={Globe}
+  title="Status pages"
+  description="Optional one-line subtitle."
+  actions={
+    <Button asChild>
+      <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+        <Plus className="mr-2 h-4 w-4" />
+        New page
+      </Link>
+    </Button>
+  }
+  className="flex-wrap"
+/>`;
   return (
     <Section
       id="page-header"
       title="Page header"
-      description="The icon-on-left + title + optional description + right-aligned actions pattern. Use it for new pages; existing inline headers will adopt it over time."
+      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the same header inline so it can carry a back arrow and per-record actions. Both patterns are documented here."
     >
+      <h3 className="text-sm font-medium">List &amp; section pages: the PageHeader component</h3>
+      <p className="text-sm text-muted-foreground">
+        Pass icon, title, an optional description, and right-aligned actions; it
+        renders a rounded muted icon tile, a text-2xl font-semibold title, the
+        muted subtitle below, and the actions on the right. Discovery, checks,
+        incidents, status-pages, on-call, integrations, badges, me/notifications
+        and the rest all ship it — use it for every new page rather than
+        hand-rolling an inline header.
+      </p>
       <div className="rounded-md border bg-card p-4">
         <PageHeader
-          icon={Palette}
-          title="Example page title"
-          description="A short subtitle that explains what the page is for."
-          actions={<Button size="sm">Primary action</Button>}
+          icon={Globe}
+          title="Status pages"
+          description="Optional one-line subtitle that explains what the page is for."
+          actions={
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              New page
+            </Button>
+          }
+          className="flex-wrap"
         />
       </div>
-      <CodeSnippet code={`import { PageHeader } from "@/components/shared/page-header";`} />
+      <CodeSnippet code={pageHeaderSnippet} />
+      <p className="text-sm text-muted-foreground">
+        Notes: pass the same per-page Lucide icon you would have rendered
+        inline — <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+        wraps it in the muted tile for you. Put the primary action(s) that used
+        to sit in the header row (e.g.{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">+ New X</code>,
+        export/import, a refresh button) into the{" "}
+        <code className="rounded bg-muted px-1 py-0.5 text-xs">actions</code>{" "}
+        prop; leave filter/search toolbars on their own row below the header.
+        Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
+        so actions wrap instead of overflowing on mobile. The detail/edit-page
+        header — back arrow inside the right-aligned action cluster — is the
+        same surface for detail pages; it is documented just below.
+      </p>
+
+      <h3 className="text-sm font-medium">Detail &amp; edit pages: title block + right-aligned action cluster (back arrow first)</h3>
+      <p className="text-sm text-muted-foreground">
+        On detail/edit pages, compose a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex items-start justify-between gap-3</code>{" "}
+        row. The <strong>left</strong> is the title block — the page{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
+        plus any subtitle/status — wrapped in{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+        so it truncates instead of shoving the actions off-screen. The{" "}
+        <strong>right</strong> is a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex gap-2 shrink-0</code>{" "}
+        cluster whose <strong>first child is the icon-only ghost back button</strong>,
+        followed by the page actions (View / Edit / Delete, Refresh, …). The
+        back arrow is <strong>not</strong> on the far left — it leads the
+        right-aligned cluster. It is{" "}
+        <strong>always icon-only</strong> — never paired with a &quot;Back&quot;
+        label. Use{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code>{" "}
+        with{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;ghost&quot; size=&quot;icon&quot;</code>{" "}
+        and an{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
+        A trailing Refresh button labels itself on desktop and collapses to
+        the icon below{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                Page title
+              </h1>
+              <p className="mt-1 truncate text-muted-foreground">
+                Optional subtitle / status
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <Button variant="outline" size="sm" aria-label="Edit">
+                <Pencil className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+              <Button variant="outline" aria-label="Refresh">
+                <RotateCw className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              <Button variant="destructive" size="sm" aria-label="Delete">
+                <Trash2 />
+                <span className="hidden sm:inline">Delete</span>
+              </Button>
+            </div>
+          </div>
+        }
+        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    <Button variant="outline" size="sm" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="sm:mr-2 h-4 w-4" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" size="sm" onClick={handleDelete}>\n      <Trash2 />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
+      />
+
+      <h3 className="text-sm font-medium">Detail &amp; edit pages: collapse the action cluster into an overflow menu on mobile</h3>
+      <p className="text-sm text-muted-foreground">
+        When a detail header carries more than two or three actions, the inline
+        toolbar overflows on a phone. Keep only the icon-only ghost{" "}
+        <strong>back button</strong> always visible; render the labeled action
+        buttons in a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hidden md:flex</code>{" "}
+        cluster, and mirror every one of them as items inside a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md:hidden</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
+        triggered by a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
+        (⋯) button. The delete item is{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+        with a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+        icon, just like the inline destructive button. Drive any confirm
+        dialog from controlled state so it opens from either surface.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                Page title
+              </h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <div className="hidden items-center gap-2 md:flex">
+                <Button variant="outline" aria-label="Edit">
+                  <Pencil className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+                <Button variant="outline" aria-label="Refresh">
+                  <RotateCw className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Refresh</span>
+                </Button>
+                <Button variant="destructive" aria-label="Delete">
+                  <Trash2 className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Delete</span>
+                </Button>
+              </div>
+              <div className="md:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="More actions">
+                      <MoreVertical />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Pencil />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <RotateCw />
+                      Refresh
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive">
+                      <Trash2 />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        }
+        importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
+      />
+
+      <div className="rounded-md border border-dashed bg-muted/30 p-4">
+        <p className="text-sm text-muted-foreground">
+          <strong className="text-foreground">Legacy (retired):</strong> the
+          inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">
+            &lt;h1 className="text-3xl font-bold …"&gt;
+          </code>{" "}
+          header with an inline{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">h-7 w-7</code>{" "}
+          icon is no longer canonical. Do not reach for it on new pages — and
+          migrate any remaining inline headers to{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">PageHeader</code>{" "}
+          so the app stays consistent.
+        </p>
+      </div>
     </Section>
   );
 }
@@ -375,6 +627,32 @@ if (isFooBar) {
     </span>
   );
 }`;
+  const contextualSnippet = `// Context-driven breadcrumb: reads ?from= to show the correct parent.
+// Example: the notification detail route (/orgs/$org/notifications/$notificationUid)
+// uses three variants depending on the ?from= search param:
+
+// 1. No ?from= → Integrations > Notification
+<Link to="/orgs/$org/integrations" ...><Bell />Integrations</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// 2. ?from=incident:{uid} → Incidents > {incident title} > Notification
+<Link to="/orgs/$org/incidents" ...><AlertTriangle />Incidents</Link>
+<BreadcrumbSeparator />
+<Link to="/orgs/$org/incidents/$incidentUid" ...>{incidentLabel}</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// 3. ?from=integration:{uid} → Integrations > {integration name} > Notification
+<Link to="/orgs/$org/integrations" ...><Bell />Integrations</Link>
+<BreadcrumbSeparator />
+<Link to="/orgs/$org/integrations/$integrationUid" ...>{integrationLabel}</Link>
+<BreadcrumbSeparator />
+<span className={activeClass}>Notification</span>
+
+// The label falls back to uid.slice(0,8) when the page is cold (direct nav,
+// no prior fetch). The cached data comes from queryClient.getQueryData(["orgNotification", ...])
+// — no waterfall, no extra network request.`;
   return (
     <Section
       id="breadcrumbs"
@@ -390,6 +668,20 @@ if (isFooBar) {
         </p>
       </div>
       <CodeSnippet code={snippet} />
+      <div className="rounded-md border bg-card p-4 space-y-2">
+        <p className="text-sm font-medium">Context-driven breadcrumbs with <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=</code></p>
+        <p className="text-sm text-muted-foreground">
+          When a detail page can be reached from multiple parent surfaces, encode the
+          navigation context in a <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=type:uid</code> search
+          param (e.g. <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=incident:abc123</code> or{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">?from=integration:xyz</code>).
+          The breadcrumb reads the param and renders the matching parent chain. Label resolution
+          uses the query cache — no extra fetch. The notification detail route
+          (<code className="rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/notifications/$notificationUid</code>) is
+          the canonical example of this pattern.
+        </p>
+      </div>
+      <CodeSnippet code={contextualSnippet} />
     </Section>
   );
 }
@@ -431,7 +723,7 @@ function ButtonsBadgesSection() {
     <Section
       id="buttons-badges"
       title="Buttons & badges"
-      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb, collapse to icon-only on mobile, and the top-right back button is always icon-only."
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a back button + action cluster lives in the Page header section."
     >
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Button variants</h3>
@@ -505,34 +797,6 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
-        <h3 className="text-sm font-medium">Detail page header: back button + title + actions</h3>
-        <p className="text-sm text-muted-foreground">
-          On detail/edit pages, compose a single flex row:{" "}
-          <strong>icon-only back button on the far left</strong>, the page{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code> with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex-1</code> in the middle,
-          and action buttons (e.g. Delete) on the far right. The back button is{" "}
-          <strong>always icon-only</strong> — never paired with a &quot;Back&quot; label. Use{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code> with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
-          and an <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
-        </p>
-        <ExampleRow
-          preview={
-            <div className="flex w-full items-center gap-3">
-              <Button variant="ghost" size="icon" aria-label="Back">
-                <ArrowLeft />
-              </Button>
-              <h1 className="flex-1 text-xl font-bold tracking-tight">Page title</h1>
-              <Button variant="destructive" size="sm" aria-label="Delete">
-                <Trash2 />
-                <span className="hidden sm:inline">Delete</span>
-              </Button>
-            </div>
-          }
-          importLine={`<div className="flex items-center gap-3">\n  <Button variant="ghost" size="icon" aria-label="Back">\n    <ArrowLeft />\n  </Button>\n  <h1 className="flex-1 text-3xl font-bold tracking-tight">{title}</h1>\n  <Button variant="destructive" size="sm" onClick={handleDelete}>\n    <Trash2 />\n    Delete\n  </Button>\n</div>`}
-        />
-
         <h3 className="text-sm font-medium">Badge variants</h3>
         <ExampleRow
           preview={
@@ -546,6 +810,28 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { Badge } from "@/components/ui/badge";`}
+        />
+
+        <h3 className="text-sm font-medium">Button with &quot;Last used&quot; badge</h3>
+        <p className="text-sm text-muted-foreground">
+          The promoted-slot pattern used on the login page: a full-width action
+          button carries an inline{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">secondary</code>{" "}
+          Badge marking the option a returning user picked last. Keep the badge
+          last in the button and spaced with{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ml-2</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <Button variant="outline" className="w-full">
+              <KeyRound className="mr-2 h-4 w-4" />
+              Sign in with passkey
+              <Badge variant="secondary" className="ml-2">
+                Last used
+              </Badge>
+            </Button>
+          }
+          importLine={`import { Button } from "@/components/ui/button";\nimport { Badge } from "@/components/ui/badge";\n\n<Button variant="outline" className="w-full">\n  <KeyRound className="mr-2 h-4 w-4" />\n  Sign in with passkey\n  <Badge variant="secondary" className="ml-2">Last used</Badge>\n</Button>`}
         />
       </div>
     </Section>
@@ -863,6 +1149,85 @@ function DataDisplaySection() {
   );
 }
 
+/** ReferenceCollapsibleCode mirrors the CollapsibleCode used on the notification
+ * delivery detail page: a native <details>/<summary> disclosure wrapping a
+ * monospace block with a copy affordance. Keyboard-accessible and mobile-safe
+ * with no JS-driven layout. Reuse this pattern for long, optional payloads
+ * (request/response bodies, raw JSON) that should default to collapsed. */
+function ReferenceCollapsibleCode({
+  label,
+  value,
+  defaultOpen = false,
+}: {
+  label: string;
+  value: string;
+  defaultOpen?: boolean;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard requires a secure context; the value stays visible to copy by hand.
+    }
+  };
+
+  return (
+    <details className="group rounded-md border" open={defaultOpen}>
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
+        <span className="flex min-w-0 items-center gap-2">
+          <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
+          <span className="truncate font-medium">{label}</span>
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            void onCopy();
+          }}
+          aria-label={copied ? "Copied" : `Copy ${label}`}
+          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+        >
+          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        </button>
+      </summary>
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t bg-muted p-3 font-mono text-xs">
+        {value}
+      </pre>
+    </details>
+  );
+}
+
+function CollapsibleCodeSection() {
+  return (
+    <Section
+      id="collapsible-code"
+      title="Collapsible code"
+      description="A native <details> disclosure wrapping a copyable monospace block. Use for long, optional payloads (webhook request/response bodies, raw JSON) that should default collapsed but stay one click from view. Keyboard- and touch-friendly; no extra dependency. Lives inline on the notification delivery detail page."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-2">
+          <ReferenceCollapsibleCode
+            label="Request payload"
+            value={`{\n  "type": "incident.created",\n  "data": { "incident": { "uid": "018e…" } }\n}`}
+          />
+          <ReferenceCollapsibleCode
+            label="Response body"
+            value={`{ "error": "service unavailable" }`}
+            defaultOpen
+          />
+        </div>
+        <CodeSnippet
+          code={`// Native disclosure + copy. Default collapsed; pass defaultOpen for failures.\n<details className="group rounded-md border">\n  <summary>…<ChevronRight className="group-open:rotate-90" />…</summary>\n  <pre className="font-mono text-xs">{value}</pre>\n</details>`}
+        />
+      </div>
+    </Section>
+  );
+}
+
 function FeedbackSection() {
   return (
     <Section
@@ -1094,6 +1459,94 @@ function BrandSection() {
   );
 }
 
+function ElevationSection() {
+  return (
+    <Section
+      id="elevation"
+      title="Elevation, aurora & glass"
+      description="Depth tokens that add polish without adding a new color. Tinted shadows carry the primary hue and are already baked into Button's default variant and Card — reach for the utilities only when styling a bespoke surface. The aurora panel + glass utility are for marketing surfaces ONLY (login split-screen, hero strips, empty-state splashes) — never operator data views."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">
+          Tinted elevation (shadows carry the primary hue, auto-adapt to dark)
+        </h3>
+        <ExampleRow
+          preview={
+            <>
+              <div className="rounded-xl border bg-card px-4 py-3 text-sm shadow-card">
+                shadow-card
+              </div>
+              <div className="rounded-lg bg-primary px-4 py-3 text-sm text-primary-foreground shadow-primary">
+                shadow-primary
+              </div>
+            </>
+          }
+          importLine={`// Defined in index.css @theme; color-mix keeps them tracking --primary.\n<div className="shadow-card" />      {/* cards, KPI tiles — soft ambient lift */}\n<Button className="shadow-primary" /> {/* primary CTA glow (default variant has it) */}\n<Card className="hover:shadow-card-hover transition" /> {/* lift on hover */}`}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Aurora panel + glass card</h3>
+        <ExampleRow
+          preview={
+            <AuroraPanel className="h-52 w-full rounded-xl">
+              <div className="flex h-full items-center justify-center p-6">
+                <div className="glass space-y-1 rounded-2xl p-5">
+                  <p className="text-sm font-semibold text-white">
+                    Glass on aurora
+                  </p>
+                  <p className="text-xs text-white/70">
+                    white/8 fill · blur 12 · white/18 border
+                  </p>
+                </div>
+              </div>
+            </AuroraPanel>
+          }
+          importLine={`import { AuroraPanel } from "@/components/ui/aurora-panel";\n\n// Marketing surfaces only. Always dark; renders white text. The \`glass\`\n// utility (index.css) is the frosted card that sits on top.\n<AuroraPanel className="min-h-screen p-12">\n  <div className="glass rounded-3xl p-8">…</div>\n</AuroraPanel>\n\n// Auth pages: don't hand-roll the panel — wrap your card in AuthSplitLayout,\n// which renders this aurora + the marketing copy + the theme toggle.\nimport { AuthSplitLayout } from "@/components/layout/auth-split-layout";`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function LabelFilterSection() {
+  const { org } = Route.useParams();
+  const [labels, setLabels] = useState<Record<string, string>>({
+    env: "prod",
+  });
+  const snippet = `import { LabelFilter } from "@/components/shared/label-filter";
+
+// Faceted label picker for list toolbars. Applied filters render as removable
+// chips; the compact "+ Label" trigger opens one popover with a guided two-step
+// cmdk list (pick a key, then pick/type a value). Selecting a value applies
+// immediately — no Add button. The caller owns URL serialization via onChange.
+<LabelFilter
+  org={org}
+  value={labelFilters}
+  onChange={(next) => {
+    const serialized = serializeLabelsParam(next);
+    void navigate({
+      search: (prev) => ({ ...prev, labels: serialized || undefined }),
+      replace: true,
+    });
+  }}
+/>`;
+  return (
+    <Section
+      id="label-filter"
+      title="Label filter"
+      description="Faceted key:value filter used in the checks-list toolbar. Reuse this instead of LabelInput when filtering a list (LabelInput stays for authoring labels in a form). Applied filters are removable chips; the compact + Label trigger opens a single popover with a two-step key→value cmdk picker that applies on select. Try it below."
+    >
+      <ExampleRow
+        preview={
+          <LabelFilter org={org} value={labels} onChange={setLabels} />
+        }
+        importLine={snippet}
+      />
+    </Section>
+  );
+}
+
 function KpiTileSection() {
   const { org } = Route.useParams();
   const snippet = `import { Link } from "@tanstack/react-router";
@@ -1101,7 +1554,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Wrap in <Link> for clickable tiles; omit the wrapper for static metrics.
 <Link to="/orgs/$org/checks" params={{ org }} className="block">
-  <Card className="transition-colors hover:bg-accent/40">
+  <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
       <CardTitle className="text-sm font-medium text-muted-foreground">Monitored</CardTitle>
       <Icon className="h-4 w-4 text-muted-foreground" />
@@ -1116,7 +1569,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
     <Section
       id="kpi-tiles"
       title="KPI tiles"
-      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Whole-card hover via transition-colors hover:bg-accent/40 — no nested interactive elements inside."
+      description="Large-number summary cards used on the org dashboard. Link tiles 1–3 to drill-down list pages; leave purely metric tiles (e.g. % availability) static. Clickable tiles lift on hover (hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover) — no nested interactive elements inside."
     >
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Link
@@ -1124,7 +1577,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
           params={{ org }}
           className="block"
         >
-          <Card className="transition-colors hover:bg-accent/40">
+          <Card className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground">
                 Monitored
@@ -1155,6 +1608,51 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
   );
 }
 
+function UptimeStripSection() {
+  // 24 hourly buckets, oldest → newest. A mix of full uptime, a partial hour,
+  // a down hour, and a couple of no-data hours to exercise every cell color.
+  const buckets = Array.from({ length: 24 }, (_, i) => {
+    const periodStart = new Date(
+      Date.now() - (23 - i) * 60 * 60 * 1000,
+    ).toISOString();
+    let availabilityPct: number | undefined = 100;
+    if (i === 22 || i === 23) availabilityPct = undefined; // most recent hours: no data yet
+    else if (i === 10) availabilityPct = 0; // a full outage hour
+    else if (i === 11) availabilityPct = 66.7; // a partially-degraded hour
+    return {
+      periodStart,
+      availabilityPct,
+      durationMs: availabilityPct === undefined ? undefined : 120 + i,
+    };
+  });
+  const snippet = `import { UptimeStrip } from "@/components/ui/uptime-strip";
+
+// Pure presentational: pass hourly buckets (oldest → newest), no fetching.
+// Cell color: green at 100%, yellow in between, red at 0%, gray for no data.
+<UptimeStrip
+  buckets={[
+    { periodStart, availabilityPct, durationMs },
+    // ...one per hour
+  ]}
+/>`;
+  return (
+    <Section
+      id="uptime-strip"
+      title="Uptime strip"
+      description="A compact 24-hour availability sparkline used in the dashboard's Checks-at-a-glance rows. One cell per hour, oldest → newest; color comes from each bucket's availabilityPct. Hover a cell for the hour, availability %, and average latency. Presentational only — group results by check and pass buckets down."
+    >
+      <div className="rounded-md border bg-card p-4 space-y-4">
+        <UptimeStrip buckets={buckets} />
+        <p className="text-xs text-muted-foreground">
+          Mostly green with one outage hour (red), one degraded hour (yellow),
+          and the two most recent hours awaiting data (gray).
+        </p>
+      </div>
+      <CodeSnippet code={snippet} />
+    </Section>
+  );
+}
+
 function ColorTokensSection() {
   return (
     <Section
@@ -1174,6 +1672,58 @@ function ColorTokensSection() {
             <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
           ))}
         </div>
+      </div>
+    </Section>
+  );
+}
+
+function JobsPrimitivesSection() {
+  const [tab, setTab] = useState("first");
+
+  return (
+    <Section
+      id="jobs-primitives"
+      title="Jobs primitives"
+      description="Building blocks for the admin Jobs observability page: compact stat tiles for the activity overview, in-page Tabs (dependency-free), and a read-only JSON viewer for config/output blocks."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Stat tile</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ StatTile }"} from "@/components/shared/stat-tile"
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <StatTile label="Pending" value={3} tone="info" />
+          <StatTile label="Running" value={1} tone="info" />
+          <StatTile label="Failed (24h)" value={2} tone="destructive" />
+          <StatTile label="In-flight" value={5} tone="success" />
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Tabs</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ Tabs, TabsList, TabsTrigger, TabsContent }"} from "@/components/ui/tabs"
+        </p>
+        <Tabs value={tab} onValueChange={setTab}>
+          <TabsList>
+            <TabsTrigger value="first">First</TabsTrigger>
+            <TabsTrigger value="second">Second</TabsTrigger>
+          </TabsList>
+          <TabsContent value="first">
+            <div className="rounded-md border bg-card p-4 text-sm">First panel</div>
+          </TabsContent>
+          <TabsContent value="second">
+            <div className="rounded-md border bg-card p-4 text-sm">Second panel</div>
+          </TabsContent>
+        </Tabs>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">JSON viewer</h3>
+        <p className="text-xs text-muted-foreground">
+          import {"{ JsonViewer }"} from "@/components/shared/json-viewer"
+        </p>
+        <JsonViewer value={{ url: "https://example.com", timeout: 5000 }} />
       </div>
     </Section>
   );

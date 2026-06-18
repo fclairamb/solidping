@@ -52,10 +52,10 @@ func webPushFakeSubJSON(t *testing.T, serverURL string) string {
 }
 
 // webPushChannel builds a minimal Channel with the given subscriptions in Settings.
-func webPushChannel(t *testing.T, subs ...map[string]any) *models.Channel {
+func webPushChannel(t *testing.T, subs ...map[string]any) *models.Integration {
 	t.Helper()
 
-	ch := &models.Channel{
+	ch := &models.Integration{
 		UID:  "ch-test",
 		Type: models.ConnectionTypeWebPush,
 		Settings: models.JSONMap{
@@ -80,14 +80,14 @@ func webPushJobCtx(pub, priv string) *jobdef.JobContext {
 }
 
 // webPushPayload builds a minimal Payload for WebPushSender.Send.
-func webPushPayload(ch *models.Channel) *Payload {
+func webPushPayload(ch *models.Integration) *Payload {
 	checkName := "MyCheck"
 
 	return &Payload{
-		EventType:  eventTypeIncidentCreated,
-		Incident:   &models.Incident{UID: "inc-1"},
-		Check:      &models.Check{Name: &checkName},
-		Connection: ch,
+		EventType:   eventTypeIncidentCreated,
+		Incident:    &models.Incident{UID: "inc-1"},
+		Check:       &models.Check{Name: &checkName},
+		Integration: ch,
 	}
 }
 
@@ -114,7 +114,7 @@ func TestWebPushSender_Send_AllSucceed(t *testing.T) {
 
 	updateCalled := false
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, _ *models.Channel) error {
+		UpdateChannel: func(_ context.Context, _ *models.Integration) error {
 			updateCalled = true
 
 			return nil
@@ -152,10 +152,10 @@ func TestWebPushSender_Send_OneGone410(t *testing.T) {
 		webPushFakeSub(t, srv2.URL, "Expired browser"),
 	)
 
-	var updatedChannel *models.Channel
+	var updatedChannel *models.Integration
 
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, ch *models.Channel) error {
+		UpdateChannel: func(_ context.Context, ch *models.Integration) error {
 			updatedChannel = ch
 
 			return nil
@@ -171,6 +171,48 @@ func TestWebPushSender_Send_OneGone410(t *testing.T) {
 	r.NoError(parseErr)
 	r.Len(remaining, 1, "exactly one subscription should remain after pruning")
 	r.Contains(remaining[0].Endpoint, srv1.URL, "the surviving endpoint should be srv1")
+}
+
+// TestBuildWebPushURL verifies the click-through / tag URL is non-empty and
+// points at the incident detail page. A non-empty URL is what gives each
+// incident a distinct service-worker tag; an empty one made Chrome reject the
+// notification (renotify requires a non-empty tag).
+func TestBuildWebPushURL(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		payload *Payload
+		want    string
+	}{
+		{
+			name:    "incident present",
+			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{UID: "inc-1"}},
+			want:    "/dash0/orgs/acme/incidents/inc-1",
+		},
+		{
+			name:    "no incident falls back to org dashboard",
+			payload: &Payload{OrgSlug: "acme"},
+			want:    "/dash0/orgs/acme",
+		},
+		{
+			name:    "incident without uid falls back to org dashboard",
+			payload: &Payload{OrgSlug: "acme", Incident: &models.Incident{}},
+			want:    "/dash0/orgs/acme",
+		},
+		{
+			name:    "missing org slug yields empty url",
+			payload: &Payload{Incident: &models.Incident{UID: "inc-1"}},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, buildWebPushURL(tt.payload))
+		})
+	}
 }
 
 // TestWebPushSender_Send_NoVAPIDKeys verifies that the sender returns
@@ -202,7 +244,7 @@ func TestWebPushSender_Send_NoSubscriptions(t *testing.T) {
 
 	updateCalled := false
 	sender := &WebPushSender{
-		UpdateChannel: func(_ context.Context, _ *models.Channel) error {
+		UpdateChannel: func(_ context.Context, _ *models.Integration) error {
 			updateCalled = true
 
 			return nil

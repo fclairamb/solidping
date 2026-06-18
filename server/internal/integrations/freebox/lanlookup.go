@@ -97,7 +97,7 @@ func resolveGrantedFreeboxChannel(
 // both the encrypted-private path and the plaintext fallback (credentials
 // disabled), matching the channels service's resolveFreeboxAppToken.
 func resolveAppToken(
-	ctx context.Context, creds credentials.Service, conn *models.Channel,
+	ctx context.Context, creds credentials.Service, conn *models.Integration,
 ) (string, error) {
 	if conn.SettingsPrivate != nil && *conn.SettingsPrivate != "" {
 		if !creds.Enabled() {

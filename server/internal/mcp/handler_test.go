@@ -236,7 +236,7 @@ func TestDispatch_ToolsList(t *testing.T) {
 	expectedTools := []string{
 		"list_checks", "get_check", "create_check", "update_check", "delete_check",
 		"list_results", "list_incidents", "get_incident",
-		"list_connections", "create_connection",
+		"list_integrations", "create_integration",
 		"list_check_groups", "list_regions",
 		"diagnose_check",
 		"list_status_pages", "get_status_page", "create_status_page",

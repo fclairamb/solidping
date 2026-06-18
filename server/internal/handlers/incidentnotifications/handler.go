@@ -36,6 +36,8 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found")
 	case errors.Is(err, ErrIncidentNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Incident not found")
+	case errors.Is(err, ErrNotificationNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Notification not found")
 	case errors.Is(err, ErrForbidden):
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "Forbidden")
 	default:
@@ -85,6 +87,76 @@ func (h *Handler) ListForIncident(writer http.ResponseWriter, req bunrouter.Requ
 	filter := parseListFilter(req)
 
 	rows, err := h.svc.ListForIncident(req.Context(), orgUID, incidentUID, filter)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{jsonDataKey: rows})
+}
+
+// GetForIncident handles
+// GET /api/v1/orgs/:org/incidents/:uid/notifications/:notifUid.
+func (h *Handler) GetForIncident(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	incidentUID := req.Param("uid")
+	notifUID := req.Param("notifUid")
+
+	detail, err := h.svc.GetForIncident(req.Context(), orgUID, incidentUID, notifUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, detail)
+}
+
+// GetByOrg handles GET /api/v1/orgs/:org/notifications/:notifUid.
+// Fetches a single notification scoped only by org UID (no incident required).
+func (h *Handler) GetByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	notifUID := req.Param("notifUid")
+
+	detail, err := h.svc.GetByOrg(req.Context(), orgUID, notifUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, detail)
+}
+
+// ListByOrg handles GET /api/v1/orgs/:org/notifications?connectionUid=&limit=.
+// Requires connectionUid; returns 400 if absent. Defaults limit to 10, max 50.
+func (h *Handler) ListByOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgUID, err := h.svc.ResolveOrgUID(req.Context(), req.Param("org"))
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	connectionUID := req.URL.Query().Get("connectionUid")
+	if connectionUID == "" {
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
+			"connectionUid query parameter is required")
+	}
+
+	limit := 10
+	if v := req.URL.Query().Get("limit"); v != "" {
+		if n, err2 := strconv.Atoi(v); err2 == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	if limit > 50 {
+		limit = 50
+	}
+
+	rows, err := h.svc.ListByConnection(req.Context(), orgUID, connectionUID, limit)
 	if err != nil {
 		return h.handleError(writer, err)
 	}

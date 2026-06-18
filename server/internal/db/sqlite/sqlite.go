@@ -2309,8 +2309,20 @@ func (s *Service) ListExpiredSnoozedIncidents(ctx context.Context, now time.Time
 	return incidents, nil
 }
 
-func (s *Service) UpdateCheckStatus(
-	ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
+// UpdateCheckStatusAndClocks writes the check's status, streak,
+// status_changed_at and both incident clocks in a single atomic UPDATE,
+// replacing the former separate UpdateCheckStatus + UpdateCheckIncidentClocks
+// round-trips. statusChangedAt is written only when non-nil. The clock fields
+// use IncidentClockUpdate's tri-state (nil + !clear leaves the column
+// untouched, nil + clear writes NULL, non-nil writes the value). updated_at is
+// written once.
+func (s *Service) UpdateCheckStatusAndClocks(
+	ctx context.Context,
+	checkUID string,
+	status models.CheckStatus,
+	streak int,
+	statusChangedAt *time.Time,
+	clocks models.IncidentClockUpdate,
 ) error {
 	query := s.db.NewUpdate().
 		Model((*models.Check)(nil)).
@@ -2320,47 +2332,19 @@ func (s *Service) UpdateCheckStatus(
 		Set("status_streak = ?", streak).
 		Set("updated_at = ?", time.Now())
 
-	if changedAt != nil {
-		query = query.Set("status_changed_at = ?", *changedAt)
+	if statusChangedAt != nil {
+		query = query.Set("status_changed_at = ?", *statusChangedAt)
 	}
 
-	_, err := query.Exec(ctx)
-
-	return err
-}
-
-// UpdateCheckIncidentClocks persists the FirstFailureAt and
-// FirstSuccessSinceFailureAt timestamps used by the time-based incident
-// state machine. nil set/true clear behaves as a tri-state: nil and
-// !clear means "leave as-is" (we do not write the column at all).
-func (s *Service) UpdateCheckIncidentClocks(
-	ctx context.Context, checkUID string,
-	firstFailureAt *time.Time, clearFirstFailure bool,
-	firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
-) error {
-	query := s.db.NewUpdate().
-		Model((*models.Check)(nil)).
-		Where("uid = ?", checkUID).
-		Where("deleted_at IS NULL").
-		Set("updated_at = ?", time.Now())
-
-	wrote := false
-	if firstFailureAt != nil {
-		query = query.Set("first_failure_at = ?", *firstFailureAt)
-		wrote = true
-	} else if clearFirstFailure {
+	if clocks.FirstFailureAt != nil {
+		query = query.Set("first_failure_at = ?", *clocks.FirstFailureAt)
+	} else if clocks.ClearFirstFailureAt {
 		query = query.Set("first_failure_at = NULL")
-		wrote = true
 	}
-	if firstSuccessSinceFailureAt != nil {
-		query = query.Set("first_success_since_failure_at = ?", *firstSuccessSinceFailureAt)
-		wrote = true
-	} else if clearFirstSuccessSinceFailure {
+	if clocks.FirstSuccessSinceFailureAt != nil {
+		query = query.Set("first_success_since_failure_at = ?", *clocks.FirstSuccessSinceFailureAt)
+	} else if clocks.ClearFirstSuccessSinceFailureAt {
 		query = query.Set("first_success_since_failure_at = NULL")
-		wrote = true
-	}
-	if !wrote {
-		return nil
 	}
 
 	_, err := query.Exec(ctx)
@@ -2855,14 +2839,14 @@ func (s *Service) DeleteOrgParameter(ctx context.Context, orgUID, key string) er
 // IntegrationConnection operations
 
 // CreateChannel creates a new integration connection.
-func (s *Service) CreateChannel(ctx context.Context, conn *models.Channel) error {
+func (s *Service) CreateChannel(ctx context.Context, conn *models.Integration) error {
 	_, err := s.db.NewInsert().Model(conn).Exec(ctx)
 	return err
 }
 
 // GetChannel retrieves an integration connection by UID.
-func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, error) {
-	conn := new(models.Channel)
+func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Integration, error) {
+	conn := new(models.Integration)
 
 	err := s.db.NewSelect().
 		Model(conn).
@@ -2879,8 +2863,8 @@ func (s *Service) GetChannel(ctx context.Context, uid string) (*models.Channel, 
 // GetChannelByProperty retrieves a connection by a settings property.
 func (s *Service) GetChannelByProperty(
 	ctx context.Context, connType, propertyName, propertyValue string,
-) (*models.Channel, error) {
-	conn := new(models.Channel)
+) (*models.Integration, error) {
+	conn := new(models.Integration)
 
 	jsonPath := "$." + propertyName
 
@@ -2899,9 +2883,9 @@ func (s *Service) GetChannelByProperty(
 
 // ListChannels lists integration connections with optional filtering.
 func (s *Service) ListChannels(
-	ctx context.Context, filter *models.ListChannelsFilter,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+	ctx context.Context, filter *models.ListIntegrationsFilter,
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	query := s.db.NewSelect().
 		Model(&connections).
@@ -2924,10 +2908,10 @@ func (s *Service) ListChannels(
 
 // UpdateChannel updates an integration connection.
 func (s *Service) UpdateChannel(
-	ctx context.Context, uid string, update *models.ChannelUpdate,
+	ctx context.Context, uid string, update *models.IntegrationUpdate,
 ) error {
 	query := s.db.NewUpdate().
-		Model((*models.Channel)(nil)).
+		Model((*models.Integration)(nil)).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
 		Set("updated_at = ?", time.Now())
@@ -2967,7 +2951,7 @@ func (s *Service) UpdateChannel(
 // DeleteChannel soft-deletes an integration connection.
 func (s *Service) DeleteChannel(ctx context.Context, uid string) error {
 	_, err := s.db.NewUpdate().
-		Model((*models.Channel)(nil)).
+		Model((*models.Integration)(nil)).
 		Set("deleted_at = ?", time.Now()).
 		Where("uid = ?", uid).
 		Where("deleted_at IS NULL").
@@ -2989,7 +2973,7 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 	_, err := s.db.NewDelete().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Exec(ctx)
 
 	return err
@@ -2998,15 +2982,15 @@ func (s *Service) DeleteCheckConnection(ctx context.Context, checkUID, connectio
 // ListChannelsForCheck returns all connections associated with a check.
 func (s *Service) ListChannelsForCheck(
 	ctx context.Context, checkUID string,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	err := s.db.NewSelect().
 		Model(&connections).
-		Join("INNER JOIN check_connections cc ON cc.connection_uid = integration_connection.uid").
+		Join("INNER JOIN check_channels cc ON cc.integration_uid = integration.uid").
 		Where("cc.check_uid = ?", checkUID).
-		Where("integration_connection.deleted_at IS NULL").
-		Order("integration_connection.created_at DESC").
+		Where("integration.deleted_at IS NULL").
+		Order("integration.created_at DESC").
 		Scan(ctx)
 
 	return connections, err
@@ -3047,8 +3031,8 @@ func (s *Service) SetCheckConnections(ctx context.Context, checkUID string, conn
 // ListDefaultChannels returns all default connections for an organization.
 func (s *Service) ListDefaultChannels(
 	ctx context.Context, orgUID string,
-) ([]*models.Channel, error) {
-	var connections []*models.Channel
+) ([]*models.Integration, error) {
+	var connections []*models.Integration
 
 	err := s.db.NewSelect().
 		Model(&connections).
@@ -3069,7 +3053,7 @@ func (s *Service) UpdateCheckConnection(
 	query := s.db.NewUpdate().
 		Model((*models.CheckConnection)(nil)).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Set("updated_at = ?", time.Now())
 
 	if update.Settings != nil {
@@ -3102,7 +3086,7 @@ func (s *Service) GetCheckConnection(
 	err := s.db.NewSelect().
 		Model(&checkConn).
 		Where("check_uid = ?", checkUID).
-		Where("connection_uid = ?", connectionUID).
+		Where("integration_uid = ?", connectionUID).
 		Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -3881,18 +3865,19 @@ func (s *Service) ListMaintenanceWindowChecks(
 	return checks, err
 }
 
-// IsCheckInActiveMaintenance checks if a check is currently in an active maintenance window.
-// It checks both direct check associations and check group associations.
-func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
-	now := time.Now()
-
-	// Find all maintenance windows linked to this check (directly or via group)
+// ListMaintenanceWindowsForCheck returns every non-deleted maintenance window
+// linked to the check directly or via its group. It does not filter by start
+// time or evaluate recurrence — callers decide active/inactive via
+// models.IsActiveAt so an in-process TTL cache can re-evaluate the same rows at
+// a later clock (including windows that only become active after the fetch).
+func (s *Service) ListMaintenanceWindowsForCheck(
+	ctx context.Context, checkUID string,
+) ([]*models.MaintenanceWindow, error) {
 	var windows []*models.MaintenanceWindow
 
 	err := s.db.NewSelect().
 		Model(&windows).
 		Where("deleted_at IS NULL").
-		Where("start_at <= ?", now).
 		Where(`uid IN (
 			SELECT mwc.maintenance_window_uid FROM maintenance_window_checks mwc
 			WHERE mwc.check_uid = ?
@@ -3903,16 +3888,10 @@ func (s *Service) IsCheckInActiveMaintenance(ctx context.Context, checkUID strin
 		)`, checkUID, checkUID).
 		Scan(ctx)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 
-	for _, window := range windows {
-		if models.IsActiveAt(window, now) {
-			return true, nil
-		}
-	}
-
-	return false, nil
+	return windows, nil
 }
 
 // CreateFile inserts a new file row.

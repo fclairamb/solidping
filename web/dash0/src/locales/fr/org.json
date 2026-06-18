@@ -20,6 +20,8 @@
   "usage": {
     "title": "Utilisation",
     "description": "Les limites de votre offre et votre consommation actuelle.",
+    "plan": "Offre actuelle",
+    "freePlan": "Gratuit",
     "checks": "Vérifications",
     "checksPerMinute": "Vérifications par minute",
     "ssoUsers": "Utilisateurs SSO",

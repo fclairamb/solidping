@@ -243,7 +243,11 @@ jobs:
       - name: Start solidping server
         working-directory: .
         run: |
-          ./solidping serve &
+          # Capture server stdout+stderr so a crash (panic / fatal / OOM) leaves
+          # debuggable evidence instead of a silent connection-refused cascade
+          # in the E2E results. The log is surfaced on failure and uploaded.
+          ./solidping serve > "$GITHUB_WORKSPACE/solidping-server.log" 2>&1 &
+          echo "solidping server pid $!"
           disown
         env:
           SOLIDPING_LISTEN: ":4000"
@@ -265,6 +269,23 @@ jobs:
         env:
           CI: "true"
 
+      - name: Surface server log on failure
+        if: failure()
+        working-directory: .
+        run: |
+          echo "::group::solidping server log (tail)"
+          tail -n 300 "$GITHUB_WORKSPACE/solidping-server.log" || echo "(no server log)"
+          echo "::endgroup::"
+          echo "::group::server crash signatures"
+          grep -nE "panic:|goroutine [0-9]+|fatal error|signal SIG|runtime error|nil pointer|out of memory|Killed" \
+            "$GITHUB_WORKSPACE/solidping-server.log" || echo "(no crash signatures found)"
+          echo "::endgroup::"
+          # If the server died during the run, report that as the real cause so a
+          # connection-refused cascade is treated as a server-crash bug, not a flake.
+          if ! curl -sf http://localhost:4000/api/mgmt/health >/dev/null 2>&1; then
+            echo "::error::solidping server was DOWN at the end of the E2E run — an unrecovered crash (see log above) cascaded into the test failures, not a flake."
+          fi
+
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v7
@@ -273,6 +294,7 @@ jobs:
           path: |
             web/dash0/playwright-report/
             web/dash0/test-results/
+            solidping-server.log
           retention-days: 7
 
 

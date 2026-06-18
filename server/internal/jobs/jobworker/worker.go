@@ -23,12 +23,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/stats"
-)
-
-const (
-	// maxRetryCount is the maximum number of retries allowed for a job.
-	maxRetryCount = 2
 )
 
 // JobWorker executes jobs from the queue.
@@ -158,6 +154,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(`{"error": "unknown job type"}`))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("%w: %s", ErrUnknownJobType, job.Type)
 	}
@@ -168,6 +165,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(fmt.Sprintf(`{"error": "invalid config: %q}`, err.Error())))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("failed to marshal job config: %w", err)
 	}
@@ -178,6 +176,7 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 		_ = w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
 			json.RawMessage(fmt.Sprintf(`{"error": %q}`, err.Error())))
 		w.stats.AddMetric(false, time.Since(startTime), delay)
+		w.recordJobMetrics(job.Type, outcomeFailed, time.Since(startTime), delay)
 
 		return fmt.Errorf("failed to create job run: %w", err)
 	}
@@ -193,10 +192,33 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 	jobErr := w.executeWithRecovery(jobExecCtx, jobRun, jctx)
 
 	// 7. Record stats
-	w.stats.AddMetric(jobErr == nil, time.Since(startTime), delay)
+	duration := time.Since(startTime)
+	w.stats.AddMetric(jobErr == nil, duration, delay)
 
-	// 8. Handle result (success, retry, or fail)
-	return w.handleResult(jobExecCtx, logger, job, jobErr)
+	// 8. Handle result (success, retry, or fail). The outcome returned matches
+	// the terminal status written by UpdateJobStatus, so the metric and the DB
+	// row never disagree.
+	outcome, resultErr := w.handleResult(jobExecCtx, logger, job, jobErr)
+	w.recordJobMetrics(job.Type, outcome, duration, delay)
+
+	return resultErr
+}
+
+// Job outcome label values for Prometheus, matching the terminal job status.
+const (
+	outcomeSuccess = "success"
+	outcomeRetried = "retried"
+	outcomeFailed  = "failed"
+)
+
+// recordJobMetrics records the processed counter, duration histogram, and
+// scheduling-delay histogram for one processed job. Recording is unconditional
+// — metric collection stays on even when the /metrics endpoint is gated by
+// SP_PROMETHEUS_ENABLED.
+func (w *JobWorker) recordJobMetrics(jobType, outcome string, duration, delay time.Duration) {
+	prommetrics.RecordJobProcessed(jobType, outcome)
+	prommetrics.RecordJobDuration(jobType, outcome, duration.Seconds())
+	prommetrics.RecordJobSchedulingDelay(jobType, delay.Seconds())
 }
 
 func (w *JobWorker) executeWithRecovery(
@@ -213,7 +235,13 @@ func (w *JobWorker) executeWithRecovery(
 	return job.Run(ctx, jctx)
 }
 
-func (w *JobWorker) handleResult(ctx context.Context, logger *slog.Logger, job *models.Job, err error) error {
+// handleResult writes the terminal job status and returns the outcome label
+// ("success" | "retried" | "failed") matching that status, plus any error from
+// the status update. The returned outcome drives the Prometheus metrics so they
+// can never disagree with the DB row.
+func (w *JobWorker) handleResult(
+	ctx context.Context, logger *slog.Logger, job *models.Job, err error,
+) (string, error) {
 	if err == nil {
 		// Success: mark job as successful with output from job execution
 		logger.InfoContext(ctx, "Job completed successfully", "job_uid", job.UID)
@@ -227,30 +255,84 @@ func (w *JobWorker) handleResult(ctx context.Context, logger *slog.Logger, job *
 			}
 		}
 
-		return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusSuccess, output)
+		return outcomeSuccess, w.completeTerminal(ctx, logger, job, models.JobStatusSuccess, output)
 	}
 
 	logger.ErrorContext(ctx, "Job failed", "job_uid", job.UID, "error", err)
 
-	if jobdef.IsRetryable(err) && job.RetryCount < maxRetryCount {
-		// Retryable error and retries remaining: create retry job
-		retryJob, retryErr := w.jobSvc.RetryJob(ctx, job)
-		if retryErr != nil {
-			logger.ErrorContext(ctx, "Failed to create retry job", "job_uid", job.UID, "error", retryErr)
-		} else {
-			logger.InfoContext(ctx, "Created retry job",
-				"original_job_uid", job.UID,
-				"retry_job_uid", retryJob.UID,
-				"scheduled_at", retryJob.ScheduledAt)
-		}
-		// Mark original as retried
-		return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusRetried,
-			json.RawMessage(fmt.Sprintf(`{"error": %q, "retried": true}`, err.Error())))
+	if jobdef.IsRetryable(err) && job.RetryCount < jobsvc.MaxRetryCount {
+		return outcomeRetried, w.handleRetry(ctx, logger, job, err)
 	}
 
 	// Non-retryable error or max retries reached: mark as failed
-	return w.jobSvc.UpdateJobStatus(ctx, job, models.JobStatusFailed,
+	return outcomeFailed, w.completeTerminal(ctx, logger, job, models.JobStatusFailed,
 		json.RawMessage(fmt.Sprintf(`{"error": %q}`, err.Error())))
+}
+
+// handleRetry marks the original 'retried' (guarded) then creates the backoff
+// retry clone. The guarded flip means a worker that lost its job to the reaper
+// neither clobbers the reaper's decision nor creates a duplicate retry clone on
+// top of the reaper's own recovery — when the lease is lost we stop after the
+// guarded flip.
+func (w *JobWorker) handleRetry(
+	ctx context.Context, logger *slog.Logger, job *models.Job, jobErr error,
+) error {
+	// Guarded flip first. CompleteRunningJob asserts status='running', so if the
+	// reaper already moved the row we get ErrJobLeaseLost and bail out before
+	// scheduling a second clone.
+	flipErr := w.jobSvc.CompleteRunningJob(ctx, job, models.JobStatusRetried,
+		json.RawMessage(fmt.Sprintf(`{"error": %q, "retried": true}`, jobErr.Error())))
+	if errors.Is(flipErr, jobsvc.ErrJobLeaseLost) {
+		w.noteLeaseLost(ctx, logger, job, models.JobStatusRetried)
+
+		return nil
+	}
+	if flipErr != nil {
+		return flipErr
+	}
+
+	// Reuse the clone half of the retry machinery. The job is already 'retried'
+	// in memory, so RetryJob's own flip is an idempotent no-op WHERE uid match.
+	retryJob, retryErr := w.jobSvc.RetryJob(ctx, job)
+	if retryErr != nil {
+		logger.ErrorContext(ctx, "Failed to create retry job", "job_uid", job.UID, "error", retryErr)
+
+		return nil
+	}
+
+	logger.InfoContext(ctx, "Created retry job",
+		"original_job_uid", job.UID,
+		"retry_job_uid", retryJob.UID,
+		"scheduled_at", retryJob.ScheduledAt)
+
+	return nil
+}
+
+// completeTerminal writes a terminal status via the guarded CompleteRunningJob.
+// If the job is no longer 'running' the reaper already transitioned it: the
+// worker's result is discarded (logged + metric), and we return nil so the
+// runner does not treat a lost lease as a processing error.
+func (w *JobWorker) completeTerminal(
+	ctx context.Context, logger *slog.Logger, job *models.Job, status models.JobStatus, output json.RawMessage,
+) error {
+	err := w.jobSvc.CompleteRunningJob(ctx, job, status, output)
+	if errors.Is(err, jobsvc.ErrJobLeaseLost) {
+		w.noteLeaseLost(ctx, logger, job, status)
+
+		return nil
+	}
+
+	return err
+}
+
+// noteLeaseLost logs and meters a discarded terminal write (the reaper won the
+// race for this job).
+func (w *JobWorker) noteLeaseLost(
+	ctx context.Context, logger *slog.Logger, job *models.Job, attempted models.JobStatus,
+) {
+	logger.WarnContext(ctx, "job lease lost, result discarded",
+		"job_uid", job.UID, "job_type", job.Type, "attempted_status", attempted)
+	prommetrics.RecordJobLeaseLost(job.Type)
 }
 
 // createJobContext creates a job context with a logger that includes the jobUid attribute.

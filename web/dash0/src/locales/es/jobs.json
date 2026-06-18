@@ -1,0 +1,85 @@
+{
+  "title": "Tareas",
+  "subtitle": "Observabilidad en vivo de las tareas en segundo plano y la programación de comprobaciones.",
+  "refresh": "Actualizar",
+  "back": "Atrás",
+  "scope": {
+    "thisOrg": "Esta org.",
+    "allOrgs": "Todas las org. (sistema)"
+  },
+  "overview": {
+    "title": "Resumen de actividad",
+    "pending": "Pendientes",
+    "running": "En ejecución",
+    "failed24h": "Fallidas (24 h)",
+    "scheduled": "Programadas",
+    "dueNow": "Pendientes ahora",
+    "inFlight": "En curso",
+    "stalled": "Atascadas",
+    "crashLooping": "En bucle de fallos"
+  },
+  "tabs": {
+    "backgroundJobs": "Tareas en segundo plano",
+    "checkSchedule": "Programación de comprobaciones"
+  },
+  "filters": {
+    "status": "Estado",
+    "type": "Tipo",
+    "allStatuses": "Todos los estados",
+    "allTypes": "Todos los tipos"
+  },
+  "status": {
+    "pending": "Pendiente",
+    "running": "En ejecución",
+    "success": "Éxito",
+    "retried": "Reintentada",
+    "failed": "Fallida"
+  },
+  "state": {
+    "idle": "Inactiva",
+    "inFlight": "En curso",
+    "stalled": "Atascada",
+    "crashLooping": "En bucle de fallos"
+  },
+  "columns": {
+    "type": "Tipo",
+    "status": "Estado",
+    "org": "Org.",
+    "scheduled": "Programada",
+    "retries": "Reintentos",
+    "updated": "Actualizada",
+    "check": "Comprobación",
+    "region": "Región",
+    "state": "Estado",
+    "period": "Período",
+    "nextRun": "Próxima ejec.",
+    "leaseWorker": "Worker del lease",
+    "leaseExpiry": "Caducidad del lease",
+    "attempts": "Intentos"
+  },
+  "detail": {
+    "backgroundJobTitle": "Tarea en segundo plano",
+    "checkJobTitle": "Tarea de programación",
+    "meta": "Detalles",
+    "config": "Configuración",
+    "output": "Salida",
+    "retryChain": "Cadena de reintentos",
+    "noConfig": "Sin configuración",
+    "noOutput": "Sin salida",
+    "encryptedKeys": "Claves cifradas",
+    "noEncryptedKeys": "Ninguna",
+    "secretsHidden": "Los valores secretos nunca se exponen — solo se muestran los nombres de las claves cifradas.",
+    "viewCheck": "Ver comprobación",
+    "thisJob": "esta tarea"
+  },
+  "labels": {
+    "system": "sistema",
+    "none": "—"
+  },
+  "empty": {
+    "backgroundJobs": "No se encontraron tareas en segundo plano.",
+    "checkSchedule": "No se encontraron comprobaciones programadas."
+  },
+  "notFound": "Tarea no encontrada.",
+  "loadError": "Error al cargar las tareas."
+}

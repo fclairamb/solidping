@@ -212,8 +212,10 @@ func (s *Service) appendRowFragments(
 
 	if hasBar {
 		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
+		labels := computeUptimeBarLabels(bucketStart, n, bucketDuration)
+		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration, width)
 		yOffset := totalHeight + rowGap
-		rows = append(rows, renderUptimeBarRow(segments, width, rowHeightBar, yOffset, opts.Style))
+		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
 	}
 
@@ -299,13 +301,21 @@ func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]flo
 // fetchBucketData runs a multi-tier query (raw + hour + day) and returns
 // per-bucket availability and average-duration maps. Because the tiers cover
 // non-overlapping age bands, unioning them never double-counts.
+//
+// The window spans n buckets ending at the current, in-progress bucket, so a
+// freshly-created check shows its data immediately: the current bucket is filled
+// from raw rows (via accumulateRaw) until the hourly rollup runs, mirroring how
+// the status page synthesizes "today" from raw rows.
 func (s *Service) fetchBucketData(
 	ctx context.Context, orgUID, checkUID, period string,
 ) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
 	_, n, bucketDuration := uptimeBarPeriodInfo(period)
 
 	now := time.Now().UTC()
-	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n) * bucketDuration)
+	// Anchor on the current bucket: the last of the n segments is now.Truncate,
+	// the oldest is (n-1) buckets earlier. Using -(n-1) rather than -n keeps the
+	// in-progress bucket inside the rendered window.
+	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 
 	filter := &models.ListResultsFilter{
 		OrganizationUID:  orgUID,
@@ -358,6 +368,127 @@ func buildBarSegments(
 	}
 
 	return segments
+}
+
+// computeUptimeBarLabels returns one label per uptime-bar segment, anchoring the
+// colored strip in time. The label set depends on the period (derived from
+// bucketDuration and n): weekday names for 7d, 6-hour ticks for 24h, week
+// boundaries for 30d, and month boundaries for 90d. Slots without a label hold
+// an empty string. This is a pure function (no DB access).
+func computeUptimeBarLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	switch {
+	case bucketDuration == 24*time.Hour && n == 7:
+		return weekdayLabels(bucketStart, n, bucketDuration)
+	case bucketDuration == time.Hour && n == 24:
+		return hourTickLabels(n)
+	case bucketDuration == 24*time.Hour && n == 30:
+		return weekBoundaryLabels(bucketStart, n, bucketDuration)
+	case bucketDuration == 24*time.Hour && n == 90:
+		return monthBoundaryLabels(bucketStart, n, bucketDuration)
+	default:
+		return make([]string, n)
+	}
+}
+
+// uptimeBarOverlayMinSegWidth is the minimum rendered segment width (px) at
+// which a per-segment availability percentage is overlaid inside the bar.
+// Below this, segments are too narrow to fit the text. 30 px matches the prior
+// implicit behavior (7d/300px shows at 42 px, 7d/200px hides at 27 px).
+const uptimeBarOverlayMinSegWidth = 30
+
+// computeUptimeBarValues returns the per-segment availability percentage to
+// overlay inside each colored bar. The overlay only appears when each segment is
+// rendered wide enough to fit the text — i.e. the minimum segment width exceeds
+// uptimeBarOverlayMinSegWidth — regardless of the active period or badge width.
+// renderUptimeBarRow splits the bar into n segments with 1-px gaps, so
+// segWidth = (width - (n - 1)) / n (integer division). The remainder is spread
+// evenly across the segments, so this floor is the minimum segment width and
+// individual segment widths differ by at most 1px. When segments are too
+// narrow, every period returns an all-empty slice (no overlay). Segments with no
+// data (gray) get an empty string. This is a pure function (no DB access).
+func computeUptimeBarValues(
+	availMap map[time.Time]float64, bucketStart time.Time, n int, bucketDuration time.Duration,
+	width int,
+) []string {
+	values := make([]string, n)
+
+	// Only overlay text when segments are wide enough to fit it.
+	segWidth := 0
+	if n > 0 {
+		segWidth = (width - (n - 1)) / n
+	}
+	if segWidth <= uptimeBarOverlayMinSegWidth {
+		return values
+	}
+
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if pct, ok := availMap[t]; ok {
+			values[i] = formatBarPercent(pct)
+		}
+	}
+
+	return values
+}
+
+// formatBarPercent formats an availability percentage for the compact in-bar
+// overlay: whole numbers render without decimals ("100%"), everything else to
+// one decimal ("98.6%").
+func formatBarPercent(pct float64) string {
+	if pct == math.Trunc(pct) {
+		return fmt.Sprintf("%.0f%%", pct)
+	}
+
+	return fmt.Sprintf("%.1f%%", pct)
+}
+
+// weekdayLabels labels every segment with its 3-letter weekday name (7d).
+func weekdayLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		labels[i] = bucketStart.Add(time.Duration(i) * bucketDuration).Weekday().String()[:3]
+	}
+
+	return labels
+}
+
+// hourTickLabels labels every 6th segment with an hour mark (24h).
+func hourTickLabels(n int) []string {
+	labels := make([]string, n)
+	for i := range n {
+		if i%6 == 0 {
+			labels[i] = fmt.Sprintf("%dh", i)
+		}
+	}
+
+	return labels
+}
+
+// weekBoundaryLabels labels the first segment and every Monday with "Jan 2" (30d).
+func weekBoundaryLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if i == 0 || t.Weekday() == time.Monday {
+			labels[i] = t.Format("Jan 2")
+		}
+	}
+
+	return labels
+}
+
+// monthBoundaryLabels labels the first segment and each month's first day with
+// its 3-letter month name (90d).
+func monthBoundaryLabels(bucketStart time.Time, n int, bucketDuration time.Duration) []string {
+	labels := make([]string, n)
+	for i := range n {
+		t := bucketStart.Add(time.Duration(i) * bucketDuration)
+		if i == 0 || t.Day() == 1 {
+			labels[i] = t.Format("Jan")
+		}
+	}
+
+	return labels
 }
 
 // buildGraphPoints resolves the per-bucket average response times (oldest →

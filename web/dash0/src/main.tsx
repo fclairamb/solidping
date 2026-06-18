@@ -8,6 +8,7 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
 import { ApiError, NetworkError, setToken } from "@/api/client";
 import { installErrorCollector } from "@/components/feedback/errorCollector";
+import "@fontsource-variable/inter/index.css";
 import "./i18n";
 import "./index.css";
 

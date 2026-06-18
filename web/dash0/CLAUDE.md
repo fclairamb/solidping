@@ -135,6 +135,11 @@ dark mode, alongside the exact import line. Reuse those components and
 patterns rather than reinventing them — if something is missing, add it to
 the reference page when you build it so the catalog stays canonical.
 
+**This applies to _every_ frontend change**, not just new pages — always
+refer to `src/routes/orgs/$org/design-reference.tsx` first. It is the single
+source of truth for components and conventions; do not implement UI that
+diverges from it without also updating it.
+
 ## UI Conventions
 
 ### Editing always changes the route
@@ -156,6 +161,23 @@ may stay inline, but anything with a multi-field form goes through a route.
 auditing existing pages, treat `<Dialog>` containing an edit form as a bug
 to migrate.
 
+### A page's core navigation belongs in the URL
+
+The element that switches what a page is showing — its tabs, and the
+scope/status filters that go with them — must live in the URL as search
+params, not in `useState`. Like editing, this makes the view bookmarkable
+and deep-linkable, makes browser back/forward move between views, and makes
+the state survive a refresh. A page whose tabs are local React state is a
+bug to migrate, even when the tabs are a Radix `<Tabs>` component.
+
+**How to apply:** declare a `validateSearch` on the route (normalize each
+param to a safe default), read it with `Route.useSearch()`, and write it
+with `useNavigate({ to: ".", search: (prev) => ({ ...prev, ... }) })` —
+mirror `incidents.index.tsx` and `jobs.index.tsx`. The primary navigation
+(the tab) should push a history entry so back/forward cycles tabs; pass
+`replace: true` only for incidental refinements (filters, scope toggles)
+so they don't spam history.
+
 ### Row actions: icons, not menus
 
 In list/table rows, prefer two ghost icon buttons (`Pencil` for edit,
@@ -164,6 +186,18 @@ In list/table rows, prefer two ghost icon buttons (`Pencil` for edit,
 edit route; the Delete icon opens an `AlertDialog` confirmation. Other
 per-row actions (toggle enabled, set default, etc.) live on the edit page,
 not in the row.
+
+### Delete is always red, always a trash bin
+
+Every delete (or otherwise irreversible) action is rendered in the
+destructive red and paired with the `Trash2` (trash bin) icon — no
+exceptions. Use `Button variant="destructive"` for prominent/standalone
+buttons, an icon button with `text-destructive` in row actions, and
+`text-destructive focus:text-destructive` on the delete item inside a
+`DropdownMenu`. All resolve to the `--destructive` token so dark mode stays
+correct. Reserve destructive red for destructive actions — never use it for a
+neutral or primary action, and never delete with a different icon or a muted
+color.
 
 ## Adding New Features
 

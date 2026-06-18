@@ -4,9 +4,12 @@ import { useTranslation } from "react-i18next";
 import {
   AlertTriangle,
   ArrowLeft,
+  Bell,
   BellOff,
   CheckCircle,
   Clock,
+  Eye,
+  EyeOff,
   ExternalLink,
   Loader2,
   MessageSquare,
@@ -35,7 +38,6 @@ import {
   useDeleteStatusUpdate,
   type Event,
   type IncidentDetail,
-  type IncidentNotification,
   type StatusUpdate,
   type CreateStatusUpdateRequest,
 } from "@/api/hooks";
@@ -89,6 +91,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import {
+  notificationStatusVariant,
+  sourceLabel,
+} from "@/lib/notifications";
 
 export const Route = createFileRoute("/orgs/$org/incidents/$incidentUid")({
   component: IncidentDetailPage,
@@ -601,15 +607,6 @@ function IncidentDetailPage() {
       <CausedByBanner org={org} incident={incident} />
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() =>
-              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
-            }
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
           <div className="flex items-center gap-3">
             {isActive ? (
               <AlertTriangle className="h-6 w-6 text-yellow-500" />
@@ -648,8 +645,19 @@ function IncidentDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button
+            variant="ghost"
+            size="icon"
+            aria-label={t("actions.back")}
+            onClick={() =>
+              navigate({ to: "/orgs/$org/incidents", params: { org }, search: { state: "all" as const, showSuppressed: undefined } })
+            }
+          >
+            <ArrowLeft className="h-4 w-4" />
+          </Button>
+          <Button
             variant="outline"
             size="icon"
+            aria-label={t("actions.refresh")}
             onClick={() => refetch()}
             disabled={isRefetching}
           >
@@ -660,64 +668,75 @@ function IncidentDetailPage() {
           {isActive && !incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
+              aria-label={t("actions.acknowledge")}
               onClick={handleAcknowledge}
               disabled={acknowledgeIncident.isPending}
             >
               {acknowledgeIncident.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {t("actions.acknowledge")}
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+              ) : (
+                <Eye className="h-4 w-4 sm:mr-2" />
+              )}
+              <span className="hidden sm:inline">{t("actions.acknowledge")}</span>
             </Button>
           )}
           {isActive && incident.acknowledgedAt && !isSnoozed && (
             <Button
               variant="outline"
+              aria-label={t("actions.unacknowledge")}
               onClick={handleUnacknowledge}
               disabled={unacknowledgeIncident.isPending}
             >
               {unacknowledgeIncident.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {t("actions.unacknowledge")}
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+              ) : (
+                <EyeOff className="h-4 w-4 sm:mr-2" />
+              )}
+              <span className="hidden sm:inline">{t("actions.unacknowledge")}</span>
             </Button>
           )}
           {isActive && !isSnoozed && (
             <Button
               variant="outline"
+              aria-label={t("actions.snooze")}
               onClick={() => setSnoozeOpen(true)}
               disabled={snoozeIncident.isPending}
             >
               {snoozeIncident.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
               ) : (
-                <BellOff className="mr-2 h-4 w-4" />
+                <BellOff className="h-4 w-4 sm:mr-2" />
               )}
-              {t("actions.snooze")}
+              <span className="hidden sm:inline">{t("actions.snooze")}</span>
             </Button>
           )}
           {isActive && isSnoozed && (
             <Button
               variant="outline"
+              aria-label={t("actions.wakeUp")}
               onClick={handleUnsnooze}
               disabled={unsnoozeIncident.isPending}
             >
               {unsnoozeIncident.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : null}
-              {t("actions.wakeUp")}
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
+              ) : (
+                <Bell className="h-4 w-4 sm:mr-2" />
+              )}
+              <span className="hidden sm:inline">{t("actions.wakeUp")}</span>
             </Button>
           )}
           {isActive && (
             <Button
+              aria-label={t("actions.resolve")}
               onClick={handleResolve}
               disabled={resolveIncident.isPending}
             >
               {resolveIncident.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin sm:mr-2" />
               ) : (
-                <CheckCircle className="mr-2 h-4 w-4" />
+                <CheckCircle className="h-4 w-4 sm:mr-2" />
               )}
-              {t("actions.resolve")}
+              <span className="hidden sm:inline">{t("actions.resolve")}</span>
             </Button>
           )}
         </div>
@@ -1023,41 +1042,6 @@ function BlastRadiusCard({
 
 // ─── Notifications card ───────────────────────────────────────────────────────
 
-function notificationStatusVariant(
-  status: IncidentNotification["status"],
-): "default" | "secondary" | "destructive" | "outline" {
-  switch (status) {
-    case "sent":
-      return "default";
-    case "failed":
-      return "destructive";
-    case "pending":
-      return "outline";
-    case "skipped":
-    case "cancelled":
-    default:
-      return "secondary";
-  }
-}
-
-function sourceLabel(source: string, repeatIndex?: number): string {
-  const cycle = repeatIndex !== undefined && repeatIndex > 0 ? ` (cycle ${repeatIndex + 1})` : "";
-  switch (source) {
-    case "check_connection":
-      return "Check connection";
-    case "escalation_user":
-      return `Escalation step${cycle}`;
-    case "escalation_schedule":
-      return `On-call schedule${cycle}`;
-    case "escalation_all_admins":
-      return `All admins${cycle}`;
-    case "escalation_connection":
-      return `Escalation connection${cycle}`;
-    default:
-      return source;
-  }
-}
-
 function NotificationsCard({
   org,
   incidentUid,
@@ -1065,9 +1049,17 @@ function NotificationsCard({
   org: string;
   incidentUid: string;
 }) {
+  const navigate = useNavigate();
   const { data: rows, isLoading } = useIncidentNotifications(org, incidentUid);
 
   const hasErrors = rows?.some((r) => r.error);
+
+  const openNotification = (notifUid: string) =>
+    navigate({
+      to: "/orgs/$org/notifications/$notificationUid",
+      params: { org, notificationUid: notifUid },
+      search: { from: `incident:${incidentUid}` },
+    });
 
   return (
     <Card data-testid="notifications-card">
@@ -1103,7 +1095,20 @@ function NotificationsCard({
             </TableHeader>
             <TableBody>
               {rows.map((row) => (
-                <TableRow key={row.uid}>
+                <TableRow
+                  key={row.uid}
+                  role="link"
+                  tabIndex={0}
+                  className="cursor-pointer hover:bg-muted/50 focus-visible:bg-muted/50 focus-visible:outline-none"
+                  onClick={() => openNotification(row.uid)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      openNotification(row.uid);
+                    }
+                  }}
+                  data-testid="notification-row"
+                >
                   <TableCell className="text-sm whitespace-nowrap" title={row.createdAt}>
                     {new Date(row.createdAt).toLocaleString()}
                   </TableCell>

@@ -1,17 +1,20 @@
 import { Command } from "cmdk";
 import { X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 
 import { useLabelSuggestions } from "@/api/hooks";
+import {
+  KEY_ERROR,
+  KEY_REGEX,
+  SUGGESTION_DEBOUNCE_MS,
+  SUGGESTION_LIMIT,
+  useDebounced,
+  VALUE_MAX,
+} from "@/components/shared/label-shared";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-
-const KEY_REGEX = /^[a-z][a-z0-9-]{2,50}$/;
-const VALUE_MAX = 200;
-const SUGGESTION_DEBOUNCE_MS = 200;
-const SUGGESTION_LIMIT = 25;
 
 export type LabelInputProps = {
   org: string;
@@ -112,7 +115,7 @@ export function LabelInput({ org, value, onChange, disabled, placeholder }: Labe
 
       {trimmedKey !== "" && !keyValid && (
         <p className="text-xs text-destructive" data-testid="label-key-error">
-          Use 3–51 lowercase letters, digits, or hyphens, starting with a letter.
+          {KEY_ERROR}
         </p>
       )}
       {keyValid && duplicate && (
@@ -245,13 +248,4 @@ function SuggestionCombobox({
       </PopoverContent>
     </Popover>
   );
-}
-
-function useDebounced<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const id = setTimeout(() => setDebounced(value), delayMs);
-    return () => clearTimeout(id);
-  }, [value, delayMs]);
-  return debounced;
 }

@@ -4,6 +4,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { Calendar, RefreshCw, User, Cpu } from "lucide-react";
 import { useEvents } from "@/api/hooks";
 import {
+  getEventCheckName,
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
@@ -26,6 +27,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 
 export const Route = createFileRoute("/orgs/$org/events")({
   component: EventsPage,
@@ -69,17 +71,12 @@ function EventsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Calendar className="h-7 w-7 text-muted-foreground" />
-            {t("title")}
-          </h1>
-          <p className="text-muted-foreground">
-            {t("subtitle")}
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Calendar}
+        title={t("title")}
+        description={t("subtitle")}
+        className="flex-wrap"
+      />
 
       <div className="flex items-center gap-4">
         <Select
@@ -165,7 +162,7 @@ function EventsPage() {
                           search={{ graphPeriod: undefined, graphFull: undefined }}
                           className="text-xs text-primary hover:underline"
                         >
-                          {t("links.check")}
+                          {getEventCheckName(event) ?? t("links.check")}
                         </Link>
                       )}
                       {event.incidentUid && (

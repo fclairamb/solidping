@@ -114,7 +114,7 @@ type pushoverSettings struct {
 }
 
 func (s *PushoverSender) parseSettings(payload *Payload) (*pushoverSettings, error) {
-	data, err := json.Marshal(payload.Connection.Settings)
+	data, err := json.Marshal(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing pushover settings: %w", err)
 	}

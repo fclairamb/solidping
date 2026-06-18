@@ -35,18 +35,27 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { UptimeStrip, type UptimeBucket } from "@/components/ui/uptime-strip";
 import {
+  getEventCheckName,
   getEventDescription,
   getEventIcon,
   getEventLabel,
 } from "@/components/dashboard/event-display";
 import { MyOnCallWidget } from "@/components/dashboard/my-on-call";
 import { EmptyStateOnboarding } from "@/components/dashboard/empty-state-onboarding";
+import { PageHeader } from "@/components/shared/page-header";
 
 const CHECK_POLL_MS = 30_000;
 const INCIDENT_POLL_MS = 30_000;
 const RESULT_POLL_MS = 60_000;
 const EVENT_POLL_MS = 60_000;
+
+// Max rows in the "Checks at a glance" card. The footer always links to the
+// full /checks list so a capped card is never mistaken for the whole fleet.
+const GLANCE_LIMIT = 10;
+// Hours rendered by each row's 24h uptime strip.
+const UPTIME_HOURS = 24;
 
 interface OrgDashboardPageProps {
   org: string;
@@ -83,12 +92,19 @@ function isHardDownStatus(status?: string): boolean {
   return status === "down" || status === "error";
 }
 
-function pickTopAttention(checks: Check[]): Check[] {
-  return [...checks]
-    .filter((c) => {
-      const s = effectiveStatus(c);
-      return s && s !== "up" && s !== "created";
-    })
+function isAttentionStatus(status?: string): boolean {
+  return !!status && status !== "up" && status !== "created";
+}
+
+// Ordering for the glance card: checks needing attention first (status not
+// up/created, most recent lastStatusChange first), then healthy enabled checks
+// by name, then disabled checks last. Capped to GLANCE_LIMIT rows.
+function orderChecksForGlance(checks: Check[]): Check[] {
+  const byName = (a: Check, b: Check) =>
+    (a.name || a.slug || a.uid).localeCompare(b.name || b.slug || b.uid);
+
+  const attention = checks
+    .filter((c) => isAttentionStatus(effectiveStatus(c)))
     .sort((a, b) => {
       const aTime = a.lastStatusChange?.time
         ? new Date(a.lastStatusChange.time).getTime()
@@ -97,8 +113,74 @@ function pickTopAttention(checks: Check[]): Check[] {
         ? new Date(b.lastStatusChange.time).getTime()
         : 0;
       return bTime - aTime;
-    })
-    .slice(0, 5);
+    });
+
+  const rest = checks.filter((c) => !isAttentionStatus(effectiveStatus(c)));
+  const healthyEnabled = rest
+    .filter((c) => c.enabled !== false)
+    .sort(byName);
+  const disabled = rest.filter((c) => c.enabled === false).sort(byName);
+
+  return [...attention, ...healthyEnabled, ...disabled].slice(0, GLANCE_LIMIT);
+}
+
+interface CheckUptime {
+  buckets: UptimeBucket[];
+  latestDurationMs?: number;
+}
+
+// Group hourly OrgResults by checkUid into UPTIME_HOURS aligned hourly buckets
+// (oldest → newest), plus the most recent bucket's latency. One pass over the
+// single aggregated results query — no per-check work that scales with fleet.
+function groupResultsByCheck(
+  results: OrgResult[],
+  now: number,
+): Record<string, CheckUptime> {
+  const hourMs = 60 * 60 * 1000;
+  // Align the newest bucket to the current hour start so cells stay stable.
+  const newestStart = Math.floor(now / hourMs) * hourMs;
+  const slotForStart = (iso?: string): number => {
+    if (!iso) return -1;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return -1;
+    const slot = Math.floor((t - newestStart) / hourMs) + (UPTIME_HOURS - 1);
+    return slot >= 0 && slot < UPTIME_HOURS ? slot : -1;
+  };
+
+  const byCheck: Record<string, OrgResult[]> = {};
+  for (const r of results) {
+    if (!r.checkUid) continue;
+    (byCheck[r.checkUid] ||= []).push(r);
+  }
+
+  const out: Record<string, CheckUptime> = {};
+  for (const [checkUid, rs] of Object.entries(byCheck)) {
+    const cells: (OrgResult | undefined)[] = Array.from(
+      { length: UPTIME_HOURS },
+      () => undefined,
+    );
+    for (const r of rs) {
+      const slot = slotForStart(r.periodStart);
+      if (slot >= 0) cells[slot] = r;
+    }
+    const buckets: UptimeBucket[] = cells.map((cell, i) => ({
+      periodStart:
+        cell?.periodStart ??
+        new Date(newestStart - (UPTIME_HOURS - 1 - i) * hourMs).toISOString(),
+      availabilityPct: cell?.availabilityPct,
+      durationMs: cell?.durationMs,
+    }));
+    // Latest response time = durationMs of the most recent bucket that has one.
+    let latestDurationMs: number | undefined;
+    for (let i = buckets.length - 1; i >= 0; i--) {
+      if (buckets[i].durationMs !== undefined) {
+        latestDurationMs = buckets[i].durationMs;
+        break;
+      }
+    }
+    out[checkUid] = { buckets, latestDurationMs };
+  }
+  return out;
 }
 
 function weightedAvailability(results: OrgResult[]): number | null {
@@ -141,6 +223,15 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     size: 1000,
     refetchInterval: RESULT_POLL_MS,
   });
+  // One aggregated hourly query feeds every glance-card uptime strip — grouped
+  // client-side by checkUid, so the card costs a single HTTP call regardless of
+  // fleet size. The day query above keeps feeding the availability KPI.
+  const hourlyResultsQuery = useResults(org, {
+    periodType: "hour",
+    periodStartAfter: since24h,
+    size: 1000,
+    refetchInterval: RESULT_POLL_MS,
+  });
   const eventsQuery = useEvents(org, {
     size: 8,
     refetchInterval: EVENT_POLL_MS,
@@ -157,6 +248,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const checks = checksQuery.data || [];
   const incidents = incidentsQuery.data?.data || [];
   const results = resultsQuery.data?.data || [];
+  const hourlyResults = hourlyResultsQuery.data?.data || [];
   const events = eventsQuery.data?.data || [];
 
   const isInitialLoading =
@@ -177,10 +269,17 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const incidentsCount = incidents.length;
   const availabilityPct = weightedAvailability(results);
 
+  const glanceChecks = useMemo(() => orderChecksForGlance(checks), [checks]);
+  const uptimeByCheck = useMemo(
+    () => groupResultsByCheck(hourlyResults, Date.now()),
+    [hourlyResults],
+  );
+
   const refreshAll = () => {
     checksQuery.refetch();
     incidentsQuery.refetch();
     resultsQuery.refetch();
+    hourlyResultsQuery.refetch();
     eventsQuery.refetch();
   };
 
@@ -188,12 +287,14 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     checksQuery.isRefetching ||
     incidentsQuery.isRefetching ||
     resultsQuery.isRefetching ||
+    hourlyResultsQuery.isRefetching ||
     eventsQuery.isRefetching;
 
   const latestUpdate = Math.max(
     checksQuery.dataUpdatedAt || 0,
     incidentsQuery.dataUpdatedAt || 0,
     resultsQuery.dataUpdatedAt || 0,
+    hourlyResultsQuery.dataUpdatedAt || 0,
     eventsQuery.dataUpdatedAt || 0,
   );
   const tickNow = useTick(1000);
@@ -206,31 +307,32 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <LayoutDashboard className="h-7 w-7 text-muted-foreground" />
-            {tNav("dashboard")}
-          </h1>
-          <p className="text-sm text-muted-foreground">
+      <PageHeader
+        icon={LayoutDashboard}
+        title={tNav("dashboard")}
+        description={
+          <>
             <span className="font-medium text-foreground">{orgName}</span>
             {" — "}
             {t("subtitle")}
-          </p>
-        </div>
-        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-          {updatedLabel ? <span>{updatedLabel}</span> : null}
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={refreshAll}
-            disabled={isRefetching}
-            aria-label={t("refresh")}
-          >
-            <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
-          </Button>
-        </div>
-      </div>
+          </>
+        }
+        actions={
+          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+            {updatedLabel ? <span>{updatedLabel}</span> : null}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={refreshAll}
+              disabled={isRefetching}
+              aria-label={t("refresh")}
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+            </Button>
+          </div>
+        }
+        className="flex-wrap"
+      />
 
       {isInitialLoading ? (
         <DashboardSkeleton />
@@ -264,7 +366,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                     ? t("kpi.monitoredDisabled", { count: disabledCount })
                     : undefined
                 }
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -284,7 +386,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={downCount > 0 ? "text-red-600 dark:text-red-500" : undefined}
                 sub={downCount === 0 ? t("kpi.downSubNone") : undefined}
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <Link
@@ -304,7 +406,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 }
                 valueClassName={incidentsCount > 0 ? "text-yellow-600 dark:text-yellow-500" : undefined}
                 sub={incidentsCount === 0 ? t("kpi.incidentsSubNone") : undefined}
-                className="transition-colors hover:bg-accent/40"
+                className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
             <div data-testid="kpi-tile-availability">
@@ -317,14 +419,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-2">
-            <NeedsAttentionList
-              org={org}
-              checks={pickTopAttention(checks)}
-              isError={!!checksQuery.error}
-              onRetry={() => checksQuery.refetch()}
-              tickNow={tickNow}
-            />
+          {incidentsCount > 0 ? (
             <ActiveIncidentsList
               org={org}
               incidents={incidents}
@@ -332,7 +427,17 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
               onRetry={() => incidentsQuery.refetch()}
               tickNow={tickNow}
             />
-          </div>
+          ) : null}
+
+          <ChecksGlanceList
+            org={org}
+            checks={glanceChecks}
+            totalCount={checks.length}
+            uptimeByCheck={uptimeByCheck}
+            isError={!!checksQuery.error}
+            onRetry={() => checksQuery.refetch()}
+            tickNow={tickNow}
+          />
 
           <RecentActivityList
             org={org}
@@ -413,16 +518,13 @@ function FirstResultCelebration({ org, checks }: { org: string; checks: Check[] 
 function DashboardSkeleton() {
   return (
     <div className="space-y-6">
-      <Skeleton className="h-24 rounded-xl" />
+      <Skeleton className="h-12 rounded-xl" />
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {[...Array(4)].map((_, i) => (
           <Skeleton key={i} className="h-28 rounded-xl" />
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Skeleton className="h-72 rounded-xl" />
-        <Skeleton className="h-72 rounded-xl" />
-      </div>
+      <Skeleton className="h-96 rounded-xl" />
       <Skeleton className="h-72 rounded-xl" />
     </div>
   );
@@ -447,23 +549,23 @@ function OverallStatusBanner({
 }: OverallStatusBannerProps) {
   const { t } = useTranslation("dashboard");
 
+  // Compact single-line strip: with real monitoring data now below it, the
+  // banner is a headline (icon + title + inline sub), not the main content.
   if (allGreen) {
     return (
       <Card className="border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/40">
-        <CardContent className="pt-6 flex items-center gap-4">
-          <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-500 shrink-0" />
-          <div>
-            <h2 className="text-xl font-semibold text-green-900 dark:text-green-100">
-              {t("banner.allGreen")}
-            </h2>
-            <p className="text-sm text-green-800/80 dark:text-green-300/80">
-              {t("banner.allGreenSub", {
-                count: checksCount,
-                availability:
-                  availabilityPct === null ? "—" : availabilityPct.toFixed(2),
-              })}
-            </p>
-          </div>
+        <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-500 shrink-0" />
+          <h2 className="text-base font-semibold text-green-900 dark:text-green-100">
+            {t("banner.allGreen")}
+          </h2>
+          <p className="text-sm text-green-800/80 dark:text-green-300/80">
+            {t("banner.allGreenSub", {
+              count: checksCount,
+              availability:
+                availabilityPct === null ? "—" : availabilityPct.toFixed(2),
+            })}
+          </p>
         </CardContent>
       </Card>
     );
@@ -472,20 +574,18 @@ function OverallStatusBanner({
   if (hardDownCount > 0 || incidentsCount > 0) {
     return (
       <Card className="border-2 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/40">
-        <CardContent className="pt-6 flex items-center gap-4">
-          <AlertTriangle className="h-8 w-8 text-red-600 dark:text-red-500 shrink-0" />
-          <div>
-            <h2 className="text-xl font-semibold text-red-900 dark:text-red-100">
-              {t("banner.issues")}
-            </h2>
-            <p className="text-sm text-red-800/80 dark:text-red-300/80">
-              {t("banner.issuesSub", {
-                count: hardDownCount,
-                down: hardDownCount,
-                incidents: incidentsCount,
-              })}
-            </p>
-          </div>
+        <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-500 shrink-0" />
+          <h2 className="text-base font-semibold text-red-900 dark:text-red-100">
+            {t("banner.issues")}
+          </h2>
+          <p className="text-sm text-red-800/80 dark:text-red-300/80">
+            {t("banner.issuesSub", {
+              count: hardDownCount,
+              down: hardDownCount,
+              incidents: incidentsCount,
+            })}
+          </p>
         </CardContent>
       </Card>
     );
@@ -494,16 +594,14 @@ function OverallStatusBanner({
   // Only timeouts (degraded but not hard-down).
   return (
     <Card className="border-2 border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/40">
-      <CardContent className="pt-6 flex items-center gap-4">
-        <AlertTriangle className="h-8 w-8 text-yellow-600 dark:text-yellow-500 shrink-0" />
-        <div>
-          <h2 className="text-xl font-semibold text-yellow-900 dark:text-yellow-100">
-            {t("banner.warning")}
-          </h2>
-          <p className="text-sm text-yellow-800/80 dark:text-yellow-300/80">
-            {t("banner.warningSub", { count: timeoutOnlyCount })}
-          </p>
-        </div>
+      <CardContent className="py-3 flex flex-wrap items-center gap-x-3 gap-y-0.5">
+        <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-500 shrink-0" />
+        <h2 className="text-base font-semibold text-yellow-900 dark:text-yellow-100">
+          {t("banner.warning")}
+        </h2>
+        <p className="text-sm text-yellow-800/80 dark:text-yellow-300/80">
+          {t("banner.warningSub", { count: timeoutOnlyCount })}
+        </p>
       </CardContent>
     </Card>
   );
@@ -561,72 +659,93 @@ function SectionError({ onRetry }: SectionErrorProps) {
   );
 }
 
-interface NeedsAttentionListProps {
+interface ChecksGlanceListProps {
   org: string;
   checks: Check[];
+  totalCount: number;
+  uptimeByCheck: Record<string, CheckUptime>;
   isError: boolean;
   onRetry: () => void;
   tickNow: number;
 }
 
-function NeedsAttentionList({
+function formatLatency(durationMs?: number): string {
+  if (durationMs === undefined) return "—";
+  return `${Math.round(durationMs)}ms`;
+}
+
+function ChecksGlanceList({
   org,
   checks,
+  totalCount,
+  uptimeByCheck,
   isError,
   onRetry,
   tickNow,
-}: NeedsAttentionListProps) {
+}: ChecksGlanceListProps) {
   const { t } = useTranslation("dashboard");
 
   return (
-    <Card>
+    <Card data-testid="checks-glance">
       <CardHeader>
-        <CardTitle>{t("needsAttention.title")}</CardTitle>
+        <CardTitle>{t("glance.title")}</CardTitle>
       </CardHeader>
       <CardContent>
         {isError ? (
           <SectionError onRetry={onRetry} />
-        ) : checks.length === 0 ? (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground py-6 justify-center">
-            <CheckCircle className="h-5 w-5 text-green-500" />
-            <span>{t("needsAttention.empty")}</span>
-          </div>
         ) : (
           <ul className="divide-y">
-            {checks.map((check) => (
-              <li key={check.uid}>
-                <Link
-                  to="/orgs/$org/checks/$checkUid"
-                  params={{ org, checkUid: check.uid }}
-                  search={{ graphPeriod: undefined, graphFull: undefined }}
-                  className="flex items-center justify-between gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors"
-                >
-                  <div className="flex items-center gap-3 min-w-0">
+            {checks.map((check) => {
+              const status = effectiveStatus(check);
+              const isDisabled = check.enabled === false;
+              const needsAttention = isAttentionStatus(status);
+              const uptime = uptimeByCheck[check.uid];
+              return (
+                <li key={check.uid} data-testid="glance-row">
+                  <Link
+                    to="/orgs/$org/checks/$checkUid"
+                    params={{ org, checkUid: check.uid }}
+                    search={{ graphPeriod: undefined, graphFull: undefined }}
+                    className={`flex items-center gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors ${
+                      isDisabled ? "opacity-60" : ""
+                    }`}
+                  >
                     <Badge
-                      variant={statusBadgeVariant(effectiveStatus(check))}
-                      className="text-xs uppercase"
+                      variant={statusBadgeVariant(status)}
+                      className="text-xs uppercase shrink-0"
                     >
-                      {effectiveStatus(check) === "validating"
+                      {status === "validating"
                         ? t("checks:status.validating")
-                        : effectiveStatus(check) || "?"}
+                        : status || "?"}
                     </Badge>
-                    <span className="font-medium truncate">
+                    <span className="font-medium truncate min-w-0 max-w-[40%] sm:max-w-[30%]">
                       {check.name || check.slug || check.uid}
                     </span>
-                  </div>
-                  {check.lastStatusChange?.time ? (
-                    <span className="text-xs text-muted-foreground shrink-0">
-                      {t("needsAttention.since", {
-                        time: formatRelative(
-                          new Date(check.lastStatusChange.time),
-                          tickNow,
-                        ),
-                      })}
+                    {uptime ? (
+                      <UptimeStrip
+                        buckets={uptime.buckets}
+                        className="hidden sm:flex flex-1 min-w-0"
+                      />
+                    ) : (
+                      <span className="hidden sm:block flex-1" />
+                    )}
+                    <span className="text-xs tabular-nums text-muted-foreground shrink-0 ml-auto sm:ml-0">
+                      {formatLatency(uptime?.latestDurationMs)}
                     </span>
-                  ) : null}
-                </Link>
-              </li>
-            ))}
+                    {needsAttention && check.lastStatusChange?.time ? (
+                      <span className="text-xs text-muted-foreground shrink-0">
+                        {t("glance.since", {
+                          time: formatRelative(
+                            new Date(check.lastStatusChange.time),
+                            tickNow,
+                          ),
+                        })}
+                      </span>
+                    ) : null}
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </CardContent>
@@ -635,8 +754,9 @@ function NeedsAttentionList({
           to="/orgs/$org/checks"
           params={{ org }}
           className="text-sm text-primary hover:underline ml-auto inline-flex items-center gap-1"
+          data-testid="checks-glance-footer"
         >
-          {t("needsAttention.footer")}
+          {t("glance.footer", { count: totalCount })}
         </Link>
       </CardFooter>
     </Card>
@@ -661,7 +781,7 @@ function ActiveIncidentsList({
   const { t } = useTranslation("dashboard");
 
   return (
-    <Card>
+    <Card data-testid="active-incidents">
       <CardHeader>
         <CardTitle>{t("activeIncidents.title")}</CardTitle>
       </CardHeader>
@@ -755,6 +875,7 @@ function RecentActivityList({
           <ul className="divide-y">
             {events.map((event) => {
               const description = getEventDescription(event.eventType, tEvents);
+              const checkName = getEventCheckName(event);
               return (
                 <li
                   key={event.uid}
@@ -765,7 +886,22 @@ function RecentActivityList({
                     <div className="truncate">
                       {getEventLabel(event.eventType, tEvents)}
                     </div>
-                    {description ? (
+                    {checkName ? (
+                      <div className="text-xs truncate">
+                        {event.checkUid ? (
+                          <Link
+                            to="/orgs/$org/checks/$checkUid"
+                            params={{ org, checkUid: event.checkUid }}
+                            search={{ graphPeriod: undefined, graphFull: undefined }}
+                            className="text-primary hover:underline"
+                          >
+                            {checkName}
+                          </Link>
+                        ) : (
+                          <span className="text-muted-foreground">{checkName}</span>
+                        )}
+                      </div>
+                    ) : description ? (
                       <div className="text-xs text-muted-foreground truncate">
                         {description}
                       </div>

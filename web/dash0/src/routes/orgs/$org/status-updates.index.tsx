@@ -38,6 +38,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 
 export const Route = createFileRoute("/orgs/$org/status-updates/")({
   component: StatusUpdatesIndexPage,
@@ -200,27 +201,24 @@ function StatusUpdatesIndexPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Megaphone className="h-7 w-7 text-muted-foreground" />
-            Status updates
-          </h1>
-          <p className="text-muted-foreground">
-            Publish narrative updates on your status pages.
-          </p>
-        </div>
-        <Button asChild>
-          <Link
-            to="/orgs/$org/status-updates/new"
-            params={{ org }}
-            data-testid="status-updates-new"
-          >
-            <Plus className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">New update</span>
-          </Link>
-        </Button>
-      </div>
+      <PageHeader
+        icon={Megaphone}
+        title="Status updates"
+        description="Publish narrative updates on your status pages."
+        actions={
+          <Button asChild>
+            <Link
+              to="/orgs/$org/status-updates/new"
+              params={{ org }}
+              data-testid="status-updates-new"
+            >
+              <Plus className="mr-2 h-4 w-4" />
+              New update
+            </Link>
+          </Button>
+        }
+        className="flex-wrap"
+      />
 
       {/* Filters row */}
       <div className="flex flex-wrap items-center gap-2">

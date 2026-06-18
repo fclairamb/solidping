@@ -40,10 +40,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
-	"github.com/fclairamb/solidping/server/internal/handlers/checkconnections"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkdependencies"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
+	"github.com/fclairamb/solidping/server/internal/handlers/checkjobs"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -59,7 +59,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/heartbeat"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidentnotifications"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/jobs"
+	"github.com/fclairamb/solidping/server/internal/handlers/jobsadmin"
 	"github.com/fclairamb/solidping/server/internal/handlers/labels"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
@@ -492,6 +494,32 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgJobsGroup.GET("/:uid", jobHandler.GetJob)
 	orgJobsGroup.DELETE("/:uid", jobHandler.CancelJob)
 
+	// Admin Jobs observability (spec 2026-06-15-05). Read-only views over the
+	// background-jobs queue and the check-schedule (check_jobs) table. Org
+	// endpoints require org admin; /system endpoints require super admin.
+	checkJobsSvc := checkjobs.NewService(s.dbService.DB())
+	checkJobsHandler := checkjobs.NewHandler(checkJobsSvc, s.config)
+	jobsAdminSvc := jobsadmin.NewService(s.dbService.DB())
+	jobsAdminHandler := jobsadmin.NewHandler(jobsAdminSvc, s.config)
+
+	orgJobsAdmin := api.NewGroup("/orgs/:org").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgJobsAdmin.GET("/jobs/stats", checkJobsHandler.Stats)
+	orgJobsAdmin.GET("/admin/jobs", jobsAdminHandler.ListOrgJobs)
+	orgJobsAdmin.GET("/admin/jobs/:uid", jobsAdminHandler.GetOrgJob)
+	orgJobsAdmin.GET("/admin/jobs/:uid/chain", jobsAdminHandler.GetOrgJobChain)
+	orgJobsAdmin.GET("/check-jobs", checkJobsHandler.ListCheckJobs)
+	orgJobsAdmin.GET("/check-jobs/:uid", checkJobsHandler.GetCheckJob)
+
+	systemJobsGroup := api.NewGroup("/system").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireSuperAdmin)
+	systemJobsGroup.GET("/jobs/stats", checkJobsHandler.SystemStats)
+	systemJobsGroup.GET("/jobs", jobsAdminHandler.ListSystemJobs)
+	systemJobsGroup.GET("/jobs/:uid", jobsAdminHandler.GetSystemJob)
+	systemJobsGroup.GET("/jobs/:uid/chain", jobsAdminHandler.GetSystemJobChain)
+	systemJobsGroup.GET("/check-jobs", checkJobsHandler.ListSystemCheckJobs)
+	systemJobsGroup.GET("/check-jobs/:uid", checkJobsHandler.GetSystemCheckJob)
+
 	// Check types routes
 	checkTypesHandler := checktypes.NewHandler(checkTypesService, s.config)
 	api.GET("/check-types", checkTypesHandler.ListServerCheckTypes)      // Public, no auth
@@ -567,19 +595,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgDeps := api.NewGroup("/orgs/:org/dependencies").Use(authMiddleware.RequireAuth)
 	orgDeps.GET("", depsHandler.Graph)
 
-	// Check-channel binding routes (authentication required). Same dual-route
-	// pattern as the org-level channels block: `/connections` is the legacy
-	// path, `/channels` is canonical going forward. PR-5 of spec
-	// 2026-05-07-03 drops the old path once external callers have moved.
-	checkConnectionsService := checkconnections.NewService(s.dbService)
-	checkConnectionsHandler := checkconnections.NewHandler(checkConnectionsService, s.config)
-	for _, suffix := range []string{"/connections", "/channels"} {
-		orgChecks.GET("/:check"+suffix, checkConnectionsHandler.ListChannels)
-		orgChecks.PUT("/:check"+suffix, checkConnectionsHandler.SetConnections)
-		orgChecks.POST("/:check"+suffix+"/:connection", checkConnectionsHandler.AddConnection)
-		orgChecks.DELETE("/:check"+suffix+"/:connection", checkConnectionsHandler.RemoveConnection)
-		orgChecks.GET("/:check"+suffix+"/:connection", checkConnectionsHandler.GetConnectionSettings)
-		orgChecks.PATCH("/:check"+suffix+"/:connection", checkConnectionsHandler.UpdateConnectionSettings)
+	// Check-channel binding routes (authentication required). Same alias
+	// pattern as the org-level integrations block: `/integrations` is canonical
+	// going forward, `/channels` is the prior name (the notify role). The legacy
+	// `/connections` path was dropped in PR-E.
+	checkChannelsService := checkchannels.NewService(s.dbService)
+	checkChannelsHandler := checkchannels.NewHandler(checkChannelsService, s.config)
+	for _, suffix := range []string{"/integrations", "/channels"} {
+		orgChecks.GET("/:check"+suffix, checkChannelsHandler.ListChannels)
+		orgChecks.PUT("/:check"+suffix, checkChannelsHandler.SetChannels)
+		orgChecks.POST("/:check"+suffix+"/:connection", checkChannelsHandler.AddChannel)
+		orgChecks.DELETE("/:check"+suffix+"/:connection", checkChannelsHandler.RemoveConnection)
+		orgChecks.GET("/:check"+suffix+"/:connection", checkChannelsHandler.GetConnectionSettings)
+		orgChecks.PATCH("/:check"+suffix+"/:connection", checkChannelsHandler.UpdateConnectionSettings)
 	}
 
 	// Badge routes (public, no authentication required)
@@ -637,10 +665,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	incidentNotifService := incidentnotifications.NewService(s.dbService)
 	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
 	orgIncidents.GET("/:uid/notifications", incidentNotifHandler.ListForIncident)
+	orgIncidents.GET("/:uid/notifications/:notifUid", incidentNotifHandler.GetForIncident)
 	api.NewGroup("/orgs/:org/users").Use(authMiddleware.RequireAuth).
 		GET("/:uid/notifications", incidentNotifHandler.ListForUser)
 	api.NewGroup("/orgs/:org/me").Use(authMiddleware.RequireAuth).
 		GET("/notifications", incidentNotifHandler.ListForMe)
+	// Org-level notification endpoints (flat, no incident required)
+	orgNotifs := api.NewGroup("/orgs/:org/notifications").Use(authMiddleware.RequireAuth)
+	orgNotifs.GET("", incidentNotifHandler.ListByOrg)
+	orgNotifs.GET("/:notifUid", incidentNotifHandler.GetByOrg)
 
 	// On-call schedules (authentication required)
 	onCallService := oncallschedules.NewService(s.dbService)
@@ -770,12 +803,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (service token preferred for SaaS billing service; admin user
-	// fallback gated by entitlements.admin_writes_enabled). The plain
-	// GET endpoint is open to any authenticated org member, so we wrap
-	// the group with RequireAuth + RequireOrgAccess; the handler then
-	// applies a stricter check on writes.
+	// fallback gated by entitlements.admin_writes_enabled). The billing
+	// service authenticates with the entitlements.service_token shared
+	// secret (not a JWT). ServiceTokenBypass marks a matching request as a
+	// trusted service so the following RequireAuth + RequireOrgAccess become
+	// no-ops (cross-org writes); every other caller authenticates normally.
 	entitlementsHandler := entitlements.NewHandler(s.services.Entitlements, s.dbService, s.config)
 	orgEntitlements := api.NewGroup("/orgs/:org/entitlements").
+		//nolint:contextcheck // factory marks the request context; bunrouter threads it via req.WithContext down the chain
+		Use(authMiddleware.ServiceTokenBypass(entitlements.ParamServiceToken)).
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireOrgAccess)
 	orgEntitlements.GET("", entitlementsHandler.Get)
@@ -788,40 +824,44 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgWebPush := api.NewGroup("/orgs/:org/webpush").Use(authMiddleware.RequireAuth)
 	orgWebPush.GET("/vapid-public-key", webpushHandler.GetVAPIDPublicKey)
 
-	// Integration connections routes (authentication required).
+	// Integration routes (authentication required).
 	//
-	// We expose the same handlers under both `/connections` (legacy, original
-	// name from when the table was modeled as integration_connections) and
-	// `/channels` (canonical going forward — what operators see in the UI).
-	// Spec 2026-05-07-03-align-channel-and-connection-naming.md PR-1: the
-	// alias is additive so the dashboard, MCP, and CLI can switch over
-	// without an external client breakage. PR-5 drops `/connections`.
-	channelsService := channels.NewService(s.dbService, s.services.Credentials)
-	channelsHandler := channels.NewHandler(channelsService, s.config)
-	for _, prefix := range []string{"/orgs/:org/connections", "/orgs/:org/channels"} {
+	// `/integrations` is canonical (the umbrella entity operators see in the
+	// UI); `/channels` is kept as a one-cycle alias (the prior name — "channel"
+	// now means the notify role). The original legacy `/connections` path was
+	// dropped in PR-E; a follow-up drops `/channels`.
+	integrationsService := integrations.NewService(
+		s.dbService, s.services.Credentials, s.services, s.config)
+	integrationsHandler := integrations.NewHandler(integrationsService, s.config)
+	for _, prefix := range []string{
+		"/orgs/:org/integrations",
+		"/orgs/:org/channels",
+	} {
 		group := api.NewGroup(prefix).Use(authMiddleware.RequireAuth)
-		group.GET("", channelsHandler.ListChannels)
-		group.POST("", channelsHandler.CreateChannel)
-		group.GET("/:uid", channelsHandler.GetChannel)
-		group.PATCH("/:uid", channelsHandler.UpdateChannel)
-		group.DELETE("/:uid", channelsHandler.DeleteChannel)
-		// Standard Webhooks: rotate the per-channel signing secret and send a
-		// synthetic signed test delivery. Both are webhook-only (400 otherwise).
-		group.POST("/:uid/rotate-secret", channelsHandler.RotateWebhookSecret)
-		group.POST("/:uid/test", channelsHandler.TestWebhookChannel)
+		group.GET("", integrationsHandler.ListIntegrations)
+		group.POST("", integrationsHandler.CreateIntegration)
+		group.GET("/:uid", integrationsHandler.GetIntegration)
+		group.PATCH("/:uid", integrationsHandler.UpdateIntegration)
+		group.DELETE("/:uid", integrationsHandler.DeleteIntegration)
+		// Standard Webhooks: rotate the per-integration signing secret
+		// (webhook-only, 400 otherwise).
+		group.POST("/:uid/rotate-secret", integrationsHandler.RotateWebhookSecret)
+		// Send a sample notification through any notifiable integration to
+		// verify it's wired correctly (400 for data-source-only types).
+		group.POST("/:uid/test", integrationsHandler.TestIntegration)
 	}
 
 	// Freebox pairing endpoints — separate from the generic CRUD because
 	// they wrap the multi-step LCD-approval handshake. POST creates the
-	// connection in `pairing` status and asks the Freebox for an
+	// integration in `pairing` status and asks the Freebox for an
 	// app_token; GET polls until the user approves the prompt.
 	orgFreebox := api.NewGroup("/orgs/:org/integrations/freebox").Use(authMiddleware.RequireAuth)
-	orgFreebox.POST("/pair", channelsHandler.StartFreeboxPairing)
-	orgFreebox.GET("/pair/:uid/status", channelsHandler.GetFreeboxPairingStatus)
+	orgFreebox.POST("/pair", integrationsHandler.StartFreeboxPairing)
+	orgFreebox.GET("/pair/:uid/status", integrationsHandler.GetFreeboxPairingStatus)
 	// LAN discovery: returns the list of hosts currently visible to the
 	// Freebox so the dashboard can pre-fill ICMP checks without typing.
-	// Requires a `granted` connection — see Service.ListFreeboxLanHosts.
-	orgFreebox.GET("/:uid/lan-hosts", channelsHandler.LanHostsHandler)
+	// Requires a `granted` integration — see Service.ListFreeboxLanHosts.
+	orgFreebox.GET("/:uid/lan-hosts", integrationsHandler.LanHostsHandler)
 
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
@@ -1658,6 +1698,17 @@ func (s *Server) startJobWorker(ctx context.Context) {
 			slog.ErrorContext(ctx, "Job worker error", "error", err)
 		}
 	}()
+
+	// Start the queue-depth sampler that publishes solidping_jobs_queue_depth.
+	sampler := jobworker.NewQueueDepthSampler(s.jobSvc)
+
+	s.workersWg.Add(1)
+	go func() {
+		defer s.workersWg.Done()
+		if err := sampler.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			slog.ErrorContext(ctx, "Job queue-depth sampler error", "error", err)
+		}
+	}()
 }
 
 // startCheckWorker starts the configured number of check runner goroutines.
@@ -1791,6 +1842,21 @@ func (s *Server) MaybeAutoMigrateEncryption(ctx context.Context) error {
 			"connectionsMigrated", stats.ConnectionsMigrated)
 	}
 
+	// One-shot URL backfill: demote webhook url / *_webhook_url from the
+	// encrypted blob to public settings so the edit form renders them.
+	// Idempotent — skips rows already reconciled.
+	recStats, recErr := credmigrate.ReconcileConnectionRegistry(
+		ctx, s.dbService, s.services.Credentials, credmigrate.Options{Logger: slog.Default()},
+	)
+	if recErr != nil {
+		return fmt.Errorf("reconcile connection url registry: %w", recErr)
+	}
+
+	if recStats.ConnectionsReconciled > 0 {
+		slog.InfoContext(ctx, "reconciled connection URL fields to public settings at startup",
+			"connectionsReconciled", recStats.ConnectionsReconciled)
+	}
+
 	return nil
 }
 
@@ -1811,7 +1877,7 @@ func (s *Server) warnIfEncryptedRowsExist(ctx context.Context) {
 		return
 	}
 
-	connCount, err := bun.NewSelect().Model((*models.Channel)(nil)).
+	connCount, err := bun.NewSelect().Model((*models.Integration)(nil)).
 		Where("settings_private IS NOT NULL AND settings_private != ''").Count(ctx)
 	if err != nil {
 		return

@@ -229,18 +229,21 @@ type Service interface {
 	CountFailingIncidentMembers(ctx context.Context, incidentUID string) (int, error)
 
 	// Check status update
-	UpdateCheckStatus(
-		ctx context.Context, checkUID string, status models.CheckStatus, streak int, changedAt *time.Time,
-	) error
-	// UpdateCheckIncidentClocks updates the time-based incident clocks
-	// (first_failure_at / first_success_since_failure_at) for a check.
-	// Tri-state: nil + !clear means leave as-is; nil + clear writes NULL;
-	// non-nil writes the value. See spec
-	// 2026-05-08-02-time-based-confirmation-and-recovery-periods.md.
-	UpdateCheckIncidentClocks(
-		ctx context.Context, checkUID string,
-		firstFailureAt *time.Time, clearFirstFailure bool,
-		firstSuccessSinceFailureAt *time.Time, clearFirstSuccessSinceFailure bool,
+	//
+	// UpdateCheckStatusAndClocks writes the check's status, streak,
+	// status_changed_at and both incident clocks (first_failure_at /
+	// first_success_since_failure_at) in a single atomic UPDATE. statusChangedAt
+	// is written only when non-nil. The clock fields use the IncidentClockUpdate
+	// tri-state: nil + !clear leaves the column untouched, nil + clear writes
+	// NULL, non-nil writes the value. updated_at is written once. See spec
+	// 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
+	UpdateCheckStatusAndClocks(
+		ctx context.Context,
+		checkUID string,
+		status models.CheckStatus,
+		streak int,
+		statusChangedAt *time.Time,
+		clocks models.IncidentClockUpdate,
 	) error
 
 	// Event operations
@@ -251,14 +254,26 @@ type Service interface {
 	CreateIncidentNotification(ctx context.Context, n *models.IncidentNotification) error
 	MarkIncidentNotificationSentByUID(ctx context.Context, uid string, sentAt time.Time, messageID string) error
 	MarkIncidentNotificationFailedByUID(ctx context.Context, uid string, failedAt time.Time, errMsg string) error
-	MarkIncidentNotificationSentByJob(ctx context.Context, jobUID string, sentAt time.Time, messageID string) error
+	MarkIncidentNotificationSentByJob(
+		ctx context.Context, jobUID string, sentAt time.Time, messageID string, details *models.DeliveryDetails,
+	) error
 	MarkIncidentNotificationFailedByJob(
 		ctx context.Context, jobUID string, failedAt time.Time, errMsg string, retryable bool,
+		details *models.DeliveryDetails,
 	) error
 	CancelIncidentNotificationsForIncident(ctx context.Context, incidentUID string, canceledAt time.Time) (int64, error)
 	ListIncidentNotifications(
 		ctx context.Context, orgUID string, f ListIncidentNotificationsFilter,
 	) ([]*models.IncidentNotificationRow, error)
+	GetIncidentNotification(
+		ctx context.Context, orgUID, incidentUID, notifUID string,
+	) (*models.IncidentNotificationRow, error)
+	// GetOrgNotification fetches a single notification scoped only by org UID
+	// (no incident required). Returns sql.ErrNoRows when the notification does
+	// not exist within the given org.
+	GetOrgNotification(
+		ctx context.Context, orgUID, notifUID string,
+	) (*models.IncidentNotificationRow, error)
 
 	// Job operations
 	CreateJob(ctx context.Context, job *models.Job) error
@@ -313,23 +328,23 @@ type Service interface {
 	ListSystemParameters(ctx context.Context) ([]*models.Parameter, error)
 
 	// IntegrationConnection operations
-	CreateChannel(ctx context.Context, conn *models.Channel) error
-	GetChannel(ctx context.Context, uid string) (*models.Channel, error)
+	CreateChannel(ctx context.Context, conn *models.Integration) error
+	GetChannel(ctx context.Context, uid string) (*models.Integration, error)
 	GetChannelByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
-	) (*models.Channel, error)
+	) (*models.Integration, error)
 	ListChannels(
-		ctx context.Context, filter *models.ListChannelsFilter,
-	) ([]*models.Channel, error)
-	UpdateChannel(ctx context.Context, uid string, update *models.ChannelUpdate) error
+		ctx context.Context, filter *models.ListIntegrationsFilter,
+	) ([]*models.Integration, error)
+	UpdateChannel(ctx context.Context, uid string, update *models.IntegrationUpdate) error
 	DeleteChannel(ctx context.Context, uid string) error
 
 	// CheckConnection operations
 	CreateCheckConnection(ctx context.Context, conn *models.CheckConnection) error
 	DeleteCheckConnection(ctx context.Context, checkUID, connectionUID string) error
-	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Channel, error)
+	ListChannelsForCheck(ctx context.Context, checkUID string) ([]*models.Integration, error)
 	SetCheckConnections(ctx context.Context, checkUID string, connectionUIDs []string) error
-	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Channel, error)
+	ListDefaultChannels(ctx context.Context, orgUID string) ([]*models.Integration, error)
 	UpdateCheckConnection(ctx context.Context, checkUID, connectionUID string, update *models.CheckConnectionUpdate) error
 	GetCheckConnection(ctx context.Context, checkUID, connectionUID string) (*models.CheckConnection, error)
 	ListCheckConnectionsWithSettings(ctx context.Context, checkUID string) ([]*models.CheckConnection, error)
@@ -430,7 +445,13 @@ type Service interface {
 	DeleteMaintenanceWindow(ctx context.Context, orgUID, uid string) error
 	SetMaintenanceWindowChecks(ctx context.Context, windowUID string, checkUIDs, checkGroupUIDs []string) error
 	ListMaintenanceWindowChecks(ctx context.Context, windowUID string) ([]*models.MaintenanceWindowCheck, error)
-	IsCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error)
+	// ListMaintenanceWindowsForCheck returns every non-deleted maintenance
+	// window linked to the check (directly or via its group), without
+	// evaluating recurrence or filtering by start time. Callers decide
+	// active/inactive via models.IsActiveAt. Returns the raw window rows so an
+	// in-process TTL cache can re-evaluate them at the current clock without
+	// re-querying. See spec 2026-06-05-02-check-result-hot-path-db-roundtrips.md.
+	ListMaintenanceWindowsForCheck(ctx context.Context, checkUID string) ([]*models.MaintenanceWindow, error)
 
 	// File operations
 	CreateFile(ctx context.Context, file *models.File) error
@@ -512,7 +533,7 @@ type Service interface {
 
 	// GetSlackChannelForOrg returns the first enabled Slack channel for the org.
 	// Returns nil, nil when no Slack channel is configured.
-	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Channel, error)
+	GetSlackChannelForOrg(ctx context.Context, orgUID string) (*models.Integration, error)
 
 	// AppSettings operations
 

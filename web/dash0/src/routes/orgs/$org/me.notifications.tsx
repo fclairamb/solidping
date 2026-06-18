@@ -2,8 +2,8 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { BellRing } from "lucide-react";
 import { useMyNotifications, type IncidentNotification } from "@/api/hooks";
 import { Badge } from "@/components/ui/badge";
-import { PageHeader } from "@/components/shared/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   Card,
   CardContent,
@@ -51,6 +51,7 @@ function MyNotificationsPage() {
         icon={BellRing}
         title="My pages"
         description="Incidents you were paged for, in reverse chronological order."
+        className="flex-wrap"
       />
 
       <Card>

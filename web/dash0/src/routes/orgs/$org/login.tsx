@@ -8,15 +8,21 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAuth, type OrganizationSummary, type LoginResult } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
+import { AuthSplitLayout } from "@/components/layout/auth-split-layout";
 import { AlertCircle, KeyRound, Loader2, Building2 } from "lucide-react";
 import { ApiError } from "@/api/client";
 import { useVersion, useProviders } from "@/api/hooks";
+import {
+  getLastAuthMethod,
+  setLastAuthMethod,
+} from "@/lib/last-auth-method";
 import {
   startAuthentication,
   browserSupportsWebAuthn,
@@ -27,6 +33,7 @@ import {
   finishPasskeyLogin,
   getAuthProviders,
 } from "@/api/passkeys";
+import { classifyPasskeyError } from "@/lib/passkey-error";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -193,6 +200,9 @@ function LoginPage() {
   const [twoFACode, setTwoFACode] = useState("");
   const [showRecovery, setShowRecovery] = useState(false);
   const [passkeysEnabled, setPasskeysEnabled] = useState(false);
+  // The method this browser used last (read once on mount). Drives which
+  // option is promoted to the top of the card with a "Last used" badge.
+  const [lastAuthMethod] = useState<string | null>(() => getLastAuthMethod());
 
   // Read passkey support from /auth/providers and probe browser
   // capability — both are needed before we render the passkey button or
@@ -274,6 +284,9 @@ function LoginPage() {
 
     try {
       const result = await login(org, email, password);
+      // login() resolved without throwing — the password was correct (a 2FA
+      // step may still follow). Record the choice as the last-used method.
+      setLastAuthMethod("password");
       routeResult(result);
     } catch (err) {
       reportError(err);
@@ -311,13 +324,24 @@ function LoginPage() {
       const credential = await startAuthentication({ optionsJSON });
       const data = await finishPasskeyLogin(begin.session, credential, org);
       const result = await applyLoginResponse(data as never);
+      // Successful ceremony — record passkey as the last-used method.
+      setLastAuthMethod("passkey");
       routeResult(result);
     } catch (err) {
-      // The user-cancel path — silent. Anything else gets surfaced.
-      if (err instanceof Error && err.name === "NotAllowedError") {
-        return;
+      // Surface a precise, passkey-specific message instead of the generic
+      // "unexpected error" banner. User-cancel stays silent.
+      switch (classifyPasskeyError(err)) {
+        case "cancelled":
+          return; // silent
+        case "domainMismatch":
+          setError(t("passkeyDomainMismatch"));
+          return;
+        case "failed":
+          setError(t("passkeyFailed"));
+          return;
+        default:
+          reportError(err); // ApiError / generic
       }
-      reportError(err);
     } finally {
       setIsLoading(false);
     }
@@ -346,11 +370,16 @@ function LoginPage() {
         if (cancelled) return;
         const data = await finishPasskeyLogin(begin.session, credential, org);
         const result = await applyLoginResponse(data as never);
+        // Autofill ceremony succeeded — record passkey as the last-used method.
+        setLastAuthMethod("passkey");
         routeResult(result);
       } catch (err) {
         if (cancelled) return;
-        if (err instanceof Error && err.name !== "NotAllowedError") {
-          // Conditional UI is best-effort; log only in dev console.
+        const kind = classifyPasskeyError(err);
+        // Conditional UI is best-effort; log only in dev console. Stay quiet on
+        // user-cancel and on a domain mismatch (a misconfigured RP ID would
+        // otherwise spam the console on every page load).
+        if (kind !== "cancelled" && kind !== "domainMismatch") {
           console.warn("conditional UI failed", err);
         }
       }
@@ -390,15 +419,35 @@ function LoginPage() {
   };
 
   const handleOAuthLogin = (providerType: string) => {
+    // OAuth redirects away from the app, so we can't observe success here —
+    // record the intent immediately before the redirect.
+    setLastAuthMethod(`oauth:${providerType}`);
     const currentPath = returnTo || `/dash0/orgs/${org}`;
     const loginUrl = `/api/v1/auth/${providerType}/login?org=${encodeURIComponent(org)}&redirect_uri=${encodeURIComponent(currentPath)}`;
     window.location.href = loginUrl;
   };
 
-  const hasProviders = providers && providers.length > 0;
+  // Resolve the promoted (last-used) method, but only when it is still
+  // available — never promote a provider that was removed or a passkey when
+  // passkeys are disabled / unsupported.
+  const passkeySupported = passkeysEnabled && browserSupportsWebAuthn();
+  const promotedProvider =
+    lastAuthMethod && lastAuthMethod.startsWith("oauth:")
+      ? providers?.find(
+          (p) => p.type === lastAuthMethod.slice("oauth:".length),
+        ) ?? null
+      : null;
+  const promotePasskey = lastAuthMethod === "passkey" && passkeySupported;
+  const promotePassword = lastAuthMethod === "password";
+  // Providers shown in the grid below, with the promoted one removed so it
+  // isn't listed twice.
+  const gridProviders = promotedProvider
+    ? providers?.filter((p) => p.type !== promotedProvider.type)
+    : providers;
+  const hasGridProviders = gridProviders && gridProviders.length > 0;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background p-4">
+    <AuthSplitLayout>
       <Card className="w-full max-w-md border-t-4 border-t-brand">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4" data-testid="login-logo">
@@ -528,10 +577,68 @@ function LoginPage() {
             </div>
           ) : (
             <>
-              {hasProviders && (
-                <div className="mb-4">
+              {(promotedProvider || promotePasskey) && (
+                <div className="mb-3" data-testid="login-last-used">
+                  {promotedProvider ? (
+                    (() => {
+                      const Icon = PROVIDER_ICONS[promotedProvider.type];
+                      return (
+                        <Button
+                          variant="outline"
+                          className="w-full"
+                          disabled={isLoading}
+                          onClick={() => handleOAuthLogin(promotedProvider.type)}
+                          data-testid={`login-oauth-${promotedProvider.type}-promoted`}
+                        >
+                          {Icon && <Icon className="mr-2 h-4 w-4" />}
+                          {t("continueWith", { name: promotedProvider.name })}
+                          <Badge
+                            variant="secondary"
+                            className="ml-2"
+                            data-testid="login-last-used-badge"
+                          >
+                            {t("lastUsed")}
+                          </Badge>
+                        </Button>
+                      );
+                    })()
+                  ) : (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handlePasskeyLogin}
+                      disabled={isLoading}
+                      data-testid="passkey-login-button-promoted"
+                    >
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      {t("twoFactor.signInWithPasskey")}
+                      <Badge
+                        variant="secondary"
+                        className="ml-2"
+                        data-testid="login-last-used-badge"
+                      >
+                        {t("lastUsed")}
+                      </Badge>
+                    </Button>
+                  )}
+                  <div className="relative my-3">
+                    <div className="absolute inset-0 flex items-center">
+                      <span className="w-full border-t" />
+                    </div>
+                    <div className="relative flex justify-center text-xs uppercase">
+                      <span className="bg-card px-2 text-muted-foreground">
+                        {tc("or")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {hasGridProviders && (
+                <div className="mb-3">
                   <div className="grid grid-cols-2 gap-2">
-                    {providers.map((provider) => {
+                    {gridProviders.map((provider) => {
                       const Icon = PROVIDER_ICONS[provider.type];
                       return (
                         <Button
@@ -549,7 +656,7 @@ function LoginPage() {
                       );
                     })}
                   </div>
-                  <div className="relative my-4">
+                  <div className="relative my-3">
                     <div className="absolute inset-0 flex items-center">
                       <span className="w-full border-t" />
                     </div>
@@ -574,12 +681,25 @@ function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     required
                     disabled={isLoading}
+                    // Autofocus when password was the last-used method so a
+                    // returning user can start typing immediately.
+                    autoFocus={promotePassword}
                     data-testid="login-email"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="password">{tc("password")}</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">{tc("password")}</Label>
+                    <Link
+                      to="/forgot-password"
+                      search={{ email: email || undefined }}
+                      reloadDocument
+                      className="text-sm text-muted-foreground hover:underline"
+                    >
+                      {t("forgotPassword")}
+                    </Link>
+                  </div>
                   <PasswordInput
                     id="password"
                     autoComplete="current-password"
@@ -603,31 +723,35 @@ function LoginPage() {
                       {t("signingIn")}
                     </>
                   ) : (
-                    t("signIn")
+                    <>
+                      {t("signIn")}
+                      {promotePassword && (
+                        <Badge
+                          variant="secondary"
+                          className="ml-2"
+                          data-testid="login-last-used-badge"
+                        >
+                          {t("lastUsed")}
+                        </Badge>
+                      )}
+                    </>
                   )}
                 </Button>
-                {passkeysEnabled && browserSupportsWebAuthn() && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full"
-                    onClick={handlePasskeyLogin}
-                    disabled={isLoading}
-                    data-testid="passkey-login-button"
-                  >
-                    <KeyRound className="mr-2 h-4 w-4" />
-                    {t("twoFactor.signInWithPasskey")}
-                  </Button>
-                )}
-                <div className="text-center">
-                  <Link
-                    to="/forgot-password"
-                    search={{ email: email || undefined }}
-                    className="text-sm text-muted-foreground hover:underline"
-                  >
-                    {t("forgotPassword")}
-                  </Link>
-                </div>
+                {passkeysEnabled &&
+                  browserSupportsWebAuthn() &&
+                  !promotePasskey && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full"
+                      onClick={handlePasskeyLogin}
+                      disabled={isLoading}
+                      data-testid="passkey-login-button"
+                    >
+                      <KeyRound className="mr-2 h-4 w-4" />
+                      {t("twoFactor.signInWithPasskey")}
+                    </Button>
+                  )}
               </form>
             </>
           )}
@@ -663,6 +787,6 @@ function LoginPage() {
           )}
         </CardContent>
       </Card>
-    </div>
+    </AuthSplitLayout>
   );
 }

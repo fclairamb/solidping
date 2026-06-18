@@ -51,10 +51,10 @@
     "availability": "Disponibilidad 24h",
     "availabilityNoData": "Aún sin datos"
   },
-  "needsAttention": {
-    "title": "Necesita atención",
-    "footer": "Ver todas las comprobaciones →",
-    "empty": "Todo está activo",
+  "glance": {
+    "title": "Comprobaciones de un vistazo",
+    "footer_one": "Ver {{count}} comprobación →",
+    "footer_other": "Ver las {{count}} comprobaciones →",
     "since": "desde hace {{time}}"
   },
   "activeIncidents": {

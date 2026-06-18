@@ -29,6 +29,7 @@ import {
   Palette,
   Server,
   User2,
+  Workflow,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -40,12 +41,15 @@ import { CommandMenu, CommandMenuTrigger } from "@/components/CommandMenu";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
 import {
+  useBackgroundJob,
   useCheck,
-  useChannel,
+  useCheckJob,
+  useIntegration,
   useEscalationPolicy,
   useFeatures,
   useIncident,
   useOnCallSchedule,
+  useOrgNotification,
   useResult,
   useStatusPage,
   useStatusUpdate,
@@ -54,6 +58,22 @@ import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
 import { useTranslation } from "react-i18next";
+
+/** Parses the `?from=` search param used by the notification detail route. */
+function parseNotificationFrom(
+  from: string | undefined,
+): { type: "incident" | "integration"; uid: string } | null {
+  if (!from) return null;
+  const colonIdx = from.indexOf(":");
+  if (colonIdx === -1) return null;
+  const type = from.slice(0, colonIdx);
+  const uid = from.slice(colonIdx + 1);
+  if (!uid) return null;
+  if (type === "incident" || type === "integration") {
+    return { type, uid };
+  }
+  return null;
+}
 
 function hasOAuthTokenInURL(): boolean {
   const params = new URLSearchParams(window.location.search);
@@ -108,13 +128,17 @@ function Breadcrumbs({ org }: { org: string }) {
   const isEvents = routeIds.has("/orgs/$org/events");
   const isStatusPages = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-pages"));
   const isStatusUpdates = matches.some((m) => m.routeId.startsWith("/orgs/$org/status-updates"));
-  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/channels"));
+  const isChannels = matches.some((m) => m.routeId.startsWith("/orgs/$org/integrations"));
   const isOnCall = matches.some((m) => m.routeId.startsWith("/orgs/$org/on-call"));
   const isEscalation = matches.some((m) => m.routeId.startsWith("/orgs/$org/escalation-policies"));
   const isDependencies = matches.some((m) => m.routeId.startsWith("/orgs/$org/dependencies"));
   const isDesignReference = matches.some((m) => m.routeId.startsWith("/orgs/$org/design-reference"));
   const isDiscovery = matches.some((m) => m.routeId.startsWith("/orgs/$org/discovery"));
+  const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
+  const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
+  const isBackgroundJobDetail = routeIds.has("/orgs/$org/jobs/$jobUid");
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
+  const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
   // Checks section
   const { data: check } = useCheck(org, params.checkUid ?? "");
@@ -131,9 +155,9 @@ function Breadcrumbs({ org }: { org: string }) {
   // empty/wrong-section param so each hook only fetches when its branch is
   // active. on-call and escalation share the param name `slug`, so dispatch
   // by section flag here too.
-  const { data: connection } = useChannel(
+  const { data: connection } = useIntegration(
     org,
-    isChannels ? (params.channelUid ?? "") : "",
+    isChannels ? (params.integrationUid ?? "") : "",
   );
   const { data: onCallSchedule } = useOnCallSchedule(
     org,
@@ -148,6 +172,113 @@ function Breadcrumbs({ org }: { org: string }) {
     org,
     isStatusUpdates ? (params.updateUid ?? "") : "",
   );
+  // Jobs section — resolve the active match's `allOrgs` scope so the `Jobs`
+  // link round-trips it, then fetch the leaf label only on a detail route.
+  const jobsMatch = isJobs
+    ? matches.find((m) => m.routeId.startsWith("/orgs/$org/jobs"))
+    : undefined;
+  const jobsAllOrgs = Boolean(
+    (jobsMatch?.search as { allOrgs?: boolean } | undefined)?.allOrgs,
+  );
+  const { data: checkJob } = useCheckJob(
+    org,
+    isCheckJobDetail ? (params.checkJobUid ?? "") : "",
+    { allOrgs: jobsAllOrgs },
+  );
+  const { data: backgroundJob } = useBackgroundJob(
+    org,
+    isBackgroundJobDetail ? (params.jobUid ?? "") : "",
+    { allOrgs: jobsAllOrgs },
+  );
+
+  // Notification detail breadcrumb — subscribe to the same query the page uses
+  const notifDetailMatch = isNotificationDetail
+    ? matches.find((m) => m.routeId === "/orgs/$org/notifications/$notificationUid")
+    : undefined;
+  const notifFromParam = notifDetailMatch
+    ? (notifDetailMatch.search as { from?: string } | undefined)?.from
+    : undefined;
+  const notifFrom = isNotificationDetail ? parseNotificationFrom(notifFromParam) : null;
+  const { data: cachedNotif } = useOrgNotification(
+    org,
+    isNotificationDetail ? (params.notificationUid ?? "") : "",
+  );
+  // Fetch the source incident so the link shows the check name (e.g. "Test
+  // API"), matching the incident page's own breadcrumb, rather than the
+  // incident title ("… is down").
+  const { data: notifIncident } = useIncident(
+    org,
+    notifFrom?.type === "incident" ? notifFrom.uid : "",
+  );
+
+  if (isNotificationDetail) {
+    const notifLabel = "Notification";
+    if (notifFrom?.type === "incident") {
+      const incidentLabel =
+        notifIncident?.checkName ||
+        cachedNotif?.incident?.title ||
+        (notifFrom.uid.length >= 8 ? notifFrom.uid.slice(0, 8) : notifFrom.uid);
+      return (
+        <>
+          <Link
+            to="/orgs/$org/incidents"
+            params={{ org }}
+            search={{ state: "all" as const, showSuppressed: undefined }}
+            className={linkClass}
+          >
+            <AlertTriangle className={iconClass} />
+            {t("incidents")}
+          </Link>
+          <BreadcrumbSeparator />
+          <Link
+            to="/orgs/$org/incidents/$incidentUid"
+            params={{ org, incidentUid: notifFrom.uid }}
+            className={linkClass}
+          >
+            {incidentLabel}
+          </Link>
+          <BreadcrumbSeparator />
+          <span className={activeClass}>{notifLabel}</span>
+        </>
+      );
+    }
+
+    if (notifFrom?.type === "integration") {
+      const integrationLabel =
+        cachedNotif?.connection?.name ||
+        (notifFrom.uid.length >= 8 ? notifFrom.uid.slice(0, 8) : notifFrom.uid);
+      return (
+        <>
+          <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}>
+            <Bell className={iconClass} />
+            {t("integrations")}
+          </Link>
+          <BreadcrumbSeparator />
+          <Link
+            to="/orgs/$org/integrations/$integrationUid"
+            params={{ org, integrationUid: notifFrom.uid }}
+            className={linkClass}
+          >
+            {integrationLabel}
+          </Link>
+          <BreadcrumbSeparator />
+          <span className={activeClass}>{notifLabel}</span>
+        </>
+      );
+    }
+
+    // No ?from — show Integrations > Notification as default context
+    return (
+      <>
+        <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}>
+          <Bell className={iconClass} />
+          {t("integrations")}
+        </Link>
+        <BreadcrumbSeparator />
+        <span className={activeClass}>{notifLabel}</span>
+      </>
+    );
+  }
 
   if (isDashboard) {
     return (
@@ -413,16 +544,16 @@ function Breadcrumbs({ org }: { org: string }) {
   }
 
   if (isChannels) {
-    const channelUid = params.channelUid;
-    const isNew = routeIds.has("/orgs/$org/channels/new");
-    const channelName = connection?.name || channelUid?.slice(0, 8);
+    const integrationUid = params.integrationUid;
+    const isNew = routeIds.has("/orgs/$org/integrations/new");
+    const integrationName = connection?.name || integrationUid?.slice(0, 8);
 
     return (
       <>
-        {channelUid || isNew ? (
-          <Link to="/orgs/$org/channels" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("channels")}</Link>
+        {integrationUid || isNew ? (
+          <Link to="/orgs/$org/integrations" params={{ org }} className={linkClass}><Bell className={iconClass} />{t("integrations")}</Link>
         ) : (
-          <span className={activeClass}><Bell className={iconClass} />{t("channels")}</span>
+          <span className={activeClass}><Bell className={iconClass} />{t("integrations")}</span>
         )}
         {isNew && (
           <>
@@ -430,10 +561,10 @@ function Breadcrumbs({ org }: { org: string }) {
             <span className={activeClass}>{t("new")}</span>
           </>
         )}
-        {channelUid && (
+        {integrationUid && (
           <>
             <BreadcrumbSeparator />
-            <span className={activeClass}>{channelName}</span>
+            <span className={activeClass}>{integrationName}</span>
           </>
         )}
       </>
@@ -551,6 +682,42 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{t("promote")}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isJobs) {
+    const isDetail = isCheckJobDetail || isBackgroundJobDetail;
+    const leaf = isCheckJobDetail
+      ? checkJob?.checkName || params.checkJobUid?.slice(0, 8)
+      : isBackgroundJobDetail
+        ? backgroundJob?.type || params.jobUid?.slice(0, 8)
+        : null;
+
+    return (
+      <>
+        {isDetail ? (
+          <Link
+            to="/orgs/$org/jobs"
+            params={{ org }}
+            search={jobsAllOrgs ? { tab: "jobs", allOrgs: true } : { tab: "jobs" }}
+            className={linkClass}
+          >
+            <Workflow className={iconClass} />
+            {t("jobs")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Workflow className={iconClass} />
+            {t("jobs")}
+          </span>
+        )}
+        {isDetail && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{leaf}</span>
           </>
         )}
       </>

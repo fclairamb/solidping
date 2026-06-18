@@ -40,6 +40,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { PageHeader } from "@/components/shared/page-header";
 import {
   Table,
   TableBody,
@@ -81,7 +82,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { LabelInput } from "@/components/shared/label-input";
+import { LabelFilter } from "@/components/shared/label-filter";
 import { ApiError, apiFetch } from "@/api/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { parseLabelsParam, serializeLabelsParam } from "@/lib/labels";
@@ -724,52 +725,51 @@ function ChecksIndexPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <ListChecks className="h-7 w-7 text-muted-foreground" />
-            {t("title")}
-          </h1>
-          <p className="text-muted-foreground">{t("subtitle")}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            onClick={handleExport}
-            data-testid="export-button"
-            className="hidden sm:inline-flex"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            {t("export")}
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => fileInputRef.current?.click()}
-            data-testid="import-button"
-            className="hidden sm:inline-flex"
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            {t("import")}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json"
-            className="hidden"
-            onChange={handleImportFile}
-          />
-          <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
-            <FolderPlus className="sm:mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">{t("newGroup")}</span>
-          </Button>
-          <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined }}>
-            <Button data-testid="new-check-button">
-              <Plus className="sm:mr-2 h-4 w-4" />
-              <span className="hidden sm:inline">{t("newCheck")}</span>
+      <PageHeader
+        icon={ListChecks}
+        title={t("title")}
+        description={t("subtitle")}
+        actions={
+          <>
+            <Button
+              variant="outline"
+              onClick={handleExport}
+              data-testid="export-button"
+              className="hidden sm:inline-flex"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              {t("export")}
             </Button>
-          </Link>
-        </div>
-      </div>
+            <Button
+              variant="outline"
+              onClick={() => fileInputRef.current?.click()}
+              data-testid="import-button"
+              className="hidden sm:inline-flex"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              {t("import")}
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleImportFile}
+            />
+            <Button variant="outline" onClick={() => setShowNewGroup(true)} data-testid="new-group-button">
+              <FolderPlus className="sm:mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">{t("newGroup")}</span>
+            </Button>
+            <Link to="/orgs/$org/checks/new" params={{ org }} search={{ checkType: undefined, checkPeriod: undefined, checkName: undefined, checkSlug: undefined, httpUrl: undefined, httpMethod: undefined, host: undefined, port: undefined, url: undefined, domain: undefined, username: undefined, database: undefined }}>
+              <Button data-testid="new-check-button">
+                <Plus className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{t("newCheck")}</span>
+              </Button>
+            </Link>
+          </>
+        }
+        className="flex-wrap"
+      />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
@@ -825,22 +825,19 @@ function ChecksIndexPage() {
             className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
           />
         </Button>
-        <div className="flex flex-1 min-w-[260px] flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm font-medium text-muted-foreground">Labels:</span>
-          <div className="flex-1 min-w-[200px]">
-            <LabelInput
-              org={org}
-              value={labelFilters}
-              onChange={(next) => {
-                const serialized = serializeLabelsParam(next);
-                void navigate({
-                  search: (prev) => ({ ...prev, labels: serialized || undefined }),
-                  replace: true,
-                });
-              }}
-              placeholder={{ key: "filter by key…", value: "value…" }}
-            />
-          </div>
+          <LabelFilter
+            org={org}
+            value={labelFilters}
+            onChange={(next) => {
+              const serialized = serializeLabelsParam(next);
+              void navigate({
+                search: (prev) => ({ ...prev, labels: serialized || undefined }),
+                replace: true,
+              });
+            }}
+          />
           {Object.keys(labelFilters).length > 0 && (
             <Button
               variant="ghost"

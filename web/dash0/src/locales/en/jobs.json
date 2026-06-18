@@ -1,0 +1,85 @@
+{
+  "title": "Jobs",
+  "subtitle": "Live observability for background jobs and the check schedule.",
+  "refresh": "Refresh",
+  "back": "Back",
+  "scope": {
+    "thisOrg": "This org",
+    "allOrgs": "All orgs (system)"
+  },
+  "overview": {
+    "title": "Activity overview",
+    "pending": "Pending",
+    "running": "Running",
+    "failed24h": "Failed (24h)",
+    "scheduled": "Scheduled",
+    "dueNow": "Due now",
+    "inFlight": "In-flight",
+    "stalled": "Stalled",
+    "crashLooping": "Crash-looping"
+  },
+  "tabs": {
+    "backgroundJobs": "Background jobs",
+    "checkSchedule": "Check schedule"
+  },
+  "filters": {
+    "status": "Status",
+    "type": "Type",
+    "allStatuses": "All statuses",
+    "allTypes": "All types"
+  },
+  "status": {
+    "pending": "Pending",
+    "running": "Running",
+    "success": "Success",
+    "retried": "Retried",
+    "failed": "Failed"
+  },
+  "state": {
+    "idle": "Idle",
+    "inFlight": "In-flight",
+    "stalled": "Stalled",
+    "crashLooping": "Crash-looping"
+  },
+  "columns": {
+    "type": "Type",
+    "status": "Status",
+    "org": "Org",
+    "scheduled": "Scheduled",
+    "retries": "Retries",
+    "updated": "Updated",
+    "check": "Check",
+    "region": "Region",
+    "state": "State",
+    "period": "Period",
+    "nextRun": "Next run",
+    "leaseWorker": "Lease worker",
+    "leaseExpiry": "Lease expiry",
+    "attempts": "Attempts"
+  },
+  "detail": {
+    "backgroundJobTitle": "Background job",
+    "checkJobTitle": "Check schedule job",
+    "meta": "Details",
+    "config": "Config",
+    "output": "Output",
+    "retryChain": "Retry chain",
+    "noConfig": "No config",
+    "noOutput": "No output",
+    "encryptedKeys": "Encrypted keys",
+    "noEncryptedKeys": "None",
+    "secretsHidden": "Secret values are never exposed — only the names of encrypted keys are shown.",
+    "viewCheck": "View check",
+    "thisJob": "this job"
+  },
+  "labels": {
+    "system": "system",
+    "none": "—"
+  },
+  "empty": {
+    "backgroundJobs": "No background jobs found.",
+    "checkSchedule": "No scheduled checks found."
+  },
+  "notFound": "Job not found.",
+  "loadError": "Failed to load jobs."
+}

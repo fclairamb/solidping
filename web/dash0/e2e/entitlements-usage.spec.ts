@@ -25,6 +25,21 @@ async function setMaxChecks(
   expect(resp.ok()).toBeTruthy();
 }
 
+// Reset all limits to unlimited. PATCH with maxChecks:null is a no-op (null is
+// ignored by the partial merge), so a full-replace PUT is the only reliable way
+// to clear a previously-set cap — otherwise a stale maxChecks leaks into later
+// suites and 402s their check creation.
+async function resetEntitlements(page: Page, token: string): Promise<void> {
+  const resp = await page.request.put(
+    `${API_BASE}/api/v1/orgs/test/entitlements`,
+    {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { limits: {} },
+    },
+  );
+  expect(resp.ok()).toBeTruthy();
+}
+
 // These tests cover the entitlements usage surface: the new
 // /organization/usage page (limits vs. usage bars) and the MaxChecks
 // quota enforced at check creation (402 QUOTA_EXCEEDED).
@@ -32,7 +47,7 @@ test.describe("Entitlements usage", () => {
   test.afterEach(async ({ authenticatedPage }) => {
     // Always restore unlimited checks so other suites are unaffected.
     const token = await getAuthToken(authenticatedPage);
-    await setMaxChecks(authenticatedPage, token, null);
+    await resetEntitlements(authenticatedPage, token);
   });
 
   test("usage page renders three limit/usage rows", async ({
@@ -41,7 +56,7 @@ test.describe("Entitlements usage", () => {
     const page = authenticatedPage;
 
     const token = await getAuthToken(page);
-    await setMaxChecks(page, token, null);
+    await resetEntitlements(page, token);
 
     await page.goto("orgs/test/organization/usage");
     await page.waitForLoadState("networkidle");

@@ -20,6 +20,8 @@
   "usage": {
     "title": "Uso",
     "description": "Los límites de tu plan y cuánto estás usando de cada uno.",
+    "plan": "Plan actual",
+    "freePlan": "Gratis",
     "checks": "Comprobaciones",
     "checksPerMinute": "Comprobaciones por minuto",
     "ssoUsers": "Usuarios SSO",

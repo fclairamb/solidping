@@ -89,6 +89,59 @@ test.describe("Incidents", () => {
     }
   });
 
+  test("incident detail header: action buttons carry icons + aria-labels and back sits in the action group", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Navigate to incidents page via sidebar
+    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.waitForURL(/\/incidents/);
+    await page.waitForLoadState("networkidle");
+
+    const hasIncidents = await waitForIncidentsLoaded(page);
+    if (!hasIncidents) {
+      test.skip(true, "No incidents available to open the detail page");
+      return;
+    }
+
+    // Open the first incident's detail page
+    const incidentLink = page.getByTestId("incident-row").first().getByRole("link").first();
+    await incidentLink.click();
+    await page.waitForURL(
+      /\/incidents\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+      { timeout: 10000 },
+    );
+    await expect(page.getByText("Incident Details")).toBeVisible();
+
+    // The back button is reachable via its aria-label (icon-only) and lives
+    // in the right-hand action group alongside Refresh — not next to the title.
+    const backButton = page.getByRole("button", { name: "Back to incidents" });
+    await expect(backButton).toBeVisible();
+    await expect(page.getByRole("button", { name: "Refresh" })).toBeVisible();
+
+    // Desktop viewport: action labels are shown alongside the icon.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const resolveOnDesktop = page.getByRole("button", { name: "Resolve" });
+    if (await resolveOnDesktop.count()) {
+      await expect(resolveOnDesktop.first()).toContainText("Resolve");
+    }
+
+    // Mobile viewport: labels collapse, but the button is still reachable by
+    // its aria-label (icon-only) — and there is no horizontal overflow.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(backButton).toBeVisible();
+    const hasOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(hasOverflow).toBe(false);
+
+    await page.screenshot({
+      path: "test-results/screenshots/incident-detail-actions-mobile.png",
+      fullPage: true,
+    });
+  });
+
   test("should filter incidents by state", async ({ authenticatedPage }) => {
     const page = authenticatedPage;
 
@@ -122,6 +175,51 @@ test.describe("Incidents", () => {
       path: "test-results/screenshots/incidents-resolved-filter.png",
       fullPage: true,
     });
+  });
+
+  test("clicking a notification row opens the notification detail and back returns to the incident", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Deterministically seeded in test mode (server/test/testdata): an active
+    // incident with one failed-webhook notification.
+    const incidentUid = "00000000-0000-0000-0000-000000000013";
+
+    await page.goto(`/dash0/orgs/test/incidents/${incidentUid}`);
+    await page.waitForLoadState("networkidle");
+
+    // We're on the incident detail page and the Notifications card is present.
+    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("notifications-card")).toBeVisible();
+
+    // At least one notification row is present; click the first one.
+    const notifRow = page.getByTestId("notification-row").first();
+    await expect(notifRow).toBeVisible();
+    await notifRow.scrollIntoViewIfNeeded();
+    await notifRow.click();
+
+    // Clicking a notification row now opens the flat notification route with a
+    // ?from=incident:<uid> source marker (not the legacy nested route).
+    const notifUrlRe = new RegExp(
+      `/orgs/test/notifications/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\?from=incident%3A${incidentUid}`,
+    );
+    await page.waitForURL(notifUrlRe, { timeout: 10000 });
+
+    // The notification detail page renders its content.
+    await expect(
+      page.getByRole("heading", { name: "Notification", exact: true }),
+    ).toBeVisible();
+    await expect(page.getByText("Delivery timeline")).toBeVisible();
+
+    // The back affordance returns to the incident detail page.
+    await page.getByRole("button", { name: "Back to incident" }).click();
+    await page.waitForURL(
+      new RegExp(`/incidents/${incidentUid}$`),
+      { timeout: 10000 },
+    );
+    await expect(page.getByText("Incident Details")).toBeVisible();
+    await expect(page.getByTestId("notifications-card")).toBeVisible();
   });
 
   test("should navigate back from incident detail to list", async ({ authenticatedPage }) => {

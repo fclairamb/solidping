@@ -809,38 +809,40 @@ function StatusPageDetailPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-start gap-3 justify-between">
-        <div className="flex items-start gap-2 min-w-0 flex-1">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">
+              {page.name}
+            </h1>
+            {page.isDefault && (
+              <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 shrink-0" />
+            )}
+            <EnabledDot
+              enabled={page.enabled}
+              enabledLabel={t("statusPages:enabled")}
+              disabledLabel={t("statusPages:disabled")}
+            />
+            <VisibilityDot
+              isPublic={page.visibility === "public"}
+              publicLabel={t("statusPages:visibility.public")}
+              restrictedLabel={t("statusPages:visibility.restricted")}
+            />
+          </div>
+          <p className="text-muted-foreground mt-1">
+            /{page.slug}
+            {page.description && ` - ${page.description}`}
+          </p>
+        </div>
+        <div className="flex gap-2 shrink-0">
           <Link to="/orgs/$org/status-pages" params={{ org }}>
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={t("statusPages:backToList")}
+            >
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">
-                {page.name}
-              </h1>
-              {page.isDefault && (
-                <Star className="h-4 w-4 text-yellow-500 fill-yellow-500 shrink-0" />
-              )}
-              <EnabledDot
-                enabled={page.enabled}
-                enabledLabel={t("statusPages:enabled")}
-                disabledLabel={t("statusPages:disabled")}
-              />
-              <VisibilityDot
-                isPublic={page.visibility === "public"}
-                publicLabel={t("statusPages:visibility.public")}
-                restrictedLabel={t("statusPages:visibility.restricted")}
-              />
-            </div>
-            <p className="text-muted-foreground mt-1">
-              /{page.slug}
-              {page.description && ` - ${page.description}`}
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
           <Tooltip>
             <TooltipTrigger asChild>
               <a

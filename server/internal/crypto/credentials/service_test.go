@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
 // fakeStore is an in-memory DEKStore for tests. Lets the credentials
@@ -170,6 +171,26 @@ func TestConnectionSecretFieldsRegistry(t *testing.T) {
 	r.Contains(credentials.ConnectionSecretFields("slack"), "access_token")
 	r.Contains(credentials.ConnectionSecretFields("opsgenie"), "api_key")
 	r.Empty(credentials.ConnectionSecretFields("not-a-real-type"))
+}
+
+// TestConnectionSecretFieldsURLNotSecret guards the webhook-URL fix: endpoint
+// URLs must stay in public settings so the dashboard edit form can render
+// them. The webhook `url` and the discord/googlechat/mattermost `webhook_url`
+// must NOT be reported as secret.
+func TestConnectionSecretFieldsURLNotSecret(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.NotContains(credentials.ConnectionSecretFields("webhook"), "url")
+	// Webhook still keeps its real secrets.
+	r.Contains(credentials.ConnectionSecretFields("webhook"), "signingSecret")
+	r.Contains(credentials.ConnectionSecretFields("webhook"), "auth_token")
+
+	for _, ct := range []models.ConnectionType{"discord", "googlechat", "mattermost"} {
+		r.NotContains(credentials.ConnectionSecretFields(ct), "webhook_url",
+			"%s webhook_url must not be a secret", ct)
+	}
 }
 
 func TestProviderSecretFieldsRegistry(t *testing.T) {

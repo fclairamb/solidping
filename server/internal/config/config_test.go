@@ -3,6 +3,7 @@ package config
 import (
 	"log/slog"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -318,6 +319,36 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	r.True(cfg.S3UsePathStyle)
 	r.Equal("minio", cfg.S3AccessKey)
 	r.Equal("minio123", cfg.S3SecretKey)
+}
+
+// TestApplyJobsEnv confirms SP_JOBS_* durations land on the snake_case-tagged
+// JobsConfig fields despite koanf's env underscore→dot collapse. Uses t.Setenv,
+// which is incompatible with t.Parallel.
+func TestApplyJobsEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_JOBS_STUCK_TIMEOUT", "42m")
+	t.Setenv("SP_JOBS_REAPER_INTERVAL", "30s")
+
+	cfg := JobsConfig{StuckTimeout: 15 * time.Minute, ReaperInterval: time.Minute}
+	applyJobsEnv(&cfg)
+
+	r.Equal(42*time.Minute, cfg.StuckTimeout)
+	r.Equal(30*time.Second, cfg.ReaperInterval)
+}
+
+// TestApplyJobsEnv_InvalidKeepsExisting confirms an unparsable duration leaves
+// the existing (default) value untouched rather than zeroing it.
+func TestApplyJobsEnv_InvalidKeepsExisting(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_JOBS_STUCK_TIMEOUT", "not-a-duration")
+
+	cfg := JobsConfig{StuckTimeout: 15 * time.Minute, ReaperInterval: time.Minute}
+	applyJobsEnv(&cfg)
+
+	r.Equal(15*time.Minute, cfg.StuckTimeout)
+	r.Equal(time.Minute, cfg.ReaperInterval)
 }
 
 // TestApplyFileStorageEnv_PathStyleVariants checks the boolean parsing accepts

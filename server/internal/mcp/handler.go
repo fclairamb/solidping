@@ -15,12 +15,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	entcore "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
-	"github.com/fclairamb/solidping/server/internal/handlers/channels"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkgroups"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
+	"github.com/fclairamb/solidping/server/internal/handlers/integrations"
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
@@ -73,17 +73,17 @@ type session struct {
 
 // Handler handles MCP requests over Streamable HTTP.
 type Handler struct {
-	checksSvc      *checks.Service
-	checkTypesSvc  *checktypes.Service
-	resultsSvc     *results.Service
-	incidentsSvc   *incidents.Service
-	eventsSvc      *events.Service
-	statusPagesSvc *statuspages.Service
-	maintenanceSvc *maintenancewindows.Service
-	connectionsSvc *channels.Service
-	checkGroupsSvc *checkgroups.Service
-	regionsSvc     *regionshandler.Service
-	dbService      db.Service
+	checksSvc       *checks.Service
+	checkTypesSvc   *checktypes.Service
+	resultsSvc      *results.Service
+	incidentsSvc    *incidents.Service
+	eventsSvc       *events.Service
+	statusPagesSvc  *statuspages.Service
+	maintenanceSvc  *maintenancewindows.Service
+	integrationsSvc *integrations.Service
+	checkGroupsSvc  *checkgroups.Service
+	regionsSvc      *regionshandler.Service
+	dbService       db.Service
 
 	sessions sync.Map // map[string]*session
 	tools    []ToolDefinition
@@ -111,10 +111,12 @@ func NewHandler(
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),
-		connectionsSvc: channels.NewService(dbService, creds),
-		checkGroupsSvc: checkgroups.NewService(dbService),
-		regionsSvc:     regionshandler.NewService(dbService),
-		dbService:      dbService,
+		// nil registry/config: the MCP surface manages integrations but does
+		// not dispatch test notifications, which is the only path needing them.
+		integrationsSvc: integrations.NewService(dbService, creds, nil, nil),
+		checkGroupsSvc:  checkgroups.NewService(dbService),
+		regionsSvc:      regionshandler.NewService(dbService),
+		dbService:       dbService,
 	}
 
 	handler.registerTools()

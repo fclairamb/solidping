@@ -13,6 +13,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -91,7 +92,7 @@ type WebhookSender struct {
 	// secrets (auto-generation or expired-previous purge). When nil (e.g. in
 	// tests that don't need persistence), the sender skips persistence and
 	// logs a warning, but still signs with the in-memory secret.
-	UpdateChannel func(ctx context.Context, channel *models.Channel) error
+	UpdateChannel func(ctx context.Context, channel *models.Integration) error
 }
 
 // generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
@@ -136,7 +137,7 @@ func signRequest(secrets []string, id, timestamp string, body []byte) (string, e
 
 // Send sends a notification via webhook, signed per the Standard Webhooks spec.
 func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload *Payload) error {
-	url, ok := payload.Connection.Settings["url"].(string)
+	url, ok := payload.Integration.Settings["url"].(string)
 	if !ok || url == "" {
 		return ErrWebhookURLNotConfigured
 	}
@@ -146,7 +147,7 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		return fmt.Errorf("marshaling webhook payload: %w", err)
 	}
 
-	secrets, err := s.ensureSecrets(ctx, jctx, payload.Connection)
+	secrets, err := s.ensureSecrets(ctx, jctx, payload.Integration)
 	if err != nil {
 		return err
 	}
@@ -162,20 +163,40 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 	// Expose the webhook-id as the message id so the audit layer can record it.
 	payload.MessageID = webhookID
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	req, err := buildWebhookRequest(ctx, url, body, payload.Integration.Settings,
+		webhookHeaders{id: webhookID, timestamp: webhookTimestamp, signature: signature})
 	if err != nil {
-		return fmt.Errorf("creating webhook request: %w", err)
+		return err
 	}
 
-	req.Header.Set(headerWebhookID, webhookID)
-	req.Header.Set(headerWebhookTimestamp, webhookTimestamp)
-	req.Header.Set(headerWebhookSignature, signature)
+	return s.sendAndCapture(req, url, body, payload)
+}
+
+// webhookHeaders carries the three Standard Webhooks signing header values.
+type webhookHeaders struct {
+	id        string
+	timestamp string
+	signature string
+}
+
+// buildWebhookRequest constructs the signed POST request and applies the
+// Standard Webhooks headers plus any non-reserved custom headers. Custom headers
+// may override User-Agent but never the three signing headers.
+func buildWebhookRequest(
+	ctx context.Context, url string, body []byte, settings models.JSONMap, hdr webhookHeaders,
+) (*http.Request, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("creating webhook request: %w", err)
+	}
+
+	req.Header.Set(headerWebhookID, hdr.id)
+	req.Header.Set(headerWebhookTimestamp, hdr.timestamp)
+	req.Header.Set(headerWebhookSignature, hdr.signature)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("User-Agent", "SolidPing/1.0")
 
-	// Custom headers are added after the Standard Webhooks headers so they can
-	// override User-Agent but not the signing headers.
-	if headers, ok := payload.Connection.Settings["headers"].(map[string]any); ok {
+	if headers, ok := settings["headers"].(map[string]any); ok {
 		for k, v := range headers {
 			if str, ok := v.(string); ok {
 				if isStandardWebhookHeader(k) {
@@ -186,23 +207,95 @@ func (s *WebhookSender) Send(ctx context.Context, jctx *jobdef.JobContext, paylo
 		}
 	}
 
+	return req, nil
+}
+
+// sendAndCapture performs the HTTP request and records structured delivery
+// artifacts onto the payload (on both success and failure). The request URL is
+// stripped of its query string and credentials before being recorded; the
+// signing secret and any auth/custom headers are never stored.
+func (s *WebhookSender) sendAndCapture(req *http.Request, url string, body []byte, payload *Payload) error {
 	client := &http.Client{Timeout: webhookTimeout}
 
+	details := &models.DeliveryDetails{
+		RequestURL:  redactURL(url),
+		RequestBody: models.CapBody(body),
+	}
+
+	start := time.Now()
 	resp, err := client.Do(req)
+	details.DurationMs = time.Since(start).Milliseconds()
+
 	if err != nil {
+		// Transport error (no response): keep the partial details (url, body,
+		// duration) so the failure is still debuggable.
+		payload.DeliveryDetails = details
+
 		return fmt.Errorf("sending webhook: %w", err)
 	}
 	defer func() {
 		_ = resp.Body.Close()
 	}()
 
-	if resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, models.DeliveryDetailsBodyCap+1))
 
+	details.HTTPStatusCode = resp.StatusCode
+	details.ResponseBody = models.CapBody(respBody)
+	details.ResponseHeaders = allowlistedResponseHeaders(resp.Header)
+	payload.DeliveryDetails = details
+
+	if resp.StatusCode >= 300 {
 		return fmt.Errorf("%w: status %d: %s", ErrWebhookRequestFailed, resp.StatusCode, string(respBody))
 	}
 
 	return nil
+}
+
+// allowlistedResponseHeaders extracts a small, fixed set of safe response
+// headers worth surfacing for debugging. Request-side secret headers are never
+// read here — only the receiver's response headers, and only the allowlist.
+func allowlistedResponseHeaders(h http.Header) map[string]string {
+	allow := []string{"Retry-After", "Content-Type"}
+
+	out := make(map[string]string, len(allow))
+	for _, name := range allow {
+		if v := h.Get(name); v != "" {
+			out[name] = v
+		}
+	}
+
+	if len(out) == 0 {
+		return nil
+	}
+
+	return out
+}
+
+// redactURL strips the query string and any userinfo (credentials) from a URL,
+// returning scheme://host/path. A URL that fails to parse falls back to its host
+// portion only, never the raw string, so credentials in a malformed URL still
+// cannot leak.
+func redactURL(raw string) string {
+	parsed, err := neturl.Parse(raw)
+	if err != nil || parsed.Host == "" {
+		// Fall back to the host:port prefix at best; never echo the raw URL.
+		if i := strings.Index(raw, "?"); i >= 0 {
+			raw = raw[:i]
+		}
+		if at := strings.LastIndex(raw, "@"); at >= 0 {
+			raw = raw[at+1:]
+		}
+
+		return raw
+	}
+
+	redacted := neturl.URL{
+		Scheme: parsed.Scheme,
+		Host:   parsed.Host, // host:port only — User (credentials) is dropped
+		Path:   parsed.Path,
+	}
+
+	return redacted.String()
 }
 
 // isStandardWebhookHeader reports whether a custom header would clobber one of
@@ -220,7 +313,7 @@ func isStandardWebhookHeader(name string) bool {
 // auto-generates a secret when none exists, purges an expired previous secret,
 // and persists any mutation through the injected UpdateChannel callback.
 func (s *WebhookSender) ensureSecrets(
-	ctx context.Context, jctx *jobdef.JobContext, channel *models.Channel,
+	ctx context.Context, jctx *jobdef.JobContext, channel *models.Integration,
 ) ([]string, error) {
 	log := s.logger(jctx)
 
@@ -275,7 +368,7 @@ func (s *WebhookSender) ensureSecrets(
 
 // previousExpired reports whether the rotation grace window for the previous
 // secret has elapsed. A missing or unparseable expiry is treated as expired.
-func (s *WebhookSender) previousExpired(channel *models.Channel) bool {
+func (s *WebhookSender) previousExpired(channel *models.Integration) bool {
 	expiryRaw, ok := channel.Settings[settingsKeySigningSecretExpiry].(string)
 	if !ok || expiryRaw == "" {
 		return true

@@ -36,6 +36,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 import { ApiError } from "@/api/client";
 
 export const Route = createFileRoute("/orgs/$org/status-pages/")({
@@ -167,21 +168,20 @@ function StatusPagesIndexPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-            <Globe className="h-7 w-7 text-muted-foreground" />
-            {t("statusPages:title")}
-          </h1>
-          <p className="text-muted-foreground">{t("statusPages:subtitle")}</p>
-        </div>
-        <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-          <Button>
-            <Plus className="mr-2 h-4 w-4" />
-            {t("statusPages:newStatusPage")}
-          </Button>
-        </Link>
-      </div>
+      <PageHeader
+        icon={Globe}
+        title={t("statusPages:title")}
+        description={t("statusPages:subtitle")}
+        actions={
+          <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+            <Button>
+              <Plus className="mr-2 h-4 w-4" />
+              {t("statusPages:newStatusPage")}
+            </Button>
+          </Link>
+        }
+        className="flex-wrap"
+      />
 
       <div className="flex items-center gap-4">
         <div className="relative flex-1 max-w-sm">

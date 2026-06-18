@@ -171,6 +171,14 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		return sysConfigErr
 	}
 
+	// In SaaS mode, seed the entitlements system parameters (service token +
+	// upgrade URL template) from env so the billing service can authenticate
+	// and the dashboard renders the upgrade link. No-op when self-hosted.
+	if seedErr := server.SeedSaaSEntitlements(ctx); seedErr != nil {
+		slog.ErrorContext(ctx, "Failed to seed SaaS entitlements parameters", "error", seedErr)
+		return seedErr
+	}
+
 	// Routes are constructed after InitializeSystemConfig so handlers see
 	// the post-overlay config — e.g. PasskeyService picks up the
 	// system-parameter override of server.base_url and uses it to derive
@@ -280,12 +288,22 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 		return fmt.Errorf("encrypt-credentials failed: %w", err)
 	}
 
+	// Reconcile URL fields to public settings (idempotent one-shot backfill).
+	recStats, recErr := credmigrate.ReconcileConnectionRegistry(ctx, dbSvc, creds, credmigrate.Options{
+		DryRun: dryRun,
+		Logger: slog.Default(),
+	})
+	if recErr != nil {
+		return fmt.Errorf("encrypt-credentials reconcile failed: %w", recErr)
+	}
+
 	slog.InfoContext(ctx, "encrypt-credentials done",
 		"dryRun", dryRun,
 		"checksScanned", stats.ChecksScanned,
 		"checksMigrated", stats.ChecksMigrated,
 		"connectionsScanned", stats.ConnectionsScanned,
-		"connectionsMigrated", stats.ConnectionsMigrated)
+		"connectionsMigrated", stats.ConnectionsMigrated,
+		"connectionsReconciled", recStats.ConnectionsReconciled)
 
 	return nil
 }

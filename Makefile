@@ -1,11 +1,22 @@
 .PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
-	build-cli install-cli clean clean-all run run-test dev dev-test dev-dash dev-dash0 dev-status0 dev-backend \
+	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-backend \
 	test test-scenario test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
 .DEFAULT_GOAL := build
 
 APP_NAME := solidping
+
+# SaaS mode (make dev-saas): the separate solidping-billing service (next door
+# at ../solidping-billing, served on :4050) drives plan upgrades. These three
+# values wire the two services together for local development:
+#   SAAS_BILLING_TOKEN — shared secret; the billing service presents it as a
+#     bearer token when PUTting resolved entitlements. Must match the billing
+#     service's BILLING_SOLIDPING_TOKEN.
+#   SAAS_UPGRADE_URL   — the dashboard's "Upgrade" link. {org} is replaced with
+#     the org slug. Points at the billing service's customer upgrade page.
+SAAS_BILLING_TOKEN ?= dev-billing-service-token
+SAAS_UPGRADE_URL   ?= http://localhost:4050/app/upgrade?org={org}
 
 # Version information
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null | sed 's/^v//' || echo "dev")
@@ -216,7 +227,7 @@ dev: kill ## Run backend, dash0 and status0 in development mode
 	@mkdir -p $(LOG_DIR)
 	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
 	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
@@ -224,6 +235,20 @@ dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
 	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
 	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+
+dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
+	@echo "Running application in SaaS mode (billing via ../solidping-billing on :4050)..."
+	@echo "  upgrade URL template: $(SAAS_UPGRADE_URL)"
+	@mkdir -p $(LOG_DIR)
+	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
+	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
+	@cd $(BACK_DIR) && \
+		SP_DEPLOYMENT_MODE=saas \
+		SP_ENTITLEMENTS_SERVICE_TOKEN="$(SAAS_BILLING_TOKEN)" \
+		SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE="$(SAAS_UPGRADE_URL)" \
+		SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED=true \
+		SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+		go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
 
 clean: ## Remove built binaries and dash artifacts
 	@echo "Cleaning build artifacts..."

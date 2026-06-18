@@ -25,7 +25,7 @@ func (h *Handler) GetDestinations(writer http.ResponseWriter, req bunrouter.Requ
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrConnectionNotFound), errors.Is(err, ErrOrganizationNotFound):
-			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeChannelNotFound,
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound,
 				"Channel not found")
 		case errors.Is(err, ErrNotSlackChannel):
 			return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,

@@ -9,30 +9,29 @@ package credentials
 
 import "github.com/fclairamb/solidping/server/internal/db/models"
 
-// Common secret-key constants. Multiple connection / provider types use
-// the same key name (e.g., "webhook_url" for Discord/Mattermost/GoogleChat),
-// so we factor them here to satisfy the goconst linter and keep the
-// registry tables tidy.
+// Common secret-key constants.
 const (
-	connKeyWebhookURL       = "webhook_url"
 	providerKeyClientSecret = "client_secret"
 )
 
 // connectionSecretFields enumerates the secret JSON keys for each
 // IntegrationConnection.Settings shape.
 //
+// URL fields are intentionally NOT secret: webhook `url` and the
+// `webhook_url` of Discord / GoogleChat / Mattermost stay in the public
+// `settings` JSONB so the dashboard can render them on the edit form. The
+// threat model (DB-theft only, see server/CLAUDE.md) doesn't require
+// encrypting endpoint URLs.
+//
 //nolint:gochecknoglobals // registry of secret-key declarations; treated as a constant lookup table
 var connectionSecretFields = map[models.ConnectionType][]string{
-	models.ConnectionTypeSlack:      {"access_token"},
-	models.ConnectionTypeDiscord:    {connKeyWebhookURL},
-	models.ConnectionTypeWebhook:    {"url", "auth_token", "signingSecret", "signingSecretPrevious"},
-	models.ConnectionTypeEmail:      {"smtp_password"},
-	models.ConnectionTypeGoogleChat: {connKeyWebhookURL},
-	models.ConnectionTypeMattermost: {connKeyWebhookURL},
-	models.ConnectionTypeNtfy:       {"auth_token"},
-	models.ConnectionTypeOpsgenie:   {"api_key"},
-	models.ConnectionTypePushover:   {"user_key", "api_token"},
-	models.ConnectionTypeFreebox:    {"appToken"},
+	models.ConnectionTypeSlack:    {"access_token"},
+	models.ConnectionTypeWebhook:  {"auth_token", "signingSecret", "signingSecretPrevious"},
+	models.ConnectionTypeEmail:    {"smtp_password"},
+	models.ConnectionTypeNtfy:     {"auth_token"},
+	models.ConnectionTypeOpsgenie: {"api_key"},
+	models.ConnectionTypePushover: {"user_key", "api_token"},
+	models.ConnectionTypeFreebox:  {"appToken"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

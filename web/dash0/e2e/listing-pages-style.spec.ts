@@ -95,7 +95,7 @@ test.describe("Listing pages share the checks-page chrome", () => {
 
     const h1 = page.getByRole("heading", { level: 1 });
     await expect(h1).toBeVisible();
-    await expect(h1).toHaveClass(/text-3xl/);
+    await expect(h1).toHaveClass(/text-2xl/);
 
     // Filter input is wrapped with the search-icon prefix (pl-9)
     const filter = page.getByTestId("dependencies-filter");
@@ -121,7 +121,7 @@ test.describe("Listing pages share the checks-page chrome", () => {
     await page.waitForLoadState("networkidle");
 
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toHaveClass(/text-3xl/);
+    await expect(h1).toHaveClass(/text-2xl/);
 
     // Refresh button is in the toolbar
     await expect(page.getByTestId("oncall-refresh")).toBeVisible();
@@ -169,24 +169,24 @@ test.describe("Listing pages share the checks-page chrome", () => {
     await deleteAllEscalationPolicies(page, token);
   });
 
-  test("channels page has Search-prefixed input and refresh", async ({
+  test("integrations page has Search-prefixed input and refresh", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    await page.goto("orgs/test/channels");
+    await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
 
     const h1 = page.getByRole("heading", { level: 1 });
-    await expect(h1).toHaveClass(/text-3xl/);
+    await expect(h1).toHaveClass(/text-2xl/);
 
     // The refresh button is wired up; the search input is shown when there are
-    // channels, otherwise the empty-state pick-a-type Card replaces the table.
-    const refresh = page.getByTestId("channels-refresh");
+    // integrations, otherwise the empty-state pick-a-type Card replaces the table.
+    const refresh = page.getByTestId("integrations-refresh");
     if (await refresh.count()) {
       await expect(refresh).toBeVisible();
     } else {
       // Empty state — confirm the pick-a-type card is the visible body
-      await expect(page.getByText(/no channels yet/i)).toBeVisible();
+      await expect(page.getByText(/no integrations yet/i)).toBeVisible();
     }
   });
 });

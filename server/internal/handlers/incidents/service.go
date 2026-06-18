@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -62,11 +63,33 @@ const (
 	keyEffectiveRecoveryThreshold = "effective_recovery_threshold"
 )
 
+// maintenanceWindowCacheTTL bounds how long a check's maintenance-window
+// definitions are cached in-process before re-fetching. Windows are mutated
+// infrequently and emit no event today, so a 60 s TTL trades a small staleness
+// window (≤60 s after a create/edit/delete) for eliminating a DB round-trip on
+// the per-result hot path. Active/inactive transitions stay exact because
+// models.IsActiveAt(now) is re-evaluated on every result against the cached
+// definitions.
+const maintenanceWindowCacheTTL = 60 * time.Second
+
+// mwCacheEntry is one check's cached maintenance-window definitions plus the
+// clock time they were fetched at.
+type mwCacheEntry struct {
+	windows   []*models.MaintenanceWindow
+	fetchedAt time.Time
+}
+
 // Service provides incident management functionality.
 type Service struct {
 	db      db.Service
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
+
+	// mwCache caches per-check maintenance-window definitions with a TTL.
+	// Strong-reference map (not internal/utils/cache, whose weak.Pointer
+	// values would be GC'd almost immediately here). Keyed by checkUID.
+	mwCache   map[string]mwCacheEntry
+	mwCacheMu sync.RWMutex
 }
 
 // NewService creates a new incident service.
@@ -75,7 +98,42 @@ func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock) *
 		db:      dbService,
 		jobsSvc: jobsSvc,
 		clock:   clk,
+		mwCache: make(map[string]mwCacheEntry),
 	}
+}
+
+// isCheckInActiveMaintenance reports whether the check is inside an active
+// maintenance window right now. Window definitions are cached per check for
+// maintenanceWindowCacheTTL; on a hit within TTL we evaluate models.IsActiveAt
+// against the cached slice (so the clock advancing can flip a window active
+// mid-TTL without a re-fetch), and on a miss we re-fetch, cache and evaluate.
+func (s *Service) isCheckInActiveMaintenance(ctx context.Context, checkUID string) (bool, error) {
+	now := s.clock.Now()
+
+	s.mwCacheMu.RLock()
+	entry, ok := s.mwCache[checkUID]
+	s.mwCacheMu.RUnlock()
+
+	if !ok || now.Sub(entry.fetchedAt) >= maintenanceWindowCacheTTL {
+		windows, err := s.db.ListMaintenanceWindowsForCheck(ctx, checkUID)
+		if err != nil {
+			return false, err
+		}
+
+		entry = mwCacheEntry{windows: windows, fetchedAt: now}
+
+		s.mwCacheMu.Lock()
+		s.mwCache[checkUID] = entry
+		s.mwCacheMu.Unlock()
+	}
+
+	for _, window := range entry.windows {
+		if models.IsActiveAt(window, now) {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 // ProcessCheckResult processes a check result and manages incidents.
@@ -86,7 +144,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	// Skip incident processing if the check is in an active maintenance window
-	inMaintenance, mwErr := s.db.IsCheckInActiveMaintenance(ctx, check.UID)
+	inMaintenance, mwErr := s.isCheckInActiveMaintenance(ctx, check.UID)
 	if mwErr != nil {
 		slog.WarnContext(ctx, "Failed to check maintenance window status",
 			"checkUID", check.UID, "error", mwErr)
@@ -126,16 +184,13 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	clocks := deriveIncidentClocks(check, isSuccess, isFailure, activeIncident, now)
 
-	// Update check status in database
-	if err := s.db.UpdateCheckStatus(ctx, check.UID, newStatus, newStreak, statusChangedAt); err != nil {
-		return fmt.Errorf("failed to update check status: %w", err)
-	}
-	if err := s.db.UpdateCheckIncidentClocks(
-		ctx, check.UID,
-		clocks.FirstFailureAt, clocks.ClearFirstFailureAt,
-		clocks.FirstSuccessSinceFailureAt, clocks.ClearFirstSuccessSinceFailureAt,
+	// Update check status and incident clocks in one atomic UPDATE. Writing
+	// both together means a mid-write crash can no longer leave status updated
+	// but clocks stale.
+	if err := s.db.UpdateCheckStatusAndClocks(
+		ctx, check.UID, newStatus, newStreak, statusChangedAt, clocks,
 	); err != nil {
-		return fmt.Errorf("failed to update check incident clocks: %w", err)
+		return fmt.Errorf("failed to update check status and clocks: %w", err)
 	}
 
 	// Update local check object for incident logic
@@ -149,24 +204,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
 }
 
-// incidentClocks captures the FirstFailureAt / FirstSuccessSinceFailureAt
-// transition for this result. Tri-state per field: a non-nil pointer sets
-// the column, a true Clear* flag sets it to NULL, and the zero value
-// leaves the column untouched.
-type incidentClocks struct {
-	FirstFailureAt                  *time.Time
-	ClearFirstFailureAt             bool
-	FirstSuccessSinceFailureAt      *time.Time
-	ClearFirstSuccessSinceFailureAt bool
-}
-
 // deriveIncidentClocks computes the FirstFailureAt and
 // FirstSuccessSinceFailureAt transitions for this result. The flap-reset
-// rule is encoded by clearing one when the other is set.
+// rule is encoded by clearing one when the other is set. The returned
+// models.IncidentClockUpdate is tri-state per field: a non-nil pointer sets
+// the column, a true Clear* flag sets it to NULL, and the zero value leaves
+// the column untouched.
 func deriveIncidentClocks(
 	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident, now time.Time,
-) incidentClocks {
-	out := incidentClocks{}
+) models.IncidentClockUpdate {
+	out := models.IncidentClockUpdate{}
 	switch {
 	case isFailure && activeIncident == nil:
 		// First failure (or continuing pre-incident streak): arm the
@@ -199,7 +246,7 @@ func deriveIncidentClocks(
 
 // applyClocks mirrors deriveIncidentClocks's tri-state into the in-memory
 // Check, so handleFailure/handleSuccess can read the just-written values.
-func applyClocks(check *models.Check, clocks incidentClocks, _ time.Time) {
+func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.Time) {
 	if clocks.FirstFailureAt != nil {
 		t := *clocks.FirstFailureAt
 		check.FirstFailureAt = &t

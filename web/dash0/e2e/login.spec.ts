@@ -176,3 +176,295 @@ test.describe("Login Flow", () => {
     });
   });
 });
+
+const LAST_AUTH_METHOD_KEY = "solidping_last_auth_method";
+
+// Fetches /auth/providers so the config-dependent tests can decide whether
+// the test backend actually has an OAuth provider / passkeys configured, and
+// skip gracefully (covered by manual browser verification) when it doesn't.
+async function fetchAuthCapabilities(
+  baseURL: string | undefined,
+): Promise<{ providers: { type: string; name: string }[]; passkeysEnabled: boolean }> {
+  const root = (baseURL ?? "http://localhost:4000/dash0/").replace(
+    /\/dash0\/?$/,
+    "",
+  );
+  const res = await fetch(`${root}/api/v1/auth/providers`);
+  const body = (await res.json()) as {
+    data?: { type: string; name: string }[];
+    passkeysEnabled?: boolean;
+  };
+  return {
+    providers: body.data ?? [],
+    passkeysEnabled: body.passkeysEnabled ?? false,
+  };
+}
+
+test.describe("Login: forgot-password link placement", () => {
+  test("renders the forgot-password link on the password label row", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    // The link is inline with the Password label, above the password input.
+    const forgotLink = page.getByRole("link", { name: /forgot/i });
+    await expect(forgotLink).toBeVisible();
+
+    // It points at /forgot-password.
+    await expect(forgotLink).toHaveAttribute("href", /\/forgot-password/);
+
+    // It sits above the password field (label row), not after the form.
+    const linkBox = await forgotLink.boundingBox();
+    const passwordBox = await page.getByTestId("login-password").boundingBox();
+    expect(linkBox).not.toBeNull();
+    expect(passwordBox).not.toBeNull();
+    expect(linkBox!.y).toBeLessThan(passwordBox!.y);
+  });
+
+  test("carries the typed email as the email search param", async ({
+    page,
+  }) => {
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    // Type an email, then follow the forgot-password link.
+    await page.getByTestId("login-email").fill("someone@example.com");
+
+    const forgotLink = page.getByRole("link", { name: /forgot/i });
+    await forgotLink.click();
+
+    await page.waitForURL(/\/forgot-password/, { timeout: 10000 });
+
+    const url = new URL(page.url());
+    expect(url.pathname).toContain("/forgot-password");
+    expect(url.searchParams.get("email")).toBe("someone@example.com");
+  });
+});
+
+test.describe("Login: passkey sign-in link", () => {
+  test("the passkey control is a clickable text link that triggers the flow", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(!passkeysEnabled, "passkeys are not enabled on the test backend");
+
+    // Count the begin-ceremony requests. A background conditional-UI ceremony
+    // may also fire one on mount, so we assert the click *adds* a request
+    // rather than waiting for the first one.
+    let beginCount = 0;
+    page.on("request", (req) => {
+      if (req.url().includes("/api/v1/auth/passkeys/login/begin")) beginCount++;
+    });
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Not promoted (no last-used memory) → the text-link control is rendered.
+    const passkeyButton = page.getByTestId("passkey-login-button");
+    await expect(passkeyButton).toBeVisible();
+
+    const before = beginCount;
+    await passkeyButton.click();
+
+    // Clicking it kicks off a (new) passkey ceremony.
+    await expect(() => expect(beginCount).toBeGreaterThan(before)).toPass({
+      timeout: 10000,
+    });
+  });
+});
+
+test.describe("Login: remember last auth method", () => {
+  test("promotes the password form (badge + email autofocus) when password was last used", async ({
+    page,
+  }) => {
+    // Seed the last-used method before the app boots so the login page reads
+    // it on mount.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.setItem(key, "password");
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // The "Last used" badge renders next to the Sign in button for password.
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+
+    // The email field is autofocused for the returning password user.
+    await expect(page.getByTestId("login-email")).toBeFocused();
+
+    // No promoted top slot for the password case (the form is already primary).
+    await expect(page.getByTestId("login-last-used")).toHaveCount(0);
+  });
+
+  test("renders the default layout with no badge when there is no memory", async ({
+    page,
+  }) => {
+    // Ensure storage is clean before the app boots.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.removeItem(key);
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Default layout: the form is visible but nothing is promoted/badged.
+    await expect(page.getByTestId("login-submit")).toBeVisible();
+    await expect(page.getByTestId("login-last-used")).toHaveCount(0);
+    await expect(page.getByTestId("login-last-used-badge")).toHaveCount(0);
+  });
+
+  test("records 'password' after a successful password login", async ({
+    page,
+  }) => {
+    // Start from a clean slate.
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.removeItem(key);
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("login-title")).toBeVisible();
+
+    await page.getByTestId("login-email").fill("test@test.com");
+    await page.getByTestId("login-password").fill("test");
+    await page.getByTestId("login-submit").click();
+
+    // Wait for redirect away from login to the authenticated area.
+    await page.waitForURL((url) => !url.pathname.includes("/login"), {
+      timeout: 10000,
+    });
+
+    const stored = await page.evaluate(
+      (key) => window.localStorage.getItem(key),
+      LAST_AUTH_METHOD_KEY,
+    );
+    expect(stored).toBe("password");
+  });
+
+  test("promotes the last-used OAuth provider and removes it from the grid", async ({
+    page,
+    baseURL,
+  }) => {
+    const { providers } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      providers.length === 0,
+      "no OAuth provider configured on the test backend",
+    );
+    const provider = providers[0];
+
+    await page.addInitScript(
+      ([key, value]) => {
+        window.localStorage.setItem(key, value);
+      },
+      [LAST_AUTH_METHOD_KEY, `oauth:${provider.type}`],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Promoted top slot with the brand button + "Last used" badge.
+    await expect(page.getByTestId("login-last-used")).toBeVisible();
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+    await expect(
+      page.getByTestId(`login-oauth-${provider.type}-promoted`),
+    ).toBeVisible();
+
+    // The provider is de-duplicated: the plain grid button is gone.
+    await expect(page.getByTestId(`login-oauth-${provider.type}`)).toHaveCount(
+      0,
+    );
+  });
+
+  test("promotes the passkey button when passkey was last used", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      !passkeysEnabled,
+      "passkeys are not enabled on the test backend",
+    );
+
+    await page.addInitScript(
+      ([key]) => {
+        window.localStorage.setItem(key, "passkey");
+      },
+      [LAST_AUTH_METHOD_KEY],
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // Promoted passkey button + badge at the top; the bottom duplicate hidden.
+    await expect(page.getByTestId("login-last-used")).toBeVisible();
+    await expect(page.getByTestId("login-last-used-badge")).toBeVisible();
+    await expect(
+      page.getByTestId("passkey-login-button-promoted"),
+    ).toBeVisible();
+    await expect(page.getByTestId("passkey-login-button")).toHaveCount(0);
+  });
+});
+
+test.describe("Login: passkey error handling", () => {
+  test("shows the domain-mismatch message (not the generic error) on an RP-ID mismatch", async ({
+    page,
+    baseURL,
+  }) => {
+    const { passkeysEnabled } = await fetchAuthCapabilities(baseURL);
+    test.skip(
+      !passkeysEnabled,
+      "passkeys are not enabled on the test backend",
+    );
+
+    // Intercept the begin ceremony and rewrite the WebAuthn options' rpId to a
+    // domain that is not valid for the page's origin. The browser then throws a
+    // SecurityError during navigator.credentials.get(), which
+    // @simplewebauthn/browser maps to ERROR_INVALID_RP_ID. No virtual
+    // authenticator is needed — the RP-ID check precedes authenticator
+    // interaction. This also covers the background conditional-UI ceremony,
+    // whose failure must stay silent.
+    await page.route(
+      "**/api/v1/auth/passkeys/login/begin",
+      async (route) => {
+        const response = await route.fetch();
+        const body = (await response.json()) as {
+          options?: { publicKey?: { rpId?: string } };
+          session?: string;
+        };
+        if (body.options?.publicKey) {
+          body.options.publicKey.rpId = "example.com";
+        }
+        await route.fulfill({ response, json: body });
+      },
+    );
+
+    await page.goto("orgs/test/login");
+    await page.waitForLoadState("networkidle");
+
+    // The explicit passkey button must be present (not promoted, since no
+    // last-used memory is seeded).
+    const passkeyButton = page.getByTestId("passkey-login-button");
+    await expect(passkeyButton).toBeVisible();
+    await passkeyButton.click();
+
+    // The destructive Alert appears with the domain-mismatch copy — explicitly
+    // NOT the generic unexpected-error text.
+    const error = page.getByTestId("login-error");
+    await expect(error).toBeVisible({ timeout: 5000 });
+    await expect(error).toContainText("domain");
+    await expect(error).not.toContainText("unexpected error");
+  });
+});

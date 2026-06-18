@@ -101,4 +101,36 @@ func TestMetrics(t *testing.T) {
 			r.InDelta(1.0, f.GetMetric()[0].GetCounter().GetValue(), 0.001)
 		}
 	}
+
+	// Record background-job metrics.
+	prommetrics.RecordJobProcessed("email", "success")
+	prommetrics.RecordJobDuration("email", "success", 0.42)
+	prommetrics.RecordJobSchedulingDelay("email", 1.5)
+	prommetrics.SetJobsQueueDepth("pending", 7)
+
+	families, err = reg.Gather()
+	r.NoError(err)
+
+	names = make(map[string]bool, len(families))
+	for _, f := range families {
+		names[f.GetName()] = true
+	}
+
+	r.True(names["solidping_jobs_processed_total"], "missing solidping_jobs_processed_total")
+	r.True(names["solidping_job_duration_seconds"], "missing solidping_job_duration_seconds")
+	r.True(names["solidping_job_scheduling_delay_seconds"], "missing solidping_job_scheduling_delay_seconds")
+	r.True(names["solidping_jobs_queue_depth"], "missing solidping_jobs_queue_depth")
+
+	for _, f := range families {
+		switch f.GetName() {
+		case "solidping_jobs_processed_total":
+			r.InDelta(1.0, f.GetMetric()[0].GetCounter().GetValue(), 0.001)
+		case "solidping_job_duration_seconds":
+			r.Equal(uint64(1), f.GetMetric()[0].GetHistogram().GetSampleCount())
+		case "solidping_job_scheduling_delay_seconds":
+			r.Equal(uint64(1), f.GetMetric()[0].GetHistogram().GetSampleCount())
+		case "solidping_jobs_queue_depth":
+			r.InDelta(7.0, f.GetMetric()[0].GetGauge().GetValue(), 0.001)
+		}
+	}
 }

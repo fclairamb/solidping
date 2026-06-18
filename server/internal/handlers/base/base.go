@@ -17,16 +17,19 @@ type ErrorCode string
 
 // Standard error codes.
 const (
-	ErrorCodeInternalError             ErrorCode = "INTERNAL_ERROR"
-	ErrorCodeValidationError           ErrorCode = "VALIDATION_ERROR"
-	ErrorCodeNotFound                  ErrorCode = "NOT_FOUND"
-	ErrorCodeUnauthorized              ErrorCode = "UNAUTHORIZED"
-	ErrorCodeForbidden                 ErrorCode = "FORBIDDEN"
-	ErrorCodeConflict                  ErrorCode = "CONFLICT"
-	ErrorCodeOrganizationNotFound      ErrorCode = "ORGANIZATION_NOT_FOUND"
-	ErrorCodeUserNotFound              ErrorCode = "USER_NOT_FOUND"
-	ErrorCodeCheckNotFound             ErrorCode = "CHECK_NOT_FOUND"
-	ErrorCodeChannelNotFound           ErrorCode = "CHANNEL_NOT_FOUND"
+	ErrorCodeInternalError        ErrorCode = "INTERNAL_ERROR"
+	ErrorCodeValidationError      ErrorCode = "VALIDATION_ERROR"
+	ErrorCodeNotFound             ErrorCode = "NOT_FOUND"
+	ErrorCodeUnauthorized         ErrorCode = "UNAUTHORIZED"
+	ErrorCodeForbidden            ErrorCode = "FORBIDDEN"
+	ErrorCodeConflict             ErrorCode = "CONFLICT"
+	ErrorCodeOrganizationNotFound ErrorCode = "ORGANIZATION_NOT_FOUND"
+	ErrorCodeUserNotFound         ErrorCode = "USER_NOT_FOUND"
+	ErrorCodeCheckNotFound        ErrorCode = "CHECK_NOT_FOUND"
+	ErrorCodeIntegrationNotFound  ErrorCode = "INTEGRATION_NOT_FOUND"
+	// ErrorCodeChannelNotFound is the prior name of ErrorCodeIntegrationNotFound,
+	// kept as a deprecated alias for one release cycle. PR-E removes it.
+	ErrorCodeChannelNotFound           ErrorCode = ErrorCodeIntegrationNotFound
 	ErrorCodeInvalidCredentials        ErrorCode = "INVALID_CREDENTIALS"
 	ErrorCodeInvalidToken              ErrorCode = "INVALID_TOKEN"
 	ErrorCodeNoToken                   ErrorCode = "NO_TOKEN"

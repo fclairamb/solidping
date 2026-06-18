@@ -97,4 +97,87 @@ test.describe("Check Detail Page", () => {
       fullPage: true,
     });
   });
+
+  test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check so we have a detail page to visit. Use a deliberately long
+    // name so we exercise title truncation at narrow widths.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Overflow ${Date.now()} ${"Very Long Check Name ".repeat(4)}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/overflow-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // ---- Desktop viewport (>= md): the full inline toolbar is visible and the
+    // ⋯ overflow trigger is hidden. ----
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    const moreActions = page.getByRole("button", { name: "More actions" });
+    await expect(moreActions).toBeHidden();
+
+    // Each inline action shows its icon + label. The Badges button is an
+    // asChild <Link> (anchor) pointing at the badges builder with ?check=<slug>.
+    const badgesLink = page.getByLabel("Badges");
+    await expect(badgesLink).toBeVisible();
+    await expect(badgesLink).toHaveAttribute("href", /\/orgs\/test\/badges\?check=/);
+    await expect(badgesLink.getByText("Badges")).toBeVisible();
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
+    await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
+    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
+
+    // The leading back button stays icon-only (no visible "Back" label).
+    const backButton = page.getByRole("button", { name: "Back to checks" });
+    await expect(backButton).toBeVisible();
+
+    // ---- Mobile viewport (< lg): the action buttons never collapse into an
+    // overflow menu. They stay inline and shrink to icon-only (text labels
+    // hide); there is no ⋯ "More actions" trigger. ----
+    await page.setViewportSize({ width: 390, height: 812 });
+
+    await expect(backButton).toBeVisible();
+    await expect(moreActions).toBeHidden();
+
+    // The inline action buttons remain visible (icon-only); only their text
+    // labels are hidden below lg.
+    await expect(page.getByLabel("Edit")).toBeVisible();
+    await expect(page.getByLabel("Clone")).toBeVisible();
+    await expect(page.getByLabel("Refresh")).toBeVisible();
+    await expect(page.getByLabel("Delete")).toBeVisible();
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeHidden();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeHidden();
+
+    // The header must not overflow horizontally even with a long check name.
+    const hasOverflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+    );
+    expect(hasOverflow).toBe(false);
+
+    await page.screenshot({
+      path: "test-results/screenshots/check-detail-actions-mobile.png",
+      fullPage: true,
+    });
+
+    // The inline Delete button opens the confirm dialog directly.
+    await page.getByLabel("Delete").click();
+    await expect(
+      page.getByRole("alertdialog").getByText("Delete Check"),
+    ).toBeVisible();
+  });
 });

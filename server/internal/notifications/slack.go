@@ -58,7 +58,7 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 
 // parseSettings extracts and validates Slack settings from the payload.
 func (s *SlackSender) parseSettings(payload *Payload) (*models.SlackSettings, string, error) {
-	settings, err := models.SlackSettingsFromJSONMap(payload.Connection.Settings)
+	settings, err := models.SlackSettingsFromJSONMap(payload.Integration.Settings)
 	if err != nil {
 		return nil, "", fmt.Errorf("parsing slack settings: %w", err)
 	}
@@ -156,6 +156,35 @@ func getCheckName(check *models.Check) string {
 	return "Unknown check"
 }
 
+// checkDashURL builds the SolidPing dashboard URL for a check's detail page.
+// Returns "" when any required component is missing so callers fall back to
+// plain text.
+func checkDashURL(baseURL, orgSlug string, check *models.Check) string {
+	if baseURL == "" || orgSlug == "" || check == nil || check.Slug == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s/dash0/orgs/%s/checks/%s", baseURL, orgSlug, *check.Slug)
+}
+
+// incidentDashURL builds the SolidPing dashboard URL for an incident's detail
+// page. Returns "" when any required component is missing so callers fall back
+// to plain text.
+func incidentDashURL(baseURL, orgSlug string, incident *models.Incident) string {
+	if baseURL == "" || orgSlug == "" || incident == nil || incident.UID == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s/dash0/orgs/%s/incidents/%s", baseURL, orgSlug, incident.UID)
+}
+
+// slackLink wraps text in a Slack mrkdwn hyperlink when a URL is available,
+// falling back to the plain text unchanged when url is empty.
+func slackLink(url, text string) string {
+	if url == "" {
+		return text
+	}
+	return fmt.Sprintf("<%s|%s>", url, text)
+}
+
 // getCheckURL returns the URL from the check config for HTTP checks.
 func getCheckURL(check *models.Check) string {
 	if check.Config == nil {
@@ -206,6 +235,9 @@ func formatDuration(dur time.Duration) string {
 		return fmt.Sprintf("%d minutes", mins)
 	}
 	hours := int(dur.Hours())
+	if hours >= 24 {
+		return formatDurationDays(hours)
+	}
 	mins := int(dur.Minutes()) % 60
 	if hours == 1 {
 		if mins == 0 {
@@ -217,6 +249,30 @@ func formatDuration(dur time.Duration) string {
 		return fmt.Sprintf("%d hours", hours)
 	}
 	return fmt.Sprintf("%d hours %d minutes", hours, mins)
+}
+
+// oneDay is the singular day label used by formatDurationDays.
+const oneDay = "1 day"
+
+// formatDurationDays formats a duration of 24 hours or more as days plus
+// remaining hours. Minutes are dropped at this granularity. Both units use
+// correct singular/plural forms.
+func formatDurationDays(hours int) string {
+	days := hours / 24
+	remHours := hours % 24
+
+	dayPart := fmt.Sprintf("%d days", days)
+	if days == 1 {
+		dayPart = oneDay
+	}
+
+	if remHours == 0 {
+		return dayPart
+	}
+	if remHours == 1 {
+		return dayPart + " 1 hour"
+	}
+	return fmt.Sprintf("%s %d hours", dayPart, remHours)
 }
 
 // formatTimestamp formats a time for display in Slack.
@@ -234,9 +290,11 @@ const (
 // buildIncidentCreatedMessage builds a rich Block Kit message for incident.created events.
 func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := "New incident for " + checkName
-	fields := s.buildIncidentFields(payload, checkName)
-	blocks := s.buildIncidentCreatedBlocks(payload, checkName, fields)
+	fields := s.buildIncidentFields(payload, checkName, checkURL)
+	blocks := s.buildIncidentCreatedBlocks(payload, checkName, fields, checkURL, incidentURL)
 
 	return &slack.MessageResponse{
 		Text: fallbackText,
@@ -247,9 +305,9 @@ func (s *SlackSender) buildIncidentCreatedMessage(payload *Payload) *slack.Messa
 }
 
 // buildIncidentFields builds the common section fields for incident messages.
-func (s *SlackSender) buildIncidentFields(payload *Payload, checkName string) []slack.Text {
+func (s *SlackSender) buildIncidentFields(payload *Payload, checkName, checkURL string) []slack.Text {
 	fields := []slack.Text{
-		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
 		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
 	}
 
@@ -266,7 +324,7 @@ func (s *SlackSender) buildIncidentFields(payload *Payload, checkName string) []
 
 // buildIncidentCreatedBlocks builds the blocks for incident.created messages.
 func (s *SlackSender) buildIncidentCreatedBlocks(
-	payload *Payload, checkName string, fields []slack.Text,
+	payload *Payload, checkName string, fields []slack.Text, checkURL, incidentURL string,
 ) []slack.Block {
 	return []slack.Block{
 		{
@@ -284,7 +342,7 @@ func (s *SlackSender) buildIncidentCreatedBlocks(
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: ":warning: Incident  :large_blue_circle: Monitor",
+					Text: slackLink(incidentURL, ":warning: Incident") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
 		},
@@ -357,6 +415,8 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 // buildIncidentEscalatedMessage builds a rich Block Kit message for escalation.
 func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := "Incident escalated: " + checkName
 
 	// Calculate duration
@@ -364,7 +424,7 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 
 	// Build section fields
 	fields := []slack.Text{
-		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
 		{Type: slack.BlockTypeMrkdwn, Text: fmt.Sprintf("*Failures:*\n%d", payload.Incident.FailureCount)},
 		{Type: slack.BlockTypeMrkdwn, Text: "*Duration:*\n" + duration},
 	}
@@ -423,7 +483,10 @@ func (s *SlackSender) buildIncidentEscalatedMessage(payload *Payload) *slack.Mes
 		{
 			Type: slack.BlockTypeContext,
 			Elements: []any{
-				slack.ContextElement{Type: slack.BlockTypeMrkdwn, Text: ":rotating_light: Escalated  :warning: Incident"},
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
+					Text: slackLink(incidentURL, ":rotating_light: Escalated") + "  " + slackLink(incidentURL, ":warning: Incident"),
+				},
 			},
 		},
 	}
@@ -504,6 +567,8 @@ func (s *SlackSender) handleIncidentResolution(
 // when the incident is resolved. It replaces the original message with a resolved status.
 func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := fmt.Sprintf("Automatically resolved %s incident", checkName)
 
 	// Calculate duration
@@ -515,7 +580,7 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 
 	// Build section fields
 	fields := []slack.Text{
-		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + checkName},
+		{Type: slack.BlockTypeMrkdwn, Text: "*Monitor:*\n" + slackLink(checkURL, checkName)},
 		{Type: slack.BlockTypeMrkdwn, Text: "*Cause:*\n" + getFailureReason(payload.Incident)},
 		{Type: slack.BlockTypeMrkdwn, Text: "*Length:*\n" + duration},
 	}
@@ -549,7 +614,11 @@ func (s *SlackSender) buildResolvedUpdateMessage(payload *Payload) *slack.Messag
 		{
 			Type: slack.BlockTypeContext,
 			Elements: []any{
-				slack.ContextElement{Type: slack.BlockTypeMrkdwn, Text: ":white_check_mark: Resolved  :large_blue_circle: Monitor"},
+				slack.ContextElement{
+					Type: slack.BlockTypeMrkdwn,
+					Text: slackLink(incidentURL, ":white_check_mark: Resolved") +
+						"  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
+				},
 			},
 		},
 		// Context: timestamp
@@ -651,9 +720,11 @@ func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.
 // when the incident is reopened. It restores the message to active state.
 func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.MessageResponse {
 	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	incidentURL := incidentDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Incident)
 	fallbackText := fmt.Sprintf("Incident reopened for %s (relapse #%d)", checkName, payload.Incident.RelapseCount)
 
-	fields := s.buildIncidentFields(payload, checkName)
+	fields := s.buildIncidentFields(payload, checkName, checkURL)
 	blocks := []slack.Block{
 		{
 			Type: slack.BlockTypeHeader,
@@ -674,7 +745,7 @@ func (s *SlackSender) buildReopenedUpdateMessage(payload *Payload) *slack.Messag
 			Elements: []any{
 				slack.ContextElement{
 					Type: slack.BlockTypeMrkdwn,
-					Text: ":warning: Reopened  :large_blue_circle: Monitor",
+					Text: slackLink(incidentURL, ":warning: Reopened") + "  " + slackLink(checkURL, ":large_blue_circle: Monitor"),
 				},
 			},
 		},

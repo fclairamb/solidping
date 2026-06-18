@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { PageHeader } from "@/components/shared/page-header";
 
 export const Route = createFileRoute("/orgs/$org/dependencies/")({
   component: DependenciesIndexPage,
@@ -74,13 +75,12 @@ function DependenciesIndexPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight flex items-center gap-2">
-          <GitBranch className="h-7 w-7 text-muted-foreground" />
-          {t("dependencies:list.title")}
-        </h1>
-        <p className="text-muted-foreground">{t("dependencies:list.subtitle")}</p>
-      </div>
+      <PageHeader
+        icon={GitBranch}
+        title={t("dependencies:list.title")}
+        description={t("dependencies:list.subtitle")}
+        className="flex-wrap"
+      />
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="relative flex-1 min-w-[200px] max-w-sm">

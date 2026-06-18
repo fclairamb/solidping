@@ -5,9 +5,17 @@ description: Database conventions for SolidPing SQL migrations. Use when creatin
 
 # Database Conventions
 
-## Migration file naming
-- Use sequential numbering: `001_name.up.sql`, `001_name.down.sql`
-- Keep a single consolidated migration per major version; avoid incremental ALTER TABLE migrations
+## Migration file naming and consolidation rule
+
+**One migration file per release.**
+
+- File pattern: `NNN_v<major>_<minor>_<patch>.up.sql` / `.down.sql`  
+  Example: `001_v0_1_0.up.sql`, `002_v0_2_0.up.sql`
+- `NNN` is a 3-digit zero-padded sequence. Each new release increments it by 1 and re-syncs both engines to the same number.
+- **No dots in filenames** — Bun's discovery regex (`migrate/migrations.go`) allows only `[0-9a-z_\-]`; dots silently truncate the name.
+- **Freeze-released-migrations**: migrations already shipped in a released version (`vX.Y.Z` git tag) are **frozen and never rewritten**. Only add new migration files for new releases.
+- **During a release cycle**: add incremental scratch migrations as usual (`002_add_foo.up.sql`, etc.). At release time, collapse them into a single `NNN_vX_Y_Z.up.sql` and delete the scratch files.
+- The `.down.sql` drops all tables in reverse dependency order (parity only; downs are never run in production).
 
 ## SQL conventions
 
@@ -49,8 +57,15 @@ description: Database conventions for SolidPing SQL migrations. Use when creatin
 - Most tables are scoped to an organization via `organization_uid`
 - System-wide tables (e.g., `users`, `workers`) don't require `organization_uid`
 
-## When creating new migrations
-1. Add the PostgreSQL migration with full `comment on` statements
-2. Add the equivalent SQLite migration with `--` comments
+## When creating new migrations (during a release cycle)
+1. Add scratch migration files (e.g., `002_add_foo.up.sql`) to **both** `server/internal/db/postgres/migrations/` and `server/internal/db/sqlite/migrations/`
+2. PostgreSQL: full `comment on` statements; SQLite: `--` inline comments
 3. Ensure both produce the same logical schema
 4. Run `make test` to verify both backends work
+
+## At release time (squash step)
+1. Capture a golden schema from the current incremental migrations (fresh DB dump)
+2. Author one `NNN_vX_Y_Z.up.sql` per engine containing the **net final DDL** (not concatenation — hand-write to drop columns/tables that were added then removed)
+3. Delete all scratch migrations for this cycle
+4. Run the new single migration on a fresh DB, dump schema, diff against golden — must match
+5. Run `make test` to confirm all backends pass

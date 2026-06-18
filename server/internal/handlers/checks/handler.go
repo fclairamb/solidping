@@ -358,7 +358,7 @@ func (h *Handler) DeleteCheck(writer http.ResponseWriter, req bunrouter.Request)
 }
 
 // CloneCheck handles POST /api/v1/orgs/:org/checks/:checkUid/clone.
-// Empty body is valid; defaults produce a disabled clone with `(copy)` /
+// Empty body is valid; defaults produce an enabled clone with `(copy)` /
 // `-copy` suffixes on name/slug.
 func (h *Handler) CloneCheck(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")

@@ -255,6 +255,7 @@ func (s *Service) merge(row *models.OrgEntitlements, stale bool) Resolved {
 
 	out.Source = row.Payload.Source
 	out.DisplayName = row.Payload.DisplayName
+	out.DisplayEmoji = row.Payload.DisplayEmoji
 	out.ExpiresAt = row.ExpiresAt
 	out.LastSyncedAt = row.LastSyncedAt
 
@@ -306,10 +307,11 @@ func toModel(
 	}
 
 	row.Payload = models.EntitlementsPayload{
-		Version:     models.EntitlementsPayloadVersion,
-		Source:      input.Source,
-		Limits:      input.Limits,
-		DisplayName: input.DisplayName,
+		Version:      models.EntitlementsPayloadVersion,
+		Source:       input.Source,
+		Limits:       input.Limits,
+		DisplayName:  input.DisplayName,
+		DisplayEmoji: input.DisplayEmoji,
 	}
 
 	row.ExternalRef = input.ExternalRef

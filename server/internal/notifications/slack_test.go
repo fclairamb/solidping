@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -12,8 +13,12 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
+
+// ptr returns a pointer to v, for building model fields in tests.
+func ptr[T any](v T) *T { return &v }
 
 // errDatabaseError is a test error for database failures.
 var errDatabaseError = errors.New("database error")
@@ -516,22 +521,22 @@ func (m *mockDBService) ListEvents(_ context.Context, _ *models.ListEventsFilter
 	panic("not implemented")
 }
 
-func (m *mockDBService) CreateChannel(_ context.Context, _ *models.Channel) error {
+func (m *mockDBService) CreateChannel(_ context.Context, _ *models.Integration) error {
 	panic("not implemented")
 }
 
-func (m *mockDBService) GetChannel(_ context.Context, _ string) (*models.Channel, error) {
+func (m *mockDBService) GetChannel(_ context.Context, _ string) (*models.Integration, error) {
 	panic("not implemented")
 }
 
 func (m *mockDBService) ListChannels(
-	_ context.Context, _ *models.ListChannelsFilter,
-) ([]*models.Channel, error) {
+	_ context.Context, _ *models.ListIntegrationsFilter,
+) ([]*models.Integration, error) {
 	panic("not implemented")
 }
 
 func (m *mockDBService) UpdateChannel(
-	_ context.Context, _ string, _ *models.ChannelUpdate,
+	_ context.Context, _ string, _ *models.IntegrationUpdate,
 ) error {
 	panic("not implemented")
 }
@@ -544,7 +549,7 @@ func (m *mockDBService) CreateCheckConnection(_ context.Context, _ *models.Check
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListChannelsForCheck(_ context.Context, _ string) ([]*models.Channel, error) {
+func (m *mockDBService) ListChannelsForCheck(_ context.Context, _ string) ([]*models.Integration, error) {
 	panic("not implemented")
 }
 
@@ -564,7 +569,7 @@ func (m *mockDBService) SetCheckConnections(_ context.Context, _ string, _ []str
 	panic("not implemented")
 }
 
-func (m *mockDBService) ListDefaultChannels(_ context.Context, _ string) ([]*models.Channel, error) {
+func (m *mockDBService) ListDefaultChannels(_ context.Context, _ string) ([]*models.Integration, error) {
 	panic("not implemented")
 }
 
@@ -756,14 +761,8 @@ func (m *mockDBService) SaveResultWithStatusTracking(_ context.Context, _ *model
 	panic("not implemented")
 }
 
-func (m *mockDBService) UpdateCheckStatus(
-	_ context.Context, _ string, _ models.CheckStatus, _ int, _ *time.Time,
-) error {
-	panic("not implemented")
-}
-
-func (m *mockDBService) UpdateCheckIncidentClocks(
-	_ context.Context, _ string, _ *time.Time, _ bool, _ *time.Time, _ bool,
+func (m *mockDBService) UpdateCheckStatusAndClocks(
+	_ context.Context, _ string, _ models.CheckStatus, _ int, _ *time.Time, _ models.IncidentClockUpdate,
 ) error {
 	panic("not implemented")
 }
@@ -816,7 +815,7 @@ func (m *mockDBService) ListSystemParameters(_ context.Context) ([]*models.Param
 
 func (m *mockDBService) GetChannelByProperty(
 	_ context.Context, _, _, _ string,
-) (*models.Channel, error) {
+) (*models.Integration, error) {
 	panic("not implemented")
 }
 
@@ -1001,7 +1000,9 @@ func (m *mockDBService) ListMaintenanceWindowChecks(
 	panic("not implemented")
 }
 
-func (m *mockDBService) IsCheckInActiveMaintenance(_ context.Context, _ string) (bool, error) {
+func (m *mockDBService) ListMaintenanceWindowsForCheck(
+	_ context.Context, _ string,
+) ([]*models.MaintenanceWindow, error) {
 	panic("not implemented")
 }
 
@@ -1155,12 +1156,14 @@ func (m *mockDBService) MarkIncidentNotificationFailedByUID(_ context.Context, _
 	return nil
 }
 
-func (m *mockDBService) MarkIncidentNotificationSentByJob(_ context.Context, _ string, _ time.Time, _ string) error {
+func (m *mockDBService) MarkIncidentNotificationSentByJob(
+	_ context.Context, _ string, _ time.Time, _ string, _ *models.DeliveryDetails,
+) error {
 	return nil
 }
 
 func (m *mockDBService) MarkIncidentNotificationFailedByJob(
-	_ context.Context, _ string, _ time.Time, _ string, _ bool,
+	_ context.Context, _ string, _ time.Time, _ string, _ bool, _ *models.DeliveryDetails,
 ) error {
 	return nil
 }
@@ -1175,6 +1178,18 @@ func (m *mockDBService) ListIncidentNotifications(
 	_ context.Context, _ string, _ db.ListIncidentNotificationsFilter,
 ) ([]*models.IncidentNotificationRow, error) {
 	return nil, nil
+}
+
+func (m *mockDBService) GetIncidentNotification(
+	_ context.Context, _, _, _ string,
+) (*models.IncidentNotificationRow, error) {
+	return nil, nil //nolint:nilnil // mock
+}
+
+func (m *mockDBService) GetOrgNotification(
+	_ context.Context, _, _ string,
+) (*models.IncidentNotificationRow, error) {
+	return nil, nil //nolint:nilnil // mock
 }
 
 func TestSlackSender_Send_NewThread(t *testing.T) {
@@ -1293,7 +1308,7 @@ func TestSlackSender_Send_MissingAccessToken(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.Channel{
+		Integration: &models.Integration{
 			Settings: models.JSONMap{
 				"channel_id": "C123",
 				// access_token is missing
@@ -1324,7 +1339,7 @@ func TestSlackSender_Send_MissingChannel(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.Channel{
+		Integration: &models.Integration{
 			Settings: models.JSONMap{
 				"access_token": "xoxb-test-token",
 				// channel_id is missing
@@ -1355,7 +1370,7 @@ func TestSlackSender_Send_StateEntryGetError(t *testing.T) {
 			OrganizationUID: "org-123",
 		},
 		Check: &models.Check{},
-		Connection: &models.Channel{
+		Integration: &models.Integration{
 			Settings: models.JSONMap{
 				"access_token": "xoxb-test-token",
 				"channel_id":   "C123",
@@ -1462,12 +1477,12 @@ func TestSlackSender_DMChannelID(t *testing.T) {
 
 	// determineChannel should return the user ID unchanged.
 	payload := &Payload{
-		Connection: &models.Channel{
+		Integration: &models.Integration{
 			Settings: settingsMap,
 		},
 	}
 
-	parsed, err := models.SlackSettingsFromJSONMap(payload.Connection.Settings)
+	parsed, err := models.SlackSettingsFromJSONMap(payload.Integration.Settings)
 	r.NoError(err)
 	r.Equal("U0345CDEFG", parsed.ChannelID, "channel_id must be the user ID for DMs")
 	r.Equal("dm", parsed.DestinationType)
@@ -1509,7 +1524,7 @@ func (m *mockDBService) ReorderRoutes(_ context.Context, _, _ string, _ []string
 	return nil
 }
 
-func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*models.Channel, error) {
+func (m *mockDBService) GetSlackChannelForOrg(_ context.Context, _ string) (*models.Integration, error) {
 	return nil, nil //nolint:nilnil
 }
 
@@ -1613,3 +1628,199 @@ func (m *mockDBService) SetAppSetting(_ context.Context, _, _ string) error {
 
 // Ensure mockDBService implements db.Service interface.
 var _ db.Service = (*mockDBService)(nil)
+
+// collectBlockText flattens all mrkdwn text from a message's attachment blocks
+// (section field text, section text, and context element text) into one string
+// so tests can assert on rendered link patterns regardless of block layout.
+func collectBlockText(msg *slack.MessageResponse) string {
+	var sb strings.Builder
+	for _, att := range msg.Attachments {
+		for _, block := range att.Blocks {
+			if block.Text != nil {
+				sb.WriteString(block.Text.Text)
+				sb.WriteString("\n")
+			}
+			for _, field := range block.Fields {
+				sb.WriteString(field.Text)
+				sb.WriteString("\n")
+			}
+			for _, el := range block.Elements {
+				if ce, ok := el.(slack.ContextElement); ok {
+					sb.WriteString(ce.Text)
+					sb.WriteString("\n")
+				}
+			}
+		}
+	}
+	return sb.String()
+}
+
+func TestSlackSender_DashboardLinks(t *testing.T) {
+	t.Parallel()
+
+	const (
+		baseURL  = "https://app.example.com"
+		orgSlug  = "acme"
+		checkSlg = "api-health"
+		incUID   = "incident-789"
+	)
+
+	checkName := "API Health"
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg
+	incidentLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/incidents/" + incUID
+
+	newPayload := func(eventType string) *Payload {
+		return &Payload{
+			EventType:  eventType,
+			OrgSlug:    orgSlug,
+			AppBaseURL: baseURL,
+			Incident: &models.Incident{
+				UID:          incUID,
+				StartedAt:    time.Now().Add(-5 * time.Minute),
+				FailureCount: 3,
+			},
+			Check: &models.Check{
+				Name: &checkName,
+				Slug: ptr(checkSlg),
+			},
+		}
+	}
+
+	tests := []struct {
+		name      string
+		build     func(s *SlackSender, p *Payload) *slack.MessageResponse
+		eventType string
+		// wantCheckLinks is the number of times the check link must appear
+		// (Monitor field + Monitor context tag).
+		wantCheckLinks int
+		// wantIncidentLinks is the minimum number of incident links expected.
+		wantIncidentLinks int
+	}{
+		{
+			name:              "incident created",
+			eventType:         eventTypeIncidentCreated,
+			build:             (*SlackSender).buildIncidentCreatedMessage,
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+		{
+			name:              "incident escalated",
+			eventType:         eventTypeIncidentEscalated,
+			build:             (*SlackSender).buildIncidentEscalatedMessage,
+			wantCheckLinks:    1,
+			wantIncidentLinks: 2,
+		},
+		{
+			name:              "resolved update",
+			eventType:         eventTypeIncidentResolved,
+			build:             (*SlackSender).buildResolvedUpdateMessage,
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+		{
+			name:              "reopened update",
+			eventType:         eventTypeIncidentReopened,
+			build:             (*SlackSender).buildReopenedUpdateMessage,
+			wantCheckLinks:    2,
+			wantIncidentLinks: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			sender := &SlackSender{}
+			msg := tt.build(sender, newPayload(tt.eventType))
+			r.NotNil(msg)
+
+			text := collectBlockText(msg)
+			r.GreaterOrEqual(strings.Count(text, checkLink), tt.wantCheckLinks,
+				"expected at least %d check dashboard links, got text: %s", tt.wantCheckLinks, text)
+			r.GreaterOrEqual(strings.Count(text, incidentLink), tt.wantIncidentLinks,
+				"expected at least %d incident dashboard links, got text: %s", tt.wantIncidentLinks, text)
+
+			// The monitor field links the check name explicitly.
+			r.Contains(text, checkLink+"|"+checkName+">",
+				"monitor field must link the check name")
+		})
+	}
+}
+
+func TestSlackSender_DashboardLinks_EmptyBaseURLFallback(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	checkName := "API Health"
+	payload := &Payload{
+		EventType:  eventTypeIncidentCreated,
+		OrgSlug:    "acme",
+		AppBaseURL: "", // no base URL -> no links
+		Incident: &models.Incident{
+			UID:       "incident-789",
+			StartedAt: time.Now().Add(-5 * time.Minute),
+		},
+		Check: &models.Check{
+			Name: &checkName,
+			Slug: ptr("api-health"),
+		},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildIncidentCreatedMessage(payload)
+	r.NotNil(msg)
+
+	text := collectBlockText(msg)
+	// No mrkdwn link syntax should appear when the base URL is empty.
+	r.NotContains(text, "<https://", "no dashboard links expected with empty base URL")
+	r.NotContains(text, "/dash0/orgs/", "no dashboard URLs expected with empty base URL")
+	// Plain-text monitor name and tags must still be present.
+	r.Contains(text, "*Monitor:*\n"+checkName, "monitor name must remain as plain text")
+	r.Contains(text, ":warning: Incident", "incident tag must remain as plain text")
+	r.Contains(text, ":large_blue_circle: Monitor", "monitor tag must remain as plain text")
+}
+
+func TestFormatDuration(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		duration time.Duration
+		expected string
+	}{
+		// Sub-24h regression guards.
+		{name: "seconds", duration: 30 * time.Second, expected: "30 seconds"},
+		{name: "one minute", duration: time.Minute, expected: "1 minute"},
+		{name: "minutes", duration: 5 * time.Minute, expected: "5 minutes"},
+		{name: "one hour", duration: time.Hour, expected: "1 hour"},
+		{name: "one hour and minutes", duration: time.Hour + 30*time.Minute, expected: "1 hour 30 minutes"},
+		{name: "hours only", duration: 5 * time.Hour, expected: "5 hours"},
+		{name: "hours and minutes", duration: 5*time.Hour + 12*time.Minute, expected: "5 hours 12 minutes"},
+		{name: "just under a day", duration: 23*time.Hour + 59*time.Minute, expected: "23 hours 59 minutes"},
+		// Day-scale rows from the spec.
+		{name: "exactly one day", duration: 24 * time.Hour, expected: "1 day"},
+		{name: "one day one hour", duration: 25 * time.Hour, expected: "1 day 1 hour"},
+		{name: "one day three hours", duration: 27 * time.Hour, expected: "1 day 3 hours"},
+		{name: "ten days", duration: 240 * time.Hour, expected: "10 days"},
+		{name: "239h36m rounds to 9 days 23 hours", duration: 239*time.Hour + 36*time.Minute, expected: "9 days 23 hours"},
+		// Singular/plural boundary cases.
+		{name: "two days zero hours", duration: 48 * time.Hour, expected: "2 days"},
+		{name: "two days one hour", duration: 49 * time.Hour, expected: "2 days 1 hour"},
+		{name: "two days five hours", duration: 53 * time.Hour, expected: "2 days 5 hours"},
+		{name: "one day twenty-three hours", duration: 47 * time.Hour, expected: "1 day 23 hours"},
+		// Minutes are dropped at the days scale.
+		{name: "one day one hour drops minutes", duration: 25*time.Hour + 59*time.Minute, expected: "1 day 1 hour"},
+		{name: "one day zero hours with minutes drops minutes", duration: 24*time.Hour + 30*time.Minute, expected: "1 day"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			r.Equal(tt.expected, formatDuration(tt.duration))
+		})
+	}
+}

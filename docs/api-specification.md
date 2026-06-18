@@ -364,27 +364,30 @@ Query parameters:
 
 ---
 
-## Check Connections
+## Check notify channels
 
-Manage notification/integration connections attached to individual checks.
+Manage the notify-capable integrations ("channels") attached to individual
+checks. Canonical path is `/integrations`; `/channels` is the alias for the
+notify role; `/connections` is the legacy path removed at PR-E. All three
+return identical responses while present.
 
-### GET /api/v1/orgs/:org/checks/:check/connections
-List all connections for a check. Auth: required
+### GET /api/v1/orgs/:org/checks/:check/integrations (alias: /channels; removed: /connections)
+List all notify channels for a check. Auth: required
 
-### PUT /api/v1/orgs/:org/checks/:check/connections
-Set (replace) all connections for a check. Auth: required
+### PUT /api/v1/orgs/:org/checks/:check/integrations (alias: /channels; removed: /connections)
+Set (replace) all notify channels for a check. Auth: required
 
-### POST /api/v1/orgs/:org/checks/:check/connections/:connection
-Add a connection to a check. Auth: required
+### POST /api/v1/orgs/:org/checks/:check/integrations/:connection (alias: /channels)
+Add a notify channel to a check. Auth: required
 
-### DELETE /api/v1/orgs/:org/checks/:check/connections/:connection
-Remove a connection from a check. Auth: required
+### DELETE /api/v1/orgs/:org/checks/:check/integrations/:connection (alias: /channels)
+Remove a notify channel from a check. Auth: required
 
-### GET /api/v1/orgs/:org/checks/:check/connections/:connection
-Get connection-specific settings for a check. Auth: required
+### GET /api/v1/orgs/:org/checks/:check/integrations/:connection (alias: /channels)
+Get channel-specific settings for a check. Auth: required
 
-### PATCH /api/v1/orgs/:org/checks/:check/connections/:connection
-Update connection-specific settings for a check. Auth: required
+### PATCH /api/v1/orgs/:org/checks/:check/integrations/:connection (alias: /channels)
+Update channel-specific settings for a check. Auth: required
 
 ---
 
@@ -497,28 +500,28 @@ List regions relevant to the organization. Auth: required
 Manage notification channels (Slack, Discord, email, webhook, etc.) at the
 organization level.
 
-> **Naming alignment in progress.** The dashboard, internal docs, and
-> these endpoints' canonical name is **channel**. The legacy name
-> **connection** stays accepted as a path alias for one release so
-> external clients (CLIs, MCP tools) can switch over without breakage.
-> The `/connections` paths return identical responses to the
-> `/channels` paths and will be removed in a future revision per
-> [`specs/done/2026/05/2026-05-07-03-align-channel-and-connection-naming.md`](#).
+> **Naming alignment.** The canonical name for these endpoints is now
+> **integration** (the umbrella entity — Slack, webhook, email, Freebox).
+> **/channels** is kept as a path alias for one release cycle (it is the
+> prior name; "channel" survives only as the notify-capable *role*).
+> **/connections** is the original legacy name and is **removed at PR-E**.
+> All three paths return identical responses while present. See
+> [`specs/done/2026/05/2026-05-29-01-channels-to-integrations-rename.md`](#).
 
-### GET /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
-List all channels. Auth: required
+### GET /api/v1/orgs/:org/integrations (alias: /api/v1/orgs/:org/channels; removed: /api/v1/orgs/:org/connections)
+List all integrations. Auth: required
 
-### POST /api/v1/orgs/:org/channels (alias: /api/v1/orgs/:org/connections)
-Create a new channel. Auth: required
+### POST /api/v1/orgs/:org/integrations (alias: /api/v1/orgs/:org/channels; removed: /api/v1/orgs/:org/connections)
+Create a new integration. Auth: required
 
-### GET /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
-Get a channel. Auth: required
+### GET /api/v1/orgs/:org/integrations/:uid (alias: /api/v1/orgs/:org/channels/:uid)
+Get an integration. Auth: required
 
-### PATCH /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
-Update a channel. Auth: required
+### PATCH /api/v1/orgs/:org/integrations/:uid (alias: /api/v1/orgs/:org/channels/:uid)
+Update an integration. Auth: required
 
-### DELETE /api/v1/orgs/:org/channels/:uid (alias: /api/v1/orgs/:org/connections/:uid)
-Delete a channel. Auth: required
+### DELETE /api/v1/orgs/:org/integrations/:uid (alias: /api/v1/orgs/:org/channels/:uid)
+Delete an integration. Auth: required
 
 ---
 

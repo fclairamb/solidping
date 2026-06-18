@@ -58,6 +58,7 @@
   "promoted_success": "Hôte promu en vérification",
   "promoted_failed": "Échec de la promotion de l'hôte",
   "back": "Retour",
+  "refresh": "Actualiser",
   "scanDetails": "Détails du scan",
   "cidrs": "CIDRs",
   "startedAt": "Démarré le",

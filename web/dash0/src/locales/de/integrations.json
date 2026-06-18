@@ -1,0 +1,90 @@
+{
+  "title": "Integrationen",
+  "subtitle": "Slack, Webhooks, E-Mail und mehr — konfigurieren Sie, wie SolidPing Sie erreicht.",
+  "new": "Neue Integration",
+  "newTitle": "Integration hinzufügen",
+  "newSubtitle": "Wählen Sie den zu konfigurierenden Integrationstyp.",
+  "groupNotify": "Benachrichtigungskanäle",
+  "groupSource": "Datenquellen",
+  "newFormSubtitle": "Konfigurieren Sie den Kanal und speichern Sie.",
+  "editTitle": "Kanal bearbeiten",
+  "editSubtitle": "Geheime Werte werden verschlüsselt gespeichert; Aktualisierungen ersetzen den gespeicherten Wert.",
+  "searchPlaceholder": "Suche nach Name oder Typ…",
+  "create": "Kanal erstellen",
+  "creating": "Erstellung…",
+  "save": "Änderungen speichern",
+  "saving": "Speichern…",
+  "saved": "Kanal aktualisiert",
+  "saveFailed": "Aktualisierung fehlgeschlagen",
+  "created": "Kanal erstellt",
+  "createFailed": "Erstellung fehlgeschlagen",
+  "deleted": "Kanal gelöscht",
+  "deleteFailed": "Löschen fehlgeschlagen",
+  "delete": "Kanal löschen",
+  "cancel": "Abbrechen",
+  "changeType": "Typ ändern",
+  "backToList": "Zurück zu den Kanälen",
+  "dangerZone": "Gefahrenzone",
+  "default": "Standard",
+  "defaultUpdated": "Standard aktualisiert",
+  "enabled": "Kanal aktiviert",
+  "disabled": "Kanal deaktiviert",
+  "col": {
+    "name": "Name",
+    "type": "Typ",
+    "status": "Status",
+    "usedBy": "Verwendet von",
+    "updated": "Aktualisiert"
+  },
+  "status": {
+    "enabled": "Aktiviert",
+    "disabled": "Deaktiviert"
+  },
+  "actions": {
+    "edit": "Bearbeiten",
+    "enable": "Aktivieren",
+    "disable": "Deaktivieren",
+    "setDefault": "Als Standard festlegen",
+    "unsetDefault": "Standard entfernen",
+    "delete": "Löschen"
+  },
+  "deleteConfirm": {
+    "title": "Diesen Kanal löschen?",
+    "body": "Verbundene Prüfungen verlieren dieses Benachrichtigungsziel. Nicht rückgängig zu machen."
+  },
+  "empty": {
+    "title": "Keine Kanäle",
+    "body": "Fügen Sie einen Kanal hinzu, um Benachrichtigungen zu erhalten:"
+  },
+  "form": {
+    "name": "Name",
+    "namePlaceholder": "Bereitschafts-Alerts",
+    "enabled": "Aktiviert",
+    "enabledHelp": "Deaktivierte Kanäle senden keine Benachrichtigungen.",
+    "default": "Standard für neue Prüfungen",
+    "defaultHelp": "Vorausgewählt bei neuen Prüfungen. Bestehende Prüfungen bleiben unverändert.",
+    "webhookUrl": "Webhook-URL",
+    "recipients": "Empfänger (eine pro Zeile)",
+    "ntfyServer": "Server-URL",
+    "ntfyTopic": "Thema",
+    "ntfyPriority": "Priorität (1-5, Standard 3)",
+    "pushoverUser": "Benutzerschlüssel",
+    "pushoverToken": "App-Token",
+    "opsgenieKey": "API-Schlüssel",
+    "opsgenieTeam": "Team (optional)",
+    "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
+    "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
+  },
+  "hint": {
+    "slack": "Slack-Workspace über OAuth verbinden",
+    "discord": "An eine Discord-Webhook-URL senden",
+    "webhook": "Generischer JSON-Webhook an beliebigen HTTP-Endpunkt",
+    "email": "An eine oder mehrere E-Mail-Adressen senden",
+    "googlechat": "In Google-Chat-Bereich über eingehenden Webhook posten",
+    "mattermost": "In Mattermost-Kanal über eingehenden Webhook posten",
+    "ntfy": "Push-Benachrichtigungen über ntfy.sh",
+    "opsgenie": "Bereitschaftsdienst über Opsgenie alarmieren",
+    "pushover": "Mobile Push-Benachrichtigungen über Pushover",
+    "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen"
+  }
+}

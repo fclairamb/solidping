@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/select";
 import {
   canSource,
-  useChannels,
+  useIntegrations,
   useStartDiscoveryScan,
   useStartFreeboxScan,
 } from "@/api/hooks";
@@ -43,7 +43,7 @@ function NewScanPage() {
   const navigate = useNavigate();
   const startScan = useStartDiscoveryScan(org);
   const startFreeboxScan = useStartFreeboxScan(org);
-  const { data: channels } = useChannels(org);
+  const { data: channels } = useIntegrations(org);
 
   // Source integrations (canSource) that can drive a discovery scan, gated on the
   // Freebox `granted` pairing state — mirrors the filter in `check-form.tsx`.

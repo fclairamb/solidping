@@ -24,6 +24,14 @@ const (
 	badgeMTWorkerUID = "31000000-0000-0000-0000-000000000002"
 	badgeMTRawUID    = "31000000-0000-0000-0000-000000000003"
 	badgeMTHourUID   = "31000000-0000-0000-0000-000000000004"
+
+	// Fresh-check fixtures: a brand-new check with raw rows only, placed in the
+	// current in-progress bucket (separate check to avoid UID collision).
+	badgeFreshCheckUID  = "32000000-0000-0000-0000-000000000001"
+	badgeFreshWorkerUID = "32000000-0000-0000-0000-000000000002"
+	badgeFreshRawUID1   = "32000000-0000-0000-0000-000000000003"
+	badgeFreshRawUID2   = "32000000-0000-0000-0000-000000000004"
+	badgeFreshRawUID3   = "32000000-0000-0000-0000-000000000005"
 )
 
 // setupBadgesTestData creates test data for badge tests.
@@ -233,7 +241,8 @@ func TestBadges_UptimeBarRow(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// uptime-bar alone: name title row + bar strip. H = 20 + 4 + 20 = 44.
+	// uptime-bar alone: name title row + bar strip (now 30px incl. label band).
+	// H = 20 + 4 + 30 = 54.
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
 		"/checks/badge-test-check/badges/uptime-bar"
 	resp, err := fetchBadge(ctx, url)
@@ -248,7 +257,7 @@ func TestBadges_UptimeBarRow(t *testing.T) {
 
 	svg := string(body)
 	r.Contains(svg, `<svg xmlns="http://www.w3.org/2000/svg"`)
-	r.Contains(svg, `height="44"`)
+	r.Contains(svg, `height="54"`)
 	r.Contains(svg, "Badge Test Check")
 }
 
@@ -287,7 +296,8 @@ func TestBadges_AllSixRows(t *testing.T) {
 
 	setupBadgesTestData(ctx, t, testServer)
 
-	// status,uptime-bar,response-time-graph: 3 rows. H = 20 + 4 + 20 + 4 + 40 = 88.
+	// status,uptime-bar,response-time-graph: 3 rows (bar now 30px incl. label
+	// band). H = 20 + 4 + 30 + 4 + 40 = 98.
 	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
 		"/checks/badge-test-check/badges/status,uptime-bar,response-time-graph?period=30d"
 	resp, err := fetchBadge(ctx, url)
@@ -300,7 +310,7 @@ func TestBadges_AllSixRows(t *testing.T) {
 	r.NoError(err)
 
 	svg := string(body)
-	r.Contains(svg, `height="88"`)
+	r.Contains(svg, `height="98"`)
 	r.Contains(svg, `width="300"`) // default combined width
 }
 
@@ -629,9 +639,10 @@ func setupBadgesMultiTierData(ctx context.Context, t *testing.T, ts *TestServer)
 	now := time.Now().UTC()
 	workerUID := badgeMTWorkerUID
 
-	// Place data 2 days ago so it always falls within the 30-day window regardless of
-	// what time of day the test runs. The 30d window covers [now.Truncate(24h)-30d,
-	// now.Truncate(24h)), so yesterday's midnight bucket (now.Truncate(24h)-24h) is
+	// Place data in yesterday's day bucket so it always falls within the 30-day
+	// window regardless of what time of day the test runs. The 30d window covers
+	// [now.Truncate(24h)-29d, now.Truncate(24h)] (the current day is the last
+	// rendered bucket), so yesterday's midnight bucket (now.Truncate(24h)-24h) is
 	// always within the window.
 	yesterday := now.Truncate(24 * time.Hour).Add(-24 * time.Hour)
 
@@ -739,6 +750,110 @@ func TestBadges_ResponseTimeGraphHasPolyline(t *testing.T) {
 	r.True(
 		containsString(svg, "<polyline") || containsString(svg, "<circle"),
 		"expected a polyline or dot in response-time-graph SVG; got only empty frame",
+	)
+}
+
+// setupBadgesFreshRawData creates a brand-new check seeded with raw rows only,
+// all placed in the current in-progress bucket (no hour/day aggregates yet).
+// This reproduces a just-created check: before the fix, the current bucket was
+// excluded from the rendered window and the bar/graph were empty.
+func setupBadgesFreshRawData(ctx context.Context, t *testing.T, ts *TestServer) {
+	t.Helper()
+
+	dbSvc := ts.Server.DBService()
+	orgUID := "10000000-0000-0000-0000-000000000001"
+	region := "us-east-1"
+
+	worker := &models.Worker{
+		UID:       badgeFreshWorkerUID,
+		Slug:      "badge-fresh-worker",
+		Name:      "Badge Fresh Worker",
+		Region:    &region,
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+	if err := dbSvc.CreateWorker(ctx, worker); err != nil {
+		t.Fatalf("failed to create fresh worker: %v", err)
+	}
+
+	checkName := "Badge Fresh Check"
+	checkSlug := "badge-fresh-check"
+	check := &models.Check{
+		UID:             badgeFreshCheckUID,
+		OrganizationUID: orgUID,
+		Name:            &checkName,
+		Slug:            &checkSlug,
+		Type:            "http",
+		Config:          models.JSONMap{"url": "https://example.com"},
+		Enabled:         true,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
+	}
+	if err := dbSvc.CreateCheck(ctx, check); err != nil {
+		t.Fatalf("failed to create fresh check: %v", err)
+	}
+
+	// Raw rows within the last few minutes — i.e. the current bucket for any
+	// supported period. No aggregated rows: this is a check that has only ever
+	// produced raw results.
+	now := time.Now().UTC()
+	workerUID := badgeFreshWorkerUID
+	statusUp := int(models.ResultStatusUp)
+
+	uids := []string{badgeFreshRawUID1, badgeFreshRawUID2, badgeFreshRawUID3}
+	for i, uid := range uids {
+		duration := float32(40 + 5*i)
+		raw := &models.Result{
+			UID:             uid,
+			OrganizationUID: orgUID,
+			CheckUID:        badgeFreshCheckUID,
+			WorkerUID:       &workerUID,
+			Region:          &region,
+			PeriodType:      models.PeriodTypeRaw,
+			PeriodStart:     now.Add(-time.Duration(i) * time.Minute),
+			Status:          &statusUp,
+			Duration:        &duration,
+			Output:          models.JSONMap{"message": "OK"},
+			CreatedAt:       now,
+		}
+		if err := dbSvc.CreateResult(ctx, raw); err != nil {
+			t.Fatalf("failed to create fresh raw result: %v", err)
+		}
+	}
+}
+
+// TestBadges_FreshCheckRawOnly asserts that a just-created check whose only data
+// is raw rows in the current bucket renders a colored uptime-bar segment and a
+// non-empty response-time-graph — i.e. stats are available before the first
+// hourly rollup runs.
+func TestBadges_FreshCheckRawOnly(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	testServer := NewTestServer(t)
+	ctx := t.Context()
+
+	setupBadgesFreshRawData(ctx, t, testServer)
+
+	url := testServer.HTTPServer.URL + "/api/v1/orgs/" + TestOrgSlug +
+		"/checks/badge-fresh-check/badges/uptime-bar,response-time-graph?period=24h"
+	resp, err := fetchBadge(ctx, url)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Equal("image/svg+xml", resp.Header.Get("Content-Type"))
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+
+	svg := string(body)
+	// The current-bucket raw rows are all up → at least one non-grey (green) segment.
+	r.NotEqual(0, countNonGreyRects(svg), "expected a colored uptime-bar segment for a fresh check")
+	// And the graph must have a drawn point/line, not just an empty frame.
+	r.True(
+		containsString(svg, "<polyline") || containsString(svg, "<circle"),
+		"expected a polyline or dot in the response-time-graph for a fresh check",
 	)
 }
 

@@ -4,12 +4,14 @@ import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import {
   ArrowLeft,
+  BadgeCheck,
   Check as CheckIcon,
   Clock,
   Copy,
   ExternalLink,
   Loader2,
   Pencil,
+  Power,
   RefreshCw,
   Trash2,
   X,
@@ -44,7 +46,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
   Table,
@@ -368,6 +369,34 @@ function CheckDetailPage() {
     }
   };
 
+  const handleClone = async () => {
+    try {
+      const newCheck = await cloneCheck.mutateAsync(checkUid);
+      toast.success(t("checks:detail.cloned") ?? "Check cloned");
+      navigate({
+        to: "/orgs/$org/checks/$checkUid/edit",
+        params: { org, checkUid: newCheck.uid! },
+      });
+    } catch {
+      toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
+    }
+  };
+
+  const handleToggleEnabled = async () => {
+    if (!check) return;
+    const next = !check.enabled;
+    try {
+      await updateCheck.mutateAsync({ enabled: next });
+      toast.success(
+        next
+          ? (t("checks:detail.enableToast") ?? "Check enabled")
+          : (t("checks:detail.disableToast") ?? "Check disabled"),
+      );
+    } catch {
+      toast.error(t("checks:detail.toggleFailed") ?? "Failed to update check");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="space-y-6">
@@ -417,14 +446,28 @@ function CheckDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-3">
-            <div className={`h-3 w-3 rounded-full ${statusColor}`} />
-            <div>
-              <h1 className="text-3xl font-bold tracking-tight">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-3">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
                 {check.name || check.slug || check.uid?.slice(0, 8)}
               </h1>
+              <Badge variant="outline" className="hidden shrink-0 sm:inline-flex">
+                {check.type}
+              </Badge>
+              {isPendingFirstRun && (
+                <Badge
+                  variant="outline"
+                  className="hidden shrink-0 gap-1 text-muted-foreground sm:inline-flex"
+                  aria-live="polite"
+                >
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {t("checks:detail.pendingFirstRun")}
+                </Badge>
+              )}
+            </div>
               {check.slug && !editingSlug && (
                 <div className="hidden sm:flex items-center gap-1 mt-1">
                   <Link
@@ -489,21 +532,9 @@ function CheckDetailPage() {
                   </Link>
                 </div>
               )}
-            </div>
-            <Badge variant="outline">{check.type}</Badge>
-            {isPendingFirstRun && (
-              <Badge
-                variant="outline"
-                className="gap-1 text-muted-foreground"
-                aria-live="polite"
-              >
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t("checks:detail.pendingFirstRun")}
-              </Badge>
-            )}
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -514,51 +545,97 @@ function CheckDetailPage() {
           >
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <Link
-            to="/orgs/$org/checks/$checkUid/edit"
-            params={{ org, checkUid }}
-            aria-label={t("checks:edit")}
-          >
-            <Button variant="outline" size="icon">
-              <Pencil className="h-4 w-4" />
+
+          {/* Inline toolbar — always visible; icon-only below lg, icon + label at lg+ */}
+          <div className="flex items-center gap-2">
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:edit")}
+            >
+              <Link
+                to="/orgs/$org/checks/$checkUid/edit"
+                params={{ org, checkUid }}
+              >
+                <Pencil className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">{t("checks:edit")}</span>
+              </Link>
             </Button>
-          </Link>
-          <Button
-            variant="outline"
-            size="icon"
-            disabled={cloneCheck.isPending}
-            title={t("checks:detail.clone") ?? "Clone"}
-            onClick={async () => {
-              try {
-                const newCheck = await cloneCheck.mutateAsync(checkUid);
-                toast.success(t("checks:detail.cloned") ?? "Check cloned");
-                navigate({
-                  to: "/orgs/$org/checks/$checkUid/edit",
-                  params: { org, checkUid: newCheck.uid! },
-                });
-              } catch {
-                toast.error(t("checks:detail.cloneFailed") ?? "Failed to clone check");
+            <Button
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={
+                check.enabled
+                  ? (t("checks:detail.disable") ?? "Disable")
+                  : (t("checks:detail.enable") ?? "Enable")
               }
-            }}
-          >
-            <Copy className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => refetch()}
-            disabled={isRefetching}
-          >
-            <RefreshCw
-              className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
-            />
-          </Button>
+              disabled={updateCheck.isPending}
+              onClick={handleToggleEnabled}
+            >
+              <Power className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">
+                {check.enabled
+                  ? t("checks:detail.disable")
+                  : t("checks:detail.enable")}
+              </span>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:detail.clone") ?? "Clone"}
+              disabled={cloneCheck.isPending}
+              onClick={handleClone}
+            >
+              <Copy className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">{t("checks:detail.clone")}</span>
+            </Button>
+            <Button
+              asChild
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:detail.badges") ?? "Badges"}
+            >
+              <Link
+                to="/orgs/$org/badges"
+                params={{ org }}
+                search={{ check: check.slug ?? checkUid }}
+              >
+                <BadgeCheck className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">{t("checks:detail.badges")}</span>
+              </Link>
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:detail.refresh") ?? "Refresh"}
+              onClick={() => refetch()}
+              disabled={isRefetching}
+            >
+              <RefreshCw
+                className={`h-4 w-4 lg:mr-2 ${isRefetching ? "animate-spin" : ""}`}
+              />
+              <span className="hidden lg:inline">{t("checks:detail.refresh")}</span>
+            </Button>
+            <Button
+              variant="destructive"
+              size="icon"
+              className="lg:h-9 lg:w-auto lg:px-4 lg:py-2"
+              aria-label={t("checks:detail.delete") ?? "Delete"}
+              onClick={() => setDeleteOpen(true)}
+            >
+              <Trash2 className="h-4 w-4 lg:mr-2" />
+              <span className="hidden lg:inline">{t("checks:detail.delete")}</span>
+            </Button>
+          </div>
+
+          {/* Triggerless, controlled delete dialog */}
           <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="icon">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>{t("checks:detail.deleteTitle")}</AlertDialogTitle>

@@ -39,10 +39,13 @@ type EntitlementLimits struct {
 // extra keys are silently ignored for forward-compat. The Version
 // field gates shape-migrations at unmarshal time.
 type EntitlementsPayload struct {
-	Version     int               `json:"version"`
-	Source      EntitlementSource `json:"source,omitempty"`
-	Limits      EntitlementLimits `json:"limits"`
-	DisplayName *string           `json:"displayName,omitempty"`
+	Version int               `json:"version"`
+	Source  EntitlementSource `json:"source,omitempty"`
+	Limits  EntitlementLimits `json:"limits"`
+	// DisplayName / DisplayEmoji are billing-supplied plan identity, shown
+	// in the dashboard (e.g. "🚀 Team"). Display-only — never enforced.
+	DisplayName  *string `json:"displayName,omitempty"`
+	DisplayEmoji *string `json:"displayEmoji,omitempty"`
 }
 
 // Value implements driver.Valuer so bun can write the payload as JSON

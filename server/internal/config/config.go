@@ -154,6 +154,7 @@ type Config struct {
 	Prometheus  PrometheusConfig     `koanf:"prometheus"`
 	Checkers    CheckersConfig       `koanf:"checkers"`
 	Aggregation AggregationConfig    `koanf:"aggregation"`
+	Jobs        JobsConfig           `koanf:"jobs"`
 	FileStorage FileStorageConfig    `koanf:"filestorage"`
 	App         AppConfig            `koanf:"app"`
 	Deployment  DeploymentConfig     `koanf:"deployment"`
@@ -299,6 +300,20 @@ type JobWorkerConfig struct {
 	Nb            int           `koanf:"nb"`              // Max concurrent goroutines
 }
 
+// JobsConfig controls the background-job stuck-job reaper. The reaper recovers
+// jobs left in 'running' by a dead/redeployed worker by riding the existing
+// retry chain (retried + backoff clone) until maxRetryCount, then 'failed'.
+type JobsConfig struct {
+	// StuckTimeout is how long a job may stay in 'running' without its
+	// updated_at moving before the reaper treats it as orphaned. Must be
+	// generously larger than the slowest legitimate job (no lease yet, so the
+	// reaper cannot tell a dead worker from a slow one — see spec §3).
+	StuckTimeout time.Duration `koanf:"stuck_timeout"`
+
+	// ReaperInterval is how often the stuck-job reaper wakes up.
+	ReaperInterval time.Duration `koanf:"reaper_interval"`
+}
+
 // CheckWorkerConfig contains check runner configuration.
 type CheckWorkerConfig struct {
 	FetchMaxAhead time.Duration `koanf:"fetch_max_ahead"` // Max time ahead to look for jobs
@@ -428,6 +443,10 @@ func Load() (*Config, error) {
 			RetentionHour: 30,
 			RetentionDay:  12,
 		},
+		Jobs: JobsConfig{
+			StuckTimeout:   15 * time.Minute,
+			ReaperInterval: time.Minute,
+		},
 		FileStorage: FileStorageConfig{
 			Type:      "local",
 			LocalRoot: "./data/files",
@@ -543,6 +562,7 @@ func Load() (*Config, error) {
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
+	applyJobsEnv(&cfg.Jobs)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -607,6 +627,24 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
 }
 
+// applyJobsEnv reads SP_JOBS_* into cfg. koanf's env loader collapses every
+// underscore in SP_*-prefixed names to a dot, so it would map these to
+// jobs.stuck.timeout / jobs.reaper.interval and miss the snake_case koanf tags
+// ("stuck_timeout", "reaper_interval"). Reading them here keeps the reaper
+// timeout/interval env-configurable per project_koanf_env_quirk.
+func applyJobsEnv(cfg *JobsConfig) {
+	if v := os.Getenv("SP_JOBS_STUCK_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.StuckTimeout = d
+		}
+	}
+	if v := os.Getenv("SP_JOBS_REAPER_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ReaperInterval = d
+		}
+	}
+}
+
 // applyFileStorageEnv reads SP_FILESTORAGE_S3_* into cfg. koanf's env loader
 // collapses every underscore in SP_*-prefixed names to a dot, so it would map
 // these to filestorage.s3.bucket / filestorage.s3.endpoint etc. and miss the
@@ -651,6 +689,14 @@ func applyWebPushEnv(cfg *WebPushConfig) {
 
 	if v := os.Getenv("SP_WEBPUSH_SUBJECT"); v != "" {
 		cfg.Subject = v
+	}
+
+	// The VAPID "sub" claim is required by some push services (e.g. Firefox's
+	// Mozilla push service returns 403 when it is absent). Default to the
+	// SolidPing landing page; self-hosted operators can override via
+	// SP_WEBPUSH_SUBJECT.
+	if cfg.Subject == "" {
+		cfg.Subject = "https://solidping.io"
 	}
 
 	if v := os.Getenv("SP_WEBPUSH_ENABLED"); v == envTrue || v == "1" {

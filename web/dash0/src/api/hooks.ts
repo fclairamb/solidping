@@ -890,6 +890,20 @@ export interface IncidentNotificationIncident {
   startedAt: string;
 }
 
+/** Structured per-attempt delivery artifacts captured by the channel sender
+ * (webhook today; other channels fill what they can). Every field is optional;
+ * the whole object is absent for pre-feature rows and channels that produce no
+ * artifacts. Secrets (signing secret, auth headers, URL credentials) are never
+ * present — they are stripped server-side before persistence. */
+export interface NotificationDeliveryDetails {
+  httpStatusCode?: number;
+  requestUrl?: string;
+  requestBody?: string;
+  responseBody?: string;
+  durationMs?: number;
+  responseHeaders?: Record<string, string>;
+}
+
 export interface IncidentNotification {
   uid: string;
   incidentUid: string;
@@ -904,6 +918,10 @@ export interface IncidentNotification {
   messageId?: string;
   createdAt: string;
   sentAt?: string;
+  failedAt?: string;
+  cancelledAt?: string;
+  jobUid?: string;
+  deliveryDetails?: NotificationDeliveryDetails;
   user: IncidentNotificationUser | null;
   connection: IncidentNotificationConnection | null;
   incident?: IncidentNotificationIncident;
@@ -929,6 +947,60 @@ export function useIncidentNotifications(
       return response.data || [];
     },
     enabled: !!org && !!incidentUid,
+  });
+}
+
+export function useIncidentNotification(
+  org: string,
+  incidentUid: string,
+  notifUid: string
+) {
+  return useQuery<IncidentNotification>({
+    queryKey: ["incidentNotification", org, incidentUid, notifUid],
+    queryFn: () =>
+      apiFetch<IncidentNotification>(
+        `/api/v1/orgs/${org}/incidents/${incidentUid}/notifications/${notifUid}`
+      ),
+    enabled: !!org && !!incidentUid && !!notifUid,
+    staleTime: Infinity,
+  });
+}
+
+/** Fetch a single notification by UID, scoped to the org (no incidentUid required).
+ * Query key: ["orgNotification", org, notifUid] — the breadcrumb reads from
+ * this key to avoid an extra fetch when the page has already loaded. */
+export function useOrgNotification(org: string, notifUid: string) {
+  return useQuery<IncidentNotification>({
+    queryKey: ["orgNotification", org, notifUid],
+    queryFn: () =>
+      apiFetch<IncidentNotification>(
+        `/api/v1/orgs/${org}/notifications/${notifUid}`
+      ),
+    enabled: !!org && !!notifUid,
+    staleTime: Infinity,
+  });
+}
+
+/** List the last `limit` notifications delivered through an integration.
+ * Calls GET /api/v1/orgs/:org/notifications?connectionUid=&limit= */
+export function useIntegrationNotifications(
+  org: string,
+  integrationUid: string,
+  limit = 10
+) {
+  return useQuery({
+    queryKey: ["integrationNotifications", org, integrationUid, limit],
+    queryFn: async () => {
+      const params = new URLSearchParams({
+        connectionUid: integrationUid,
+        limit: String(limit),
+      });
+      const response = await apiFetch<{ data?: IncidentNotification[] }>(
+        `/api/v1/orgs/${org}/notifications?${params.toString()}`
+      );
+      return response.data || [];
+    },
+    enabled: !!org && !!integrationUid,
   });
 }
 
@@ -2691,7 +2763,7 @@ export function canSource(type: ConnectionType): boolean {
   return CAPABILITIES[type]?.canSource ?? false;
 }
 
-export interface Channel {
+export interface Integration {
   uid: string;
   type: ConnectionType;
   name: string;
@@ -2703,7 +2775,7 @@ export interface Channel {
   updatedAt: string;
 }
 
-export interface CreateChannelRequest {
+export interface CreateIntegrationRequest {
   type: ConnectionType;
   name: string;
   enabled?: boolean;
@@ -2711,19 +2783,19 @@ export interface CreateChannelRequest {
   settings?: Record<string, unknown>;
 }
 
-export interface UpdateChannelRequest {
+export interface UpdateIntegrationRequest {
   name?: string;
   enabled?: boolean;
   isDefault?: boolean;
   settings?: Record<string, unknown>;
 }
 
-export function useChannels(org: string) {
+export function useIntegrations(org: string) {
   return useQuery({
-    queryKey: ["channels", org],
+    queryKey: ["integrations", org],
     queryFn: async () => {
-      const response = await apiFetch<{ data?: Channel[] }>(
-        `/api/v1/orgs/${org}/channels`,
+      const response = await apiFetch<{ data?: Integration[] }>(
+        `/api/v1/orgs/${org}/integrations`,
       );
       return response.data || [];
     },
@@ -2731,89 +2803,94 @@ export function useChannels(org: string) {
   });
 }
 
-export function useChannel(org: string, uid: string) {
+export function useIntegration(org: string, uid: string) {
   return useQuery({
-    queryKey: ["channel", org, uid],
-    queryFn: () => apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`),
+    queryKey: ["integration", org, uid],
+    queryFn: () =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations/${uid}`),
     enabled: !!org && !!uid,
   });
 }
 
-export function useCreateChannel(org: string) {
+export function useCreateIntegration(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: CreateChannelRequest) =>
-      apiFetch<Channel>(`/api/v1/orgs/${org}/channels`, {
+    mutationFn: (request: CreateIntegrationRequest) =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations`, {
         method: "POST",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-export function useUpdateChannel(org: string, uid: string) {
+export function useUpdateIntegration(org: string, uid: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (request: UpdateChannelRequest) =>
-      apiFetch<Channel>(`/api/v1/orgs/${org}/channels/${uid}`, {
+    mutationFn: (request: UpdateIntegrationRequest) =>
+      apiFetch<Integration>(`/api/v1/orgs/${org}/integrations/${uid}`, {
         method: "PATCH",
         body: JSON.stringify(request),
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
-      queryClient.invalidateQueries({ queryKey: ["channel", org, uid] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
+      queryClient.invalidateQueries({ queryKey: ["integration", org, uid] });
     },
   });
 }
 
-export function useDeleteChannel(org: string) {
+export function useDeleteIntegration(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/channels/${uid}`, {
+      apiFetch<void>(`/api/v1/orgs/${org}/integrations/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-// Standard Webhooks: per-channel signing-secret rotation and synthetic test
-// delivery. Both are webhook-only on the backend (400 otherwise).
+// Per-integration signing-secret rotation (webhook-only) and the
+// test-notification delivery (available for every notifiable integration).
 
-/** Result of a POST /channels/:uid/test synthetic delivery. */
-export interface WebhookTestResult {
+/** Result of a POST /integrations/:uid/test sample delivery. statusCode is the
+ *  HTTP status for HTTP-based integrations (webhooks); 0 otherwise. */
+export interface IntegrationTestResult {
   success: boolean;
   statusCode: number;
   durationMs: number;
   error?: string;
 }
 
-export function useRotateWebhookSecret(org: string, channelUid: string) {
+export function useRotateWebhookSecret(org: string, integrationUid: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: () =>
-      apiFetch<Channel>(
-        `/api/v1/orgs/${org}/channels/${channelUid}/rotate-secret`,
+      apiFetch<Integration>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/rotate-secret`,
         { method: "POST" },
       ),
     onSuccess: () => {
       queryClient.invalidateQueries({
-        queryKey: ["channel", org, channelUid],
+        queryKey: ["integration", org, integrationUid],
       });
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
 
-export function useTestWebhookChannel(org: string) {
+/** Sends a sample notification through any notifiable integration to verify it
+ *  delivers. Returns the outcome; the backend always responds 200, so inspect
+ *  `success`. */
+export function useTestIntegration(org: string) {
   return useMutation({
-    mutationFn: (channelUid: string) =>
-      apiFetch<WebhookTestResult>(
-        `/api/v1/orgs/${org}/channels/${channelUid}/test`,
+    mutationFn: (integrationUid: string) =>
+      apiFetch<IntegrationTestResult>(
+        `/api/v1/orgs/${org}/integrations/${integrationUid}/test`,
         { method: "POST" },
       ),
   });
@@ -2852,7 +2929,7 @@ export function useStartFreeboxPairing(org: string) {
         },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["channels", org] });
+      queryClient.invalidateQueries({ queryKey: ["integrations", org] });
     },
   });
 }
@@ -3430,6 +3507,9 @@ export interface EntitlementsResponse {
   source: string;
   stale: boolean;
   upgradeUrl?: string;
+  /** Plan identity supplied by the billing service (display-only). */
+  displayName?: string | null;
+  displayEmoji?: string | null;
 }
 
 export function useEntitlements(org: string, opts?: { withUsage?: boolean }) {
@@ -3463,5 +3543,213 @@ export function useVapidPublicKey(org: string) {
       ).then((r) => r.data),
     enabled: !!org,
     staleTime: Infinity, // key is stable; refetch only on mount
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Admin Jobs observability (spec 2026-06-15-05)
+// Read-only views over the background-jobs queue and the check schedule.
+// All hooks accept `allOrgs` to switch between the org-scoped endpoints and
+// the super-admin /system endpoints, and adapt their poll rate to activity.
+// ---------------------------------------------------------------------------
+
+// Poll fast while the instance is busy so the page visibly tracks activity;
+// poll slowly (not off) when idle so new activity still surfaces.
+const JOBS_ACTIVE_INTERVAL_MS = 2500;
+const JOBS_IDLE_INTERVAL_MS = 15000;
+
+export interface BackgroundJob {
+  uid: string;
+  organizationUid: string | null;
+  type: string;
+  config: Record<string, unknown> | null;
+  output: Record<string, unknown> | null;
+  status: "pending" | "running" | "success" | "retried" | "failed";
+  retryCount: number;
+  scheduledAt: string;
+  previousJobUid: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CheckJobState = "idle" | "inFlight" | "stalled" | "crashLooping";
+
+export interface CheckScheduleJob {
+  uid: string;
+  organizationUid: string;
+  checkUid: string;
+  checkName: string | null;
+  region: string | null;
+  type: string;
+  config: Record<string, unknown> | null;
+  encryptedKeys: string[];
+  encrypted: boolean;
+  periodSeconds: number;
+  scheduledAt: string | null;
+  leaseWorkerUid: string | null;
+  leaseExpiresAt: string | null;
+  leaseStarts: number;
+  updatedAt: string;
+  state: CheckJobState;
+}
+
+export interface JobsStats {
+  jobs: {
+    pending: number;
+    running: number;
+    failed24h: number;
+  };
+  checks: {
+    total: number;
+    dueNow: number;
+    inFlight: number;
+    stalled: number;
+    crashLooping: number;
+  };
+}
+
+// jobsStatsAreActive reports whether the instance is busy enough to warrant a
+// fast poll. Feeds the adaptive refetchInterval across all jobs hooks.
+function jobsStatsAreActive(stats?: JobsStats): boolean {
+  if (!stats) return false;
+  return (
+    stats.jobs.pending +
+      stats.jobs.running +
+      stats.checks.inFlight +
+      stats.checks.dueNow >
+    0
+  );
+}
+
+function jobsAdaptiveInterval(active: boolean): number {
+  return active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS;
+}
+
+interface JobsScope {
+  allOrgs?: boolean;
+}
+
+// useJobsStats fetches the activity overview and drives adaptive refresh.
+export function useJobsStats(org: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["jobsStats", org, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: JobsStats }>(
+        allOrgs
+          ? `/api/v1/system/jobs/stats`
+          : `/api/v1/orgs/${org}/jobs/stats`,
+      ).then((r) => r.data),
+    enabled: !!org,
+    refetchInterval: (query) =>
+      jobsAdaptiveInterval(jobsStatsAreActive(query.state.data as JobsStats | undefined)),
+    refetchIntervalInBackground: false,
+  });
+}
+
+interface BackgroundJobsOptions extends JobsScope {
+  status?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+  active?: boolean;
+}
+
+// useBackgroundJobs lists background jobs (admin/super-admin).
+export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJobs", org, opts],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (opts?.status) params.set("status", opts.status);
+      if (opts?.type) params.set("type", opts.type);
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.offset) params.set("offset", String(opts.offset));
+      const qs = params.toString();
+      const base = allOrgs
+        ? `/api/v1/system/jobs`
+        : `/api/v1/orgs/${org}/admin/jobs`;
+      return apiFetch<{ data: BackgroundJob[] }>(
+        `${base}${qs ? `?${qs}` : ""}`,
+      ).then((r) => r.data ?? []);
+    },
+    enabled: !!org,
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+interface CheckScheduleOptions extends JobsScope {
+  limit?: number;
+  offset?: number;
+  active?: boolean;
+}
+
+// useCheckSchedule lists check-schedule rows (admin/super-admin).
+export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["checkSchedule", org, opts],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (opts?.limit) params.set("limit", String(opts.limit));
+      if (opts?.offset) params.set("offset", String(opts.offset));
+      const qs = params.toString();
+      const base = allOrgs
+        ? `/api/v1/system/check-jobs`
+        : `/api/v1/orgs/${org}/check-jobs`;
+      return apiFetch<{ data: CheckScheduleJob[] }>(
+        `${base}${qs ? `?${qs}` : ""}`,
+      ).then((r) => r.data ?? []);
+    },
+    enabled: !!org,
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchIntervalInBackground: false,
+  });
+}
+
+// useBackgroundJob fetches a single background job's detail.
+export function useBackgroundJob(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJob", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: BackgroundJob }>(
+        allOrgs
+          ? `/api/v1/system/jobs/${uid}`
+          : `/api/v1/orgs/${org}/admin/jobs/${uid}`,
+      ).then((r) => r.data),
+    enabled: !!org && !!uid,
+  });
+}
+
+// useBackgroundJobChain fetches the ordered retry chain a job belongs to.
+export function useBackgroundJobChain(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["backgroundJobChain", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: BackgroundJob[] }>(
+        allOrgs
+          ? `/api/v1/system/jobs/${uid}/chain`
+          : `/api/v1/orgs/${org}/admin/jobs/${uid}/chain`,
+      ).then((r) => r.data ?? []),
+    enabled: !!org && !!uid,
+  });
+}
+
+// useCheckJob fetches a single check-schedule row's detail.
+export function useCheckJob(org: string, uid: string, opts?: JobsScope) {
+  const allOrgs = opts?.allOrgs ?? false;
+  return useQuery({
+    queryKey: ["checkJob", org, uid, { allOrgs }],
+    queryFn: () =>
+      apiFetch<{ data: CheckScheduleJob }>(
+        allOrgs
+          ? `/api/v1/system/check-jobs/${uid}`
+          : `/api/v1/orgs/${org}/check-jobs/${uid}`,
+      ).then((r) => r.data),
+    enabled: !!org && !!uid,
   });
 }

@@ -72,7 +72,7 @@ type googleChatSettings struct {
 }
 
 func (s *GoogleChatSender) parseSettings(payload *Payload) (*googleChatSettings, error) {
-	data, err := json.Marshal(payload.Connection.Settings)
+	data, err := json.Marshal(payload.Integration.Settings)
 	if err != nil {
 		return nil, fmt.Errorf("parsing google chat settings: %w", err)
 	}
@@ -83,7 +83,7 @@ func (s *GoogleChatSender) parseSettings(payload *Payload) (*googleChatSettings,
 	}
 
 	// Default threadKeyEnabled to true
-	if _, ok := payload.Connection.Settings["threadKeyEnabled"]; !ok {
+	if _, ok := payload.Integration.Settings["threadKeyEnabled"]; !ok {
 		settings.ThreadKeyEnabled = true
 	}
 

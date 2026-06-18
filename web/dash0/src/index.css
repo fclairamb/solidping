@@ -4,8 +4,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji",
-    "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif,
+    "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
   --color-foreground: var(--foreground);
   --color-background: var(--background);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -44,6 +44,18 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Tinted elevation — shadows carry the primary hue instead of flat black,
+     which reads as "premium" without adding a new color. color-mix keeps them
+     tracking --primary so they adapt automatically in dark mode. */
+  --shadow-primary: 0 8px 16px -4px color-mix(in oklab, var(--primary) 15%, transparent),
+    0 4px 8px -4px color-mix(in oklab, var(--primary) 11%, transparent);
+  --shadow-primary-hover: 0 12px 24px -6px color-mix(in oklab, var(--primary) 22%, transparent),
+    0 6px 12px -6px color-mix(in oklab, var(--primary) 14%, transparent);
+  --shadow-card: 0 1px 2px 0 color-mix(in oklab, var(--primary) 4%, transparent),
+    0 6px 16px -6px color-mix(in oklab, var(--primary) 5%, transparent);
+  --shadow-card-hover: 0 2px 4px 0 color-mix(in oklab, var(--primary) 5%, transparent),
+    0 10px 24px -8px color-mix(in oklab, var(--primary) 7%, transparent);
 }
 
 :root {
@@ -167,6 +179,17 @@
   --chart-3: oklch(0.8 0.16 85);
   --chart-4: oklch(0.65 0.2 25);
   --chart-5: oklch(0.65 0.12 280);
+}
+
+/* Frosted-glass surface for dark/photographic backdrops (the aurora panel,
+   hero strips). Translucent white fill + blur + hairline white border. Meant
+   to sit on a dark or colorful background — on a light surface it nearly
+   vanishes, which is intentional. */
+@utility glass {
+  background-color: color-mix(in oklab, white 8%, transparent);
+  border: 1px solid color-mix(in oklab, white 18%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
 }
 
 @layer base {

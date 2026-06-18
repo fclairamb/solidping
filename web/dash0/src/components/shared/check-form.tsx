@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { LabelInput } from "@/components/shared/label-input";
 import { ApiError } from "@/api/client";
@@ -33,14 +34,17 @@ import type { Check as CheckModel, CheckGroup, RegionDefinition, SampleConfig } 
 import {
   useCheckTypes,
   useSampleConfigs,
-  useChannels,
+  useIntegrations,
   useCheckConnections,
   useCheckDependencies,
   canNotify,
   canSource,
 } from "@/api/hooks";
 import { useEmailAddressDomain } from "@/api/email-inbox";
-import { ChannelIcon, channelLabel } from "@/components/channels/channel-icon";
+import {
+  IntegrationIcon,
+  integrationLabel,
+} from "@/components/integrations/integration-icon";
 import { Link } from "@tanstack/react-router";
 import { Badge } from "@/components/ui/badge";
 import { CheckPicker } from "@/components/shared/check-picker";
@@ -189,6 +193,7 @@ function buildIntervalOptions(minSeconds: number, maxSeconds: number): { value: 
 
 export interface CheckFormData {
   type?: CheckType;
+  enabled?: boolean;
   name?: string;
   slug?: string;
   checkGroupUid?: string;
@@ -287,6 +292,7 @@ export function CheckForm({
   }
 
   const [type, setType] = useState<CheckType>(initialType);
+  const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [name, setName] = useState(initialData?.name || "");
   const [slug, setSlug] = useState(initialData?.slug || "");
   const slugError = validateSlug(slug);
@@ -294,7 +300,7 @@ export function CheckForm({
   const [labels, setLabels] = useState<Record<string, string>>(initialData?.labels ?? {});
   const [labelsDirty, setLabelsDirty] = useState(false);
 
-  const { data: connections } = useChannels(org);
+  const { data: connections } = useIntegrations(org);
   const { data: existingBindings } = useCheckConnections(
     org,
     mode === "edit" ? initialData?.uid : undefined,
@@ -1047,6 +1053,7 @@ export function CheckForm({
     try {
       await onSubmit({
         type: mode === "create" ? type : undefined,
+        enabled,
         name: mode === "edit" ? name : (name || undefined),
         slug: mode === "edit" ? slug : (slug || undefined),
         checkGroupUid: checkGroupUid || (mode === "edit" ? "" : undefined),
@@ -1693,7 +1700,7 @@ export function CheckForm({
                 <Alert>
                   <AlertDescription>
                     {t("freeboxLine.noConnections")}{" "}
-                    <Link to="/orgs/$org/channels" params={{ org }} className="underline">Channels</Link>
+                    <Link to="/orgs/$org/integrations" params={{ org }} className="underline">Integrations</Link>
                   </AlertDescription>
                 </Alert>
               ) : (
@@ -2063,6 +2070,21 @@ export function CheckForm({
             <CardTitle className="text-base">General</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label htmlFor="check-enabled">Enabled</Label>
+                <p className="text-xs text-muted-foreground">
+                  Disabled checks are not scheduled and never run.
+                </p>
+              </div>
+              <Switch
+                id="check-enabled"
+                checked={enabled}
+                onCheckedChange={setEnabled}
+                data-testid="check-enabled-switch"
+              />
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="period">
                 {isPassiveType(type) ? "Expected Interval" : "Check Interval"}
@@ -2274,7 +2296,7 @@ function DependsOnFormSection({
 
 interface NotifyViaSectionProps {
   org: string;
-  connections: ReturnType<typeof useChannels>["data"];
+  connections: ReturnType<typeof useIntegrations>["data"];
   selected: string[];
   onToggle: (uid: string) => void;
 }
@@ -2295,7 +2317,7 @@ function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSec
         <div className="rounded border border-dashed p-3 text-sm text-muted-foreground">
           No channels yet.{" "}
           <Link
-            to="/orgs/$org/channels/new"
+            to="/orgs/$org/integrations/new"
             params={{ org }}
             className="font-medium text-primary underline-offset-4 hover:underline"
           >
@@ -2321,9 +2343,9 @@ function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSec
               className="flex items-center gap-2 rounded-md border p-2 cursor-pointer hover:bg-muted/50"
             >
               <Checkbox id={cbId} checked={checked} onCheckedChange={() => onToggle(c.uid)} />
-              <ChannelIcon type={c.type} className="h-4 w-4 text-muted-foreground" />
+              <IntegrationIcon type={c.type} className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm flex-1 truncate">{c.name}</span>
-              <span className="text-xs text-muted-foreground">{channelLabel(c.type)}</span>
+              <span className="text-xs text-muted-foreground">{integrationLabel(c.type)}</span>
               {!c.enabled && (
                 <Badge variant="outline" className="text-xs">disabled</Badge>
               )}
@@ -2334,7 +2356,7 @@ function NotifyViaSection({ org, connections, selected, onToggle }: NotifyViaSec
       <p className="text-xs text-muted-foreground">
         Channels selected here are notified on incident events.{" "}
         <Link
-          to="/orgs/$org/channels"
+          to="/orgs/$org/integrations"
           params={{ org }}
           className="text-primary underline-offset-4 hover:underline"
         >

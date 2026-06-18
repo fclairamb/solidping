@@ -1,0 +1,1263 @@
+// Package integrations provides HTTP handlers for integration management
+// (Slack, Discord, webhook, email, etc.). The legacy `integration_connections`
+// table backs this domain — see spec 2026-05-07-03 for the rename rationale.
+package integrations
+
+import (
+	"context"
+	crypto_rand "crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/uptrace/bun"
+
+	"github.com/fclairamb/solidping/server/internal/activation"
+	"github.com/fclairamb/solidping/server/internal/app/services"
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
+	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
+	"github.com/fclairamb/solidping/server/internal/notifications"
+	"github.com/fclairamb/solidping/server/internal/webpush"
+)
+
+var (
+	// ErrOrganizationNotFound is returned when an organization is not found.
+	ErrOrganizationNotFound = errors.New("organization not found")
+	// ErrConnectionNotFound is returned when a connection is not found.
+	ErrConnectionNotFound = errors.New("connection not found")
+	// ErrInvalidConnectionType is returned when an invalid connection type is provided.
+	ErrInvalidConnectionType = errors.New("invalid connection type")
+	// ErrFreeboxPairingFailed is returned when the Freebox pairing flow
+	// fails (transport error, denial, timeout). The wrapped error keeps
+	// the underlying cause so the handler can surface a useful message.
+	ErrFreeboxPairingFailed = errors.New("freebox pairing failed")
+	// ErrFreeboxNotPairing is returned when a status-poll is requested
+	// against a channel that isn't currently in the pairing state.
+	ErrFreeboxNotPairing = errors.New("freebox channel is not in pairing state")
+	// ErrFreeboxTypeMismatch is returned when a pairing endpoint targets
+	// a non-Freebox channel.
+	ErrFreeboxTypeMismatch = errors.New("channel is not a freebox connection")
+	// ErrSlackManualCreate is returned when a Slack channel is created via the
+	// manual create endpoint. Slack channels can only originate from the OAuth
+	// install flow (which writes the bot token); a manually-created stub has no
+	// token and is permanently broken.
+	ErrSlackManualCreate = errors.New("slack channels are added by installing the Slack app")
+	// ErrNotWebhookChannel is returned when a webhook-only operation
+	// (rotate-secret) targets a channel of a different type.
+	ErrNotWebhookChannel = errors.New("channel is not a webhook connection")
+	// ErrIntegrationNotNotifiable is returned when a test-notification is
+	// requested for an integration whose type cannot send notifications
+	// (e.g. a data source like Freebox).
+	ErrIntegrationNotNotifiable = errors.New("integration type cannot send notifications")
+)
+
+// Signing-secret lifecycle constants (Standard Webhooks). The secret format is
+// `whsec_<base64url-unpadded-32-bytes>` (Svix convention). Keys mirror the
+// names used by the WebhookSender so the public/private split stays consistent.
+const (
+	webhookSecretPrefix              = "whsec_"
+	webhookSecretBytes               = 32
+	webhookRotationGrace             = 24 * time.Hour
+	settingsKeySigningSecret         = "signingSecret"
+	settingsKeySigningSecretPrevious = "signingSecretPrevious"
+	settingsKeySigningSecretExpiry   = "signingSecretPreviousExpiry"
+)
+
+// generateWebhookSecret returns a fresh `whsec_<base64url-unpadded-32-bytes>`
+// signing secret using crypto/rand.
+func generateWebhookSecret() (string, error) {
+	raw := make([]byte, webhookSecretBytes)
+	if _, err := crypto_rand.Read(raw); err != nil {
+		return "", fmt.Errorf("generating webhook secret: %w", err)
+	}
+
+	return webhookSecretPrefix + base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// ensureWebhookCreateSecret returns a settings map guaranteed to contain a
+// signing secret, generating one when absent. Extracted from CreateIntegration to
+// keep that function below the cyclomatic-complexity threshold.
+func ensureWebhookCreateSecret(settings map[string]any) (map[string]any, error) {
+	if settings == nil {
+		settings = map[string]any{}
+	}
+
+	if existing, ok := settings[settingsKeySigningSecret].(string); ok && existing != "" {
+		return settings, nil
+	}
+
+	secret, err := generateWebhookSecret()
+	if err != nil {
+		return nil, err
+	}
+
+	settings[settingsKeySigningSecret] = secret
+
+	return settings, nil
+}
+
+// Service provides business logic for connection management.
+type Service struct {
+	db db.Service
+	// creds is always non-nil — its .Enabled() reports whether a master
+	// key is configured. Used to encrypt secret fields in Settings.
+	creds credentials.Service
+	// registry and appConfig are used by TestIntegration to build the same
+	// JobContext the notification job runner uses, so senders that depend on
+	// shared services (email, web push) work from the test path too. They may
+	// be nil in unit tests that only exercise sender types which ignore the
+	// JobContext (webhook, discord, …).
+	registry  *services.Registry
+	appConfig *config.Config
+}
+
+// NewService creates a new connections service. registry and cfg may be nil
+// when test-notification dispatch is not required (e.g. unit tests).
+func NewService(
+	dbService db.Service,
+	creds credentials.Service,
+	registry *services.Registry,
+	cfg *config.Config,
+) *Service {
+	return &Service{
+		db:        dbService,
+		creds:     creds,
+		registry:  registry,
+		appConfig: cfg,
+	}
+}
+
+// IntegrationResponse represents a connection in API responses.
+type IntegrationResponse struct {
+	UID       string         `json:"uid"`
+	Type      string         `json:"type"`
+	Name      string         `json:"name"`
+	Enabled   bool           `json:"enabled"`
+	IsDefault bool           `json:"isDefault"`
+	Settings  map[string]any `json:"settings,omitempty"`
+	// SettingsPrivateKeys lists which top-level Settings keys are stored
+	// encrypted (and therefore stripped from the Settings map in the
+	// response). Lets the dashboard render placeholder pills like
+	// "•••• access_token" without echoing the secret value.
+	SettingsPrivateKeys []string  `json:"settingsPrivateKeys,omitempty"`
+	CreatedAt           time.Time `json:"createdAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+}
+
+// ListConnectionsResponse represents the response for listing connections.
+type ListConnectionsResponse struct {
+	Data []*IntegrationResponse `json:"data"`
+}
+
+// CreateIntegrationRequest represents the request to create a connection.
+type CreateIntegrationRequest struct {
+	Type      string         `json:"type"`
+	Name      string         `json:"name"`
+	Enabled   *bool          `json:"enabled,omitempty"`
+	IsDefault *bool          `json:"isDefault,omitempty"`
+	Settings  map[string]any `json:"settings,omitempty"`
+}
+
+// UpdateIntegrationRequest represents the request to update a connection.
+type UpdateIntegrationRequest struct {
+	Name      *string        `json:"name,omitempty"`
+	Enabled   *bool          `json:"enabled,omitempty"`
+	IsDefault *bool          `json:"isDefault,omitempty"`
+	Settings  map[string]any `json:"settings,omitempty"`
+}
+
+// toResponse converts a model to a response. The Settings map is the
+// already-public side: secret keys live in SettingsPrivate (encrypted) and
+// are exposed only as names via SettingsPrivateKeys so the dashboard can
+// show placeholder pills.
+func toResponse(conn *models.Integration, includeSettings bool) *IntegrationResponse {
+	resp := &IntegrationResponse{
+		UID:       conn.UID,
+		Type:      string(conn.Type),
+		Name:      conn.Name,
+		Enabled:   conn.Enabled,
+		IsDefault: conn.IsDefault,
+		CreatedAt: conn.CreatedAt,
+		UpdatedAt: conn.UpdatedAt,
+	}
+
+	secretSet := map[string]struct{}{}
+	for _, k := range credentials.ConnectionSecretFields(conn.Type) {
+		secretSet[k] = struct{}{}
+	}
+
+	if includeSettings && conn.Settings != nil {
+		settings := make(map[string]any, len(conn.Settings))
+		for k, v := range conn.Settings {
+			if _, isSecret := secretSet[k]; isSecret {
+				continue
+			}
+			settings[k] = v
+		}
+		resp.Settings = settings
+	}
+
+	if conn.SettingsPrivateKeys != nil && *conn.SettingsPrivateKeys != "" {
+		var keys []string
+		if err := json.Unmarshal([]byte(*conn.SettingsPrivateKeys), &keys); err == nil {
+			resp.SettingsPrivateKeys = keys
+		}
+	}
+
+	return resp
+}
+
+// ListIntegrations returns all connections for an organization.
+func (s *Service) ListIntegrations(
+	ctx context.Context, orgSlug string, connType *string,
+) (*ListConnectionsResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	filter := &models.ListIntegrationsFilter{
+		OrganizationUID: org.UID,
+	}
+
+	if connType != nil {
+		ct := models.ConnectionType(*connType)
+		filter.Type = &ct
+	}
+
+	connections, err := s.db.ListChannels(ctx, filter)
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListConnectionsResponse{
+		Data: make([]*IntegrationResponse, 0, len(connections)),
+	}
+
+	for _, conn := range connections {
+		response.Data = append(response.Data, toResponse(conn, false))
+	}
+
+	return response, nil
+}
+
+// GetIntegration returns a connection by UID.
+func (s *Service) GetIntegration(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*IntegrationResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, err
+	}
+
+	// Verify the connection belongs to the organization
+	if conn.OrganizationUID != org.UID {
+		return nil, ErrConnectionNotFound
+	}
+
+	resp := toResponse(conn, true)
+
+	// Webhook signing secrets are intentionally retrievable (not one-time
+	// reveals) so the dashboard can show them. Decrypt and surface them on the
+	// response settings for webhook channels.
+	if conn.Type == models.ConnectionTypeWebhook {
+		if err := s.injectSigningSecrets(ctx, conn, resp); err != nil {
+			return nil, err
+		}
+	}
+
+	return resp, nil
+}
+
+// injectSigningSecrets decrypts a webhook channel's signing secrets and adds
+// them to the response Settings, removing them from SettingsPrivateKeys so the
+// dashboard renders the actual value rather than a placeholder pill.
+func (s *Service) injectSigningSecrets(
+	ctx context.Context, conn *models.Integration, resp *IntegrationResponse,
+) error {
+	effective, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	if resp.Settings == nil {
+		resp.Settings = map[string]any{}
+	}
+
+	for _, key := range []string{settingsKeySigningSecret, settingsKeySigningSecretPrevious} {
+		if v, ok := effective[key].(string); ok && v != "" {
+			resp.Settings[key] = v
+		}
+	}
+
+	if len(resp.SettingsPrivateKeys) > 0 {
+		filtered := make([]string, 0, len(resp.SettingsPrivateKeys))
+		for _, k := range resp.SettingsPrivateKeys {
+			if k == settingsKeySigningSecret || k == settingsKeySigningSecretPrevious {
+				continue
+			}
+
+			filtered = append(filtered, k)
+		}
+
+		resp.SettingsPrivateKeys = filtered
+	}
+
+	return nil
+}
+
+// CreateIntegration creates a new connection.
+func (s *Service) CreateIntegration(
+	ctx context.Context, orgSlug string, req CreateIntegrationRequest,
+) (*IntegrationResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	// Validate connection type
+	connType := models.ConnectionType(req.Type)
+	switch connType {
+	case models.ConnectionTypeSlack, models.ConnectionTypeDiscord,
+		models.ConnectionTypeWebhook, models.ConnectionTypeEmail,
+		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
+		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
+		models.ConnectionTypePushover, models.ConnectionTypeFreebox,
+		models.ConnectionTypeWebPush:
+		// Valid types
+	default:
+		return nil, ErrInvalidConnectionType
+	}
+
+	// Slack channels can only be created by the OAuth install flow (which calls
+	// s.db.CreateChannel directly and writes the bot token). A manually-created
+	// Slack channel has no token and is permanently broken, so reject it here.
+	if connType == models.ConnectionTypeSlack {
+		return nil, ErrSlackManualCreate
+	}
+
+	conn := models.NewIntegration(org.UID, connType, req.Name)
+
+	if req.Enabled != nil {
+		conn.Enabled = *req.Enabled
+	}
+
+	if req.IsDefault != nil {
+		conn.IsDefault = *req.IsDefault
+	}
+
+	// Webhook channels always get a signing secret on creation so the first
+	// delivery is signed without an auto-generation round-trip.
+	if connType == models.ConnectionTypeWebhook {
+		settings, secErr := ensureWebhookCreateSecret(req.Settings)
+		if secErr != nil {
+			return nil, secErr
+		}
+
+		req.Settings = settings
+	}
+
+	if err := s.applySettingsEncryption(ctx, conn, req.Settings); err != nil {
+		return nil, err
+	}
+
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
+		return nil, err
+	}
+
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		activation.SourceAPI, "")
+
+	resp := toResponse(conn, true)
+
+	if conn.Type == models.ConnectionTypeWebhook {
+		if err := s.injectSigningSecrets(ctx, conn, resp); err != nil {
+			return nil, err
+		}
+	}
+
+	return resp, nil
+}
+
+// UpdateIntegration updates a connection.
+func (s *Service) UpdateIntegration(
+	ctx context.Context, orgSlug, connectionUID string, req UpdateIntegrationRequest,
+) (*IntegrationResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, err
+	}
+
+	// Verify the connection belongs to the organization
+	if conn.OrganizationUID != org.UID {
+		return nil, ErrConnectionNotFound
+	}
+
+	update := &models.IntegrationUpdate{
+		Name:      req.Name,
+		Enabled:   req.Enabled,
+		IsDefault: req.IsDefault,
+	}
+
+	if req.Settings != nil {
+		// PATCH-merge: secret keys absent from the incoming map are
+		// preserved from the existing config_private; explicit null/empty
+		// clears them. Non-secret keys follow replace-wholesale semantics.
+		existing, decErr := s.loadDecryptedSettings(ctx, conn)
+		if decErr != nil {
+			return nil, decErr
+		}
+
+		secrets := credentials.ConnectionSecretFields(conn.Type)
+		merged := credentials.MergePatch(existing, req.Settings, secrets)
+
+		if encErr := s.applySettingsEncryption(ctx, conn, merged); encErr != nil {
+			return nil, encErr
+		}
+
+		settings := conn.Settings
+		update.Settings = &settings
+		update.SettingsPrivate = conn.SettingsPrivate
+		update.SettingsPrivateKeys = conn.SettingsPrivateKeys
+		update.ClearSettingsPrivate = conn.SettingsPrivate == nil
+	}
+
+	if updateErr := s.db.UpdateChannel(ctx, connectionUID, update); updateErr != nil {
+		return nil, updateErr
+	}
+
+	// Fetch updated connection
+	conn, err = s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	return toResponse(conn, true), nil
+}
+
+// applySettingsEncryption splits Settings into public/private using the
+// connection-type's declared secret keys, encrypts the private side, and
+// writes Settings + SettingsPrivate + SettingsPrivateKeys onto the
+// connection. When encryption is disabled at the server, secrets stay
+// plaintext on Settings (logged-once startup warning covers the gap).
+func (s *Service) applySettingsEncryption(
+	ctx context.Context, conn *models.Integration, effective map[string]any,
+) error {
+	if effective == nil {
+		effective = map[string]any{}
+	}
+
+	secrets := credentials.ConnectionSecretFields(conn.Type)
+	public, private := credentials.SplitConfig(effective, secrets)
+	conn.Settings = models.JSONMap(public)
+
+	if !s.creds.Enabled() || len(private) == 0 {
+		conn.SettingsPrivate = nil
+		conn.SettingsPrivateKeys = nil
+		// Plaintext fallback: secrets must still be persisted so the
+		// integration actually works.
+		if !s.creds.Enabled() {
+			for k, v := range private {
+				conn.Settings[k] = v
+			}
+		}
+
+		return nil
+	}
+
+	envelope, err := s.creds.EncryptForOrg(ctx, conn.OrganizationUID, private)
+	if err != nil {
+		return fmt.Errorf("encrypt connection settings: %w", err)
+	}
+
+	conn.SettingsPrivate = &envelope
+
+	keysJSON, err := json.Marshal(credentials.SortedKeys(private))
+	if err != nil {
+		return fmt.Errorf("marshal settings private keys: %w", err)
+	}
+
+	keysStr := string(keysJSON)
+	conn.SettingsPrivateKeys = &keysStr
+
+	return nil
+}
+
+// loadDecryptedSettings returns the merged plaintext effective Settings
+// of a connection. Used by the PATCH path so secret-preservation has the
+// existing values to merge into.
+func (s *Service) loadDecryptedSettings(
+	ctx context.Context, conn *models.Integration,
+) (map[string]any, error) {
+	if conn.SettingsPrivate == nil || *conn.SettingsPrivate == "" {
+		out := make(map[string]any, len(conn.Settings))
+		for k, v := range conn.Settings {
+			out[k] = v
+		}
+
+		return out, nil
+	}
+
+	if !s.creds.Enabled() {
+		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, credentials.ErrDisabled)
+	}
+
+	private, err := s.creds.DecryptForOrg(ctx, conn.OrganizationUID, *conn.SettingsPrivate)
+	if err != nil {
+		return nil, fmt.Errorf("decrypt connection %s: %w", conn.UID, err)
+	}
+
+	out := make(map[string]any, len(conn.Settings)+len(private))
+	for k, v := range conn.Settings {
+		out[k] = v
+	}
+
+	for k, v := range private {
+		out[k] = v
+	}
+
+	return out, nil
+}
+
+// StartFreeboxPairingRequest is the body for the start-pairing endpoint.
+type StartFreeboxPairingRequest struct {
+	// Name is used for the IntegrationConnection row and for the
+	// device_name shown on the Freebox LCD prompt. Optional — defaults
+	// to "SolidPing" if absent.
+	Name string `json:"name,omitempty"`
+	// BaseURL of the Freebox API. Defaults to
+	// "http://mafreebox.freebox.fr" when empty.
+	BaseURL string `json:"baseUrl,omitempty"`
+}
+
+// FreeboxPairingResponse is the body returned by the start-pairing
+// endpoint.
+type FreeboxPairingResponse struct {
+	ConnectionUID string `json:"connectionUid"`
+	TrackID       int    `json:"trackId"`
+	Status        string `json:"status"`
+}
+
+// FreeboxPairingStatusResponse is the body returned by the
+// poll-status endpoint.
+type FreeboxPairingStatusResponse struct {
+	Status string `json:"status"`
+}
+
+// StartFreeboxPairing kicks off a Freebox pairing flow and persists the
+// resulting permanent app_token (encrypted) onto a new IntegrationConnection
+// row. The connection starts in `Status = "pairing"` until the operator
+// approves the prompt on the Freebox LCD.
+func (s *Service) StartFreeboxPairing(
+	ctx context.Context, orgSlug string, req StartFreeboxPairingRequest,
+) (*FreeboxPairingResponse, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	settings := &models.FreeboxSettings{
+		BaseURL:    req.BaseURL,
+		AppID:      freebox.DefaultAppID,
+		DeviceName: req.Name,
+		Status:     models.FreeboxStatusPairing,
+	}
+	if settings.BaseURL == "" {
+		settings.BaseURL = freebox.DefaultBaseURL
+	}
+	if settings.DeviceName == "" {
+		settings.DeviceName = freebox.DefaultDeviceName
+	}
+
+	authResult, err := freebox.StartPairing(ctx, settings)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, err)
+	}
+
+	settings.TrackID = authResult.TrackID
+
+	channelName := req.Name
+	if channelName == "" {
+		channelName = "Freebox"
+	}
+
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeFreebox, channelName)
+
+	effective, err := mergeFreeboxSettings(settings, &models.FreeboxPrivateSettings{
+		AppToken: authResult.AppToken,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if err := s.applySettingsEncryption(ctx, conn, effective); err != nil {
+		return nil, err
+	}
+
+	if err := s.db.CreateChannel(ctx, conn); err != nil {
+		return nil, err
+	}
+
+	activation.Emit(ctx, s.db, org.UID,
+		models.EventTypeOrgActivationFirstNotificationConfigured,
+		activation.SourceAPI, "")
+
+	return &FreeboxPairingResponse{
+		ConnectionUID: conn.UID,
+		TrackID:       authResult.TrackID,
+		Status:        models.FreeboxStatusPairing,
+	}, nil
+}
+
+// CheckFreeboxPairingStatus polls the Freebox once for the current
+// pairing status and reconciles the IntegrationConnection record:
+//
+//   - granted → clears TrackID, sets Status = granted
+//   - denied / timeout → sets Status accordingly, leaves the row in
+//     place so the operator can see the failure (and re-pair from the UI)
+//   - pending / unknown → unchanged
+func (s *Service) CheckFreeboxPairingStatus(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*FreeboxPairingStatusResponse, error) {
+	conn, settings, err := s.loadPairingChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := reconcilePairingStatus(ctx, settings); err != nil {
+		return nil, err
+	}
+
+	if err := s.persistFreeboxSettings(ctx, conn, settings); err != nil {
+		return nil, err
+	}
+
+	return &FreeboxPairingStatusResponse{Status: settings.Status}, nil
+}
+
+// loadPairingChannel resolves the org + connection and validates that
+// the channel is a Freebox row currently in the pairing state. Pulled
+// out of CheckFreeboxPairingStatus to keep that function below the
+// cyclomatic-complexity threshold.
+func (s *Service) loadPairingChannel(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*models.Integration, *models.FreeboxSettings, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, ErrOrganizationNotFound
+		}
+
+		return nil, nil, err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil, ErrConnectionNotFound
+		}
+
+		return nil, nil, err
+	}
+
+	if conn.OrganizationUID != org.UID {
+		return nil, nil, ErrConnectionNotFound
+	}
+
+	if conn.Type != models.ConnectionTypeFreebox {
+		return nil, nil, ErrFreeboxTypeMismatch
+	}
+
+	settings, err := models.FreeboxSettingsFromJSONMap(conn.Settings)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse freebox settings: %w", err)
+	}
+
+	if settings.TrackID == 0 || settings.Status != models.FreeboxStatusPairing {
+		return nil, nil, ErrFreeboxNotPairing
+	}
+
+	return conn, settings, nil
+}
+
+// reconcilePairingStatus polls the Freebox once and mutates `settings`
+// in place to reflect the new state. The caller is responsible for
+// persisting `settings` back to the channel row.
+func reconcilePairingStatus(ctx context.Context, settings *models.FreeboxSettings) error {
+	status, pollErr := freebox.CheckPairingStatus(ctx, settings, settings.TrackID)
+	switch {
+	case errors.Is(pollErr, freebox.ErrPairingDenied):
+		settings.Status = models.FreeboxStatusDenied
+	case errors.Is(pollErr, freebox.ErrPairingTimeout):
+		settings.Status = models.FreeboxStatusTimeout
+	case pollErr != nil:
+		return fmt.Errorf("%w: %w", ErrFreeboxPairingFailed, pollErr)
+	case status == freebox.StatusGranted:
+		settings.Status = models.FreeboxStatusGranted
+		settings.TrackID = 0
+	}
+
+	return nil
+}
+
+// mergeFreeboxSettings flattens the public/private structs into one
+// effective map that applySettingsEncryption can split again. Keeping
+// this in one place avoids leaking the freebox secret-key names into
+// the channel handler.
+func mergeFreeboxSettings(
+	pub *models.FreeboxSettings, priv *models.FreeboxPrivateSettings,
+) (map[string]any, error) {
+	asMap, err := pub.ToJSONMap()
+	if err != nil {
+		return nil, fmt.Errorf("marshal freebox settings: %w", err)
+	}
+
+	out := make(map[string]any, len(asMap)+1)
+	for k, v := range asMap {
+		out[k] = v
+	}
+
+	if priv != nil && priv.AppToken != "" {
+		out["appToken"] = priv.AppToken
+	}
+
+	return out, nil
+}
+
+// persistFreeboxSettings writes the freebox-specific Settings struct
+// back to the channel without disturbing the encrypted app_token. It
+// loads the existing decrypted secrets, replaces the public side, and
+// goes back through the standard split-and-encrypt pipeline.
+func (s *Service) persistFreeboxSettings(
+	ctx context.Context, conn *models.Integration, settings *models.FreeboxSettings,
+) error {
+	existing, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return err
+	}
+
+	pubMap, err := settings.ToJSONMap()
+	if err != nil {
+		return fmt.Errorf("marshal freebox settings: %w", err)
+	}
+
+	merged := make(map[string]any, len(pubMap)+1)
+	for k, v := range pubMap {
+		merged[k] = v
+	}
+	// Preserve the encrypted secret if present.
+	if v, ok := existing["appToken"]; ok {
+		merged["appToken"] = v
+	}
+
+	if err := s.applySettingsEncryption(ctx, conn, merged); err != nil {
+		return err
+	}
+
+	update := &models.IntegrationUpdate{
+		Settings:             &conn.Settings,
+		SettingsPrivate:      conn.SettingsPrivate,
+		SettingsPrivateKeys:  conn.SettingsPrivateKeys,
+		ClearSettingsPrivate: conn.SettingsPrivate == nil,
+	}
+
+	return s.db.UpdateChannel(ctx, conn.UID, update)
+}
+
+// DeleteIntegration deletes a connection.
+func (s *Service) DeleteIntegration(ctx context.Context, orgSlug, connectionUID string) error {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrOrganizationNotFound
+		}
+
+		return err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ErrConnectionNotFound
+		}
+
+		return err
+	}
+
+	// Verify the connection belongs to the organization
+	if conn.OrganizationUID != org.UID {
+		return ErrConnectionNotFound
+	}
+
+	return s.db.DeleteChannel(ctx, connectionUID)
+}
+
+// IntegrationTestResult is returned by TestIntegration. Success reports whether
+// the integration delivered the sample notification. StatusCode carries the HTTP
+// status for HTTP-based integrations (e.g. webhooks); it is 0 for senders with
+// no such concept. The handler always returns HTTP 200; the caller inspects
+// Success.
+type IntegrationTestResult struct {
+	Success    bool   `json:"success"`
+	StatusCode int    `json:"statusCode"`
+	DurationMs int64  `json:"durationMs"`
+	Error      string `json:"error,omitempty"`
+}
+
+// loadChannel resolves the org + connection and verifies the connection belongs
+// to the org. Shared by the operations that act on a single connection.
+func (s *Service) loadChannel(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*models.Integration, error) {
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrOrganizationNotFound
+		}
+
+		return nil, err
+	}
+
+	conn, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrConnectionNotFound
+		}
+
+		return nil, err
+	}
+
+	if conn.OrganizationUID != org.UID {
+		return nil, ErrConnectionNotFound
+	}
+
+	return conn, nil
+}
+
+// loadWebhookChannel resolves the org + connection and asserts the channel is
+// a webhook. Used by RotateWebhookSecret.
+func (s *Service) loadWebhookChannel(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*models.Integration, error) {
+	conn, err := s.loadChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if conn.Type != models.ConnectionTypeWebhook {
+		return nil, ErrNotWebhookChannel
+	}
+
+	return conn, nil
+}
+
+// persistChannelSettings re-splits/encrypts the given effective (decrypted)
+// settings onto the channel and writes them. Mirrors the UpdateIntegration PATCH
+// persistence path but for an already-merged settings map.
+func (s *Service) persistChannelSettings(
+	ctx context.Context, conn *models.Integration, effective map[string]any,
+) error {
+	if err := s.applySettingsEncryption(ctx, conn, effective); err != nil {
+		return err
+	}
+
+	settings := conn.Settings
+	update := &models.IntegrationUpdate{
+		Settings:             &settings,
+		SettingsPrivate:      conn.SettingsPrivate,
+		SettingsPrivateKeys:  conn.SettingsPrivateKeys,
+		ClearSettingsPrivate: conn.SettingsPrivate == nil,
+	}
+
+	return s.db.UpdateChannel(ctx, conn.UID, update)
+}
+
+// RotateWebhookSecret cycles a webhook channel's signing secret: the current
+// secret becomes the previous one (valid for a 24 h grace window) and a fresh
+// secret is generated. Receivers can verify against either during the window.
+func (s *Service) RotateWebhookSecret(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*IntegrationResponse, error) {
+	conn, err := s.loadWebhookChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	effective, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	newSecret, err := generateWebhookSecret()
+	if err != nil {
+		return nil, err
+	}
+
+	// Move current → previous (only if a current secret actually exists).
+	if current, ok := effective[settingsKeySigningSecret].(string); ok && current != "" {
+		effective[settingsKeySigningSecretPrevious] = current
+		effective[settingsKeySigningSecretExpiry] = time.Now().Add(webhookRotationGrace).
+			UTC().Format(time.RFC3339)
+	}
+
+	effective[settingsKeySigningSecret] = newSecret
+
+	if err = s.persistChannelSettings(ctx, conn, effective); err != nil {
+		return nil, err
+	}
+
+	updated, err := s.db.GetChannel(ctx, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp := toResponse(updated, true)
+	if err = s.injectSigningSecrets(ctx, updated, resp); err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+// TestIntegration sends a sample notification through the integration's real
+// sender — the same delivery path a live incident takes — and reports the
+// outcome. Works for every notification type; data-source-only types (e.g.
+// Freebox) are rejected with ErrIntegrationNotNotifiable.
+func (s *Service) TestIntegration(
+	ctx context.Context, orgSlug, connectionUID string,
+) (*IntegrationTestResult, error) {
+	conn, err := s.loadChannel(ctx, orgSlug, connectionUID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !models.CapabilitiesFor(conn.Type).CanNotify {
+		return nil, ErrIntegrationNotNotifiable
+	}
+
+	// Merge decrypted secrets into Settings so the sender has its tokens /
+	// signing secret, exactly like the notification job runner does before
+	// dispatch.
+	effective, err := s.loadDecryptedSettings(ctx, conn)
+	if err != nil {
+		return nil, err
+	}
+
+	conn.Settings = models.JSONMap(effective)
+
+	// Web Push is special: WebPushSender.Send swallows per-subscription errors
+	// as non-fatal (production behavior — keep trying remaining subs). For a
+	// manual test we want strict feedback: fail loudly on the first error so the
+	// user knows something is wrong.
+	if conn.Type == models.ConnectionTypeWebPush {
+		return s.testWebPushDelivery(ctx, conn, orgSlug)
+	}
+
+	sender, ok := notifications.GetSender(conn.Type)
+	if !ok {
+		return nil, ErrIntegrationNotNotifiable
+	}
+
+	// Senders that mutate their settings on delivery (webhook signing-secret
+	// auto-generation/rotation, web push dead-subscription pruning) need a
+	// persistence callback so the change is written back to the channel row.
+	s.injectChannelUpdater(sender)
+
+	payload := buildTestPayload(conn, orgSlug)
+	jctx := s.testJobContext(conn)
+
+	start := time.Now()
+	sendErr := sender.Send(ctx, jctx, payload)
+	durationMs := time.Since(start).Milliseconds()
+
+	result := &IntegrationTestResult{
+		Success:    sendErr == nil,
+		DurationMs: durationMs,
+	}
+
+	if sendErr != nil {
+		result.Error = sendErr.Error()
+		result.StatusCode = statusCodeFromErr(sendErr)
+
+		return result, nil
+	}
+
+	result.StatusCode = 200
+
+	return result, nil
+}
+
+// webPushTestSub mirrors the per-subscription shape stored in
+// Settings["subscriptions"] — minimal fields needed for webpush.Send.
+type webPushTestSub struct {
+	Endpoint string `json:"endpoint"`
+	Keys     struct {
+		P256dh string `json:"p256dh"`
+		Auth   string `json:"auth"`
+	} `json:"keys"`
+}
+
+// webPushSubsFromSettings extracts the subscriptions slice from the
+// integration's Settings map.
+func webPushSubsFromSettings(settings models.JSONMap) ([]webPushTestSub, error) {
+	raw, ok := settings["subscriptions"]
+	if !ok {
+		return nil, nil
+	}
+
+	data, err := json.Marshal(raw)
+	if err != nil {
+		return nil, fmt.Errorf("marshal webpush subscriptions: %w", err)
+	}
+
+	var subs []webPushTestSub
+	if err := json.Unmarshal(data, &subs); err != nil {
+		return nil, fmt.Errorf("unmarshal webpush subscriptions: %w", err)
+	}
+
+	return subs, nil
+}
+
+// testWebPushDelivery sends a test push to every subscription and fails on the
+// first error, giving the user immediate, accurate feedback. This is stricter
+// than WebPushSender.Send (which swallows per-sub errors for production use).
+func (s *Service) testWebPushDelivery(
+	ctx context.Context, conn *models.Integration, orgSlug string,
+) (*IntegrationTestResult, error) {
+	if s.registry == nil || s.registry.WebPushOptions.VAPIDPublicKey == "" {
+		return nil, notifications.ErrWebPushNotConfigured
+	}
+
+	subs, err := webPushSubsFromSettings(conn.Settings)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(subs) == 0 {
+		return &IntegrationTestResult{
+			Success: false,
+			Error:   "no subscriptions — subscribe a browser on the integration page first",
+		}, nil
+	}
+
+	opts := s.registry.WebPushOptions
+
+	msg := webpush.Message{
+		Title: "[TEST] SolidPing",
+		Body:  "Test push notification from SolidPing. If you see this, push delivery is working.",
+		URL:   "/dash0/orgs/" + orgSlug,
+	}
+
+	start := time.Now()
+
+	var successCount, failCount int
+	var firstErrMsg string
+
+	for i := range subs {
+		subJSON, marshalErr := json.Marshal(subs[i])
+		if marshalErr != nil {
+			slog.WarnContext(ctx, "webpush test: failed to marshal subscription; skipping",
+				"endpoint", subs[i].Endpoint, "error", marshalErr)
+
+			continue
+		}
+
+		if errMsg := webPushSendErrMsg(webpush.Send(ctx, opts, string(subJSON), msg)); errMsg != "" {
+			failCount++
+
+			if firstErrMsg == "" {
+				firstErrMsg = errMsg
+			}
+		} else {
+			successCount++
+		}
+	}
+
+	durationMs := time.Since(start).Milliseconds()
+
+	if successCount == 0 {
+		// Every subscription failed.
+		return &IntegrationTestResult{
+			Success:    false,
+			DurationMs: durationMs,
+			Error:      firstErrMsg,
+		}, nil
+	}
+
+	result := &IntegrationTestResult{
+		Success:    true,
+		StatusCode: 201,
+		DurationMs: durationMs,
+	}
+
+	if failCount > 0 {
+		// Partial success: at least one browser received the push, others failed.
+		// Surface the failure so the user can re-subscribe the affected browser.
+		result.Error = fmt.Sprintf("%d/%d delivered; %d failed — %s",
+			successCount, successCount+failCount, failCount, firstErrMsg)
+	}
+
+	return result, nil
+}
+
+// webPushSendErrMsg converts a webpush send error to a string, returning ""
+// when err is nil. Extracted to avoid nilerr false-positives on the return path.
+func webPushSendErrMsg(err error) string {
+	if err == nil {
+		return ""
+	}
+
+	return err.Error()
+}
+
+// injectChannelUpdater wires a persistence callback into senders that mutate
+// their channel settings during delivery. Other sender types are left untouched.
+func (s *Service) injectChannelUpdater(sender notifications.Sender) {
+	updater := func(ctx context.Context, channel *models.Integration) error {
+		merged := make(map[string]any, len(channel.Settings))
+		for k, v := range channel.Settings {
+			merged[k] = v
+		}
+
+		return s.persistChannelSettings(ctx, channel, merged)
+	}
+
+	switch sn := sender.(type) {
+	case *notifications.WebhookSender:
+		sn.UpdateChannel = updater
+	case *notifications.WebPushSender:
+		sn.UpdateChannel = updater
+	}
+}
+
+// testJobContext builds the JobContext senders receive during a test send. It
+// mirrors the notification job runner's context so service-backed senders
+// (email, web push, Slack threading) work from the test path. registry and
+// appConfig may be nil in unit tests that only exercise context-free senders.
+func (s *Service) testJobContext(conn *models.Integration) *jobdef.JobContext {
+	orgUID := conn.OrganizationUID
+
+	var bunDB *bun.DB
+	if s.db != nil {
+		bunDB = s.db.DB()
+	}
+
+	return &jobdef.JobContext{
+		OrganizationUID: &orgUID,
+		DB:              bunDB,
+		DBService:       s.db,
+		Services:        s.registry,
+		AppConfig:       s.appConfig,
+		Logger: slog.Default().With(
+			"op", "integration-test", "integrationType", string(conn.Type)),
+	}
+}
+
+// buildTestPayload returns a sample "incident created" payload describing a
+// fake check, used by TestIntegration. The check is named so recipients can
+// tell at a glance it's a manual test rather than a real outage.
+func buildTestPayload(conn *models.Integration, orgSlug string) *notifications.Payload {
+	now := time.Now()
+	checkName := "SolidPing test"
+	title := "Test notification from SolidPing"
+
+	return &notifications.Payload{
+		EventType: "incident.created",
+		Incident: &models.Incident{
+			UID:             uuid.NewString(),
+			OrganizationUID: conn.OrganizationUID,
+			State:           models.IncidentStateActive,
+			StartedAt:       now,
+			FailureCount:    1,
+			Title:           &title,
+		},
+		Check: &models.Check{
+			UID:  uuid.NewString(),
+			Name: &checkName,
+			Type: "http",
+		},
+		Integration: conn,
+		OrgSlug:     orgSlug,
+	}
+}
+
+// statusCodeFromErr extracts the HTTP status from a webhook request-failed
+// error, defaulting to 0 for transport-level failures (DNS, refused, timeout).
+// The error is formatted as "webhook request failed: status <code>: <body>".
+func statusCodeFromErr(err error) int {
+	if !errors.Is(err, notifications.ErrWebhookRequestFailed) {
+		return 0
+	}
+
+	const marker = "status "
+
+	msg := err.Error()
+	idx := strings.Index(msg, marker)
+	if idx < 0 {
+		return 0
+	}
+
+	rest := msg[idx+len(marker):]
+
+	end := strings.IndexByte(rest, ':')
+	if end >= 0 {
+		rest = rest[:end]
+	}
+
+	code, convErr := strconv.Atoi(strings.TrimSpace(rest))
+	if convErr != nil {
+		return 0
+	}
+
+	return code
+}

@@ -85,6 +85,7 @@ function CheckNewPage() {
       onSubmit={async (data) => {
         const check = await createCheck.mutateAsync({
           type: data.type,
+          enabled: data.enabled,
           name: data.name,
           slug: data.slug,
           checkGroupUid: data.checkGroupUid,

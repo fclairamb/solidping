@@ -47,7 +47,7 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	check := models.NewCheck(org.UID, "api", "http")
 	r.NoError(dbSvc.CreateCheck(ctx, check))
 
-	conn := models.NewChannel(org.UID, models.ConnectionTypeWebhook, "ops")
+	conn := models.NewIntegration(org.UID, models.ConnectionTypeWebhook, "ops")
 	conn.Enabled = true
 	r.NoError(dbSvc.CreateChannel(ctx, conn))
 

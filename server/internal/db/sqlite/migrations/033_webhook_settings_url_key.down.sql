@@ -1,4 +1,0 @@
--- migrate: down
--- No-op: reverting the url→webhook_url rename would corrupt data for channels
--- that were saved after the migration (they would lose their URL). The correct
--- rollback path is to redeploy the previous frontend and let users re-save.

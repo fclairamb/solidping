@@ -30,6 +30,8 @@
   "escalated": "Eskaliert",
   "fallbackTitle": "Vorfall",
   "actions": {
+    "back": "Zurück zu den Vorfällen",
+    "refresh": "Aktualisieren",
     "acknowledge": "Bestätigen",
     "unacknowledge": "Bestätigung aufheben",
     "snooze": "Schlummern…",

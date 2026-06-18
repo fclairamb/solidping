@@ -37,4 +37,9 @@ const (
 	// and records the hosts it knows about in the discovered_hosts table
 	// (source='freebox') so they share the LAN-scan promote/dismiss UX.
 	JobTypeFreeboxLanDiscovery JobType = "freebox_lan_discovery"
+	// JobTypeStuckJobReaper periodically recovers jobs left in 'running' by a
+	// dead/redeployed worker: it rides the existing retry chain (retried +
+	// backoff clone) until the retry cap, then 'failed' with reason
+	// "stuck_timeout". Self-reschedules like snooze_sweep.
+	JobTypeStuckJobReaper JobType = "stuck_job_reaper"
 )
