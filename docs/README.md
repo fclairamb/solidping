@@ -89,6 +89,7 @@ Market analysis of uptime monitoring services.
   - [gatus/comparison.md](competitors/gatus/comparison.md) — Strengths, weaknesses, vs SolidPing, use cases
   - [gatus/sources.md](competitors/gatus/sources.md) — Source URLs
 - [competitors/healthchecks-io.md](competitors/healthchecks-io.md) — Healthchecks.io analysis (passive/heartbeat monitoring)
+- [competitors/maintenant.md](competitors/maintenant.md) — Maintenant analysis (self-hosted Go, container observability, MCP, AGPL open-core)
 - Pingdom — [pingdom/](competitors/pingdom/)
   - [pingdom/README.md](competitors/pingdom/README.md) — Index, at-a-glance, key features
   - [pingdom/monitoring.md](competitors/pingdom/monitoring.md) — Check types in-depth (HTTP, transaction, ping, TCP/UDP, DNS, mail) and global probe network
