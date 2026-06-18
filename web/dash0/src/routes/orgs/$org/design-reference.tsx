@@ -421,8 +421,17 @@ import { PageHeader } from "@/components/shared/page-header";
     <Section
       id="page-header"
       title="Page header"
-      description="The boxed PageHeader component (@/components/shared/page-header) is the canonical header for every list and section page. Pass icon, title, an optional description, and right-aligned actions; it renders a rounded muted icon tile, a text-2xl font-semibold title, the muted subtitle below, and the actions on the right. Discovery, checks, incidents, status-pages, on-call, integrations, badges, me/notifications and the rest all ship it — use it for every new page rather than hand-rolling an inline header."
+      description="Every page opens with a page header — the page title plus its right-aligned actions. 'Page title' and 'page header' are the same surface, not two primitives. List and section pages render it with the boxed PageHeader component (@/components/shared/page-header); detail and edit pages compose the same header inline so it can carry a back arrow and per-record actions. Both patterns are documented here."
     >
+      <h3 className="text-sm font-medium">List &amp; section pages: the PageHeader component</h3>
+      <p className="text-sm text-muted-foreground">
+        Pass icon, title, an optional description, and right-aligned actions; it
+        renders a rounded muted icon tile, a text-2xl font-semibold title, the
+        muted subtitle below, and the actions on the right. Discovery, checks,
+        incidents, status-pages, on-call, integrations, badges, me/notifications
+        and the rest all ship it — use it for every new page rather than
+        hand-rolling an inline header.
+      </p>
       <div className="rounded-md border bg-card p-4">
         <PageHeader
           icon={Globe}
@@ -449,13 +458,144 @@ import { PageHeader } from "@/components/shared/page-header";
         prop; leave filter/search toolbars on their own row below the header.
         Add <code className="rounded bg-muted px-1 py-0.5 text-xs">className="flex-wrap"</code>{" "}
         so actions wrap instead of overflowing on mobile. The detail/edit-page
-        header — back arrow inside the right-aligned action cluster — is
-        documented in{" "}
-        <a href="#buttons-badges" className="underline">
-          Buttons &amp; badges
-        </a>
-        .
+        header — back arrow inside the right-aligned action cluster — is the
+        same surface for detail pages; it is documented just below.
       </p>
+
+      <h3 className="text-sm font-medium">Detail &amp; edit pages: title block + right-aligned action cluster (back arrow first)</h3>
+      <p className="text-sm text-muted-foreground">
+        On detail/edit pages, compose a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex items-start justify-between gap-3</code>{" "}
+        row. The <strong>left</strong> is the title block — the page{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
+        plus any subtitle/status — wrapped in{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+        so it truncates instead of shoving the actions off-screen. The{" "}
+        <strong>right</strong> is a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex gap-2 shrink-0</code>{" "}
+        cluster whose <strong>first child is the icon-only ghost back button</strong>,
+        followed by the page actions (View / Edit / Delete, Refresh, …). The
+        back arrow is <strong>not</strong> on the far left — it leads the
+        right-aligned cluster. It is{" "}
+        <strong>always icon-only</strong> — never paired with a &quot;Back&quot;
+        label. Use{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code>{" "}
+        with{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;ghost&quot; size=&quot;icon&quot;</code>{" "}
+        and an{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
+        A trailing Refresh button labels itself on desktop and collapses to
+        the icon below{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                Page title
+              </h1>
+              <p className="mt-1 truncate text-muted-foreground">
+                Optional subtitle / status
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <Button variant="outline" size="sm" aria-label="Edit">
+                <Pencil className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+              <Button variant="outline" aria-label="Refresh">
+                <RotateCw className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              <Button variant="destructive" size="sm" aria-label="Delete">
+                <Trash2 />
+                <span className="hidden sm:inline">Delete</span>
+              </Button>
+            </div>
+          </div>
+        }
+        importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    <Button variant="outline" size="sm" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="sm:mr-2 h-4 w-4" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" size="sm" onClick={handleDelete}>\n      <Trash2 />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
+      />
+
+      <h3 className="text-sm font-medium">Detail &amp; edit pages: collapse the action cluster into an overflow menu on mobile</h3>
+      <p className="text-sm text-muted-foreground">
+        When a detail header carries more than two or three actions, the inline
+        toolbar overflows on a phone. Keep only the icon-only ghost{" "}
+        <strong>back button</strong> always visible; render the labeled action
+        buttons in a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hidden md:flex</code>{" "}
+        cluster, and mirror every one of them as items inside a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md:hidden</code>{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
+        triggered by a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
+        (⋯) button. The delete item is{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
+        with a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
+        icon, just like the inline destructive button. Drive any confirm
+        dialog from controlled state so it opens from either surface.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="flex w-full items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                Page title
+              </h1>
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <div className="hidden items-center gap-2 md:flex">
+                <Button variant="outline" aria-label="Edit">
+                  <Pencil className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Edit</span>
+                </Button>
+                <Button variant="outline" aria-label="Refresh">
+                  <RotateCw className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Refresh</span>
+                </Button>
+                <Button variant="destructive" aria-label="Delete">
+                  <Trash2 className="h-4 w-4 sm:mr-2" />
+                  <span className="hidden sm:inline">Delete</span>
+                </Button>
+              </div>
+              <div className="md:hidden">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="outline" size="icon" aria-label="More actions">
+                      <MoreVertical />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem>
+                      <Pencil />
+                      Edit
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <RotateCw />
+                      Refresh
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive">
+                      <Trash2 />
+                      Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+            </div>
+          </div>
+        }
+        importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
+      />
+
       <div className="rounded-md border border-dashed bg-muted/30 p-4">
         <p className="text-sm text-muted-foreground">
           <strong className="text-foreground">Legacy (retired):</strong> the
@@ -583,7 +723,7 @@ function ButtonsBadgesSection() {
     <Section
       id="buttons-badges"
       title="Buttons & badges"
-      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb, collapse to icon-only on mobile, and the top-right back button is always icon-only."
+      description="All variants and sizes shipped today. Pick the one with the least visual weight that still does the job. Action buttons should pair an icon with a short verb and collapse to icon-only on mobile. The detail-page header that composes these into a back button + action cluster lives in the Page header section."
     >
       <div className="space-y-4">
         <h3 className="text-sm font-medium">Button variants</h3>
@@ -655,140 +795,6 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
-        />
-
-        <h3 className="text-sm font-medium">Detail page header: title block + right-aligned action cluster (back arrow first)</h3>
-        <p className="text-sm text-muted-foreground">
-          On detail/edit pages, compose a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex items-start justify-between gap-3</code>{" "}
-          row. The <strong>left</strong> is the title block — the page{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
-          plus any subtitle/status — wrapped in{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
-          so it truncates instead of shoving the actions off-screen. The{" "}
-          <strong>right</strong> is a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex gap-2 shrink-0</code>{" "}
-          cluster whose <strong>first child is the icon-only ghost back button</strong>,
-          followed by the page actions (View / Edit / Delete, Refresh, …). The
-          back arrow is <strong>not</strong> on the far left — it leads the
-          right-aligned cluster. It is{" "}
-          <strong>always icon-only</strong> — never paired with a &quot;Back&quot;
-          label. Use{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ArrowLeft</code>{" "}
-          with{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">variant=&quot;ghost&quot; size=&quot;icon&quot;</code>{" "}
-          and an{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code>.
-          A trailing Refresh button labels itself on desktop and collapses to
-          the icon below{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code>.
-        </p>
-        <ExampleRow
-          preview={
-            <div className="flex w-full items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                  Page title
-                </h1>
-                <p className="mt-1 truncate text-muted-foreground">
-                  Optional subtitle / status
-                </p>
-              </div>
-              <div className="flex shrink-0 gap-2">
-                <Button variant="ghost" size="icon" aria-label="Back">
-                  <ArrowLeft />
-                </Button>
-                <Button variant="outline" size="sm" aria-label="Edit">
-                  <Pencil className="sm:mr-2 h-4 w-4" />
-                  <span className="hidden sm:inline">Edit</span>
-                </Button>
-                <Button variant="outline" aria-label="Refresh">
-                  <RotateCw className="h-4 w-4 sm:mr-2" />
-                  <span className="hidden sm:inline">Refresh</span>
-                </Button>
-                <Button variant="destructive" size="sm" aria-label="Delete">
-                  <Trash2 />
-                  <span className="hidden sm:inline">Delete</span>
-                </Button>
-              </div>
-            </div>
-          }
-          importLine={`<div className="flex items-start justify-between gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex gap-2 shrink-0">\n    <Button asChild variant="ghost" size="icon" aria-label="Back">\n      <Link to="/orgs/$org/things" params={{ org }}>\n        <ArrowLeft className="h-4 w-4" />\n      </Link>\n    </Button>\n    <Button variant="outline" size="sm" onClick={handleEdit} aria-label="Edit">\n      <Pencil className="sm:mr-2 h-4 w-4" />\n      <span className="hidden sm:inline">Edit</span>\n    </Button>\n    <Button variant="outline" onClick={handleRefresh} aria-label="Refresh">\n      <RotateCw className="h-4 w-4 sm:mr-2" />\n      <span className="hidden sm:inline">Refresh</span>\n    </Button>\n    <Button variant="destructive" size="sm" onClick={handleDelete}>\n      <Trash2 />\n      <span className="hidden sm:inline">Delete</span>\n    </Button>\n  </div>\n</div>`}
-        />
-
-        <h3 className="text-sm font-medium">Detail page header: collapse the action cluster into an overflow menu on mobile</h3>
-        <p className="text-sm text-muted-foreground">
-          When a detail header carries more than two or three actions, the inline
-          toolbar overflows on a phone. Keep only the icon-only ghost{" "}
-          <strong>back button</strong> always visible; render the labeled action
-          buttons in a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">hidden md:flex</code>{" "}
-          cluster, and mirror every one of them as items inside a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">md:hidden</code>{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">DropdownMenu</code>{" "}
-          triggered by a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">MoreVertical</code>{" "}
-          (⋯) button. The delete item is{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">text-destructive focus:text-destructive</code>{" "}
-          with a{" "}
-          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Trash2</code>{" "}
-          icon, just like the inline destructive button. Drive any confirm
-          dialog from controlled state so it opens from either surface.
-        </p>
-        <ExampleRow
-          preview={
-            <div className="flex w-full items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">
-                <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
-                  Page title
-                </h1>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Button variant="ghost" size="icon" aria-label="Back">
-                  <ArrowLeft />
-                </Button>
-                <div className="hidden items-center gap-2 md:flex">
-                  <Button variant="outline" aria-label="Edit">
-                    <Pencil className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Edit</span>
-                  </Button>
-                  <Button variant="outline" aria-label="Refresh">
-                    <RotateCw className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Refresh</span>
-                  </Button>
-                  <Button variant="destructive" aria-label="Delete">
-                    <Trash2 className="h-4 w-4 sm:mr-2" />
-                    <span className="hidden sm:inline">Delete</span>
-                  </Button>
-                </div>
-                <div className="md:hidden">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" aria-label="More actions">
-                        <MoreVertical />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem>
-                        <Pencil />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem>
-                        <RotateCw />
-                        Refresh
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem className="text-destructive focus:text-destructive">
-                        <Trash2 />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </div>
-          }
-          importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>
