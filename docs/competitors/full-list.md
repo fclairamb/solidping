@@ -51,6 +51,11 @@ These services have full analysis documents in this directory:
    - Focus: All-in-one mid-market monitoring (uptime + infra + APM + RUM + logs)
    - Pricing: Free-$45+/month (50 free monitors), 100+ monitor types, 130+ probe locations
 
+10. **Maintenant** - [maintenant.md](maintenant.md)
+    - URL: https://maintenant.dev (repo: https://github.com/kOlapsis/maintenant)
+    - Focus: Self-hosted Go all-in-one — container observability + HTTP/TCP + SSL + heartbeat + MCP
+    - Pricing: Community (free, capped) / Pro €29/mo · €290/yr (AGPL-3.0 open-core), SQLite-only, <30 MB RAM
+
 ## Major Competitors (Tier 1)
 
 ### Enterprise & Full-Featured
@@ -541,7 +546,7 @@ These services have full analysis documents in this directory:
 - UptimeRobot, Freshping, Hyperping, Hetrix Tools, Upptime
 
 **Self-Hosted Open Source**:
-- Uptime Kuma, Gatus, Statping-ng, Healthchecks.io, SolidPing
+- Uptime Kuma, Gatus, Statping-ng, Healthchecks.io, Maintenant, SolidPing
 
 ### By Primary Focus
 
@@ -572,6 +577,7 @@ With 66+ identified competitors, SolidPing's unique position:
 **Direct Competitors** (similar approach):
 - Uptime Kuma (self-hosted, popular)
 - Gatus (Go-based, modern)
+- Maintenant (Go-based, self-hosted single binary, MCP/AI — closest analogue)
 - Statping-ng (mature)
 - Healthchecks.io (cron focus)
 
