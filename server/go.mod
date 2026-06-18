@@ -13,7 +13,7 @@ require (
 	github.com/chromedp/chromedp v0.15.1
 	github.com/coder/websocket v1.8.15
 	github.com/docker/docker v28.5.2+incompatible
-	github.com/dop251/goja v0.0.0-20260607120635-348e6bea910d
+	github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59
 	github.com/dreamscached/minequery/v2 v2.5.0
 	github.com/eclipse/paho.mqtt.golang v1.5.1
 	github.com/fergusstrange/embedded-postgres v1.34.0
@@ -45,7 +45,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
-	github.com/prometheus/common v0.68.1
+	github.com/prometheus/common v0.69.0
 	github.com/rabbitmq/amqp091-go v1.12.0
 	github.com/redis/go-redis/v9 v9.20.1
 	github.com/rumblefrog/go-a2s v1.0.3
@@ -62,7 +62,7 @@ require (
 	github.com/vanng822/go-premailer v1.34.0
 	github.com/wneessen/go-mail v0.7.3
 	github.com/xdg-go/scram v1.2.0
-	go.mongodb.org/mongo-driver/v2 v2.6.1
+	go.mongodb.org/mongo-driver/v2 v2.7.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.19.0
 	go.opentelemetry.io/otel v1.44.0
 	go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc v0.20.0
@@ -166,7 +166,7 @@ require (
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-runewidth v0.0.24 // indirect
-	github.com/mattn/go-sqlite3 v1.14.45 // indirect
+	github.com/mattn/go-sqlite3 v1.14.46 // indirect
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -221,8 +221,8 @@ require (
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/tools v0.46.0 // indirect
-	google.golang.org/genproto/googleapis/api v0.0.0-20260615183401-62b3387ff324 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260615183401-62b3387ff324 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260618152121-87f3d3e198d3 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260618152121-87f3d3e198d3 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gotest.tools/v3 v3.5.2 // indirect
 	mellium.im/sasl v0.3.2 // indirect
