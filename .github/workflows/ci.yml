@@ -195,6 +195,7 @@ jobs:
   e2e-tests:
     name: E2E Tests
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     needs: [build]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     defaults:
@@ -215,10 +216,10 @@ jobs:
       - name: Install Playwright browsers
         run: |
           for attempt in 1 2 3; do
-            if bunx playwright install chromium --with-deps; then
+            if timeout 90 bunx playwright install chromium --with-deps; then
               exit 0
             fi
-            echo "Playwright install attempt $attempt failed (likely apt mirror DNS); retrying after 30s..."
+            echo "Playwright install attempt $attempt failed or timed out (likely apt mirror DNS); retrying after 30s..."
             sleep 30
           done
           echo "Playwright install failed after 3 attempts"
