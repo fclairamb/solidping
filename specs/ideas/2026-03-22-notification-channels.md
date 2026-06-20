@@ -13,6 +13,11 @@ Telegram has its own dedicated spec: `specs/ideas/2026-03-22-telegram-notificati
 3. Support all incident event types: `incident.created`, `incident.resolved`, `incident.escalated`, `incident.reopened`
 4. Respect group-incident correlation: each connection fires once per group event, not once per member
 
+> **Status-model note** (re [`2026-06-20-04`](../todos/2026-06-20-04-status-warning-degraded.md)):
+> the `Warning` status is **incident-neutral** — it opens no incident, so these incident-driven
+> channels do not notify on `Warning`/`Degraded`. If notifying on warnings is wanted, that is a
+> separate warning-notification path, not part of this spec.
+
 ---
 
 ## Microsoft Teams

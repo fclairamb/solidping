@@ -1,5 +1,9 @@
 # Docker check — restart-loop (crash-loop) detection
 
+> **Recommended choices applied 2026-06-20.** All three open questions had a clear
+> recommendation; they are resolved in the **Decisions** section below. Depends on
+> [`2026-06-20-04`](2026-06-20-04-status-warning-degraded.md) (firm — see Dependency).
+
 ## Context
 
 Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
@@ -87,10 +91,9 @@ are decisions for you (below).
 ## Dependency
 
 - **[`2026-06-20-04` (first-class `StatusWarning`)](2026-06-20-04-status-warning-degraded.md)
-  lands first** (assuming the recommended Warning outcome). It supplies the `StatusWarning` value
-  (current status Warning; aggregated Degraded) and its availability/incident semantics. If you
-  choose `StatusDown` for loops instead (open
-  question 2), this dependency drops and the change is self-contained.
+  lands first.** Decision 2 commits to the Warning outcome, so this dependency is firm: `04`
+  supplies the `StatusWarning` value (current status Warning; aggregated Degraded) and its
+  availability/incident semantics.
 
 ## Out of scope
 
@@ -159,17 +162,18 @@ when not yet over threshold.
 4. **Docs**: update the Docker check section of [`docs/api-specification.md`](../../docs/api-specification.md)
    and any container feature page under `docs/features/`.
 
-## Open questions / decisions for the user
+## Decisions (applied 2026-06-20)
 
-1. **Approach A (heuristic, this spec) vs B (server-side delta over history)?** A ships fast and
-   fits the architecture; B is accurate but more invasive and needs an incident-without-status
-   path. Default in this spec is A.
-2. **Loop ⇒ `StatusWarning` (current Warning, Degraded in rollups; no page — recommended, depends
-   on `2026-06-20-04`) or `StatusDown` (pages)?** Spec assumes Warning: a flapping-but-running
-   container is "unhealthy but up," and warning shows amber without a false outage. Choose Down if
-   a crash-loop should page immediately (then this spec has no dependency on `2026-06-20-04`).
-3. **Default thresholds** when enabled: `minRestarts = 3`, `window = 120s` — reasonable for
-   typical backoff loops? Loops with long backoff (minutes) would need a wider window.
+1. **Approach A (checker-local heuristic).** Ships fast, fits the stateless-worker model, needs
+   zero schema. Approach B (server-side delta over `results` history) is the accurate V2 — scoped
+   in Out of scope and picked up only if A's heuristic proves too noisy.
+2. **A detected loop on a *running* container → `StatusWarning`** (current status amber **Warning**,
+   **Degraded** in rollups; counts as up; does not page) — depends on `2026-06-20-04`. A genuinely
+   not-running / unhealthy container still → `StatusDown` and pages, exactly as today. The
+   one-interval deploy false positive is acceptable precisely because Warning never pages.
+3. **Default thresholds when enabled: `minRestarts = 3`, `window = 120s`.** Detection stays opt-in
+   (off unless `restartLoopMinRestarts > 0`); loops with multi-minute backoff can widen
+   `restartLoopWindow`.
 
 ## Verification
 

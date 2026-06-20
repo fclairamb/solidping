@@ -1,5 +1,9 @@
 # SSL check — graduated expiry thresholds + whole-chain expiry & reporting
 
+> **Recommended choices applied 2026-06-20.** All three open questions had a clear
+> recommendation; they are resolved in the **Decisions** section below and reflected in the
+> config defaults. Depends on [`2026-06-20-04`](2026-06-20-04-status-warning-degraded.md).
+
 ## Context
 
 Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
@@ -46,7 +50,7 @@ is a hard **Down**.
 **2. But we must not silently regress users who rely on the 30-day page.** So: keep the
 existing knob's *meaning* and add a second tier. Map the legacy `thresholdDays` → **`criticalDays`**
 (the hard-Down threshold, default stays 30 for back-compat) and introduce **`warningDays`** as a
-new, *non-paging* tier (default e.g. 30, or `2 × criticalDays`). Existing rows keep behaving
+new, *non-paging* tier (default 30, equal to `criticalDays` — widen it via config to get earlier warnings). Existing rows keep behaving
 exactly as today; new behaviour is opt-in via config.
 
 **3. The warning tier is the new first-class `StatusWarning` (depends on
@@ -158,17 +162,17 @@ the tiering rule. Don't duplicate the comparison literal in two checkers.
 5. **Docs**: update the SSL section of [`docs/api-specification.md`](../../docs/api-specification.md)
    and any SSL feature page under `docs/features/` with the new config keys + output shape.
 
-## Open questions / decisions for the user
+## Decisions (applied 2026-06-20)
 
-1. **Default `warningDays`** — keep it equal to `criticalDays` (30) so behaviour is byte-for-byte
-   unchanged until opted-in (safest), or default to something wider like 30/critical-7 so users
-   get the better behaviour out of the box (changes default paging)? I lean **safe** (equal),
-   with a release note nudging users to widen it.
-2. **Hard-Down default** — leave `criticalDays` at **30** (preserves today's paging), or drop the
-   recommended default to **7** so a valid cert isn't a month-long "outage"? I'd keep 30 as the
-   *default* but document 7 as recommended.
-3. **Apply the same tiering to `checkdomain` now or later?** This spec assumes later (shared
-   helper here, wire-up follow-up).
+1. **Default `warningDays` = `criticalDays` (30).** Behaviour stays byte-for-byte unchanged until a
+   user widens the warning window; a release note nudges users to set a wider `warningDays`. (The
+   safe option, chosen over defaulting to a wider window that would change paging for everyone.)
+2. **`criticalDays` default stays 30** (preserves today's paging). The docs / release note
+   **recommend lowering it to 7** so a valid cert isn't reported as a month-long outage, but the
+   shipped default does not change paging behaviour on its own.
+3. **`checkdomain` tiering is a follow-up.** This spec extracts the shared `gradedExpiryStatus`
+   helper but wires only `checkssl`; `checkdomain` adopts the helper in a separate change (already
+   in Out of scope).
 
 ## Verification
 

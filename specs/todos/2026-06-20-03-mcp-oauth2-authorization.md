@@ -1,5 +1,10 @@
 # OAuth 2.1 authorization for the MCP endpoint
 
+> **Recommended choices applied 2026-06-20** (embedded AS + DCR in scope — see **Decisions**).
+> Four consequential forks had *no* recommendation in the original spec and are deliberately left
+> open with a noted leaning — see **Remaining open questions**. This feature still needs the
+> flagged security review before build.
+
 ## Context
 
 Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)):
@@ -136,19 +141,35 @@ need), consent, audience binding, short-lived tokens + refresh rotation. Flagged
 - Single-use, short-TTL authorization codes; bind code → client → redirect → challenge → resource.
 - Rate-limit `/authorize`, `/token`, `/register` (existing rate-limit middleware).
 
-## Open questions / decisions for the user
+## Decisions (applied 2026-06-20)
 
-1. **Embedded AS (recommended) vs delegate to external IdP?** Spec assumes embedded.
-2. **DCR in scope?** Required for Claude Desktop / `mcp-remote` to "just work"; skip it and we're
-   limited to pre-registered/first-party clients. This is the biggest scoping lever.
-3. **Self-hosted only, or SaaS too?** Affects issuer URLs, multi-tenant `client_id` isolation,
-   and whether DCR is open or admin-gated.
-4. **Reuse the existing JWT signing key, or introduce a JWKS keyset** for the resource server?
+1. **Embedded authorization server, not delegation.** SolidPing is self-hosted-first and must work
+   with no external IdP, so SolidPing itself is the OAuth 2.1 AS for the MCP resource: reuse the
+   existing user login/session for `/authorize` and the existing JWT + `Claims.Scopes` machinery to
+   mint access tokens. Delegating to an org's external IdP stays a later option (Out of scope).
+2. **DCR is in scope, delivered as Phase 3.** The goal is that standard MCP clients connect with no
+   hand-pasted token, which requires RFC 7591 for Claude Desktop / `mcp-remote`. It is the heaviest
+   lift, so it ships last in the phasing — but it is not dropped. (Without it we would be limited to
+   pre-registered / first-party clients, which fails the stated goal.)
+
+## Remaining open questions (no prior recommendation — still a human call)
+
+These were left genuinely open by the original spec and are **not** resolved here; each needs a
+deliberate call before/while building Phase 2–3. A current leaning is noted, but not committed:
+
+3. **Self-hosted only, or SaaS too?** *Lean:* target **self-hosted, single issuer** for v1 (issuer =
+   SolidPing's own URL; org taken from the logged-in user's session at `/authorize`, since the MCP
+   handler already scopes to `claims.OrgSlug`). The design must not *preclude* SaaS multi-tenant
+   `client_id` isolation and admin-gated DCR, but that is a follow-on, not v1.
+4. **Reuse the existing JWT signing key, or introduce a JWKS keyset?** *Lean:* **reuse** the
+   existing signing key for v1 and publish it at `jwks_uri`; a dedicated keyset is a later hardening
+   step.
 5. **Which client do we validate against first** — claude.ai remote connector, Claude Desktop, or
-   the `mcp-remote` bridge? Drives which quirks (loopback, DCR, metadata probes) we must satisfy
-   on day one.
-6. **Per-org issuer vs single issuer** — the MCP handler scopes everything to `claims.OrgSlug`;
-   decide how the org is selected during `/authorize` (the logged-in user's org).
+   the `mcp-remote` bridge? *Lean:* **Claude Desktop / the claude.ai remote connector** (with
+   `mcp-remote` for local testing) — they exercise the hardest constraints (DCR, loopback redirects,
+   metadata probes) the spec must satisfy on day one.
+6. **Per-org issuer vs single issuer** — tied to (3); the leaning above is a **single issuer** with
+   the org selected from the logged-in user's session at `/authorize`.
 
 ## Verification
 
