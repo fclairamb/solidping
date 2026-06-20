@@ -101,6 +101,17 @@ type Service interface {
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
 	DeleteUserToken(ctx context.Context, uid string) error
 
+	// OAuth (MCP authorization server) operations
+	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
+	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
+	CreateOAuthAuthCode(ctx context.Context, code *models.OAuthAuthCode) error
+	GetOAuthAuthCode(ctx context.Context, code string) (*models.OAuthAuthCode, error)
+	ConsumeOAuthAuthCode(ctx context.Context, code string, now time.Time) (bool, error)
+	CreateOAuthRefreshToken(ctx context.Context, token *models.OAuthRefreshToken) error
+	GetOAuthRefreshToken(ctx context.Context, token string) (*models.OAuthRefreshToken, error)
+	RevokeOAuthRefreshToken(ctx context.Context, token string, now time.Time) (bool, error)
+	RevokeOAuthRefreshTokensForUser(ctx context.Context, userUID string, now time.Time) error
+
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
 	GetUserPasskey(ctx context.Context, uid string) (*models.UserPasskey, error)

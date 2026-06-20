@@ -74,6 +74,7 @@ import { Route as OrgsOrgOrganizationMembersRouteImport } from './routes/orgs/$o
 import { Route as OrgsOrgOrganizationInvitationsRouteImport } from './routes/orgs/$org/organization.invitations'
 import { Route as OrgsOrgOnCallNewRouteImport } from './routes/orgs/$org/on-call.new'
 import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-call.$slug'
+import { Route as OrgsOrgOauthConsentRouteImport } from './routes/orgs/$org/oauth.consent'
 import { Route as OrgsOrgNotificationsNotificationUidRouteImport } from './routes/orgs/$org/notifications.$notificationUid'
 import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
 import { Route as OrgsOrgJobsJobUidRouteImport } from './routes/orgs/$org/jobs.$jobUid'
@@ -443,6 +444,11 @@ const OrgsOrgOnCallSlugRoute = OrgsOrgOnCallSlugRouteImport.update({
   path: '/$slug',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
+const OrgsOrgOauthConsentRoute = OrgsOrgOauthConsentRouteImport.update({
+  id: '/oauth/consent',
+  path: '/oauth/consent',
+  getParentRoute: () => OrgsOrgRoute,
+} as any)
 const OrgsOrgNotificationsNotificationUidRoute =
   OrgsOrgNotificationsNotificationUidRouteImport.update({
     id: '/notifications/$notificationUid',
@@ -646,6 +652,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
+  '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -725,6 +732,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
+  '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
   '/orgs/$org/organization/members': typeof OrgsOrgOrganizationMembersRoute
@@ -819,6 +827,7 @@ export interface FileRoutesById {
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
+  '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugRouteWithChildren
   '/orgs/$org/on-call/new': typeof OrgsOrgOnCallNewRoute
   '/orgs/$org/organization/invitations': typeof OrgsOrgOrganizationInvitationsRoute
@@ -916,6 +925,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/$jobUid'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
+    | '/orgs/$org/oauth/consent'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -995,6 +1005,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/$jobUid'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
+    | '/orgs/$org/oauth/consent'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
     | '/orgs/$org/organization/members'
@@ -1088,6 +1099,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/jobs/$jobUid'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
+    | '/orgs/$org/oauth/consent'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/on-call/new'
     | '/orgs/$org/organization/invitations'
@@ -1606,6 +1618,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/on-call/$slug'
       preLoaderRoute: typeof OrgsOrgOnCallSlugRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
+    }
+    '/orgs/$org/oauth/consent': {
+      id: '/orgs/$org/oauth/consent'
+      path: '/oauth/consent'
+      fullPath: '/orgs/$org/oauth/consent'
+      preLoaderRoute: typeof OrgsOrgOauthConsentRouteImport
+      parentRoute: typeof OrgsOrgRoute
     }
     '/orgs/$org/notifications/$notificationUid': {
       id: '/orgs/$org/notifications/$notificationUid'
@@ -2153,6 +2172,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgTestRoute: typeof OrgsOrgTestRouteWithChildren
   OrgsOrgIndexRoute: typeof OrgsOrgIndexRoute
   OrgsOrgNotificationsNotificationUidRoute: typeof OrgsOrgNotificationsNotificationUidRoute
+  OrgsOrgOauthConsentRoute: typeof OrgsOrgOauthConsentRoute
   OrgsOrgDependenciesIndexRoute: typeof OrgsOrgDependenciesIndexRoute
 }
 
@@ -2179,6 +2199,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgIndexRoute: OrgsOrgIndexRoute,
   OrgsOrgNotificationsNotificationUidRoute:
     OrgsOrgNotificationsNotificationUidRoute,
+  OrgsOrgOauthConsentRoute: OrgsOrgOauthConsentRoute,
   OrgsOrgDependenciesIndexRoute: OrgsOrgDependenciesIndexRoute,
 }
 

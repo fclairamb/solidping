@@ -197,3 +197,69 @@ deliberate call before/while building Phase 2–3. A current leaning is noted, b
 - New: OAuth AS package (metadata, authorize, token, DCR) + tables (clients, auth codes, refresh)
 - `docs/api-specification.md` — document the OAuth endpoints + discovery
 - `docs/competitors/maintenant.md` — source of the requirement
+
+## Implementation Plan
+
+Decomposed by the three phases. Issuer = `cfg.Server.BaseURL` (single issuer, v1).
+MCP resource = `<issuer>/api/v1/mcp`. Reuses the existing HS256 JWT signing key
+(`cfg.Auth.JWTSecret`) for access tokens and publishes it at `jwks_uri` (symmetric
+key → published as an `oct` JWK; see note in Phase 2). Org is taken from the
+logged-in user's session at `/authorize`.
+
+### Phase 1 — Resource Server discovery + audience validation
+1. New package `internal/oauth` with metadata builders (issuer, resource, endpoints).
+2. Root-level public handler `GET /.well-known/oauth-protected-resource` (RFC 9728)
+   advertising `resource` = MCP URL, `authorization_servers` = [issuer].
+3. MCP handler: on missing/invalid auth return `401` +
+   `WWW-Authenticate: Bearer resource_metadata="<issuer>/.well-known/oauth-protected-resource"`.
+   This requires routing the MCP endpoint through an OAuth-aware auth wrapper that
+   sets the header on 401 (the generic `RequireAuth` 401 stays JSON for other routes).
+4. Audience check: access tokens that carry an `aud` claim must include the MCP
+   resource; PATs (no `aud`) keep passing via the existing scope check (back-compat).
+   Add `Audience` to `auth.Claims` (jwt `aud`) and an MCP-side audience guard.
+5. Tests: well-known doc well-formed; 401 + WWW-Authenticate pointer; aud accept/reject;
+   PAT back-compat.
+
+### Phase 2 — Embedded authorization server
+1. Migration `002_*.up/.down.sql` (BOTH dialects): `oauth_clients`, `oauth_auth_codes`,
+   `oauth_refresh_tokens`. Codes single-use + short-lived; refresh tokens rotating.
+2. Models (`oauth_client.go`, `oauth_auth_code.go`, `oauth_refresh_token.go`) + repo
+   methods on both `postgres` and `sqlite` Services + `db.Service` interface entries.
+3. `GET /.well-known/oauth-authorization-server` (RFC 8414) + alias
+   `GET /.well-known/openid-configuration`: authorization_endpoint, token_endpoint,
+   registration_endpoint, jwks_uri, `code_challenge_methods_supported=["S256"]`,
+   `grant_types_supported=["authorization_code","refresh_token"]`,
+   `scopes_supported=["mcp","mcp:read"]`, `token_endpoint_auth_methods_supported=["none"]`.
+4. `GET /jwks_uri` (`/.well-known/jwks.json`): publish the JWT verification key.
+5. `GET/POST /api/v1/oauth/authorize`: session-gated (reuse JWT/cookie; redirect to
+   dash0 login with returnTo when absent). Validate `client_id`, `redirect_uri`
+   (allow-list + loopback exception), `response_type=code`, PKCE `code_challenge`
+   (required) + `code_challenge_method=S256` (reject missing/plain), `resource`,
+   `scope ⊆ {mcp,mcp:read}`. Renders a consent screen (dash0 route). On approve,
+   mint single-use auth code bound to client→redirect→challenge→resource→scope→user/org.
+6. `POST /api/v1/oauth/token`: `grant_type=authorization_code` (code + code_verifier,
+   PKCE S256 verify, single-use, redirect/client/resource match) and
+   `grant_type=refresh_token` (rotating: old refresh invalidated, new issued).
+   Issues HS256 JWT access token with `aud`=resource, scopes=consented, short TTL.
+7. Consent UI: dash0 route `/orgs/$org/oauth/consent` built from design-reference
+   primitives; honors 401→login?returnTo.
+8. Revocation: logout + PAT-revoke clears related refresh grants.
+9. Rate-limit: authorize/token/register sit under `/api/v1/` so the existing per-IP
+   limiter covers them.
+
+### Phase 3 — Dynamic Client Registration (RFC 7591)
+1. `POST /api/v1/oauth/register` (public): accept `redirect_uris`, `client_name`,
+   `grant_types`, `response_types`, `token_endpoint_auth_method`. Native/public
+   clients (PKCE + loopback) get no secret; confidential clients get a secret.
+   Redirect-URI validator: loopback exception (`http://127.0.0.1:*`, `http://localhost:*`,
+   `http://[::1]:*`) else exact-match https (or http loopback). Returns `client_id`
+   (+ `client_secret` for confidential), echoes metadata.
+2. Tests: loopback accepted, non-loopback http rejected, public client gets no secret.
+
+### Security (throughout)
+PKCE S256 mandatory; redirect-URI allow-list + loopback; audience binding; consent per
+new grant; short-lived access tokens; rotating refresh + revocation on logout/PAT-revoke;
+single-use short-TTL codes bound to client/redirect/challenge/resource; rate limiting.
+
+### Docs
+Document discovery + `/authorize` `/token` `/register` in `docs/api-specification.md`.

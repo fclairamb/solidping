@@ -809,6 +809,12 @@ func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutRespon
 		deleted++
 	}
 
+	// Tear down any OAuth-issued MCP refresh grants for this user too, so a
+	// full logout also invalidates connectors authorized via the OAuth flow.
+	if revokeErr := s.db.RevokeOAuthRefreshTokensForUser(ctx, userUID, time.Now()); revokeErr != nil {
+		slog.ErrorContext(ctx, "Failed to revoke OAuth refresh tokens on logout", "error", revokeErr, "userUID", userUID)
+	}
+
 	return &LogoutResponse{
 		Success:       true,
 		TokensDeleted: deleted,
@@ -1326,6 +1332,12 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 		s.cacheMux.Lock()
 		delete(s.patCache, token.Token)
 		s.cacheMux.Unlock()
+
+		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
+		// the user, matching the spec's "revocation on logout/PAT-revoke".
+		if revokeErr := s.db.RevokeOAuthRefreshTokensForUser(ctx, userUID, time.Now()); revokeErr != nil {
+			slog.ErrorContext(ctx, "Failed to revoke OAuth refresh tokens on PAT revoke", "error", revokeErr, "userUID", userUID)
+		}
 	}
 
 	return s.db.DeleteUserToken(ctx, tokenUID)
@@ -1494,6 +1506,39 @@ func (s *Service) generateAccessToken(userUID, orgSlug, role string) (string, er
 			IssuedAt:  jwt.NewNumericDate(now),
 			NotBefore: jwt.NewNumericDate(now),
 			Issuer:    jwtIssuer,
+			ID:        uuid.New().String(),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+
+	return token.SignedString([]byte(s.cfg.JWTSecret))
+}
+
+// GenerateMCPAccessToken mints a short-lived, audience-bound JWT access token
+// for the embedded OAuth 2.1 authorization server (MCP resource). It reuses the
+// existing HS256 signing key so the token is validated by the same code path as
+// session JWTs and PATs, but adds:
+//   - aud = the MCP resource (RFC 8707 audience binding), so the token cannot be
+//     replayed at other SolidPing surfaces, and
+//   - the consented scopes (mcp / mcp:read), which the MCP handler enforces.
+//
+// ttl is supplied by the caller so the OAuth service controls the access-token
+// lifetime independently of the dashboard's session expiry.
+func (s *Service) GenerateMCPAccessToken(
+	userUID, orgSlug string, scopes []string, audience string, ttl time.Duration,
+) (string, error) {
+	now := time.Now()
+	claims := &Claims{
+		UserUID: userUID,
+		OrgSlug: orgSlug,
+		Scopes:  scopes,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(ttl)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    jwtIssuer,
+			Audience:  jwt.ClaimStrings{audience},
 			ID:        uuid.New().String(),
 		},
 	}
