@@ -189,6 +189,39 @@ the tiering rule. Don't duplicate the comparison literal in two checkers.
   badge + chain table render and no false incident is opened.
 - `make lint` and `make test` pass; `make test-dash` if the form changes.
 
+## Implementation Plan
+
+1. **Config (`checkssl/config.go`).** Add `WarningDays` + `CriticalDays`; keep legacy
+   `ThresholdDays`. In `FromMap`, read `criticalDays`/`warningDays` (camelCase) and keep
+   reading legacy `thresholdDays`/`threshold_days` via the existing `readIntKey` dual-key
+   reader. Resolution: if `criticalDays` absent but legacy threshold present → `criticalDays =
+   thresholdDays`. Defaults applied at exec time: `criticalDays=30`, `warningDays=30` (EQUAL —
+   decision 1, behaviour unchanged). Validate `warningDays >= criticalDays >= 0` and both `<=`
+   a sane max (`maxThresholdDays = 3650`). `GetConfig` emits canonical `warningDays` /
+   `criticalDays`, and continues to emit `thresholdDays` for back-compat dashboards.
+2. **Shared helper (`checkerdef`).** Add `gradedExpiryStatus(daysRemaining, warningDays,
+   criticalDays) (Status, severity string)` + severity string constants
+   (`SeverityCritical="critical"`, `SeverityWarning="warning"`, `SeverityNone=""`) in a new
+   `checkerdef/expiry.go`. Tiering: `min<=critical → StatusDown,"critical"`;
+   `critical<min<=warning → StatusWarning,"warning"`; else `StatusUp,""`.
+3. **Checker (`checkssl/checker.go`).** `newExecParams` reads both tiers (default 30/30,
+   alias already resolved in config). After a successful handshake, iterate
+   `result.state.PeerCertificates`, compute `daysRemaining` per cert, track the MINIMUM and
+   which cert. Read `chainVerified = len(VerifiedChains) > 0` and `chainLength`. Call
+   `gradedExpiryStatus(min, warningDays, criticalDays)`. Output additions: `chain[]`
+   (`{subject, issuer, notAfter, daysRemaining}`), `soonestExpiring`, `chainLength`,
+   `chainVerified`, `certExpiryWarning` (when severity=="warning"), `severity`; keep existing
+   leaf fields. `metrics.days_remaining` = chain minimum.
+4. **Frontend (`web/dash0`).** SSL form: add `criticalDays` (rename the existing field) +
+   `warningDays` (advanced) inputs, alias-reading `thresholdDays` for back-compat on load.
+   Check-detail (`checks.$checkUid.index.tsx` last-result output): render an SSL chain table
+   and an amber "expiring in N days" badge when `certExpiryWarning`, reusing the Table
+   primitive, Badge, and `statusStyle()` from spec 04.
+5. **Docs.** Update `docs/conventions/checker-config.md` SSL section + `docs/api-specification.md`
+   with the new config keys and output shape.
+6. **Tests.** Table-driven, in-memory cert chains with controlled `NotAfter` (helper to mint a
+   chain). Cases per the Verification section.
+
 ## Files referenced
 
 - `server/internal/checkers/checkssl/config.go` — two-tier config + legacy alias
