@@ -9,6 +9,8 @@ import (
 
 // registrationRequest is the RFC 7591 §2 client-metadata request body. Only the
 // fields the MCP flow needs are modeled; unknown fields are ignored.
+//
+//nolint:tagliatelle // RFC 7591 wire format requires snake_case field names.
 type registrationRequest struct {
 	RedirectURIs            []string `json:"redirect_uris"`
 	ClientName              string   `json:"client_name"`
@@ -20,6 +22,8 @@ type registrationRequest struct {
 
 // registrationResponse is the RFC 7591 §3.2.1 success response. client_secret is
 // present only for confidential clients.
+//
+//nolint:tagliatelle // RFC 7591 wire format requires snake_case field names.
 type registrationResponse struct {
 	ClientID                string   `json:"client_id"`
 	ClientSecret            string   `json:"client_secret,omitempty"`
@@ -37,19 +41,19 @@ type registrationResponse struct {
 // is treated as confidential and gets a generated secret. All redirect URIs are
 // validated (loopback http or https only) before persistence so the issuer can
 // never be turned into an open redirector.
-func (h *Handler) Register(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Register(writer http.ResponseWriter, req bunrouter.Request) error {
 	var body registrationRequest
 	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		return h.writeRegisterError(w, ErrInvalidClientMetadata, "malformed registration body")
+		return h.writeRegisterError(writer, ErrInvalidClientMetadata, "malformed registration body")
 	}
 
 	if len(body.RedirectURIs) == 0 {
-		return h.writeRegisterError(w, ErrInvalidRedirectURI, "at least one redirect_uri is required")
+		return h.writeRegisterError(writer, ErrInvalidRedirectURI, "at least one redirect_uri is required")
 	}
 
 	for _, uri := range body.RedirectURIs {
 		if !IsValidRedirectURI(uri) {
-			return h.writeRegisterError(w, ErrInvalidRedirectURI,
+			return h.writeRegisterError(writer, ErrInvalidRedirectURI,
 				"redirect_uri must be https or an http loopback address: "+uri)
 		}
 	}
@@ -61,7 +65,7 @@ func (h *Handler) Register(w http.ResponseWriter, req bunrouter.Request) error {
 
 	responseTypes := body.ResponseTypes
 	if len(responseTypes) == 0 {
-		responseTypes = []string{"code"}
+		responseTypes = []string{ResponseTypeCode}
 	}
 
 	scopes := ParseScopes(body.Scope)
@@ -70,23 +74,23 @@ func (h *Handler) Register(w http.ResponseWriter, req bunrouter.Request) error {
 	}
 
 	if !ScopesValid(scopes) {
-		return h.writeRegisterError(w, ErrInvalidClientMetadata, "unsupported scope requested")
+		return h.writeRegisterError(writer, ErrInvalidClientMetadata, "unsupported scope requested")
 	}
 
 	// Confidential only when the client explicitly opts into a secret-based auth
 	// method. Default (and "none") is a public client — the MCP native case.
-	isPublic := body.TokenEndpointAuthMethod == "" || body.TokenEndpointAuthMethod == "none"
+	isPublic := body.TokenEndpointAuthMethod == "" || body.TokenEndpointAuthMethod == AuthMethodNone
 
 	client, secret, err := h.svc.RegisterClient(
 		req.Context(), body.ClientName, body.RedirectURIs, grantTypes, scopes, isPublic,
 	)
 	if err != nil {
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
-	authMethod := "none"
+	authMethod := AuthMethodNone
 	if !isPublic {
-		authMethod = "client_secret_post"
+		authMethod = AuthMethodSecretPost
 	}
 
 	resp := registrationResponse{
@@ -100,12 +104,12 @@ func (h *Handler) Register(w http.ResponseWriter, req bunrouter.Request) error {
 		TokenEndpointAuthMethod: authMethod,
 	}
 
-	return h.writeNoStoreJSON(w, http.StatusCreated, resp)
+	return h.writeNoStoreJSON(writer, http.StatusCreated, resp)
 }
 
 // writeRegisterError writes an RFC 7591 §3.2.2 registration error response.
-func (h *Handler) writeRegisterError(w http.ResponseWriter, code, description string) error {
-	w.Header().Set("Cache-Control", "no-store")
+func (h *Handler) writeRegisterError(writer http.ResponseWriter, code, description string) error {
+	writer.Header().Set("Cache-Control", "no-store")
 
-	return h.WriteJSON(w, http.StatusBadRequest, errorBody{Error: code, ErrorDescription: description})
+	return h.WriteJSON(writer, http.StatusBadRequest, errorBody{Error: code, ErrorDescription: description})
 }

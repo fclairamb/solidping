@@ -28,14 +28,14 @@ type authRequest struct {
 
 // parseAuthRequest reads the OAuth authorization parameters from the query
 // string (GET) or form body (POST).
-func parseAuthRequest(req *http.Request) authRequest {
+func parseAuthRequest(req *http.Request) *authRequest {
 	get := req.URL.Query().Get
 	if req.Method == http.MethodPost {
 		_ = req.ParseForm()
 		get = req.Form.Get
 	}
 
-	return authRequest{
+	return &authRequest{
 		ClientID:            get("client_id"),
 		RedirectURI:         get("redirect_uri"),
 		ResponseType:        get("response_type"),
@@ -52,70 +52,70 @@ func parseAuthRequest(req *http.Request) authRequest {
 // render errors (shown to the user) so we never redirect to an unvalidated URI;
 // once client + redirect_uri are trusted, later errors redirect back to the
 // client per RFC 6749 §4.1.2.1.
-func (h *Handler) validateAuthRequest(req bunrouter.Request, ar authRequest) (*authRequest, *authError) {
-	md := h.metadata()
+func (h *Handler) validateAuthRequest(req bunrouter.Request, authReq *authRequest) (*authRequest, *authError) {
+	meta := h.metadata()
 
-	if ar.ClientID == "" {
+	if authReq.ClientID == "" {
 		return nil, newRenderError(ErrInvalidRequest, "client_id is required")
 	}
 
-	client, err := h.svc.GetClient(req.Context(), ar.ClientID)
+	client, err := h.svc.GetClient(req.Context(), authReq.ClientID)
 	if err != nil {
 		return nil, newRenderError(ErrInvalidClient, "unknown client_id")
 	}
 
 	// redirect_uri must match a registered URI exactly (loopback ignores port).
-	if ar.RedirectURI == "" || !RedirectURIAllowed(ar.RedirectURI, client.RedirectURIs) {
+	if authReq.RedirectURI == "" || !RedirectURIAllowed(authReq.RedirectURI, client.RedirectURIs) {
 		return nil, newRenderError(ErrInvalidRedirectURI, "redirect_uri is not registered for this client")
 	}
 
 	// From here on a trusted redirect target exists → report errors by redirect.
-	if ar.ResponseType != "code" {
+	if authReq.ResponseType != ResponseTypeCode {
 		return nil, newRedirectError(ErrUnsupportedResponseType,
-			"only response_type=code is supported", ar.RedirectURI, ar.State)
+			"only response_type=code is supported", authReq.RedirectURI, authReq.State)
 	}
 
 	// PKCE is mandatory and S256-only (OAuth 2.1 forbids plain).
-	if ar.CodeChallenge == "" {
+	if authReq.CodeChallenge == "" {
 		return nil, newRedirectError(ErrInvalidRequest, "code_challenge is required (PKCE)",
-			ar.RedirectURI, ar.State)
+			authReq.RedirectURI, authReq.State)
 	}
 
-	if ar.CodeChallengeMethod == "" {
-		ar.CodeChallengeMethod = CodeChallengeMethodS256
+	if authReq.CodeChallengeMethod == "" {
+		authReq.CodeChallengeMethod = CodeChallengeMethodS256
 	}
 
-	if ar.CodeChallengeMethod != CodeChallengeMethodS256 {
+	if authReq.CodeChallengeMethod != CodeChallengeMethodS256 {
 		return nil, newRedirectError(ErrInvalidRequest,
-			"code_challenge_method must be S256", ar.RedirectURI, ar.State)
+			"code_challenge_method must be S256", authReq.RedirectURI, authReq.State)
 	}
 
-	if !validCodeChallenge(ar.CodeChallenge) {
+	if !validCodeChallenge(authReq.CodeChallenge) {
 		return nil, newRedirectError(ErrInvalidRequest, "malformed code_challenge",
-			ar.RedirectURI, ar.State)
+			authReq.RedirectURI, authReq.State)
 	}
 
 	// scope defaults to full mcp; explicit scopes must be recognized.
-	if ar.Scope == "" {
-		ar.Scope = ScopeMCP
+	if authReq.Scope == "" {
+		authReq.Scope = ScopeMCP
 	}
 
-	if !ScopesValid(ParseScopes(ar.Scope)) {
+	if !ScopesValid(ParseScopes(authReq.Scope)) {
 		return nil, newRedirectError(ErrInvalidScope, "unsupported scope requested",
-			ar.RedirectURI, ar.State)
+			authReq.RedirectURI, authReq.State)
 	}
 
 	// resource (RFC 8707) must match the MCP resource when supplied; default it.
-	if ar.Resource == "" {
-		ar.Resource = md.ResourceURL()
+	if authReq.Resource == "" {
+		authReq.Resource = meta.ResourceURL()
 	}
 
-	if ar.Resource != md.ResourceURL() {
+	if authReq.Resource != meta.ResourceURL() {
 		return nil, newRedirectError(ErrInvalidRequest,
-			"resource does not match the MCP resource", ar.RedirectURI, ar.State)
+			"resource does not match the MCP resource", authReq.RedirectURI, authReq.State)
 	}
 
-	return &ar, nil
+	return authReq, nil
 }
 
 // session extracts and validates the logged-in user from the request's
@@ -139,25 +139,23 @@ func (h *Handler) session(req bunrouter.Request) (*auth.Claims, bool) {
 // either redirects to the dashboard login (no session) or to the dashboard
 // consent screen (valid session). The actual code is minted by ApproveAuthorize
 // once the user consents.
-func (h *Handler) Authorize(w http.ResponseWriter, req bunrouter.Request) error {
-	raw := parseAuthRequest(req.Request)
-
-	ar, authErr := h.validateAuthRequest(req, raw)
+func (h *Handler) Authorize(writer http.ResponseWriter, req bunrouter.Request) error {
+	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req.Request))
 	if authErr != nil {
-		return h.handleAuthError(w, req, authErr)
+		return h.handleAuthError(writer, req, authErr)
 	}
 
 	claims, ok := h.session(req)
 	if !ok {
 		// No session → bounce through the dashboard login, returning here after.
-		h.redirectToLogin(w, req)
+		h.redirectToLogin(writer, req)
 
 		return nil
 	}
 
 	// Valid session → hand off to the consent SPA route, which will POST back to
 	// approve. Pass the already-validated parameters through.
-	h.redirectToConsent(w, claims.OrgSlug, ar)
+	h.redirectToConsent(writer, claims.OrgSlug, authReq)
 
 	return nil
 }
@@ -166,95 +164,93 @@ func (h *Handler) Authorize(w http.ResponseWriter, req bunrouter.Request) error 
 // the consent screen. It re-validates the request, requires a session, mints a
 // single-use code bound to the grant, and redirects to the client's redirect_uri
 // with code + state.
-func (h *Handler) ApproveAuthorize(w http.ResponseWriter, req bunrouter.Request) error {
-	raw := parseAuthRequest(req.Request)
-
-	ar, authErr := h.validateAuthRequest(req, raw)
+func (h *Handler) ApproveAuthorize(writer http.ResponseWriter, req bunrouter.Request) error {
+	authReq, authErr := h.validateAuthRequest(req, parseAuthRequest(req.Request))
 	if authErr != nil {
-		return h.handleAuthError(w, req, authErr)
+		return h.handleAuthError(writer, req, authErr)
 	}
 
 	claims, ok := h.session(req)
 	if !ok {
-		return h.WriteError(w, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
+		return h.WriteError(writer, http.StatusUnauthorized, base.ErrorCodeUnauthorized,
 			"A logged-in session is required to authorize")
 	}
 
 	// The user denied consent → return to the client with access_denied rather
 	// than minting a code (RFC 6749 §4.1.2.1).
 	if req.Form.Get("decision") == "deny" {
-		return h.handleAuthError(w, req, newRedirectError(ErrAccessDenied,
-			"the user denied the authorization request", ar.RedirectURI, ar.State))
+		return h.handleAuthError(writer, req, newRedirectError(ErrAccessDenied,
+			"the user denied the authorization request", authReq.RedirectURI, authReq.State))
 	}
 
 	org, err := h.svc.db.GetOrganizationBySlug(req.Context(), claims.OrgSlug)
 	if err != nil {
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
-	code, err := h.svc.IssueAuthCode(req.Context(), AuthCodeGrant{
-		ClientID:            ar.ClientID,
+	code, err := h.svc.IssueAuthCode(req.Context(), &AuthCodeGrant{
+		ClientID:            authReq.ClientID,
 		UserUID:             claims.UserUID,
 		OrgUID:              org.UID,
 		OrgSlug:             claims.OrgSlug,
-		RedirectURI:         ar.RedirectURI,
-		Scope:               ar.Scope,
-		Resource:            ar.Resource,
-		CodeChallenge:       ar.CodeChallenge,
-		CodeChallengeMethod: ar.CodeChallengeMethod,
+		RedirectURI:         authReq.RedirectURI,
+		Scope:               authReq.Scope,
+		Resource:            authReq.Resource,
+		CodeChallenge:       authReq.CodeChallenge,
+		CodeChallengeMethod: authReq.CodeChallengeMethod,
 	})
 	if err != nil {
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
-	dest := appendQuery(ar.RedirectURI, map[string]string{"code": code, "state": ar.State})
-	http.Redirect(w, req.Request, dest, http.StatusFound)
+	dest := appendQuery(authReq.RedirectURI, map[string]string{"code": code, "state": authReq.State})
+	http.Redirect(writer, req.Request, dest, http.StatusFound)
 
 	return nil
 }
 
 // handleAuthError reports a validation error either by redirecting back to the
 // client (safe target established) or by rendering an error to the user.
-func (h *Handler) handleAuthError(w http.ResponseWriter, req bunrouter.Request, e *authError) error {
-	if e.Redirect && e.RedirectURI != "" {
-		dest := appendQuery(e.RedirectURI, map[string]string{
-			"error":             e.Code,
-			"error_description": e.Description,
-			"state":             e.State,
+func (h *Handler) handleAuthError(writer http.ResponseWriter, req bunrouter.Request, authErr *authError) error {
+	if authErr.Redirect && authErr.RedirectURI != "" {
+		dest := appendQuery(authErr.RedirectURI, map[string]string{
+			"error":             authErr.Code,
+			"error_description": authErr.Description,
+			"state":             authErr.State,
 		})
-		http.Redirect(w, req.Request, dest, http.StatusFound)
+		http.Redirect(writer, req.Request, dest, http.StatusFound)
 
 		return nil
 	}
 
-	return h.WriteError(w, http.StatusBadRequest, base.ErrorCodeValidationError, e.Error())
+	return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, authErr.Error())
 }
 
 // redirectToLogin bounces an unauthenticated /authorize request through the
 // dashboard login, encoding the full original request as returnTo so the browser
 // lands back here (now carrying the session cookie) after logging in.
-func (h *Handler) redirectToLogin(w http.ResponseWriter, req bunrouter.Request) {
+func (h *Handler) redirectToLogin(writer http.ResponseWriter, req bunrouter.Request) {
 	returnTo := h.metadata().Issuer + req.URL.RequestURI()
 	loginURL := "/dash0/login?returnTo=" + url.QueryEscape(returnTo)
-	http.Redirect(w, req.Request, loginURL, http.StatusFound)
+	http.Redirect(writer, req.Request, loginURL, http.StatusFound)
 }
 
 // redirectToConsent sends the browser to the dashboard consent SPA route with
 // the validated authorization parameters so the user can approve or deny.
-func (h *Handler) redirectToConsent(w http.ResponseWriter, orgSlug string, ar *authRequest) {
-	q := url.Values{}
-	q.Set("client_id", ar.ClientID)
-	q.Set("redirect_uri", ar.RedirectURI)
-	q.Set("response_type", ar.ResponseType)
-	q.Set("scope", ar.Scope)
-	q.Set("state", ar.State)
-	q.Set("resource", ar.Resource)
-	q.Set("code_challenge", ar.CodeChallenge)
-	q.Set("code_challenge_method", ar.CodeChallengeMethod)
+func (h *Handler) redirectToConsent(writer http.ResponseWriter, orgSlug string, authReq *authRequest) {
+	query := url.Values{}
+	query.Set("client_id", authReq.ClientID)
+	query.Set("redirect_uri", authReq.RedirectURI)
+	query.Set("response_type", authReq.ResponseType)
+	query.Set("scope", authReq.Scope)
+	query.Set("state", authReq.State)
+	query.Set("resource", authReq.Resource)
+	query.Set("code_challenge", authReq.CodeChallenge)
+	query.Set("code_challenge_method", authReq.CodeChallengeMethod)
 
-	consentURL := "/dash0/orgs/" + url.PathEscape(orgSlug) + "/oauth/consent?" + q.Encode()
-	w.Header().Set("Location", consentURL)
-	w.WriteHeader(http.StatusFound)
+	consentURL := "/dash0/orgs/" + url.PathEscape(orgSlug) + "/oauth/consent?" + query.Encode()
+	writer.Header().Set("Location", consentURL)
+	writer.WriteHeader(http.StatusFound)
 }
 
 // extractSessionToken pulls the session token from the access_token cookie or a
@@ -280,20 +276,20 @@ func extractSessionToken(req *http.Request) string {
 // appendQuery appends the given non-empty params to a URL's query string,
 // preserving any existing query.
 func appendQuery(rawURL string, params map[string]string) string {
-	u, err := url.Parse(rawURL)
+	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return rawURL
 	}
 
-	q := u.Query()
+	query := parsed.Query()
 
-	for k, v := range params {
-		if v != "" {
-			q.Set(k, v)
+	for key, value := range params {
+		if value != "" {
+			query.Set(key, value)
 		}
 	}
 
-	u.RawQuery = q.Encode()
+	parsed.RawQuery = query.Encode()
 
-	return u.String()
+	return parsed.String()
 }

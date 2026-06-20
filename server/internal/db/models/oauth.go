@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/uptrace/bun"
 )
 
 // OAuthClient is a registered OAuth 2.1 client for the MCP authorization
@@ -12,6 +13,8 @@ import (
 // confidential clients store a hashed secret. Redirect URIs are stored as a
 // JSON array and validated on every /authorize.
 type OAuthClient struct {
+	bun.BaseModel `bun:"table:oauth_clients,alias:oauth_client"`
+
 	UID          string    `bun:"uid,pk,type:varchar(36)"`
 	ClientID     string    `bun:"client_id,notnull"`
 	SecretHash   *string   `bun:"secret_hash"`
@@ -19,7 +22,7 @@ type OAuthClient struct {
 	RedirectURIs []string  `bun:"redirect_uris,type:jsonb,nullzero"`
 	GrantTypes   []string  `bun:"grant_types,type:jsonb,nullzero"`
 	Scopes       []string  `bun:"scopes,type:jsonb,nullzero"`
-	IsPublic     bool      `bun:"is_public,notnull,default:true"`
+	IsPublic     bool      `bun:"is_public,notnull"`
 	CreatedAt    time.Time `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt    time.Time `bun:"updated_at,notnull,default:current_timestamp"`
 }
@@ -42,6 +45,8 @@ func NewOAuthClient(clientID string) *OAuthClient {
 // consented. Redemption is gated by ConsumedAt (set on first use) so a replay
 // is detectable and rejected.
 type OAuthAuthCode struct {
+	bun.BaseModel `bun:"table:oauth_auth_codes,alias:oauth_auth_code"`
+
 	UID                 string     `bun:"uid,pk,type:varchar(36)"`
 	Code                string     `bun:"code,notnull"`
 	ClientID            string     `bun:"client_id,notnull"`
@@ -74,6 +79,8 @@ func NewOAuthAuthCode(code, clientID, userUID, orgUID string) *OAuthAuthCode {
 // so a stolen-and-reused refresh token is detectable. Tokens are also revoked
 // on logout / PAT-revoke.
 type OAuthRefreshToken struct {
+	bun.BaseModel `bun:"table:oauth_refresh_tokens,alias:oauth_refresh_token"`
+
 	UID             string     `bun:"uid,pk,type:varchar(36)"`
 	Token           string     `bun:"token,notnull"`
 	ClientID        string     `bun:"client_id,notnull"`

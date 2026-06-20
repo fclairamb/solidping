@@ -92,6 +92,10 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("UpdateCheckStatusAndClocksTriState", func(t *testing.T) {
 		testUpdateCheckStatusAndClocksTriState(ctx, t, svc)
 	})
+
+	t.Run("OAuthRepos", func(t *testing.T) {
+		testOAuthRepos(ctx, t, svc)
+	})
 }
 
 // testUpdateCheckStatusAndClocksTriState is the cross-engine parity guard for

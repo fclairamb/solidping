@@ -17,7 +17,11 @@ const (
 	ErrInvalidClientMetadata   = "invalid_client_metadata"
 )
 
-// errorBody is the RFC 6749 §5.2 / RFC 7591 §3.2.2 error JSON shape.
+// errorBody is the RFC 6749 §5.2 / RFC 7591 §3.2.2 error JSON shape. The wire
+// field names are snake_case as mandated by the OAuth specs, not the project's
+// camelCase convention.
+//
+//nolint:tagliatelle // RFC 6749/7591 wire format requires snake_case field names.
 type errorBody struct {
 	Error            string `json:"error"`
 	ErrorDescription string `json:"error_description,omitempty"`

@@ -15,16 +15,16 @@ import (
 // Everything else over http is rejected — plaintext http to a non-loopback host
 // would leak the authorization code in transit.
 func IsLoopbackRedirectURI(redirectURI string) bool {
-	u, err := url.Parse(redirectURI)
+	parsed, err := url.Parse(redirectURI)
 	if err != nil {
 		return false
 	}
 
-	if u.Scheme != "http" {
+	if parsed.Scheme != "http" {
 		return false
 	}
 
-	host := u.Hostname()
+	host := parsed.Hostname()
 	if host == "localhost" {
 		return true
 	}
@@ -42,8 +42,8 @@ func IsLoopbackRedirectURI(redirectURI string) bool {
 // A bare http non-loopback URI, a missing host, or a fragment (forbidden by
 // RFC 6749 §3.1.2) is rejected.
 func IsValidRedirectURI(redirectURI string) bool {
-	u, err := url.Parse(redirectURI)
-	if err != nil || u.Host == "" || u.Fragment != "" {
+	parsed, err := url.Parse(redirectURI)
+	if err != nil || parsed.Host == "" || parsed.Fragment != "" {
 		return false
 	}
 
@@ -51,7 +51,7 @@ func IsValidRedirectURI(redirectURI string) bool {
 		return true
 	}
 
-	return u.Scheme == "https"
+	return parsed.Scheme == "https"
 }
 
 // RedirectURIAllowed reports whether requestedURI is permitted for a client whose
@@ -80,18 +80,18 @@ func RedirectURIAllowed(requestedURI string, registered []string) bool {
 }
 
 // loopbackHostPathEqual compares two loopback redirect URIs ignoring the port.
-func loopbackHostPathEqual(a, b string) bool {
-	ua, err := url.Parse(a)
+func loopbackHostPathEqual(first, second string) bool {
+	firstURL, err := url.Parse(first)
 	if err != nil {
 		return false
 	}
 
-	ub, err := url.Parse(b)
+	secondURL, err := url.Parse(second)
 	if err != nil {
 		return false
 	}
 
-	return ua.Hostname() == ub.Hostname() && ua.Path == ub.Path
+	return firstURL.Hostname() == secondURL.Hostname() && firstURL.Path == secondURL.Path
 }
 
 // ScopesValid reports whether every requested scope is a recognized MCP scope.

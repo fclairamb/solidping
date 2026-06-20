@@ -93,6 +93,8 @@ func (m Metadata) ProtectedResourceMetadataURL() string {
 // ProtectedResourceMetadata is the RFC 9728 document served at
 // /.well-known/oauth-protected-resource. It tells a client which authorization
 // server(s) issue tokens for this resource and which scopes it understands.
+//
+//nolint:tagliatelle // RFC 9728 wire format requires snake_case field names.
 type ProtectedResourceMetadata struct {
 	Resource             string   `json:"resource"`
 	AuthorizationServers []string `json:"authorization_servers"`
@@ -113,6 +115,8 @@ func (m Metadata) BuildProtectedResourceMetadata() ProtectedResourceMetadata {
 // AuthorizationServerMetadata is the RFC 8414 document served at
 // /.well-known/oauth-authorization-server (and aliased at
 // /.well-known/openid-configuration).
+//
+//nolint:tagliatelle // RFC 8414 wire format requires snake_case field names.
 type AuthorizationServerMetadata struct {
 	Issuer                            string   `json:"issuer"`
 	AuthorizationEndpoint             string   `json:"authorization_endpoint"`
@@ -136,16 +140,25 @@ func (m Metadata) BuildAuthorizationServerMetadata() AuthorizationServerMetadata
 		RegistrationEndpoint:              m.RegistrationEndpoint(),
 		JWKSURI:                           m.JWKSURI(),
 		ScopesSupported:                   []string{ScopeMCP, ScopeMCPRead},
-		ResponseTypesSupported:            []string{"code"},
+		ResponseTypesSupported:            []string{ResponseTypeCode},
 		GrantTypesSupported:               []string{GrantAuthorizationCode, GrantRefreshToken},
 		CodeChallengeMethodsSupported:     []string{CodeChallengeMethodS256},
-		TokenEndpointAuthMethodsSupported: []string{"none", "client_secret_post"},
+		TokenEndpointAuthMethodsSupported: []string{AuthMethodNone, AuthMethodSecretPost},
 	}
 }
 
-// Grant types and PKCE method constants shared across the package.
+// Grant types, response types, PKCE method, and token-endpoint auth-method
+// constants shared across the package. These are OAuth wire values.
 const (
 	GrantAuthorizationCode  = "authorization_code"
 	GrantRefreshToken       = "refresh_token"
 	CodeChallengeMethodS256 = "S256"
+
+	// ResponseTypeCode is the only supported response_type (OAuth 2.1).
+	ResponseTypeCode = "code"
+	// AuthMethodNone marks a public client (no client secret).
+	AuthMethodNone = "none"
+	// AuthMethodSecretPost marks a confidential client authenticating with a
+	// secret in the token-request body.
+	AuthMethodSecretPost = "client_secret_post"
 )

@@ -96,27 +96,27 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 // back-compat — the MCP handler's scope check still governs them.
 func (m *AuthMiddleware) RequireMCPAuth(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(writer http.ResponseWriter, req bunrouter.Request) error {
-		md := oauth.NewMetadata(m.cfg.Server.BaseURL)
+		meta := oauth.NewMetadata(m.cfg.Server.BaseURL)
 
 		token := extractToken(req.Request)
 		if token == "" {
-			return m.writeMCPChallenge(writer, md, base.ErrorCodeNoToken, "Authorization token is required")
+			return m.writeMCPChallenge(writer, meta, base.ErrorCodeNoToken, "Authorization token is required")
 		}
 
 		claims, err := m.authService.ValidateToken(req.Context(), token)
 		if err != nil {
-			return m.writeMCPChallenge(writer, md, base.ErrorCodeInvalidToken, "Invalid or expired token")
+			return m.writeMCPChallenge(writer, meta, base.ErrorCodeInvalidToken, "Invalid or expired token")
 		}
 
 		// Audience binding (RFC 8707): reject a token minted for another resource.
-		if !oauth.TokenHasResourceAudience(claims, md.ResourceURL()) {
-			return m.writeMCPChallenge(writer, md, base.ErrorCodeInvalidToken,
+		if !oauth.TokenHasResourceAudience(claims, meta.ResourceURL()) {
+			return m.writeMCPChallenge(writer, meta, base.ErrorCodeInvalidToken,
 				"Token audience does not include the MCP resource")
 		}
 
 		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
 		if err != nil {
-			return m.writeMCPChallenge(writer, md, base.ErrorCodeUserNotFound, "User not found")
+			return m.writeMCPChallenge(writer, meta, base.ErrorCodeUserNotFound, "User not found")
 		}
 
 		ctx := req.Context()
@@ -130,10 +130,10 @@ func (m *AuthMiddleware) RequireMCPAuth(next bunrouter.HandlerFunc) bunrouter.Ha
 // writeMCPChallenge writes a 401 carrying the RFC 9728 resource_metadata pointer
 // so MCP clients can discover the authorization server.
 func (m *AuthMiddleware) writeMCPChallenge(
-	writer http.ResponseWriter, md oauth.Metadata, code base.ErrorCode, message string,
+	writer http.ResponseWriter, meta oauth.Metadata, code base.ErrorCode, message string,
 ) error {
 	writer.Header().Set("WWW-Authenticate",
-		`Bearer resource_metadata="`+md.ProtectedResourceMetadataURL()+`"`)
+		`Bearer resource_metadata="`+meta.ProtectedResourceMetadataURL()+`"`)
 
 	return m.WriteError(writer, http.StatusUnauthorized, code, message)
 }

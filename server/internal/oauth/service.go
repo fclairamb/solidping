@@ -35,16 +35,17 @@ const (
 )
 
 // Sentinel errors returned by the service for the token/authorize flows. The
-// handler maps these to the appropriate OAuth error response.
+// handler maps these to the appropriate OAuth error response. They are
+// package-internal — callers outside the package interact via the HTTP surface.
 var (
-	// ErrClientNotFound means no registered client matches the client_id.
-	ErrClientNotFound = errors.New("oauth: client not found")
-	// ErrInvalidGrantErr means the auth code or refresh token is missing,
-	// expired, already used, revoked, or fails a binding check.
-	ErrInvalidGrantErr = errors.New("oauth: invalid grant")
-	// ErrPKCEFailed means the supplied code_verifier does not match the stored
+	// errClientNotFound means no registered client matches the client_id.
+	errClientNotFound = errors.New("oauth: client not found")
+	// errInvalidGrant means the auth code or refresh token is missing, expired,
+	// already used, revoked, or fails a binding check.
+	errInvalidGrant = errors.New("oauth: invalid grant")
+	// errPKCEFailed means the supplied code_verifier does not match the stored
 	// code_challenge.
-	ErrPKCEFailed = errors.New("oauth: pkce verification failed")
+	errPKCEFailed = errors.New("oauth: pkce verification failed")
 )
 
 // Service holds the business logic for the embedded OAuth 2.1 authorization
@@ -69,9 +70,10 @@ func NewService(dbService db.Service, authSvc *auth.Service, cfg *config.Config)
 	}
 }
 
-// metadata returns the issuer-derived URLs from the current config.
-func (s *Service) metadata() Metadata {
-	return NewMetadata(s.cfg.Server.BaseURL)
+// SetClock overrides the service clock. It exists so tests can drive
+// authorization-code and refresh-token expiry deterministically.
+func (s *Service) SetClock(c clock.Clock) {
+	s.clock = c
 }
 
 // randomToken returns a base64url-encoded, unpadded random secret.
@@ -88,7 +90,7 @@ func randomToken() (string, error) {
 func (s *Service) GetClient(ctx context.Context, clientID string) (*models.OAuthClient, error) {
 	client, err := s.db.GetOAuthClientByClientID(ctx, clientID)
 	if err != nil {
-		return nil, ErrClientNotFound
+		return nil, errClientNotFound
 	}
 
 	return client, nil
@@ -112,7 +114,7 @@ type AuthCodeGrant struct {
 // IssueAuthCode mints a single-use, short-lived authorization code bound to the
 // grant. The returned code is the opaque value handed back to the client via the
 // redirect.
-func (s *Service) IssueAuthCode(ctx context.Context, grant AuthCodeGrant) (string, error) {
+func (s *Service) IssueAuthCode(ctx context.Context, grant *AuthCodeGrant) (string, error) {
 	code, err := randomToken()
 	if err != nil {
 		return "", err
@@ -153,26 +155,26 @@ type TokenResult struct {
 // It enforces, in order: the code exists, is unexpired, and is consumed exactly
 // once (atomic compare-and-set); the redirect_uri and client_id match the
 // binding; and the PKCE code_verifier matches the stored S256 challenge. Any
-// failure returns ErrInvalidGrantErr / ErrPKCEFailed without minting a token.
+// failure returns errInvalidGrant / errPKCEFailed without minting a token.
 func (s *Service) ExchangeAuthCode(
 	ctx context.Context, code, clientID, redirectURI, codeVerifier string,
 ) (*TokenResult, error) {
 	row, err := s.db.GetOAuthAuthCode(ctx, code)
 	if err != nil {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	now := s.clock.Now()
 	if now.After(row.ExpiresAt) {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	if row.ClientID != clientID || row.RedirectURI != redirectURI {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	if !VerifyPKCE(codeVerifier, row.CodeChallenge) {
-		return nil, ErrPKCEFailed
+		return nil, errPKCEFailed
 	}
 
 	// Atomic single-use guard: a replay updates zero rows and is rejected.
@@ -182,7 +184,7 @@ func (s *Service) ExchangeAuthCode(
 	}
 
 	if !won {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	orgSlug, err := s.orgSlug(ctx, row.OrganizationUID)
@@ -190,7 +192,7 @@ func (s *Service) ExchangeAuthCode(
 		return nil, err
 	}
 
-	return s.mintTokens(ctx, mintInput{
+	return s.mintTokens(ctx, &mintInput{
 		clientID: row.ClientID,
 		userUID:  row.UserUID,
 		orgUID:   row.OrganizationUID,
@@ -210,16 +212,16 @@ func (s *Service) ExchangeRefreshToken(
 ) (*TokenResult, error) {
 	row, err := s.db.GetOAuthRefreshToken(ctx, refreshToken)
 	if err != nil {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	now := s.clock.Now()
 	if row.RevokedAt != nil || now.After(row.ExpiresAt) {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	if clientID != "" && row.ClientID != clientID {
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	won, err := s.db.RevokeOAuthRefreshToken(ctx, refreshToken, now)
@@ -229,7 +231,7 @@ func (s *Service) ExchangeRefreshToken(
 
 	if !won {
 		// Lost the race → already rotated/revoked → reject.
-		return nil, ErrInvalidGrantErr
+		return nil, errInvalidGrant
 	}
 
 	orgSlug, err := s.orgSlug(ctx, row.OrganizationUID)
@@ -237,7 +239,7 @@ func (s *Service) ExchangeRefreshToken(
 		return nil, err
 	}
 
-	return s.mintTokens(ctx, mintInput{
+	return s.mintTokens(ctx, &mintInput{
 		clientID: row.ClientID,
 		userUID:  row.UserUID,
 		orgUID:   row.OrganizationUID,
@@ -259,11 +261,11 @@ type mintInput struct {
 
 // mintTokens issues an audience-bound JWT access token (via the auth service's
 // signing key) and a persisted rotating refresh token.
-func (s *Service) mintTokens(ctx context.Context, in mintInput) (*TokenResult, error) {
-	scopes := ParseScopes(in.scope)
+func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResult, error) {
+	scopes := ParseScopes(input.scope)
 
 	accessToken, err := s.authSvc.GenerateMCPAccessToken(
-		in.userUID, in.orgSlug, scopes, in.resource, accessTokenTTL,
+		input.userUID, input.orgSlug, scopes, input.resource, accessTokenTTL,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("mint access token: %w", err)
@@ -278,11 +280,11 @@ func (s *Service) mintTokens(ctx context.Context, in mintInput) (*TokenResult, e
 	refreshRow := &models.OAuthRefreshToken{
 		UID:             uuid.New().String(),
 		Token:           refreshValue,
-		ClientID:        in.clientID,
-		UserUID:         in.userUID,
-		OrganizationUID: in.orgUID,
-		Scope:           in.scope,
-		Resource:        in.resource,
+		ClientID:        input.clientID,
+		UserUID:         input.userUID,
+		OrganizationUID: input.orgUID,
+		Scope:           input.scope,
+		Resource:        input.resource,
 		ExpiresAt:       now.Add(refreshTokenTTL),
 		CreatedAt:       now,
 	}
@@ -294,7 +296,7 @@ func (s *Service) mintTokens(ctx context.Context, in mintInput) (*TokenResult, e
 	return &TokenResult{
 		AccessToken:  accessToken,
 		RefreshToken: refreshValue,
-		Scope:        in.scope,
+		Scope:        input.scope,
 		ExpiresIn:    int(accessTokenTTL.Seconds()),
 	}, nil
 }

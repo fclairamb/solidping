@@ -16,7 +16,7 @@ func TokenHasResourceAudience(claims *auth.Claims, resource string) bool {
 		return false
 	}
 
-	aud := claims.RegisteredClaims.Audience
+	aud := claims.Audience
 	if len(aud) == 0 {
 		// No audience binding → PAT / legacy session token → back-compat path.
 		return true
