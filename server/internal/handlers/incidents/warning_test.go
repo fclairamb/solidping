@@ -9,10 +9,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// TestProcessCheckResultWarningIsIncidentNeutral pins the headline behaviour
+// TestProcessCheckResultWarningIsIncidentNeutral pins the headline behavior
 // of the live Warning status (Decision B): a raw Warning with no open incident
 // updates the visible status to Warning but never opens an incident and never
-// arms the confirmation clock — it is display-only, modelled on Validating.
+// arms the confirmation clock — it is display-only, modeled on Validating.
 func TestProcessCheckResultWarningIsIncidentNeutral(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)

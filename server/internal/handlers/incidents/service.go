@@ -165,7 +165,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		resultStatus == models.ResultStatusTimeout ||
 		resultStatus == models.ResultStatusError
 	// Warning is "up, but something to report": display-only and incident-
-	// neutral (modelled on CheckStatusValidating). It updates the visible
+	// neutral (modeled on CheckStatusValidating). It updates the visible
 	// status and the up<->warning streak edges, but never arms the incident
 	// clocks and never opens/resolves an incident.
 	isWarning := resultStatus == models.ResultStatusWarning

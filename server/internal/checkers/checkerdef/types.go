@@ -30,13 +30,14 @@ const (
 
 // Status string labels.
 const (
-	statusStrRunning = "running"
-	statusStrUp      = "up"
-	statusStrDown    = "down"
-	statusStrTimeout = "timeout"
-	statusStrError   = "error"
-	statusStrWarning = "warning"
-	statusStrUnknown = "unknown"
+	statusStrRunning  = "running"
+	statusStrUp       = "up"
+	statusStrDown     = "down"
+	statusStrTimeout  = "timeout"
+	statusStrError    = "error"
+	statusStrWarning  = "warning"
+	statusStrDegraded = "degraded"
+	statusStrUnknown  = "unknown"
 )
 
 // String returns the string representation of the status.
@@ -54,6 +55,8 @@ func (s Status) String() string {
 		return statusStrError
 	case StatusWarning:
 		return statusStrWarning
+	case StatusDegraded:
+		return statusStrDegraded
 	default:
 		return statusStrUnknown
 	}

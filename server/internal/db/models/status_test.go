@@ -8,7 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// TestStatusToString pins the UPPERCASE result-status serialisation, including
+// TestStatusToString pins the UPPERCASE result-status serialization, including
 // the new WARNING (raw) and DEGRADED (aggregated) values.
 func TestStatusToString(t *testing.T) {
 	t.Parallel()
@@ -69,8 +69,8 @@ func TestStatusEnumValues(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal(models.ResultStatus(7), models.ResultStatusDegraded)
-	r.Equal(models.ResultStatus(8), models.ResultStatusWarning)
-	r.Equal(models.CheckStatus(7), models.CheckStatusDegraded)
-	r.Equal(models.CheckStatus(8), models.CheckStatusWarning)
+	r.Equal(models.ResultStatusDegraded, models.ResultStatus(7))
+	r.Equal(models.ResultStatusWarning, models.ResultStatus(8))
+	r.Equal(models.CheckStatusDegraded, models.CheckStatus(7))
+	r.Equal(models.CheckStatusWarning, models.CheckStatus(8))
 }

@@ -55,6 +55,6 @@ func TestStatusEnumValues(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal(checkerdef.Status(7), checkerdef.StatusDegraded)
-	r.Equal(checkerdef.Status(8), checkerdef.StatusWarning)
+	r.Equal(checkerdef.StatusDegraded, checkerdef.Status(7))
+	r.Equal(checkerdef.StatusWarning, checkerdef.Status(8))
 }

@@ -971,10 +971,10 @@ func testResultsWithCheckAndOrg(ctx context.Context, t *testing.T, svc db.Servic
 func testResultStatusConstraint(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
-	org := models.NewOrganization("status-constraint-org", "")
+	org := models.NewOrganization("status-cstr-org", "")
 	require.NoError(t, svc.CreateOrganization(ctx, org))
 
-	check := models.NewCheck(org.UID, "status-constraint-check", "http")
+	check := models.NewCheck(org.UID, "status-cstr-check", "http")
 	require.NoError(t, svc.CreateCheck(ctx, check))
 
 	tests := []struct {
