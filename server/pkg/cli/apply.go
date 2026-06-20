@@ -69,7 +69,7 @@ func printApplyPlan(res *applyResult) {
 	}
 
 	tbl := output.NewTable(os.Stdout)
-	tbl.AppendHeader(table.Row{"ACTION", "SLUG", "REASON"})
+	tbl.AppendHeader(table.Row{"ACTION", colSlug, "REASON"})
 	for i := range res.Plan {
 		entry := &res.Plan[i]
 		slug := entry.Slug
@@ -114,7 +114,7 @@ func confirmApply() bool {
 
 // applyAction implements `sp apply -f <manifest> [--dry-run] [--prune] [--yes] [--force]`.
 //
-//nolint:cyclop,funlen,gocognit // CLI orchestration: read, plan, confirm, apply
+//nolint:cyclop,funlen // CLI orchestration: read, plan, confirm, apply
 func applyAction(ctx context.Context, cmd *cli.Command) error {
 	cliCtx, err := NewCLIContext(cmd)
 	if err != nil {
@@ -131,7 +131,7 @@ func applyAction(ctx context.Context, cmd *cli.Command) error {
 		return cli.Exit("Error: "+ErrManifestRequired.Error(), 5)
 	}
 
-	body, readErr := os.ReadFile(file) //nolint:gosec // operator-supplied manifest path
+	body, readErr := os.ReadFile(file)
 	if readErr != nil {
 		return cli.Exit(fmt.Sprintf("Error: cannot read manifest: %v", readErr), 5)
 	}
@@ -263,7 +263,7 @@ func checksImportAction(ctx context.Context, cmd *cli.Command) error {
 	}
 	file := cmd.Args().Get(0)
 
-	body, readErr := os.ReadFile(file) //nolint:gosec // operator-supplied import path
+	body, readErr := os.ReadFile(file)
 	if readErr != nil {
 		return cli.Exit(fmt.Sprintf("Error: cannot read file: %v", readErr), 5)
 	}
@@ -285,7 +285,12 @@ func checksImportAction(ctx context.Context, cmd *cli.Command) error {
 		return cliCtx.Outputter.Print(pretty)
 	}
 
-	formatted, _ := json.MarshalIndent(pretty, "", "  ")
+	// Re-indent the server's JSON response for readability. The bytes already
+	// came back as valid JSON, so a marshal failure here is non-fatal.
+	formatted, marshalErr := json.MarshalIndent(pretty, "", "  ")
+	if marshalErr != nil {
+		formatted = resultRaw
+	}
 	_, _ = os.Stdout.Write(formatted)
 	_, _ = fmt.Fprintln(os.Stdout)
 

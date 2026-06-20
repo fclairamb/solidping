@@ -579,12 +579,12 @@ func (c *SolidPingClient) RawPutCheckBySlug(
 // decoded response (if any) is written into out.
 func (c *SolidPingClient) rawRequestBytes(
 	ctx context.Context, method, path, contentType string, body []byte, out any,
-) (int, error) {
+) error {
 	url := strings.TrimRight(c.config.BaseURL, "/") + path
 
 	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
-		return 0, fmt.Errorf("build request: %w", err)
+		return fmt.Errorf("build request: %w", err)
 	}
 
 	if contentType != "" {
@@ -602,31 +602,31 @@ func (c *SolidPingClient) rawRequestBytes(
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
-		return 0, fmt.Errorf("do request: %w", err)
+		return fmt.Errorf("do request: %w", err)
 	}
 	defer resp.Body.Close() //nolint:errcheck // best effort
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return resp.StatusCode, fmt.Errorf("read response: %w", err)
+		return fmt.Errorf("read response: %w", err)
 	}
 
 	if resp.StatusCode >= 400 {
 		var apiErr Error
 		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Title != "" {
-			return resp.StatusCode, fmt.Errorf("%w: %s", ErrUnexpectedStatus, apiErr.Title)
+			return fmt.Errorf("%w: %s", ErrUnexpectedStatus, apiErr.Title)
 		}
 
-		return resp.StatusCode, fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
+		return fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
 	}
 
 	if out != nil && len(respBody) > 0 {
 		if err := json.Unmarshal(respBody, out); err != nil {
-			return resp.StatusCode, fmt.Errorf("decode response: %w", err)
+			return fmt.Errorf("decode response: %w", err)
 		}
 	}
 
-	return resp.StatusCode, nil
+	return nil
 }
 
 // ExportChecks fetches the org's checks as a raw export document (JSON bytes),
@@ -652,7 +652,7 @@ func (c *SolidPingClient) ImportChecks(
 	}
 
 	var result json.RawMessage
-	if _, err := c.rawRequestBytes(ctx, http.MethodPost, path, "application/json", body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, "application/json", body, &result); err != nil {
 		return nil, err
 	}
 
@@ -688,7 +688,7 @@ func (c *SolidPingClient) ApplyChecks(
 	}
 
 	var result json.RawMessage
-	if _, err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
 		return nil, err
 	}
 

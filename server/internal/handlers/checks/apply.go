@@ -102,7 +102,7 @@ func manifestName(doc *ExportDocument, orgSlug string) string {
 // slug within the managed-label scope; an explicit previousSlug (or uid) on a
 // file check reconciles a rename in place.
 //
-//nolint:cyclop,funlen,gocognit // single-pass reconcile over file + managed set
+//nolint:cyclop,funlen // single-pass reconcile over file + managed set
 func (s *Service) computeApplyPlan(
 	ctx context.Context, org *models.Organization, doc *ExportDocument, manifest string,
 ) ([]ApplyPlanEntry, error) {
@@ -211,8 +211,8 @@ func (s *Service) resolveSecretRefs(
 
 	resolvedAnySecret := false
 
-	for ci := range doc.Checks {
-		cfg := doc.Checks[ci].Config
+	for idx := range doc.Checks {
+		cfg := doc.Checks[idx].Config
 		for key, val := range cfg {
 			strVal, ok := val.(string)
 			if !ok {
@@ -225,7 +225,7 @@ func (s *Service) resolveSecretRefs(
 
 			resolved, didResolve, err := s.resolveRefString(ctx, orgUID, strVal)
 			if err != nil {
-				return nil, fmt.Errorf("check %q config %q: %w", doc.Checks[ci].Slug, key, err)
+				return nil, fmt.Errorf("check %q config %q: %w", doc.Checks[idx].Slug, key, err)
 			}
 
 			cfg[key] = resolved
@@ -247,13 +247,13 @@ func (s *Service) resolveSecretRefs(
 // string. Returns (resolved, anyResolved, error). A reference that can't be
 // resolved is a hard error.
 func (s *Service) resolveRefString(
-	ctx context.Context, orgUID, in string,
+	ctx context.Context, orgUID, input string,
 ) (string, bool, error) {
 	var resolveErr error
 
-	any := false
+	resolvedAny := false
 
-	out := secretRefPattern.ReplaceAllStringFunc(in, func(match string) string {
+	out := secretRefPattern.ReplaceAllStringFunc(input, func(match string) string {
 		if resolveErr != nil {
 			return match
 		}
@@ -268,7 +268,7 @@ func (s *Service) resolveRefString(
 			return match
 		}
 
-		any = true
+		resolvedAny = true
 
 		return value
 	})
@@ -277,7 +277,7 @@ func (s *Service) resolveRefString(
 		return "", false, resolveErr
 	}
 
-	return out, any, nil
+	return out, resolvedAny, nil
 }
 
 // resolveRef resolves a single env|param reference to its plaintext value.
@@ -325,13 +325,13 @@ func paramStringValue(param *models.Parameter) (string, bool) {
 		return "", false
 	}
 
-	switch v := raw.(type) {
+	switch val := raw.(type) {
 	case string:
-		return v, true
+		return val, true
 	case fmt.Stringer:
-		return v.String(), true
+		return val.String(), true
 	default:
-		return fmt.Sprintf("%v", v), true
+		return fmt.Sprintf("%v", val), true
 	}
 }
 
@@ -341,7 +341,7 @@ func paramStringValue(param *models.Parameter) (string, bool) {
 // when Prune is set, deletes managed checks absent from the file — gated by the
 // deletion cap unless Force.
 //
-//nolint:cyclop,funlen,gocognit // orchestrates plan → resolve → mutate → prune
+//nolint:cyclop,funlen // orchestrates plan → resolve → mutate → prune
 func (s *Service) ApplyChecks(
 	ctx context.Context, orgSlug string, doc *ExportDocument, opts ApplyOptions,
 ) (*ApplyResult, error) {

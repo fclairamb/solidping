@@ -60,6 +60,9 @@ const (
 	fieldBody          = "body"
 	msgInvalidJSON     = "Invalid JSON format"
 	msgSlugConflictOrg = "A check with this slug already exists in this organization"
+	// queryTrue is the literal a boolean query flag must equal to be enabled
+	// (e.g. ?dryRun=true).
+	queryTrue = "true"
 )
 
 // Handler provides HTTP handlers for check management endpoints.
@@ -426,7 +429,7 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request
 // ImportChecks handles importing checks from a JSON export document.
 func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
-	dryRun := req.URL.Query().Get("dryRun") == "true"
+	dryRun := req.URL.Query().Get("dryRun") == queryTrue
 
 	var doc ExportDocument
 	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
@@ -474,9 +477,9 @@ func (h *Handler) ApplyChecks(writer http.ResponseWriter, req bunrouter.Request)
 	}
 
 	opts := ApplyOptions{
-		DryRun: query.Get("dryRun") == "true",
-		Prune:  query.Get("prune") == "true",
-		Force:  query.Get("force") == "true",
+		DryRun: query.Get("dryRun") == queryTrue,
+		Prune:  query.Get("prune") == queryTrue,
+		Force:  query.Get("force") == queryTrue,
 	}
 	if capStr := query.Get("deletionCap"); capStr != "" {
 		if parsed, convErr := strconv.Atoi(capStr); convErr == nil && parsed >= 0 {
