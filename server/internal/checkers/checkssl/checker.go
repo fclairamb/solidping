@@ -117,8 +117,14 @@ func durationMs(d time.Duration) float64 {
 	return float64(d.Microseconds()) / microsecondsPerMilli
 }
 
+func certDaysRemaining(cert *x509.Certificate) int {
+	return int(time.Until(cert.NotAfter).Hours() / 24)
+}
+
+// buildCertOutput writes the leaf-certificate fields (kept for back-compat) and
+// returns the leaf's days-remaining.
 func buildCertOutput(cert *x509.Certificate, output map[string]any) int {
-	daysRemaining := int(time.Until(cert.NotAfter).Hours() / 24)
+	daysRemaining := certDaysRemaining(cert)
 
 	output["subject"] = cert.Subject.CommonName
 	output["issuer"] = cert.Issuer.CommonName
@@ -131,29 +137,73 @@ func buildCertOutput(cert *x509.Certificate, output map[string]any) int {
 	return daysRemaining
 }
 
+// chainCertReport is one entry in the reported certificate chain.
+type chainCertReport struct {
+	Subject       string `json:"subject"`
+	Issuer        string `json:"issuer"`
+	NotAfter      string `json:"notAfter"`
+	DaysRemaining int    `json:"daysRemaining"`
+}
+
+// chainExpiry summarises the whole presented chain: its per-cert report plus the
+// soonest-expiring cert (the minimum days-remaining drives the status decision).
+type chainExpiry struct {
+	chain       []chainCertReport
+	minDays     int
+	soonestCert *x509.Certificate
+}
+
+// analyzeChain iterates the presented certificates (leaf + intermediates),
+// building the per-cert report and tracking the minimum days-remaining across
+// the whole chain — an intermediate that expires before the leaf is a real,
+// common failure that leaf-only inspection misses.
+func analyzeChain(certs []*x509.Certificate) chainExpiry {
+	report := make([]chainCertReport, 0, len(certs))
+	result := chainExpiry{minDays: certDaysRemaining(certs[0]), soonestCert: certs[0]}
+
+	for _, cert := range certs {
+		days := certDaysRemaining(cert)
+		report = append(report, chainCertReport{
+			Subject:       cert.Subject.CommonName,
+			Issuer:        cert.Issuer.CommonName,
+			NotAfter:      cert.NotAfter.Format(time.RFC3339),
+			DaysRemaining: days,
+		})
+
+		if days < result.minDays {
+			result.minDays = days
+			result.soonestCert = cert
+		}
+	}
+
+	result.chain = report
+
+	return result
+}
+
 type execParams struct {
-	port       int
-	threshold  int
-	timeout    time.Duration
-	serverName string
-	host       string
+	port         int
+	warningDays  int
+	criticalDays int
+	timeout      time.Duration
+	serverName   string
+	host         string
 }
 
 func newExecParams(cfg *SSLConfig) execParams {
+	warning, critical := cfg.effectiveThresholds()
+
 	params := execParams{
-		port:       cfg.Port,
-		threshold:  cfg.ThresholdDays,
-		timeout:    cfg.Timeout,
-		serverName: cfg.ServerName,
-		host:       cfg.Host,
+		port:         cfg.Port,
+		warningDays:  warning,
+		criticalDays: critical,
+		timeout:      cfg.Timeout,
+		serverName:   cfg.ServerName,
+		host:         cfg.Host,
 	}
 
 	if params.port == 0 {
 		params.port = defaultPort
-	}
-
-	if params.threshold <= 0 {
-		params.threshold = defaultThresholdDays
 	}
 
 	if params.timeout == 0 {
@@ -232,12 +282,25 @@ func (c *SSLChecker) buildResult(
 		}
 	}
 
-	daysRemaining := buildCertOutput(result.state.PeerCertificates[0], output)
-	metrics["days_remaining"] = daysRemaining
+	// Leaf fields (back-compat). days_remaining metric becomes the chain minimum below.
+	buildCertOutput(result.state.PeerCertificates[0], output)
 
-	status := checkerdef.StatusUp
-	if daysRemaining <= params.threshold {
-		status = checkerdef.StatusDown
+	expiry := analyzeChain(result.state.PeerCertificates)
+	metrics["days_remaining"] = expiry.minDays
+
+	status, severity := checkerdef.GradedExpiryStatus(expiry.minDays, params.warningDays, params.criticalDays)
+
+	output["chain"] = expiry.chain
+	output["chainLength"] = len(result.state.PeerCertificates)
+	output["chainVerified"] = len(result.state.VerifiedChains) > 0
+	output["soonestExpiring"] = map[string]any{
+		"subject":       expiry.soonestCert.Subject.CommonName,
+		"daysRemaining": expiry.minDays,
+	}
+	output["severity"] = severity
+
+	if severity == checkerdef.SeverityWarning {
+		output["certExpiryWarning"] = true
 	}
 
 	return &checkerdef.Result{
