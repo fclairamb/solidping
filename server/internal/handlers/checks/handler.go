@@ -450,6 +450,61 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request
 	return h.WriteJSON(writer, http.StatusOK, result)
 }
 
+// ApplyChecks handles POST /api/v1/orgs/:org/checks/apply — the reconcile
+// sibling of import. It accepts a JSON or YAML manifest (the existing export
+// document shape, plus an optional managed-label scope and secret references)
+// and reconciles the managed scope against it. Admin-only (gated by route
+// middleware). Query flags: dryRun, prune, force.
+func (h *Handler) ApplyChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	query := req.URL.Query()
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: "could not read request body"},
+		})
+	}
+
+	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid manifest", []base.ValidationErrorField{
+			{Name: fieldBody, Message: err.Error()},
+		})
+	}
+
+	opts := ApplyOptions{
+		DryRun: query.Get("dryRun") == "true",
+		Prune:  query.Get("prune") == "true",
+		Force:  query.Get("force") == "true",
+	}
+	if capStr := query.Get("deletionCap"); capStr != "" {
+		if parsed, convErr := strconv.Atoi(capStr); convErr == nil && parsed >= 0 {
+			opts.DeletionCap = parsed
+		}
+	}
+
+	result, err := h.svc.ApplyChecks(req.Context(), orgSlug, doc, opts)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case errors.Is(err, ErrDeletionCapExceeded):
+			return h.WriteErrorErr(
+				writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+		case errors.Is(err, ErrUnresolvedSecretRef):
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		default:
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, result)
+}
+
 // handleListError handles errors from ListChecks.
 func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
 	switch {
