@@ -22,6 +22,13 @@ const (
 	ResultStatusTimeout ResultStatus = 5
 	// ResultStatusError indicates the check encountered an error.
 	ResultStatusError ResultStatus = 6
+	// ResultStatusDegraded is the aggregated rollup status: a window contained
+	// warning(s) but no dominating failure. Stored only on aggregated rows
+	// (period_type = hour/day/month) by the aggregation job, never on raw rows.
+	ResultStatusDegraded ResultStatus = 7
+	// ResultStatusWarning indicates the target is up but there is something to
+	// report. Stored on raw rows; counts as up for availability.
+	ResultStatusWarning ResultStatus = 8
 )
 
 // PeriodType values for the Result.PeriodType column.
@@ -47,6 +54,10 @@ func StatusToString(status int) string {
 		return "TIMEOUT"
 	case int(ResultStatusError):
 		return "ERROR"
+	case int(ResultStatusDegraded):
+		return "DEGRADED"
+	case int(ResultStatusWarning):
+		return "WARNING"
 	default:
 		return "UNKNOWN"
 	}

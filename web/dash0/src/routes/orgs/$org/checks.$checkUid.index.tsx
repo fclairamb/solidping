@@ -58,6 +58,8 @@ import {
 import { StatusBadge } from "@/components/shared/status-badge";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { SslChainCard } from "@/components/checks/ssl-chain-card";
+import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
@@ -446,7 +448,7 @@ function CheckDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3" data-testid="check-detail-header">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
           <div className="min-w-0 flex-1">
@@ -534,7 +536,7 @@ function CheckDetailPage() {
               )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="ghost"
             size="icon"
@@ -871,8 +873,11 @@ function CheckDetailPage() {
                         {t("checks:detail.outputLabel")}
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
-                        {Object.entries(check.lastResult.output).map(
-                          ([key, value]) => (
+                        {Object.entries(check.lastResult.output)
+                          // The SSL chain + soonest-expiring details get a
+                          // dedicated table below; don't repeat them as raw JSON.
+                          .filter(([key]) => key !== "chain" && key !== "soonestExpiring")
+                          .map(([key, value]) => (
                             <div key={key} className="flex gap-2">
                               <span className="text-muted-foreground">
                                 {key}:
@@ -883,8 +888,7 @@ function CheckDetailPage() {
                                   : JSON.stringify(value)}
                               </span>
                             </div>
-                          )
-                        )}
+                          ))}
                       </div>
                     </div>
                   )}
@@ -895,6 +899,14 @@ function CheckDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {check.type === "ssl" && (
+        <SslChainCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
+
+      {check.type === "docker" && (
+        <DockerRestartLoopCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
 
       <DependenciesCard org={org} checkUid={checkUid} />
 

@@ -1827,6 +1827,10 @@ func (s *Service) convertResultToLastResultResponse(result *models.Result) *Last
 		switch *result.Status {
 		case int(models.ResultStatusUp):
 			statusStr = "up"
+		case int(models.ResultStatusWarning):
+			statusStr = "warning"
+		case int(models.ResultStatusDegraded):
+			statusStr = "degraded"
 		case int(models.ResultStatusDown):
 			statusStr = "down"
 		case int(models.ResultStatusTimeout):
@@ -1908,8 +1912,12 @@ type ExportDocument struct {
 
 // ExportCheck represents a single check in the export format.
 type ExportCheck struct {
-	Name                      string               `json:"name"`
-	Slug                      string               `json:"slug"`
+	Name string `json:"name"`
+	Slug string `json:"slug"`
+	// PreviousSlug, when set on an apply manifest, makes a slug rename
+	// reconcile in place (rather than delete+create). Ignored by export and
+	// import; only the apply reconcile path consults it.
+	PreviousSlug              string               `json:"previousSlug,omitempty"`
 	Description               string               `json:"description,omitempty"`
 	Type                      string               `json:"type"`
 	Config                    map[string]any       `json:"config"`

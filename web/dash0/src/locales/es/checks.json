@@ -15,7 +15,12 @@
   "internal": "Interna",
   "ungroupedChecks": "Comprobaciones sin grupo",
   "status": {
-    "validating": "Validando"
+    "validating": "Validando",
+    "up": "Activo",
+    "down": "Caído",
+    "warning": "Advertencia",
+    "degraded": "Degradado",
+    "unknown": "Desconocido"
   },
   "table": {
     "name": "Nombre",

@@ -2,6 +2,16 @@
 
 This document defines the Go interface that all protocol checkers must implement.
 
+> **Historical sketch — superseded by the shipped implementation.** The canonical checker
+> interface now lives in `server/internal/checkers/checkerdef/`. The status values below are
+> out of date: the real enum is `Running=2, Up=3, Down=4, Timeout=5, Error=6` (not the
+> `1/2/3/4` shown here), and the active todo
+> [`2026-06-20-04`](../todos/2026-06-20-04-status-warning-degraded.md) adds `Warning=8` (live)
+> plus an aggregated `Degraded=7`. The SSL config likewise gained `warningDays` / `criticalDays`
+> ([`2026-06-20-01`](../todos/2026-06-20-01-ssl-graduated-expiry-and-chain-reporting.md)),
+> replacing the single `warn_days` field in the table below. Treat this file as a record of the
+> original design intent, not a description of current code.
+
 ## Core Interface
 
 ```go

@@ -137,11 +137,44 @@ Either `url` or `host` is required. Default period: 5 minutes.
 |-------|------|----------|---------|-------------|
 | `host` | string | R | | Target hostname |
 | `port` | int | O | 443 | Target port. Validation: 1-65535 |
-| `threshold_days` | int | O | 30 | Days before expiration to mark as down. Must be >= 0 |
+| `criticalDays` | int | O | 30 | Days before expiration to mark **Down** (paging). Must be `0..3650` |
+| `warningDays` | int | O | 30 | Days before expiration to mark **Warning** (amber, non-paging). Must be `>= criticalDays`, `0..3650` |
+| `thresholdDays` | int | O | 30 | **Legacy alias** for `criticalDays`. Read for back-compat; `criticalDays` wins when both are set |
 | `timeout` | duration | O | 10s | Connection + handshake timeout (max: 60s) |
 | `server_name` | string | O | same as host | Override SNI server name |
 
 Min period: 1 hour. Default period: 6 hours.
+
+**Graduated expiry & whole-chain reporting.** Expiry is evaluated against the
+**minimum days-remaining across the whole presented certificate chain** (leaf +
+intermediates), not just the leaf — an intermediate that expires first now drives
+the status. Two tiers:
+
+- `min <= criticalDays` → **Down** (`severity: "critical"`), pages, as before.
+- `criticalDays < min <= warningDays` → **Warning** (`severity: "warning"`,
+  `certExpiryWarning: true`) — amber, counts as up, opens no incident; rollups
+  show **Degraded**.
+- else → **Up**.
+
+Defaults keep `warningDays == criticalDays == 30`, so behaviour is **unchanged**
+until you widen `warningDays`. A handshake failure / actual expiry is **Down** as
+before (trust is enforced at handshake). Recommended: lower `criticalDays` (e.g.
+to 7) and widen `warningDays` (e.g. 30) so a valid-but-soon-expiring cert is a
+warning, not a month-long fake outage.
+
+Output (in `result.output`):
+
+| Key | Description |
+|-----|-------------|
+| `chain` | Array of `{subject, issuer, notAfter, daysRemaining}`, one per presented cert |
+| `soonestExpiring` | `{subject, daysRemaining}` for the cert driving the status |
+| `chainLength` | Number of presented certificates |
+| `chainVerified` | `true` when the handshake produced a verified chain |
+| `certExpiryWarning` | `true` only in the warning tier |
+| `severity` | `"critical"`, `"warning"`, or `""` |
+| `subject`, `issuer`, `not_after`, `days_remaining`, `serial_number`, `dns_names` | Leaf-certificate fields (kept for back-compat) |
+
+`metrics.days_remaining` is the **chain minimum** (the meaningful number to graph).
 
 ---
 
@@ -425,8 +458,29 @@ Min period: 6 hours. Default period: 24 hours.
 | `containerName` | string | O* | | Container name. *At least one of `containerName`/`containerId` required |
 | `containerId` | string | O* | | Container ID. *At least one of `containerName`/`containerId` required |
 | `timeout` | duration | O | 10s | Check timeout (max: 60s) |
+| `restartLoopMinRestarts` | int | O | `0` (disabled) | Opt-in restart-loop detection. When `> 0`, a *running* container whose lifetime restart count is at least this many **and** that (re)started within `restartLoopWindow` is flagged as a suspected crash-loop |
+| `restartLoopWindow` | duration | O | 120s (when enabled) | Recency window for restart-loop detection. Only applied when `restartLoopMinRestarts > 0`. Max: 24h |
 
 Requires Docker socket access.
+
+**Restart-loop detection (opt-in heuristic).** A container that is *running* at
+inspect time but crash-looping (restarting every few seconds) would otherwise
+report `up`. When `restartLoopMinRestarts > 0`, the checker flags it: an actively
+looping container always shows a freshly-recent `startedAt`, so the recency
+window (`restartLoopWindow`) carries the signal while the count floor
+(`restartLoopMinRestarts`) keeps a single deploy restart from tripping it. A
+detected loop returns the **`warning`** status (counts as up, rolls up to
+`degraded`, does not page); a genuinely not-running/unhealthy container still
+returns `down` and pages. Not-running and unhealthy short-circuits are evaluated
+*before* the loop branch. Additional output keys when detection is enabled:
+
+| Output key | Type | Meaning |
+|------------|------|---------|
+| `secondsSinceStart` | number | Seconds since the current run started (always emitted when detection is enabled, even below threshold) |
+| `restartLoop` | bool | `true` only when a loop is suspected (status `warning`) |
+
+`metrics.restartCount` is always emitted (lifetime restart count), independent of
+detection.
 
 ---
 

@@ -11,6 +11,14 @@ const (
 	defaultHost    = "unix:///var/run/docker.sock"
 	defaultTimeout = 10 * time.Second
 	maxTimeout     = 60 * time.Second
+
+	// defaultRestartLoopWindow is the recency window applied when restart-loop
+	// detection is enabled (RestartLoopMinRestarts > 0) but no window is set.
+	defaultRestartLoopWindow = 120 * time.Second
+	// maxRestartLoopWindow bounds the configurable recency window. A loop is a
+	// rate signal; an unbounded window would let a single restart far in the
+	// past trip the heuristic, defeating the recency guard.
+	maxRestartLoopWindow = 24 * time.Hour
 )
 
 // DockerConfig holds the configuration for Docker container health checks.
@@ -19,6 +27,12 @@ type DockerConfig struct {
 	ContainerName string        `json:"containerName,omitempty"`
 	ContainerID   string        `json:"containerId,omitempty"`
 	Timeout       time.Duration `json:"timeout,omitempty"`
+	// Restart-loop detection (opt-in). RestartLoopMinRestarts == 0 → disabled.
+	// When enabled, a running container whose lifetime RestartCount is at least
+	// RestartLoopMinRestarts and that (re)started within RestartLoopWindow is
+	// flagged as a suspected crash-loop and reported as StatusWarning.
+	RestartLoopMinRestarts int           `json:"restartLoopMinRestarts,omitempty"`
+	RestartLoopWindow      time.Duration `json:"restartLoopWindow,omitempty"`
 }
 
 // FromMap populates the configuration from a map.
@@ -52,6 +66,39 @@ func (c *DockerConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("timeout", "must be a string")
 	}
 
+	if err := c.parseRestartLoop(configMap); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// parseRestartLoop reads the opt-in restart-loop detection fields. JSON numbers
+// decode to float64 through a map[string]any, so minRestarts accepts the int and
+// float64 shapes; the window is a duration string like timeout.
+func (c *DockerConfig) parseRestartLoop(configMap map[string]any) error {
+	if raw := configMap["restartLoopMinRestarts"]; raw != nil {
+		switch v := raw.(type) {
+		case float64:
+			c.RestartLoopMinRestarts = int(v)
+		case int:
+			c.RestartLoopMinRestarts = v
+		default:
+			return checkerdef.NewConfigError("restartLoopMinRestarts", "must be a number")
+		}
+	}
+
+	if window, ok := configMap["restartLoopWindow"].(string); ok {
+		duration, err := time.ParseDuration(window)
+		if err != nil {
+			return checkerdef.NewConfigError("restartLoopWindow", "must be a valid duration string")
+		}
+
+		c.RestartLoopWindow = duration
+	} else if configMap["restartLoopWindow"] != nil {
+		return checkerdef.NewConfigError("restartLoopWindow", "must be a string")
+	}
+
 	return nil
 }
 
@@ -75,6 +122,14 @@ func (c *DockerConfig) GetConfig() map[string]any {
 		cfg["timeout"] = c.Timeout.String()
 	}
 
+	if c.RestartLoopMinRestarts != 0 {
+		cfg["restartLoopMinRestarts"] = c.RestartLoopMinRestarts
+	}
+
+	if c.RestartLoopWindow != 0 {
+		cfg["restartLoopWindow"] = c.RestartLoopWindow.String()
+	}
+
 	return cfg
 }
 
@@ -95,7 +150,34 @@ func (c *DockerConfig) Validate() error {
 		)
 	}
 
+	if c.RestartLoopMinRestarts < 0 {
+		return checkerdef.NewConfigErrorf(
+			"restartLoopMinRestarts", "must be >= 0, got %d", c.RestartLoopMinRestarts,
+		)
+	}
+
+	if c.RestartLoopWindow != 0 && (c.RestartLoopWindow <= 0 || c.RestartLoopWindow > maxRestartLoopWindow) {
+		return checkerdef.NewConfigErrorf(
+			"restartLoopWindow", "must be > 0 and <= 24h, got %s", c.RestartLoopWindow.String(),
+		)
+	}
+
 	return nil
+}
+
+// restartLoopEnabled reports whether opt-in restart-loop detection is active.
+func (c *DockerConfig) restartLoopEnabled() bool {
+	return c.RestartLoopMinRestarts > 0
+}
+
+// resolveRestartLoopWindow returns the recency window to apply, defaulting to
+// 120s when detection is enabled but no window was configured.
+func (c *DockerConfig) resolveRestartLoopWindow() time.Duration {
+	if c.RestartLoopWindow != 0 {
+		return c.RestartLoopWindow
+	}
+
+	return defaultRestartLoopWindow
 }
 
 func (c *DockerConfig) resolveHost() string {

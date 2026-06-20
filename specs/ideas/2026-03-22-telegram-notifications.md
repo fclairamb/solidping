@@ -11,6 +11,10 @@ Add Telegram as a notification channel for incident alerts. Uses the Telegram Bo
 3. Rich HTML-formatted messages with status emojis and incident links
 4. Simple setup: bot token + chat ID, no complex OAuth
 
+> **Status-model note** (re [`2026-06-20-04`](../todos/2026-06-20-04-status-warning-degraded.md)):
+> the `Warning` status is **incident-neutral** — it opens no incident, so this channel does not
+> notify on `Warning`/`Degraded`. Notifying on warnings would be a separate path, out of scope here.
+
 ---
 
 ## Connection Settings

@@ -573,3 +573,124 @@ func (c *SolidPingClient) RawPutCheckBySlug(
 	return c.rawRequest(ctx, http.MethodPut,
 		fmt.Sprintf("/api/v1/orgs/%s/checks/%s", org, slug), body, nil)
 }
+
+// rawRequestBytes is rawRequest's sibling for sending a pre-serialized body
+// (e.g. a hand-authored YAML manifest) with an explicit Content-Type. The
+// decoded response (if any) is written into out.
+func (c *SolidPingClient) rawRequestBytes(
+	ctx context.Context, method, path, contentType string, body []byte, out any,
+) error {
+	url := strings.TrimRight(c.config.BaseURL, "/") + path
+
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
+
+	httpClient := http.DefaultClient
+	if c.loggingTransport != nil {
+		httpClient = &http.Client{Transport: c.loggingTransport}
+	}
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck // best effort
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		var apiErr Error
+		if jsonErr := json.Unmarshal(respBody, &apiErr); jsonErr == nil && apiErr.Title != "" {
+			return fmt.Errorf("%w: %s", ErrUnexpectedStatus, apiErr.Title)
+		}
+
+		return fmt.Errorf("%w: %d", ErrUnexpectedStatus, resp.StatusCode)
+	}
+
+	if out != nil && len(respBody) > 0 {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return fmt.Errorf("decode response: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// ExportChecks fetches the org's checks as a raw export document (JSON bytes),
+// returned verbatim so the CLI can write it to a file unchanged.
+func (c *SolidPingClient) ExportChecks(ctx context.Context, org string) (json.RawMessage, error) {
+	var doc json.RawMessage
+	if _, err := c.rawRequest(ctx, http.MethodGet,
+		fmt.Sprintf("/api/v1/orgs/%s/checks/export", org), nil, &doc); err != nil {
+		return nil, err
+	}
+
+	return doc, nil
+}
+
+// ImportChecks posts an export document to the import endpoint. dryRun previews
+// without mutating. The body is sent verbatim (JSON).
+func (c *SolidPingClient) ImportChecks(
+	ctx context.Context, org string, body []byte, dryRun bool,
+) (json.RawMessage, error) {
+	path := fmt.Sprintf("/api/v1/orgs/%s/checks/import", org)
+	if dryRun {
+		path += "?dryRun=true"
+	}
+
+	var result json.RawMessage
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, "application/json", body, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+// ApplyOptions mirrors the apply endpoint's query flags for the CLI.
+type ApplyOptions struct {
+	DryRun bool
+	Prune  bool
+	Force  bool
+}
+
+// ApplyChecks posts a manifest (JSON or YAML bytes) to the apply endpoint with
+// the given options. contentType selects the parse path server-side.
+func (c *SolidPingClient) ApplyChecks(
+	ctx context.Context, org string, body []byte, contentType string, opts ApplyOptions,
+) (json.RawMessage, error) {
+	params := make([]string, 0, 3)
+	if opts.DryRun {
+		params = append(params, "dryRun=true")
+	}
+	if opts.Prune {
+		params = append(params, "prune=true")
+	}
+	if opts.Force {
+		params = append(params, "force=true")
+	}
+
+	path := fmt.Sprintf("/api/v1/orgs/%s/checks/apply", org)
+	if len(params) > 0 {
+		path += "?" + strings.Join(params, "&")
+	}
+
+	var result json.RawMessage
+	if err := c.rawRequestBytes(ctx, http.MethodPost, path, contentType, body, &result); err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}

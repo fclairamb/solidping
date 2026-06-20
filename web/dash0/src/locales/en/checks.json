@@ -15,7 +15,12 @@
   "internal": "Internal",
   "ungroupedChecks": "Ungrouped Checks",
   "status": {
-    "validating": "Validating"
+    "validating": "Validating",
+    "up": "Up",
+    "down": "Down",
+    "warning": "Warning",
+    "degraded": "Degraded",
+    "unknown": "Unknown"
   },
   "table": {
     "name": "Name",

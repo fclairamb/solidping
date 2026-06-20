@@ -307,15 +307,20 @@ Returns `{"valid": true}` or `{"valid": false, "fields": [...]}` with one
 field-level entry per failing validator.
 
 ### GET /api/v1/orgs/:org/checks/export
-Export all checks as JSON. Auth: required
+Export all checks as JSON. Auth: **admin** (org admin role required)
 
 Each `ExportCheck` carries an optional `dependsOn` array of
 `{parentSlug, kind, description?}` entries, sorted by `parentSlug` for
 deterministic diffs. The field is `omitempty` — exports for orgs with no
 dep edges stay byte-identical to the pre-dependsOn shape.
 
+> **Back-compat note (2026-06-20):** export/import were previously gated by
+> authentication only (any org member). They are now **admin-only**, alongside
+> the new apply endpoint, because they read/mutate the whole check set. Scripts
+> that called these as a non-admin user must switch to an admin token.
+
 ### POST /api/v1/orgs/:org/checks/import
-Import checks from JSON. Auth: required
+Import checks from JSON. Auth: **admin** (org admin role required)
 
 Two-pass when any entry carries `dependsOn`: pass 1 upserts every check
 unchanged, pass 2 resolves `parentSlug` → check UID against the now-current
@@ -325,6 +330,65 @@ updated). Cycle / self-edge / unknown-parent failures are reported per row
 in the existing `errors` array. Pass 2 is skipped silently for any check
 whose pass-1 upsert failed, with an explicit
 `skipped dependsOn: pass-1 upsert failed for this check` error.
+
+### POST /api/v1/orgs/:org/checks/apply
+Reconcile checks against a declarative manifest (config-as-code). Auth:
+**admin** (org admin role required). This is the *reconcile sibling* of
+`/import` — idempotent upsert-by-slug plus delete-by-absence within a bounded,
+opted-in managed scope.
+
+**Request body.** The existing export document shape (`{version, organization,
+checks[]}`), accepted as **JSON or YAML** (sniffed from `Content-Type` and the
+first non-space byte). YAML is the hand-authoring surface; JSON is what export
+emits — both parse to the same plan.
+
+**Managed scope.** Apply stamps every check it owns with a reserved label
+`solidping.io/managed=<manifest-name>`, where the manifest name is the document's
+`organization` field (falling back to the org slug). The reconcile scope is
+exactly the checks carrying that label. Hand-created checks (no managed label)
+are reported as `unmanaged` and are **never** adopted, modified destructively,
+or deleted.
+
+**Plan / reconcile semantics.** Matching is on `slug` within the managed scope:
+- `create` — slug in the manifest, absent from the org.
+- `update` — managed slug present in both.
+- `unmanaged` — slug exists **without** the managed label (reported only).
+- `delete` — managed check absent from the manifest (delete-by-absence).
+- `rename` — a manifest check with `previousSlug` (or `uid`) referencing an
+  existing managed check reconciles the rename in place instead of delete+create.
+
+**Secret references.** Config string values may contain `${env:NAME}` and
+`${param:KEY}` references, resolved **server-side at apply time** (env vars; the
+`parameters` table — org-scoped first, then system-wide) into the existing
+encrypted `config_private` envelope. The committed manifest stays secret-free.
+A missing/unresolvable reference is a hard apply error. When
+`SP_ENCRYPTION_MASTER_KEY` is unset (plaintext fallback), resolving a secret ref
+emits a `warnings[]` entry rather than refusing — the resolved value lands in
+plaintext config.
+
+**Deletion safety (belt-and-suspenders).** Delete-by-absence happens **only**
+when all of: (a) `?prune=true` is set, (b) the check carries the managed label,
+and (c) the delete count is within the deletion cap (default 10). Beyond the
+cap, apply refuses with `409 CONFLICT` unless `?force=true`.
+
+Query parameters:
+- `dryRun=true` — compute and return the plan only; mutate nothing.
+- `prune=true` — enable delete-by-absence for managed, absent checks.
+- `force=true` — lift the deletion cap for this apply.
+- `deletionCap=<n>` — override the default cap (0 ⇒ default 10).
+
+**Response** (extended import result):
+```json
+{
+  "manifest": "default",
+  "dryRun": false,
+  "pruned": true,
+  "created": 1, "updated": 2, "deleted": 1, "unmanaged": 0,
+  "plan": [{"slug": "api", "action": "update"}, {"slug": "old", "action": "delete"}],
+  "warnings": [],
+  "errors": []
+}
+```
 
 ### GET /api/v1/orgs/:org/checks/:checkUid
 Get a single check by UID or slug. Auth: required
@@ -811,7 +875,73 @@ Slack interactive component handler. Auth: Slack signature verification
 ## MCP (Model Context Protocol)
 
 ### POST /api/v1/mcp
-MCP endpoint for AI tool integrations. Auth: required (PAT token, org derived from token)
+MCP endpoint for AI tool integrations. Auth: required — either a `mcp`/`mcp:read`-scoped
+PAT pasted as a bearer token (back-compat) or an OAuth-issued access token (see OAuth below).
+Org is derived from the token. On missing/invalid auth this endpoint returns **401** with a
+`WWW-Authenticate: Bearer resource_metadata="<issuer>/.well-known/oauth-protected-resource"`
+header so standard MCP clients can discover the authorization server and start the OAuth flow.
+OAuth-issued tokens are audience-bound (RFC 8707) to the MCP resource and rejected here if their
+`aud` does not include `<issuer>/api/v1/mcp`.
+
+---
+
+## OAuth 2.1 (MCP authorization server)
+
+SolidPing is an embedded OAuth 2.1 authorization server for the MCP resource (spec
+2026-06-20-03). Standard MCP clients (Claude Desktop, claude.ai remote connector, `mcp-remote`)
+self-onboard via discovery → register → authorize+consent → token, with no hand-pasted token.
+Issuer = the SolidPing base URL; the resource is `<issuer>/api/v1/mcp`. Access tokens reuse the
+existing HS256 JWT format; refresh tokens rotate. PKCE (`S256`) is mandatory.
+
+### GET /.well-known/oauth-protected-resource
+RFC 9728 protected-resource metadata. Public, no auth. Advertises `resource` (the MCP URL),
+`authorization_servers` (the issuer), `scopes_supported` (`mcp`, `mcp:read`), and
+`bearer_methods_supported`.
+
+### GET /.well-known/oauth-authorization-server
+RFC 8414 authorization-server metadata. Public, no auth. Advertises `authorization_endpoint`,
+`token_endpoint`, `registration_endpoint`, `jwks_uri`,
+`code_challenge_methods_supported=["S256"]`, `grant_types_supported=["authorization_code",
+"refresh_token"]`, `response_types_supported=["code"]`, and `scopes_supported=["mcp","mcp:read"]`.
+
+### GET /.well-known/openid-configuration
+Alias of the authorization-server metadata (many clients probe this path). Public, no auth.
+
+### GET /.well-known/jwks.json
+JWKS endpoint (`jwks_uri`). Public, no auth. The v1 signing key is symmetric (HS256), so the
+secret is never published — this serves a well-formed but empty key set. The MCP resource server
+validates tokens itself; clients do not verify locally. Asymmetric keys are a documented follow-on.
+
+### POST /api/v1/oauth/register
+RFC 7591 dynamic client registration. Public. Accepts `redirect_uris` (required), `client_name`,
+`grant_types`, `response_types`, `scope`, `token_endpoint_auth_method`. Native clients are public
+(PKCE + loopback redirects `http://127.0.0.1:*` / `http://localhost:*` / `http://[::1]:*`) and get
+no secret; a client requesting a secret-based auth method is confidential and gets a `client_secret`
+returned once. Redirect URIs must be https or http-loopback. Returns `client_id` (+ `client_secret`
+for confidential clients).
+
+### GET /api/v1/oauth/authorize
+Authorization endpoint. Requires a logged-in dashboard session (the `access_token` cookie); if
+absent, redirects to `/dash0/login?returnTo=…` and back. Validates `client_id`, `redirect_uri`
+(exact match against the registered set, loopback ignores the port), `response_type=code`, PKCE
+`code_challenge` + `code_challenge_method=S256` (both required; `plain` and missing are rejected),
+`scope ⊆ {mcp, mcp:read}`, and `resource` (must equal the MCP resource). On success redirects to the
+dashboard consent screen (`/dash0/orgs/:org/oauth/consent`).
+
+### POST /api/v1/oauth/authorize
+Consent decision. Re-validates the request, requires a session, and reads `decision` (`approve` /
+`deny`). On approve, mints a single-use, short-TTL authorization code bound to
+client→redirect→PKCE-challenge→resource→scope→user/org and redirects to the client's `redirect_uri`
+with `code` + `state`. On deny, redirects with `error=access_denied`.
+
+### POST /api/v1/oauth/token
+Token endpoint (form-encoded). `grant_type=authorization_code` exchanges `code` + `code_verifier`
+(+ matching `client_id`, `redirect_uri`) for an access token and a refresh token; the PKCE verifier
+is checked against the stored S256 challenge and the code is consumed single-use.
+`grant_type=refresh_token` rotates the refresh token (the presented one is revoked atomically and a
+new pair issued). Access tokens are JWTs with `aud` = the MCP resource and the consented scopes,
+short-lived; refresh tokens are revoked on logout and PAT revoke. Errors use the RFC 6749 §5.2 JSON
+shape (`{ "error": "...", "error_description": "..." }`).
 
 ---
 

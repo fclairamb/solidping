@@ -13,8 +13,9 @@ import (
 )
 
 const (
-	statusDown = "down"
-	statusUp   = "up"
+	statusDown    = "down"
+	statusUp      = "up"
+	statusWarning = "warning"
 )
 
 // Slack mention command names.
@@ -428,6 +429,8 @@ func statusIntToString(status *int) string {
 	switch *status {
 	case int(models.ResultStatusUp):
 		return statusUp
+	case int(models.ResultStatusWarning):
+		return statusWarning
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
 		return statusDown
 	default:

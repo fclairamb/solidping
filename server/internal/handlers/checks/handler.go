@@ -26,7 +26,7 @@ import (
 var errInvalidStatus = errors.New("invalid status filter token")
 
 // parseStatusFilter accepts a comma-separated list of status tokens
-// (up/down/created/degraded) and returns the matching CheckStatus values.
+// (up/down/created/degraded/warning) and returns the matching CheckStatus values.
 func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 	parts := strings.Split(s, ",")
 	out := make([]models.CheckStatus, 0, len(parts))
@@ -44,6 +44,8 @@ func parseStatusFilter(s string) ([]models.CheckStatus, error) {
 			out = append(out, models.CheckStatusDown)
 		case "degraded":
 			out = append(out, models.CheckStatusDegraded)
+		case "warning":
+			out = append(out, models.CheckStatusWarning)
 		default:
 			return nil, fmt.Errorf("%w: %s", errInvalidStatus, token)
 		}
@@ -58,6 +60,9 @@ const (
 	fieldBody          = "body"
 	msgInvalidJSON     = "Invalid JSON format"
 	msgSlugConflictOrg = "A check with this slug already exists in this organization"
+	// queryTrue is the literal a boolean query flag must equal to be enabled
+	// (e.g. ?dryRun=true).
+	queryTrue = "true"
 )
 
 // Handler provides HTTP handlers for check management endpoints.
@@ -424,7 +429,7 @@ func (h *Handler) ExportChecks(writer http.ResponseWriter, req bunrouter.Request
 // ImportChecks handles importing checks from a JSON export document.
 func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
-	dryRun := req.URL.Query().Get("dryRun") == "true"
+	dryRun := req.URL.Query().Get("dryRun") == queryTrue
 
 	var doc ExportDocument
 	if err := json.NewDecoder(req.Body).Decode(&doc); err != nil {
@@ -439,6 +444,61 @@ func (h *Handler) ImportChecks(writer http.ResponseWriter, req bunrouter.Request
 		case errors.Is(err, ErrOrganizationNotFound):
 			return h.WriteErrorErr(
 				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		default:
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
+		}
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, result)
+}
+
+// ApplyChecks handles POST /api/v1/orgs/:org/checks/apply — the reconcile
+// sibling of import. It accepts a JSON or YAML manifest (the existing export
+// document shape, plus an optional managed-label scope and secret references)
+// and reconciles the managed scope against it. Admin-only (gated by route
+// middleware). Query flags: dryRun, prune, force.
+func (h *Handler) ApplyChecks(writer http.ResponseWriter, req bunrouter.Request) error {
+	orgSlug := req.Param("org")
+	query := req.URL.Query()
+
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid body", []base.ValidationErrorField{
+			{Name: fieldBody, Message: "could not read request body"},
+		})
+	}
+
+	doc, err := parseManifest(body, req.Header.Get("Content-Type"))
+	if err != nil {
+		return h.WriteValidationError(writer, "Invalid manifest", []base.ValidationErrorField{
+			{Name: fieldBody, Message: err.Error()},
+		})
+	}
+
+	opts := ApplyOptions{
+		DryRun: query.Get("dryRun") == queryTrue,
+		Prune:  query.Get("prune") == queryTrue,
+		Force:  query.Get("force") == queryTrue,
+	}
+	if capStr := query.Get("deletionCap"); capStr != "" {
+		if parsed, convErr := strconv.Atoi(capStr); convErr == nil && parsed >= 0 {
+			opts.DeletionCap = parsed
+		}
+	}
+
+	result, err := h.svc.ApplyChecks(req.Context(), orgSlug, doc, opts)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrOrganizationNotFound):
+			return h.WriteErrorErr(
+				writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "Organization not found", err)
+		case errors.Is(err, ErrDeletionCapExceeded):
+			return h.WriteErrorErr(
+				writer, http.StatusConflict, base.ErrorCodeConflict, err.Error(), err)
+		case errors.Is(err, ErrUnresolvedSecretRef):
+			return h.WriteErrorErr(
+				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 		default:
 			return h.WriteErrorErr(
 				writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)

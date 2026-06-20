@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { StatusTimeline } from "./status-timeline";
 import { cn } from "@/lib/utils";
+import { statusStyle } from "@/lib/status-style";
 
 interface LastResult {
   uid: string;
@@ -45,17 +46,12 @@ async function fetchChecks(org: string): Promise<ChecksResponse> {
 
 function getCheckStatus(check: Check): "ok" | "warning" | "error" | "unknown" {
   if (!check.lastResult) return "unknown";
-  switch (check.lastResult.status) {
-    case "up":
-      return "ok";
-    case "down":
-    case "error":
-      return "error";
-    case "timeout":
-      return "warning";
-    default:
-      return "unknown";
-  }
+  const raw = check.lastResult.status;
+  if (raw === "up") return "ok";
+  if (raw === "warning" || raw === "degraded") return "warning";
+  // Hard failures (down/error/timeout) go to the error bucket via the shared util.
+  if (statusStyle(raw).isDown) return "error";
+  return "unknown";
 }
 
 function StatusIcon({

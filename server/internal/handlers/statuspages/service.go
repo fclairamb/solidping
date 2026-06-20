@@ -1421,6 +1421,11 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 		// should still read "up" until the failure is confirmed and an
 		// incident opens.
 		statusStr = "up"
+	case models.CheckStatusWarning:
+		// Live "up, but something to report" — surfaced amber on the public
+		// page (counts as up for availability, but is not hidden like
+		// validating: the operator deliberately flagged something).
+		statusStr = "warning"
 	case models.CheckStatusDegraded:
 		statusStr = "degraded"
 	}

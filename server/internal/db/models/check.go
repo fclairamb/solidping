@@ -23,8 +23,15 @@ const (
 	// configured ConfirmationPeriod hasn't elapsed yet. Display-only:
 	// never triggers notifications, never gates the incident state machine.
 	CheckStatusValidating CheckStatus = 5
-	// CheckStatusDegraded indicates the check is experiencing issues (reserved for future use).
+	// CheckStatusDegraded is the aggregated/summary status: a rolled-up window
+	// contained warning(s) but no dominating failure. Not produced by the live
+	// pipeline (which uses CheckStatusWarning); retained for rendering a
+	// check's aggregated/summary status and as a valid ?status= filter value.
 	CheckStatusDegraded CheckStatus = 7
+	// CheckStatusWarning is the live current status: the target is up but
+	// there is something to report. Display-only like CheckStatusValidating —
+	// never triggers notifications, never gates the incident state machine.
+	CheckStatusWarning CheckStatus = 8
 )
 
 // String returns the lowercase wire name for a CheckStatus, used by the
@@ -42,6 +49,8 @@ func (s CheckStatus) String() string {
 		return "validating"
 	case CheckStatusDegraded:
 		return "degraded"
+	case CheckStatusWarning:
+		return "warning"
 	default:
 		return "unknown"
 	}

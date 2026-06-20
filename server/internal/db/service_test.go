@@ -49,6 +49,10 @@ func testService(t *testing.T, svc db.Service) {
 		testResultsWithCheckAndOrg(ctx, t, svc)
 	})
 
+	t.Run("ResultStatusConstraint6_7_8", func(t *testing.T) {
+		testResultStatusConstraint(ctx, t, svc)
+	})
+
 	t.Run("JSONMapHandling", func(t *testing.T) {
 		testJSONMapHandling(ctx, t, svc)
 	})
@@ -87,6 +91,10 @@ func testService(t *testing.T, svc db.Service) {
 
 	t.Run("UpdateCheckStatusAndClocksTriState", func(t *testing.T) {
 		testUpdateCheckStatusAndClocksTriState(ctx, t, svc)
+	})
+
+	t.Run("OAuthRepos", func(t *testing.T) {
+		testOAuthRepos(ctx, t, svc)
 	})
 }
 
@@ -957,6 +965,43 @@ func testResultsWithCheckAndOrg(ctx context.Context, t *testing.T, svc db.Servic
 		require.NoError(t, err)
 		assert.LessOrEqual(t, len(resultsResp.Results), 2)
 	})
+}
+
+// testResultStatusConstraint is the cross-engine regression guard for the
+// widened results.status CHECK constraint (status in 0..8). It pins that the
+// new live Error(6) and Warning(8) raw rows and the aggregated Degraded(7) row
+// all persist and round-trip on both Postgres and SQLite — the 6 case is a
+// regression for the previously-too-narrow constraint (0..5).
+func testResultStatusConstraint(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	org := models.NewOrganization("status-cstr-org", "")
+	require.NoError(t, svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "status-cstr-check", "http")
+	require.NoError(t, svc.CreateCheck(ctx, check))
+
+	tests := []struct {
+		name   string
+		status models.ResultStatus
+	}{
+		{"Error6", models.ResultStatusError},
+		{"Degraded7", models.ResultStatusDegraded},
+		{"Warning8", models.ResultStatusWarning},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := models.NewResult(org.UID, check.UID, tc.status, 0.1)
+			require.NoError(t, svc.CreateResult(ctx, result),
+				"status %d must satisfy the widened results.status CHECK", int(tc.status))
+
+			retrieved, err := svc.GetResult(ctx, result.UID)
+			require.NoError(t, err)
+			require.NotNil(t, retrieved.Status)
+			require.Equal(t, int(tc.status), *retrieved.Status)
+		})
+	}
 }
 
 func testJSONMapHandling(ctx context.Context, t *testing.T, svc db.Service) {

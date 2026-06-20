@@ -596,6 +596,66 @@ import { PageHeader } from "@/components/shared/page-header";
         importLine={`<div className="flex shrink-0 items-center gap-2">\n  <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n    <ArrowLeft className="h-4 w-4" />\n  </Button>\n  <div className="hidden items-center gap-2 md:flex">\n    {/* labeled action buttons */}\n  </div>\n  <div className="md:hidden">\n    <DropdownMenu>\n      <DropdownMenuTrigger asChild>\n        <Button variant="outline" size="icon" aria-label="More actions">\n          <MoreVertical className="h-4 w-4" />\n        </Button>\n      </DropdownMenuTrigger>\n      <DropdownMenuContent align="end">\n        {/* mirror each action; delete = text-destructive */}\n      </DropdownMenuContent>\n    </DropdownMenu>\n  </div>\n</div>`}
       />
 
+      <h3 className="text-sm font-medium">Detail &amp; edit pages: stack the action toolbar on its own row (action-dense headers)</h3>
+      <p className="text-sm text-muted-foreground">
+        When a detail header carries <strong>more than ~three actions</strong>{" "}
+        (e.g. the check detail page: back + Edit, Enable/Disable, Clone, Badges,
+        Refresh, Delete) the labeled toolbar and a long title fight for the same
+        row — even on a wide desktop. Instead of shrinking the buttons or hiding
+        them behind an overflow menu, drop the toolbar onto its own row. Make the
+        outer wrapper a{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex flex-col gap-3</code>{" "}
+        column: the title block (still wrapped in{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">min-w-0 flex-1</code>{" "}
+        so the{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">h1</code>{" "}
+        truncates) takes the first row, then the action cluster — back arrow
+        leading, as ever — sits on a second row wrapped in{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">flex flex-wrap items-center justify-end gap-2</code>.
+        It is right-aligned and wraps across lines on a narrow phone rather than
+        overflowing. The per-button responsive behaviour (icon-only below{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg</code>,
+        icon + label at{" "}
+        <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">lg+</code>) is
+        unchanged — only the wrappers move.
+      </p>
+      <ExampleRow
+        preview={
+          <div className="flex w-full flex-col gap-3">
+            <div className="min-w-0 flex-1">
+              <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
+                A long page title that would otherwise crowd the toolbar
+              </h1>
+              <p className="mt-1 truncate text-muted-foreground">
+                Optional subtitle / status
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button variant="ghost" size="icon" aria-label="Back">
+                <ArrowLeft />
+              </Button>
+              <Button variant="outline" aria-label="Edit">
+                <Pencil className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Edit</span>
+              </Button>
+              <Button variant="outline" aria-label="Clone">
+                <Copy className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Clone</span>
+              </Button>
+              <Button variant="outline" aria-label="Refresh">
+                <RotateCw className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+              <Button variant="destructive" aria-label="Delete">
+                <Trash2 className="h-4 w-4 sm:mr-2" />
+                <span className="hidden sm:inline">Delete</span>
+              </Button>
+            </div>
+          </div>
+        }
+        importLine={`<div className="flex flex-col gap-3">\n  <div className="min-w-0 flex-1">\n    <h1 className="truncate text-2xl sm:text-3xl font-bold tracking-tight">{title}</h1>\n    {subtitle && <p className="mt-1 text-muted-foreground truncate">{subtitle}</p>}\n  </div>\n  <div className="flex flex-wrap items-center justify-end gap-2">\n    <Button variant="ghost" size="icon" aria-label="Back" onClick={goBack}>\n      <ArrowLeft className="h-4 w-4" />\n    </Button>\n    {/* labeled action buttons — icon-only below lg, icon + label at lg+ */}\n  </div>\n</div>`}
+      />
+
       <div className="rounded-md border border-dashed bg-muted/30 p-4">
         <p className="text-sm text-muted-foreground">
           <strong className="text-foreground">Legacy (retired):</strong> the
@@ -1006,12 +1066,21 @@ function NameSlugExample() {
   );
 }
 
-type MockRow = { id: string; name: string; status: "up" | "down" | "warning"; latency: string };
+type MockRow = {
+  id: string;
+  name: string;
+  status: "up" | "down" | "warning" | "degraded";
+  latency: string;
+};
 
 const MOCK_ROWS: MockRow[] = [
   { id: "1", name: "api.example.com", status: "up", latency: "120 ms" },
   { id: "2", name: "checkout-prod", status: "up", latency: "85 ms" },
+  // "warning" is the live amber status ("up, but something to report");
+  // "degraded" is its aggregated rollup counterpart — both render amber and
+  // route through the shared statusStyle() util.
   { id: "3", name: "billing-staging", status: "warning", latency: "950 ms" },
+  { id: "6", name: "cdn-edge (24h)", status: "degraded", latency: "210 ms" },
   { id: "4", name: "auth.example.com", status: "down", latency: "—" },
   { id: "5", name: "static.example.com", status: "up", latency: "42 ms" },
 ];

@@ -28,10 +28,12 @@ var (
 
 // Result status string labels.
 const (
-	statusStrCreated = "created"
-	statusStrRunning = "running"
-	statusStrDown    = "down"
-	statusStrUnknown = "unknown"
+	statusStrCreated  = "created"
+	statusStrRunning  = "running"
+	statusStrDown     = "down"
+	statusStrWarning  = "warning"
+	statusStrDegraded = "degraded"
+	statusStrUnknown  = "unknown"
 )
 
 // Service provides business logic for results.
@@ -343,6 +345,12 @@ func (s *Service) statusIntToString(status *int) string {
 		return statusStrRunning
 	case int(models.ResultStatusUp):
 		return "up"
+	case int(models.ResultStatusWarning):
+		// Raw "up, but something to report" — counts as up, rendered amber.
+		return statusStrWarning
+	case int(models.ResultStatusDegraded):
+		// Aggregated rollup status (hour/day/month rows).
+		return statusStrDegraded
 	case int(models.ResultStatusDown), int(models.ResultStatusTimeout), int(models.ResultStatusError):
 		return statusStrDown
 	default:

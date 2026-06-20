@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { AlertTriangle, ArrowUp, ArrowDown, Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import type { Check } from "@/api/hooks";
+import { statusStyle } from "@/lib/status-style";
 
 interface CheckSummaryCardsProps {
   check: Check;
@@ -56,10 +57,9 @@ export function CheckSummaryCards({
   const { t } = useTranslation("checks");
   const summaryStatus = check.status ?? check.lastResult?.status;
   const isUp = summaryStatus === "up";
-  const isDown =
-    summaryStatus === "down" ||
-    summaryStatus === "error" ||
-    summaryStatus === "timeout";
+  // warning/degraded count as up (not down) — route the down decision through
+  // the shared util so only hard failures show the red "currently down" card.
+  const isDown = statusStyle(summaryStatus).isDown;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
