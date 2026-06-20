@@ -137,11 +137,44 @@ Either `url` or `host` is required. Default period: 5 minutes.
 |-------|------|----------|---------|-------------|
 | `host` | string | R | | Target hostname |
 | `port` | int | O | 443 | Target port. Validation: 1-65535 |
-| `threshold_days` | int | O | 30 | Days before expiration to mark as down. Must be >= 0 |
+| `criticalDays` | int | O | 30 | Days before expiration to mark **Down** (paging). Must be `0..3650` |
+| `warningDays` | int | O | 30 | Days before expiration to mark **Warning** (amber, non-paging). Must be `>= criticalDays`, `0..3650` |
+| `thresholdDays` | int | O | 30 | **Legacy alias** for `criticalDays`. Read for back-compat; `criticalDays` wins when both are set |
 | `timeout` | duration | O | 10s | Connection + handshake timeout (max: 60s) |
 | `server_name` | string | O | same as host | Override SNI server name |
 
 Min period: 1 hour. Default period: 6 hours.
+
+**Graduated expiry & whole-chain reporting.** Expiry is evaluated against the
+**minimum days-remaining across the whole presented certificate chain** (leaf +
+intermediates), not just the leaf — an intermediate that expires first now drives
+the status. Two tiers:
+
+- `min <= criticalDays` → **Down** (`severity: "critical"`), pages, as before.
+- `criticalDays < min <= warningDays` → **Warning** (`severity: "warning"`,
+  `certExpiryWarning: true`) — amber, counts as up, opens no incident; rollups
+  show **Degraded**.
+- else → **Up**.
+
+Defaults keep `warningDays == criticalDays == 30`, so behaviour is **unchanged**
+until you widen `warningDays`. A handshake failure / actual expiry is **Down** as
+before (trust is enforced at handshake). Recommended: lower `criticalDays` (e.g.
+to 7) and widen `warningDays` (e.g. 30) so a valid-but-soon-expiring cert is a
+warning, not a month-long fake outage.
+
+Output (in `result.output`):
+
+| Key | Description |
+|-----|-------------|
+| `chain` | Array of `{subject, issuer, notAfter, daysRemaining}`, one per presented cert |
+| `soonestExpiring` | `{subject, daysRemaining}` for the cert driving the status |
+| `chainLength` | Number of presented certificates |
+| `chainVerified` | `true` when the handshake produced a verified chain |
+| `certExpiryWarning` | `true` only in the warning tier |
+| `severity` | `"critical"`, `"warning"`, or `""` |
+| `subject`, `issuer`, `not_after`, `days_remaining`, `serial_number`, `dns_names` | Leaf-certificate fields (kept for back-compat) |
+
+`metrics.days_remaining` is the **chain minimum** (the meaningful number to graph).
 
 ---
 

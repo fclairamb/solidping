@@ -58,6 +58,7 @@ import {
 import { StatusBadge } from "@/components/shared/status-badge";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
+import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
@@ -871,8 +872,11 @@ function CheckDetailPage() {
                         {t("checks:detail.outputLabel")}
                       </div>
                       <div className="bg-muted rounded-md p-3 text-sm font-mono max-h-32 overflow-auto">
-                        {Object.entries(check.lastResult.output).map(
-                          ([key, value]) => (
+                        {Object.entries(check.lastResult.output)
+                          // The SSL chain + soonest-expiring details get a
+                          // dedicated table below; don't repeat them as raw JSON.
+                          .filter(([key]) => key !== "chain" && key !== "soonestExpiring")
+                          .map(([key, value]) => (
                             <div key={key} className="flex gap-2">
                               <span className="text-muted-foreground">
                                 {key}:
@@ -883,8 +887,7 @@ function CheckDetailPage() {
                                   : JSON.stringify(value)}
                               </span>
                             </div>
-                          )
-                        )}
+                          ))}
                       </div>
                     </div>
                   )}
@@ -895,6 +898,10 @@ function CheckDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {check.type === "ssl" && (
+        <SslChainCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
 
       <DependenciesCard org={org} checkUid={checkUid} />
 

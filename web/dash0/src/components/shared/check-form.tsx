@@ -471,9 +471,16 @@ export function CheckForm({
   // currently seen by a paired Freebox so the user can pre-fill an ICMP
   // check without typing an IP.
   const [discoverOpen, setDiscoverOpen] = useState(false);
-  const [thresholdDays, setThresholdDays] = useState(
-    getConfigField(initialData?.config, "thresholdDays") ||
+  // SSL expiry tiers. criticalDays (paging, StatusDown) reads the legacy
+  // thresholdDays for back-compat; warningDays (amber, non-paging) is new.
+  const [criticalDays, setCriticalDays] = useState(
+    getConfigField(initialData?.config, "criticalDays") ||
+      getConfigField(initialData?.config, "thresholdDays") ||
       getConfigField(initialData?.config, "threshold_days"),
+  );
+  const [warningDays, setWarningDays] = useState(
+    getConfigField(initialData?.config, "warningDays") ||
+      getConfigField(initialData?.config, "warning_days"),
   );
   const [serverName, setServerName] = useState(
     getConfigField(initialData?.config, "serverName") ||
@@ -621,7 +628,8 @@ export function CheckForm({
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
         if (serverName) cfg.serverName = serverName;
-        if (thresholdDays) cfg.thresholdDays = parseInt(thresholdDays, 10);
+        if (criticalDays) cfg.criticalDays = parseInt(criticalDays, 10);
+        if (warningDays) cfg.warningDays = parseInt(warningDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -786,7 +794,7 @@ export function CheckForm({
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
-    waitSelector, keyword, wsSend, wsExpect, serverName, thresholdDays,
+    waitSelector, keyword, wsSend, wsExpect, serverName, criticalDays, warningDays,
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
@@ -837,7 +845,8 @@ export function CheckForm({
         config.host = host;
         if (port) config.port = parseInt(port, 10);
         if (serverName) config.serverName = serverName;
-        if (thresholdDays) config.thresholdDays = parseInt(thresholdDays, 10);
+        if (criticalDays) config.criticalDays = parseInt(criticalDays, 10);
+        if (warningDays) config.warningDays = parseInt(warningDays, 10);
         break;
       case "tcp":
       case "udp":
@@ -1219,14 +1228,20 @@ export function CheckForm({
               {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
               {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
             </div>
+            <div className="space-y-2">
+              <Label htmlFor="serverName">Server Name (SNI, optional)</Label>
+              <Input id="serverName" type="text" placeholder="defaults to host" value={serverName} onChange={(e) => setServerName(e.target.value)} data-testid="check-server-name-input" />
+            </div>
             <div className="flex gap-4">
-              <div className="space-y-2 flex-1">
-                <Label htmlFor="serverName">Server Name (SNI, optional)</Label>
-                <Input id="serverName" type="text" placeholder="defaults to host" value={serverName} onChange={(e) => setServerName(e.target.value)} data-testid="check-server-name-input" />
+              <div className="space-y-2 w-40">
+                <Label htmlFor="criticalDays">Critical (days)</Label>
+                <Input id="criticalDays" type="number" placeholder="30" value={criticalDays} onChange={(e) => setCriticalDays(e.target.value)} data-testid="check-critical-days-input" />
+                <p className="text-xs text-muted-foreground">Down (pages) at or below this.</p>
               </div>
               <div className="space-y-2 w-40">
-                <Label htmlFor="thresholdDays">Threshold (days)</Label>
-                <Input id="thresholdDays" type="number" placeholder="30" value={thresholdDays} onChange={(e) => setThresholdDays(e.target.value)} data-testid="check-threshold-days-input" />
+                <Label htmlFor="warningDays">Warning (days)</Label>
+                <Input id="warningDays" type="number" placeholder="30" value={warningDays} onChange={(e) => setWarningDays(e.target.value)} data-testid="check-warning-days-input" />
+                <p className="text-xs text-muted-foreground">Amber warning (no page) at or below this. Must be ≥ Critical.</p>
               </div>
             </div>
           </>
