@@ -550,9 +550,19 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	checksHandler := checks.NewHandler(checksService, s.config)
 	orgChecks := api.NewGroup("/orgs/:org/checks").Use(authMiddleware.RequireAuth)
 	orgChecks.GET("", checksHandler.ListChecks)
-	orgChecks.GET("/export", checksHandler.ExportChecks)
-	orgChecks.POST("/import", checksHandler.ImportChecks)
 	orgChecks.POST("", checksHandler.CreateCheck)
+
+	// Config-as-code surface (export/import/apply) is admin-only: import and
+	// apply mutate the whole check set, and apply can delete-by-absence.
+	// Export is gated alongside them (it was RequireAuth-only — a latent gap;
+	// see specs/todos/2026-06-20-05-config-as-code.md). Apply is the reconcile
+	// sibling of import with dry-run/prune/deletion-cap guardrails.
+	orgChecksAdmin := api.NewGroup("/orgs/:org/checks").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess, authMiddleware.RequireOrgAdmin)
+	orgChecksAdmin.GET("/export", checksHandler.ExportChecks)
+	orgChecksAdmin.POST("/import", checksHandler.ImportChecks)
+	orgChecksAdmin.POST("/apply", checksHandler.ApplyChecks)
+
 	orgChecks.POST("/validate", checksHandler.ValidateCheck)
 	orgChecks.GET("/:checkUid", checksHandler.GetCheck)
 	orgChecks.PUT("/:slug", checksHandler.UpsertCheck)

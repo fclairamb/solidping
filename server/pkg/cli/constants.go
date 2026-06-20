@@ -8,6 +8,7 @@ const (
 	colCreated = "CREATED"
 	colActor   = "ACTOR"
 	colCheck   = "CHECK"
+	colSlug    = "SLUG"
 
 	argUID     = "<uid>"
 	argUIDSlug = "<uid|slug>"
