@@ -2,6 +2,7 @@
   "operational": "Operativo",
   "outage": "Caída",
   "degraded": "Degradado",
+  "warning": "Advertencia",
   "unknown": "Desconocido",
   "allSystemsOperational": "Todos los sistemas operativos",
   "someSystemsDegraded": "Algunos sistemas degradados",
