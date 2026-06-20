@@ -1,6 +1,7 @@
 # Config-as-code (declarative checks)
 
-> Idea, not ready for implementation — but now **grounded against the codebase** (2026-06-20).
+> Active spec — moved from `specs/ideas/` 2026-06-20, **grounded against the codebase**. A few
+> items still need a call before building (see *Risks / decisions to confirm*).
 > Source: the Maintenant competitor analysis
 > ([`../../docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)) lists
 > **Docker-label configuration** — a lightweight config-as-code path — as an advantage SolidPing
@@ -53,7 +54,7 @@ dry-run/diff, secret references, and an `sp apply` command.
    command (the CLI is the natural front door for the self-hosted/GitOps audience).
 6. **Authorization gap (latent).** Export/import today are gated by `RequireAuth` **only** — any
    org member can run them ([`app/server.go:551-554`](../../server/internal/app/server.go)),
-   despite [`2026-01-03-conf-exporters.md`](2026-01-03-conf-exporters.md) intending admin-only. A
+   despite [`2026-01-03-conf-exporters.md`](../ideas/2026-01-03-conf-exporters.md) intending admin-only. A
    *destructive* apply must be **admin-gated** (the discovery handler's `isAdmin()` is the
    precedent), and we should gate export/import the same way while we're here.
 
@@ -119,7 +120,7 @@ recreating. Document the default behavior either way.
   deletion cap, `${env}`/`${param}` resolution. This is where it becomes true GitOps.
 - **Phase 3 (optional parity) — Docker-label discovery.** Read `solidping.*` labels off running
   containers and *suggest* checks — but this overlaps
-  [`2025-12-28-automatic-app-discovery.md`](2025-12-28-automatic-app-discovery.md) and the existing
+  [`2025-12-28-automatic-app-discovery.md`](../ideas/2025-12-28-automatic-app-discovery.md) and the existing
   CIDR discovery ([`server/internal/discovery/`](../../server/internal/discovery/)), which are
   **suggest-not-declarative** by design. Treat it as a thin discovery source feeding the same apply
   path, not a second reconcile engine. Lowest priority; the analysis explicitly recommends **not**
@@ -143,7 +144,7 @@ recreating. Document the default behavior either way.
 - **Self-hosted / GitOps audience.** A previewable, idempotent `sp apply checks.yaml` is exactly
   the workflow homelabbers and self-hosters expect, and it directly answers the
   "what if the service disappears — I want my config in git" motivation behind
-  [`2026-01-03-conf-exporters.md`](2026-01-03-conf-exporters.md).
+  [`2026-01-03-conf-exporters.md`](../ideas/2026-01-03-conf-exporters.md).
 - **Leans entirely on assets that already exist** — the export schema, the idempotent
   upsert-by-slug import, the `sp` CLI, the secret envelope + `parameters` table, and check labels.
   Phase 1 is mostly *wiring and guardrails*, not new subsystems.
