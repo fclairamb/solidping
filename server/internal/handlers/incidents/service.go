@@ -159,13 +159,18 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	resultStatus := models.ResultStatus(*result.Status)
 
-	// Determine if this is a success or failure
+	// Determine if this is a success, failure, or warning.
 	isSuccess := resultStatus == models.ResultStatusUp
 	isFailure := resultStatus == models.ResultStatusDown ||
 		resultStatus == models.ResultStatusTimeout ||
 		resultStatus == models.ResultStatusError
+	// Warning is "up, but something to report": display-only and incident-
+	// neutral (modelled on CheckStatusValidating). It updates the visible
+	// status and the up<->warning streak edges, but never arms the incident
+	// clocks and never opens/resolves an incident.
+	isWarning := resultStatus == models.ResultStatusWarning
 
-	if !isSuccess && !isFailure {
+	if !isSuccess && !isFailure && !isWarning {
 		return nil // Skip initial or unknown statuses
 	}
 
@@ -179,10 +184,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 
 	now := s.clock.Now()
 	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
-		check, isSuccess, isFailure, activeIncident, now,
+		check, isSuccess, isFailure, isWarning, activeIncident, now,
 	)
 
-	clocks := deriveIncidentClocks(check, isSuccess, isFailure, activeIncident, now)
+	// Warning is clock-neutral: it never arms or clears the confirmation /
+	// recovery clocks, so a pre-incident failure streak or an open incident's
+	// recovery window survives a warning untouched.
+	clocks := models.IncidentClockUpdate{}
+	if !isWarning {
+		clocks = deriveIncidentClocks(check, isSuccess, isFailure, activeIncident, now)
+	}
 
 	// Update check status and incident clocks in one atomic UPDATE. Writing
 	// both together means a mid-write crash can no longer leave status updated
@@ -200,6 +211,12 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		check.StatusChangedAt = statusChangedAt
 	}
 	applyClocks(check, clocks, now)
+
+	// Warning never enters the incident state machine: the visible status and
+	// streak have been written above; there is nothing to open or resolve.
+	if isWarning {
+		return nil
+	}
 
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
 }
@@ -270,17 +287,18 @@ func applyClocks(check *models.Check, clocks models.IncidentClockUpdate, _ time.
 // failure lifecycle: streak keeps growing across the boundary and
 // statusChangedAt is not bumped. Only the up<->failing edge bumps it.
 func deriveCheckStatus(
-	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident, now time.Time,
+	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident, now time.Time,
 ) (models.CheckStatus, int, *time.Time) {
 	prevWasFailure := check.Status == models.CheckStatusDown ||
 		check.Status == models.CheckStatusValidating
 
-	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, prevWasFailure, now)
+	newStreak, statusChangedAt := deriveStreakAndChange(check, isSuccess, isFailure, isWarning, prevWasFailure, now)
 
-	newStatus := pickStatus(check, isSuccess, isFailure, activeIncident, newStreak, now)
+	newStatus := pickStatus(check, isSuccess, isFailure, isWarning, activeIncident, newStreak, now)
 
 	// validating <-> down do not bump statusChangedAt: both are sub-states
-	// of "the check is failing right now".
+	// of "the check is failing right now". Warning is not a failure sub-state,
+	// so any edge into or out of warning bumps statusChangedAt normally.
 	newIsFailure := newStatus == models.CheckStatusDown ||
 		newStatus == models.CheckStatusValidating
 	if statusChangedAt == nil && check.Status != newStatus &&
@@ -292,11 +310,15 @@ func deriveCheckStatus(
 }
 
 // deriveStreakAndChange computes the next streak count and whether
-// statusChangedAt should bump for the up<->failing edge.
+// statusChangedAt should bump for the up<->failing (and up<->warning) edge.
+// A continuing same-state run (up->up, warning->warning, or failing->failing)
+// grows the streak; any other transition resets it to 1 and bumps the change
+// timestamp.
 func deriveStreakAndChange(
-	check *models.Check, isSuccess, isFailure, prevWasFailure bool, now time.Time,
+	check *models.Check, isSuccess, isFailure, isWarning, prevWasFailure bool, now time.Time,
 ) (int, *time.Time) {
 	if (isSuccess && check.Status == models.CheckStatusUp) ||
+		(isWarning && check.Status == models.CheckStatusWarning) ||
 		(isFailure && prevWasFailure) {
 		return check.StatusStreak + 1, nil
 	}
@@ -311,11 +333,17 @@ func deriveStreakAndChange(
 // ProcessCheckResult), which makes the "open immediately"
 // (ConfirmationPeriodSeconds == 0) path flip straight to down.
 func pickStatus(
-	check *models.Check, isSuccess, isFailure bool, activeIncident *models.Incident,
+	check *models.Check, isSuccess, isFailure, isWarning bool, activeIncident *models.Incident,
 	newStreak int, now time.Time,
 ) models.CheckStatus {
 	if isSuccess {
 		return models.CheckStatusUp
+	}
+	// Warning reflects the latest live signal regardless of incident state: it
+	// counts as up and never resolves an incident, but the visible status
+	// shows what the checker just reported ("up, but something to report").
+	if isWarning {
+		return models.CheckStatusWarning
 	}
 	if activeIncident != nil {
 		return models.CheckStatusDown
