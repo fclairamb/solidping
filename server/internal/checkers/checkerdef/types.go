@@ -15,6 +15,17 @@ const (
 	StatusDown    Status = 4 // Check failed (target unreachable or unhealthy)
 	StatusTimeout Status = 5 // Check timed out
 	StatusError   Status = 6 // Internal error during check execution
+	// StatusDegraded is the aggregated rollup status: a window contained
+	// warning(s) but no dominating failure. It is produced ONLY by the
+	// aggregation job, never returned by a checker's Execute. It is declared
+	// here so Severity() can rank the value the rollup writes.
+	StatusDegraded Status = 7
+	// StatusWarning indicates the target is up but there is something to
+	// report (e.g. a certificate nearing expiry, a flapping container). It
+	// counts as up for availability and is neutral for incidents; the
+	// aggregation job promotes any window containing a raw Warning to the
+	// aggregated Degraded status. Checkers never emit Degraded directly.
+	StatusWarning Status = 8
 )
 
 // Status string labels.
@@ -24,6 +35,7 @@ const (
 	statusStrDown    = "down"
 	statusStrTimeout = "timeout"
 	statusStrError   = "error"
+	statusStrWarning = "warning"
 	statusStrUnknown = "unknown"
 )
 
@@ -40,8 +52,35 @@ func (s Status) String() string {
 		return statusStrTimeout
 	case StatusError:
 		return statusStrError
+	case StatusWarning:
+		return statusStrWarning
 	default:
 		return statusStrUnknown
+	}
+}
+
+// Severity ranks statuses so the aggregation job can resolve a dominant
+// status by gravity rather than by raw numeric value (the numbers do not
+// encode severity once Degraded=7 / Warning=8 exist). Higher = more severe.
+//
+// Hard failures (Down/Timeout/Error) outrank everything; the aggregated
+// Degraded status (7, produced only by rollups) sits below failures but
+// above Up; Warning ranks at Up level for availability (it counts as up),
+// while its promotion to Degraded in a rollup is handled separately in the
+// aggregation job, not here. Created/Running are lifecycle markers and rank
+// lowest.
+func (s Status) Severity() int {
+	switch s {
+	case StatusDown, StatusTimeout, StatusError:
+		return 4
+	case StatusDegraded:
+		return 3
+	case StatusUp, StatusWarning:
+		return 2
+	case StatusRunning:
+		return 1
+	default:
+		return 0
 	}
 }
 
