@@ -38,6 +38,10 @@ function statusColor(status?: string) {
       return "#facc15";
     case "error":
       return "#f97316";
+    case "warning":
+    case "degraded":
+      // "up, but something to report" / aggregated rollup — amber, neutral.
+      return "#facc15";
     default:
       return "transparent";
   }

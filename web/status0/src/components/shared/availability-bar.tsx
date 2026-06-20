@@ -5,18 +5,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import type { DailyAvailabilityPoint } from "@/api/hooks";
+import { statusStyle } from "@/lib/status-style";
 
 function getBarColor(status: string) {
-  switch (status) {
-    case "up":
-      return "bg-green-500";
-    case "degraded":
-      return "bg-yellow-500";
-    case "down":
-      return "bg-red-500";
-    default:
-      return "bg-gray-300";
-  }
+  // noData keeps its distinct light-gray bar; every other status (including
+  // the amber warning/degraded pair) routes through the shared util.
+  if (status === "noData" || status === "unknown") return "bg-gray-300";
+  return statusStyle(status).color;
 }
 
 interface AvailabilityBarProps {

@@ -15,7 +15,12 @@
   "internal": "Interne",
   "ungroupedChecks": "Contrôles non groupés",
   "status": {
-    "validating": "En validation"
+    "validating": "En validation",
+    "up": "Opérationnel",
+    "down": "En panne",
+    "warning": "Avertissement",
+    "degraded": "Dégradé",
+    "unknown": "Inconnu"
   },
   "table": {
     "name": "Nom",

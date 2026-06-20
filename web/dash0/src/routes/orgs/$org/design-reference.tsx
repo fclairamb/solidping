@@ -1066,12 +1066,21 @@ function NameSlugExample() {
   );
 }
 
-type MockRow = { id: string; name: string; status: "up" | "down" | "warning"; latency: string };
+type MockRow = {
+  id: string;
+  name: string;
+  status: "up" | "down" | "warning" | "degraded";
+  latency: string;
+};
 
 const MOCK_ROWS: MockRow[] = [
   { id: "1", name: "api.example.com", status: "up", latency: "120 ms" },
   { id: "2", name: "checkout-prod", status: "up", latency: "85 ms" },
+  // "warning" is the live amber status ("up, but something to report");
+  // "degraded" is its aggregated rollup counterpart — both render amber and
+  // route through the shared statusStyle() util.
   { id: "3", name: "billing-staging", status: "warning", latency: "950 ms" },
+  { id: "6", name: "cdn-edge (24h)", status: "degraded", latency: "210 ms" },
   { id: "4", name: "auth.example.com", status: "down", latency: "—" },
   { id: "5", name: "static.example.com", status: "up", latency: "42 ms" },
 ];

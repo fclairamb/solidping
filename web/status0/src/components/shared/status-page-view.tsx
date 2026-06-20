@@ -18,53 +18,18 @@ import { ResponseTimeChart } from "./response-time-chart";
 import { LanguageSwitcher } from "./language-switcher";
 import { StatusUpdatesTimeline } from "./status-updates-timeline";
 import { SubscribeWidget } from "./subscribe-widget";
+import { statusStyle } from "@/lib/status-style";
 
 function getStatusColor(status: string) {
-  switch (status) {
-    case "ok":
-    case "up":
-      return "bg-green-500";
-    case "error":
-    case "down":
-      return "bg-red-500";
-    case "warning":
-    case "degraded":
-      return "bg-yellow-500";
-    default:
-      return "bg-gray-400";
-  }
+  return statusStyle(status).color;
 }
 
 function getStatusBadgeVariant(status: string) {
-  switch (status) {
-    case "ok":
-    case "up":
-      return "success" as const;
-    case "error":
-    case "down":
-      return "destructive" as const;
-    case "warning":
-    case "degraded":
-      return "warning" as const;
-    default:
-      return "secondary" as const;
-  }
+  return statusStyle(status).badgeVariant;
 }
 
 function getStatusLabelKey(status: string) {
-  switch (status) {
-    case "ok":
-    case "up":
-      return "operational";
-    case "error":
-    case "down":
-      return "outage";
-    case "warning":
-    case "degraded":
-      return "degraded";
-    default:
-      return "unknown";
-  }
+  return statusStyle(status).labelKey;
 }
 
 function getOverallStatus(sections: StatusPageSection[]): string {

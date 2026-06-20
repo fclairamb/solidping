@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { PinnedResultBox } from "@/components/checks/pinned-result-box";
+import { statusStyle } from "@/lib/status-style";
 
 type TimeRange = "hour" | "day" | "week" | "month";
 
@@ -414,17 +415,20 @@ export function ResponseTimeChart({
   const COLOR_DOWN = "hsl(0, 72%, 51%)";
 
   const gradientStops = useMemo(() => {
+    // Non-failing statuses (up, created, running, and the warning/degraded
+    // "up, but something to report" states) render neutral green — only hard
+    // failures (down/error/timeout/unknown) tint the line red.
+    const isNeutralStatus = (status: string) => !statusStyle(status).isDown;
     const realPoints = chartData.filter((p) => p.durationMs != null);
     if (realPoints.length < 2) {
       const color =
-        realPoints.length === 1 && realPoints[0].status !== "up" && realPoints[0].status !== "created" && realPoints[0].status !== "running"
+        realPoints.length === 1 && !isNeutralStatus(realPoints[0].status)
           ? COLOR_DOWN
           : COLOR_UP;
       return [{ offset: 0, color }, { offset: 1, color }];
     }
     const n = realPoints.length;
     const stops: { offset: number; color: string }[] = [];
-    const isNeutralStatus = (status: string) => status === "up" || status === "created" || status === "running";
     const colorFor = (status: string) =>
       isNeutralStatus(status) ? COLOR_UP : COLOR_DOWN;
 
@@ -639,8 +643,8 @@ export function ResponseTimeChart({
                         // it doesn't trigger a re-render.
                         dotPositions.current[uid] = { cx, cy };
                         const fill =
-                          payload.status === "down" ||
-                          payload.status === "unknown"
+                          payload.status === "unknown" ||
+                          statusStyle(payload.status).isDown
                             ? COLOR_DOWN
                             : COLOR_UP;
                         const isSelected = selectedUid === uid;

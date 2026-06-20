@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { statusStyle } from "@/lib/status-style";
 
 interface Result {
   uid: string;
@@ -40,23 +41,9 @@ function StatusBar({
   timestamp: string;
   latency?: number;
 }) {
-  const bgClass =
-    status === "ok" || status === "up"
-      ? "bg-green-500"
-      : status === "warning"
-        ? "bg-yellow-500"
-        : status === "error" || status === "down"
-          ? "bg-red-500"
-          : "bg-gray-300";
-
-  const dotClass =
-    status === "ok" || status === "up"
-      ? "bg-green-400"
-      : status === "warning"
-        ? "bg-yellow-400"
-        : status === "error" || status === "down"
-          ? "bg-red-400"
-          : "bg-gray-400";
+  const style = statusStyle(status);
+  const bgClass = style.color;
+  const dotClass = style.dotColor;
 
   const date = new Date(timestamp);
   const timeStr = date.toLocaleTimeString([], {

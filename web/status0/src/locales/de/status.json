@@ -2,6 +2,7 @@
   "operational": "Betriebsbereit",
   "outage": "Ausfall",
   "degraded": "Beeinträchtigt",
+  "warning": "Warnung",
   "unknown": "Unbekannt",
   "allSystemsOperational": "Alle Systeme betriebsbereit",
   "someSystemsDegraded": "Einige Systeme beeinträchtigt",
