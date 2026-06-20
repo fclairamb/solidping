@@ -13,7 +13,7 @@ import (
 // inspectOpts configures a synthetic container.InspectResponse for buildResult.
 type inspectOpts struct {
 	running      bool
-	state        string
+	state        container.ContainerState
 	restartCount int
 	startedAt    string
 	healthStatus string // "" → no Health block
@@ -21,7 +21,7 @@ type inspectOpts struct {
 
 func makeInspect(o inspectOpts) container.InspectResponse {
 	state := &container.State{
-		Status:    container.ContainerState(o.state),
+		Status:    o.state,
 		Running:   o.running,
 		StartedAt: o.startedAt,
 	}

@@ -138,6 +138,9 @@ func TestDockerConfig_ResolveRestartLoopWindow(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	r.Equal(defaultRestartLoopWindow, (&DockerConfig{RestartLoopMinRestarts: 3}).resolveRestartLoopWindow())
-	r.Equal(90*time.Second, (&DockerConfig{RestartLoopMinRestarts: 3, RestartLoopWindow: 90 * time.Second}).resolveRestartLoopWindow())
+	enabledNoWindow := &DockerConfig{RestartLoopMinRestarts: 3}
+	r.Equal(defaultRestartLoopWindow, enabledNoWindow.resolveRestartLoopWindow())
+
+	withWindow := &DockerConfig{RestartLoopMinRestarts: 3, RestartLoopWindow: 90 * time.Second}
+	r.Equal(90*time.Second, withWindow.resolveRestartLoopWindow())
 }
