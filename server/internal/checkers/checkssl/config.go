@@ -36,7 +36,7 @@ type SSLConfig struct {
 
 	// WarningDays is the days-before-expiration threshold that marks the check
 	// as Warning (amber, non-paging). Defaults to 30, equal to CriticalDays so
-	// behaviour is unchanged until widened.
+	// behavior is unchanged until widened.
 	WarningDays int `json:"warningDays"`
 
 	// CriticalDays is the days-before-expiration threshold that marks the check
@@ -229,8 +229,9 @@ func (c *SSLConfig) validateThresholds() error {
 
 // effectiveThresholds resolves the warning/critical days that will actually be
 // used, applying the legacy alias and per-tier defaults. Used by execution.
-func (c *SSLConfig) effectiveThresholds() (warning, critical int) {
-	critical = c.CriticalDays
+// Returns (warning, critical).
+func (c *SSLConfig) effectiveThresholds() (int, int) {
+	critical := c.CriticalDays
 	if critical == 0 {
 		critical = c.ThresholdDays
 	}
@@ -239,7 +240,7 @@ func (c *SSLConfig) effectiveThresholds() (warning, critical int) {
 		critical = defaultCriticalDays
 	}
 
-	warning = c.WarningDays
+	warning := c.WarningDays
 	if warning <= 0 {
 		warning = defaultWarningDays
 	}

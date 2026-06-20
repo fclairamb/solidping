@@ -145,7 +145,7 @@ type chainCertReport struct {
 	DaysRemaining int    `json:"daysRemaining"`
 }
 
-// chainExpiry summarises the whole presented chain: its per-cert report plus the
+// chainExpiry summarizes the whole presented chain: its per-cert report plus the
 // soonest-expiring cert (the minimum days-remaining drives the status decision).
 type chainExpiry struct {
 	chain       []chainCertReport
