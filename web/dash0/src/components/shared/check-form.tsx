@@ -156,6 +156,19 @@ function getConfigField(
   return String(value);
 }
 
+// durationStringToSeconds converts a simple Go duration string ("120s", "2m")
+// into whole seconds for a numeric input. Returns "" when empty/unparseable so
+// the input stays blank rather than showing 0.
+function durationStringToSeconds(raw: string): string {
+  if (!raw) return "";
+  const match = raw.match(/^(\d+(?:\.\d+)?)(s|m|h)$/);
+  if (!match) return "";
+  const value = parseFloat(match[1]);
+  const unit = match[2];
+  const seconds = unit === "h" ? value * 3600 : unit === "m" ? value * 60 : value;
+  return String(Math.round(seconds));
+}
+
 // splitBlocklists turns the DNSBL blocklists textarea (comma/newline separated)
 // into a trimmed, de-duplicated array, dropping empty entries.
 function splitBlocklists(raw: string): string[] {
@@ -407,6 +420,14 @@ export function CheckForm({
   const [produceTest, setProduceTest] = useState(getConfigField(initialData?.config, "produceTest") === "true");
   const [containerName, setContainerName] = useState(getConfigField(initialData?.config, "containerName"));
   const [containerId, setContainerId] = useState(getConfigField(initialData?.config, "containerId"));
+  const [restartLoopMinRestarts, setRestartLoopMinRestarts] = useState(
+    getConfigField(initialData?.config, "restartLoopMinRestarts"),
+  );
+  // Window is a Go duration string in config ("120s"); the input edits whole seconds.
+  const [restartLoopWindowSeconds, setRestartLoopWindowSeconds] = useState(
+    durationStringToSeconds(getConfigField(initialData?.config, "restartLoopWindow")),
+  );
+  const [dockerRestartLoopOpen, setDockerRestartLoopOpen] = useState(false);
   const [oid, setOid] = useState(getConfigField(initialData?.config, "oid"));
   const [community, setCommunity] = useState(getConfigField(initialData?.config, "community"));
   const [waitSelector, setWaitSelector] = useState(getConfigField(initialData?.config, "waitSelector"));
@@ -579,6 +600,8 @@ export function CheckForm({
     setProduceTest(getConfigField(cfg, "produceTest") === "true");
     setContainerName(getConfigField(cfg, "containerName"));
     setContainerId(getConfigField(cfg, "containerId"));
+    setRestartLoopMinRestarts(getConfigField(cfg, "restartLoopMinRestarts"));
+    setRestartLoopWindowSeconds(durationStringToSeconds(getConfigField(cfg, "restartLoopWindow")));
     setOid(getConfigField(cfg, "oid"));
     setCommunity(getConfigField(cfg, "community"));
     setWaitSelector(getConfigField(cfg, "waitSelector"));
@@ -752,6 +775,8 @@ export function CheckForm({
         if (containerName) cfg.containerName = containerName;
         if (containerId) cfg.containerId = containerId;
         if (host) cfg.host = host;
+        if (restartLoopMinRestarts) cfg.restartLoopMinRestarts = parseInt(restartLoopMinRestarts, 10);
+        if (restartLoopWindowSeconds) cfg.restartLoopWindow = `${parseInt(restartLoopWindowSeconds, 10)}s`;
         break;
       case "browser":
         if (url) cfg.url = url;
@@ -794,6 +819,7 @@ export function CheckForm({
     startTLS, tlsVerify, ehloDomain, expectGreeting, checkAuth, database, query, script,
     serviceName, tls, brokers, topic, produceTest, minPlayers, maxPlayersField, edition,
     vhost, queue, oid, community, expectedValue, snmpOperator, containerName, containerId,
+    restartLoopMinRestarts, restartLoopWindowSeconds,
     waitSelector, keyword, wsSend, wsExpect, serverName, criticalDays, warningDays,
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
@@ -986,6 +1012,8 @@ export function CheckForm({
         if (containerName) config.containerName = containerName;
         if (containerId) config.containerId = containerId;
         if (host) config.host = host;
+        if (restartLoopMinRestarts) config.restartLoopMinRestarts = parseInt(restartLoopMinRestarts, 10);
+        if (restartLoopWindowSeconds) config.restartLoopWindow = `${parseInt(restartLoopWindowSeconds, 10)}s`;
         break;
       case "browser":
         if (!url) { setError("URL is required"); return; }
@@ -1676,6 +1704,31 @@ export function CheckForm({
               <Label htmlFor="host">Docker Host (optional)</Label>
               <Input id="host" type="text" placeholder="unix:///var/run/docker.sock" value={host} onChange={(e) => setHost(e.target.value)} data-testid="check-host-input" />
               <p className="text-xs text-muted-foreground">Default: unix:///var/run/docker.sock. Use tcp://host:port for remote Docker daemons.</p>
+            </div>
+            <div className="space-y-2">
+              <button type="button" className="text-sm underline" onClick={() => setDockerRestartLoopOpen((v) => !v)}>
+                {dockerRestartLoopOpen ? "▼ " : "▶ "}Restart-loop detection (advanced)
+              </button>
+              {dockerRestartLoopOpen && (
+                <div className="space-y-2 pl-4 border-l">
+                  <p className="text-xs text-muted-foreground">
+                    Flag a running container as crash-looping when it has restarted at least N
+                    times and (re)started within the recency window. Leave Min Restarts empty
+                    (or 0) to disable. A detected loop reports a Warning (amber) — it counts as
+                    up and does not page.
+                  </p>
+                  <div className="space-y-1">
+                    <Label htmlFor="restartLoopMinRestarts">Min Restarts (0 = disabled)</Label>
+                    <Input id="restartLoopMinRestarts" type="number" min="0" placeholder="3" value={restartLoopMinRestarts}
+                      onChange={(e) => setRestartLoopMinRestarts(e.target.value)} data-testid="check-restart-loop-min-input" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="restartLoopWindowSeconds">Window (seconds, default 120)</Label>
+                    <Input id="restartLoopWindowSeconds" type="number" min="1" placeholder="120" value={restartLoopWindowSeconds}
+                      onChange={(e) => setRestartLoopWindowSeconds(e.target.value)} data-testid="check-restart-loop-window-input" />
+                  </div>
+                </div>
+              )}
             </div>
           </>
         );

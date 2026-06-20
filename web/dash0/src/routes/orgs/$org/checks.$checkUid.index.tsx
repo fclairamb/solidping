@@ -59,6 +59,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
+import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
 import { ResponseTimeChart } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
@@ -901,6 +902,10 @@ function CheckDetailPage() {
 
       {check.type === "ssl" && (
         <SslChainCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
+      )}
+
+      {check.type === "docker" && (
+        <DockerRestartLoopCard output={check.lastResult?.output as Record<string, unknown> | undefined} />
       )}
 
       <DependenciesCard org={org} checkUid={checkUid} />
