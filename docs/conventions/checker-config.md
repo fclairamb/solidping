@@ -458,8 +458,29 @@ Min period: 6 hours. Default period: 24 hours.
 | `containerName` | string | O* | | Container name. *At least one of `containerName`/`containerId` required |
 | `containerId` | string | O* | | Container ID. *At least one of `containerName`/`containerId` required |
 | `timeout` | duration | O | 10s | Check timeout (max: 60s) |
+| `restartLoopMinRestarts` | int | O | `0` (disabled) | Opt-in restart-loop detection. When `> 0`, a *running* container whose lifetime restart count is at least this many **and** that (re)started within `restartLoopWindow` is flagged as a suspected crash-loop |
+| `restartLoopWindow` | duration | O | 120s (when enabled) | Recency window for restart-loop detection. Only applied when `restartLoopMinRestarts > 0`. Max: 24h |
 
 Requires Docker socket access.
+
+**Restart-loop detection (opt-in heuristic).** A container that is *running* at
+inspect time but crash-looping (restarting every few seconds) would otherwise
+report `up`. When `restartLoopMinRestarts > 0`, the checker flags it: an actively
+looping container always shows a freshly-recent `startedAt`, so the recency
+window (`restartLoopWindow`) carries the signal while the count floor
+(`restartLoopMinRestarts`) keeps a single deploy restart from tripping it. A
+detected loop returns the **`warning`** status (counts as up, rolls up to
+`degraded`, does not page); a genuinely not-running/unhealthy container still
+returns `down` and pages. Not-running and unhealthy short-circuits are evaluated
+*before* the loop branch. Additional output keys when detection is enabled:
+
+| Output key | Type | Meaning |
+|------------|------|---------|
+| `secondsSinceStart` | number | Seconds since the current run started (always emitted when detection is enabled, even below threshold) |
+| `restartLoop` | bool | `true` only when a loop is suspected (status `warning`) |
+
+`metrics.restartCount` is always emitted (lifetime restart count), independent of
+detection.
 
 ---
 
