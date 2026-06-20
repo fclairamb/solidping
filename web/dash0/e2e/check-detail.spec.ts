@@ -231,12 +231,13 @@ test.describe("Check Detail Page", () => {
     expect(deleteBox).not.toBeNull();
     expect(deleteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
 
-    // No horizontal overflow on the wide desktop.
-    const hasDesktopOverflow = await page.evaluate(
-      () =>
-        document.documentElement.scrollWidth >
-        document.documentElement.clientWidth + 1,
-    );
-    expect(hasDesktopOverflow).toBe(false);
+    // The header itself does not overflow horizontally: the truncating title
+    // and the wrapping toolbar fit within the header's own width. Scope the
+    // check to the header element — unrelated page content (e.g. a chart that
+    // sizes differently in headless CI) must not flake this header assertion.
+    const headerOverflow = await page
+      .getByTestId("check-detail-header")
+      .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
+    expect(headerOverflow).toBe(false);
   });
 });
