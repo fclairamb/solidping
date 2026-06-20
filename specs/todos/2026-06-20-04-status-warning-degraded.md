@@ -213,3 +213,39 @@ Amend the `results.status` CHECK in **`001_v0_1_0.up.sql`** for **both** dialect
   are **five** status→string sites (not two): `CheckStatus.String()`, `StatusToString`,
   `results/service.go statusIntToString`, the checks-service LastResult mapper, and Slack — plus
   `parseStatusFilter` already accepting `"degraded"`.
+
+## Implementation Plan
+
+Ordered, granular steps (each is its own commit after `make fmt`):
+
+1. **Enums + `String()` + `Severity()`** —
+   - `checkerdef/types.go`: add `StatusWarning Status = 8`, `statusStrWarning = "warning"`,
+     `String()` case, and `func (s Status) Severity() int` (Down/Timeout/Error highest, then
+     Degraded(=7, never emitted by a checker but ranked), then Up; Warning ranks at Up level for
+     availability — promotion to Degraded is handled in aggregation, not here).
+   - `db/models/result.go`: add `ResultStatusWarning = 8`, `ResultStatusDegraded = 7`;
+     `StatusToString()` → `"WARNING"` / `"DEGRADED"`.
+   - `db/models/check.go`: add `CheckStatusWarning = 8`; `String()` → `"warning"`; keep
+     `CheckStatusDegraded = 7` → `"degraded"`.
+2. **Wire-string mappers (all five + statuspages + filter)** — teach the new values to:
+   `results/service.go statusIntToString` (warning→"warning", degraded→"degraded", keep
+   Down/Timeout/Error→"down"); checks-service `convertResultToLastResultResponse` (warning→"warning");
+   `slack statusIntToString` (warning→"warning"); `statuspages/service.go` check-status mapper
+   (CheckStatusWarning→"warning"); `checks/handler.go parseStatusFilter` accepts `"warning"`.
+3. **Migration constraint** — widen `results.status` CHECK to `status in (0,1,2,3,4,5,6,7,8)` in both
+   `001_v0_1_0.up.sql` dialects (adds the missing 6=error plus 7=degraded, 8=warning).
+4. **Availability** — `job_aggregation.go processRawResult`: count `Up` **or** `Warning` toward
+   `successCount`.
+5. **Aggregation Warning→Degraded promotion + severity tie-break** — rework the rollup status
+   selection: (1) dominating hard failure wins (severity tie-break via `Severity()`), (2) else any
+   raw `Warning` in the window → `Degraded`, (3) else `Up`.
+6. **Incidents neutral Warning branch** — `incidents/service.go`: add `isWarning`; do not early-return;
+   run the visible-status update with `pickStatus` → `CheckStatusWarning`; keep clocks neutral; define
+   up↔warning streak/`statusChangedAt` edges; never open/resolve an incident (model on Validating).
+7. **Frontend shared `statusStyle()`** — add one util per app (`dash0/src/lib/status-style.ts`,
+   `status0/src/lib/status-style.ts`) handling both `"warning"` and `"degraded"` (amber) and route the
+   listed dash0 + status0 surfaces through it; add `warning`/`degraded` i18n labels. Update the design
+   reference if a primitive is added.
+8. **Tests** — table-driven (testify/require, `t.Parallel()`, SQLite + Postgres): persistence of
+   6/7/8; availability Up+Warning→100% & promoted row status Degraded; severity Down+Warning→Down;
+   incident-neutral Warning; serialisation strings; `Severity()` ranking.
