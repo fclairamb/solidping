@@ -180,6 +180,13 @@ func (h *Handler) ApproveAuthorize(w http.ResponseWriter, req bunrouter.Request)
 			"A logged-in session is required to authorize")
 	}
 
+	// The user denied consent → return to the client with access_denied rather
+	// than minting a code (RFC 6749 §4.1.2.1).
+	if req.Form.Get("decision") == "deny" {
+		return h.handleAuthError(w, req, newRedirectError(ErrAccessDenied,
+			"the user denied the authorization request", ar.RedirectURI, ar.State))
+	}
+
 	org, err := h.svc.db.GetOrganizationBySlug(req.Context(), claims.OrgSlug)
 	if err != nil {
 		return h.WriteInternalError(w, err)
