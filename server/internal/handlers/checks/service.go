@@ -1827,6 +1827,10 @@ func (s *Service) convertResultToLastResultResponse(result *models.Result) *Last
 		switch *result.Status {
 		case int(models.ResultStatusUp):
 			statusStr = "up"
+		case int(models.ResultStatusWarning):
+			statusStr = "warning"
+		case int(models.ResultStatusDegraded):
+			statusStr = "degraded"
 		case int(models.ResultStatusDown):
 			statusStr = "down"
 		case int(models.ResultStatusTimeout):
