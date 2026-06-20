@@ -199,3 +199,50 @@ when not yet over threshold.
 - `web/dash0/src/routes/**` — Docker config form + check-detail output
 - `docs/api-specification.md`, `docs/features/**` — config + output shape
 - `docs/competitors/maintenant.md` — source of the requirement
+
+## Implementation Plan
+
+Implementing **Approach A** (Decision 1 — checker-local heuristic, no DB
+migration, no history/threading). `StatusWarning = 8` already exists on the
+integration branch (Decision 2 — live amber Warning, rolls up to Degraded,
+counts as up, does not page).
+
+1. **Config (`checkdocker/config.go`).**
+   - Add `RestartLoopMinRestarts int` (json `restartLoopMinRestarts`) and
+     `RestartLoopWindow time.Duration` (json `restartLoopWindow`).
+   - `FromMap`: parse `restartLoopMinRestarts` (JSON number → int) and
+     `restartLoopWindow` as a duration **string** (mirrors `timeout`).
+   - `GetConfig`: emit both when non-zero (window as `.String()`).
+   - `Validate`: `minRestarts >= 0`; window must be `> 0` and `<=` a sane
+     bound when set. Detection stays OFF unless `minRestarts > 0`.
+   - Add a `resolveRestartLoopWindow()` helper: default `120s` when enabled
+     and window unset.
+
+2. **Checker (`checkdocker/checker.go`).**
+   - Thread the resolved config into `buildResult` (it currently takes none).
+   - After the existing not-running / unhealthy short-circuits (both still
+     return `StatusDown`), add the loop branch: when
+     `RestartLoopMinRestarts > 0 && info.State.Running`, parse
+     `info.State.StartedAt` (`time.RFC3339Nano`), set
+     `output["secondsSinceStart"]` **always**, and when
+     `info.RestartCount >= minRestarts && sinceStart <= window` set
+     `output["restartLoop"]=true`, an explanatory `output["error"]`, and
+     return `checkerdef.StatusWarning`. `metrics["restartCount"]` unchanged.
+
+3. **Frontend (`web/dash0`).**
+   - Config form: add an advanced "restart-loop detection" section to the
+     `docker` case with the two fields (number + duration), wired through the
+     existing config-state plumbing.
+   - Check detail: a `DockerRestartLoopCard` (mirrors `SslChainCard`) surfaces
+     `restartLoop` / `restartCount` / `secondsSinceStart`, amber badge via the
+     shared `statusStyle()` warning treatment. Mounted for `type === "docker"`.
+
+4. **Docs.** Update the Docker section of
+   `docs/conventions/checker-config.md` with the two config fields and the
+   new output shape (`restartLoop`, `secondsSinceStart`).
+
+5. **Tests (`checkdocker/checker_test.go`, table-driven, `testify/require`,
+   `t.Parallel()`).** Drive `buildResult` with synthetic
+   `container.InspectResponse`: loop → Warning; old high count → Up; recent
+   but below floor → Up; disabled → byte-for-byte today; not-running /
+   unhealthy short-circuit to Down before the loop branch.
