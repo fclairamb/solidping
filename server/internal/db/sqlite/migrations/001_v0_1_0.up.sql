@@ -337,7 +337,7 @@ create table results (
 
   -- Raw result fields (period_type = 'raw')
   worker_uid        text references workers(uid) on delete set null, -- Worker that executed this check (raw only)
-  status            integer check (status in (0, 1, 2, 3, 4, 5)), -- 0=initial, 1=up, 2=down, 3=timeout, 4=error, 5=running
+  status            integer check (status in (0, 1, 2, 3, 4, 5, 6, 7, 8)), -- 1=created, 2=running, 3=up, 4=down, 5=timeout, 6=error, 7=degraded (aggregated), 8=warning
   duration          real, -- Total check duration in milliseconds (raw only)
   metrics           text, -- Numerical metrics: ttfb, dnsTime, tlsHandshake, etc. (raw only)
   output            text, -- Diagnostic output: error messages, HTTP status, headers (raw only)

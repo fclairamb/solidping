@@ -437,7 +437,7 @@ create table results (
   period_end        timestamptz,
   region            text,
   worker_uid        uuid references workers(uid) on delete set null,
-  status            smallint check (status in (0, 1, 2, 3, 4, 5)),
+  status            smallint check (status in (0, 1, 2, 3, 4, 5, 6, 7, 8)), -- 6=error, 7=degraded (aggregated), 8=warning
   duration          real,
   metrics           jsonb,
   output            jsonb,
