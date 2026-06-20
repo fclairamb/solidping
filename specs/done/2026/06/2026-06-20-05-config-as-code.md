@@ -126,6 +126,12 @@ recreating. Document the default behavior either way.
   path, not a second reconcile engine. Lowest priority; the analysis explicitly recommends **not**
   chasing Maintenant's deeper container observability.
 
+> **Phase 3 deferred to a follow-up.** This spec ships Phases 1 & 2 only (apply endpoint + CLI,
+> managed scope, delete-by-absence with prune + deletion cap, secret references, admin gating +
+> retro-gate of export/import). Docker-label discovery is explicitly "optional parity, lowest
+> priority" and overlaps existing discovery work, so it is **not** implemented here — it is split
+> out as a separate spec when/if prioritized. Nothing in Phases 1 & 2 depends on it.
+
 ## Risks / decisions to confirm before building
 
 - **Destructive surface.** Delete-by-absence on monitoring config is high-blast-radius. The managed
@@ -151,3 +157,57 @@ recreating. Document the default behavior either way.
 - **Stays in lane.** It serves the declarative-config niche without chasing Maintenant's deep
   container observability (live CPU/mem/log streaming), which the competitor analysis recommends
   against.
+
+## Implementation Plan
+
+Decisions resolved (Phases 1 & 2 only; Phase 3 deferred, see Phasing). Each step is a granular
+commit; `make fmt` runs before each.
+
+1. **Plan / reconcile engine** (`server/internal/handlers/checks/apply.go`).
+   - `ApplyResult{plan: ApplyPlanEntry[], created, updated, deleted, unmanaged, warnings, errors}`.
+   - `ApplyPlanEntry{slug, previousSlug, action: create|update|delete|unmanaged|rename, reason}`.
+   - Managed marker = reserved label `solidping.io/managed=<manifest-name>` (`Organization` field
+     of the doc names the manifest; default falls back to the org slug). Reconcile scope = checks
+     in the org carrying that label. Match on `slug`. `previousSlug`/`uid` → rename in place.
+   - `computeApplyPlan(ctx, org, doc, opts)`: pure(ish) — lists managed checks, diffs against the
+     file. create = in file & absent; update = slug exists & managed (or being adopted via stamp);
+     delete = managed & absent from file; unmanaged = slug exists but missing the managed label
+     (reported, never adopted/deleted).
+
+2. **Secret-ref resolution** (`resolveSecretRefs`). Walk `config` values for `${env:NAME}` and
+   `${param:KEY}`; resolve env vars and the `parameters` table (org-scoped first, then system-wide;
+   `param.Value["value"]`). Missing/unresolvable ref → hard error. When the credentials service is
+   disabled (`SP_ENCRYPTION_MASTER_KEY` unset) a resolved secret ref appends a WARNING to the
+   result rather than refusing. Resolution feeds the existing `UpsertCheck` path, which envelopes
+   secret fields into `config_private` automatically.
+
+3. **Apply service** (`ApplyChecks`). Validate version; resolve refs; compute plan; on `dryRun`
+   mutate nothing and return the plan. Otherwise: run create/update via the existing upsert path
+   (re-using `importSingleCheck` + `importDependencies`), stamp/refresh the managed label on every
+   owned check, and perform deletes **only** when `prune` is set AND the check carries the managed
+   label AND the delete count is within the configurable deletion cap (`refuse beyond N unless
+   force`). Never touch unmanaged/hand-created checks.
+
+4. **Apply endpoint** (`POST /api/v1/orgs/:org/checks/apply`). Mirror `/checks/import` route style.
+   Accept JSON **and** YAML bodies (sniff `Content-Type`/first non-space byte; YAML→JSON→struct).
+   Query: `?dryRun=true`, `?prune=true`, `?force=true`. Return the extended `ApplyResult`.
+
+5. **Admin gating + retro-gate.** Add `RequireOrgAdmin` to the apply route, and retro-gate the
+   existing `/checks/export` + `/checks/import` to admin-only (currently `RequireAuth` only — a
+   latent gap). Documented as a small back-compat change.
+
+6. **CLI** (`server/pkg/cli`): `sp apply [-f|--file] <manifest> [--dry-run] [--prune] [--yes]
+   [--force]` — dry-run prints the plan; without `--yes` it prints the plan and prompts before
+   mutating. Plus `sp checks export [-o file]` and `sp checks import <file> [--dry-run]` wrappers
+   over the existing endpoints (CLI currently lacks them). Raw client methods in
+   `server/pkg/client` (apply sends the file bytes with the right Content-Type).
+
+7. **Docs.** `docs/api-specification.md`: apply endpoint + manifest format + managed label +
+   secret-ref convention + the export/import admin-gating change; CLI usage for apply/export/import.
+
+8. **Tests** (table-driven, `testify/require`, `t.Parallel()`, SQLite + Postgres where DB is
+   touched): plan computation (create/update/delete/unmanaged); dryRun mutates nothing;
+   delete-by-absence only with prune+managed-label+within-cap; deletion cap refuses oversized prune;
+   unmanaged checks never touched; secret-ref resolution (`${env}`/`${param}`, missing → error,
+   plaintext-fallback → warning); YAML and JSON bodies parse to the same plan; admin-only gating
+   (non-admin rejected) on apply AND export/import; round-trip export→apply idempotence.

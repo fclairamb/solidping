@@ -259,7 +259,60 @@ func GetCommands() []*cli.Command {
 						},
 					},
 				},
+				{
+					Name:  "export",
+					Usage: "Export all checks as a portable JSON document (admin-only)",
+					Flags: []cli.Flag{
+						&cli.StringFlag{
+							Name:  "file",
+							Usage: "Write the export to a file instead of stdout",
+						},
+					},
+					Action: checksExportAction,
+				},
+				{
+					Name:      "import",
+					Usage:     "Import checks from an export document (idempotent upsert, admin-only)",
+					ArgsUsage: "<file>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "dry-run",
+							Usage: "Preview created/updated counts without mutating",
+						},
+					},
+					Action: checksImportAction,
+				},
 			},
+		},
+		{
+			Name:      "apply",
+			Usage:     "Reconcile checks against a declarative manifest (config-as-code, admin-only)",
+			ArgsUsage: "<manifest>",
+			Flags: append(GetGlobalFlags(),
+				&cli.StringFlag{
+					Name:    "file",
+					Aliases: []string{"f"},
+					Usage:   "Manifest file (JSON or YAML)",
+				},
+				&cli.BoolFlag{
+					Name:  "dry-run",
+					Usage: "Show the reconcile plan without mutating anything",
+				},
+				&cli.BoolFlag{
+					Name:  "prune",
+					Usage: "Delete managed checks that are absent from the manifest",
+				},
+				&cli.BoolFlag{
+					Name:  "force",
+					Usage: "Lift the deletion cap for this apply (use with --prune)",
+				},
+				&cli.BoolFlag{
+					Name:    "yes",
+					Aliases: []string{"y"},
+					Usage:   "Skip the confirmation prompt and apply immediately",
+				},
+			),
+			Action: applyAction,
 		},
 		{
 			Name:    "results",
