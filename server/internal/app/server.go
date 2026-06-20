@@ -86,6 +86,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/mcp"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/regions"
@@ -483,8 +484,24 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
 		s.services.Credentials, s.services.Entitlements,
 	)
-	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireAuth)
+	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
+
+	// OAuth 2.1 authorization server for the MCP resource (spec
+	// 2026-06-20-03). Discovery docs are served at the site root where MCP
+	// clients expect them; the flow endpoints live under /api/v1/oauth so the
+	// existing per-IP rate limiter (limitedPrefix = /api/v1/) covers them.
+	oauthService := oauth.NewService(s.dbService, s.authService, s.config)
+	oauthHandler := oauth.NewHandler(oauthService, s.config)
+	mainGroup.GET(oauth.PathProtectedResourceMetadata, oauthHandler.ProtectedResourceMetadata)
+	mainGroup.GET(oauth.PathAuthorizationServerMetadata, oauthHandler.AuthorizationServerMetadata)
+	mainGroup.GET(oauth.PathOpenIDConfiguration, oauthHandler.AuthorizationServerMetadata)
+	mainGroup.GET(oauth.PathJWKS, oauthHandler.JWKS)
+	oauthGroup := api.NewGroup("/oauth")
+	oauthGroup.GET("/authorize", oauthHandler.Authorize)
+	oauthGroup.POST("/authorize", oauthHandler.ApproveAuthorize)
+	oauthGroup.POST("/token", oauthHandler.Token)
+	oauthGroup.POST("/register", oauthHandler.Register)
 
 	// Job routes (auth required for org-scoped routes)
 	jobHandler := jobs.NewHandler(s.jobSvc)

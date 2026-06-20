@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	"github.com/fclairamb/solidping/server/internal/oauth"
 )
 
 // Use context keys from base package to avoid import cycles.
@@ -30,6 +31,7 @@ type AuthMiddleware struct {
 	base.HandlerBase
 	authService *auth.Service
 	dbService   db.Service
+	cfg         *config.Config
 }
 
 // NewAuthMiddleware creates a new authentication middleware.
@@ -38,6 +40,7 @@ func NewAuthMiddleware(authService *auth.Service, dbService db.Service, cfg *con
 		HandlerBase: base.NewHandlerBase(cfg),
 		authService: authService,
 		dbService:   dbService,
+		cfg:         cfg,
 	}
 }
 
@@ -78,6 +81,61 @@ func (m *AuthMiddleware) RequireAuth(next bunrouter.HandlerFunc) bunrouter.Handl
 
 		return next(writer, req.WithContext(ctx))
 	}
+}
+
+// RequireMCPAuth is RequireAuth specialized for the MCP resource server. It
+// behaves like RequireAuth for valid credentials but, on any authentication
+// failure, emits the OAuth 2.1 discovery hook required by the MCP authorization
+// spec: HTTP 401 with a `WWW-Authenticate: Bearer resource_metadata="…"` header
+// pointing at the protected-resource metadata, so a standard MCP client can
+// discover the authorization server and start the OAuth flow.
+//
+// It also enforces RFC 8707 audience binding: an access token carrying an `aud`
+// claim is accepted only if that audience includes the MCP resource. Tokens with
+// no audience (PATs, legacy session JWTs) pass the audience gate for
+// back-compat — the MCP handler's scope check still governs them.
+func (m *AuthMiddleware) RequireMCPAuth(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
+	return func(writer http.ResponseWriter, req bunrouter.Request) error {
+		md := oauth.NewMetadata(m.cfg.Server.BaseURL)
+
+		token := extractToken(req.Request)
+		if token == "" {
+			return m.writeMCPChallenge(writer, md, base.ErrorCodeNoToken, "Authorization token is required")
+		}
+
+		claims, err := m.authService.ValidateToken(req.Context(), token)
+		if err != nil {
+			return m.writeMCPChallenge(writer, md, base.ErrorCodeInvalidToken, "Invalid or expired token")
+		}
+
+		// Audience binding (RFC 8707): reject a token minted for another resource.
+		if !oauth.TokenHasResourceAudience(claims, md.ResourceURL()) {
+			return m.writeMCPChallenge(writer, md, base.ErrorCodeInvalidToken,
+				"Token audience does not include the MCP resource")
+		}
+
+		user, err := m.dbService.GetUser(req.Context(), claims.UserUID)
+		if err != nil {
+			return m.writeMCPChallenge(writer, md, base.ErrorCodeUserNotFound, "User not found")
+		}
+
+		ctx := req.Context()
+		ctx = context.WithValue(ctx, base.ContextKeyClaims, claims)
+		ctx = context.WithValue(ctx, base.ContextKeyUser, user)
+
+		return next(writer, req.WithContext(ctx))
+	}
+}
+
+// writeMCPChallenge writes a 401 carrying the RFC 9728 resource_metadata pointer
+// so MCP clients can discover the authorization server.
+func (m *AuthMiddleware) writeMCPChallenge(
+	writer http.ResponseWriter, md oauth.Metadata, code base.ErrorCode, message string,
+) error {
+	writer.Header().Set("WWW-Authenticate",
+		`Bearer resource_metadata="`+md.ProtectedResourceMetadataURL()+`"`)
+
+	return m.WriteError(writer, http.StatusUnauthorized, code, message)
 }
 
 // RequireOrgAccess is a middleware that verifies the user has access to the organization.
