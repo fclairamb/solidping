@@ -3,6 +3,7 @@ package checkdocker
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -103,7 +104,7 @@ func (c *DockerChecker) Execute(
 
 	metrics["inspect_time_ms"] = durationMs(time.Since(start))
 
-	return buildResult(info, start, metrics, output), nil
+	return buildResult(cfg, info, start, metrics, output), nil
 }
 
 func createClient(cfg *DockerConfig) (*client.Client, error) {
@@ -137,6 +138,7 @@ func handleInspectError(
 }
 
 func buildResult(
+	cfg *DockerConfig,
 	info container.InspectResponse,
 	start time.Time,
 	metrics map[string]any,
@@ -171,6 +173,64 @@ func buildResult(
 
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   output,
+		}
+	}
+
+	// Restart-loop heuristic (Approach A): a container that is running at
+	// inspect time but (re)started very recently with a high lifetime restart
+	// count is a likely crash-loop. Detected on a running container → Warning
+	// (counts as up, does not page). secondsSinceStart is always emitted when
+	// detection is enabled so the dashboard can show flap context even below
+	// threshold.
+	if cfg.restartLoopEnabled() && info.State.Running {
+		return detectRestartLoop(cfg, info, start, metrics, output)
+	}
+
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusUp,
+		Duration: time.Since(start),
+		Metrics:  metrics,
+		Output:   output,
+	}
+}
+
+func detectRestartLoop(
+	cfg *DockerConfig,
+	info container.InspectResponse,
+	start time.Time,
+	metrics map[string]any,
+	output map[string]any,
+) *checkerdef.Result {
+	window := cfg.resolveRestartLoopWindow()
+
+	started, err := time.Parse(time.RFC3339Nano, info.State.StartedAt)
+	if err != nil {
+		// StartedAt unparseable: cannot apply the recency guard, so the loop
+		// signal can't be trusted. Fall back to Up rather than risk a false
+		// Warning.
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusUp,
+			Duration: time.Since(start),
+			Metrics:  metrics,
+			Output:   output,
+		}
+	}
+
+	sinceStart := time.Since(started)
+	output["secondsSinceStart"] = sinceStart.Seconds()
+
+	if info.RestartCount >= cfg.RestartLoopMinRestarts && sinceStart <= window {
+		output["restartLoop"] = true
+		output["error"] = fmt.Sprintf(
+			"restart loop suspected: %d restarts, last start %s ago",
+			info.RestartCount, sinceStart.Round(time.Second),
+		)
+
+		return &checkerdef.Result{
+			Status:   checkerdef.StatusWarning,
 			Duration: time.Since(start),
 			Metrics:  metrics,
 			Output:   output,
