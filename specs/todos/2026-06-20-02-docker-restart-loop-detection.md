@@ -65,9 +65,10 @@ There are three viable approaches:
 
 **My recommendation: ship A as the MVP, scope B as the accurate V2.** A delivers the feature
 the competitor has and fits SolidPing's architecture with the least risk. A flapping container
-*is* "unhealthy but (intermittently) up" — exactly what the new `StatusWarning`/`Degraded` state
-(from [`2026-06-20-04`](2026-06-20-04-status-warning-degraded.md)) is for: it shows amber, counts
-as up for availability, and doesn't page or manufacture a false outage. So a *detected loop on a
+*is* "unhealthy but (intermittently) up" — exactly what the new `StatusWarning` state
+(from [`2026-06-20-04`](2026-06-20-04-status-warning-degraded.md)) is for: current status shows
+amber **Warning** (rolled-up periods show **Degraded**), it counts as up for availability, and
+doesn't page or manufacture a false outage. So a *detected loop on a
 currently-running container* → `StatusWarning`; a container that's actually not-running/unhealthy
 still → `StatusDown` (and pages) as today. The one-interval false positive on a deploy is real
 but self-healing, and because warning doesn't page, a stray flag costs nothing. If A's accuracy
@@ -86,8 +87,9 @@ are decisions for you (below).
 ## Dependency
 
 - **[`2026-06-20-04` (first-class `StatusWarning`)](2026-06-20-04-status-warning-degraded.md)
-  lands first** (assuming the recommended Warning outcome). It supplies the `Degraded` status and
-  its availability/incident semantics. If you choose `StatusDown` for loops instead (open
+  lands first** (assuming the recommended Warning outcome). It supplies the `StatusWarning` value
+  (current status Warning; aggregated Degraded) and its availability/incident semantics. If you
+  choose `StatusDown` for loops instead (open
   question 2), this dependency drops and the change is self-contained.
 
 ## Out of scope
@@ -133,7 +135,8 @@ if cfg.RestartLoopMinRestarts > 0 && info.State.Running {
         output["error"] = fmt.Sprintf(
             "restart loop suspected: %d restarts, last start %s ago",
             info.RestartCount, sinceStart.Round(time.Second))
-        // StatusWarning (Degraded) per 2026-06-20-04; use StatusDown if you chose to page.
+        // StatusWarning per 2026-06-20-04 (current=Warning, rolls up to Degraded);
+        // use StatusDown if you chose to page.
         return &checkerdef.Result{Status: checkerdef.StatusWarning, ...}
     }
 }
@@ -161,8 +164,8 @@ when not yet over threshold.
 1. **Approach A (heuristic, this spec) vs B (server-side delta over history)?** A ships fast and
    fits the architecture; B is accurate but more invasive and needs an incident-without-status
    path. Default in this spec is A.
-2. **Loop ⇒ `StatusWarning`/Degraded (visible, no page — recommended, depends on
-   `2026-06-20-04`) or `StatusDown` (pages)?** Spec assumes Warning: a flapping-but-running
+2. **Loop ⇒ `StatusWarning` (current Warning, Degraded in rollups; no page — recommended, depends
+   on `2026-06-20-04`) or `StatusDown` (pages)?** Spec assumes Warning: a flapping-but-running
    container is "unhealthy but up," and warning shows amber without a false outage. Choose Down if
    a crash-loop should page immediately (then this spec has no dependency on `2026-06-20-04`).
 3. **Default thresholds** when enabled: `minRestarts = 3`, `window = 120s` — reasonable for
@@ -179,8 +182,9 @@ when not yet over threshold.
   - Detection disabled (`minRestarts == 0`) → behaviour byte-for-byte as today.
   - Not-running / unhealthy still short-circuit to `StatusDown` before the loop branch.
 - **Manual:** run a container with `--restart=always` and a command that exits immediately
-  (`sh -c 'exit 1'`); point a Docker check at it with detection enabled; confirm it flips to
-  Degraded (amber) with `restartLoop` and the reason in output, and uptime is unaffected.
+  (`sh -c 'exit 1'`); point a Docker check at it with detection enabled; confirm the current
+  status flips to Warning (amber) with `restartLoop` and the reason in output, uptime is
+  unaffected, and a rolled-up period shows Degraded.
 - `make lint` / `make test`; `make test-dash` if the form changes.
 
 ## Files referenced

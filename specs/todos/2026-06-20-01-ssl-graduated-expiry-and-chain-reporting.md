@@ -51,12 +51,13 @@ exactly as today; new behaviour is opt-in via config.
 
 **3. The warning tier is the new first-class `StatusWarning` (depends on
 [`2026-06-20-04`](2026-06-20-04-status-warning-degraded.md)).** Warning =
-`StatusWarning` (visible as `Degraded`, counts as up for availability, does not open an incident)
-plus the same `certExpiryWarning: true` / `severity: "warning"` / `daysRemaining` output for
-detail. Critical = `StatusDown` (pages, as today). Actual expiry / handshake failure =
-`StatusDown` (as today). **This spec depends on `2026-06-20-04` landing first** — that spec adds
-`StatusWarning`, the availability/incident semantics, and the DB constraint. Until then, the
-warning tier degrades gracefully to `StatusUp` + the output flag (no amber state).
+`StatusWarning` — the current check status shows **Warning** (amber); rolled-up periods show
+**Degraded**. It counts as up for availability and does not open an incident, plus the same
+`certExpiryWarning: true` / `severity: "warning"` / `daysRemaining` output for detail. Critical =
+`StatusDown` (pages, as today). Actual expiry / handshake failure = `StatusDown` (as today).
+**This spec depends on `2026-06-20-04` landing first** — that spec adds `StatusWarning` (and the
+aggregated `Degraded`), the availability/incident semantics, and the DB constraint. Until then,
+the warning tier degrades gracefully to `StatusUp` + the output flag (no amber state).
 
 **4. Compute nearest expiry across the whole presented chain, not just the leaf.** An
 intermediate that expires before the leaf is a real, common failure that today's leaf-only
@@ -64,12 +65,12 @@ intermediate that expires before the leaf is a real, common failure that today's
 drive the threshold decision; report which cert is the soonest to expire.
 
 Net: same feature you asked for, but the default stops manufacturing fake outages, the warning
-tier is a real `Degraded` status (via `2026-06-20-04`), and "chain" means "we check the whole
-chain's expiry and report it," because trust is already enforced at handshake.
+tier is a real `Warning` status (Degraded in rollups, via `2026-06-20-04`), and "chain" means "we
+check the whole chain's expiry and report it," because trust is already enforced at handshake.
 
 ## Goals
 
-- Two-tier expiry config: `warningDays` (`StatusWarning`/Degraded) and `criticalDays`
+- Two-tier expiry config: `warningDays` (`StatusWarning` — amber, no page) and `criticalDays`
   (paging, `StatusDown`), back-compatible with the existing single `thresholdDays`.
 - Expiry decision driven by the **minimum days-remaining across the whole presented chain**,
   not just the leaf.
@@ -127,8 +128,8 @@ In `buildResult`, after a successful handshake:
    verification ran) — e.g. `chainVerified: len(VerifiedChains) > 0`, `chainLength`.
 3. Status decision on the **minimum** days-remaining:
    - `min <= criticalDays` → `StatusDown` (+ `error`, `severity: "critical"`).
-   - `criticalDays < min <= warningDays` → `StatusWarning` (visible `Degraded`) +
-     `certExpiryWarning: true`, `severity: "warning"`.
+   - `criticalDays < min <= warningDays` → `StatusWarning` (current status **Warning**;
+     **Degraded** in rollups) + `certExpiryWarning: true`, `severity: "warning"`.
    - else → `StatusUp`.
 4. Output additions: `chain` (array of `{subject, issuer, notAfter, daysRemaining}`),
    `soonestExpiring` (subject + daysRemaining), `chainLength`, `chainVerified`,
