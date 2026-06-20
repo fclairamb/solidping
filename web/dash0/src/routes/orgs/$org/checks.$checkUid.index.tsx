@@ -446,7 +446,7 @@ function CheckDetailPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col gap-3">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
           <div className="min-w-0 flex-1">
@@ -534,7 +534,7 @@ function CheckDetailPage() {
               )}
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex flex-wrap items-center justify-end gap-2">
           <Button
             variant="ghost"
             size="icon"

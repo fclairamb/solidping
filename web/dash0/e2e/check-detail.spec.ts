@@ -180,4 +180,63 @@ test.describe("Check Detail Page", () => {
       page.getByRole("alertdialog").getByText("Delete Check"),
     ).toBeVisible();
   });
+
+  test("header stacks the action toolbar on its own row below a long title (no horizontal overflow)", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a deliberately long-named check — the worst case for header layout.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Stacked ${Date.now()} ${"Very Long Check Name ".repeat(4)}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/stacked-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // ---- Wide desktop: the title block and the action toolbar are on two
+    // separate rows, and the page does not overflow horizontally. ----
+    await page.setViewportSize({ width: 1280, height: 800 });
+
+    // All six actions plus the back arrow are present with their labels visible.
+    const backButton = page.getByRole("button", { name: "Back to checks" });
+    await expect(backButton).toBeVisible();
+    await expect(page.getByLabel("Edit").getByText("Edit")).toBeVisible();
+    await expect(page.getByLabel("Clone").getByText("Clone")).toBeVisible();
+    await expect(page.getByLabel("Badges").getByText("Badges")).toBeVisible();
+    await expect(page.getByLabel("Refresh").getByText("Refresh")).toBeVisible();
+    await expect(page.getByLabel("Delete").getByText("Delete")).toBeVisible();
+    // Enable/Disable toggles its label; match either.
+    await expect(
+      page.getByRole("button", { name: /Disable|Enable/ }),
+    ).toBeVisible();
+
+    // The toolbar sits BELOW the title block: a toolbar button's top edge is
+    // past the title's bottom edge.
+    const titleBox = await page
+      .getByRole("heading", { name: checkName })
+      .boundingBox();
+    const deleteBox = await page.getByLabel("Delete").boundingBox();
+    expect(titleBox).not.toBeNull();
+    expect(deleteBox).not.toBeNull();
+    expect(deleteBox!.y).toBeGreaterThan(titleBox!.y + titleBox!.height);
+
+    // No horizontal overflow on the wide desktop.
+    const hasDesktopOverflow = await page.evaluate(
+      () =>
+        document.documentElement.scrollWidth >
+        document.documentElement.clientWidth + 1,
+    );
+    expect(hasDesktopOverflow).toBe(false);
+  });
 });
