@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Dashboard**: React + TanStack Router (see `web/dash0/CLAUDE.md` for details) — do not use `web/dash` for current development
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
-- **Docs site**: Docusaurus in `web/docs/` → `docs.solidping.io`, embedded in the Go binary and served by Host header (config `server.docs_host` / `SP_DOCS_HOST`, default `docs.solidping.io`). The API reference is generated at build time from `server/internal/app/openapi/openapi.yaml`. The marketing site (`www.solidping.io`) lives in the separate `solidping-website` repo. Internal engineering notes live in `wiki/` (not published).
+- **Docs site**: Docusaurus in `web/docs/` (baseUrl `/docs/`), embedded in the Go binary and served at the **`/docs`** path on every host (like `/dash0`, `/status0`) — so `solidping.io/docs` works with no extra infra. `docs.solidping.io` redirects its root into `/docs` (config `server.docs_host` / `SP_DOCS_HOST`). The API reference is generated at build from `server/internal/app/openapi/openapi.yaml`; the interactive OpenAPI (Swagger) explorer is at `/openapi`. The marketing site (`www.solidping.io`) is the separate `solidping-website` repo; internal engineering notes live in `wiki/`.
 
 ## Development workflow
 If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.

@@ -18,7 +18,10 @@ const config: Config = {
   favicon: "img/favicon.ico",
 
   url: "https://docs.solidping.io",
-  baseUrl: "/",
+  // Docs are served at the /docs path on every host (like /dash0 and /status0),
+  // so they work on the main domain (solidping.io/docs) with no extra infra.
+  // docs.solidping.io redirects its root into /docs (see handlerWithDocsHost).
+  baseUrl: "/docs/",
 
   organizationName: "fclairamb",
   projectName: "solidping",

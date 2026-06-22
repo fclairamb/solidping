@@ -1033,9 +1033,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		api.DELETE("/test/checks/all", testHandler.DeleteAllChecks)
 	}
 
-	// OpenAPI schema endpoint
+	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from
+	// /docs to /openapi now that /docs serves the documentation site.
 	mainGroup.GET("/openapi.yaml", s.serveFile(openAPIFiles, "openapi/openapi.yaml"))
-	mainGroup.GET("/docs", s.serveFile(openAPIFiles, "openapi/index.html"))
+	mainGroup.GET("/openapi", s.serveFile(openAPIFiles, "openapi/index.html"))
+
+	// Documentation site (Docusaurus), embedded and served at /docs on every
+	// host. docs.solidping.io redirects its root here (see handlerWithDocsHost).
+	mainGroup.GET("/docs", s.serveDocsRoute)
+	mainGroup.GET("/docs/*path", s.serveDocsRoute)
 
 	// Dash0 status page (served at /dash0/)
 	mainGroup.GET("/dash0", s.serveDash0Root)
@@ -1246,12 +1252,12 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 	}
 }
 
-// handlerWithDocsHost wraps the main router so requests whose Host matches
-// server.docs_host (default docs.solidping.io) are served the embedded docs
-// site (docsres) at the host root, ahead of the normal path-based app routing.
-// When docs_host is empty, docs are not host-served (they remain embedded in
-// the binary and can be mirrored to a CDN). The host comparison ignores any
-// port and is case-insensitive.
+// handlerWithDocsHost wraps the main router so a request to the docs host
+// (server.docs_host, default docs.solidping.io) is redirected to the /docs path
+// where the documentation site is served on every host. This lets
+// docs.solidping.io/foo resolve to /docs/foo without a separate root build.
+// When docs_host is empty, only the path-based /docs route is active. The host
+// comparison ignores any port and is case-insensitive.
 func (s *Server) handlerWithDocsHost() http.Handler {
 	docsHost := strings.ToLower(strings.TrimSpace(s.config.Server.DocsHost))
 	if docsHost == "" {
@@ -1259,8 +1265,12 @@ func (s *Server) handlerWithDocsHost() http.Handler {
 	}
 
 	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
-		if docsHostMatches(req.Host, docsHost) {
-			s.serveDocsFile(writer, req.URL.Path)
+		if docsHostMatches(req.Host, docsHost) && !strings.HasPrefix(req.URL.Path, "/docs") {
+			target := "/docs" + req.URL.Path
+			if req.URL.RawQuery != "" {
+				target += "?" + req.URL.RawQuery
+			}
+			http.Redirect(writer, req, target, http.StatusFound)
 
 			return
 		}
@@ -1278,6 +1288,14 @@ func docsHostMatches(reqHost, docsHost string) bool {
 	}
 
 	return strings.EqualFold(host, docsHost)
+}
+
+// serveDocsRoute is the bunrouter handler for /docs and /docs/*path. It strips
+// the /docs prefix and serves the matching file from the embedded docs build.
+func (s *Server) serveDocsRoute(writer http.ResponseWriter, req bunrouter.Request) error {
+	s.serveDocsFile(writer, strings.TrimPrefix(req.URL.Path, "/docs"))
+
+	return nil
 }
 
 // serveDocsFile serves a file from the embedded Docusaurus build (docsres).
