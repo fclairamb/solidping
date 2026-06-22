@@ -1,0 +1,187 @@
+---
+sidebar_position: 2
+title: Docker Compose
+---
+
+# Docker Compose Installation
+
+Docker Compose is ideal for local development or small production deployments where you want to run SolidPing with its database in a single configuration.
+
+## Development Setup
+
+This setup includes hot-reload for development:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "55432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  solidping:
+    image: ghcr.io/fclairamb/solidping:latest
+    ports:
+      - "4000:4000"
+    environment:
+      SP_DB_TYPE: postgres
+      SP_DB_URL: postgresql://postgres:postgres@postgres:5432/postgres?sslmode=disable
+      LOG_LEVEL: debug
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+```
+
+## Production Setup
+
+For production, use stronger credentials and persistent storage:
+
+```yaml
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: solidping
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: solidping
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solidping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  solidping:
+    image: ghcr.io/fclairamb/solidping:latest
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      SP_DB_TYPE: postgres
+      SP_DB_URL: postgresql://solidping:${POSTGRES_PASSWORD}@postgres:5432/solidping?sslmode=disable
+      SP_EMAIL_ENABLED: "true"
+      SP_EMAIL_HOST: ${SMTP_HOST}
+      SP_EMAIL_PORT: "587"
+      SP_EMAIL_USERNAME: ${SMTP_USERNAME}
+      SP_EMAIL_PASSWORD: ${SMTP_PASSWORD}
+      SP_EMAIL_FROM: ${SMTP_FROM}
+      LOG_LEVEL: info
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+```
+
+Create a `.env` file with your secrets:
+
+```bash
+POSTGRES_PASSWORD=your-secure-database-password
+SMTP_HOST=smtp.example.com
+SMTP_USERNAME=your-smtp-username
+SMTP_PASSWORD=your-smtp-password
+SMTP_FROM=noreply@example.com
+```
+
+## Running
+
+```bash
+# Start in background
+docker-compose up -d
+
+# View logs
+docker-compose logs -f solidping
+
+# Stop
+docker-compose down
+
+# Stop and remove volumes (WARNING: deletes data)
+docker-compose down -v
+```
+
+## With Reverse Proxy (Traefik)
+
+Example with Traefik for automatic HTTPS:
+
+```yaml
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: solidping
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: solidping
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solidping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  solidping:
+    image: ghcr.io/fclairamb/solidping:latest
+    restart: unless-stopped
+    environment:
+      SP_DB_TYPE: postgres
+      SP_DB_URL: postgresql://solidping:${POSTGRES_PASSWORD}@postgres:5432/solidping?sslmode=disable
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.solidping.rule=Host(`monitoring.example.com`)"
+      - "traefik.http.routers.solidping.entrypoints=websecure"
+      - "traefik.http.routers.solidping.tls.certresolver=letsencrypt"
+      - "traefik.http.services.solidping.loadbalancer.server.port=4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  postgres-data:
+  letsencrypt:
+```
+
+## Next Steps
+
+- [Configuration Guide](/configuration) - All configuration options
+- [Kubernetes Deployment](/installation/kubernetes) - For larger deployments

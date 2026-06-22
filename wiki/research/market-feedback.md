@@ -2,7 +2,7 @@
 
 Synthesis of public user sentiment about uptime/incident-management tools — BetterStack and the competitive set — pulled from Hacker News, Indie Hackers, dev.to, LowEndTalk (search-cache only), vendor comparison posts citing G2/Capterra reviews, and SaaS review aggregators.
 
-This complements the feature-focused write-ups in [`docs/competitors/`](../competitors/) by capturing what people *say about* these tools rather than what the tools *do*.
+This complements the feature-focused write-ups in [`wiki/competitors/`](../competitors/) by capturing what people *say about* these tools rather than what the tools *do*.
 
 > **Source caveat.** Reddit was unreachable from this research pass (`reddit.com` returned 403 on every fetch). Where Reddit is referenced below it's via second-hand summaries surfaced by web search. Direct quotes are from HN (Algolia API), Indie Hackers, dev.to posts, and vendor-curated review aggregations. Primary URLs are listed in the [Sources](#sources) appendix.
 

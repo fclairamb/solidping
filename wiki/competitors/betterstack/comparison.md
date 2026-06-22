@@ -1,6 +1,6 @@
 # BetterStack vs SolidPing — Comparison & Lessons
 
-Side-by-side capability check, gap analysis, and a distilled list of design patterns to adopt or avoid. The full design-pattern recommendations live in [docs/research/alerting-patterns.md](../../research/alerting-patterns.md); this page is the BetterStack-scoped version.
+Side-by-side capability check, gap analysis, and a distilled list of design patterns to adopt or avoid. The full design-pattern recommendations live in [wiki/research/alerting-patterns.md](../../research/alerting-patterns.md); this page is the BetterStack-scoped version.
 
 ## Pricing model
 

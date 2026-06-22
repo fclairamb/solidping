@@ -6,7 +6,7 @@
 
 ## Context
 
-Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
+Inspired by the Maintenant competitor analysis ([`wiki/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
 whose SSL monitoring fires **graduated** expiry alerts (30 / 14 / 7 / 3 / 1 day) and
 advertises full certificate-chain validation. SolidPing's SSL check is thinner today:
 
@@ -159,8 +159,8 @@ the tiering rule. Don't duplicate the comparison literal in two checkers.
    check-detail result view renders the chain table + an amber "expiring in N days" badge when
    `certExpiryWarning`. Confirm against the design reference at
    `/dash0/orgs/default/design-reference` and reuse existing primitives.
-5. **Docs**: update the SSL section of [`docs/api-specification.md`](../../docs/api-specification.md)
-   and any SSL feature page under `docs/features/` with the new config keys + output shape.
+5. **Docs**: update the SSL section of [`wiki/api-specification.md`](../../docs/api-specification.md)
+   and any SSL feature page under `wiki/features/` with the new config keys + output shape.
 
 ## Decisions (applied 2026-06-20)
 
@@ -217,7 +217,7 @@ the tiering rule. Don't duplicate the comparison literal in two checkers.
    Check-detail (`checks.$checkUid.index.tsx` last-result output): render an SSL chain table
    and an amber "expiring in N days" badge when `certExpiryWarning`, reusing the Table
    primitive, Badge, and `statusStyle()` from spec 04.
-5. **Docs.** Update `docs/conventions/checker-config.md` SSL section + `docs/api-specification.md`
+5. **Docs.** Update `wiki/conventions/checker-config.md` SSL section + `wiki/api-specification.md`
    with the new config keys and output shape.
 6. **Tests.** Table-driven, in-memory cert chains with controlled `NotAfter` (helper to mint a
    chain). Cases per the Verification section.
@@ -229,5 +229,5 @@ the tiering rule. Don't duplicate the comparison literal in two checkers.
 - `server/internal/checkers/checkerdef/types.go` — `StatusWarning` (added by `2026-06-20-04`), severity helper home
 - `server/internal/checkers/checkdomain/checker.go` — same pattern, share helper (follow-up wire-up)
 - `web/dash0/src/routes/**` — SSL config form + check-detail chain rendering
-- `docs/api-specification.md`, `docs/features/**` — config keys + output shape
-- `docs/competitors/maintenant.md` — source of the requirement
+- `wiki/api-specification.md`, `wiki/features/**` — config keys + output shape
+- `wiki/competitors/maintenant.md` — source of the requirement

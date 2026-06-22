@@ -22,7 +22,7 @@ I'm including a `count` (how many checks use this key/value) so the UI can sort 
 - New handler package `server/internal/handlers/labels/`.
 - Wire route in `server/internal/app/server.go` alongside other org-scoped routes.
 - Integration tests.
-- Update `docs/api-specification.md`.
+- Update `wiki/api-specification.md`.
 
 **Out:**
 - Frontend UI (covered in specs `03` and `04`).
@@ -186,7 +186,7 @@ For the auth/middleware-bound cases (1, 8) reuse the test harness in `server/tes
 
 ## Documentation
 
-Add to `docs/api-specification.md` next to the existing `labels` filter mention (around line 182):
+Add to `wiki/api-specification.md` next to the existing `labels` filter mention (around line 182):
 
 - New section under org-scoped endpoints: `GET /api/v1/orgs/$org/labels` with the param table and example response from this spec.
 
@@ -240,7 +240,7 @@ make lint-back
 - `server/internal/handlers/labels/service.go` — new.
 - `server/internal/app/server.go` — wire handler + register route.
 - `server/test/integration/labels_test.go` — new.
-- `docs/api-specification.md` — document the endpoint.
+- `wiki/api-specification.md` — document the endpoint.
 
 No DB migration. No new dependency.
 
@@ -254,5 +254,5 @@ No DB migration. No new dependency.
 6. Wire into `app/server.go` next to where checks routes are registered.
 7. Write integration tests covering all 10 cases above. `make gotest` clean.
 8. `make lint-back` clean.
-9. Update `docs/api-specification.md`.
+9. Update `wiki/api-specification.md`.
 10. Smoke-test the curl flow above against `make dev`.

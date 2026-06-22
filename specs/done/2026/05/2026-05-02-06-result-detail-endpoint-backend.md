@@ -21,7 +21,7 @@ In scope:
 - New endpoint `GET /api/v1/orgs/:org/checks/:check/results/:uid` returning a single result, with fallback to the smallest-period aggregation that covers the requested UID's timestamp when the UID itself is gone.
 - Service layer logic, including UUIDv7 timestamp extraction.
 - Handler tests (HTTP status mapping) and service tests (lookup, fallback selection, edge cases).
-- One line in `docs/api-specification.md`.
+- One line in `wiki/api-specification.md`.
 
 Out of scope:
 - The frontend page that consumes this — see `2026-05-02-07-result-detail-page-frontend.md`.
@@ -144,7 +144,7 @@ Document this with a one-line code comment so the next reader doesn't worry abou
 - `server/internal/handlers/base/errors.go` — add `ErrorCodeResultNotFound = "RESULT_NOT_FOUND"` if not present.
 - `server/internal/handlers/results/handler_test.go` — add cases (see below).
 - `server/internal/handlers/results/service_test.go` — add cases (see below).
-- `docs/api-specification.md` — add one stanza under the Results section.
+- `wiki/api-specification.md` — add one stanza under the Results section.
 - `CLAUDE.md` — append `RESULT_NOT_FOUND` to the standard error codes list.
 
 ## Tests
@@ -210,4 +210,4 @@ rtk grep -rn "GetResult\b" server/internal/handlers/results/
 3. In `server/internal/handlers/results/handler.go` add a `GetResult` HTTP handler that returns the result + optional `fallback` field; map the service errors (`check not found` → 404 CHECK_NOT_FOUND, `result not found` → 404 RESULT_NOT_FOUND).
 4. Register `GET /api/v1/orgs/:org/checks/:check/results/:uid` next to the existing results routes in `server/internal/app/server.go`.
 5. Service tests (use the existing testcontainers harness): direct-hit, fallback-to-hour, fallback-to-day, no-coverage→404, bad UID→404, region tie-break.
-6. Update `docs/api-specification.md` and `CLAUDE.md` (error codes list).
+6. Update `wiki/api-specification.md` and `CLAUDE.md` (error codes list).

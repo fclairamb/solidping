@@ -1,0 +1,48 @@
+{
+  "name": "solidping-docs",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "start": "docusaurus start",
+    "gen-api-docs": "docusaurus gen-api-docs all",
+    "clean-api-docs": "docusaurus clean-api-docs all",
+    "build": "docusaurus gen-api-docs all && docusaurus build",
+    "swizzle": "docusaurus swizzle",
+    "clear": "docusaurus clear",
+    "serve": "docusaurus serve",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.1",
+    "@docusaurus/preset-classic": "3.10.1",
+    "@mdx-js/react": "^3.0.0",
+    "docusaurus-plugin-llms": "^0.4.0",
+    "docusaurus-plugin-openapi-docs": "^5.0.2",
+    "docusaurus-theme-openapi-docs": "^5.0.2",
+    "prism-react-renderer": "^2.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "3.10.1",
+    "@docusaurus/tsconfig": "3.10.1",
+    "@docusaurus/types": "3.10.1",
+    "typescript": "~5.6.2"
+  },
+  "overrides": {
+    "webpack": "5.104.1"
+  },
+  "browserslist": {
+    "production": [">0.5%", "not dead", "not op_mini all"],
+    "development": [
+      "last 3 chrome version",
+      "last 3 firefox version",
+      "last 5 safari version"
+    ]
+  },
+  "engines": {
+    "node": ">=20.0"
+  },
+  "packageManager": "bun@1.1.0"
+}

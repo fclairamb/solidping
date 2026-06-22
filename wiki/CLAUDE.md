@@ -25,7 +25,7 @@ Markdown files in this tree must stay small enough that a contributor (or an LLM
 1. Create a sibling subdirectory with the same base name (e.g. `competitors/betterstack.md` → `competitors/betterstack/`).
 2. Move each top-level section into its own child file, named after the section in kebab-case (`overview.md`, `monitoring.md`, `alerting.md`, `api.md`, `pricing.md`, `sources.md`, …). Aim for child files of 100–400 lines.
 3. Replace the original file with a short `README.md` (or keep the parent file as an index) — under ~80 lines — that lists each child file with a one-line summary. The index is **navigation**, not content; do not duplicate prose between index and children.
-4. Update `docs/README.md` to list every **leaf** child file, not just the parent directory. Discoverability lives at the leaf level.
+4. Update `wiki/README.md` to list every **leaf** child file, not just the parent directory. Discoverability lives at the leaf level.
 5. Update every cross-reference in this repo (other docs, specs, server/CLAUDE.md, web/dash0/CLAUDE.md, source comments) so deep links keep resolving. Use `grep -rn old-path docs/ specs/ server/ web/` to find them.
 6. After the split, run `wc -l` over the new tree and confirm every file is under the soft target.
 

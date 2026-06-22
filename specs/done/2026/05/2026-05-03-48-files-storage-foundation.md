@@ -244,8 +244,8 @@ GET /pub/files/{fileUid}?exp=<unixSeconds>&sig=<hex>
 | `server/internal/handlers/files/public_handler.go`             | `GET /pub/files/{uid}` handler (signed-URL verified)                |
 | `server/internal/app/server.go`                                | Register routes (auth + public), wire service into registry         |
 | `server/internal/app/services/services.go`                     | Add files service to `ServicesList`                                 |
-| `docs/api-specification.md`                                    | Add `/files` and `/pub/files` to the endpoint list                  |
-| `docs/conventions/files.md` (new)                              | Short doc: storage backends, signed URLs, group conventions         |
+| `wiki/api-specification.md`                                    | Add `/files` and `/pub/files` to the endpoint list                  |
+| `wiki/conventions/files.md` (new)                              | Short doc: storage backends, signed URLs, group conventions         |
 
 ## Tests
 

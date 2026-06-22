@@ -257,7 +257,7 @@ gating.
 | `server/internal/handlers/features/handler.go`                | `GET /api/v1/features`                                              |
 | `server/internal/app/server.go`                               | Register `/mgmt/report` (public) and `/api/v1/features` (auth)      |
 | `server/internal/app/services/services.go`                    | Wire feedback service                                               |
-| `docs/api-specification.md`                                   | Document `/mgmt/report` and `/api/v1/features`                      |
+| `wiki/api-specification.md`                                   | Document `/mgmt/report` and `/api/v1/features`                      |
 | `CLAUDE.md` (root)                                            | Add the two endpoints to the API list                               |
 
 ## Tests

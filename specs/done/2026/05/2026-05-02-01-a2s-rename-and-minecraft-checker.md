@@ -59,8 +59,8 @@ This spec does two things, in order:
 
 | File | Change |
 |---|---|
-| `docs/architecture.md` | Replace `checkgameserver/       # Game server queries` with `checka2s/             # Source engine A2S query` (line ~172). |
-| `docs/conventions/checker-config.md` | Replace the `### `gameserver` -- Game server A2S query` section header (line ~471) with `### `a2s` -- Source engine A2S query`. Update any inline references. |
+| `wiki/architecture.md` | Replace `checkgameserver/       # Game server queries` with `checka2s/             # Source engine A2S query` (line ~172). |
+| `wiki/conventions/checker-config.md` | Replace the `### `gameserver` -- Game server A2S query` section header (line ~471) with `### `a2s` -- Source engine A2S query`. Update any inline references. |
 
 ### Verification commands for the rename
 
@@ -222,8 +222,8 @@ In `server/internal/checkers/registry/registry.go`:
 
 ### Documentation
 
-- `docs/architecture.md` — add a `checkminecraft/       # Minecraft Server List Ping` line in the checkers tree near `checka2s/`.
-- `docs/conventions/checker-config.md` — add a `### `minecraft` -- Minecraft Server List Ping` section after the `a2s` one, documenting the config fields and edition selector.
+- `wiki/architecture.md` — add a `checkminecraft/       # Minecraft Server List Ping` line in the checkers tree near `checka2s/`.
+- `wiki/conventions/checker-config.md` — add a `### `minecraft` -- Minecraft Server List Ping` section after the `a2s` one, documenting the config fields and edition selector.
 
 ---
 
@@ -307,8 +307,8 @@ Run `make dev-test`, open the dash0 app, and verify:
 - [ ] `web/dash0/src/locales/fr/checks.json`
 - [ ] `web/dash0/src/locales/de/checks.json`
 - [ ] `web/dash0/src/locales/es/checks.json`
-- [ ] `docs/architecture.md`
-- [ ] `docs/conventions/checker-config.md`
+- [ ] `wiki/architecture.md`
+- [ ] `wiki/conventions/checker-config.md`
 
 ### New (Part B)
 - [ ] `server/internal/checkers/checkminecraft/checker.go`
@@ -323,7 +323,7 @@ Run `make dev-test`, open the dash0 app, and verify:
 - [ ] `web/dash0/src/components/shared/check-form.tsx` (union, dropdown entry, 3 switch arms)
 - [ ] `web/dash0/src/api/hooks.ts` (2 unions)
 - [ ] `web/dash0/src/locales/{en,fr,de,es}/checks.json` (2 new keys each)
-- [ ] `docs/architecture.md`, `docs/conventions/checker-config.md`
+- [ ] `wiki/architecture.md`, `wiki/conventions/checker-config.md`
 
 ### Lint / build verification
 

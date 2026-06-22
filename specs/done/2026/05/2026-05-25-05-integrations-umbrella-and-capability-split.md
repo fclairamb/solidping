@@ -172,7 +172,7 @@ func CapabilitiesFor(t ConnectionType) Capabilities {
   `handlers/integrations/`, error codes (`ErrorCodeChannelNotFound` →
   `ErrorCodeIntegrationNotFound`, keep old as alias for one cycle),
   `app/server.go` routes, `mcp/tools_connections.go` (`list_channels` →
-  `list_integrations`), `docs/api-specification.md`, `docs/database-model.md`.
+  `list_integrations`), `wiki/api-specification.md`, `wiki/database-model.md`.
 - Frontend: `api/hooks.ts`, `routes/orgs/$org/channels.*.tsx`,
   `components/channels/*`, `components/shared/check-form.tsx`,
   `routes/orgs/$org/checks.new.tsx`, `locales/{en,fr,de,es}/channels.json`,

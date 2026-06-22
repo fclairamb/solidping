@@ -1,6 +1,6 @@
 # Terraform Provider (Configuration as Code)
 
-> Roadmap: **P2.2** (`docs/roadmap.md`). Gatus, Checkly, BetterStack, Pingdom all ship
+> Roadmap: **P2.2** (`wiki/roadmap.md`). Gatus, Checkly, BetterStack, Pingdom all ship
 > one. DevOps teams that manage infra as code won't adopt a tool that doesn't fit that
 > workflow. No provider exists today.
 
@@ -22,7 +22,7 @@ and the **in-tree prerequisite work**; the provider implementation happens in th
   (`server.go:354,358,373-375`). This is the provider's auth mechanism — no new auth work.
 - Full CRUD handlers for every v1 resource (verified present):
   `server/internal/handlers/{checks,channels,escalationpolicies,oncallschedules,statuspages}/`.
-- API conventions documented in `docs/api-specification.md` and root `CLAUDE.md`:
+- API conventions documented in `wiki/api-specification.md` and root `CLAUDE.md`:
   `data` envelope on lists, `$uid` paths, camelCase, `PATCH` for updates.
 
 ## Goals
@@ -35,7 +35,7 @@ and the **in-tree prerequisite work**; the provider implementation happens in th
 ## Non-goals
 
 - Generating the provider from OpenAPI automatically (there is no committed OpenAPI YAML
-  to generate from — `docs/api-specification.md` is prose). Handwrite the thin client.
+  to generate from — `wiki/api-specification.md` is prose). Handwrite the thin client.
 - Managing org/user/auth-provider lifecycle via Terraform (out of scope for v1).
 - Data-source coverage beyond the five v1 resources.
 
@@ -145,7 +145,7 @@ explicitly out of scope here (Non-goals + Implementation notes).
    writable field with secret-bearing fields surfaced only as placeholder key lists,
    (c) PATCH does partial updates and preserves omitted secrets, (d) DELETE is
    idempotent enough (404-on-already-gone is acceptable). Record findings.
-2. **Write the audit findings note** in this repo (`docs/terraform-provider-api-audit.md`)
+2. **Write the audit findings note** in this repo (`wiki/terraform-provider-api-audit.md`)
    — a per-resource table mapping each Terraform resource onto its endpoints, secret
    handling, and import addressing, with explicit gap callouts.
 3. **File follow-up API task specs** for any gap that would block a clean declarative

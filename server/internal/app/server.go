@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -124,6 +125,9 @@ var status0Files embed.FS
 
 //go:embed openapi/*
 var openAPIFiles embed.FS
+
+//go:embed all:docsres
+var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
@@ -1242,6 +1246,96 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 	}
 }
 
+// handlerWithDocsHost wraps the main router so requests whose Host matches
+// server.docs_host (default docs.solidping.io) are served the embedded docs
+// site (docsres) at the host root, ahead of the normal path-based app routing.
+// When docs_host is empty, docs are not host-served (they remain embedded in
+// the binary and can be mirrored to a CDN). The host comparison ignores any
+// port and is case-insensitive.
+func (s *Server) handlerWithDocsHost() http.Handler {
+	docsHost := strings.ToLower(strings.TrimSpace(s.config.Server.DocsHost))
+	if docsHost == "" {
+		return s.router
+	}
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		if docsHostMatches(req.Host, docsHost) {
+			s.serveDocsFile(writer, req.URL.Path)
+
+			return
+		}
+
+		s.router.ServeHTTP(writer, req)
+	})
+}
+
+// docsHostMatches reports whether the request Host (which may carry a port)
+// equals the configured docs host, case-insensitively.
+func docsHostMatches(reqHost, docsHost string) bool {
+	host := reqHost
+	if h, _, err := net.SplitHostPort(reqHost); err == nil {
+		host = h
+	}
+
+	return strings.EqualFold(host, docsHost)
+}
+
+// serveDocsFile serves a file from the embedded Docusaurus build (docsres).
+// Docusaurus is a multi-page static site (trailingSlash:false → one <page>.html
+// per route), so a request path is resolved by trying, in order: the exact path
+// (assets, llms.txt), <path>.html (pages and category indexes),
+// <path>/index.html, then the static 404.html.
+func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
+	clean := strings.Trim(path.Clean("/"+urlPath), "/")
+
+	var candidates []string
+	if clean == "" {
+		candidates = []string{"index.html"}
+	} else {
+		candidates = []string{clean, clean + ".html", path.Join(clean, "index.html")}
+	}
+
+	for _, candidate := range candidates {
+		data, err := docsFiles.ReadFile(path.Join("docsres", candidate))
+		if err != nil {
+			continue
+		}
+
+		writeDocsFile(writer, candidate, data, http.StatusOK)
+
+		return
+	}
+
+	if data, err := docsFiles.ReadFile(path.Join("docsres", "404.html")); err == nil {
+		writeDocsFile(writer, "404.html", data, http.StatusNotFound)
+
+		return
+	}
+
+	http.Error(writer, "Not found", http.StatusNotFound)
+}
+
+// writeDocsFile writes a docs file with a content type derived from its
+// extension (falling back to content sniffing) and a cache policy that keeps
+// HTML/text fresh while letting Docusaurus's content-hashed assets cache for a
+// year.
+func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status int) {
+	contentType := mime.TypeByExtension(path.Ext(name))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+
+	maxAgeSeconds := 31536000 // 1 year for content-hashed assets
+	if strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".xml") {
+		maxAgeSeconds = 60
+	}
+
+	writer.Header().Set("Content-Type", contentType)
+	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	writer.WriteHeader(status)
+	_, _ = writer.Write(data)
+}
+
 // serveAppRoot determines whether to proxy to dev server or serve static files.
 func (s *Server) serveAppRoot(writer http.ResponseWriter, req bunrouter.Request) error {
 	// Redirect root to dash0 dashboard
@@ -1615,7 +1709,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 		srv := &http.Server{
 			Addr:              s.config.Server.Listen,
-			Handler:           s.router,
+			Handler:           s.handlerWithDocsHost(),
 			ReadHeaderTimeout: readHeaderTimeout,
 		}
 

@@ -32,8 +32,8 @@ Each escalation step references a `severity_id`. The step targets
 *who* gets paged (user / schedule / channel / all admins); the
 severity decides *how* (which channels fire simultaneously for that
 target). See
-[`docs/research/alerting-patterns.md §… escalation`](../../docs/research/alerting-patterns.md) and
-[`docs/competitors/betterstack/alerting.md §Severities`](../../docs/competitors/betterstack/alerting.md#severities--the-channel-matrix).
+[`wiki/research/alerting-patterns.md §… escalation`](../../docs/research/alerting-patterns.md) and
+[`wiki/competitors/betterstack/alerting.md §Severities`](../../docs/competitors/betterstack/alerting.md#severities--the-channel-matrix).
 
 ## Goal
 
@@ -188,9 +188,9 @@ who gets reached at that urgency.
 
 ### Docs
 
-- `docs/api-specification.md` — document the new `/severities`
+- `wiki/api-specification.md` — document the new `/severities`
   endpoints and the `severityUid` field on escalation steps.
-- `docs/features/notifications-and-escalation.md` — extend the
+- `wiki/features/notifications-and-escalation.md` — extend the
   "Channels" and "Escalation policies" sections to describe how
   severities resolve at fire time.
 

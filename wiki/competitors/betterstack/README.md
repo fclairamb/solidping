@@ -34,7 +34,7 @@ This directory replaces the previous monolithic `betterstack.md` (1004 lines) an
 
 ## What's worth borrowing
 
-Distilled in [docs/research/alerting-patterns.md](../../research/alerting-patterns.md). Headline items:
+Distilled in [wiki/research/alerting-patterns.md](../../research/alerting-patterns.md). Headline items:
 
 1. **`recoveryPeriod` (seconds)** with explicit "any failure inside the window resets the timer" semantic.
 2. **`confirmationPeriod` as wall-clock seconds**, not as a fail-count — decouples alert delay from `checkFrequency`.

@@ -35,9 +35,9 @@ Conflating them creates papercuts:
 
 Hyperping is the only competitor that ships this split — it's their
 strongest design idea. See
-[`docs/competitors/hyperping/alerting.md §Outages-vs-Incidents`](../../docs/competitors/hyperping/alerting.md#outages-vs-incidents--the-two-table-model)
+[`wiki/competitors/hyperping/alerting.md §Outages-vs-Incidents`](../../docs/competitors/hyperping/alerting.md#outages-vs-incidents--the-two-table-model)
 and
-[`docs/research/alerting-patterns.md`](../../docs/research/alerting-patterns.md).
+[`wiki/research/alerting-patterns.md`](../../docs/research/alerting-patterns.md).
 
 ## Goal
 
@@ -232,7 +232,7 @@ mostly mechanical. Summary:
   alias for one release, hit `/outages` URL)
 - `server/internal/mcp/tools_incidents.go` →
   `tools_outages.go` (with old tool names aliased)
-- `docs/api-specification.md` — both paths documented; `/incidents`
+- `wiki/api-specification.md` — both paths documented; `/incidents`
   flagged deprecated
 
 ### Phase 2 (new type)

@@ -27,7 +27,7 @@ Hyperping (https://hyperping.com) is a SaaS uptime + status-page + on-call platf
 
 ## What's worth borrowing
 
-The full list of design ideas distilled from this research lives in [docs/research/alerting-patterns.md](../../research/alerting-patterns.md). The headline items:
+The full list of design ideas distilled from this research lives in [wiki/research/alerting-patterns.md](../../research/alerting-patterns.md). The headline items:
 
 1. **Outages vs Incidents as separate objects** — operational alerting (auto, ack/escalate, internal) vs customer-facing communication (status page, public updates, localized).
 2. **Webhook payloads carry the full multi-region confirmation trace** (`pings[]` with `original: true/false`) so receivers can do their own correlation.

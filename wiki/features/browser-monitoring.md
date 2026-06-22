@@ -178,7 +178,7 @@ checks.
 | Config schema, validation | [`server/internal/checkers/checkbrowser/config.go`](../../server/internal/checkers/checkbrowser/config.go) |
 | Execution (Chrome lifecycle, navigate, wait, assert) | [`server/internal/checkers/checkbrowser/checker.go`](../../server/internal/checkers/checkbrowser/checker.go) |
 | Sample configs (used by the create-check picker) | [`server/internal/checkers/checkbrowser/samples.go`](../../server/internal/checkers/checkbrowser/samples.go) |
-| Conventions for all checker types | [`docs/conventions/checker-config.md`](../conventions/checker-config.md) |
+| Conventions for all checker types | [`wiki/conventions/checker-config.md`](../conventions/checker-config.md) |
 
 The runner is built on
 [chromedp](https://github.com/chromedp/chromedp) (not Rod, despite

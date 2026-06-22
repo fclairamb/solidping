@@ -101,7 +101,7 @@ Most competitors collapse "internal alert" and "customer comms" into one record.
 - The customer sees an `Incident` with a polished, localized timeline.
 - Different access controls, different retention policies, different APIs.
 
-This is the most novel pattern Hyperping ships and is worth replicating in SolidPing — see [docs/research/alerting-patterns.md](../../research/alerting-patterns.md).
+This is the most novel pattern Hyperping ships and is worth replicating in SolidPing — see [wiki/research/alerting-patterns.md](../../research/alerting-patterns.md).
 
 ## Auto-merging across monitors
 

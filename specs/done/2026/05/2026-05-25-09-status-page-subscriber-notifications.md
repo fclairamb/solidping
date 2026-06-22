@@ -1,6 +1,6 @@
 # Status-Page Subscriber Notifications (email + RSS)
 
-> Roadmap: **P1.2** (`docs/roadmap.md`). No subscriber/subscription concept exists in the
+> Roadmap: **P1.2** (`wiki/roadmap.md`). No subscriber/subscription concept exists in the
 > backend today.
 
 ## Context

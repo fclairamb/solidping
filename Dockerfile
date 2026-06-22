@@ -64,6 +64,33 @@ COPY web/status0/ ./
 # Build status0
 RUN bun run build
 
+# Stage 1d: Docs Build (Docusaurus, incl. generated API reference)
+FROM node:24-alpine AS docs-builder
+
+# Install bun
+RUN apk add --no-cache curl unzip bash && \
+    curl -fsSL https://bun.sh/install | bash && \
+    ln -s /root/.bun/bin/bun /usr/local/bin/bun
+
+WORKDIR /build/web/docs
+
+# Copy docs package files
+COPY web/docs/package.json web/docs/bun.lock ./
+
+# Install dependencies
+RUN bun install --frozen-lockfile
+
+# The API reference is generated at build time from the canonical OpenAPI spec
+# via the relative path ../../server/internal/app/openapi/openapi.yaml — make it
+# available at that location in this stage.
+COPY server/internal/app/openapi/openapi.yaml /build/server/internal/app/openapi/openapi.yaml
+
+# Copy docs source
+COPY web/docs/ ./
+
+# Build docs (runs gen-api-docs then docusaurus build)
+RUN bun run build
+
 # Stage 2: Backend Build
 FROM golang:1.26.4-trixie AS backend-builder
 
@@ -94,6 +121,7 @@ COPY server/ ./
 COPY --from=dash-builder /build/dash/dist ./internal/app/res
 COPY --from=dash0-builder /build/dash0/dist ./internal/app/dash0res
 COPY --from=status0-builder /build/status0/dist ./internal/app/status0res
+COPY --from=docs-builder /build/web/docs/build ./internal/app/docsres
 
 # Build the backend binary with version information
 # CGO is needed for SQLite support

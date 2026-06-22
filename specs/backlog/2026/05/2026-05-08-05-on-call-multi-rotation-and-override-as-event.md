@@ -266,9 +266,9 @@ endpoint with `isOverride = true`.
 
 ### Docs
 
-- `docs/api-specification.md` — replace the on-call section with the
+- `wiki/api-specification.md` — replace the on-call section with the
   new shape; document the legacy alias.
-- `docs/features/notifications-and-escalation.md` — update the
+- `wiki/features/notifications-and-escalation.md` — update the
   "On-call schedules" section to describe N rotations and the
   override-as-event semantics.
 

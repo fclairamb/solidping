@@ -80,7 +80,7 @@ org; that path is unchanged. The frontend just needs to call it from
 - Email notifications: new request → all org admins; decision →
   requester. Same package as invitations.
 - Augment `MeResponse` with `pendingMembershipRequests`.
-- Documentation in `docs/api-specification.md` and the API list in
+- Documentation in `wiki/api-specification.md` and the API list in
   `CLAUDE.md`.
 
 **Out**
@@ -243,7 +243,7 @@ Failures are logged, not surfaced to the API caller.
 | `server/internal/db/models/membership_request.go`                                | New entity.                                                                                             |
 | `server/internal/db/repositories/membership_request_repo.go`                     | CRUD + status filters; "find by (org,user)"; "find rejected within cooldown".                           |
 | `server/internal/notifications/membership_request.go` (+ templates)              | Dispatch helpers + HTML/text templates.                                                                 |
-| `docs/api-specification.md`                                                      | Document the six endpoints.                                                                             |
+| `wiki/api-specification.md`                                                      | Document the six endpoints.                                                                             |
 | `CLAUDE.md`                                                                      | Add the routes to the key-routes list.                                                                  |
 
 ## Tests

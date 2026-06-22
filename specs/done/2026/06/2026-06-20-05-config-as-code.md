@@ -202,7 +202,7 @@ commit; `make fmt` runs before each.
    over the existing endpoints (CLI currently lacks them). Raw client methods in
    `server/pkg/client` (apply sends the file bytes with the right Content-Type).
 
-7. **Docs.** `docs/api-specification.md`: apply endpoint + manifest format + managed label +
+7. **Docs.** `wiki/api-specification.md`: apply endpoint + manifest format + managed label +
    secret-ref convention + the export/import admin-gating change; CLI usage for apply/export/import.
 
 8. **Tests** (table-driven, `testify/require`, `t.Parallel()`, SQLite + Postgres where DB is

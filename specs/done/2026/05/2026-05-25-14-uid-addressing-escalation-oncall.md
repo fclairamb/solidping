@@ -1,7 +1,7 @@
 # UID Addressing for Escalation Policies & On-Call Schedules
 
 > Follow-up surfaced by the Terraform Provider API completeness audit
-> (`docs/terraform-provider-api-audit.md`, spec `2026-05-25-10-terraform-provider`).
+> (`wiki/terraform-provider-api-audit.md`, spec `2026-05-25-10-terraform-provider`).
 
 ## Context
 
@@ -60,7 +60,7 @@ For each of the two handlers, resolve the existing `:slug` path param as **uid-o
    stay named `:slug` for backward compatibility, or be renamed to a neutral
    `:scheduleUid` / `:policyUid` — keep it minimal.
 4. **Docs** — add the `escalation-policies` and `on-call-schedules` endpoint sections to
-   `docs/api-specification.md` (they are currently undocumented), noting uid-or-slug
+   `wiki/api-specification.md` (they are currently undocumented), noting uid-or-slug
    addressing.
 
 ## Acceptance criteria
@@ -69,7 +69,7 @@ For each of the two handlers, resolve the existing `:slug` path param as **uid-o
   `GET/PATCH/DELETE /orgs/:org/on-call-schedules/:id` succeed when `:id` is a **uid** and
   still succeed when `:id` is a **slug**.
 - A nonexistent uid returns `404 NOT_FOUND` (idempotent delete preserved).
-- `docs/api-specification.md` documents both resources' endpoints.
+- `wiki/api-specification.md` documents both resources' endpoints.
 - Table-driven handler/service tests cover uid path, slug path, and 404 for both resources.
 
 ## Priority
@@ -110,7 +110,7 @@ two by slug in the interim).
      at `GetScheduleByUidOrSlug`.
 
 4. **Docs.** Add `escalation-policies` and `on-call-schedules` endpoint sections to
-   `docs/api-specification.md`, noting uid-or-slug addressing on GET/PATCH/DELETE.
+   `wiki/api-specification.md`, noting uid-or-slug addressing on GET/PATCH/DELETE.
 
 5. **Tests.**
    - DB: `service_test.go` cases for `GetEscalationPolicyByUidOrSlug` /

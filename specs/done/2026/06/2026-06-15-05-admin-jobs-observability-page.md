@@ -75,7 +75,7 @@ data to instance-wide endpoints, surfacing every org plus the
   `/orgs/$org/jobs`, `isActive` when `pathname.startsWith('/orgs/$org/jobs')`.
 - Route layout `jobs.tsx` mirrors the `organization.tsx` admin guard: if
   `!user?.isAdmin` after auth loads, `navigate({ to: "/orgs/$org", replace })`.
-  (403, never a redirect loop — per `docs/conventions/frontend-errors.md`.)
+  (403, never a redirect loop — per `wiki/conventions/frontend-errors.md`.)
 
 ### 2. List page `/orgs/$org/jobs` (`jobs.index.tsx`)
 A header + an **activity overview** + **two tabs**.

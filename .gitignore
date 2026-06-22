@@ -9,6 +9,7 @@ bin/
 # Frontend builds
 server/internal/app/dash0res/
 server/internal/app/status0res/
+server/internal/app/docsres/
 
 # Test data
 test-results/

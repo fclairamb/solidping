@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Dashboard**: React + TanStack Router (see `web/dash0/CLAUDE.md` for details) — do not use `web/dash` for current development
 - **Infrastructure**: Docker Compose with PostgreSQL for monitoring data storage
 - **Monitoring**: Multi-protocol ping/health checking with distributed worker system
+- **Docs site**: Docusaurus in `web/docs/` → `docs.solidping.io`, embedded in the Go binary and served by Host header (config `server.docs_host` / `SP_DOCS_HOST`, default `docs.solidping.io`). The API reference is generated at build time from `server/internal/app/openapi/openapi.yaml`. The marketing site (`www.solidping.io`) lives in the separate `solidping-website` repo. Internal engineering notes live in `wiki/` (not published).
 
 ## Development workflow
 If the server is running on port 4000, apply code changes directly — `make dev` / `make dev-test` hot-reloads both backend and frontend.
@@ -67,7 +68,7 @@ dashboard "Upgrade" link target); run it alongside `../solidping-billing`
 
 Additional frontend rules:
 - **All pages must be fully usable on mobile** — use responsive layouts, avoid fixed widths, ensure touch targets are large enough.
-- **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `docs/conventions/frontend-errors.md`.
+- **401** → redirect to login with `?returnTo={currentPath}`; **403** → show "Permission Denied", never redirect (causes loops). See `wiki/conventions/frontend-errors.md`.
 - Editing always navigates to a dedicated route (`/<resource>/new`, `/<resource>/$id`) — never in a modal dialog.
 - Row actions: prefer two ghost icon buttons (`Pencil` / `Trash2`) over a `MoreVertical` menu.
 - **Delete is always red, always a trash bin** — every delete/irreversible action uses the `Trash2` icon in the destructive red (`variant="destructive"`, or `text-destructive` for icon buttons and dropdown items). Never delete with a different icon or color, and never use destructive red for non-destructive actions.
@@ -78,7 +79,7 @@ Additional frontend rules:
 - Use `PATCH` for updates, `q` for search, `limit` for page-size.
 - camelCase for all JSON properties and query parameters.
 - Multi-value query params use the singular form, comma-separated (e.g. `?checkUid=a,b`).
-- Full endpoint list: `docs/api-specification.md`.
+- Full endpoint list: `wiki/api-specification.md`.
 
 ### Error shape
 ```json

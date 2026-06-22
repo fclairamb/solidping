@@ -274,7 +274,7 @@ Add keys to `web/dash0/src/locales/{en,fr,de,es}/discovery.json`:
 - `web/dash0/src/locales/{en,fr,de,es}/discovery.json`
 
 **Docs**
-- `docs/api-specification.md` — `POST /discovery/freebox-scans`, `source` field,
+- `wiki/api-specification.md` — `POST /discovery/freebox-scans`, `source` field,
   `?source=` filter on `GET /discovery/hosts`.
 
 ## Tests
@@ -342,7 +342,7 @@ and the per-job host table; confirm source filter narrows the scans list; confir
 5. Discovery service/handler: `StartFreeboxScan`, `freebox-scans` route, `ListScans`
    both types, `source` filter, tests. `make lint test`.
 6. Frontend: hooks, Source column, scans-list source filter + badges, Freebox launcher,
-   i18n; update `docs/api-specification.md`. `make build lint test-dash`.
+   i18n; update `wiki/api-specification.md`. `make build lint test-dash`.
 7. QA loop: `make build lint test test-dash`; completeness audit + archive + merge.
 
 ## Implementation Plan
@@ -383,6 +383,6 @@ and the per-job host table; confirm source filter narrows the scans list; confir
    `useListCandidateHosts`, `useStartFreeboxScan`. Source column + badge on
    `discovery.$jobUid.tsx`. Scans-list source badges + filter + "Discover via Freebox"
    launcher on `discovery.index.tsx`. i18n keys in 4 locales. Playwright assertions.
-   Update `docs/api-specification.md`.
+   Update `wiki/api-specification.md`.
 
 7. **QA + audit + archive + merge.**
