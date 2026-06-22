@@ -37,6 +37,7 @@ jobs:
           mkdir -p internal/app/res && echo "placeholder" > internal/app/res/index.html
           mkdir -p internal/app/dash0res && echo "placeholder" > internal/app/dash0res/index.html
           mkdir -p internal/app/status0res && echo "placeholder" > internal/app/status0res/index.html
+          mkdir -p internal/app/docsres && echo "placeholder" > internal/app/docsres/index.html
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9.2.1
@@ -140,10 +141,42 @@ jobs:
           path: web/status0/dist
           retention-days: 1
 
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-24.04
+    if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
+    defaults:
+      run:
+        working-directory: web/docs
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        run: bun install
+
+      # `bun run build` runs gen-api-docs first, generating the API reference
+      # from ../../server/internal/app/openapi/openapi.yaml (same repo).
+      # onBrokenLinks is "throw", so a broken doc link fails the build here.
+      - name: Build
+        run: bun run build
+
+      - name: Upload docs dist
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-dist
+          path: web/docs/build
+          retention-days: 1
+
   build:
     name: Build Binary
     runs-on: ubuntu-24.04
-    needs: [dash, dash0, status0]
+    needs: [dash, dash0, status0, docs]
     if: ${{ !startsWith(github.ref, 'refs/tags/') && (github.event_name != 'pull_request' || !startsWith(github.head_ref, 'release-please-')) }}
     steps:
       - uses: actions/checkout@v7
@@ -170,6 +203,12 @@ jobs:
         with:
           name: status0-dist
           path: server/internal/app/status0res
+
+      - name: Download docs dist
+        uses: actions/download-artifact@v8
+        with:
+          name: docs-dist
+          path: server/internal/app/docsres
 
       - name: Build binary
         working-directory: server
@@ -301,7 +340,7 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-24.04
-    needs: [backend-lint, dash, dash0, status0, build, e2e-tests]
+    needs: [backend-lint, dash, dash0, status0, docs, build, e2e-tests]
     if: ${{ always() && !startsWith(github.ref, 'refs/tags/') }}
     steps:
       - name: Verify no failures

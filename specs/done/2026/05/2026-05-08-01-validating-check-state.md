@@ -20,7 +20,7 @@ Once a failure is observed but the confirmation hasn't completed, the
 check shows `validating` in the dashboard list, on detail pages, and in
 the API response. When confirmation either fires (incident opens) or
 clears (failure was transient), the state moves to `down` or `up`
-accordingly. See [`docs/research/alerting-patterns.md §1.3`](../../docs/research/alerting-patterns.md).
+accordingly. See [`wiki/research/alerting-patterns.md §1.3`](../../docs/research/alerting-patterns.md).
 
 ## Goal
 
@@ -161,7 +161,7 @@ Add `TestProcessCheckResultEntersValidatingOnFirstFailure`:
 - Mirror state on the recovery side (deferred to spec 02).
 - Per-region partial-down state ("3 of 5 regions failing"). Multi-region
   quorum is a separate concept tracked in
-  [`docs/research/alerting-patterns.md §1.2`](../../docs/research/alerting-patterns.md).
+  [`wiki/research/alerting-patterns.md §1.2`](../../docs/research/alerting-patterns.md).
 - Surfacing `validating` in events feed, status pages, or external
   webhooks. Display-only first; integrations later.
 

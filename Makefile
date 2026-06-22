@@ -1,5 +1,5 @@
-.PHONY: docker-build build build-backend build-dash build-dash0 build-status0 copy-dash copy-dash0 copy-status0 \
-	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-backend \
+.PHONY: docker-build build build-backend build-dash build-dash0 build-status0 build-docs copy-dash copy-dash0 copy-status0 copy-docs \
+	build-cli install-cli clean clean-all run run-test dev dev-test dev-saas dev-dash dev-dash0 dev-status0 dev-docs dev-backend \
 	test test-scenario test-dash lint lint-back lint-dash fmt deps migrate help sync-brand-assets build-favicons \
 	build-loadgen bench-checks bench-checks-sqlite bench-checks-postgres \
 	build-scenario scenario-test
@@ -36,10 +36,13 @@ DASH0_DIR := web/dash0
 DASH0_DIST := $(DASH0_DIR)/dist
 STATUS0_DIR := web/status0
 STATUS0_DIST := $(STATUS0_DIR)/dist
+DOCS_DIR := web/docs
+DOCS_DIST := $(DOCS_DIR)/build
 BACK_DIR := server
 BACK_RES := $(BACK_DIR)/internal/app/res/
 BACK_DASH0_RES := $(BACK_DIR)/internal/app/dash0res/
 BACK_STATUS0_RES := $(BACK_DIR)/internal/app/status0res/
+BACK_DOCS_RES := $(BACK_DIR)/internal/app/docsres/
 LOG_DIR := logs
 
 # Detect current OS
@@ -57,7 +60,7 @@ kill:
 	lsof -ti :5174 | xargs kill
 	lsof -ti :5175 | xargs kill
 
-build: sync-brand-assets build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-backend ## Build complete application
+build: sync-brand-assets build-dash copy-dash build-dash0 copy-dash0 build-status0 copy-status0 build-docs copy-docs build-backend ## Build complete application
 
 sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/public/
 	@mkdir -p web/dash0/public web/status0/public
@@ -71,7 +74,9 @@ sync-brand-assets: ## Copy res/logo.svg + favicon set into web/{dash0,status0}/p
 		cp res/favicons/*.png web/dash0/public/; \
 		cp res/favicons/*.png web/status0/public/; \
 	fi
-	@echo "Brand assets synced to web/dash0/public/ and web/status0/public/"
+	@mkdir -p web/docs/static/img
+	@cp res/logo.png web/docs/static/img/logo.png
+	@echo "Brand assets synced to web/dash0/public/, web/status0/public/, and web/docs/static/"
 
 build-favicons: ## Generate favicon PNG set from res/logo.svg into res/favicons/
 	@./scripts/build-favicons.sh
@@ -121,6 +126,18 @@ copy-status0: ## Copy status0 dist to backend status0res directory
 	@mkdir -p $(BACK_STATUS0_RES)
 	@cp -r $(STATUS0_DIST)/* $(BACK_STATUS0_RES)/
 	@echo "Status0 resources copied to $(BACK_STATUS0_RES)"
+
+build-docs: ## Build docs site (Docusaurus, incl. generated API ref) with bun
+	@echo "Building docs..."
+	@cd $(DOCS_DIR) && bun install && bun run build
+	@echo "Docs build complete"
+
+copy-docs: ## Copy docs build to backend docsres directory
+	@echo "Copying docs build to backend resources..."
+	@rm -rf $(BACK_DOCS_RES)
+	@mkdir -p $(BACK_DOCS_RES)
+	@cp -r $(DOCS_DIST)/* $(BACK_DOCS_RES)/
+	@echo "Docs resources copied to $(BACK_DOCS_RES)"
 
 build-backend: ## Build backend Go binary
 	@echo "Building backend for $(GOOS)/$(GOARCH)..."
@@ -315,6 +332,10 @@ dev-dash0: ## Start dash0 development server
 dev-status0: ## Start status0 development server
 	@echo "Starting status0 dev server..."
 	@cd $(STATUS0_DIR) && bun run dev
+
+dev-docs: ## Start docs (Docusaurus) dev server on :3000
+	@echo "Starting docs dev server..."
+	@cd $(DOCS_DIR) && bun run gen-api-docs && bun run start
 
 dev-backend: ## Start backend development server
 	@echo "Starting backend dev server..."

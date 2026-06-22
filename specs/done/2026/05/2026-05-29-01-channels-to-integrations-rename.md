@@ -121,7 +121,7 @@ the route canonicalization needs the model/handler renames in place.
   `/integrations` to both the org-level dual route (near line 773) and the
   per-check dual route (near line 576). All three bind the same handlers.
   PR-E removes `/connections`.
-- **Docs**: update `docs/api-specification.md` and `docs/database-model.md` —
+- **Docs**: update `wiki/api-specification.md` and `wiki/database-model.md` —
   document `/integrations` as canonical, mark `/channels` deprecated for one
   cycle, mark `/connections` removed at PR-E.
 
@@ -163,7 +163,7 @@ both Postgres and SQLite before merging.
 - `/channels` stays one release cycle as alias (follow-up spec drops it).
 - Remove `ErrorCodeChannelNotFound` alias if a cycle has elapsed; otherwise
   carry to the follow-up.
-- Update `docs/api-specification.md` to mark `/connections` removed.
+- Update `wiki/api-specification.md` to mark `/connections` removed.
 - Rename `TestChannelsAliasMatchesConnections` →
   `TestIntegrationsAliasMatchesChannels` in
   `server/test/integration/channels_alias_test.go`; update the assertion to
@@ -253,7 +253,7 @@ PR-B…PR-E in order, each granular-committed and kept build/lint/test green.
    `list_connections`/`create_connection`→`list_integrations`/`create_integration`.
 7. `app/server.go`: add `/integrations` prefix to org-level + per-check dual
    route loops (all three bind same handlers).
-8. Docs: `docs/api-specification.md`, `docs/database-model.md`.
+8. Docs: `wiki/api-specification.md`, `wiki/database-model.md`.
 
 ### PR-D — DB table migration
 

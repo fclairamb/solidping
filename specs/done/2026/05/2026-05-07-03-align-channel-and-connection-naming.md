@@ -135,8 +135,8 @@ file under each path.
   struct to `Channel`. Keep `bun:"table:integration_connections"` tag.
 - `server/internal/db/`: methods like `db.GetConnection` → `db.GetChannel`,
   `db.ListConnectionsForCheck` → `db.ListChannelsForCheck`, etc.
-- `docs/api-specification.md`: document the new `/channels` paths.
-- `docs/database-model.md`: footnote that the `integration_connections`
+- `wiki/api-specification.md`: document the new `/channels` paths.
+- `wiki/database-model.md`: footnote that the `integration_connections`
   table will be renamed to `channels` in a follow-up; flag the legacy name
   so readers don't think they've found a separate table.
 

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"mime"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -124,6 +125,9 @@ var status0Files embed.FS
 
 //go:embed openapi/*
 var openAPIFiles embed.FS
+
+//go:embed all:docsres
+var docsFiles embed.FS
 
 // Server is the HTTP server for the SolidPing application.
 type Server struct {
@@ -1029,9 +1033,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		api.DELETE("/test/checks/all", testHandler.DeleteAllChecks)
 	}
 
-	// OpenAPI schema endpoint
+	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from
+	// /docs to /openapi now that /docs serves the documentation site.
 	mainGroup.GET("/openapi.yaml", s.serveFile(openAPIFiles, "openapi/openapi.yaml"))
-	mainGroup.GET("/docs", s.serveFile(openAPIFiles, "openapi/index.html"))
+	mainGroup.GET("/openapi", s.serveFile(openAPIFiles, "openapi/index.html"))
+
+	// Documentation site (Docusaurus), embedded and served at /docs on every
+	// host. docs.solidping.io redirects its root here (see handlerWithDocsHost).
+	mainGroup.GET("/docs", s.serveDocsRoute)
+	mainGroup.GET("/docs/*path", s.serveDocsRoute)
 
 	// Dash0 status page (served at /dash0/)
 	mainGroup.GET("/dash0", s.serveDash0Root)
@@ -1240,6 +1250,108 @@ func (s *Server) serveFile(fs embed.FS, fileName string) func(writer http.Respon
 
 		return nil
 	}
+}
+
+// handlerWithDocsHost wraps the main router so a request to the docs host
+// (server.docs_host, default docs.solidping.io) is redirected to the /docs path
+// where the documentation site is served on every host. This lets
+// docs.solidping.io/foo resolve to /docs/foo without a separate root build.
+// When docs_host is empty, only the path-based /docs route is active. The host
+// comparison ignores any port and is case-insensitive.
+func (s *Server) handlerWithDocsHost() http.Handler {
+	docsHost := strings.ToLower(strings.TrimSpace(s.config.Server.DocsHost))
+	if docsHost == "" {
+		return s.router
+	}
+
+	return http.HandlerFunc(func(writer http.ResponseWriter, req *http.Request) {
+		if docsHostMatches(req.Host, docsHost) && !strings.HasPrefix(req.URL.Path, "/docs") {
+			target := "/docs" + req.URL.Path
+			if req.URL.RawQuery != "" {
+				target += "?" + req.URL.RawQuery
+			}
+			http.Redirect(writer, req, target, http.StatusFound)
+
+			return
+		}
+
+		s.router.ServeHTTP(writer, req)
+	})
+}
+
+// docsHostMatches reports whether the request Host (which may carry a port)
+// equals the configured docs host, case-insensitively.
+func docsHostMatches(reqHost, docsHost string) bool {
+	host := reqHost
+	if h, _, err := net.SplitHostPort(reqHost); err == nil {
+		host = h
+	}
+
+	return strings.EqualFold(host, docsHost)
+}
+
+// serveDocsRoute is the bunrouter handler for /docs and /docs/*path. It strips
+// the /docs prefix and serves the matching file from the embedded docs build.
+func (s *Server) serveDocsRoute(writer http.ResponseWriter, req bunrouter.Request) error {
+	s.serveDocsFile(writer, strings.TrimPrefix(req.URL.Path, "/docs"))
+
+	return nil
+}
+
+// serveDocsFile serves a file from the embedded Docusaurus build (docsres).
+// Docusaurus is a multi-page static site (trailingSlash:false → one <page>.html
+// per route), so a request path is resolved by trying, in order: the exact path
+// (assets, llms.txt), <path>.html (pages and category indexes),
+// <path>/index.html, then the static 404.html.
+func (s *Server) serveDocsFile(writer http.ResponseWriter, urlPath string) {
+	clean := strings.Trim(path.Clean("/"+urlPath), "/")
+
+	var candidates []string
+	if clean == "" {
+		candidates = []string{"index.html"}
+	} else {
+		candidates = []string{clean, clean + ".html", path.Join(clean, "index.html")}
+	}
+
+	for _, candidate := range candidates {
+		data, err := docsFiles.ReadFile(path.Join("docsres", candidate))
+		if err != nil {
+			continue
+		}
+
+		writeDocsFile(writer, candidate, data, http.StatusOK)
+
+		return
+	}
+
+	if data, err := docsFiles.ReadFile(path.Join("docsres", "404.html")); err == nil {
+		writeDocsFile(writer, "404.html", data, http.StatusNotFound)
+
+		return
+	}
+
+	http.Error(writer, "Not found", http.StatusNotFound)
+}
+
+// writeDocsFile writes a docs file with a content type derived from its
+// extension (falling back to content sniffing) and a cache policy that keeps
+// HTML/text fresh while letting Docusaurus's content-hashed assets cache for a
+// year.
+func writeDocsFile(writer http.ResponseWriter, name string, data []byte, status int) {
+	contentType := mime.TypeByExtension(path.Ext(name))
+	if contentType == "" {
+		contentType = http.DetectContentType(data)
+	}
+
+	maxAgeSeconds := 31536000 // 1 year for content-hashed assets
+	if strings.HasSuffix(name, ".html") || strings.HasSuffix(name, ".txt") || strings.HasSuffix(name, ".xml") {
+		maxAgeSeconds = 60
+	}
+
+	writer.Header().Set("Content-Type", contentType)
+	writer.Header().Set("Cache-Control", fmt.Sprintf("public, max-age=%d", maxAgeSeconds))
+	writer.WriteHeader(status)
+	_, _ = writer.Write(data)
 }
 
 // serveAppRoot determines whether to proxy to dev server or serve static files.
@@ -1615,7 +1727,7 @@ func (s *Server) Start(ctx context.Context) error {
 
 		srv := &http.Server{
 			Addr:              s.config.Server.Listen,
-			Handler:           s.router,
+			Handler:           s.handlerWithDocsHost(),
 			ReadHeaderTimeout: readHeaderTimeout,
 		}
 

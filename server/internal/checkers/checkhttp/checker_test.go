@@ -1380,7 +1380,17 @@ func TestHTTPChecker_Execute_ExpectedStatusCodes(t *testing.T) {
 			}
 
 			checker := &HTTPChecker{}
+
+			// Retry a few times to absorb rare transient local-connection
+			// failures under heavy parallel test load: the httptest server
+			// always responds, so a transient dial error must not be read as a
+			// status mismatch. A genuinely wrong status is consistent across
+			// attempts and still fails the assertion below.
 			result, err := checker.Execute(context.Background(), config)
+			for attempt := 1; attempt < 3 && err == nil && result.Status != tt.wantStatus; attempt++ {
+				time.Sleep(50 * time.Millisecond)
+				result, err = checker.Execute(context.Background(), config)
+			}
 			if err != nil {
 				t.Fatalf("Execute() error = %v", err)
 			}

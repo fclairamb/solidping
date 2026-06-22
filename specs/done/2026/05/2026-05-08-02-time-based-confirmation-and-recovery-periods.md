@@ -17,7 +17,7 @@ these in *seconds*: "I want to be sure the failure stuck around for
 2 minutes before paging me", not "after 3 ticks".
 
 BetterStack ships exactly the time-based shape we want
-([`docs/research/alerting-patterns.md §1.1, §2.1`](../../docs/research/alerting-patterns.md)):
+([`wiki/research/alerting-patterns.md §1.1, §2.1`](../../docs/research/alerting-patterns.md)):
 
 - `confirmation_period` — wall-clock seconds before opening an incident.
   Allowed UI presets: Immediate / 30 s / 1 min / 2 min / 3 min / 5 min /
@@ -310,13 +310,13 @@ pass count-based numbers.
 
 ### Docs
 
-- `docs/api-specification.md`: replace `incidentThreshold` /
+- `wiki/api-specification.md`: replace `incidentThreshold` /
   `recoveryThreshold` mentions with the new field names. Add a note
   in the Conventions section pointing at this spec for the rename
   history.
-- `docs/conventions/checker-config.md`: add a "Confirmation & recovery"
+- `wiki/conventions/checker-config.md`: add a "Confirmation & recovery"
   section explaining the wall-clock model and the flap-reset rule.
-- `docs/features/notifications-and-escalation.md`: update the section
+- `wiki/features/notifications-and-escalation.md`: update the section
   on suppression to clarify the new validating-state interaction.
 
 ## Out of scope

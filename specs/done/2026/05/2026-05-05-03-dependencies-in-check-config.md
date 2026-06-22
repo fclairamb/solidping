@@ -36,7 +36,7 @@ In scope:
 3. **Validate-check endpoint** (`POST /api/v1/orgs/$org/checks/validate`) accepts and validates `dependsOn` (cycle / self / cross-org / duplicate / unknown parent slug) without writing.
 4. **CLI** (`./solidping client`) gains `checks deps list|add|remove|set`, plus `--with-deps` on `checks export`/`import` (default true).
 5. **Frontend (dash0)**: the check create/edit form gets a "Dependencies" section that posts in the same trip as the rest of the form. The standalone `<DependenciesCard>` on the check detail page (shipped in 2026-05-05-01) stays — it's the canonical edit surface for "I'm here looking at this check, let me add a parent quickly." But the *create* flow currently has no dep slot; this spec adds it.
-6. **Spec updates**: `docs/api-specification.md` documents the new `dependsOn` field on import/export/upsert payloads.
+6. **Spec updates**: `wiki/api-specification.md` documents the new `dependsOn` field on import/export/upsert payloads.
 
 Out of scope:
 
@@ -250,7 +250,7 @@ Each step lands as a green commit:
 4. **`POST /checks/validate` `dependsOn` field**: same validators, no writes. Test happy + cycle.
 5. **CLI**: `sp checks deps {list,add,remove,set}` and `--with-deps` on export/import. Wire to the new fields.
 6. **Frontend**: add the Dependencies section to the check create/edit form. Extract the cycle-path renderer from `<DependenciesCard>` to a shared helper. Wire to PUT-by-slug on edit, to POST + per-edge POST on create.
-7. **Docs**: update `docs/api-specification.md` and `server/CLAUDE.md` to mention `dependsOn` on the import/export/upsert payloads.
+7. **Docs**: update `wiki/api-specification.md` and `server/CLAUDE.md` to mention `dependsOn` on the import/export/upsert payloads.
 8. **QA per the verification checklist**. `make build lint test` clean.
 
 If review pressure hits: ship steps 1–4 first (the load-bearing API change). Steps 5–7 can be a follow-up; the dedicated CRUD API and the on-detail-page card already cover the operator UX.
@@ -264,7 +264,7 @@ If review pressure hits: ship steps 1–4 first (the load-bearing API change). S
 - ✅ Step 3: `UpsertCheck` (PUT-by-slug) accepts `dependsOn *[]ExportedDependency` (pointer-typed for absent vs empty distinction), runs all validators upfront (parent existence, self, cross-org, kind, duplicate, cycle simulation), then applies destructive sync (delete missing, create new, update changed kind/desc). Caveat: not yet wrapped in a transaction with the check upsert — a failed dep apply leaves the check itself updated. Commit `69385bf0`.
 - ✅ Step 4: `POST /api/v1/orgs/$org/checks/validate` accepts `dependsOn` plus optional `slug`, runs the same validators without writing, returns per-row field errors. Commit `2c91759f`.
 
-- ✅ Step 7: `docs/api-specification.md` documents `dependsOn` on
+- ✅ Step 7: `wiki/api-specification.md` documents `dependsOn` on
   `/checks/export`, `/checks/import`, `PUT /checks/:slug`, and
   `POST /checks/validate`. Commit forthcoming on this branch.
 

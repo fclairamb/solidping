@@ -371,6 +371,11 @@ type ServerConfig struct {
 	MaxRequestDuration time.Duration   `koanf:"max_request_duration"`
 	RateLimiting       RateLimitConfig `koanf:"rate_limiting"` // Per-IP HTTP rate and concurrency limits
 	Redirects          []RedirectRule  `koanf:"-"`             // Parsed from SP_REDIRECTS env var
+	// DocsHost is the Host header that serves the embedded docs site (docsres)
+	// at the host root, e.g. "docs.solidping.io". Empty disables host-served
+	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
+	// SP_SERVER_DOCS_HOST), not the auto env loader.
+	DocsHost string `koanf:"docs_host"`
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -400,6 +405,7 @@ func Load() (*Config, error) {
 		Server: ServerConfig{
 			Listen:             ":4000",
 			BaseURL:            "http://localhost:4000",
+			DocsHost:           "docs.solidping.io",
 			ShutdownTimeout:    30 * time.Second,
 			MaxRequestDuration: 30 * time.Second,
 			JobWorker: JobWorkerConfig{
@@ -563,6 +569,7 @@ func Load() (*Config, error) {
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyJobsEnv(&cfg.Jobs)
+	applyServerEnv(&cfg.Server)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -642,6 +649,18 @@ func applyJobsEnv(cfg *JobsConfig) {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ReaperInterval = d
 		}
+	}
+}
+
+// applyServerEnv reads multi-word SP_SERVER_* keys that koanf's env loader
+// cannot bind (it collapses underscores to dots, so server.docs_host would
+// become server.docs.host). docs_host accepts SP_SERVER_DOCS_HOST and the
+// shorter documented SP_DOCS_HOST. See project_koanf_env_quirk.
+func applyServerEnv(cfg *ServerConfig) {
+	if v := os.Getenv("SP_SERVER_DOCS_HOST"); v != "" {
+		cfg.DocsHost = v
+	} else if v := os.Getenv("SP_DOCS_HOST"); v != "" {
+		cfg.DocsHost = v
 	}
 }
 

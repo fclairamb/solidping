@@ -196,7 +196,7 @@ RepeatAfterMinutes *int `json:"repeatAfterMinutes,omitempty"`
 RepeatAfterSeconds *int `json:"repeatAfterSeconds,omitempty"`
 ```
 
-Update `docs/api-specification.md` field names and regenerate the TypeScript/Go client
+Update `wiki/api-specification.md` field names and regenerate the TypeScript/Go client
 with `make generate`.
 
 ### Dashboard
@@ -250,7 +250,7 @@ hardcoded step creation.
 - `server/test/testdata.go` — any step seeds.
 - `web/dash0/src/routes/orgs/$org/escalation-policies.$slug.tsx` — form field binding and
   label.
-- `docs/api-specification.md` — field rename.
+- `wiki/api-specification.md` — field rename.
 - Generated: `server/pkg/client/` and `web/dash0/src/generated/` — via `make generate`.
 
 ## Verification
@@ -283,7 +283,7 @@ Specifically verify that the escalation_policies Playwright tests still pass aft
 3. Update validation in `escalationpolicies/service.go`; add `ErrDelayTooLarge` sentinel.
 4. Update the escalation step job scheduling arithmetic.
 5. Update handler request/response JSON tags.
-6. Update `docs/api-specification.md`; run `make generate` to regenerate client code.
+6. Update `wiki/api-specification.md`; run `make generate` to regenerate client code.
 7. Update dashboard form component field name.
 8. Update test fixtures and seed data.
 9. `make build && make lint && make test && make test-dash`.

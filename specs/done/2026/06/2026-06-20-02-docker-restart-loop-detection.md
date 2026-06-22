@@ -6,7 +6,7 @@
 
 ## Context
 
-Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
+Inspired by the Maintenant competitor analysis ([`wiki/competitors/maintenant.md`](../../docs/competitors/maintenant.md)),
 which lists **restart-loop detection** as one of its container-observability strengths.
 SolidPing's Docker check today reports container state and health but does **not** flag a
 crash-looping container that is *technically running*:
@@ -159,8 +159,8 @@ when not yet over threshold.
 3. **Frontend (`web/dash0`)**: Docker check config form exposes the two fields (advanced
    section); check-detail surfaces `restartLoop` / `restartCount` / `secondsSinceStart`. Verify
    against the design reference and reuse existing primitives.
-4. **Docs**: update the Docker check section of [`docs/api-specification.md`](../../docs/api-specification.md)
-   and any container feature page under `docs/features/`.
+4. **Docs**: update the Docker check section of [`wiki/api-specification.md`](../../docs/api-specification.md)
+   and any container feature page under `wiki/features/`.
 
 ## Decisions (applied 2026-06-20)
 
@@ -197,8 +197,8 @@ when not yet over threshold.
 - `server/internal/checkers/checkdocker/checker.go` — detection in `buildResult`
 - `server/internal/checkers/checkerdef/types.go` — `StatusWarning` returned for loops (added by `2026-06-20-04`)
 - `web/dash0/src/routes/**` — Docker config form + check-detail output
-- `docs/api-specification.md`, `docs/features/**` — config + output shape
-- `docs/competitors/maintenant.md` — source of the requirement
+- `wiki/api-specification.md`, `wiki/features/**` — config + output shape
+- `wiki/competitors/maintenant.md` — source of the requirement
 
 ## Implementation Plan
 
@@ -238,7 +238,7 @@ counts as up, does not page).
      shared `statusStyle()` warning treatment. Mounted for `type === "docker"`.
 
 4. **Docs.** Update the Docker section of
-   `docs/conventions/checker-config.md` with the two config fields and the
+   `wiki/conventions/checker-config.md` with the two config fields and the
    new output shape (`restartLoop`, `secondsSinceStart`).
 
 5. **Tests (`checkdocker/checker_test.go`, table-driven, `testify/require`,

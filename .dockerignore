@@ -2,9 +2,9 @@
 .git
 .gitignore
 
-# Documentation
+# Internal engineering wiki (not needed in the image)
 *.md
-docs/
+wiki/
 
 # IDE
 .vscode/

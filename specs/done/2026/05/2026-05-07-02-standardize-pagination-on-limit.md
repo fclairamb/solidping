@@ -48,7 +48,7 @@ single example.
    when `limit` is absent. Both keys map to the same internal variable;
    `limit` wins when both are present (with a debug-level log noting the
    conflict, so a misconfigured client gets a hint without being broken).
-2. **Update `docs/api-specification.md`** to document only `limit` as the
+2. **Update `wiki/api-specification.md`** to document only `limit` as the
    query parameter for every paginated endpoint. Add a one-line note on the
    migrated endpoints: `(also accepts ?size=, deprecated)`.
 3. **Update `web/dash0/src/api/hooks.ts`** if any hook passes `size=` to the
@@ -97,7 +97,7 @@ fallback logic is one-place: `parsePageLimit(query, defaultSize, maxSize) (int, 
 
 Same replacement at the single site.
 
-### `docs/api-specification.md`
+### `wiki/api-specification.md`
 
 Find every endpoint section that mentions `?size=` and update to `?limit=`.
 For the three migrated endpoints, add a single line after the `limit`
@@ -166,7 +166,7 @@ side.)
 2. Migrate `results/handler.go` to use the helper. Test passes.
 3. Migrate the three sites in `events/handler.go`. Test passes.
 4. Migrate `incidents/handler.go`. Test passes.
-5. Update `docs/api-specification.md` and `CLAUDE.md`.
+5. Update `wiki/api-specification.md` and `CLAUDE.md`.
 6. Spot-check `web/dash0/src/api/hooks.ts`, CLI, MCP — fix any inlined
    `size=` references.
 7. `make test` + `make lint`.

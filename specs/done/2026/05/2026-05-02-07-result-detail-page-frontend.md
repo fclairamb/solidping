@@ -103,7 +103,7 @@ Top to bottom:
 
 - `isLoading`: skeletons matching the card layout, similar to `checks.$checkUid.index.tsx:341`.
 - 404 (`RESULT_NOT_FOUND`): centered "Result not found — it may have been deleted as part of automatic aggregation, and we couldn't find an aggregation covering its timestamp." plus a "Back to check" button. Use `<QueryErrorView>` (`@/components/shared/error-views`) — it already handles error code → message; pass `resource={t("results:title")}`.
-- 401: handled globally by the existing API error interceptor, redirects to login (per `docs/conventions/frontend-errors.md`).
+- 401: handled globally by the existing API error interceptor, redirects to login (per `wiki/conventions/frontend-errors.md`).
 
 ## Linking from the recent-results table
 

@@ -7,7 +7,7 @@
 
 ## Context
 
-Inspired by the Maintenant competitor analysis ([`docs/competitors/maintenant.md`](../../docs/competitors/maintenant.md)):
+Inspired by the Maintenant competitor analysis ([`wiki/competitors/maintenant.md`](../../docs/competitors/maintenant.md)):
 both products ship an MCP server (a rare overlap), but Maintenant lists **OAuth2 on the MCP
 endpoint** as an advantage. SolidPing's MCP auth today is bearer-token only:
 
@@ -195,8 +195,8 @@ deliberate call before/while building Phase 2–3. A current leaning is noted, b
 - `server/internal/handlers/auth/service.go` — JWT/claims/scope issuance to reuse for tokens
 - `server/internal/middleware/auth.go` — `RequireAuth`, claims extraction
 - New: OAuth AS package (metadata, authorize, token, DCR) + tables (clients, auth codes, refresh)
-- `docs/api-specification.md` — document the OAuth endpoints + discovery
-- `docs/competitors/maintenant.md` — source of the requirement
+- `wiki/api-specification.md` — document the OAuth endpoints + discovery
+- `wiki/competitors/maintenant.md` — source of the requirement
 
 ## Implementation Plan
 
@@ -262,4 +262,4 @@ new grant; short-lived access tokens; rotating refresh + revocation on logout/PA
 single-use short-TTL codes bound to client/redirect/challenge/resource; rate limiting.
 
 ### Docs
-Document discovery + `/authorize` `/token` `/register` in `docs/api-specification.md`.
+Document discovery + `/authorize` `/token` `/register` in `wiki/api-specification.md`.

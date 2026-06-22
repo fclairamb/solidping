@@ -12,7 +12,7 @@ This applies only to `Check.slug`. Organization (still 20), check group (still 4
 - Go regex + constants in `server/internal/handlers/checks/service.go`.
 - New forward DB migration (SQLite + Postgres) that bumps the CHECK constraint on `checks.slug` to 50.
 - Unit test asserting 50-char accepted, 51-char rejected.
-- API spec docs (`docs/api-specification.md`) if it documents slug length.
+- API spec docs (`wiki/api-specification.md`) if it documents slug length.
 
 **Out of scope:**
 - Other slug fields (organization, check_group, status_page).
@@ -56,7 +56,7 @@ Add to `server/internal/handlers/checks/service_test.go`:
 
 ### 4. Docs
 
-If `docs/api-specification.md` mentions slug length, update it.
+If `wiki/api-specification.md` mentions slug length, update it.
 
 ## Verification
 
