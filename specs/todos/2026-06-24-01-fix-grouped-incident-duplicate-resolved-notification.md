@@ -266,3 +266,71 @@ the identical `threadEntry`-required shape.)
   interaction, and adjust the fix site accordingly.
 
 **Status**: Todo | **Created**: 2026-06-24
+
+## Implementation Plan
+
+### Core change — `server/internal/handlers/incidents/service.go` (`emitEvent`)
+The early-return gate at ≈line 1137 currently reads:
+```go
+if incident.PagingSuppressed && eventType != models.EventTypeIncidentResolved {
+```
+Drop the `&& eventType != models.EventTypeIncidentResolved` exception so the gate
+becomes `if incident.PagingSuppressed {`. The event row is already created
+unconditionally by `s.db.CreateEvent` *before* this switch (≈line 1129), so a
+still-suppressed incident keeps recording its `resolved` (and any other lifecycle)
+event but no longer fans out a notification / group notification / escalation.
+Rewrite the comment at ≈line 1138–1139 from "Resolve still notifies so timeline
+observers see closure" to "record event, do not page" (timeline observers see
+closure via the already-created event row, not a paging channel).
+
+Correctness rests on the existing rollup invariant (`rollup.go`
+`reEvaluateChild`, ≈line 173): when a parent resolves, a child still down is
+un-suppressed first (`paging_suppressed = false` + `IncidentReopened`), so by the
+time that child later resolves its `PagingSuppressed` flag is already `false` and
+it pages normally. Gating on the *current* flag value pages exactly the incidents
+that were ever paged.
+
+### Defense-in-depth — `server/internal/notifications/slack.go` (`Send`)
+After the `threadEntry` fetch (≈line 42) and **before** the Slack client is
+constructed (≈line 44), add a guard: when `payload.EventType` is
+`eventTypeIncidentResolved` or `eventTypeIncidentReopened` and there is no stored
+thread state (`threadEntry == nil || threadEntry.Value == nil`), `return nil`
+without posting. There is no original message to update or thread under, so a
+standalone bare "resolved"/"reopened" message is never correct. The existing
+resolution/reopen branches (≈line 47, 52) already require non-nil thread state, so
+this only affects the previously-buggy fall-through to `postNewMessage`.
+
+### Tests
+Note: the spec referenced an existing test
+`TestManualResolveSuppressedRolledUpChildStillEmitsResolved`, but no test of that
+name (nor any asserting "suppressed child still emits a resolved *notification*")
+exists in the codebase today — the closest are the resolve tests in
+`server/internal/handlers/incidents/resolve_test.go`, none of which pins the buggy
+behavior. So rather than *updating* a non-existent buggy test, the corrected
+contract is captured by the new tests below. The manual-resolve path
+(`ResolveIncident`) is the test entry point that drives `emitEvent` with
+`EventTypeIncidentResolved`.
+
+- **Add** `TestManualResolveSuppressedRolledUpChildStillEmitsResolved`
+  (in `resolve_test.go`) — name preserved per spec, but encoding the *new*
+  contract: a `PagingSuppressed=true` child that is resolved **creates exactly one
+  `incident.resolved` event row** but **enqueues zero notification jobs**.
+- **Add** `TestRolledUpChildResolveDoesNotPageWhenSuppressed` — a second, focused
+  guard on the same invariant (suppressed child resolve ⇒ 0 notification jobs, 1
+  `incident.resolved` event row), built via `applyRollup` against a real
+  parent+child dependency so the rollup attribution path is exercised.
+- **Add** `TestUnsuppressedChildResolveStillPages` — a child whose
+  `PagingSuppressed` is `false` (i.e. the state after `reEvaluateChild`
+  un-suppresses it) resolves ⇒ one notification job per bound channel. Regression
+  guard so the fix does not silence real standalone resolutions.
+- **Add** `TestSlackSender_Send_ResolvedNoThreadStateDoesNotPost` (in
+  `slack_test.go`) — `Send` with a `resolved` payload and a `mockDBService` that
+  returns no thread state returns `nil` without falling through to
+  `postNewMessage`/`client.PostMessage` (the Slack client has no httptest seam, so
+  a fall-through would attempt a real network call; the early return is the
+  observable contract). Mirror with a `reopened` variant.
+- Keep all existing `resolve_test.go` / group-incident / slack tests green.
+
+### QA & verification
+`make build`, `make lint` (backend), `make test` (backend) all green/clean; then
+an independent `Explore` audit against this plan before archiving.
