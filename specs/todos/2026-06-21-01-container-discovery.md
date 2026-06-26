@@ -6,6 +6,13 @@
 > third `DiscoverySource` alongside `lan` and `freebox`. Ships only after the
 > `docker` check type (already in `server/internal/checkers/checkdocker/`) — it is
 > the load-bearing dependency, so no new checker is needed.
+>
+> **Order:** first of the discovery-source siblings to land (container → kubernetes).
+> It introduces the shared `resource_uid` + `metadata` columns and the
+> `003_discovery_resources` migration that `2026-06-21-02-kubernetes-checker.md` and
+> `2026-06-21-03-kubernetes-discovery.md` reuse. Because the `docker` check type
+> already exists, no new checker is needed here — the only shared infrastructure this
+> spec lands is the generic identity column.
 
 ## Context
 
@@ -126,8 +133,11 @@ intact.
 ### 1. Model + DB: the `container` source and per-container identity
 
 The `discovered_hosts` table is IP-centric: `ip INET NOT NULL` plus a partial unique
-index on `(organization_uid, ip, source)`. Many containers share one host IP, so
-that index would collide. The container's stable identity is its **container ID**.
+index `idx_discovered_hosts_org_ip_source_active` on `(organization_uid, ip, source)`
+(verified index name — Postgres `001_v0_1_0.up.sql:1001`, SQLite mirror `:775`). Many
+containers share one host IP, so that index would collide. The container's stable
+identity is its **container ID**, which lands in a new generic `resource_uid` column
+shared with the kubernetes specs (decision 5).
 
 `server/internal/db/models/discovered_host.go`:
 
@@ -137,36 +147,53 @@ that index would collide. The container's stable identity is its **container ID*
   // Docker-compatible host (Docker or Podman).
   DiscoverySourceContainer DiscoverySource = "container"
   ```
-- Add two nullable fields (no-ops for `lan`/`freebox`):
+- Add two nullable fields (no-ops for `lan`/`freebox`; **shared with the
+  kubernetes-discovery specs** — a generic identity column, not a Docker-specific one,
+  so the sibling features do not each bolt a bespoke column onto `discovered_hosts`):
   ```go
-  ContainerID *string         `bun:"container_id"            json:"containerId,omitempty"`
-  Metadata    json.RawMessage `bun:"metadata,type:jsonb"     json:"metadata,omitempty"`
+  ResourceUID *string         `bun:"resource_uid"           json:"resourceUid,omitempty"`
+  Metadata    json.RawMessage `bun:"metadata,type:jsonb"    json:"metadata,omitempty"`
   ```
-  `hostname` reuses the existing column for the **container name** (mirrors how the
-  `docker` checker derives its name from `ContainerName`). `metadata` holds
+  For a `container` row, `resource_uid` holds the **Docker container ID** (the stable
+  identity). `hostname` reuses the existing column for the **container name** (mirrors
+  how the `docker` checker derives its name from `ContainerName`). `metadata` holds
   `{image, state, healthStatus, dockerHost}` — `dockerHost` is the endpoint the
   promoted `docker` check needs.
 
-Migration (new `NNN_*.up.sql` + `.down.sql`, Postgres + SQLite mirror, following the
-consolidated-per-release convention in `server/CLAUDE.md`):
+Migration — **shared with the kubernetes specs**: this introduces the generic
+`resource_uid` + `metadata` columns and the reworked indexes. Add it as the next
+consolidated migration `003_discovery_resources.{up,down}.sql` (Postgres + SQLite
+mirror; the de-facto feature-naming follows `002_mcp_oauth`, per the
+consolidated-per-release convention in `server/CLAUDE.md`). **Container-discovery lands
+first, so this spec creates the migration; the kubernetes specs reuse the
+columns/index and add only their own `source` enum value (no further schema change).**
+If the kubernetes side somehow shipped first, this migration already exists — reuse it,
+do not duplicate.
 
 ```sql
-ALTER TABLE discovered_hosts ADD COLUMN container_id TEXT;
-ALTER TABLE discovered_hosts ADD COLUMN metadata     JSONB;
+-- Postgres
+ALTER TABLE discovered_hosts ADD COLUMN resource_uid TEXT;
+ALTER TABLE discovered_hosts ADD COLUMN metadata     JSONB;   -- SQLite mirror: metadata TEXT
 
 -- Scope the existing IP-uniqueness to the IP-based sources only…
-DROP INDEX idx_discovered_hosts_org_ip_active;
-CREATE UNIQUE INDEX idx_discovered_hosts_org_ip_active
+DROP INDEX idx_discovered_hosts_org_ip_source_active;
+CREATE UNIQUE INDEX idx_discovered_hosts_org_ip_source_active
   ON discovered_hosts (organization_uid, ip, source)
   WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL
-        AND source <> 'container';
+        AND source IN ('lan', 'freebox');
 
--- …and give containers their own identity index on container_id.
-CREATE UNIQUE INDEX idx_discovered_hosts_org_container_active
-  ON discovered_hosts (organization_uid, container_id)
+-- …and give API-resource sources (container, kubernetes) their own identity index.
+CREATE UNIQUE INDEX idx_discovered_hosts_org_resource_active
+  ON discovered_hosts (organization_uid, source, resource_uid)
   WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL
-        AND source = 'container';
+        AND resource_uid IS NOT NULL;
 ```
+
+SQLite has no `JSONB` type — JSON columns are declared `text` and read with
+`json_extract` (e.g. `results.metrics`, `checks.config`), so the SQLite mirror declares
+`metadata text`; SQLite supports the partial `WHERE` indexes unchanged. The `.down.sql`
+restores the original unscoped `idx_discovered_hosts_org_ip_source_active`, drops
+`idx_discovered_hosts_org_resource_active`, and drops both columns.
 
 `ip` for a container row is the endpoint host's resolved IP (or `127.0.0.1` for a
 local `unix://` socket) — it stays populated so the `NOT NULL` constraint and the
@@ -201,7 +228,7 @@ plan/child LAN model.
   container builds a `DiscoveredHost`. A per-endpoint failure is logged and skipped
   (never aborts the run) — same resilience contract as
   `FreeboxLanDiscoveryJobRun.persistHosts`. Persist via upsert keyed on
-  `(organization_uid, container_id)`.
+  `(organization_uid, source, resource_uid)` (the new identity index).
 
   Each `types.Container` summary gives `ID`, `Names`, `Image`, `State`, `Status`,
   and `Ports []Port{ PrivatePort, PublicPort, Type }`. **Published** ports are those
@@ -294,6 +321,13 @@ changes beyond the suggestion existing.
    in-process-worker-only anyway (same as the LAN scan), so this is fine for the
    common single-host self-hoster. The `containerHostsHelp` field text recommends
    `tcp://` endpoints for remote hosts; no blocking UI warning.
+5. **Identity column → shared generic `resource_uid` + `metadata`.** Converged with the
+   kubernetes specs (their decision 5) so the sibling features share one identity column
+   and one `003_discovery_resources` migration rather than each bolting a bespoke column
+   (`container_id` / `kubernetes_uid`) onto `discovered_hosts`. For containers,
+   `resource_uid` = the Docker container ID; the IP-uniqueness index is scoped to
+   `source IN ('lan','freebox')` and the new `(org, source, resource_uid)` index covers
+   the API-resource sources.
 
 ## Files to create / modify
 
@@ -301,12 +335,13 @@ changes beyond the suggestion existing.
 - `server/internal/discovery/container.go` + `container_test.go` — `ListContainers`
   engine against a fake Docker API.
 - `server/internal/jobs/jobtypes/job_container_discovery.go` + test.
-- Migration up/down (Postgres + SQLite) adding `container_id` / `metadata` and the
-  reworked unique indexes.
+- Migration `003_discovery_resources.{up,down}.sql` (Postgres + SQLite) adding the
+  **shared** `resource_uid` / `metadata` columns and the reworked unique indexes
+  (reused by the kubernetes specs).
 
 ### Modified (backend)
 - `server/internal/db/models/discovered_host.go` — `DiscoverySourceContainer`,
-  `ContainerID`, `Metadata`.
+  `ResourceUID`, `Metadata`.
 - `server/internal/discovery/suggest.go` — `SuggestContainerChecks`,
   `checkTypeDocker`.
 - `server/internal/jobs/jobdef/types.go` + `jobtypes/registry.go` — register the job.
@@ -327,7 +362,9 @@ changes beyond the suggestion existing.
   `ListContainers` against an `httptest` fake Docker `/containers/json` — name strip,
   image/state/ports mapping, per-endpoint error skip.
 - **Migration round-trip** (Postgres + SQLite): apply + `migrate down 1` + up;
-  confirm both unique indexes and that a re-scan upserts on `container_id` (not IP).
+  confirm both unique indexes (`idx_discovered_hosts_org_ip_source_active` scoped to
+  `('lan','freebox')` and the new `idx_discovered_hosts_org_resource_active`) and that a
+  re-scan upserts on `resource_uid` (not IP).
 - **End-to-end** (`make dev-test`, real local Docker): start a container scan against
   `unix:///var/run/docker.sock`, confirm running containers appear with a `docker`
   suggestion + published-port suggestions, promote one, confirm the resulting check
@@ -342,7 +379,9 @@ changes beyond the suggestion existing.
 |---|---|
 | 2375 is an unauthenticated root socket — basing discovery on scanning for it rewards a critical misconfig | v1 mechanism is a *configured* endpoint (B) only; the LAN-scan 2375/2376 flag is deferred to a follow-up, never the engine |
 | A `unix://`-discovered `docker` check only runs on a worker sharing that socket | v1 in-process-worker-only (as LAN scan); recommend `tcp://` for remote hosts; documented + optional UI note (decision 4) |
-| Many containers per host would collide on the IP-based unique index | Container rows use a separate `(org, container_id)` partial unique index; IP index scoped to `source <> 'container'` |
+| Many containers per host would collide on the IP-based unique index | Container rows use the shared `(org, source, resource_uid)` partial unique index; IP index scoped to `source IN ('lan','freebox')` |
 | TLS (2376) endpoints not supported | Out of scope for v1 (matches the checker today); follow-up using `internal/crypto/credentials/` |
 | EXPOSE-only ports look monitorable but aren't worker-reachable | Only `PublicPort != 0` ports get HTTP/TCP suggestions; the `docker` check covers the rest |
-| Container names/IDs churn between scans | Upsert on stable `container_id`; promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
+| Container names/IDs churn between scans | Upsert on stable `resource_uid` (the container ID); promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
+
+**Status**: Todo | **Created**: 2026-06-21 | **Clarified**: 2026-06-26 — converged on shared `resource_uid`/`metadata` + `003_discovery_resources` migration; corrected the dropped-index name to `idx_discovered_hosts_org_ip_source_active`; verified all backend/frontend references against current code.
