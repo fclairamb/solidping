@@ -981,12 +981,24 @@ function CheckDetailPage() {
                   <TableHead>{t("checks:detail.incidents.started")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.state")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.duration")}</TableHead>
-                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {incidents.data.map((incident) => (
-                  <TableRow key={incident.uid}>
+                  <TableRow
+                    key={incident.uid}
+                    className={
+                      incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
+                    }
+                    data-testid={`incident-row-${incident.uid}`}
+                    onClick={() => {
+                      if (!incident.uid) return;
+                      navigate({
+                        to: "/orgs/$org/incidents/$incidentUid",
+                        params: { org, incidentUid: incident.uid },
+                      });
+                    }}
+                  >
                     <TableCell className="text-sm">
                       {incident.startedAt
                         ? formatResultTime(incident.startedAt)
@@ -1012,16 +1024,6 @@ function CheckDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       <IncidentDuration incident={incident} />
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        to="/orgs/$org/incidents/$incidentUid"
-                        params={{ org, incidentUid: incident.uid! }}
-                      >
-                        <Button variant="ghost" size="sm">
-                          {t("checks:detail.viewButton")}
-                        </Button>
-                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

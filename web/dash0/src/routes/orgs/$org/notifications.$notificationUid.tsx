@@ -64,6 +64,28 @@ function formatDate(iso?: string): string {
   return d.toLocaleString();
 }
 
+/**
+ * Human-readable elapsed time between two ISO timestamps (e.g. "350ms",
+ * "1.2s", "2m 5s"). Returns null when either timestamp is absent, invalid,
+ * or the interval is negative.
+ */
+function formatElapsed(fromIso?: string, toIso?: string): string | null {
+  if (!fromIso || !toIso) return null;
+  const from = new Date(fromIso).getTime();
+  const to = new Date(toIso).getTime();
+  if (Number.isNaN(from) || Number.isNaN(to)) return null;
+  const ms = to - from;
+  if (ms < 0) return null;
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
+  const totalSeconds = Math.floor(seconds);
+  const minutes = Math.floor(totalSeconds / 60);
+  const hours = Math.floor(minutes / 60);
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  return `${minutes}m ${totalSeconds % 60}s`;
+}
+
 /** Inline copyable value: monospace text plus a copy-to-clipboard button. */
 function CopyableValue({ value, label }: { value: string; label?: string }) {
   const [copied, setCopied] = useState(false);
@@ -99,11 +121,13 @@ function TimelineRow({
   label,
   iso,
   tone,
+  delta,
 }: {
   icon: React.ReactNode;
   label: string;
   iso?: string;
   tone?: string;
+  delta?: string | null;
 }) {
   if (!iso) return null;
   return (
@@ -111,6 +135,9 @@ function TimelineRow({
       <span className={tone}>{icon}</span>
       <span className="text-muted-foreground w-24 shrink-0">{label}</span>
       <code className="font-mono">{formatDate(iso)}</code>
+      {delta && (
+        <span className="text-xs text-muted-foreground">+{delta}</span>
+      )}
     </div>
   );
 }
@@ -437,6 +464,7 @@ function NotificationDetailPage() {
             label="Sent"
             iso={data.sentAt}
             tone="text-green-600 dark:text-green-500"
+            delta={formatElapsed(data.createdAt, data.sentAt)}
           />
           <TimelineRow
             icon={<XCircle className="h-4 w-4" />}
