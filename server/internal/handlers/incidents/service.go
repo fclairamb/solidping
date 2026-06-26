@@ -1134,9 +1134,14 @@ func (s *Service) emitEvent(
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
-		if incident.PagingSuppressed && eventType != models.EventTypeIncidentResolved {
-			// Rolled-up child: notifications are deferred until parent
-			// resolves. Resolve still notifies so timeline observers see closure.
+		if incident.PagingSuppressed {
+			// Rolled-up child: record the lifecycle event (already done above
+			// via CreateEvent) but do not page. Paging is suppressed for the
+			// child's entire lifecycle — opened, escalated, and resolved.
+			// Timeline observers see closure through the event row / dashboard,
+			// not a paging channel. A child that is still down when its parent
+			// resolves is un-suppressed first by reEvaluateChild (paging_suppressed
+			// flips to false), so it pages normally on its own later resolution.
 			return nil
 		}
 

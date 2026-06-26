@@ -1431,6 +1431,53 @@ func TestSlackSender_Send_StateEntryGetError(t *testing.T) {
 	r.Contains(err.Error(), "getting thread state entry")
 }
 
+// TestSlackSender_Send_ResolvedNoThreadStateDoesNotPost is the defense-in-depth
+// guard: a resolved event with no stored thread state must NOT fall through to
+// postNewMessage (which would call client.PostMessage against the real Slack
+// API and emit a context-free top-level orphan "resolved" message). Send must
+// return nil without posting. The mock returns no thread state, and a real
+// PostMessage would require a live network call, so a nil return with the
+// thread fetch having run is the observable proof the early guard fired.
+func TestSlackSender_Send_ResolvedNoThreadStateDoesNotPost(t *testing.T) {
+	t.Parallel()
+
+	for _, eventType := range []string{eventTypeIncidentResolved, eventTypeIncidentReopened} {
+		t.Run(eventType, func(t *testing.T) {
+			t.Parallel()
+
+			payload := &Payload{
+				EventType: eventType,
+				Incident: &models.Incident{
+					UID:             "incident-123",
+					OrganizationUID: "org-123",
+				},
+				Check: &models.Check{},
+				Integration: &models.Integration{
+					Settings: models.JSONMap{
+						"access_token": "xoxb-test-token",
+						"channel_id":   "C123",
+					},
+				},
+			}
+
+			db := &mockDBService{
+				getStateEntryFunc: func(_ context.Context, _ *string, _ string) (*models.StateEntry, error) {
+					return nil, nil //nolint:nilnil // no stored thread state
+				},
+			}
+			jctx := &jobdef.JobContext{DBService: db, Logger: slog.Default()}
+
+			sender := &SlackSender{}
+			err := sender.Send(context.Background(), jctx, payload)
+
+			r := require.New(t)
+			r.NoError(err, "resolved/reopened with no thread state returns without posting")
+			r.Len(db.getStateCalls, 1, "thread state was looked up before the guard fired")
+			r.Empty(db.setStateCalls, "no new thread state is stored (no message was posted)")
+		})
+	}
+}
+
 func TestSlackSender_buildMessage(t *testing.T) {
 	t.Parallel()
 

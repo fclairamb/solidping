@@ -41,6 +41,18 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return fmt.Errorf("getting thread state entry: %w", err)
 	}
 
+	// Defense-in-depth: a resolved/reopened event with no stored thread state has
+	// no original message to update or thread under, so a standalone top-level
+	// "resolved"/"reopened" message is never the right output. Skip posting rather
+	// than falling through to postNewMessage, which would emit a context-free
+	// orphan message. This bounds the blast radius of any "resolved/reopened with
+	// no opened" path (e.g. a still-suppressed rolled-up child that recorded its
+	// event but was never paged on open).
+	if (payload.EventType == eventTypeIncidentResolved || payload.EventType == eventTypeIncidentReopened) &&
+		(threadEntry == nil || threadEntry.Value == nil) {
+		return nil
+	}
+
 	client := slack.NewClient(settings.AccessToken)
 
 	// Handle incident resolution - update the original message AND post a thread reply
