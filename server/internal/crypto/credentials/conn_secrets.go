@@ -32,6 +32,10 @@ var connectionSecretFields = map[models.ConnectionType][]string{
 	models.ConnectionTypeOpsgenie: {"api_key"},
 	models.ConnectionTypePushover: {"user_key", "api_token"},
 	models.ConnectionTypeFreebox:  {"appToken"},
+	// Kubernetes cluster credentials: a bearer token or a pasted kubeconfig.
+	// The API server URL and CA cert stay public (endpoint URLs are not secret
+	// under the DB-theft-only threat model — same as webhook URLs above).
+	models.ConnectionTypeKubernetes: {"token", "kubeconfig"},
 }
 
 // ConnectionSecretFields returns the secret keys for a connection type.

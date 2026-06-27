@@ -26,6 +26,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
+	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/notifications"
 	"github.com/fclairamb/solidping/server/internal/webpush"
@@ -355,7 +356,7 @@ func (s *Service) CreateIntegration(
 		models.ConnectionTypeGoogleChat, models.ConnectionTypeMattermost,
 		models.ConnectionTypeNtfy, models.ConnectionTypeOpsgenie,
 		models.ConnectionTypePushover, models.ConnectionTypeFreebox,
-		models.ConnectionTypeWebPush:
+		models.ConnectionTypeWebPush, models.ConnectionTypeKubernetes:
 		// Valid types
 	default:
 		return nil, ErrInvalidConnectionType
@@ -852,6 +853,10 @@ type IntegrationTestResult struct {
 	StatusCode int    `json:"statusCode"`
 	DurationMs int64  `json:"durationMs"`
 	Error      string `json:"error,omitempty"`
+	// Detail carries an optional human-readable success note (e.g. the
+	// Kubernetes cluster's reported server version). Empty for notification
+	// tests, which have nothing extra to report on success.
+	Detail string `json:"detail,omitempty"`
 }
 
 // loadChannel resolves the org + connection and verifies the connection belongs
@@ -981,6 +986,14 @@ func (s *Service) TestIntegration(
 		return nil, err
 	}
 
+	// Kubernetes cluster connections are data sources, not notification sinks,
+	// so they can't go through the notification "send a test alert" path. Their
+	// "test connection" instead probes the cluster API (/version) to surface
+	// credential/RBAC failures at registration time.
+	if conn.Type == models.ConnectionTypeKubernetes {
+		return s.testKubernetesConnection(ctx, conn)
+	}
+
 	if !models.CapabilitiesFor(conn.Type).CanNotify {
 		return nil, ErrIntegrationNotNotifiable
 	}
@@ -1035,6 +1048,48 @@ func (s *Service) TestIntegration(
 	result.StatusCode = 200
 
 	return result, nil
+}
+
+// kubernetesTestTimeout bounds the cluster "test connection" probe so a
+// stuck/unreachable API server can't hang the request indefinitely.
+const kubernetesTestTimeout = 15 * time.Second
+
+// testKubernetesConnection probes a Kubernetes cluster connection by resolving
+// its (decrypted) credentials to a clientset and calling the cluster's
+// /version endpoint. Always returns HTTP-200-style IntegrationTestResult: a
+// failed probe is reported as Success=false with the error, matching how
+// notification tests report delivery failures.
+func (s *Service) testKubernetesConnection(
+	ctx context.Context, conn *models.Integration,
+) (*IntegrationTestResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, kubernetesTestTimeout)
+	defer cancel()
+
+	start := time.Now()
+
+	clientset, err := integrationk8s.ResolveClientset(ctx, s.db, s.creds, conn.OrganizationUID, conn.UID)
+	if err != nil {
+		return &IntegrationTestResult{
+			Success:    false,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      err.Error(),
+		}, nil
+	}
+
+	version, err := integrationk8s.ValidateConnection(ctx, clientset)
+	if err != nil {
+		return &IntegrationTestResult{
+			Success:    false,
+			DurationMs: time.Since(start).Milliseconds(),
+			Error:      err.Error(),
+		}, nil
+	}
+
+	return &IntegrationTestResult{
+		Success:    true,
+		DurationMs: time.Since(start).Milliseconds(),
+		Detail:     "Connected to cluster " + version.GitVersion,
+	}, nil
 }
 
 // webPushTestSub mirrors the per-subscription shape stored in

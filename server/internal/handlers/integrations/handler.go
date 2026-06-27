@@ -211,7 +211,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound, "Connection not found")
 	case errors.Is(err, ErrInvalidConnectionType):
 		return h.WriteValidationError(writer, "Invalid connection type", []base.ValidationErrorField{
-			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox"},
+			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox, kubernetes"},
 		})
 	case errors.Is(err, ErrFreeboxNotPairing):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,
