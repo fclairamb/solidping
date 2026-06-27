@@ -31,6 +31,8 @@ func GetJobDefinition(jobType jobdef.JobType) (jobdef.JobDefinition, bool) {
 		return &NetworkDiscoveryPlanJobDefinition{}, true
 	case jobdef.JobTypeFreeboxLanDiscovery:
 		return &FreeboxLanDiscoveryJobDefinition{}, true
+	case jobdef.JobTypeContainerDiscovery:
+		return &ContainerDiscoveryJobDefinition{}, true
 	case jobdef.JobTypeStuckJobReaper:
 		return &StuckJobReaperJobDefinition{}, true
 	}

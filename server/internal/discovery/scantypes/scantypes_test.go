@@ -220,14 +220,19 @@ func TestRegistryGetAndList(t *testing.T) {
 	r.True(ok)
 	r.Equal("freebox", fb.Type())
 
+	ct, ok := scantypes.Get("container")
+	r.True(ok)
+	r.Equal("container", ct.Type())
+
 	_, ok = scantypes.Get("nope")
 	r.False(ok)
 
 	all := scantypes.List()
-	r.GreaterOrEqual(len(all), 2)
-	// Sorted by Type(): freebox before lan.
-	r.Equal("freebox", all[0].Type())
-	r.Equal("lan", all[1].Type())
+	r.GreaterOrEqual(len(all), 3)
+	// Sorted by Type(): container before freebox before lan.
+	r.Equal("container", all[0].Type())
+	r.Equal("freebox", all[1].Type())
+	r.Equal("lan", all[2].Type())
 }
 
 // TestEveryScanTypeHasJobDefinition is the activation guard from the spec risk
@@ -241,8 +246,9 @@ func TestEveryScanTypeHasJobDefinition(t *testing.T) {
 
 	// Each registered scan type must enqueue a job type the job registry knows.
 	wantJobType := map[string]jobdef.JobType{
-		"lan":     jobdef.JobTypeNetworkDiscoveryPlan,
-		"freebox": jobdef.JobTypeFreeboxLanDiscovery,
+		"lan":       jobdef.JobTypeNetworkDiscoveryPlan,
+		"freebox":   jobdef.JobTypeFreeboxLanDiscovery,
+		"container": jobdef.JobTypeContainerDiscovery,
 	}
 
 	for _, def := range scantypes.List() {

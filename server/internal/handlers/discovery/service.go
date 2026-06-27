@@ -142,6 +142,7 @@ func scanJobTypes() []string {
 		string(jobdef.JobTypeNetworkDiscoveryPlan),
 		string(jobdef.JobTypeNetworkDiscovery),
 		string(jobdef.JobTypeFreeboxLanDiscovery),
+		string(jobdef.JobTypeContainerDiscovery),
 	}
 }
 

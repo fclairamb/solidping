@@ -113,11 +113,12 @@ func List() []Definition {
 }
 
 // RegisterDefaults registers the built-in reference discovery types (lan,
-// freebox). New sources (container, kubernetes) register their own definitions
+// freebox, container). New sources (kubernetes) register their own definitions
 // from their packages. Safe to call multiple times.
 func RegisterDefaults() {
 	Register(&LANDefinition{})
 	Register(&FreeboxDefinition{})
+	Register(&ContainerDefinition{})
 }
 
 //nolint:gochecknoinits // register built-in types on import, mirroring checkers

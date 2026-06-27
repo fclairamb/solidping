@@ -38,6 +38,10 @@ const (
 	// and records suggested checks in the discovered_checks table
 	// (source='freebox') so they share the LAN-scan promote/dismiss UX.
 	JobTypeFreeboxLanDiscovery JobType = "freebox_lan_discovery"
+	// JobTypeContainerDiscovery connects to one or more Docker-compatible API
+	// endpoints, lists running containers, and records them in discovered_checks
+	// (source='container', one group per container) for operator review and promotion.
+	JobTypeContainerDiscovery JobType = "container_discovery"
 	// JobTypeStuckJobReaper periodically recovers jobs left in 'running' by a
 	// dead/redeployed worker: it rides the existing retry chain (retried +
 	// backoff clone) until the retry cap, then 'failed' with reason
