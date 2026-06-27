@@ -277,3 +277,84 @@ done
   thread-state gap, and adjust the routing fix accordingly.
 
 **Status**: Todo | **Created**: 2026-06-24 | **Updated**: 2026-06-26
+
+---
+
+## Implementation Plan
+
+### Pre-implementation findings (state of `batch/2026-06-23` at start)
+
+Defect B is **already fully implemented** on this branch (landed with the related
+paging-suppression work):
+
+- `emitEvent` (`server/internal/handlers/incidents/service.go` ≈line 1134-1146)
+  already gates the notification fan-out on the *current* `incident.PagingSuppressed`
+  for **all** lifecycle events — the `&& eventType != EventTypeIncidentResolved`
+  exception is gone, the event row is still recorded via `CreateEvent`, and the
+  comment already describes the new contract (un-suppression via `reEvaluateChild`).
+- `SlackSender.Send` (`server/internal/notifications/slack.go` ≈line 44-54) already
+  skips posting a `resolved`/`reopened` event that has **no** stored thread state,
+  instead of falling through to `postNewMessage`.
+- Tests already present and asserting the new contract:
+  `TestManualResolveSuppressedRolledUpChildStillEmitsResolved` (now pins "records
+  event, pages nothing"), `TestRolledUpChildResolveDoesNotPageWhenSuppressed`,
+  `TestUnsuppressedChildResolveStillPages`
+  (`server/internal/handlers/incidents/resolve_test.go`), and
+  `TestSlackSender_Send_ResolvedNoThreadStateDoesNotPost`
+  (`server/internal/notifications/slack_test.go`).
+
+Therefore the remaining work is **Defect A only** (plus verifying Defect B is not
+regressed and is covered).
+
+### Step 1 — Defect A: `buildIncidentResolvedThreadReply`
+
+`server/internal/notifications/slack.go` (≈line 396). Render the status line once,
+self-contained (monitor named + linked), drop the redundant attachment:
+
+```go
+checkName := getCheckName(payload.Check)
+checkURL  := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+text := fmt.Sprintf(":white_check_mark: %s — incident resolved after %s.",
+    slackLink(checkURL, checkName), duration)
+return &slack.MessageResponse{Text: text}
+```
+
+Keep the `✅` cue. No `Blocks`, no `Attachments` (kills the duplicate body + the
+useless green border). `slackLink` already falls back to plain text when the URL is
+empty, so the monitor name is always present even without a base URL.
+
+### Step 2 — Defect A: `buildIncidentReopenedThreadReply`
+
+`server/internal/notifications/slack.go` (≈line 702). Same single-render fix; keep
+the `⚠️` cue, name + link the monitor, drop the attachment:
+
+```go
+text := fmt.Sprintf(
+    ":warning: %s — incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
+    slackLink(checkURL, checkName), relapseCount, payload.Check.RecoveryPeriodSeconds)
+return &slack.MessageResponse{Text: text}
+```
+
+### Step 3 — Tests (notifications package)
+
+- **Update** `TestSlackSender_buildMessage` resolved case: it currently asserts
+  `msg.Attachments` is non-empty — that is now the bug. Make the assertion
+  event-type aware (resolved ⇒ no attachments; created/escalated ⇒ attachments).
+- **Add** `TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce`: the
+  status line appears exactly once (no attachment duplicating `Text`), `Attachments`
+  is empty, the monitor name is present, and the dashboard link is present when a
+  base URL is configured.
+- **Add** `TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce`: same
+  assertions for the reopened reply (single render, monitor named, no attachment).
+
+### Step 4 — QA + completeness audit
+
+`make build-backend lint-back test`; fix code to green (never relax
+`.golangci.yml`). Re-read spec; confirm every acceptance criterion is satisfied and
+tested. Defect B criteria are confirmed against the already-present code + tests.
+
+### Out of scope (unchanged)
+
+`buildResolvedUpdateMessage` / `buildReopenedUpdateMessage` (the "update the
+original message in place" builders) keep their rich attachment — they are not a
+verbatim copy of a top-level `Text` and are exercised by `TestSlackSender_DashboardLinks`.
