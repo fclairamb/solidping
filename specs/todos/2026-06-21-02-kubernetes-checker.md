@@ -292,3 +292,87 @@ following the six registration steps in `server/internal/checkers/CLAUDE.md`:
 | `checkdocker`'s error helper has no explicit NotFound branch | The k8s checker adds an explicit `apierrors.IsNotFound → down` check rather than reusing docker's fold-everything-to-down behaviour |
 
 **Status**: Todo | **Created**: 2026-06-21 | **Clarified**: 2026-06-26 — carved out of the original kubernetes-discovery spec as the checker+connection prerequisite; integration references corrected to the renamed `Integration`/`integrations` model and the real `TestIntegration` path; `ListCheckTypeMetas` line refreshed (~279).
+
+## Implementation Plan
+
+Two vertical slices, mirroring the spec. No DB migration is needed for the
+connection: `integrations.type` is `varchar(50)` with no CHECK constraint, so a
+new `kubernetes` `ConnectionType` enum value requires no schema change. The
+secret-encryption split is generic and driven by `connectionSecretFields`, so
+adding `kubernetes: {token, kubeconfig}` there makes Create/Update/GET encrypt
+and placeholder the secrets automatically (the Freebox `appToken` model).
+
+### Dependencies
+- `server/go.mod`/`go.sum`: add `k8s.io/client-go`, `k8s.io/api`,
+  `k8s.io/apimachinery` (matched pins), `go mod tidy` reviewed.
+
+### Slice 1 — Cluster connection (encrypted credential + resolver)
+1. `models/integration.go`: add `ConnectionTypeKubernetes`; `CapabilitiesFor`
+   case → `{CanSource: true}`; `KubernetesSettings` struct (public side:
+   `apiServer`, `caCert`, `insecureSkipTLSVerify`, `inCluster`) +
+   `KubernetesPrivateSettings` (`token`, `kubeconfig`) with To/FromJSONMap.
+2. `credentials/conn_secrets.go`: `ConnectionTypeKubernetes: {"token", "kubeconfig"}`.
+3. New package `server/internal/integrations/kubernetes/`:
+   - `client.go`: `BuildRestConfig(settings, priv)` (in-cluster vs apiServer+token+CA,
+     insecureSkipTLSVerify, kubeconfig-resolves-to-those); `ResolveClientset(ctx, db,
+     creds, orgUID, clusterUID)` — the single decryption chokepoint (mirrors
+     `freebox/lanlookup.go` resolve+decrypt) returning a `kubernetes.Interface`;
+     coarse `ErrClusterNotFound` / wrong-org / wrong-type.
+   - `service.go`: `ValidateConnection(ctx, clientset)` → calls `ServerVersion()`
+     (Discovery) to surface RBAC/credential failures at registration.
+   - `clientset.go`: small indirection so tests inject a `fake.Clientset` (a
+     `ClientsetFactory` var defaulting to the real one), like the freebox resolver.
+4. `handlers/integrations/service.go`:
+   - `CreateIntegration` valid-type switch: add `ConnectionTypeKubernetes`.
+   - `TestIntegration`: branch on `kubernetes` BEFORE the `CanNotify` reject →
+     resolve clientset (decrypt) + `ValidateConnection`, return an
+     `IntegrationTestResult`.
+   - handler.go error message string: include `kubernetes`.
+5. Wire in `server.go`: set the kubernetes `ClientsetFactory`/resolver dependency
+   (db + creds) at startup next to the freebox resolver, so the checker resolves
+   without plumbing services through the `Checker` interface.
+
+### Slice 2 — `kubernetes` checker (replica health)
+6. `checkerdef/types.go`: `CheckTypeKubernetes = "kubernetes"`; `CheckTypeMeta`
+   entry (`unsafe`?/`category:infrastructure`); add to `ListCheckTypes`.
+7. `registry/registry.go`: import + `case` in both `GetChecker` and `ParseConfig`.
+8. New package `server/internal/checkers/checkkubernetes/`:
+   - `config.go`: `KubernetesConfig{ClusterUID,Namespace,Kind,Name,Timeout}`,
+     `FromMap`/`GetConfig`/`Validate` (kind ∈ {Deployment,ReplicaSet}; timeout
+     >0 && ≤60s; clusterUid/namespace/name required), `SecretFields()→[]` (no
+     secrets in check config).
+   - `checker.go`: package-level `ClientsetResolverFunc` + `WithResolver(ctx,…)`
+     indirection (mirrors `checkfreeboxline`); `Execute` resolves clientset, gets
+     the workload, applies the Q1 up/warning/down rule off desired vs
+     readyReplicas (+ Deployment `Progressing/ProgressDeadlineExceeded`); explicit
+     `apierrors.IsNotFound → StatusDown`; deadline → StatusTimeout; client/auth →
+     StatusError. Outputs: namespace/kind/name/images/conditions; metrics:
+     desiredReplicas/readyReplicas/availableReplicas/updatedReplicas/
+     unavailableReplicas/query_time_ms.
+9. Wire `checkkubernetes.ClientsetResolverFunc` in `server.go` to the slice-1
+   resolver.
+
+### Tests
+- `checkkubernetes`: table-driven against `fake.Clientset` (up/warning/down/zero/
+  ProgressDeadlineExceeded/NotFound/bad-cluster/deadline); config Validate bounds.
+- `integrations/kubernetes`: `BuildRestConfig` variants; `ResolveClientset`
+  resolves+decrypts a stored connection / in-cluster / unknown-uid / wrong-org /
+  wrong-type (sqlite in-memory + disabled creds, like `lanlookup_test.go`);
+  `ValidateConnection` good/bad against a fake discovery error.
+- dash0: `kubernetes-form.tsx` + reuse integration CRUD; Playwright e2e for
+  register/test/delete a cluster (mock `/test`).
+
+### Frontend
+- `hooks.ts`: add `kubernetes` to `ConnectionType` + `CAPABILITIES` (`SOURCE`).
+- New `components/integrations/kubernetes-form.tsx`: apiServer, auth mode
+  (kubeconfig | token | in-cluster), token/kubeconfig (write-only, placeholder
+  via `settingsPrivateKeys`), caCert textarea, insecureSkipTLSVerify; test button.
+- Dispatch in `integrations.new.tsx` + `integration-icon.tsx` label/icon; type
+  tile in the picker.
+- i18n: `kubernetes.*` keys in `integrations.json` for en/fr/de/es.
+- An example read-only `ClusterRole` manifest (docs).
+
+### Docs
+- OpenAPI: document the `kubernetes` check config + `kubernetes` integration type
+  if the existing generic integration schema needs it (follow how `freebox`/`docker`
+  are documented).
