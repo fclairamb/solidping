@@ -1,6 +1,14 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Megaphone, Plus, Search, RefreshCw, Pencil, Trash2 } from "lucide-react";
+import {
+  Megaphone,
+  Plus,
+  Search,
+  RefreshCw,
+  Pencil,
+  Trash2,
+  ExternalLink,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   useStatusUpdates,
@@ -54,11 +62,14 @@ const STATUS_UPDATE_KINDS = [
 ];
 
 const KIND_COLORS: Record<string, string> = {
-  investigating: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
-  identified: "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
+  investigating:
+    "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200",
+  identified:
+    "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200",
   monitoring: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
   resolved: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
-  maintenance: "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
+  maintenance:
+    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200",
   info: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200",
 };
 
@@ -75,19 +86,28 @@ function KindBadge({ kind }: { kind: string }) {
 function StatusUpdateRow({
   update,
   org,
+  publicSlug,
   onDelete,
 }: {
   update: StatusUpdate;
   org: string;
+  publicSlug?: string;
   onDelete: (uid: string) => void;
 }) {
   return (
     <TableRow data-testid="status-update-row">
       <TableCell>
-        <KindBadge kind={update.kind} />
+        <Link
+          to="/orgs/$org/status-updates/$updateUid/edit"
+          params={{ org, updateUid: update.uid }}
+          className="font-medium text-foreground hover:underline"
+          data-testid="status-update-row-title"
+        >
+          {update.title}
+        </Link>
       </TableCell>
       <TableCell>
-        <span className="font-medium">{update.title}</span>
+        <KindBadge kind={update.kind} />
       </TableCell>
       <TableCell>
         <span className="text-muted-foreground whitespace-nowrap">
@@ -96,6 +116,25 @@ function StatusUpdateRow({
       </TableCell>
       <TableCell>
         <div className="flex items-center justify-end gap-1">
+          {publicSlug && (
+            <Button
+              asChild
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              aria-label="View public update"
+              title="View public update"
+            >
+              <a
+                href={`/status0/${org}/${publicSlug}#update-${update.uid}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="status-update-row-view"
+              >
+                <ExternalLink className="h-4 w-4" />
+              </a>
+            </Button>
+          )}
           <Button
             asChild
             variant="ghost"
@@ -138,11 +177,18 @@ function StatusUpdatesIndexPage() {
 
   const { data: pages } = useStatusPages(org);
 
+  // Resolve a status-page slug from its uid once, so each row can build the
+  // public deep-link (/status0/{org}/{slug}#update-{uid}) without an extra fetch.
+  const pageSlugByUid = useMemo(
+    () => new Map((pages ?? []).map((p) => [p.uid, p.slug] as const)),
+    [pages],
+  );
+
   // Fetch selected page with sections for section/check filters
   const { data: selectedPage } = useStatusPage(
     org,
     filterPageUid !== "all" ? filterPageUid : "",
-    { with: "sections" }
+    { with: "sections" },
   );
 
   const sections = selectedPage?.sections ?? [];
@@ -171,7 +217,8 @@ function StatusUpdatesIndexPage() {
 
   const filtered = (updates ?? []).filter((u) => {
     if (filterKind !== "all" && u.kind !== filterKind) return false;
-    if (search && !u.title.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search && !u.title.toLowerCase().includes(search.toLowerCase()))
+      return false;
     return true;
   });
 
@@ -232,11 +279,11 @@ function StatusUpdatesIndexPage() {
           />
         </div>
 
-        <Select
-          value={filterPageUid}
-          onValueChange={handlePageChange}
-        >
-          <SelectTrigger className="w-44" data-testid="status-updates-page-filter">
+        <Select value={filterPageUid} onValueChange={handlePageChange}>
+          <SelectTrigger
+            className="w-44"
+            data-testid="status-updates-page-filter"
+          >
             <SelectValue placeholder="All pages" />
           </SelectTrigger>
           <SelectContent>
@@ -250,11 +297,11 @@ function StatusUpdatesIndexPage() {
         </Select>
 
         {filterPageUid !== "all" && (
-          <Select
-            value={filterSectionUid}
-            onValueChange={handleSectionChange}
-          >
-            <SelectTrigger className="w-44" data-testid="status-updates-section-filter">
+          <Select value={filterSectionUid} onValueChange={handleSectionChange}>
+            <SelectTrigger
+              className="w-44"
+              data-testid="status-updates-section-filter"
+            >
               <SelectValue placeholder="All sections" />
             </SelectTrigger>
             <SelectContent>
@@ -269,11 +316,11 @@ function StatusUpdatesIndexPage() {
         )}
 
         {filterPageUid !== "all" && (
-          <Select
-            value={filterCheckUid}
-            onValueChange={setFilterCheckUid}
-          >
-            <SelectTrigger className="w-44" data-testid="status-updates-check-filter">
+          <Select value={filterCheckUid} onValueChange={setFilterCheckUid}>
+            <SelectTrigger
+              className="w-44"
+              data-testid="status-updates-check-filter"
+            >
               <SelectValue placeholder="All checks" />
             </SelectTrigger>
             <SelectContent>
@@ -287,11 +334,11 @@ function StatusUpdatesIndexPage() {
           </Select>
         )}
 
-        <Select
-          value={filterKind}
-          onValueChange={setFilterKind}
-        >
-          <SelectTrigger className="w-36" data-testid="status-updates-kind-filter">
+        <Select value={filterKind} onValueChange={setFilterKind}>
+          <SelectTrigger
+            className="w-36"
+            data-testid="status-updates-kind-filter"
+          >
             <SelectValue placeholder="All kinds" />
           </SelectTrigger>
           <SelectContent>
@@ -311,11 +358,15 @@ function StatusUpdatesIndexPage() {
           disabled={isRefetching}
           aria-label="Refresh"
         >
-          <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+          <RefreshCw
+            className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+          />
         </Button>
       </div>
 
-      {error && <QueryErrorView error={error} org={org} onRetry={() => refetch()} />}
+      {error && (
+        <QueryErrorView error={error} org={org} onRetry={() => refetch()} />
+      )}
 
       {isLoading ? (
         <div className="rounded-md border">
@@ -330,8 +381,8 @@ function StatusUpdatesIndexPage() {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Kind</TableHead>
                 <TableHead>Title</TableHead>
+                <TableHead>Kind</TableHead>
                 <TableHead>Date</TableHead>
                 <TableHead className="w-[100px]" />
               </TableRow>
@@ -342,6 +393,7 @@ function StatusUpdatesIndexPage() {
                   key={u.uid}
                   update={u}
                   org={org}
+                  publicSlug={pageSlugByUid.get(u.statusPageUid)}
                   onDelete={setDeleteUid}
                 />
               ))}
@@ -353,10 +405,7 @@ function StatusUpdatesIndexPage() {
           <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
           <p className="mb-2">No status updates yet.</p>
           <Button asChild>
-            <Link
-              to="/orgs/$org/status-updates/new"
-              params={{ org }}
-            >
+            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
               <Plus className="mr-2 h-4 w-4" />
               New update
             </Link>
@@ -364,13 +413,16 @@ function StatusUpdatesIndexPage() {
         </div>
       )}
 
-      <AlertDialog open={!!deleteUid} onOpenChange={(o) => !o && setDeleteUid(null)}>
+      <AlertDialog
+        open={!!deleteUid}
+        onOpenChange={(o) => !o && setDeleteUid(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete status update?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will remove the update from the status page. This action cannot be
-              undone.
+              This will remove the update from the status page. This action
+              cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
