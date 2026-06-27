@@ -74,7 +74,7 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 		return err
 	}
 
-	// Seed a deterministic, unpromoted discovered host (with a scan) so the
+	// Seed a deterministic, unpromoted discovered check (with a scan) so the
 	// discovery promote flow is exercisable in test mode / e2e.
 	if err := createTestDiscoveryData(ctx, dbService, testOrg.UID, now); err != nil {
 		return err
@@ -97,16 +97,16 @@ func CreateTestData(ctx context.Context, dbService db.Service) error {
 }
 
 // createTestDiscoveryData seeds a successful network-discovery scan and one
-// unpromoted host carrying a TCP suggested check, so the promote flow can be
-// driven end-to-end without running a real scan (which can't find deterministic
-// hosts in test mode).
+// unpromoted group (127.0.0.1) carrying a TCP and an ICMP suggested check, so the
+// promote flow can be driven end-to-end without running a real scan (which can't
+// find deterministic hosts in test mode).
 func createTestDiscoveryData(ctx context.Context, dbService db.Service, orgUID string, now time.Time) error {
 	const (
 		jobUID  = "00000000-0000-0000-0000-000000000007"
-		hostUID = "00000000-0000-0000-0000-000000000008"
+		tcpUID  = "00000000-0000-0000-0000-000000000008"
+		icmpUID = "00000000-0000-0000-0000-000000000009"
 	)
 
-	// Insert the job first: discovered_hosts.job_uid is notnull.
 	job := &models.Job{
 		UID:             jobUID,
 		OrganizationUID: &orgUID,
@@ -120,17 +120,29 @@ func createTestDiscoveryData(ctx context.Context, dbService db.Service, orgUID s
 		return fmt.Errorf("failed to create test discovery job: %w", err)
 	}
 
-	host := models.NewDiscoveredHost(orgUID, jobUID, "127.0.0.1", models.DiscoverySourceLAN)
-	host.UID = hostUID
-	host.ICMPReachable = true
-	host.OpenPorts = json.RawMessage(`[8080]`)
-	host.SuggestedChecks = json.RawMessage(`[{"type":"tcp","config":{"host":"127.0.0.1","port":8080}}]`)
-	host.DiscoveredAt = now
-	if _, err := dbService.DB().NewInsert().Model(host).Exec(ctx); err != nil {
-		return fmt.Errorf("failed to create test discovered host: %w", err)
+	meta := json.RawMessage(`{"openPorts":[8080],"icmpReachable":true}`)
+
+	tcp := models.NewDiscoveredCheck(
+		orgUID, jobUID, models.DiscoverySourceLAN,
+		"127.0.0.1", "127.0.0.1", "127.0.0.1 · TCP/8080", "tcp-127-0-0-1-8080", "tcp",
+		json.RawMessage(`{"host":"127.0.0.1","port":8080}`), meta,
+	)
+	tcp.UID = tcpUID
+	tcp.DiscoveredAt = now
+
+	icmp := models.NewDiscoveredCheck(
+		orgUID, jobUID, models.DiscoverySourceLAN,
+		"127.0.0.1", "127.0.0.1", "127.0.0.1 · ICMP", "icmp-127-0-0-1", "ping",
+		json.RawMessage(`{"host":"127.0.0.1"}`), meta,
+	)
+	icmp.UID = icmpUID
+	icmp.DiscoveredAt = now
+
+	if _, err := dbService.DB().NewInsert().Model(&[]*models.DiscoveredCheck{tcp, icmp}).Exec(ctx); err != nil {
+		return fmt.Errorf("failed to create test discovered checks: %w", err)
 	}
 
-	slog.InfoContext(ctx, "Created test discovery data", "jobUID", jobUID, "hostUID", hostUID)
+	slog.InfoContext(ctx, "Created test discovery data", "jobUID", jobUID)
 
 	return nil
 }

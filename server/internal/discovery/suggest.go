@@ -148,18 +148,32 @@ func checkName(groupLabel, scheme string) string {
 	return fmt.Sprintf("%s · %s", groupLabel, strings.ToUpper(scheme))
 }
 
-// checkSlug builds a URL-friendly slug like "192-168-1-5-http" or
-// "192-168-1-5-tcp-22". A non-zero port is appended to disambiguate ports that
-// would otherwise share a scheme.
+// checkSlug builds a URL-friendly slug like "http-192-168-1-5" or
+// "tcp-192-168-1-5-22". The scheme leads so the slug always begins with a letter
+// (the checks service requires `^[a-z][a-z0-9-]{2,49}$`) — group labels are often
+// IPs, which start with a digit. A non-zero port is appended to disambiguate
+// ports that would otherwise share a scheme.
 func checkSlug(groupLabel, scheme string, port int) string {
-	parts := []string{slugify(groupLabel), slugify(scheme)}
+	parts := []string{slugify(scheme), slugify(groupLabel)}
 	if port != 0 {
 		parts = append(parts, fmt.Sprintf("%d", port))
 	}
 
-	slug := strings.Join(parts, "-")
+	slug := strings.Trim(strings.Join(parts, "-"), "-")
 
-	return strings.Trim(slug, "-")
+	// Guard: a scheme that slugifies to empty (shouldn't happen) would leave a
+	// leading digit. Prefix a stable letter to keep the slug valid.
+	if slug == "" || (slug[0] >= '0' && slug[0] <= '9') {
+		slug = "d-" + slug
+	}
+
+	// Cap at the checks-service maximum (50 chars) to keep promotion valid.
+	const maxSlugLen = 50
+	if len(slug) > maxSlugLen {
+		slug = strings.Trim(slug[:maxSlugLen], "-")
+	}
+
+	return slug
 }
 
 // dedupSlug ensures slug uniqueness within a group, appending -2, -3… on

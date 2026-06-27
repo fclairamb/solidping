@@ -12,7 +12,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
-	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
@@ -29,128 +29,6 @@ func (f *discoveryFixture) newRouter(t *testing.T) *bunrouter.Router {
 	handler.RegisterRoutes(group)
 
 	return router
-}
-
-// doPromote issues a POST .../hosts/:uid/promote with admin claims + org context.
-func (f *discoveryFixture) doPromote(
-	t *testing.T, router *bunrouter.Router, hostUID string, body any,
-) *httptest.ResponseRecorder {
-	t.Helper()
-
-	r := require.New(t)
-
-	var bodyBytes []byte
-	if body != nil {
-		var err error
-		bodyBytes, err = json.Marshal(body)
-		r.NoError(err)
-	}
-
-	ctx := context.WithValue(t.Context(), base.ContextKeyClaims, &auth.Claims{
-		UserUID: "test-user",
-		OrgSlug: f.org.Slug,
-		Role:    "admin",
-	})
-	ctx = context.WithValue(ctx, base.ContextKeyOrganization, f.org)
-
-	path := "/api/v1/orgs/" + f.org.Slug + "/discovery/hosts/" + hostUID + "/promote"
-	req := httptest.NewRequestWithContext(ctx, http.MethodPost, path, bytes.NewBuffer(bodyBytes))
-	req.Header.Set("Content-Type", "application/json")
-
-	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, req)
-
-	return rec
-}
-
-func TestHandlerPromoteMultiCheck(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	f := newDiscoveryFixture(t)
-	router := f.newRouter(t)
-
-	hostUID := f.insertPromotableHost(t, "10.0.0.1", []disc.SuggestedCheck{
-		{Type: "http", Config: map[string]any{"url": "http://10.0.0.1"}},
-		{Type: "ping", Config: map[string]any{"host": "10.0.0.1"}},
-	})
-
-	rec := f.doPromote(t, router, hostUID, discovery.PromoteRequest{
-		Checks: []discovery.PromoteCheckSpec{
-			{CheckType: "http", Name: "h1 (http)", Slug: "host-one-http"},
-			{CheckType: "ping", Name: "h1 (ping)", Slug: "host-one-ping"},
-		},
-	})
-	r.Equal(http.StatusCreated, rec.Code)
-
-	var resp struct {
-		Data []map[string]any `json:"data"`
-	}
-	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
-	r.Len(resp.Data, 2)
-}
-
-func TestHandlerPromoteEmptyChecks(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	f := newDiscoveryFixture(t)
-	router := f.newRouter(t)
-
-	hostUID := f.insertPromotableHost(t, "10.0.0.2", nil)
-
-	rec := f.doPromote(t, router, hostUID, discovery.PromoteRequest{Checks: nil})
-	r.Equal(http.StatusUnprocessableEntity, rec.Code)
-}
-
-func TestHandlerPromoteMissingCheckType(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	f := newDiscoveryFixture(t)
-	router := f.newRouter(t)
-
-	hostUID := f.insertPromotableHost(t, "10.0.0.3", nil)
-
-	rec := f.doPromote(t, router, hostUID, discovery.PromoteRequest{
-		Checks: []discovery.PromoteCheckSpec{{CheckType: "", Slug: "no-type"}},
-	})
-	r.Equal(http.StatusUnprocessableEntity, rec.Code)
-}
-
-func TestHandlerPromoteAlreadyPromoted(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	f := newDiscoveryFixture(t)
-	router := f.newRouter(t)
-
-	hostUID := f.insertPromotableHost(t, "10.0.0.4", []disc.SuggestedCheck{
-		{Type: "tcp", Config: map[string]any{"host": "10.0.0.4", "port": 22}},
-	})
-
-	rec := f.doPromote(t, router, hostUID, discovery.PromoteRequest{
-		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "host-four"}},
-	})
-	r.Equal(http.StatusCreated, rec.Code)
-
-	rec = f.doPromote(t, router, hostUID, discovery.PromoteRequest{
-		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "host-four-again"}},
-	})
-	r.Equal(http.StatusConflict, rec.Code)
-}
-
-func TestHandlerPromoteHostNotFound(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	f := newDiscoveryFixture(t)
-	router := f.newRouter(t)
-
-	rec := f.doPromote(t, router, "00000000-0000-0000-0000-000000000000", discovery.PromoteRequest{
-		Checks: []discovery.PromoteCheckSpec{{CheckType: "tcp", Slug: "ghost-check"}},
-	})
-	r.Equal(http.StatusNotFound, rec.Code)
 }
 
 // doAdminRequest issues a request to a discovery path with admin claims + org context.
@@ -184,15 +62,74 @@ func (f *discoveryFixture) doAdminRequest(
 	return rec
 }
 
-func TestHandlerStartScanCreatesPlan(t *testing.T) {
+// doUserRequest issues a request with a non-admin (viewer) role.
+func (f *discoveryFixture) doUserRequest(
+	t *testing.T, router *bunrouter.Router, method, path string, body any,
+) *httptest.ResponseRecorder {
+	t.Helper()
+
+	r := require.New(t)
+
+	var bodyBytes []byte
+	if body != nil {
+		var err error
+		bodyBytes, err = json.Marshal(body)
+		r.NoError(err)
+	}
+
+	ctx := context.WithValue(t.Context(), base.ContextKeyClaims, &auth.Claims{
+		UserUID: "test-user", OrgSlug: f.org.Slug, Role: "viewer",
+	})
+	ctx = context.WithValue(ctx, base.ContextKeyOrganization, f.org)
+
+	req := httptest.NewRequestWithContext(ctx, method, path, bytes.NewBuffer(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	return rec
+}
+
+func (f *discoveryFixture) scansPath() string {
+	return "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
+}
+
+func TestHandlerListTypes(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 	router := f.newRouter(t)
 
-	path := "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
-	rec := f.doAdminRequest(t, router, http.MethodPost, path, disc.Config{CIDRs: []string{"10.0.0.0/18"}})
+	rec := f.doAdminRequest(t, router, http.MethodGet, "/api/v1/orgs/"+f.org.Slug+"/discovery/types", nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []struct {
+			Type   string `json:"type"`
+			Source string `json:"source"`
+		} `json:"data"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+
+	types := map[string]string{}
+	for _, d := range resp.Data {
+		types[d.Type] = d.Source
+	}
+	r.Equal("lan", types["lan"])
+	r.Equal("freebox", types["freebox"])
+}
+
+func TestHandlerStartScanLANCreatesPlan(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/18"]}`)}
+	rec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusCreated, rec.Code)
 
 	var resp struct {
@@ -200,23 +137,63 @@ func TestHandlerStartScanCreatesPlan(t *testing.T) {
 			UID  string `json:"uid"`
 			Type string `json:"type"`
 		} `json:"data"`
+		Progress *discovery.ScanProgress `json:"progress"`
 	}
 	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
 	r.Equal("network_discovery_plan", resp.Data.Type)
 	r.NotEmpty(resp.Data.UID)
+	r.NotNil(resp.Progress, "StartScan must return a progress block")
 }
 
-func TestHandlerStartScanLargeRangeStillRejected(t *testing.T) {
+func TestHandlerStartScanUnknownType(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	f := newDiscoveryFixture(t)
 	router := f.newRouter(t)
 
-	path := "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
-	rec := f.doAdminRequest(t, router, http.MethodPost, path, disc.Config{CIDRs: []string{"0.0.0.0/7"}})
+	body := discovery.StartScanRequest{Type: "bogus", Parameters: json.RawMessage(`{}`)}
+	rec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusBadRequest, rec.Code)
+	r.Contains(rec.Body.String(), "DISCOVERY_UNKNOWN_TYPE")
+}
+
+func TestHandlerStartScanBadParams(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{}`)}
+	rec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusUnprocessableEntity, rec.Code)
+	r.Contains(rec.Body.String(), "DISCOVERY_INVALID_PARAMETERS")
+}
+
+func TestHandlerStartScanLargeRangeRejected(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["0.0.0.0/7"]}`)}
+	rec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusUnprocessableEntity, rec.Code)
 	r.Contains(rec.Body.String(), "DISCOVERY_RANGE_TOO_LARGE")
+}
+
+func TestHandlerStartScanNonAdminForbidden(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`)}
+	rec := f.doUserRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusForbidden, rec.Code)
 }
 
 func TestHandlerGetScanReturnsProgress(t *testing.T) {
@@ -226,9 +203,8 @@ func TestHandlerGetScanReturnsProgress(t *testing.T) {
 	f := newDiscoveryFixture(t)
 	router := f.newRouter(t)
 
-	// Create a plan scan, then read it back: response must carry a progress block.
-	startPath := "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
-	startRec := f.doAdminRequest(t, router, http.MethodPost, startPath, disc.Config{CIDRs: []string{"10.0.0.0/24"}})
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`)}
+	startRec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusCreated, startRec.Code)
 
 	var start struct {
@@ -238,11 +214,12 @@ func TestHandlerGetScanReturnsProgress(t *testing.T) {
 	}
 	r.NoError(json.Unmarshal(startRec.Body.Bytes(), &start))
 
-	getPath := startPath + "/" + start.Data.UID
-	getRec := f.doAdminRequest(t, router, http.MethodGet, getPath, nil)
+	getRec := f.doAdminRequest(t, router, http.MethodGet, f.scansPath()+"/"+start.Data.UID, nil)
 	r.Equal(http.StatusOK, getRec.Code)
 	r.Contains(getRec.Body.String(), "progress")
 	r.Contains(getRec.Body.String(), "derivedStatus")
+	r.Contains(getRec.Body.String(), "groupCount")
+	r.Contains(getRec.Body.String(), "checkCount")
 }
 
 func TestHandlerCancelScan(t *testing.T) {
@@ -252,8 +229,8 @@ func TestHandlerCancelScan(t *testing.T) {
 	f := newDiscoveryFixture(t)
 	router := f.newRouter(t)
 
-	startPath := "/api/v1/orgs/" + f.org.Slug + "/discovery/scans"
-	startRec := f.doAdminRequest(t, router, http.MethodPost, startPath, disc.Config{CIDRs: []string{"10.0.0.0/24"}})
+	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`)}
+	startRec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusCreated, startRec.Code)
 
 	var start struct {
@@ -263,8 +240,7 @@ func TestHandlerCancelScan(t *testing.T) {
 	}
 	r.NoError(json.Unmarshal(startRec.Body.Bytes(), &start))
 
-	cancelPath := startPath + "/" + start.Data.UID + "/cancel"
-	cancelRec := f.doAdminRequest(t, router, http.MethodPost, cancelPath, nil)
+	cancelRec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath()+"/"+start.Data.UID+"/cancel", nil)
 	r.Equal(http.StatusNoContent, cancelRec.Code)
 }
 
@@ -275,8 +251,135 @@ func TestHandlerCancelScanNotFound(t *testing.T) {
 	f := newDiscoveryFixture(t)
 	router := f.newRouter(t)
 
-	cancelPath := "/api/v1/orgs/" + f.org.Slug +
-		"/discovery/scans/00000000-0000-0000-0000-000000000000/cancel"
-	rec := f.doAdminRequest(t, router, http.MethodPost, cancelPath, nil)
+	rec := f.doAdminRequest(t, router, http.MethodPost,
+		f.scansPath()+"/00000000-0000-0000-0000-000000000000/cancel", nil)
 	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+func TestHandlerListChecks(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	jobUID := f.newScanJob(t)
+	f.insertCheck(t, jobUID, "10.0.0.1", "x-tcp", "tcp",
+		models.DiscoverySourceLAN, json.RawMessage(`{"host":"10.0.0.1","port":22}`))
+
+	rec := f.doAdminRequest(t, router, http.MethodGet,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks?jobUid="+jobUID, nil)
+	r.Equal(http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data []map[string]any `json:"data"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Len(resp.Data, 1)
+	r.Equal("10.0.0.1", resp.Data[0]["groupKey"])
+}
+
+func TestHandlerPromoteChecks(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	jobUID := f.newScanJob(t)
+	httpUID := f.insertCheck(t, jobUID, "10.0.0.1", "host-one-http", "http",
+		models.DiscoverySourceLAN, json.RawMessage(`{"url":"http://10.0.0.1"}`))
+	icmpUID := f.insertCheck(t, jobUID, "10.0.0.1", "host-one-icmp", "ping",
+		models.DiscoverySourceLAN, json.RawMessage(`{"host":"10.0.0.1"}`))
+
+	rec := f.doAdminRequest(t, router, http.MethodPost,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks/promote",
+		discovery.PromoteRequest{UIDs: []string{httpUID, icmpUID}})
+	r.Equal(http.StatusCreated, rec.Code)
+
+	var resp struct {
+		Data []map[string]any `json:"data"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Len(resp.Data, 2)
+}
+
+func TestHandlerPromoteEmpty(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	rec := f.doAdminRequest(t, router, http.MethodPost,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks/promote", discovery.PromoteRequest{UIDs: nil})
+	r.Equal(http.StatusUnprocessableEntity, rec.Code)
+}
+
+func TestHandlerPromoteNotFound(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	rec := f.doAdminRequest(t, router, http.MethodPost,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks/promote",
+		discovery.PromoteRequest{UIDs: []string{"00000000-0000-0000-0000-000000000000"}})
+	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+func TestHandlerDismissCheck(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	jobUID := f.newScanJob(t)
+	uid := f.insertCheck(t, jobUID, "10.0.0.5", "y-tcp", "tcp",
+		models.DiscoverySourceLAN, json.RawMessage(`{"host":"10.0.0.5","port":22}`))
+
+	rec := f.doAdminRequest(t, router, http.MethodDelete,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks/"+uid, nil)
+	r.Equal(http.StatusNoContent, rec.Code)
+
+	// Second delete is a 404.
+	rec = f.doAdminRequest(t, router, http.MethodDelete,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks/"+uid, nil)
+	r.Equal(http.StatusNotFound, rec.Code)
+}
+
+func TestHandlerDismissGroup(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	jobUID := f.newScanJob(t)
+	f.insertCheck(t, jobUID, "10.0.0.9", "g1", "http",
+		models.DiscoverySourceLAN, json.RawMessage(`{"url":"http://10.0.0.9"}`))
+	f.insertCheck(t, jobUID, "10.0.0.9", "g2", "ping",
+		models.DiscoverySourceLAN, json.RawMessage(`{"host":"10.0.0.9"}`))
+
+	rec := f.doAdminRequest(t, router, http.MethodDelete,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks?jobUid="+jobUID+"&group=10.0.0.9", nil)
+	r.Equal(http.StatusNoContent, rec.Code)
+
+	remaining, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{})
+	r.NoError(err)
+	r.Empty(remaining)
+}
+
+func TestHandlerDismissGroupMissingParam(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	rec := f.doAdminRequest(t, router, http.MethodDelete,
+		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks", nil)
+	r.Equal(http.StatusUnprocessableEntity, rec.Code)
 }

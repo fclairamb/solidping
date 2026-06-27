@@ -151,6 +151,6 @@ func TestCheckNameAndSlug(t *testing.T) {
 	r := require.New(t)
 
 	r.Equal("192.168.1.5 · HTTP", checkName("192.168.1.5", "http"))
-	r.Equal("192-168-1-5-http", checkSlug("192.168.1.5", "HTTP", 0))
-	r.Equal("192-168-1-5-tcp-22", checkSlug("192.168.1.5", "TCP", 22))
+	r.Equal("http-192-168-1-5", checkSlug("192.168.1.5", "HTTP", 0))
+	r.Equal("tcp-192-168-1-5-22", checkSlug("192.168.1.5", "TCP", 22))
 }
