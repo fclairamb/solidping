@@ -3209,8 +3209,9 @@ export interface DiscoveryScan {
   updatedAt: string;
 }
 
-// DiscoveryScanProgress is the derived fan-out progress block returned alongside
-// a plan scan: chunk counts, an overall derived status, and the host roll-up count.
+// DiscoveryScanProgress is the uniform progress block returned alongside every
+// scan: chunk counts, an overall derived status, and the group/check roll-up
+// counts. Non-chunked scans report totalChunks=1.
 export interface DiscoveryScanProgress {
   totalChunks: number;
   completedChunks: number;
@@ -3218,72 +3219,72 @@ export interface DiscoveryScanProgress {
   runningChunks: number;
   pendingChunks: number;
   derivedStatus: "pending" | "running" | "success" | "failed";
-  hostCount: number;
+  groupCount: number;
+  checkCount: number;
 }
 
-export interface SuggestedCheck {
+export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
+
+// DiscoveryType is a registered discovery type returned by GET /discovery/types,
+// driving the registry-aware type picker.
+export interface DiscoveryType {
   type: string;
-  config: Record<string, unknown>;
+  source: DiscoverySource;
 }
 
-export type DiscoverySource = "lan" | "freebox";
-
-export interface DiscoveredHost {
+// DiscoveredCheck is one suggested check produced by a scan. Rows are grouped for
+// display by groupKey; the stored unit is the check.
+export interface DiscoveredCheck {
   uid: string;
   organizationUid: string;
   jobUid: string;
-  ip: string;
-  hostname?: string;
-  openPorts: number[];
-  icmpReachable: boolean;
-  suggestedChecks: SuggestedCheck[];
   source: DiscoverySource;
+  groupKey: string;
+  groupLabel: string;
+  name: string;
+  slug: string;
+  type: string;
+  config: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   promotedToCheckUid?: string;
   discoveredAt: string;
 }
 
+// StartDiscoveryScanRequest is the generic scan-start body: a registered type
+// plus its type-specific parameters.
 export interface StartDiscoveryScanRequest {
-  cidrs: string[];
-  ports?: number[];
-  timeout?: string;
-  concurrency?: number;
+  type: string;
+  parameters: Record<string, unknown>;
 }
 
-export interface PromoteCheckSpec {
-  checkType: string;
-  name?: string;
-  slug?: string;
-  period?: string;
-  extraConfig?: Record<string, unknown>;
+// PromoteChecksRequest promotes one or more discovered checks into real checks.
+// A group's UIDs promote the whole group; overrides adjust name/period.
+export interface PromoteChecksRequest {
+  uids: string[];
+  overrides?: {
+    name?: string;
+    period?: string;
+  };
 }
 
-export interface PromoteCandidateRequest {
-  checks: PromoteCheckSpec[];
+export function useDiscoveryTypes(org: string) {
+  return useQuery({
+    queryKey: ["discoveryTypes", org],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryType[] }>(`/api/v1/orgs/${org}/discovery/types`),
+    select: (res) => res?.data ?? [],
+  });
 }
 
 export function useStartDiscoveryScan(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (req: StartDiscoveryScanRequest) =>
-      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
-        method: "POST",
-        body: JSON.stringify(req),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
-    },
-  });
-}
-
-export function useStartFreeboxScan(org: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (channelUid: string) =>
-      apiFetch<{ data: DiscoveryScan }>(
-        `/api/v1/orgs/${org}/discovery/freebox-scans`,
+      apiFetch<{ data: DiscoveryScan; progress?: DiscoveryScanProgress }>(
+        `/api/v1/orgs/${org}/discovery/scans`,
         {
           method: "POST",
-          body: JSON.stringify({ channelUid }),
+          body: JSON.stringify(req),
         },
       ),
     onSuccess: () => {
@@ -3346,57 +3347,80 @@ export function useCancelScan(org: string) {
   });
 }
 
-export function useListCandidateHosts(
+// useListDiscoveredChecks returns the suggested checks for a scan (or org). The
+// frontend groups them by groupKey. While a fan-out scan is active, pass
+// pollWhileActive to stream rows in as chunks land.
+export function useListDiscoveredChecks(
   org: string,
-  opts?: { jobUid?: string; promoted?: boolean; source?: string },
-  // pollWhileActive streams hosts into the table while a fan-out scan is running
-  // (chunks land progressively), by polling the list every 3s.
+  opts?: { jobUid?: string; group?: string; promoted?: boolean; source?: string },
   pollWhileActive = false,
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.group) params.set("group", opts.group);
   if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
   if (opts?.source) params.set("source", opts.source);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: ["discoveryHosts", org, opts],
+    queryKey: ["discoveryChecks", org, opts],
     queryFn: () =>
-      apiFetch<{ data: DiscoveredHost[] }>(
-        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      apiFetch<{ data: DiscoveredCheck[] }>(
+        `/api/v1/orgs/${org}/discovery/checks${qs ? `?${qs}` : ""}`,
       ),
     select: (res) => res?.data ?? [],
     refetchInterval: pollWhileActive ? 3000 : false,
   });
 }
 
-export function usePromoteCandidate(org: string) {
+// usePromoteChecks promotes the selected discovered-check UIDs into real checks.
+export function usePromoteChecks(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+    mutationFn: (req: PromoteChecksRequest) =>
       apiFetch<{ data: Check[] }>(
-        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        `/api/v1/orgs/${org}/discovery/checks/promote`,
         {
           method: "POST",
           body: JSON.stringify(req),
         },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
 
-export function useDismissCandidate(org: string) {
+// useDismissCheck dismisses a single discovered check (soft delete).
+export function useDismissCheck(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/checks/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
+    },
+  });
+}
+
+// useDismissGroup dismisses every discovered check in a group for a scan.
+export function useDismissGroup(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobUid, group }: { jobUid?: string; group: string }) => {
+      const params = new URLSearchParams();
+      if (jobUid) params.set("jobUid", jobUid);
+      params.set("group", group);
+      return apiFetch<void>(
+        `/api/v1/orgs/${org}/discovery/checks?${params.toString()}`,
+        { method: "DELETE" },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
     },
   });
 }
