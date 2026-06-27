@@ -1487,25 +1487,33 @@ func TestSlackSender_buildMessage(t *testing.T) {
 		checkName    string
 		failureCount int
 		expectTexts  []string // Multiple text snippets to check in the fallback text
+		// wantAttachments is false for the resolved/reopened thread replies, which
+		// render the status line once as the top-level Text with no attachment.
+		wantAttachments bool
 	}{
 		{
-			name:        "incident created",
-			eventType:   "incident.created",
-			checkName:   "API Health",
-			expectTexts: []string{"New incident for", "API Health"},
+			name:            "incident created",
+			eventType:       "incident.created",
+			checkName:       "API Health",
+			expectTexts:     []string{"New incident for", "API Health"},
+			wantAttachments: true,
 		},
 		{
-			name:        "incident resolved",
-			eventType:   "incident.resolved",
-			checkName:   "API Health",
-			expectTexts: []string{"Incident resolved"},
+			name:      "incident resolved",
+			eventType: "incident.resolved",
+			checkName: "API Health",
+			// Self-contained, single-render status line: monitor named, no
+			// attachment duplicating the body.
+			expectTexts:     []string{"incident resolved after", "API Health"},
+			wantAttachments: false,
 		},
 		{
-			name:         "incident escalated",
-			eventType:    "incident.escalated",
-			checkName:    "API Health",
-			failureCount: 10,
-			expectTexts:  []string{"Incident escalated", "API Health"},
+			name:            "incident escalated",
+			eventType:       "incident.escalated",
+			checkName:       "API Health",
+			failureCount:    10,
+			expectTexts:     []string{"Incident escalated", "API Health"},
+			wantAttachments: true,
 		},
 	}
 
@@ -1532,10 +1540,133 @@ func TestSlackSender_buildMessage(t *testing.T) {
 			for _, text := range tt.expectTexts {
 				r.Contains(msg.Text, text)
 			}
-			r.NotEmpty(msg.Attachments, "expected attachments with blocks")
-			r.NotEmpty(msg.Attachments[0].Blocks, "expected blocks inside attachment")
+			if tt.wantAttachments {
+				r.NotEmpty(msg.Attachments, "expected attachments with blocks")
+				r.NotEmpty(msg.Attachments[0].Blocks, "expected blocks inside attachment")
+			} else {
+				r.Empty(msg.Attachments, "resolved/reopened reply must not carry an attachment")
+			}
 		})
 	}
+}
+
+// TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce pins the Defect A
+// fix for resolved messages: the status line is rendered exactly once (as the
+// top-level Text, with NO attachment repeating it — the previous shape duplicated
+// the body and added a useless green border), and the message is self-contained:
+// it names the monitor and links it to the dashboard when a base URL is configured.
+func TestSlackSender_buildIncidentResolvedThreadReply_RenderedOnce(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const (
+		baseURL  = "https://app.example.com"
+		orgSlug  = "acme"
+		checkSlg = "api-health"
+	)
+	checkName := "API Health"
+	resolvedAt := time.Now()
+	payload := &Payload{
+		EventType:  eventTypeIncidentResolved,
+		OrgSlug:    orgSlug,
+		AppBaseURL: baseURL,
+		Incident: &models.Incident{
+			UID:        "incident-1",
+			StartedAt:  resolvedAt.Add(-28 * time.Minute),
+			ResolvedAt: &resolvedAt,
+		},
+		Check: &models.Check{Name: &checkName, Slug: ptr(checkSlg)},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildIncidentResolvedThreadReply(payload)
+	r.NotNil(msg)
+
+	// No attachment at all: the green-border duplicate is gone.
+	r.Empty(msg.Attachments, "resolved reply must not carry an attachment")
+	r.Empty(msg.Blocks, "resolved reply renders only the top-level Text")
+
+	// The status line is present exactly once (it only lives in Text now).
+	r.Contains(msg.Text, "incident resolved after 28 minutes")
+	r.Equal(1, strings.Count(msg.Text, "incident resolved after"),
+		"status line must render exactly once")
+
+	// Self-contained: monitor named and linked.
+	r.Contains(msg.Text, checkName, "resolved reply must name the monitor")
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
+	r.Contains(msg.Text, checkLink, "resolved reply must link the monitor to its dashboard page")
+
+	// The at-a-glance success cue is kept.
+	r.Contains(msg.Text, ":white_check_mark:")
+}
+
+// TestSlackSender_buildIncidentResolvedThreadReply_NamesMonitorWithoutBaseURL
+// verifies the monitor is still named (plain text, no link) when no dashboard
+// base URL is configured, so a non-threaded resolved is never anonymous.
+func TestSlackSender_buildIncidentResolvedThreadReply_NamesMonitorWithoutBaseURL(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	checkName := "API Health"
+	resolvedAt := time.Now()
+	payload := &Payload{
+		EventType: eventTypeIncidentResolved,
+		Incident: &models.Incident{
+			StartedAt:  resolvedAt.Add(-2 * time.Minute),
+			ResolvedAt: &resolvedAt,
+		},
+		Check: &models.Check{Name: &checkName},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildIncidentResolvedThreadReply(payload)
+	r.NotNil(msg)
+	r.Empty(msg.Attachments)
+	r.Contains(msg.Text, checkName, "monitor name must be present even without a base URL")
+	r.NotContains(msg.Text, "<http", "no link wrapper when base URL is absent")
+}
+
+// TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce pins the Defect A
+// fix for reopened messages: single top-level render, no duplicating attachment,
+// monitor named + linked, warning cue kept.
+func TestSlackSender_buildIncidentReopenedThreadReply_RenderedOnce(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const (
+		baseURL  = "https://app.example.com"
+		orgSlug  = "acme"
+		checkSlg = "api-health"
+	)
+	checkName := "API Health"
+	payload := &Payload{
+		EventType:  eventTypeIncidentReopened,
+		OrgSlug:    orgSlug,
+		AppBaseURL: baseURL,
+		Incident: &models.Incident{
+			UID:          "incident-1",
+			StartedAt:    time.Now().Add(-5 * time.Minute),
+			RelapseCount: 2,
+		},
+		Check: &models.Check{Name: &checkName, Slug: ptr(checkSlg), RecoveryPeriodSeconds: 60},
+	}
+
+	sender := &SlackSender{}
+	msg := sender.buildIncidentReopenedThreadReply(payload)
+	r.NotNil(msg)
+
+	r.Empty(msg.Attachments, "reopened reply must not carry an attachment")
+	r.Empty(msg.Blocks, "reopened reply renders only the top-level Text")
+
+	r.Contains(msg.Text, "incident reopened (relapse #2)")
+	r.Equal(1, strings.Count(msg.Text, "incident reopened"),
+		"status line must render exactly once")
+
+	r.Contains(msg.Text, checkName, "reopened reply must name the monitor")
+	checkLink := "<" + baseURL + "/dash0/orgs/" + orgSlug + "/checks/" + checkSlg + "|" + checkName + ">"
+	r.Contains(msg.Text, checkLink, "reopened reply must link the monitor to its dashboard page")
+
+	r.Contains(msg.Text, ":warning:")
 }
 
 // TestSlackSender_DMChannelID verifies that a destination_type="dm" setting
