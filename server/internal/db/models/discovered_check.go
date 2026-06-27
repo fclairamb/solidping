@@ -20,6 +20,9 @@ const (
 	DiscoverySourceLAN DiscoverySource = "lan"
 	// DiscoverySourceFreebox marks a check suggested via the Freebox LAN browser.
 	DiscoverySourceFreebox DiscoverySource = "freebox"
+	// DiscoverySourceContainer marks a container found on a configured
+	// Docker-compatible host (Docker or Podman).
+	DiscoverySourceContainer DiscoverySource = "container"
 )
 
 // DiscoveredCheck is one suggested check produced by a discovery scan. Rows are

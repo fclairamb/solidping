@@ -3,6 +3,7 @@ package discovery
 import (
 	"encoding/json"
 	"fmt"
+	"net"
 	"regexp"
 	"strconv"
 	"strings"
@@ -14,6 +15,9 @@ const (
 	checkTypePing = "ping"
 	checkTypeHTTP = "http"
 	checkTypeTCP  = "tcp"
+	// checkTypeDocker is the promoted check type for a discovered container; it
+	// passes through normalizeCheckType unchanged.
+	checkTypeDocker = "docker"
 )
 
 // schemeICMP is the scheme label used when building an ICMP check name/slug.
@@ -197,6 +201,157 @@ func slugify(s string) string {
 	s = nonSlugChars.ReplaceAllString(s, "-")
 
 	return strings.Trim(s, "-")
+}
+
+// ContainerPort is one port mapping of a discovered container, mirroring the
+// Docker SDK's container.Port. Only ports with PublicPort != 0 (published to the
+// host) are worker-reachable and become HTTP/TCP suggestions.
+type ContainerPort struct {
+	PrivatePort uint16 // container-side port (decides the scheme)
+	PublicPort  uint16 // host-published port (what a worker connects to); 0 = not published
+	Type        string // "tcp" | "udp"
+}
+
+// ContainerSuggestInput carries the fields a container contributes to its
+// suggested-check group.
+type ContainerSuggestInput struct {
+	ContainerID  string // group_key; the stable upsert identity
+	Name         string // group_label; the container name (no leading slash)
+	Image        string // metadata
+	State        string // metadata (e.g. "running")
+	HealthStatus string // metadata (from the status string, may be empty)
+	DockerHost   string // the endpoint; the promoted docker check needs it
+	HostAddress  string // host IP/hostname a worker reaches published ports on
+	Ports        []ContainerPort
+}
+
+// SuggestContainerChecks returns the grouped suggested checks for one discovered
+// container. Every row shares group_key=containerID, group_label=name, and
+// metadata={image, state, healthStatus, dockerHost}. A `docker` check is always
+// emitted (the HEALTHCHECK mirror); each PUBLISHED port additionally yields an
+// http/https/tcp check on the host-published port. Slugs are deduped within the
+// group.
+func SuggestContainerChecks(in ContainerSuggestInput) []SuggestedCheck {
+	groupLabel := in.Name
+	if groupLabel == "" {
+		groupLabel = in.ContainerID
+	}
+
+	meta := containerMetadata(in)
+	seen := make(map[string]struct{})
+
+	var suggestions []SuggestedCheck
+
+	// Primary: the docker check. Always emitted — it covers containers that
+	// publish no ports (the "internal service behind a reverse proxy" case).
+	dockerCfg := map[string]any{"containerName": in.Name}
+	if in.DockerHost != "" {
+		dockerCfg["host"] = in.DockerHost
+	}
+
+	suggestions = append(suggestions, SuggestedCheck{
+		GroupKey:   in.ContainerID,
+		GroupLabel: groupLabel,
+		Name:       checkName(groupLabel, schemeDocker),
+		Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeDocker, 0)),
+		Type:       checkTypeDocker,
+		Config:     mustJSON(dockerCfg),
+		Metadata:   meta,
+	})
+
+	// Secondary: one check per published port, reachable on the host address.
+	host := in.HostAddress
+	if host == "" {
+		host = dockerHostAddress(in.DockerHost)
+	}
+
+	for _, port := range in.Ports {
+		sc := suggestForContainerPort(in.ContainerID, groupLabel, host, port, seen)
+		if sc != nil {
+			sc.Metadata = meta
+			suggestions = append(suggestions, *sc)
+		}
+	}
+
+	return suggestions
+}
+
+// schemeDocker is the scheme label used when building a docker check name/slug.
+const schemeDocker = "docker"
+
+// containerMetadata builds the denormalized group-display metadata shared across
+// a container's suggested-check rows.
+func containerMetadata(in ContainerSuggestInput) json.RawMessage {
+	return mustJSON(map[string]any{
+		"image":        in.Image,
+		"state":        in.State,
+		"healthStatus": in.HealthStatus,
+		"dockerHost":   in.DockerHost,
+	})
+}
+
+// suggestForContainerPort maps one PUBLISHED container port to a suggested check
+// on the host-published port. The scheme is decided by the container-side port:
+// 80/8080 → http, 443/8443 → https, anything else → tcp. Unpublished ports
+// (PublicPort == 0) yield no suggestion — they are not worker-reachable.
+func suggestForContainerPort(
+	containerID, groupLabel, host string, port ContainerPort, seen map[string]struct{},
+) *SuggestedCheck {
+	if port.PublicPort == 0 {
+		return nil
+	}
+
+	public := int(port.PublicPort)
+
+	switch port.PrivatePort {
+	case 80, 8080:
+		return &SuggestedCheck{
+			GroupKey:   containerID,
+			GroupLabel: groupLabel,
+			Name:       checkName(groupLabel, "HTTP"),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, "HTTP", public)),
+			Type:       checkTypeHTTP,
+			Config:     mustJSON(map[string]any{"url": fmt.Sprintf("http://%s:%d", host, public)}),
+		}
+	case 443, 8443:
+		return &SuggestedCheck{
+			GroupKey:   containerID,
+			GroupLabel: groupLabel,
+			Name:       checkName(groupLabel, "HTTPS"),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, "HTTPS", public)),
+			Type:       checkTypeHTTP,
+			Config:     mustJSON(map[string]any{"url": fmt.Sprintf("https://%s:%d", host, public)}),
+		}
+	default:
+		return &SuggestedCheck{
+			GroupKey:   containerID,
+			GroupLabel: groupLabel,
+			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, "TCP"), public),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, "TCP", public)),
+			Type:       checkTypeTCP,
+			Config:     mustJSON(map[string]any{"host": host, "port": public}),
+		}
+	}
+}
+
+// dockerHostAddress extracts a worker-reachable host from a Docker endpoint. For
+// a tcp:// endpoint it returns the host part; for unix:// (and anything else) it
+// returns localhost — a published port on a local socket is reachable on the
+// loopback of the worker that shares it.
+func dockerHostAddress(endpoint string) string {
+	const tcpPrefix = "tcp://"
+	if strings.HasPrefix(endpoint, tcpPrefix) {
+		hostPort := strings.TrimPrefix(endpoint, tcpPrefix)
+		if host, _, err := net.SplitHostPort(hostPort); err == nil && host != "" {
+			return host
+		}
+
+		if hostPort != "" {
+			return hostPort
+		}
+	}
+
+	return "127.0.0.1"
 }
 
 // mustJSON marshals v to json.RawMessage, falling back to "{}" on the
