@@ -1209,7 +1209,10 @@ paths:
         registry validates the parameters and resolves the job to enqueue. For LAN,
         parameters are `{cidrs, ports?, concurrency?, timeout?}`; for Freebox,
         `{channelUid}`; for Container, `{hosts, timeout?}` where each host is a
-        Docker-compatible endpoint (`unix://` or `tcp://`).
+        Docker-compatible endpoint (`unix://` or `tcp://`); for Kubernetes,
+        `{clusterUid, namespaces?, timeout?}` where `clusterUid` references a
+        stored Kubernetes cluster connection (empty `namespaces` scans every
+        visible namespace).
       operationId: startDiscoveryScan
       security:
         - bearerAuth: []
@@ -1241,6 +1244,12 @@ paths:
                 $ref: "#/components/schemas/Error"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The referenced Kubernetes cluster connection was not found (KUBERNETES_CLUSTER_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "409":
           description: A scan of this type is already running (DISCOVERY_ALREADY_RUNNING), or a Freebox channel is not paired (FREEBOX_NOT_GRANTED)
           content:
@@ -2382,7 +2391,10 @@ components:
           example: lan
         parameters:
           type: object
-          description: Type-specific parameters. LAN -> {cidrs, ports?, concurrency?, timeout?}; Freebox -> {channelUid}.
+          description: |
+            Type-specific parameters. LAN -> {cidrs, ports?, concurrency?, timeout?};
+            Freebox -> {channelUid}; Container -> {hosts, timeout?};
+            Kubernetes -> {clusterUid, namespaces?, timeout?}.
           additionalProperties: true
           example:
             cidrs: ["192.168.1.0/24"]

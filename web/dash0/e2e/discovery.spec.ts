@@ -308,6 +308,33 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
+  test("Kubernetes method option is hidden when no cluster connection exists", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // Open the scan-method select; the test org has no kubernetes cluster
+    // connection, so the Kubernetes option is not offered (capability-gated).
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    await expect(
+      page.getByRole("option", { name: /IP range|LAN/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: /^kubernetes$/i }),
+    ).toHaveCount(0);
+  });
+
+  test("source filter includes the registry sources on the scans list", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    // The source filter is registry-driven; opening it shows the kubernetes
+    // source (registered by the kubernetes discovery type) alongside the rest.
+    await page.getByRole("combobox", { name: /filter by source/i }).click();
+    await expect(
+      page.getByRole("option", { name: /^kubernetes$/i }),
+    ).toBeVisible();
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
