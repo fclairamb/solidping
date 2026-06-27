@@ -69,6 +69,9 @@ function NewScanPage() {
   const [type, setType] = useState("lan");
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
   const [cidrsText, setCidrsText] = useState("");
+  const [containerHostsText, setContainerHostsText] = useState(
+    "unix:///var/run/docker.sock",
+  );
   const [ports, setPorts] = useState("");
   const [timeout, setTimeout] = useState("");
   const [concurrency, setConcurrency] = useState("");
@@ -92,10 +95,15 @@ function NewScanPage() {
     return { totalHosts, estimatedChunks };
   }, [cidrsText]);
 
-  const submitDisabled =
-    isPending ||
-    !confirmed ||
-    (type === "lan" ? !cidrsText.trim() : !selectedChannelUid);
+  // requiredFieldMissing flags the per-type required input being empty.
+  const requiredFieldMissing =
+    type === "lan"
+      ? !cidrsText.trim()
+      : type === "container"
+        ? !containerHostsText.trim()
+        : !selectedChannelUid;
+
+  const submitDisabled = isPending || !confirmed || requiredFieldMissing;
 
   // typeLabel maps a registry type id to its i18n label, falling back to the id.
   const typeLabel = (typ: string) => t(`method.${typ}`, typ);
@@ -104,6 +112,15 @@ function NewScanPage() {
     if (type === "freebox") {
       if (!selectedChannelUid) return null;
       return { type: "freebox", parameters: { channelUid: selectedChannelUid } };
+    }
+
+    if (type === "container") {
+      const hosts = containerHostsText
+        .split(/[\n,]+/)
+        .map((h) => h.trim())
+        .filter(Boolean);
+      if (hosts.length === 0) return null;
+      return { type: "container", parameters: { hosts } };
     }
 
     // LAN
@@ -245,6 +262,20 @@ function NewScanPage() {
                 )}
               </div>
             </>
+          ) : type === "container" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="container-hosts">{t("containerHosts")}</Label>
+              <Textarea
+                id="container-hosts"
+                value={containerHostsText}
+                onChange={(e) => setContainerHostsText(e.target.value)}
+                rows={3}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("containerHostsHelp")}
+              </p>
+            </div>
           ) : type === "freebox" ? (
             <div className="space-y-1.5">
               <Label htmlFor="freebox-channel">{t("selectFreeboxChannel")}</Label>

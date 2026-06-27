@@ -90,11 +90,48 @@ function groupChecks(checks: DiscoveredCheck[]): CheckGroup[] {
   return Array.from(byKey.values());
 }
 
-// metadataBadges renders LAN metadata hints (open ports, ICMP) as small badges.
+// healthBadgeVariant maps a container health word to a badge variant.
+function healthBadgeVariant(
+  health: string,
+): "default" | "secondary" | "destructive" | "outline" {
+  switch (health) {
+    case "healthy":
+      return "default";
+    case "unhealthy":
+      return "destructive";
+    default:
+      return "outline";
+  }
+}
+
+// MetadataBadges renders a group's metadata hints as small badges. It handles
+// both the LAN/Freebox shape (open ports, ICMP) and the container shape
+// (image, state, health status).
 function MetadataBadges({ metadata }: { metadata?: Record<string, unknown> }) {
   const { t } = useTranslation("discovery");
   if (!metadata) return null;
 
+  // Container metadata: image / state / health.
+  const image = typeof metadata.image === "string" ? metadata.image : "";
+  const state = typeof metadata.state === "string" ? metadata.state : "";
+  const health =
+    typeof metadata.healthStatus === "string" ? metadata.healthStatus : "";
+
+  if (image || state || health) {
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {image && (
+          <Badge variant="outline" className="font-mono text-xs">
+            {image}
+          </Badge>
+        )}
+        {state && <Badge variant="secondary">{state}</Badge>}
+        {health && <Badge variant={healthBadgeVariant(health)}>{health}</Badge>}
+      </div>
+    );
+  }
+
+  // LAN / Freebox metadata: open ports + ICMP.
   const ports = Array.isArray(metadata.openPorts)
     ? (metadata.openPorts as number[])
     : [];

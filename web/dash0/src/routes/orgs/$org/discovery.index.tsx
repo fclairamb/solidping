@@ -50,7 +50,14 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 
 // scanSource derives the discovery source from the underlying job type.
 function scanSource(type: string): string {
-  return type === "freebox_lan_discovery" ? "freebox" : "lan";
+  switch (type) {
+    case "freebox_lan_discovery":
+      return "freebox";
+    case "container_discovery":
+      return "container";
+    default:
+      return "lan";
+  }
 }
 
 function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {

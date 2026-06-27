@@ -278,6 +278,36 @@ test.describe("Network Discovery", () => {
     await expect(promoteButton).toBeEnabled();
   });
 
+  // Container discovery: the registry-driven method picker offers "Containers",
+  // and selecting it reveals the Docker-endpoint textarea prefilled with the
+  // local socket. The test org has no Docker dependency for this form-level check.
+  test("container method is offered and reveals the host textarea", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await expect(page.getByRole("combobox", { name: /scan method/i })).toBeVisible();
+
+    // Open the method select and pick Containers.
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    const containerOption = page.getByRole("option", { name: /containers/i });
+    await expect(containerOption).toBeVisible();
+    await containerOption.click();
+
+    // The container host textarea is shown, prefilled with the local socket.
+    const hostsField = page.getByLabel(/container host/i);
+    await expect(hostsField).toBeVisible();
+    await expect(hostsField).toHaveValue(/unix:\/\/\/var\/run\/docker\.sock/);
+  });
+
+  test("container scan start button arms only after confirmation", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    await page.getByRole("option", { name: /containers/i }).click();
+
+    // Hosts are prefilled, but confirmation is still required.
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
+    await page.getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
