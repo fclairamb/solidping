@@ -1208,7 +1208,8 @@ paths:
         Admin only. The generic body is `{type, parameters}`; the discovery-type
         registry validates the parameters and resolves the job to enqueue. For LAN,
         parameters are `{cidrs, ports?, concurrency?, timeout?}`; for Freebox,
-        `{channelUid}`.
+        `{channelUid}`; for Container, `{hosts, timeout?}` where each host is a
+        Docker-compatible endpoint (`unix://` or `tcp://`).
       operationId: startDiscoveryScan
       security:
         - bearerAuth: []
