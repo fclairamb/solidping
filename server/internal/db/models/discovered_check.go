@@ -34,10 +34,10 @@ type DiscoveredCheck struct {
 	GroupKey   string `bun:"group_key,notnull" json:"groupKey"`     // stable grouping identity
 	GroupLabel string `bun:"group_label,notnull" json:"groupLabel"` // display label
 
-	Name   string          `bun:"name,notnull" json:"name"`             // suggested check name
-	Slug   string          `bun:"slug,notnull" json:"slug"`             // suggested check slug (unique per group)
-	Type   string          `bun:"type,notnull" json:"type"`             // check type: http|tcp|icmp|docker|kubernetes…
-	Config json.RawMessage `bun:"config,type:jsonb" json:"config"`      // the check config
+	Name   string          `bun:"name,notnull" json:"name"`        // suggested check name
+	Slug   string          `bun:"slug,notnull" json:"slug"`        // suggested check slug (unique per group)
+	Type   string          `bun:"type,notnull" json:"type"`        // check type: http|tcp|icmp|docker|kubernetes…
+	Config json.RawMessage `bun:"config,type:jsonb" json:"config"` // the check config
 
 	Metadata json.RawMessage `bun:"metadata,type:jsonb" json:"metadata,omitempty"` // group-display hints (denormalized)
 

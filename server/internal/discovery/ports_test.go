@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -20,18 +21,21 @@ func TestPortTableCoherence(t *testing.T) {
 		r.Equal(spec.Port, list[i], "defaultPortList order must match defaultPorts")
 
 		// Every port in the table must produce a suggestion (no silent drift).
-		s := suggestForPort("1.2.3.4", spec.Port)
+		s := suggestForPort("1.2.3.4", "1.2.3.4", spec.Port, make(map[string]struct{}))
 		r.NotNil(s, "port %d in defaultPorts must yield a suggestion", spec.Port)
 		r.Equal(spec.CheckType, s.Type, "suggestion type must match the spec CheckType for port %d", spec.Port)
+
+		var cfg map[string]any
+		r.NoError(json.Unmarshal(s.Config, &cfg))
 
 		switch spec.CheckType {
 		case checkTypeHTTP:
 			r.NotEmpty(spec.URLTmpl, "http port %d must define a URL template", spec.Port)
-			r.Contains(s.Config, "url")
+			r.Contains(cfg, "url")
 		case checkTypeTCP:
 			r.Empty(spec.URLTmpl, "tcp port %d must not define a URL template", spec.Port)
-			r.Equal("1.2.3.4", s.Config["host"])
-			r.Equal(spec.Port, s.Config["port"])
+			r.Equal("1.2.3.4", cfg["host"])
+			r.EqualValues(spec.Port, cfg["port"])
 		default:
 			r.Failf("unexpected check type", "port %d has unsupported type %q", spec.Port, spec.CheckType)
 		}
@@ -44,7 +48,7 @@ func TestSuggestForPortUnknown(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
-	r.Nil(suggestForPort("1.2.3.4", 12345))
+	r.Nil(suggestForPort("1.2.3.4", "1.2.3.4", 12345, make(map[string]struct{})))
 }
 
 // TestDefaultPortListMatchesSpec pins the exact default port set so an
