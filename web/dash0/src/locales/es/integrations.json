@@ -75,6 +75,27 @@
     "slackOauthHint": "Los canales de Slack se configuran a través de la instalación OAuth. El bot completará el espacio de trabajo y el nombre del canal al finalizar.",
     "testNeedsSave": "Guarda tus cambios primero — la prueba usa los ajustes guardados."
   },
+  "kubernetes": {
+    "name": "Kubernetes",
+    "description": "Conectar un clúster de Kubernetes para monitorizar la salud de las réplicas",
+    "authMode": "Autenticación",
+    "authToken": "Servidor API + token",
+    "authKubeconfig": "Kubeconfig",
+    "authInCluster": "En el clúster (este clúster)",
+    "inClusterHint": "Usa el token de la cuenta de servicio montado en el pod de SolidPing. Solo funciona cuando SolidPing se ejecuta dentro del clúster de destino; no se almacenan credenciales.",
+    "apiServer": "URL del servidor API",
+    "token": "Token portador",
+    "kubeconfig": "Kubeconfig (YAML)",
+    "caCert": "Certificado CA (PEM, opcional)",
+    "insecure": "Omitir verificación TLS",
+    "insecureHelp": "Desactiva la verificación del certificado del servidor API. Úsalo solo para clústeres con un certificado autofirmado que no puedas fijar.",
+    "secretStored": "•••••••• (almacenado — dejar en blanco para conservar)",
+    "testTitle": "Probar conexión al clúster",
+    "testHelp": "Consulta la API del clúster para confirmar que las credenciales funcionan. Usa los ajustes guardados.",
+    "testButton": "Probar conexión",
+    "connected": "Conectado",
+    "failed": "Fallida"
+  },
   "hint": {
     "slack": "Conectar un espacio de Slack vía OAuth",
     "discord": "Enviar a una URL de webhook de Discord",
@@ -85,6 +106,7 @@
     "ntfy": "Notificaciones push vía ntfy.sh",
     "opsgenie": "Avisar a guardias vía Opsgenie",
     "pushover": "Notificaciones push móviles vía Pushover",
-    "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos"
+    "webpush": "Recibir alertas como notificaciones del navegador en sus dispositivos suscritos",
+    "kubernetes": "Monitorizar la salud de réplicas de cargas Kubernetes (Deployments, ReplicaSets)"
   }
 }

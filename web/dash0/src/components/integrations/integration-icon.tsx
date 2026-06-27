@@ -1,6 +1,7 @@
 import {
   Bell,
   BellRing,
+  Boxes,
   Hash,
   Mail,
   MessageCircle,
@@ -28,6 +29,7 @@ const ICONS: Record<ConnectionType, typeof Webhook> = {
   pushover: Bell,
   freebox: Router,
   webpush: BellRing,
+  kubernetes: Boxes,
 };
 
 export function IntegrationIcon({ type, className }: IntegrationIconProps) {
@@ -63,6 +65,8 @@ export function integrationLabel(type: ConnectionType): string {
       return "Freebox";
     case "webpush":
       return "Browser push";
+    case "kubernetes":
+      return "Kubernetes";
     default:
       return type;
   }

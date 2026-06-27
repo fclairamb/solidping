@@ -95,6 +95,27 @@
     "paired": "Couplée — connexion prête",
     "cancel": "Annuler"
   },
+  "kubernetes": {
+    "name": "Kubernetes",
+    "description": "Connecter un cluster Kubernetes pour surveiller la santé des réplicas",
+    "authMode": "Authentification",
+    "authToken": "Serveur API + jeton",
+    "authKubeconfig": "Kubeconfig",
+    "authInCluster": "Dans le cluster (ce cluster)",
+    "inClusterHint": "Utilise le jeton de compte de service monté dans le pod de SolidPing. Ne fonctionne que si SolidPing s'exécute dans le cluster cible ; aucun identifiant n'est stocké.",
+    "apiServer": "URL du serveur API",
+    "token": "Jeton porteur",
+    "kubeconfig": "Kubeconfig (YAML)",
+    "caCert": "Certificat CA (PEM, optionnel)",
+    "insecure": "Ignorer la vérification TLS",
+    "insecureHelp": "Désactive la vérification du certificat du serveur API. À n'utiliser que pour les clusters avec un certificat auto-signé non épinglable.",
+    "secretStored": "•••••••• (stocké — laisser vide pour conserver)",
+    "testTitle": "Tester la connexion au cluster",
+    "testHelp": "Interroge l'API du cluster pour confirmer que les identifiants fonctionnent. Utilise les paramètres enregistrés.",
+    "testButton": "Tester la connexion",
+    "connected": "Connecté",
+    "failed": "Échec"
+  },
   "hint": {
     "slack": "Connecter un espace Slack via OAuth",
     "discord": "Envoyer à un webhook Discord",
@@ -106,6 +127,7 @@
     "opsgenie": "Alerter les astreintes via Opsgenie",
     "pushover": "Notifications push mobile via Pushover",
     "freebox": "Surveiller une Freebox de Free (qualité de ligne, débit sync, état réseau)",
-    "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés"
+    "webpush": "Recevoir des alertes sous forme de notifications navigateur sur vos appareils abonnés",
+    "kubernetes": "Surveiller la santé des réplicas Kubernetes (Deployments, ReplicaSets)"
   }
 }

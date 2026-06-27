@@ -75,6 +75,27 @@
     "slackOauthHint": "Slack-Kanäle werden über die Slack-OAuth-Installation konfiguriert. Der Bot füllt Workspace- und Kanalnamen nach Abschluss.",
     "testNeedsSave": "Speichern Sie zuerst Ihre Änderungen — der Test verwendet die gespeicherten Einstellungen."
   },
+  "kubernetes": {
+    "name": "Kubernetes",
+    "description": "Ein Kubernetes-Cluster verbinden, um die Replikat-Gesundheit zu überwachen",
+    "authMode": "Authentifizierung",
+    "authToken": "API-Server + Token",
+    "authKubeconfig": "Kubeconfig",
+    "authInCluster": "Im Cluster (dieser Cluster)",
+    "inClusterHint": "Verwendet das im SolidPing-Pod eingehängte Service-Account-Token. Funktioniert nur, wenn SolidPing im Ziel-Cluster läuft; es werden keine Anmeldedaten gespeichert.",
+    "apiServer": "API-Server-URL",
+    "token": "Bearer-Token",
+    "kubeconfig": "Kubeconfig (YAML)",
+    "caCert": "CA-Zertifikat (PEM, optional)",
+    "insecure": "TLS-Prüfung überspringen",
+    "insecureHelp": "Deaktiviert die Überprüfung des API-Server-Zertifikats. Nur für Cluster mit selbstsigniertem, nicht anheftbarem Zertifikat verwenden.",
+    "secretStored": "•••••••• (gespeichert — leer lassen, um beizubehalten)",
+    "testTitle": "Cluster-Verbindung testen",
+    "testHelp": "Die Cluster-API abfragen, um zu bestätigen, dass die Anmeldedaten funktionieren. Verwendet die gespeicherten Einstellungen.",
+    "testButton": "Verbindung testen",
+    "connected": "Verbunden",
+    "failed": "Fehlgeschlagen"
+  },
   "hint": {
     "slack": "Slack-Workspace über OAuth verbinden",
     "discord": "An eine Discord-Webhook-URL senden",
@@ -85,6 +106,7 @@
     "ntfy": "Push-Benachrichtigungen über ntfy.sh",
     "opsgenie": "Bereitschaftsdienst über Opsgenie alarmieren",
     "pushover": "Mobile Push-Benachrichtigungen über Pushover",
-    "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen"
+    "webpush": "Browser-Benachrichtigungen auf abonnierten Geräten empfangen",
+    "kubernetes": "Replikat-Gesundheit von Kubernetes-Workloads überwachen (Deployments, ReplicaSets)"
   }
 }

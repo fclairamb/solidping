@@ -2724,7 +2724,8 @@ export type ConnectionType =
   | "opsgenie"
   | "pushover"
   | "freebox"
-  | "webpush";
+  | "webpush"
+  | "kubernetes";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -2751,6 +2752,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   pushover: NOTIFY,
   freebox: SOURCE,
   webpush: NOTIFY,
+  kubernetes: SOURCE,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -2864,6 +2866,8 @@ export interface IntegrationTestResult {
   statusCode: number;
   durationMs: number;
   error?: string;
+  /** Optional human-readable success note (e.g. the Kubernetes server version). */
+  detail?: string;
 }
 
 export function useRotateWebhookSecret(org: string, integrationUid: string) {
