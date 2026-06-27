@@ -413,7 +413,7 @@ references. `git grep -n discovered_host` and `DiscoveredHost` must come back em
 | Frontend grouped render + inline promote is a larger UI change than a flat table | Reuse design-reference primitives; the grouped list is the only genuinely new component (group header + select-all); promote becomes a thin confirm. |
 | `container`/`kubernetes` specs assume this landed | This spec is ordered first (`…-00`); `…-01`/`…-03` state the dependency explicitly. |
 
-**Status**: Todo | **Created**: 2026-06-27
+**Status**: Done | **Created**: 2026-06-27
 
 ## Implementation Plan
 
