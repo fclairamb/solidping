@@ -228,6 +228,49 @@ func TestStartScanFreeboxGuardsDuplicate(t *testing.T) {
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
 
+func TestStartScanContainerCreatesJob(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
+	job, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	r.NoError(err)
+	r.NotNil(job)
+	r.Equal(string(jobdef.JobTypeContainerDiscovery), job.Type, "container scan must create a container_discovery job")
+}
+
+func TestStartScanContainerBadEndpoint(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", json.RawMessage(`{"hosts":["http://10.0.0.5:2375"]}`))
+	r.Error(err)
+
+	var de *scantypes.DiscoveryError
+	r.ErrorAs(err, &de)
+	r.Equal(scantypes.CodeInvalidParameters, de.Code)
+}
+
+func TestStartScanContainerGuardsDuplicate(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+
+	// Simulate a running container discovery job.
+	running := models.NewJob(&f.org.UID, string(jobdef.JobTypeContainerDiscovery))
+	running.Status = models.JobStatusRunning
+	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
+
+	params := json.RawMessage(`{"hosts":["unix:///var/run/docker.sock"]}`)
+	_, err := f.svc.StartScan(t.Context(), f.org.UID, "container", params)
+	r.ErrorIs(err, discovery.ErrAlreadyRunning)
+}
+
 func TestPromoteChecksMultiple(t *testing.T) {
 	t.Parallel()
 
