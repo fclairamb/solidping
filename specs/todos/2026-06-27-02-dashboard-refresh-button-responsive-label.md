@@ -190,3 +190,52 @@ With `make dev-test` running, spot-check a few pages (`/dash0/orgs/{org}/checks`
 - The 12 route files in the Context table — apply the per-button transform
 - [`web/dash0/src/routes/orgs/$org/discovery.index.tsx`](../../web/dash0/src/routes/orgs/$org/discovery.index.tsx) / [`discovery.$jobUid.index.tsx`](../../web/dash0/src/routes/orgs/$org/discovery.$jobUid.index.tsx) — reference implementation (`sm:` pattern)
 - [`web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx`](../../web/dash0/src/routes/orgs/$org/checks.$checkUid.index.tsx) — already-responsive exception (`lg:`); do not change
+
+## Implementation Plan
+
+Pre-flight findings (committed baseline on `batch/2026-06-23`): none of the 12 target
+buttons are responsive yet — each is `variant="outline" size="icon"` wrapping a `RefreshCw`
+with `className={`h-4 w-4 ${… animate-spin …}`}` and no label span. The discovery pages and
+`checks.$checkUid.index.tsx` already conform. `common.json` (en/fr/de/es) has a `"search"`
+key but no `"refresh"` key. `status-updates.index.tsx` has zero `useTranslation` usage
+(confirmed) — stays literal.
+
+1. **Locale key.** Add `"refresh"` immediately after `"search"` in
+   `web/dash0/src/locales/{en,fr,de,es}/common.json`:
+   en `Refresh`, fr `Actualiser`, de `Aktualisieren`, es `Actualizar`.
+
+2. **Per-button transform** (the 12 files; exact line of each `RefreshCw` confirmed):
+   For each header refresh button: drop `size="icon"`; add `aria-label={<key>}` if absent
+   (keep existing on `jobs.index`, `incidents.$incidentUid`, `status-updates.index`); add
+   `sm:mr-2` to the `RefreshCw` className; append
+   `<span className="hidden sm:inline">{<key>}</span>` as the button's last child. Preserve
+   `onClick`, `disabled`, and every `data-testid` verbatim.
+
+   | File | `<key>` for label & aria-label |
+   |---|---|
+   | `checks.index.tsx` (button L818, `onClick={handleRefresh}`) | `t("common:refresh")` |
+   | `incidents.index.tsx` (L165) | `t("common:refresh")` |
+   | `incidents.$incidentUid.tsx` (L657, already `aria-label={t("actions.refresh")}`) | `t("actions.refresh")` |
+   | `events.tsx` (L97) | `t("common:refresh")` |
+   | `jobs.index.tsx` (L232, already `aria-label={t("refresh")}`, `onClick={refresh}`, `stats.isRefetching`) | `t("refresh")` |
+   | `integrations.index.tsx` (L152, `data-testid="integrations-refresh"`) | `t("common:refresh")` |
+   | `dependencies.index.tsx` (L96, `data-testid="dependencies-refresh"`) | `t("common:refresh")` |
+   | `on-call.index.tsx` (L94, `data-testid="oncall-refresh"`) | `t("common:refresh")` |
+   | `status-pages.index.tsx` (L196) | `t("common:refresh")` |
+   | `status-updates.index.tsx` (L354, already `aria-label="Refresh"`, no i18n) | literal `"Refresh"` |
+   | `escalation-policies.index.tsx` (L127, `data-testid="policy-refresh"`) | `t("common:refresh")` |
+   | `account.tokens.tsx` (L225) | `t("common:refresh")` |
+
+3. **Design reference.** Add the responsive icon+label refresh button as the canonical
+   "icon button that reveals its label at `sm`" example to `design-reference.tsx` so the
+   catalog stays canonical.
+
+4. **Playwright e2e.** Add a spec under `web/dash0/e2e/` asserting that on a converted page
+   with a stable `data-testid` (e.g. `integrations-refresh`) the label text is hidden at a
+   mobile viewport (<640px) and visible at a desktop viewport (≥640px), while the button
+   stays accessible (aria-label present) in both.
+
+5. **Untouched (verify):** `discovery.index.tsx`, `discovery.$jobUid.index.tsx`,
+   `checks.$checkUid.index.tsx` (the `lg:` exception), `badges.tsx`, `server.email-inbox.tsx`.
+
+6. **QA.** `make build-dash0 lint-dash` green; zero NEW dash0 eslint errors vs baseline.
