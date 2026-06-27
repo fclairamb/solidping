@@ -190,3 +190,37 @@ Run with `make test-dash`.
 - [`web/status0/src/routes/$org.$slug.tsx`](../../web/status0/src/routes/$org.$slug.tsx) — public page; add scroll-to-hash effect
 - [`server/internal/handlers/statuspages/service.go`](../../server/internal/handlers/statuspages/service.go) — `historyDays` window for `recentUpdates` (context for the deep-link caveat)
 - [`web/dash0/e2e/status-updates.spec.ts`](../../web/dash0/e2e/status-updates.spec.ts) — E2E to extend
+
+## Implementation Plan
+
+Confirmed against the current tree: the page is in its pre-spec state (Kind
+first, plain non-link title, no external link). The dash0 `status-updates.index.tsx`
+file uses **hardcoded English** strings (e.g. `aria-label="Edit"`), not i18n — so
+new copy here stays hardcoded to match the file's own convention (the spec's code
+samples already do this). No backend change is needed; all five steps are frontend.
+
+1. **dash0 list — imports + header** (`web/dash0/src/routes/orgs/$org/status-updates.index.tsx`):
+   - Add `ExternalLink` to the `lucide-react` import (line 3).
+   - In `TableHeader` (lines 331-338) reorder heads to **Title · Kind · Date · actions**.
+
+2. **dash0 list — resolve slugs once** (`StatusUpdatesIndexPage`):
+   - `const pageSlugByUid = useMemo(() => new Map((pages ?? []).map((p) => [p.uid, p.slug] as const)), [pages]);`
+   - Import `useMemo` from `react`.
+   - Pass `publicSlug={pageSlugByUid.get(u.statusPageUid)}` into each `StatusUpdateRow`.
+
+3. **dash0 list — `StatusUpdateRow`** (lines 75-128):
+   - Add `publicSlug?: string` prop.
+   - Emit **Title** cell first, as a TanStack `<Link to="/orgs/$org/status-updates/$updateUid/edit" params={{ org, updateUid: update.uid }}>` styled `font-medium hover:underline` with `data-testid="status-update-row-title"`. Then **Kind** badge cell, then **Date** cell (unchanged), then actions cell.
+   - In the actions cell, **prepend** an `ExternalLink` ghost icon `Button asChild` (only when `publicSlug` is set) wrapping `<a href={`/status0/${org}/${publicSlug}#update-${update.uid}`} target="_blank" rel="noopener noreferrer" data-testid="status-update-row-view">`, `aria-label`/`title="View public update"`. Keep `Pencil` (`status-update-row-edit`) and `Trash2` (`status-update-row-delete`) after it, unchanged.
+
+4. **status0 public card — anchor target** (`web/status0/src/components/shared/status-update-card.tsx`, root `<div>` line 85): add `id={`update-${update.uid}`}` and `scroll-mt-24`.
+
+5. **status0 public route — scroll on async load** (`web/status0/src/routes/$org.$slug.tsx`): add a `useEffect` that, once `page` is loaded, reads `window.location.hash`; if it matches `#update-…` and the element exists, `el.scrollIntoView({ behavior: "smooth", block: "start" })`. No-op when the element is absent (out-of-window update).
+
+6. **E2E** (`web/dash0/e2e/status-updates.spec.ts`): extend the existing flow to
+   - assert column order (Title before Kind in the header),
+   - click `status-update-row-title` → lands on the edit route, `status-update-form-title` visible,
+   - assert the `status-update-row-view` anchor has `target="_blank"`, `rel` containing `noopener`, and `href` ending `/status0/{org}/{slug}#update-{uid}` (no cross-app nav),
+   - keep the existing `status-update-row-edit` / `status-update-row-delete` regression coverage.
+
+7. **QA**: `make build-dash0` (type-checks + builds dash0) and `make build-status0` (type-checks + builds status0). Note `make lint-dash` targets the legacy `web/dash`, so run the dash0 eslint directly (`cd web/dash0 && bun run lint`) and prove zero NEW errors vs. the RED baseline. No backend touched → no Go QA. i18n: no keys added (page is hardcoded-English by convention), so no locale parity work.
