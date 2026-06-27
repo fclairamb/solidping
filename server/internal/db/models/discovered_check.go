@@ -23,6 +23,9 @@ const (
 	// DiscoverySourceContainer marks a container found on a configured
 	// Docker-compatible host (Docker or Podman).
 	DiscoverySourceContainer DiscoverySource = "container"
+	// DiscoverySourceKubernetes marks a Deployment/ReplicaSet found on a
+	// configured Kubernetes cluster connection.
+	DiscoverySourceKubernetes DiscoverySource = "kubernetes"
 )
 
 // DiscoveredCheck is one suggested check produced by a discovery scan. Rows are
