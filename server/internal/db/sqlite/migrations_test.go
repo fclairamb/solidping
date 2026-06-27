@@ -145,61 +145,72 @@ func TestMigrationResultDurationAvg(t *testing.T) {
 	assert.Contains(t, colNames, "duration_avg", "duration_avg column must exist after migration 031")
 }
 
-// TestMigrationDiscoveredHostsSource verifies migration 030 adds the source
-// column and backfills existing rows to 'lan'.
-func TestMigrationDiscoveredHostsSource(t *testing.T) {
+// TestMigrationDiscoveredChecks verifies migration 003 replaces discovered_hosts
+// with discovered_checks: the host table is gone, the check table and its
+// identity index exist.
+func TestMigrationDiscoveredChecks(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
+	r := require.New(t)
 
 	svc, err := New(ctx, Config{InMemory: true})
-	require.NoError(t, err)
+	r.NoError(err)
 	t.Cleanup(func() { _ = svc.Close() })
 
-	err = svc.Initialize(ctx)
-	require.NoError(t, err, "Initialize must succeed")
+	r.NoError(svc.Initialize(ctx), "Initialize must succeed")
 
-	// The source column must exist after migration 030.
+	tableExists := func(name string) bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name,
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	r.False(tableExists("discovered_hosts"), "discovered_hosts must be dropped by migration 003")
+	r.True(tableExists("discovered_checks"), "discovered_checks must exist after migration 003")
+
+	// The required columns exist.
 	type columnInfo struct {
-		Name    string `bun:"name"`
-		Notnull int    `bun:"notnull"`
+		Name string `bun:"name"`
 	}
 	var columns []columnInfo
-	err = svc.db.NewRaw(`SELECT name, "notnull" FROM pragma_table_info('discovered_hosts')`).Scan(ctx, &columns)
-	require.NoError(t, err)
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('discovered_checks')").Scan(ctx, &columns))
 
-	var sourceCol *columnInfo
-	for i := range columns {
-		if columns[i].Name == "source" {
-			sourceCol = &columns[i]
-		}
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
 	}
-	require.NotNil(t, sourceCol, "source column must exist after migration 030")
-	require.Equal(t, 1, sourceCol.Notnull, "source column must be NOT NULL")
+	for _, expected := range []string{
+		"uid", "organization_uid", "job_uid", "source", "group_key", "group_label",
+		"name", "slug", "type", "config", "metadata", "promoted_to_check_uid",
+		"discovered_at", "created_at", "updated_at", "deleted_at",
+	} {
+		assert.Contains(t, colNames, expected, "%s column must exist", expected)
+	}
 
-	// The per-source unique index must exist; the old per-ip one must be gone.
+	// The identity unique index must exist.
 	type indexInfo struct {
 		Name string `bun:"name"`
 	}
 	var indexes []indexInfo
-	err = svc.db.NewRaw(
-		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discovered_hosts'",
-	).Scan(ctx, &indexes)
-	require.NoError(t, err)
+	r.NoError(svc.db.NewRaw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discovered_checks'",
+	).Scan(ctx, &indexes))
 
 	idxNames := make([]string, 0, len(indexes))
 	for _, i := range indexes {
 		idxNames = append(idxNames, i.Name)
 	}
-	assert.Contains(t, idxNames, "idx_discovered_hosts_org_ip_source_active",
-		"per-source unique index must exist")
-	assert.NotContains(t, idxNames, "idx_discovered_hosts_org_ip_active",
-		"old per-ip unique index must be dropped")
+	assert.Contains(t, idxNames, "idx_discovered_checks_identity_active",
+		"per-group identity unique index must exist")
 }
 
-// TestMigrationDiscoveredHostsSourceDefault verifies that a row inserted without
-// an explicit source defaults to 'lan' (column DEFAULT in the consolidated baseline).
-func TestMigrationDiscoveredHostsSourceDefault(t *testing.T) {
+// TestMigrationDiscoveredChecksDefaultConfig verifies a row inserted without an
+// explicit config defaults to an empty JSON object (column DEFAULT).
+func TestMigrationDiscoveredChecksDefaultConfig(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -224,14 +235,19 @@ func TestMigrationDiscoveredHostsSourceDefault(t *testing.T) {
 	).Exec(ctx)
 	r.NoError(err)
 	_, err = svc.db.NewRaw(
-		"INSERT INTO discovered_hosts (uid, organization_uid, job_uid, ip) VALUES (?, ?, ?, ?)",
-		uuid.New().String(), orgUID, jobUID, "192.168.1.99",
+		"INSERT INTO discovered_checks "+
+			"(uid, organization_uid, job_uid, source, group_key, group_label, name, slug, type) "+
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		uuid.New().String(), orgUID, jobUID, "lan", "192.168.1.99", "192.168.1.99",
+		"192.168.1.99 · ICMP", "192-168-1-99-icmp", "icmp",
 	).Exec(ctx)
 	r.NoError(err)
 
-	var src string
-	r.NoError(svc.db.NewRaw("SELECT source FROM discovered_hosts WHERE ip = ?", "192.168.1.99").Scan(ctx, &src))
-	r.Equal("lan", src, "rows inserted without a source must default to 'lan'")
+	var cfg string
+	r.NoError(svc.db.NewRaw(
+		"SELECT config FROM discovered_checks WHERE group_key = ?", "192.168.1.99",
+	).Scan(ctx, &cfg))
+	r.Equal("{}", cfg, "rows inserted without a config must default to an empty object")
 }
 
 // TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated
