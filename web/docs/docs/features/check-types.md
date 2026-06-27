@@ -558,6 +558,66 @@ Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freeb
 
 The check reports sync rates, SNR, attenuation, CRC counts (xDSL) or optical power and SFP details (FTTH), and fails when the WAN is down, the link is not trained, or any configured threshold is violated.
 
+### Kubernetes (Workload Replica Health)
+
+Monitor a Kubernetes workload's replica health — the structural analog of how the Docker check mirrors a container's HEALTHCHECK. The check connects via a stored **Kubernetes cluster connection** (an integration of type `kubernetes`) referenced by UID, never an inline credential.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Cluster | Reference to a `kubernetes` integration connection | - (required) |
+| Namespace | Workload namespace | - (required) |
+| Kind | `Deployment` or `ReplicaSet` | - (required) |
+| Name | Workload name | - (required) |
+| Timeout | Per-execution API timeout (max 60s) | `10s` |
+
+**Status semantics** (ready vs. desired replicas):
+
+- **Up** — `readyReplicas == desiredReplicas` and `desiredReplicas > 0`.
+- **Warning** — `0 < readyReplicas < desiredReplicas` (mid-rollout or partially degraded), or `desiredReplicas == 0` (intentionally scaled to zero — surfaced, not paged).
+- **Down** — `readyReplicas == 0` with `desiredReplicas > 0`, a stuck rollout (Deployment `Progressing=False` / `ProgressDeadlineExceeded`), or the workload no longer exists.
+
+Outputs include the namespace, kind, name, container images, and workload conditions; metrics include `desiredReplicas`, `readyReplicas`, `availableReplicas`, `updatedReplicas`, and `unavailableReplicas`.
+
+#### Cluster connection
+
+Register a cluster once under **Integrations → Kubernetes** (it is a data source, not a notification channel). Three authentication modes:
+
+- **API server + token** — an API server URL plus a bearer token (typically a service-account token), optionally a CA certificate (or skip TLS verification).
+- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials.
+- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored.
+
+The token / kubeconfig is stored **encrypted** (AES-256-GCM) in the connection's private settings and is never returned to the dashboard. Use **Test connection** to confirm the credentials work — it calls the cluster's `/version` endpoint.
+
+#### Required RBAC
+
+The connection only needs read access to the monitored workloads. Bind a read-only `ClusterRole` to the service account whose token you register:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: solidping-readonly
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: solidping-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: solidping-readonly
+subjects:
+  - kind: ServiceAccount
+    name: solidping
+    namespace: solidping
+```
+
+> Kubernetes discovery (enumerating workloads automatically) builds on this same connection and additionally needs `get`/`list` on `services`, `endpoints`, and `ingresses` (and `nodes`); grant those too if you plan to use it.
+
 ## Special Check Types
 
 ### Heartbeat
