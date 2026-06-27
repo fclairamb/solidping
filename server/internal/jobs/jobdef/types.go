@@ -42,6 +42,10 @@ const (
 	// endpoints, lists running containers, and records them in discovered_checks
 	// (source='container', one group per container) for operator review and promotion.
 	JobTypeContainerDiscovery JobType = "container_discovery"
+	// JobTypeKubernetesDiscovery connects to a configured Kubernetes cluster, lists
+	// Deployments and bare ReplicaSets, and records them in discovered_checks
+	// (source='kubernetes', one group per workload) for operator review and promotion.
+	JobTypeKubernetesDiscovery JobType = "kubernetes_discovery"
 	// JobTypeStuckJobReaper periodically recovers jobs left in 'running' by a
 	// dead/redeployed worker: it rides the existing retry chain (retried +
 	// backoff clone) until the retry cap, then 'failed' with reason
