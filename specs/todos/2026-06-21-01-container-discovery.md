@@ -382,3 +382,62 @@ changes beyond the rows existing.
 | Container names/IDs churn between scans | Upsert on the stable `group_key` (the container ID) via the foundation's group identity index; promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
 
 **Status**: Todo | **Created**: 2026-06-21 | **Rebased**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type, parameters}` scan API (`2026-06-21-00`): dropped the bespoke identity column + its migration, the dedicated scan route and per-source service method, and the type-specific endpoint error code; the source now registers a `scantypes.Definition`, reuses the foundation's `DISCOVERY_INVALID_PARAMETERS`, and emits grouped suggested-check rows. No schema change in this spec.
+
+## Implementation Plan
+
+Each step is independently committable. Build on the foundation
+(`2026-06-21-00`), already on this branch.
+
+### Slice 1 — model source constant
+- Add `DiscoverySourceContainer = "container"` to
+  `server/internal/db/models/discovered_check.go`. No migration.
+
+### Slice 2 — suggester (`SuggestContainerChecks`)
+- In `server/internal/discovery/suggest.go`: add `checkTypeDocker = "docker"`;
+  add `SuggestContainerChecks(containerID, name, image, state, healthStatus,
+  dockerHost string, ports []ContainerPort) []SuggestedCheck`.
+- Always emit the `docker` check (`{host, containerName}`); for each published
+  port (`PublicPort != 0`) emit http (80/8080), https (443/8443), or tcp (else),
+  targeting the host IP (or the endpoint host) + published port.
+- Group identity: `group_key = containerID`, `group_label = name`,
+  `metadata = {image, state, healthStatus, dockerHost}`, shared on every row;
+  slugs deduped within the group via `checkSlug`/`dedupSlug`.
+- Tests in `suggest_container_test.go` (table-driven) covering the verification
+  matrix.
+
+### Slice 3 — discovery engine (`ListContainers`)
+- New `server/internal/discovery/container.go`: `DiscoveredContainer` +
+  `ContainerPort` types; `ListContainers(ctx, endpoint, timeout)` builds the
+  Docker client exactly like the checker (`WithHost` + version negotiation),
+  calls `ContainerList(All:false)`, maps each summary (name strip, image, state,
+  status→healthStatus, published ports).
+- `container_test.go`: `httptest` fake Docker API (`/_ping` + `/containers/json`)
+  asserting mapping; a non-listening endpoint → error.
+
+### Slice 4 — job + registry + scantype
+- `jobdef/types.go`: `JobTypeContainerDiscovery = "container_discovery"`.
+- `jobtypes/registry.go`: case for the new definition.
+- `jobtypes/job_container_discovery.go`: `ContainerDiscoveryConfig{Hosts,
+  Timeout}`; `Run` iterates hosts (per-endpoint log-and-continue), builds rows
+  via `SuggestContainerChecks`, persists via `UpsertDiscoveredChecks` (source
+  `container`). Test with a fake Docker API + in-memory sqlite.
+- `scantypes/container.go`: `ContainerDefinition` (`Type()="container"`,
+  `Source()=DiscoverySourceContainer`, `BuildJob` validates `{hosts, timeout?}`
+  — ≥1 endpoint, each `unix://`/`tcp://`, else `CodeInvalidParameters`). Register
+  in `RegisterDefaults`. Test in `container_test.go` (scantypes pkg).
+- Extend `service.go scanJobTypes()` with `container_discovery`; extend the
+  activation-guard test map with `container`.
+
+### Slice 5 — frontend
+- `discovery.new.tsx`: container parameter sub-form (hosts textarea prefilled
+  `unix:///var/run/docker.sock`), builds `{type:"container", parameters:{hosts,
+  timeout?}}`.
+- `discovery.index.tsx`: `scanSource("container_discovery") → "container"`.
+- `discovery.$jobUid.index.tsx`: container metadata badges (image, state).
+- i18n: `containerHosts`, `containerHostsHelp`, `methodContainer` in en/fr/de/es
+  (`sourceLabel.container` + `method.container` already present).
+- `e2e/discovery.spec.ts`: Container method visible + sub-form coverage.
+
+### Slice 6 — QA + audit + archive
+- `make build-backend lint-back test` + `make build-dash0 lint-dash`; fix green.
+- Inline completeness audit; archive the spec.
