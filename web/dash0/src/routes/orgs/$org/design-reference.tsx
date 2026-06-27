@@ -22,6 +22,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCw,
   Save,
   Search,
@@ -855,6 +856,36 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
+        />
+
+        <h3 className="text-sm font-medium">Header refresh button (icon-only on mobile)</h3>
+        <p className="text-sm text-muted-foreground">
+          The canonical list/detail header refresh control. An{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">outline</code> button
+          wrapping{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RefreshCw</code> that shows
+          the word <strong>Refresh</strong> from the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code> breakpoint up and
+          collapses to icon-only below it. Drop{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
+          so the button sizes to its content, put{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm:mr-2</code> on the icon so
+          the gap only appears with the label, and keep an{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code> for the
+          icon-only state. Add{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">animate-spin</code> while the
+          query is refetching. (Use the localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">common:refresh</code> string
+          on real pages.)
+        </p>
+        <ExampleRow
+          preview={
+            <Button variant="outline" aria-label="Refresh">
+              <RefreshCw className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          }
+          importLine={`<Button variant="outline" onClick={() => void refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>\n  <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />\n  <span className="hidden sm:inline">{t("common:refresh")}</span>\n</Button>`}
         />
 
         <h3 className="text-sm font-medium">Badge variants</h3>
