@@ -153,6 +153,8 @@ func statusForDiscoveryCode(code string) int {
 		return http.StatusConflict
 	case scantypes.CodeFreeboxNotGranted:
 		return http.StatusConflict
+	case scantypes.CodeKubernetesClusterNotFound:
+		return http.StatusNotFound
 	default: // CodeInvalidParameters, DISCOVERY_RANGE_TOO_LARGE
 		return http.StatusUnprocessableEntity
 	}

@@ -29,6 +29,10 @@ const (
 	// CodeFreeboxNotGranted is returned when a Freebox scan targets a channel that
 	// has not completed the LCD-pairing flow.
 	CodeFreeboxNotGranted = "FREEBOX_NOT_GRANTED"
+	// CodeKubernetesClusterNotFound is returned when a Kubernetes scan targets a
+	// clusterUid that does not resolve to a cluster connection in the org
+	// (unknown, wrong org, or not a kubernetes-type connection).
+	CodeKubernetesClusterNotFound = "KUBERNETES_CLUSTER_NOT_FOUND"
 )
 
 // DiscoveryError is a coded validation/precondition failure from a discovery
@@ -112,13 +116,13 @@ func List() []Definition {
 	return out
 }
 
-// RegisterDefaults registers the built-in reference discovery types (lan,
-// freebox, container). New sources (kubernetes) register their own definitions
-// from their packages. Safe to call multiple times.
+// RegisterDefaults registers the built-in discovery types (lan, freebox,
+// container, kubernetes). Safe to call multiple times.
 func RegisterDefaults() {
 	Register(&LANDefinition{})
 	Register(&FreeboxDefinition{})
 	Register(&ContainerDefinition{})
+	Register(&KubernetesDefinition{})
 }
 
 //nolint:gochecknoinits // register built-in types on import, mirroring checkers
