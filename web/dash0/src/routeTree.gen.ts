@@ -101,7 +101,6 @@ import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
-import { Route as OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport } from './routes/orgs/$org/discovery.$jobUid.$hostUid.promote'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
 const NoOrgRoute = NoOrgRouteImport.update({
@@ -593,12 +592,6 @@ const OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute =
     path: '/$incidentUid/notifications/$notificationUid',
     getParentRoute: () => OrgsOrgIncidentsRoute,
   } as any)
-const OrgsOrgDiscoveryJobUidHostUidPromoteRoute =
-  OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport.update({
-    id: '/$hostUid/promote',
-    path: '/$hostUid/promote',
-    getParentRoute: () => OrgsOrgDiscoveryJobUidRoute,
-  } as any)
 const OrgsOrgChecksCheckUidResultsResultUidRoute =
   OrgsOrgChecksCheckUidResultsResultUidRouteImport.update({
     id: '/results/$resultUid',
@@ -699,7 +692,6 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRoutesByTo {
@@ -777,7 +769,6 @@ export interface FileRoutesByTo {
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRoutesById {
@@ -874,7 +865,6 @@ export interface FileRoutesById {
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRouteTypes {
@@ -972,7 +962,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1050,7 +1039,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
   id:
     | '__root__'
@@ -1146,7 +1134,6 @@ export interface FileRouteTypes {
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
   fileRoutesById: FileRoutesById
 }
@@ -1808,13 +1795,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport
       parentRoute: typeof OrgsOrgIncidentsRoute
     }
-    '/orgs/$org/discovery/$jobUid/$hostUid/promote': {
-      id: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
-      path: '/$hostUid/promote'
-      fullPath: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
-      preLoaderRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport
-      parentRoute: typeof OrgsOrgDiscoveryJobUidRoute
-    }
     '/orgs/$org/checks/$checkUid/results/$resultUid': {
       id: '/orgs/$org/checks/$checkUid/results/$resultUid'
       path: '/results/$resultUid'
@@ -1881,14 +1861,11 @@ const OrgsOrgChecksRouteWithChildren = OrgsOrgChecksRoute._addFileChildren(
 
 interface OrgsOrgDiscoveryJobUidRouteChildren {
   OrgsOrgDiscoveryJobUidIndexRoute: typeof OrgsOrgDiscoveryJobUidIndexRoute
-  OrgsOrgDiscoveryJobUidHostUidPromoteRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 
 const OrgsOrgDiscoveryJobUidRouteChildren: OrgsOrgDiscoveryJobUidRouteChildren =
   {
     OrgsOrgDiscoveryJobUidIndexRoute: OrgsOrgDiscoveryJobUidIndexRoute,
-    OrgsOrgDiscoveryJobUidHostUidPromoteRoute:
-      OrgsOrgDiscoveryJobUidHostUidPromoteRoute,
   }
 
 const OrgsOrgDiscoveryJobUidRouteWithChildren =

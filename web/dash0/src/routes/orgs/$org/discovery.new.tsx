@@ -26,27 +26,25 @@ import {
 } from "@/components/ui/select";
 import {
   canSource,
+  useDiscoveryTypes,
   useIntegrations,
   useStartDiscoveryScan,
-  useStartFreeboxScan,
+  type StartDiscoveryScanRequest,
 } from "@/api/hooks";
 
 export const Route = createFileRoute("/orgs/$org/discovery/new")({
   component: NewScanPage,
 });
 
-type ScanMethod = "lan" | "freebox";
-
 function NewScanPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
   const navigate = useNavigate();
   const startScan = useStartDiscoveryScan(org);
-  const startFreeboxScan = useStartFreeboxScan(org);
+  const { data: types } = useDiscoveryTypes(org);
   const { data: channels } = useIntegrations(org);
 
-  // Source integrations (canSource) that can drive a discovery scan, gated on the
-  // Freebox `granted` pairing state — mirrors the filter in `check-form.tsx`.
+  // Granted Freebox source channels — Freebox is only offered when one exists.
   const grantedFreeboxChannels = useMemo(
     () =>
       (channels ?? []).filter(
@@ -57,7 +55,18 @@ function NewScanPage() {
     [channels],
   );
 
-  const [method, setMethod] = useState<ScanMethod>("lan");
+  // The selectable types are the registry's, gated by client capability: Freebox
+  // only appears when a granted channel exists.
+  const availableTypes = useMemo(() => {
+    const registered = (types ?? []).map((d) => d.type);
+    // Default to LAN even before the registry list loads, so the form is usable.
+    const set = registered.length > 0 ? registered : ["lan"];
+    return set.filter(
+      (typ) => typ !== "freebox" || grantedFreeboxChannels.length > 0,
+    );
+  }, [types, grantedFreeboxChannels]);
+
+  const [type, setType] = useState("lan");
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
   const [cidrsText, setCidrsText] = useState("");
   const [ports, setPorts] = useState("");
@@ -66,7 +75,7 @@ function NewScanPage() {
   const [confirmed, setConfirmed] = useState(false);
   const [advanced, setAdvanced] = useState(false);
 
-  const isPending = startScan.isPending || startFreeboxScan.isPending;
+  const isPending = startScan.isPending;
 
   // Estimate the total host count and chunk count for the entered CIDRs.
   const cidrEstimate = useMemo(() => {
@@ -86,49 +95,46 @@ function NewScanPage() {
   const submitDisabled =
     isPending ||
     !confirmed ||
-    (method === "lan" ? !cidrsText.trim() : !selectedChannelUid);
+    (type === "lan" ? !cidrsText.trim() : !selectedChannelUid);
+
+  // typeLabel maps a registry type id to its i18n label, falling back to the id.
+  const typeLabel = (typ: string) => t(`method.${typ}`, typ);
+
+  const buildRequest = (): StartDiscoveryScanRequest | null => {
+    if (type === "freebox") {
+      if (!selectedChannelUid) return null;
+      return { type: "freebox", parameters: { channelUid: selectedChannelUid } };
+    }
+
+    // LAN
+    const cidrs = cidrsText
+      .split(/[\n,]+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cidrs.length === 0) return null;
+
+    const parameters: Record<string, unknown> = { cidrs };
+    if (ports.trim()) {
+      parameters.ports = ports
+        .split(",")
+        .map((p) => parseInt(p.trim(), 10))
+        .filter((p) => !isNaN(p));
+    }
+    if (timeout.trim()) parameters.timeout = timeout.trim();
+    if (concurrency.trim()) parameters.concurrency = parseInt(concurrency.trim(), 10);
+
+    return { type: "lan", parameters };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!confirmed) return;
 
-    if (method === "freebox") {
-      if (!selectedChannelUid) return;
-      try {
-        const result = await startFreeboxScan.mutateAsync(selectedChannelUid);
-        const jobUid = result?.data?.uid;
-        toast.success(t("freeboxScanStarted"));
-        navigate({
-          to: "/orgs/$org/discovery/$jobUid",
-          params: { org, jobUid: jobUid ?? "" },
-        });
-      } catch {
-        toast.error(t("freeboxScanFailed"));
-      }
-      return;
-    }
-
-    const cidrs = cidrsText
-      .split(/[\n,]+/)
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    if (cidrs.length === 0) {
+    const req = buildRequest();
+    if (!req) {
       toast.error(t("cidrsLabel") + " required");
       return;
     }
-
-    const req: Parameters<typeof startScan.mutateAsync>[0] = { cidrs };
-
-    if (ports.trim()) {
-      req.ports = ports
-        .split(",")
-        .map((p) => parseInt(p.trim(), 10))
-        .filter((p) => !isNaN(p));
-    }
-
-    if (timeout.trim()) req.timeout = timeout.trim();
-    if (concurrency.trim()) req.concurrency = parseInt(concurrency.trim(), 10);
 
     try {
       const result = await startScan.mutateAsync(req);
@@ -162,23 +168,21 @@ function NewScanPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="scan-method">{t("scanMethod")}</Label>
-            <Select
-              value={method}
-              onValueChange={(v) => setMethod(v as ScanMethod)}
-            >
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger id="scan-method" aria-label={t("scanMethod")}>
                 <SelectValue placeholder={t("scanMethod")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lan">{t("methodLan")}</SelectItem>
-                {grantedFreeboxChannels.length > 0 && (
-                  <SelectItem value="freebox">{t("methodFreebox")}</SelectItem>
-                )}
+                {availableTypes.map((typ) => (
+                  <SelectItem key={typ} value={typ}>
+                    {typeLabel(typ)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {method === "lan" ? (
+          {type === "lan" ? (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="cidrs">{t("cidrsLabel")}</Label>
@@ -241,7 +245,7 @@ function NewScanPage() {
                 )}
               </div>
             </>
-          ) : (
+          ) : type === "freebox" ? (
             <div className="space-y-1.5">
               <Label htmlFor="freebox-channel">{t("selectFreeboxChannel")}</Label>
               <Select
@@ -263,9 +267,9 @@ function NewScanPage() {
                 </SelectContent>
               </Select>
             </div>
-          )}
+          ) : null}
 
-          {method === "lan" && cidrEstimate.totalHosts > 4096 && (
+          {type === "lan" && cidrEstimate.totalHosts > 4096 && (
             <Alert variant="warning" data-testid="large-range-warning">
               <AlertDescription>
                 {t("largeRangeWarning", {

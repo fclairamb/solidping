@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  useDiscoveryTypes,
   useListDiscoveryScans,
   type DiscoveryScan,
 } from "@/api/hooks";
@@ -48,7 +49,7 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 }
 
 // scanSource derives the discovery source from the underlying job type.
-function scanSource(type: string): "lan" | "freebox" {
+function scanSource(type: string): string {
   return type === "freebox_lan_discovery" ? "freebox" : "lan";
 }
 
@@ -60,9 +61,7 @@ function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
   return (
     <TableRow>
       <TableCell>
-        <Badge variant="outline">
-          {t(source === "freebox" ? "sourceFreebox" : "sourceLan")}
-        </Badge>
+        <Badge variant="outline">{t(`sourceLabel.${source}`, source)}</Badge>
       </TableCell>
       <TableCell>
         <Badge variant={statusBadgeVariant(scan.status)}>{statusLabel}</Badge>
@@ -78,7 +77,7 @@ function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
       <TableCell className="text-right">
         <Button asChild variant="ghost" size="sm">
           <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid: scan.uid }}>
-            {t("hosts")}
+            {t("viewChecks")}
           </Link>
         </Button>
       </TableCell>
@@ -90,7 +89,15 @@ function DiscoveryIndexPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
   const { data: scans, isLoading, isRefetching, refetch } = useListDiscoveryScans(org);
-  const [sourceFilter, setSourceFilter] = useState<"all" | "lan" | "freebox">("all");
+  const { data: types } = useDiscoveryTypes(org);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+
+  // Source filter options are driven by the registry (sources of registered
+  // types), falling back to the known sources so the filter is never empty.
+  const sourceOptions = useMemo(() => {
+    const fromRegistry = Array.from(new Set((types ?? []).map((d) => d.source)));
+    return fromRegistry.length > 0 ? fromRegistry : ["lan", "freebox"];
+  }, [types]);
 
   const filteredScans = useMemo(() => {
     if (!scans) return scans;
@@ -109,12 +116,12 @@ function DiscoveryIndexPage() {
           <>
             <Button
               variant="outline"
-              size="icon"
               onClick={() => void refetch()}
               disabled={isRefetching}
-              aria-label="Refresh"
+              aria-label={t("refresh")}
             >
-              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{t("refresh")}</span>
             </Button>
             <Button asChild>
               <Link to="/orgs/$org/discovery/new" params={{ org }}>
@@ -133,17 +140,17 @@ function DiscoveryIndexPage() {
               <Scan className="h-5 w-5" />
               {t("scans")}
             </CardTitle>
-            <Select
-              value={sourceFilter}
-              onValueChange={(v) => setSourceFilter(v as "all" | "lan" | "freebox")}
-            >
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="w-40" aria-label={t("filterBySource")}>
                 <SelectValue placeholder={t("filterBySource")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t("allSources")}</SelectItem>
-                <SelectItem value="lan">{t("sourceLan")}</SelectItem>
-                <SelectItem value="freebox">{t("sourceFreebox")}</SelectItem>
+                {sourceOptions.map((src) => (
+                  <SelectItem key={src} value={src}>
+                    {t(`sourceLabel.${src}`, src)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>

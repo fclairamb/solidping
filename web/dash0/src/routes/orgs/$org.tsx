@@ -648,9 +648,6 @@ function Breadcrumbs({ org }: { org: string }) {
   if (isDiscovery) {
     const jobUid = params.jobUid;
     const isNew = routeIds.has("/orgs/$org/discovery/new");
-    const isPromote = routeIds.has(
-      "/orgs/$org/discovery/$jobUid/$hostUid/promote",
-    );
     const isRoot = !jobUid && !isNew;
 
     return (
@@ -669,19 +666,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {jobUid && (
           <>
             <BreadcrumbSeparator />
-            {isPromote ? (
-              <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }} className={linkClass}>
-                {jobUid.slice(0, 8)}
-              </Link>
-            ) : (
-              <span className={activeClass}>{jobUid.slice(0, 8)}</span>
-            )}
-          </>
-        )}
-        {isPromote && (
-          <>
-            <BreadcrumbSeparator />
-            <span className={activeClass}>{t("promote")}</span>
+            <span className={activeClass}>{jobUid.slice(0, 8)}</span>
           </>
         )}
       </>

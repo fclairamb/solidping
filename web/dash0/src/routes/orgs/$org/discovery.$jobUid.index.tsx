@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft, CirclePlus, RefreshCw, StopCircle, Trash2 } from "lucide-react";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Card,
   CardContent,
@@ -14,14 +16,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,12 +28,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   useDiscoveryScan,
-  useListCandidateHosts,
-  useDismissCandidate,
+  useListDiscoveredChecks,
+  useDismissCheck,
+  useDismissGroup,
+  usePromoteChecks,
   useCancelScan,
-  type DiscoveredHost,
+  type DiscoveredCheck,
 } from "@/api/hooks";
-import { useState } from "react";
 
 export const Route = createFileRoute("/orgs/$org/discovery/$jobUid/")({
   component: ScanDetailPage,
@@ -54,73 +49,155 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
   }
 }
 
-function HostRow({
-  host,
-  org,
-  jobUid,
-  onDismiss,
-}: {
-  host: DiscoveredHost;
-  org: string;
-  jobUid: string;
-  onDismiss: (host: DiscoveredHost) => void;
-}) {
+// configHint summarizes a discovered check's config into a short string
+// (url / host:port / host) for display.
+function configHint(check: DiscoveredCheck): string {
+  const cfg = check.config ?? {};
+  if (typeof cfg.url === "string") return cfg.url;
+  if (cfg.host !== undefined && cfg.port !== undefined) {
+    return `${String(cfg.host)}:${String(cfg.port)}`;
+  }
+  if (cfg.host !== undefined) return String(cfg.host);
+  return "";
+}
+
+// CheckGroup is the render-time grouping of discovered checks by groupKey.
+interface CheckGroup {
+  key: string;
+  label: string;
+  source: string;
+  metadata?: Record<string, unknown>;
+  checks: DiscoveredCheck[];
+}
+
+// groupChecks groups a flat discovered-check list by groupKey, preserving order.
+function groupChecks(checks: DiscoveredCheck[]): CheckGroup[] {
+  const byKey = new Map<string, CheckGroup>();
+  for (const c of checks) {
+    let g = byKey.get(c.groupKey);
+    if (!g) {
+      g = {
+        key: c.groupKey,
+        label: c.groupLabel || c.groupKey,
+        source: c.source,
+        metadata: c.metadata,
+        checks: [],
+      };
+      byKey.set(c.groupKey, g);
+    }
+    g.checks.push(c);
+  }
+  return Array.from(byKey.values());
+}
+
+// metadataBadges renders LAN metadata hints (open ports, ICMP) as small badges.
+function MetadataBadges({ metadata }: { metadata?: Record<string, unknown> }) {
   const { t } = useTranslation("discovery");
+  if (!metadata) return null;
+
+  const ports = Array.isArray(metadata.openPorts)
+    ? (metadata.openPorts as number[])
+    : [];
+  const icmp = metadata.icmpReachable === true;
 
   return (
-    <TableRow>
-      <TableCell className="font-mono text-sm">{host.ip}</TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {host.hostname || "—"}
-      </TableCell>
-      <TableCell>
-        <Badge variant="outline">
-          {t(host.source === "freebox" ? "sourceFreebox" : "sourceLan")}
+    <div className="flex flex-wrap items-center gap-1">
+      {icmp && <Badge variant="outline">{t("icmpReachable")}</Badge>}
+      {ports.length > 0 && (
+        <Badge variant="outline" className="font-mono text-xs">
+          {ports.join(", ")}
         </Badge>
-      </TableCell>
-      <TableCell className="text-xs">
-        {host.openPorts?.length > 0 ? host.openPorts.join(", ") : "—"}
-      </TableCell>
-      <TableCell>
-        {host.icmpReachable ? (
-          <Badge variant="default">✓</Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">—</span>
-        )}
-      </TableCell>
-      <TableCell>
-        {host.promotedToCheckUid ? (
-          <Badge variant="secondary">{t("promoted")}</Badge>
-        ) : (
-          <span className="text-xs text-muted-foreground">{t("pending")}</span>
-        )}
-      </TableCell>
-      <TableCell className="text-right">
-        <div className="flex justify-end gap-1">
-          {!host.promotedToCheckUid && (
-            <>
-              <Button asChild variant="ghost" size="icon" title={t("promote")}>
-                <Link
-                  to="/orgs/$org/discovery/$jobUid/$hostUid/promote"
-                  params={{ org, jobUid, hostUid: host.uid }}
-                >
-                  <CirclePlus className="h-4 w-4" />
-                </Link>
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive"
-                title={t("dismiss")}
-                onClick={() => onDismiss(host)}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          )}
+      )}
+    </div>
+  );
+}
+
+function GroupCard({
+  group,
+  selected,
+  onToggleCheck,
+  onToggleGroup,
+  onDismissGroup,
+  onDismissCheck,
+}: {
+  group: CheckGroup;
+  selected: Record<string, boolean>;
+  onToggleCheck: (uid: string) => void;
+  onToggleGroup: (group: CheckGroup, checked: boolean) => void;
+  onDismissGroup: (group: CheckGroup) => void;
+  onDismissCheck: (check: DiscoveredCheck) => void;
+}) {
+  const { t } = useTranslation("discovery");
+  const allSelected = group.checks.every((c) => selected[c.uid]);
+
+  return (
+    <Card data-testid="discovery-group">
+      <CardHeader className="pb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Checkbox
+              checked={allSelected}
+              onCheckedChange={(v) => onToggleGroup(group, !!v)}
+              aria-label={t("selectAllInGroup")}
+            />
+            <CardTitle className="text-base font-mono">{group.label}</CardTitle>
+            <Badge variant="outline">{t(`sourceLabel.${group.source}`, group.source)}</Badge>
+            <MetadataBadges metadata={group.metadata} />
+          </div>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-destructive"
+            title={t("dismissGroup")}
+            aria-label={t("dismissGroup")}
+            onClick={() => onDismissGroup(group)}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
         </div>
-      </TableCell>
-    </TableRow>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {group.checks.map((check) => (
+          <div
+            key={check.uid}
+            className="flex items-center justify-between gap-3 rounded-md border p-2"
+            data-testid="discovery-check-row"
+          >
+            <label className="flex flex-1 items-center gap-3 text-sm">
+              <Checkbox
+                checked={!!selected[check.uid]}
+                onCheckedChange={() => onToggleCheck(check.uid)}
+                aria-label={check.name}
+                disabled={!!check.promotedToCheckUid}
+              />
+              <span className="font-medium">{check.name}</span>
+              <Badge variant="secondary" className="text-xs">{check.type}</Badge>
+              {configHint(check) && (
+                <span className="font-mono text-xs text-muted-foreground">
+                  {configHint(check)}
+                </span>
+              )}
+            </label>
+            <div className="flex items-center gap-1">
+              {check.promotedToCheckUid ? (
+                <Badge variant="secondary">{t("promoted")}</Badge>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="text-destructive"
+                  title={t("dismiss")}
+                  aria-label={t("dismiss")}
+                  onClick={() => onDismissCheck(check)}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -131,34 +208,82 @@ function ScanDetailPage() {
   const scan = scanData?.scan;
   const progress = scanData?.progress;
 
-  // The displayed status prefers the fan-out derived status, falling back to the
-  // plan job's own status for legacy/standalone scans.
   const displayStatus = progress?.derivedStatus ?? scan?.status ?? "pending";
   const isRefreshing = displayStatus === "pending" || displayStatus === "running";
 
-  const { data: hosts, isLoading: hostsLoading, refetch: refetchHosts } = useListCandidateHosts(
-    org,
-    { jobUid },
-    isRefreshing, // poll the host list while the scan is active so chunks stream in
-  );
-  const dismiss = useDismissCandidate(org);
+  const { data: checks, isLoading: checksLoading, refetch: refetchChecks } =
+    useListDiscoveredChecks(org, { jobUid }, isRefreshing);
+  const dismissCheck = useDismissCheck(org);
+  const dismissGroup = useDismissGroup(org);
+  const promote = usePromoteChecks(org);
   const cancelScan = useCancelScan(org);
-  const [pendingDismiss, setPendingDismiss] = useState<DiscoveredHost | null>(null);
+
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [pendingDismissCheck, setPendingDismissCheck] = useState<DiscoveredCheck | null>(null);
+  const [pendingDismissGroup, setPendingDismissGroup] = useState<CheckGroup | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
 
-  const isLoading = scanLoading || hostsLoading;
+  const groups = useMemo(() => groupChecks(checks ?? []), [checks]);
+  const selectedUids = useMemo(
+    () => Object.keys(selected).filter((uid) => selected[uid]),
+    [selected],
+  );
+
+  const isLoading = scanLoading || checksLoading;
   const canStop = isRefreshing && scan?.type === "network_discovery_plan";
 
-  const handleDismiss = () => {
-    if (!pendingDismiss) return;
-    dismiss.mutate(pendingDismiss.uid, {
+  const toggleCheck = (uid: string) =>
+    setSelected((prev) => ({ ...prev, [uid]: !prev[uid] }));
+
+  const toggleGroup = (group: CheckGroup, checked: boolean) =>
+    setSelected((prev) => {
+      const next = { ...prev };
+      for (const c of group.checks) {
+        if (!c.promotedToCheckUid) next[c.uid] = checked;
+      }
+      return next;
+    });
+
+  const handlePromote = () => {
+    if (selectedUids.length === 0) return;
+    promote.mutate(
+      { uids: selectedUids },
+      {
+        onSuccess: () => {
+          toast.success(t("promoted_success"));
+          setSelected({});
+          void refetchChecks();
+        },
+        onError: () => toast.error(t("promoted_failed")),
+      },
+    );
+  };
+
+  const handleDismissCheck = () => {
+    if (!pendingDismissCheck) return;
+    dismissCheck.mutate(pendingDismissCheck.uid, {
       onSuccess: () => {
         toast.success(t("dismissed"));
-        setPendingDismiss(null);
-        void refetchHosts();
+        setPendingDismissCheck(null);
+        void refetchChecks();
       },
       onError: () => toast.error(t("dismissFailed")),
     });
+  };
+
+  const handleDismissGroup = () => {
+    if (!pendingDismissGroup) return;
+    dismissGroup.mutate(
+      { jobUid, group: pendingDismissGroup.key },
+      {
+        onSuccess: () => {
+          toast.success(t("dismissed"));
+          setPendingDismissGroup(null);
+          void refetchChecks();
+        },
+        onError: () => toast.error(t("dismissFailed")),
+      },
+    );
   };
 
   const handleStop = () => {
@@ -207,7 +332,7 @@ function ScanDetailPage() {
           )}
           <Button
             variant="outline"
-            onClick={() => { void refetchScan(); void refetchHosts(); }}
+            onClick={() => { void refetchScan(); void refetchChecks(); }}
             disabled={isLoading}
             aria-label={t("refresh")}
           >
@@ -236,70 +361,84 @@ function ScanDetailPage() {
               max={progress.totalChunks}
             />
             <p className="text-xs text-muted-foreground">
-              {t("hostsFound", { count: progress.hostCount })}
+              {t("groupsFound", { count: progress.groupCount })} ·{" "}
+              {t("checksFound", { count: progress.checkCount })}
             </p>
           </CardContent>
         </Card>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("hosts")}</CardTitle>
-          {!isLoading && (!hosts || hosts.length === 0) && (
-            <CardDescription>{t("noHostsDescription")}</CardDescription>
-          )}
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="space-y-2">
-              {[1, 2, 3].map((i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          ) : hosts && hosts.length > 0 ? (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("ip")}</TableHead>
-                  <TableHead>{t("hostname")}</TableHead>
-                  <TableHead>{t("source")}</TableHead>
-                  <TableHead>{t("openPorts")}</TableHead>
-                  <TableHead>{t("icmpReachable")}</TableHead>
-                  <TableHead>{t("status")}</TableHead>
-                  <TableHead />
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {hosts.map((host) => (
-                  <HostRow
-                    key={host.uid}
-                    host={host}
-                    org={org}
-                    jobUid={jobUid}
-                    onDismiss={setPendingDismiss}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          ) : (
-            <p className="text-sm text-muted-foreground">{t("noHosts")}</p>
-          )}
-        </CardContent>
-      </Card>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-lg font-semibold">{t("suggestedChecks")}</h2>
+        <Button
+          onClick={handlePromote}
+          disabled={selectedUids.length === 0 || promote.isPending}
+        >
+          <CirclePlus className="h-4 w-4 mr-1" />
+          {t("promoteSelected", { count: selectedUids.length })}
+        </Button>
+      </div>
 
-      <AlertDialog open={!!pendingDismiss} onOpenChange={(open) => { if (!open) setPendingDismiss(null); }}>
+      {isLoading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 w-full" />
+          ))}
+        </div>
+      ) : groups.length > 0 ? (
+        <div className="space-y-3">
+          {groups.map((group) => (
+            <GroupCard
+              key={group.key}
+              group={group}
+              selected={selected}
+              onToggleCheck={toggleCheck}
+              onToggleGroup={toggleGroup}
+              onDismissGroup={setPendingDismissGroup}
+              onDismissCheck={setPendingDismissCheck}
+            />
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle>{t("suggestedChecks")}</CardTitle>
+            <CardDescription>{t("noChecksDescription")}</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground">{t("noChecks")}</p>
+          </CardContent>
+        </Card>
+      )}
+
+      <AlertDialog
+        open={!!pendingDismissCheck}
+        onOpenChange={(open) => { if (!open) setPendingDismissCheck(null); }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>{t("dismiss")}?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingDismiss?.ip}
-            </AlertDialogDescription>
+            <AlertDialogDescription>{pendingDismissCheck?.name}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDismiss}>
-              {t("dismiss")}
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleDismissCheck}>{t("dismiss")}</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={!!pendingDismissGroup}
+        onOpenChange={(open) => { if (!open) setPendingDismissGroup(null); }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("dismissGroup")}?</AlertDialogTitle>
+            <AlertDialogDescription>{pendingDismissGroup?.label}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDismissGroup}>{t("dismiss")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -312,9 +451,7 @@ function ScanDetailPage() {
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
-            <AlertDialogAction onClick={handleStop}>
-              {t("stopScan")}
-            </AlertDialogAction>
+            <AlertDialogAction onClick={handleStop}>{t("stopScan")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
