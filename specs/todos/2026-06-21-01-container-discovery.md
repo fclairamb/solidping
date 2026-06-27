@@ -1,37 +1,41 @@
 # Container discovery — enumerate containers on a host and suggest checks
 
-> Builds on the existing discovery feature (`2026-05-18-01-network-discovery.md`,
-> `2026-05-24-08-freebox-lan-discovery.md`) and the unified scan-method selector
-> (`2026-05-25-09-discovery-unified-scan-method-selector-frontend.md`). Adds a
-> third `DiscoverySource` alongside `lan` and `freebox`. Ships only after the
-> `docker` check type (already in `server/internal/checkers/checkdocker/`) — it is
-> the load-bearing dependency, so no new checker is needed.
+> **Lands after `2026-06-21-00-discovery-check-model-and-generic-scan-api.md`**
+> (the check-centric, grouped `discovered_checks` model + the generic
+> `{type, parameters}` scan API + the `scantypes` registry). This spec adds a third
+> `DiscoverySource` alongside `lan` and `freebox` by **registering a discovery type**
+> against that foundation — **no schema migration, no new endpoint**. It still ships on
+> top of the existing `docker` check type (already in
+> `server/internal/checkers/checkdocker/`) — that is the load-bearing dependency, so
+> **no new checker is needed**.
 >
-> **Order:** first of the discovery-source siblings to land (container → kubernetes).
-> It introduces the shared `resource_uid` + `metadata` columns and the
-> `003_discovery_resources` migration that `2026-06-21-02-kubernetes-checker.md` and
-> `2026-06-21-03-kubernetes-discovery.md` reuse. Because the `docker` check type
-> already exists, no new checker is needed here — the only shared infrastructure this
-> spec lands is the generic identity column.
+> **Order:** first of the discovery-source siblings to land (container → kubernetes,
+> `2026-06-21-03`). Both reuse the foundation's `discovered_checks` table unchanged;
+> each new source is "register a `scantypes.Definition` + a `JobDefinition`", and adds
+> only its own Go-level `source` constant.
 
 ## Context
 
-solidping already has two discovery sources, both modelled as background jobs
-that write into the shared `discovered_hosts` table and feed one promote/dismiss
-UX:
+After the foundation spec (`2026-06-21-00`), discovery is **check-centric and
+grouped**: a scan writes one `discovered_checks` row per *suggested check*
+(`{group_key, group_label, name, slug, type, config, metadata}` + `source`,
+`job_uid`, `promoted_to_check_uid`), and the frontend renders them grouped by
+`group_key`. Two reference sources already register against it:
 
 - **`lan`** — a CIDR scan (`server/internal/discovery/scanner.go`) that ICMP-pings
-  and TCP-probes every address in a range, then maps open ports to suggested
-  checks via the authoritative `defaultPorts` table (`ports.go`) and
-  `SuggestChecks` (`suggest.go`).
+  and TCP-probes every address in a range, then maps open ports to grouped suggested
+  checks via the authoritative `defaultPorts` table (`ports.go`) and `SuggestChecks`
+  (`suggest.go`); one group per host (`group_key = ip`).
 - **`freebox`** — pulls the Freebox router's LAN host list and runs it through the
   *same* probe engine (`job_freebox_lan_discovery.go`, `disc.ScanHosts`).
 
-The sources are unified by `models.DiscoverySource` (`server/internal/db/models/discovered_host.go:13-21`),
-a closed string enum, and by the unified "Start new scan" selector on the frontend
-(LAN / Freebox today). Promotion (`server/internal/handlers/discovery/service.go:561`,
-`PromoteHost`) turns any discovered row's `suggested_checks` into real `checks`,
-tagging them `auto-discovery: true` + `discovery-job: <jobUid>`.
+Sources are unified by `models.DiscoverySource` (a Go-level string enum in
+`server/internal/db/models/discovered_check.go`), by the generic
+`POST /discovery/scans` body `{type, parameters}` routing through the `scantypes`
+registry (`server/internal/discovery/scantypes/`), and by the grouped promote/dismiss
+UX. Promotion (`POST /discovery/checks/promote {uids:[…]}`) turns selected
+`discovered_checks` rows into real `checks`, tagging them `auto-discovery: true` +
+`discovery-job: <jobUid>`.
 
 Separately, solidping already ships a **`docker` check type**
 (`server/internal/checkers/checkdocker/`). It connects to a Docker-compatible API
@@ -101,12 +105,14 @@ encrypted-credentials system (`internal/crypto/credentials/`).
 An admin selects **Container** as the scan method, enters one or more
 Docker-compatible endpoints (prefilled with `unix:///var/run/docker.sock`), and
 confirms. A `container_discovery` job connects to each endpoint, lists running
-containers, and writes one `discovered_hosts` row per container (`source = container`)
-carrying the container name, image, state, published ports, and a set of suggested
-checks. The user reviews the list and **promotes** containers into real checks —
-primarily a `docker` check (the HEALTHCHECK analog), optionally HTTP/TCP checks on
-published ports — through the existing promote flow, with the existing
-`auto-discovery` / `discovery-job` labels.
+containers, and writes — per container — a **group** of `discovered_checks` rows
+(`source = container`, `group_key = container ID`, `group_label = container name`,
+`metadata = {image, state, healthStatus, dockerHost}`): always a `docker` check, plus
+one HTTP/TCP check per published port. The user reviews the list **grouped by
+container** and **promotes** any subset (or a whole container's group) into real
+checks — primarily the `docker` check (the HEALTHCHECK analog), optionally HTTP/TCP
+checks on published ports — through the existing grouped promote flow, with the
+existing `auto-discovery` / `discovery-job` labels.
 
 ## Non-goals
 
@@ -125,79 +131,39 @@ published ports — through the existing promote flow, with the existing
 
 ## Design
 
-Four vertical slices, each independently committable. The work deliberately reuses
-the `discovered_hosts` table and the promote/dismiss UX rather than building a
-parallel "discovered_containers" surface — keeping the unified-discovery investment
-intact.
+Four vertical slices, each independently committable. The work reuses the
+foundation's `discovered_checks` table and the grouped promote/dismiss UX rather than
+building a parallel "discovered_containers" surface — keeping the unified-discovery
+investment intact.
 
-### 1. Model + DB: the `container` source and per-container identity
+### 1. Model + DB: the `container` source (no schema change)
 
-The `discovered_hosts` table is IP-centric: `ip INET NOT NULL` plus a partial unique
-index `idx_discovered_hosts_org_ip_source_active` on `(organization_uid, ip, source)`
-(verified index name — Postgres `001_v0_1_0.up.sql:1001`, SQLite mirror `:775`). Many
-containers share one host IP, so that index would collide. The container's stable
-identity is its **container ID**, which lands in a new generic `resource_uid` column
-shared with the kubernetes specs (decision 5).
+Consumes the `discovered_checks` model from `2026-06-21-00` **unchanged — NO schema
+migration.** The check-centric model already carries everything a container needs:
+`group_key`, `group_label`, `metadata` (jsonb), and a Go-level `source` enum with no DB
+`CHECK` constraint, so a new source value is Go-only. There is no per-container
+identity column to add and no IP unique index to rework — the foundation's
+`(organization_uid, source, group_key, slug)` partial unique index is keyed on the
+*group*, so many containers behind one host IP never collide.
 
-`server/internal/db/models/discovered_host.go`:
+Add **only** the Go source constant to
+`server/internal/db/models/discovered_check.go`:
 
-- Add the source constant:
-  ```go
-  // DiscoverySourceContainer marks a container found on a configured
-  // Docker-compatible host (Docker or Podman).
-  DiscoverySourceContainer DiscoverySource = "container"
-  ```
-- Add two nullable fields (no-ops for `lan`/`freebox`; **shared with the
-  kubernetes-discovery specs** — a generic identity column, not a Docker-specific one,
-  so the sibling features do not each bolt a bespoke column onto `discovered_hosts`):
-  ```go
-  ResourceUID *string         `bun:"resource_uid"           json:"resourceUid,omitempty"`
-  Metadata    json.RawMessage `bun:"metadata,type:jsonb"    json:"metadata,omitempty"`
-  ```
-  For a `container` row, `resource_uid` holds the **Docker container ID** (the stable
-  identity). `hostname` reuses the existing column for the **container name** (mirrors
-  how the `docker` checker derives its name from `ContainerName`). `metadata` holds
-  `{image, state, healthStatus, dockerHost}` — `dockerHost` is the endpoint the
-  promoted `docker` check needs.
-
-Migration — **shared with the kubernetes specs**: this introduces the generic
-`resource_uid` + `metadata` columns and the reworked indexes. Add it as the next
-consolidated migration `003_discovery_resources.{up,down}.sql` (Postgres + SQLite
-mirror; the de-facto feature-naming follows `002_mcp_oauth`, per the
-consolidated-per-release convention in `server/CLAUDE.md`). **Container-discovery lands
-first, so this spec creates the migration; the kubernetes specs reuse the
-columns/index and add only their own `source` enum value (no further schema change).**
-If the kubernetes side somehow shipped first, this migration already exists — reuse it,
-do not duplicate.
-
-```sql
--- Postgres
-ALTER TABLE discovered_hosts ADD COLUMN resource_uid TEXT;
-ALTER TABLE discovered_hosts ADD COLUMN metadata     JSONB;   -- SQLite mirror: metadata TEXT
-
--- Scope the existing IP-uniqueness to the IP-based sources only…
-DROP INDEX idx_discovered_hosts_org_ip_source_active;
-CREATE UNIQUE INDEX idx_discovered_hosts_org_ip_source_active
-  ON discovered_hosts (organization_uid, ip, source)
-  WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL
-        AND source IN ('lan', 'freebox');
-
--- …and give API-resource sources (container, kubernetes) their own identity index.
-CREATE UNIQUE INDEX idx_discovered_hosts_org_resource_active
-  ON discovered_hosts (organization_uid, source, resource_uid)
-  WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL
-        AND resource_uid IS NOT NULL;
+```go
+// DiscoverySourceContainer marks a container found on a configured
+// Docker-compatible host (Docker or Podman).
+DiscoverySourceContainer DiscoverySource = "container"
 ```
 
-SQLite has no `JSONB` type — JSON columns are declared `text` and read with
-`json_extract` (e.g. `results.metrics`, `checks.config`), so the SQLite mirror declares
-`metadata text`; SQLite supports the partial `WHERE` indexes unchanged. The `.down.sql`
-restores the original unscoped `idx_discovered_hosts_org_ip_source_active`, drops
-`idx_discovered_hosts_org_resource_active`, and drops both columns.
+A `container` row maps onto the model as:
 
-`ip` for a container row is the endpoint host's resolved IP (or `127.0.0.1` for a
-local `unix://` socket) — it stays populated so the `NOT NULL` constraint and the
-host-list UI keep working.
+- `group_key` = the **Docker container ID** (the stable grouping identity; upsert keys
+  on it, so a re-scan updates in place).
+- `group_label` = the **container name** (mirrors how the `docker` checker derives its
+  name from `ContainerName`).
+- `metadata` = `{image, state, healthStatus, dockerHost}` — denormalized group-display
+  hints, identical across the group's rows; `dockerHost` is the endpoint the promoted
+  `docker` check needs.
 
 ### 2. Discovery engine + job
 
@@ -208,11 +174,14 @@ plan/child LAN model.
 - Job type in `server/internal/jobs/jobdef/types.go`:
   ```go
   // JobTypeContainerDiscovery connects to one or more Docker-compatible API
-  // endpoints, lists running containers, and records them in discovered_hosts
-  // (source='container') for operator review and promotion.
+  // endpoints, lists running containers, and records them in discovered_checks
+  // (source='container', one group per container) for operator review and promotion.
   JobTypeContainerDiscovery JobType = "container_discovery"
   ```
-  Register in `server/internal/jobs/jobtypes/registry.go`.
+  Register the `JobDefinition` in `server/internal/jobs/jobtypes/registry.go` — which
+  **also** registers the matching `scantypes.Definition` (slice 4) so the generic
+  `POST /discovery/scans` can reach it; the registry wiring keeps the job-layer and
+  `scantypes` registrations in lockstep (one source registers in both).
 
 - Implementation `server/internal/jobs/jobtypes/job_container_discovery.go`:
   ```go
@@ -224,11 +193,13 @@ plan/child LAN model.
   `Run` iterates `Hosts`; for each it builds a client exactly as the checker does
   (`client.NewClientWithOpts(client.WithHost(host), client.WithAPIVersionNegotiation())`),
   calls `ContainerList(ctx, container.ListOptions{All: false})` (running containers;
-  `All:false` keeps the suggestion set to things worth monitoring), and for each
-  container builds a `DiscoveredHost`. A per-endpoint failure is logged and skipped
-  (never aborts the run) — same resilience contract as
-  `FreeboxLanDiscoveryJobRun.persistHosts`. Persist via upsert keyed on
-  `(organization_uid, source, resource_uid)` (the new identity index).
+  `All:false` keeps the suggestion set to things worth monitoring), runs each container
+  through `SuggestContainerChecks` (slice 3) to build its group of `SuggestedCheck`
+  rows, and persists them via the foundation's shared
+  `UpsertDiscoveredChecks(ctx, db, orgUID, jobUID, source, rows)` (upsert key
+  `(organization_uid, source, group_key, slug)`). A per-endpoint failure is logged and
+  skipped (never aborts the run) — same resilience contract as the foundation's
+  per-item log-and-continue in `UpsertDiscoveredChecks`.
 
   Each `types.Container` summary gives `ID`, `Names`, `Image`, `State`, `Status`,
   and `Ports []Port{ PrivatePort, PublicPort, Type }`. **Published** ports are those
@@ -241,67 +212,83 @@ The discovery scan engine itself lives next to the existing one. Add
 so the engine is unit-testable against a fake Docker API independently of the job
 plumbing (mirrors how `Scan`/`ScanHosts` are testable in isolation).
 
-### 3. Suggested checks — mirroring Docker's HEALTHCHECK
+### 3. Suggested checks — grouped, mirroring Docker's HEALTHCHECK
 
-New `SuggestContainerChecks` in `server/internal/discovery/suggest.go`, reusing the
-existing `SuggestedCheck` struct and the `defaultPorts` port→scheme mapping:
+New `SuggestContainerChecks` in `server/internal/discovery/suggest.go`. It returns the
+foundation's grouped `SuggestedCheck` rows (`{GroupKey, GroupLabel, Name, Slug, Type,
+Config, Metadata}`), reusing the shared `checkName`/`checkSlug` helpers and the
+`defaultPorts` port→scheme mapping. Every row of a container's group shares
+`group_key = containerID`, `group_label = containerName`, and
+`metadata = {image, state, healthStatus, dockerHost}`:
 
 - **Primary, always emitted — a `docker` check.** This *is* the HEALTHCHECK mirror:
   ```json
   { "type": "docker", "config": { "host": "<dockerHost>", "containerName": "<name>" } }
   ```
-  When the container's image declares a `HEALTHCHECK`, the promoted `docker` check
-  surfaces `State.Health.Status`; when it does not, it reports running-vs-exited.
-  This is the universal suggestion — it works even for containers that publish no
-  ports (the common "internal service behind a reverse proxy" case).
+  Name/slug are discovery-generated (`group_label · Docker` / a deduped slug). When the
+  container's image declares a `HEALTHCHECK`, the promoted `docker` check surfaces
+  `State.Health.Status`; when it does not, it reports running-vs-exited. This is the
+  universal suggestion — it works even for containers that publish no ports (the common
+  "internal service behind a reverse proxy" case).
 
-- **Secondary — one check per *published* port**, using the **host-published** port
-  and the endpoint host's IP/hostname (what a worker can actually reach), with the
-  scheme decided by the container-side port via the existing `defaultPorts` table:
+- **Secondary — one check per *published* port** (`PublicPort != 0`), using the
+  **host-published** port and the endpoint host's IP/hostname (what a worker can
+  actually reach), with the scheme decided by the container-side port via the existing
+  `defaultPorts` table:
   - container port 80 / 8080 → `http` `{ "url": "http://<hostIP>:<publicPort>" }`
   - container port 443 / 8443 → `http` `{ "url": "https://<hostIP>:<publicPort>" }`
   - anything else → `tcp` `{ "host": "<hostIP>", "port": <publicPort> }`
 
 Extend the `checkType*` constants in `suggest.go` with `checkTypeDocker = "docker"`.
-`normalizeCheckType` in the promote service (`service.go:659`) already passes
-unrecognised types through unchanged, so `docker` → `docker` needs no special case;
-only `ping` → `icmp` is remapped. `PromoteHost` then builds the check config from the
-suggested `docker` check's config merged with any `extraConfig` — no promote-path
-changes beyond the suggestion existing.
+`normalizeCheckType` in the promote service already passes unrecognised types through
+unchanged, so `docker` → `docker` needs no special case; only `ping` → `icmp` is
+remapped. Promotion (`POST /discovery/checks/promote`) then creates checks straight
+from each row's stored `config`/`name`/`slug` (with any overrides) — no promote-path
+changes beyond the rows existing.
 
 ### 4. API + frontend
 
-**Backend** (`server/internal/handlers/discovery/`):
+**Backend** (`server/internal/discovery/scantypes/`):
 
-- New route `POST /api/v1/orgs/:org/discovery/container-scans` (admin-only),
-  mirroring the Freebox `POST /freebox-scans` registration in `handler.go:58-67`.
-  Body: `{ "hosts": ["unix:///var/run/docker.sock"], "timeout": "10s" }`.
-- `Service.StartContainerScan(ctx, orgUID, cfg)` mirrors `StartFreeboxScan`
-  (`service.go:146`): validate ≥1 endpoint and each is `unix://`/`tcp://`
-  (reuse the checker's prefix check), guard with the existing per-type
-  `checkAlreadyRunning(orgUID, JobTypeContainerDiscovery)` (`service.go:192`), then
-  `jobSvc.CreateJob`. New error code `DISCOVERY_INVALID_ENDPOINT` for a bad scheme.
-- The existing `GET /scans`, `GET /scans/:jobUid`, `GET /hosts`, `POST
-  /hosts/:uid/promote`, `DELETE /hosts/:uid` all work unchanged — they key on
-  job type / `source`, and the source filter already accepts an enum value.
+- Register a `container` discovery type (`scantypes.Definition`):
+  `Type() = "container"`, `Source() = DiscoverySourceContainer`. `BuildJob` validates
+  the parameters `{ "hosts": []string, "timeout?": string }` — ≥1 endpoint, each one
+  `unix://`/`tcp://` (reuse the checker's prefix check) — and returns
+  `("container_discovery", cfg)`. A bad endpoint scheme returns the foundation's
+  `DISCOVERY_INVALID_PARAMETERS`. No dedicated route and no per-source service method:
+  it is reached through the generic
+  `POST /api/v1/orgs/:org/discovery/scans` (admin-only) with body:
+  ```json
+  { "type": "container",
+    "parameters": { "hosts": ["unix:///var/run/docker.sock"], "timeout": "10s" } }
+  ```
+  `Service.StartScan` routes via the registry, applies the existing
+  `checkAlreadyRunning(orgUID, "container_discovery")` guard
+  (→ `DISCOVERY_ALREADY_RUNNING`), and enqueues the job — no handler/service edits
+  beyond registering the type.
+- The generic `GET /scans`, `GET /scans/:jobUid`, `POST /scans/:jobUid/cancel`,
+  `GET /discovery/checks`, `POST /discovery/checks/promote`, `DELETE
+  /discovery/checks/:uid` all work for `container` unchanged — they are type-agnostic
+  and the source filter accepts any registered enum value.
 
 **Frontend** (`web/dash0/`):
 
-- `discovery.new.tsx` — add **Container** as a third option to the existing
-  scan-method `Select` (the unified selector from spec `2026-05-25-09`). When
-  selected: a "Container host(s)" textarea (one endpoint per line, prefilled
-  `unix:///var/run/docker.sock`) + the shared confirmation checkbox; submit
-  dispatches a new `useStartContainerScan` hook and navigates to the scan detail.
-- `discovery.index.tsx` — add `container` to the source-filter `Select`.
-- Scan detail / host list — render container rows: container **name** (from
-  `hostname`), an image + state badge from `metadata`, published ports from
-  `open_ports`, and the suggested checks. The list already renders
-  hostname/open_ports/suggested_checks, so containers slot in; only the
-  image/state badge is new.
-- Promote page — unchanged; `docker` simply appears as a selectable suggested type,
-  prefilled with `host` + `containerName`.
-- `web/dash0/src/api/hooks.ts` — add `useStartContainerScan`; extend the
-  `DiscoverySource` / `canSource` helpers with `container`.
+- `discovery.new.tsx` — add **Container** to the registry-driven type list
+  (`DISCOVERY_TYPES`): a parameter sub-form with a "Container host(s)" textarea (one
+  endpoint per line, prefilled `unix:///var/run/docker.sock`) + the shared confirmation
+  checkbox. Submit dispatches the generic `useStartDiscoveryScan({ type: "container",
+  parameters: { hosts, timeout } })` and navigates to the scan detail.
+- `discovery.index.tsx` — `container` appears in the registry-driven source filter.
+- Scan detail (grouped render) — a `container` group renders the container **name**
+  (`group_label`), an image + state badge from `metadata` (`{image, state,
+  healthStatus}`), and the group's suggested checks (the `docker` check + published-port
+  http/tcp) with per-check checkboxes, "select all in group", **Promote selected**, and
+  per-check/per-group dismiss. The grouped list already ships from the foundation; only
+  the `container`-source image/state badge is new.
+- Promote — unchanged; selection is inline on the grouped list, the `docker` check is
+  just another promotable row (config prefilled with `host` + `containerName`).
+- `web/dash0/src/api/hooks.ts` — no new hook (the generic `useStartDiscoveryScan`
+  covers it); extend the `DiscoverySource` / `canSource` helpers with `container`.
 - i18n — add `methodContainer`, `containerHosts`, `containerHostsHelp` to
   `web/dash0/src/locales/{en,fr,de,es}/discovery.json`.
 
@@ -321,56 +308,67 @@ changes beyond the suggestion existing.
    in-process-worker-only anyway (same as the LAN scan), so this is fine for the
    common single-host self-hoster. The `containerHostsHelp` field text recommends
    `tcp://` endpoints for remote hosts; no blocking UI warning.
-5. **Identity column → shared generic `resource_uid` + `metadata`.** Converged with the
-   kubernetes specs (their decision 5) so the sibling features share one identity column
-   and one `003_discovery_resources` migration rather than each bolting a bespoke column
-   (`container_id` / `kubernetes_uid`) onto `discovered_hosts`. For containers,
-   `resource_uid` = the Docker container ID; the IP-uniqueness index is scoped to
-   `source IN ('lan','freebox')` and the new `(org, source, resource_uid)` index covers
-   the API-resource sources.
+5. **Identity → the foundation's `group_key`; no schema change.** The check-centric
+   model from `2026-06-21-00` already provides a non-IP grouping identity, so a
+   container uses `group_key` = the Docker container ID and is keyed by the foundation's
+   `(organization_uid, source, group_key, slug)` partial unique index. This dissolves
+   the old "many containers collide on one IP" problem at the model level — no bespoke
+   identity column and no migration in this spec (the migration is owned entirely by the
+   foundation).
 
 ## Files to create / modify
 
 ### New (backend)
 - `server/internal/discovery/container.go` + `container_test.go` — `ListContainers`
   engine against a fake Docker API.
-- `server/internal/jobs/jobtypes/job_container_discovery.go` + test.
-- Migration `003_discovery_resources.{up,down}.sql` (Postgres + SQLite) adding the
-  **shared** `resource_uid` / `metadata` columns and the reworked unique indexes
-  (reused by the kubernetes specs).
+- `server/internal/jobs/jobtypes/job_container_discovery.go` + test — the
+  `container_discovery` job.
+- `server/internal/discovery/scantypes/container.go` + test — the `container`
+  `scantypes.Definition` (`BuildJob`, `{hosts, timeout}` validation).
+
+> **No migration here** — `discovered_checks` and the `003` migration are owned by the
+> foundation (`2026-06-21-00`).
 
 ### Modified (backend)
-- `server/internal/db/models/discovered_host.go` — `DiscoverySourceContainer`,
-  `ResourceUID`, `Metadata`.
-- `server/internal/discovery/suggest.go` — `SuggestContainerChecks`,
+- `server/internal/db/models/discovered_check.go` — add the
+  `DiscoverySourceContainer` source constant only.
+- `server/internal/discovery/suggest.go` — `SuggestContainerChecks` (grouped rows),
   `checkTypeDocker`.
-- `server/internal/jobs/jobdef/types.go` + `jobtypes/registry.go` — register the job.
-- `server/internal/handlers/discovery/{handler,service}.go` + tests —
-  `container-scans` route, `StartContainerScan`, endpoint validation.
+- `server/internal/jobs/jobdef/types.go` + `jobtypes/registry.go` — register the
+  `JobDefinition` and (via the registry wiring) the matching `scantypes.Definition`.
+
+> The generic `POST /discovery/scans` handler/service need **no edits** — the type is
+> reached entirely through the registry.
 
 ### New / modified (frontend)
-- `discovery.new.tsx`, `discovery.index.tsx`, host-list / scan-detail components.
-- `web/dash0/src/api/hooks.ts` — `useStartContainerScan`, `canSource`.
+- `discovery.new.tsx` (add the `container` type + its parameter sub-form),
+  `discovery.index.tsx`, the grouped scan-detail component (container-source
+  image/state badge).
+- `web/dash0/src/api/hooks.ts` — extend `DiscoverySource` / `canSource` with
+  `container` (no new hook; reuses `useStartDiscoveryScan`).
 - `web/dash0/src/locales/{en,fr,de,es}/discovery.json`.
-- `web/dash0/e2e/discovery.spec.ts` — container method coverage.
+- `web/dash0/e2e/discovery.spec.ts` — container method coverage via the generic
+  endpoint.
 
 ## Verification
 
 - **Unit (table-driven, `testify/require`, `t.Parallel()`):** `SuggestContainerChecks`
-  — docker check always present; 80/443/8080/8443 → http(s) on the *published* port;
-  other published ports → tcp; EXPOSE-only (no `PublicPort`) → no port suggestion.
+  — returns grouped rows sharing one `group_key` (container ID), `group_label`
+  (container name), and `metadata`; the `docker` check always present; 80/443/8080/8443
+  → http(s) on the *published* port; other published ports → tcp; EXPOSE-only (no
+  `PublicPort`) → no port suggestion; slugs deduped within the group.
   `ListContainers` against an `httptest` fake Docker `/containers/json` — name strip,
-  image/state/ports mapping, per-endpoint error skip.
-- **Migration round-trip** (Postgres + SQLite): apply + `migrate down 1` + up;
-  confirm both unique indexes (`idx_discovered_hosts_org_ip_source_active` scoped to
-  `('lan','freebox')` and the new `idx_discovered_hosts_org_resource_active`) and that a
-  re-scan upserts on `resource_uid` (not IP).
-- **End-to-end** (`make dev-test`, real local Docker): start a container scan against
-  `unix:///var/run/docker.sock`, confirm running containers appear with a `docker`
-  suggestion + published-port suggestions, promote one, confirm the resulting check
-  carries `auto-discovery: true` and runs green.
-- **Guards:** invalid endpoint scheme → 400 `DISCOVERY_INVALID_ENDPOINT`; second
-  concurrent container scan → `DISCOVERY_ALREADY_RUNNING`.
+  image/state/ports mapping, per-endpoint error skip. The `container` `scantypes`
+  definition: `BuildJob` validates `{hosts, timeout}` and returns
+  `("container_discovery", cfg)`; a bad endpoint scheme → `DISCOVERY_INVALID_PARAMETERS`.
+  (No migration round-trip here — `discovered_checks` is the foundation's.)
+- **End-to-end** (`make dev-test`, real local Docker): start a container scan via
+  `POST /discovery/scans { "type": "container", "parameters": { "hosts":
+  ["unix:///var/run/docker.sock"] } }`; confirm running containers render **grouped**
+  with a `docker` suggestion + published-port suggestions, select a group and promote,
+  confirm the resulting checks carry `auto-discovery: true` and run green.
+- **Guards:** invalid endpoint scheme → 400 `DISCOVERY_INVALID_PARAMETERS`; second
+  concurrent container scan → 409 `DISCOVERY_ALREADY_RUNNING`; non-admin → 403.
 - `make lint && make test && make test-dash`.
 
 ## Risk log
@@ -379,9 +377,8 @@ changes beyond the suggestion existing.
 |---|---|
 | 2375 is an unauthenticated root socket — basing discovery on scanning for it rewards a critical misconfig | v1 mechanism is a *configured* endpoint (B) only; the LAN-scan 2375/2376 flag is deferred to a follow-up, never the engine |
 | A `unix://`-discovered `docker` check only runs on a worker sharing that socket | v1 in-process-worker-only (as LAN scan); recommend `tcp://` for remote hosts; documented + optional UI note (decision 4) |
-| Many containers per host would collide on the IP-based unique index | Container rows use the shared `(org, source, resource_uid)` partial unique index; IP index scoped to `source IN ('lan','freebox')` |
 | TLS (2376) endpoints not supported | Out of scope for v1 (matches the checker today); follow-up using `internal/crypto/credentials/` |
 | EXPOSE-only ports look monitorable but aren't worker-reachable | Only `PublicPort != 0` ports get HTTP/TCP suggestions; the `docker` check covers the rest |
-| Container names/IDs churn between scans | Upsert on stable `resource_uid` (the container ID); promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
+| Container names/IDs churn between scans | Upsert on the stable `group_key` (the container ID) via the foundation's group identity index; promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
 
-**Status**: Todo | **Created**: 2026-06-21 | **Clarified**: 2026-06-26 — converged on shared `resource_uid`/`metadata` + `003_discovery_resources` migration; corrected the dropped-index name to `idx_discovered_hosts_org_ip_source_active`; verified all backend/frontend references against current code.
+**Status**: Todo | **Created**: 2026-06-21 | **Rebased**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type, parameters}` scan API (`2026-06-21-00`): dropped the bespoke identity column + its migration, the dedicated scan route and per-source service method, and the type-specific endpoint error code; the source now registers a `scantypes.Definition`, reuses the foundation's `DISCOVERY_INVALID_PARAMETERS`, and emits grouped suggested-check rows. No schema change in this spec.

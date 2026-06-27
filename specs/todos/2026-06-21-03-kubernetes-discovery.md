@@ -1,52 +1,51 @@
 # Kubernetes discovery — enumerate Deployments/ReplicaSets on a cluster and suggest checks
 
-> Sibling of the container-discovery spec (`2026-06-21-01-container-discovery.md`), which
-> it deliberately mirrors: both add a new `DiscoverySource` alongside `lan` and `freebox`
-> and reuse the shared `discovered_hosts` table + promote/dismiss UX.
+> **Lands after BOTH foundations.**
+> - `2026-06-21-00-discovery-check-model-and-generic-scan-api.md` — the check-centric,
+>   grouped `discovered_checks` model + the generic `{type, parameters}` scan API + the
+>   `scantypes` registry. This spec adds a new `DiscoverySource` alongside `lan`/`freebox`
+>   by **registering a discovery type** against that foundation — **no schema migration,
+>   no new endpoint**, only its own Go-level `source` constant.
+> - `2026-06-21-02-kubernetes-checker.md` — the `kubernetes` check type (replica-health)
+>   and the encrypted **cluster connection** (`clusterUid`) plus its
+>   `kubernetesClient(clusterUid)` resolver. This spec promotes to that `kubernetes`
+>   check and authenticates its scan job via that same `clusterUid`. It builds **no
+>   checker and no connection** — only the discovery story on top.
 >
-> **Depends on `2026-06-21-02-kubernetes-checker.md`** (the prerequisite, which must land
-> first). That spec builds the two foundations this one assumes already exist: the
-> `kubernetes` check type (replica-health) and the encrypted **cluster connection**
-> (`clusterUid`) plus its `kubernetesClient(clusterUid)` resolver. This spec adds *only*
-> the discovery story on top — it does not build a checker or a connection.
->
-> **Order:** third of three (container-discovery → kubernetes-checker → **kubernetes-
-> discovery**). It reuses the shared `resource_uid` + `metadata` columns and the
-> `003_discovery_resources` migration introduced by container-discovery (`01`) — see
-> slice 1.
+> **Order:** sibling of container-discovery (`2026-06-21-01`); both register a
+> `scantypes.Definition` + a `JobDefinition` against `…-00`. This one additionally
+> requires the `kubernetes` checker + cluster connection from `…-02`.
 
 ## Context
 
-solidping has two discovery sources, both background jobs that write into the shared
-`discovered_hosts` table and feed one promote/dismiss UX:
+After the foundation spec (`2026-06-21-00`), discovery is **check-centric and grouped**:
+a scan writes one `discovered_checks` row per *suggested check*
+(`{group_key, group_label, name, slug, type, config, metadata}` + `source`, `job_uid`,
+`promoted_to_check_uid`), and the frontend renders them grouped by `group_key`. Two
+reference sources already register against it:
 
 - **`lan`** — a CIDR scan (`server/internal/discovery/scanner.go`, `Scan`/`ScanHosts`)
-  that ICMP-pings and TCP-probes every address, then maps open ports to suggested checks
-  via the authoritative `defaultPorts` table (`ports.go:20-37`) and `SuggestChecks`
-  (`suggest.go:18`).
+  that ICMP-pings and TCP-probes every address, then maps open ports to grouped suggested
+  checks via the authoritative `defaultPorts` table (`ports.go:20-37`) and `SuggestChecks`
+  (`suggest.go`); one group per host (`group_key = ip`).
 - **`freebox`** — pulls a paired Freebox router's LAN host list through the *same* probe
   engine (`job_freebox_lan_discovery.go`). It is driven by a **stored, granted
   integration**: the job config carries only a `channelUid` (`FreeboxLanDiscoveryConfig`,
   `job_freebox_lan_discovery.go:25-27`), and the credential behind it is resolved at run
   time (`server/internal/integrations/freebox/lanlookup.go:34-124`).
 
-The sources are unified by `models.DiscoverySource` (a closed string enum,
-`server/internal/db/models/discovered_host.go:16-21`) and by the "Start new scan" selector
-on the frontend (`discovery.new.tsx:38,165-178`, LAN / Freebox today). Promotion
-(`handlers/discovery/service.go:561`, `PromoteHost`) turns any discovered row's
-`suggested_checks` into real `checks`, tagging them `auto-discovery: true` +
-`discovery-job: <jobUid>`. The per-source start endpoint, validation, and concurrency
-guard are all per-job-type (`checkAlreadyRunning`, `service.go:192`; source filter,
-`service.go:490-536`), so a new source slots in cleanly.
+Sources are unified by `models.DiscoverySource` (a Go-level string enum in
+`server/internal/db/models/discovered_check.go`), by the generic `POST /discovery/scans`
+body `{type, parameters}` routing through the `scantypes` registry
+(`server/internal/discovery/scantypes/`), and by the grouped promote/dismiss UX.
+Promotion (`POST /discovery/checks/promote {uids:[…]}`) turns selected `discovered_checks`
+rows into real `checks`, tagging them `auto-discovery: true` + `discovery-job: <jobUid>`.
 
-Two prerequisites are now in place when this spec runs:
-- **From `02` (kubernetes-checker):** the `kubernetes` check type and the cluster
-  connection (`clusterUid` + `kubernetesClient` resolver). Discovery's promoted checks are
-  `kubernetes` checks; its scan job authenticates via the same `clusterUid`.
-- **From `01` (container-discovery):** the shared `resource_uid` + `metadata` columns on
-  `discovered_hosts` and the `idx_discovered_hosts_org_resource_active` identity index —
-  the model pressure (many resources behind one API-server IP) is identical, so this spec
-  reuses them rather than adding its own column.
+**Prerequisite — built in `…-02` (kubernetes-checker):** the `kubernetes` check type
+(replica-health) and the encrypted **cluster connection** (`clusterUid`) plus its
+`kubernetesClient(clusterUid)` helper. Discovery's promoted checks are `kubernetes`
+checks; this scan job authenticates via the same `clusterUid`. This spec builds neither —
+it consumes both.
 
 What is missing is the **enumeration**: a user running 40 Deployments must add 40 checks
 by hand. "Point me at the cluster and tell me what is running" — the discovery story
@@ -54,7 +53,10 @@ applied to **workloads** — does not exist.
 
 ## Non-goals
 
-- **Building the `kubernetes` checker or the cluster connection** — those are `02`.
+- **Building the `kubernetes` checker or the cluster connection** — those are `…-02`;
+  this spec is discovery-only (engine + suggester + job + type registration + frontend).
+- **Changing the `discovered_checks` model or the generic scan API** — those are `…-00`;
+  this spec consumes both unchanged and adds no migration.
 - **Discovering ClusterIP-only workloads as HTTP/TCP targets.** Pod IPs and ClusterIP
   Services are not reachable from an out-of-cluster worker, so there is nothing to
   HTTP/TCP-probe — the `kubernetes` replica-health check covers those. Only `NodePort` /
@@ -69,45 +71,36 @@ applied to **workloads** — does not exist.
 
 ## Design
 
-Four vertical slices, each independently committable, mirroring container-discovery
-slice-for-slice. The work reuses the `discovered_hosts` table and promote/dismiss UX
-rather than building a parallel surface — keeping the unified-discovery investment intact.
+Discovery-only now: five vertical slices, each independently committable — the
+`discovered_checks` model + generic scan API come from `…-00`, the `kubernetes` checker +
+cluster connection from `…-02`.
 
-### 1. Model + DB: the `kubernetes` source and per-workload identity
+> **Prerequisite (built in `…-02`):** the `kubernetes` checker and the encrypted cluster
+> connection + `kubernetesClient(clusterUid)` helper. This spec does not build them.
 
-The `discovered_hosts` table is IP-centric (`ip INET NOT NULL` + the partial unique index
-`idx_discovered_hosts_org_ip_source_active` on `(organization_uid, ip, source)`). Many
-workloads share one API-server IP, so that index would collide. A workload's stable
-identity is its Kubernetes **`metadata.uid`**.
+### 1. Model: the `kubernetes` source constant
 
-This is the *same* model pressure container-discovery hit (many containers, one host IP),
-so **reuse the shared identity column** rather than adding a `kubernetes_uid`:
+This spec **consumes the `discovered_checks` model from `2026-06-21-00` unchanged — NO
+schema migration.** Add only the Go source constant in
+`server/internal/db/models/discovered_check.go` (enum alongside `lan`/`freebox`):
 
-- Add the source constant in `server/internal/db/models/discovered_host.go` (enum at
-  `:16-21`):
-  ```go
-  // DiscoverySourceKubernetes marks a Deployment/ReplicaSet found on a configured
-  // Kubernetes cluster connection.
-  DiscoverySourceKubernetes DiscoverySource = "kubernetes"
-  ```
-- **Reuse** the generic `ResourceUID *string` (`resource_uid`) and `Metadata
-  json.RawMessage` fields introduced by container-discovery (`01`). For a `kubernetes`
-  row, `resource_uid` holds the workload's `metadata.uid`; `hostname` reuses the existing
-  column for the workload's `namespace/name` (the human label, e.g. `prod/api-server`);
-  `metadata` holds `{clusterUid, kind, namespace, name, images, desiredReplicas,
+```go
+// DiscoverySourceKubernetes marks a Deployment/ReplicaSet found on a configured
+// Kubernetes cluster connection.
+DiscoverySourceKubernetes DiscoverySource = "kubernetes"
+```
+
+A workload's stable identity is its Kubernetes **`metadata.uid`**, which maps cleanly onto
+the foundation's render-time grouping — there is no IP to collide on. For a `kubernetes`
+workload group:
+
+- `group_key   = workload metadata.uid` (stable across re-scans of the same object).
+- `group_label = "namespace/name"` (the human label, e.g. `prod/api-server`).
+- `metadata    = {clusterUid, kind, namespace, name, images, desiredReplicas,
   readyReplicas, availableReplicas, conditions, endpoints}` —
-  `clusterUid`+`kind`+`namespace`+`name` are what the promoted `kubernetes` check needs.
-
-**Migration — reused, not re-added.** Container-discovery's `003_discovery_resources`
-migration already adds `resource_uid` + `metadata` and the reworked indexes
-(`idx_discovered_hosts_org_ip_source_active` scoped to `source IN ('lan','freebox')` plus
-`idx_discovered_hosts_org_resource_active` on `(organization_uid, source, resource_uid)`).
-Since `01` lands first, **this slice adds no migration** — only the Go `DiscoverySourceKubernetes`
-constant. *(If `01` has not shipped for some reason, create `003_discovery_resources` exactly
-as specified there — the two specs share one migration by design; never add a second
-identity column.)* `ip` for a Kubernetes row is the API server's resolved IP (or
-`127.0.0.1` for an in-cluster connection) so the `NOT NULL` constraint and host-list UI keep
-working.
+  `clusterUid`+`kind`+`namespace`+`name` are what the promoted `kubernetes` check needs;
+  the rest are group-display hints (denormalized across the group's rows, written by the
+  suggester, per the foundation's `metadata` contract).
 
 ### 2. Discovery engine + job
 
@@ -119,23 +112,26 @@ metadata, so this mirrors container-discovery's metadata-derived approach (not F
 - Job type in `server/internal/jobs/jobdef/types.go` (Freebox at `:39`):
   ```go
   // JobTypeKubernetesDiscovery connects to a configured Kubernetes cluster, lists
-  // Deployments and bare ReplicaSets, and records them in discovered_hosts
+  // Deployments and bare ReplicaSets, and records them in discovered_checks
   // (source='kubernetes') for operator review and promotion.
   JobTypeKubernetesDiscovery JobType = "kubernetes_discovery"
   ```
   Wire into the registration switch in `jobtypes/registry.go:8-39` (Freebox at `:32-33`).
+  The job is registered **both** as a `JobDefinition` (job-layer, as today) **and** as a
+  `scantypes.Definition` (slice 4) — a source lives in both registries per the foundation
+  (`…-00` §2).
 - Engine `server/internal/discovery/kubernetes.go` exposing
   ```go
   func ListWorkloads(ctx context.Context, client kubernetes.Interface,
       namespaces []string, timeout time.Duration) ([]DiscoveredWorkload, error)
   ```
   so it is unit-testable against a `client-go` `fake.Clientset` independently of the job
-  plumbing (mirrors how `Scan`/`ScanHosts` and `01`'s `ListContainers` are testable in
-  isolation). It lists Deployments + ReplicaSets (skipping ReplicaSets with a Deployment
-  `ownerReference`), and lists `NodePort`/`LoadBalancer` Services + Ingresses, best-effort
-  matching them to workloads by label selector to populate `endpoints`. The `client` is
-  built by `02`'s `kubernetesClient(clusterUid)` resolver — this engine takes the interface,
-  not a `clusterUid`, keeping it pure.
+  plumbing (mirrors how `Scan`/`ScanHosts` are testable in isolation). It lists Deployments
+  + ReplicaSets (skipping ReplicaSets with a Deployment `ownerReference`), and lists
+  `NodePort`/`LoadBalancer` Services + Ingresses, best-effort matching them to workloads by
+  label selector to populate `endpoints`. The `client` is built by `…-02`'s
+  `kubernetesClient(clusterUid)` resolver — this engine takes the interface, not a
+  `clusterUid`, keeping it pure.
 - Implementation `server/internal/jobs/jobtypes/job_kubernetes_discovery.go`, mirroring
   `FreeboxLanDiscovery*`:
   ```go
@@ -145,23 +141,27 @@ metadata, so this mirrors container-discovery's metadata-derived approach (not F
       Timeout    string   `json:"timeout,omitempty"`    // default "30s"
   }
   ```
-  `Run` builds the clientset via `02`'s `kubernetesClient`, calls `ListWorkloads`, and for
-  each workload builds a `models.DiscoveredHost`
-  (`NewDiscoveredHost(..., DiscoverySourceKubernetes)`, `discovered_host.go:40-51`).
-  Per-workload build/upsert errors are logged `Warn` and `continue`d — never abort the run
-  — the exact resilience contract of `FreeboxLanDiscoveryJobRun.persistHosts`
-  (`job_freebox_lan_discovery.go:120-162`). Persist via upsert keyed on
-  `(organization_uid, source, resource_uid)` (the shared identity index from `01`),
-  parallel to the Freebox `ON CONFLICT (organization_uid, ip, source)` upsert.
+  `Run` builds the clientset via `…-02`'s `kubernetesClient`, calls `ListWorkloads`, and
+  for each workload calls `SuggestKubernetesChecks` (slice 3) to get the grouped
+  `SuggestedCheck` rows, then persists them through the foundation's shared
+  `UpsertDiscoveredChecks(ctx, db, orgUID, jobUID, DiscoverySourceKubernetes, rows)`
+  (`…-00` §3) — which upserts on `(organization_uid, source, group_key, slug)`. Per-row
+  build/upsert errors are logged `Warn` and `continue`d — never abort the run — the
+  per-item log-and-continue resilience contract the foundation preserves from
+  `FreeboxLanDiscoveryJobRun.persistHosts` (`job_freebox_lan_discovery.go:120-162`).
 
 ### 3. Suggested checks — the workload health monitor + reachable endpoints
 
-New `SuggestKubernetesChecks` in `server/internal/discovery/suggest.go`, reusing the
-`SuggestedCheck` struct (`:12-15`) and the `defaultPorts` port→scheme mapping
-(`ports.go:20-37`):
+New `SuggestKubernetesChecks` in `server/internal/discovery/suggest.go`. Per workload it
+returns a **group** of grouped `SuggestedCheck` rows (the foundation's struct with
+`{GroupKey, GroupLabel, Name, Slug, Type, Config, Metadata}`, `…-00` §3), all sharing
+`group_key = workload.uid`, `group_label = "namespace/name"`, and the slice-1 `metadata`.
+Names/slugs are generated via the foundation's `checkName`/`checkSlug` helpers (deduped
+within the group); the `defaultPorts` port→scheme mapping (`ports.go:20-37`) decides the
+endpoint schemes.
 
 - **Primary, always emitted — a `kubernetes` check.** This *is* the replica-health monitor
-  from `02`:
+  from `…-02`:
   ```json
   { "type": "kubernetes",
     "config": { "clusterUid": "<uid>", "namespace": "<ns>",
@@ -169,9 +169,9 @@ New `SuggestKubernetesChecks` in `server/internal/discovery/suggest.go`, reusing
   ```
   Universal — it works even for a workload that exposes nothing externally (the common
   "internal service behind a ClusterIP" case).
-- **Secondary — one check per externally-reachable endpoint** the engine matched in slice
-  2, using the worker-reachable address and the scheme decided by the service/target port
-  via `defaultPorts`:
+- **Secondary — one http/tcp check per externally-reachable endpoint** the engine matched
+  in slice 2, using the worker-reachable address and the scheme decided by the
+  service/target port via `defaultPorts`:
   - `LoadBalancer` → `status.loadBalancer.ingress[].ip|hostname` + service port.
   - `NodePort` → a node IP + the allocated `nodePort`.
   - `Ingress` → `spec.rules[].host` (+ path) → `http`/`https`.
@@ -179,68 +179,79 @@ New `SuggestKubernetesChecks` in `server/internal/discovery/suggest.go`, reusing
 
 Add `checkTypeKubernetes = "kubernetes"` to the `checkType*` constants (`suggest.go:6-9`).
 `normalizeCheckType` (`service.go:659`) only remaps `ping → icmp`; `kubernetes → kubernetes`
-passes through unchanged, and `PromoteHost` (`service.go:561`) builds the check config from
-the suggested check's config merged with any `extraConfig` — no promote-path changes beyond
-the suggestion existing.
+passes through unchanged. The check `config`/`name`/`slug` are already on the
+`discovered_checks` row, so the foundation's grouped promote
+(`POST /discovery/checks/promote {uids:[…]}`) creates the checks directly — no
+kubernetes-specific promote-path change beyond the suggestion existing.
 
-### 4. API + frontend
+### 4. Discovery-type registration + API
 
-**Backend** (`server/internal/handlers/discovery/`):
+Register a `kubernetes` discovery type rather than adding a dedicated endpoint — the
+generic `POST /discovery/scans` from `…-00` routes to it.
 
-- New route `POST /api/v1/orgs/:org/discovery/kubernetes-scans` (admin-only via `isAdmin`,
-  `handler.go:33-40`), mirroring the Freebox `POST /freebox-scans` registration
-  (`handler.go:60`, handler at `:76`). Body: `{ "clusterUid": "...", "namespaces": [],
-  "timeout": "30s" }`.
-- `Service.StartKubernetesScan(ctx, orgUID, cfg)` mirrors `StartFreeboxScan`
-  (`service.go:146`): validate the `clusterUid` resolves to a registered connection
-  (fail-fast, like Freebox validates the channel), guard with the existing per-type
-  `checkAlreadyRunning(orgUID, JobTypeKubernetesDiscovery)` (`service.go:192`), then
-  `jobSvc.CreateJob`. Reuse `DISCOVERY_ALREADY_RUNNING` (`handler.go:24`); add
-  `KUBERNETES_CLUSTER_NOT_FOUND` for an unknown `clusterUid` (parallel to
-  `FREEBOX_NOT_GRANTED`, `handler.go:27`).
-- The existing `GET /scans`, `GET /scans/:jobUid`, `GET /hosts`, `POST /hosts/:uid/promote`,
-  `DELETE /hosts/:uid` all work unchanged — they key on job type / `source`, and the source
-  filter already accepts any enum value (`service.go:490-536`).
+- New `server/internal/discovery/scantypes/kubernetes.go` implementing
+  `scantypes.Definition` (mirrors the `lan`/`freebox` definitions, `…-00` §2):
+  - `Type() string` → `"kubernetes"`.
+  - `Source() models.DiscoverySource` → `DiscoverySourceKubernetes`.
+  - `BuildJob(ctx, deps, orgUID, parameters)` validates
+    `{ clusterUid, namespaces?, timeout? }` — the `clusterUid` must resolve to a registered
+    cluster connection from `…-02` (fail-fast, like `freebox` validates its channel) — and
+    returns `("kubernetes_discovery", cfg)` (the `KubernetesDiscoveryConfig` from slice 2).
+    An unknown `clusterUid` returns a coded error `KUBERNETES_CLUSTER_NOT_FOUND` (parallel
+    to `FREEBOX_NOT_GRANTED`).
+  - Reachable via the generic route: `POST /api/v1/orgs/:org/discovery/scans` body
+    `{ "type": "kubernetes", "parameters": { "clusterUid": "...", "namespaces": [],
+    "timeout": "30s" } }`. `Service.StartScan(type, parameters)` (`…-00` §2) does the
+    `Get("kubernetes")` → `BuildJob` → `checkAlreadyRunning(orgUID, JobTypeKubernetesDiscovery)`
+    (→ `DISCOVERY_ALREADY_RUNNING`) → `jobSvc.CreateJob` routing — **no new handler or
+    service method here.**
+- The generic `GET /scans`, `GET /scans/:jobUid`, `POST /scans/:jobUid/cancel`, and the
+  `/discovery/checks` list/promote/dismiss endpoints all work unchanged — they are
+  type-agnostic and drive their user-facing-type set from `scantypes.List()`, so the
+  `kubernetes` type appears automatically.
 
-**Frontend** (`web/dash0/`) — *all new UI reuses the design-reference primitives per
-`web/dash0/CLAUDE.md`; start from `design-reference.tsx`*. (The "Kubernetes clusters"
-management surface is built in `02`; this slice only consumes existing connections.)
+### 5. Frontend (`web/dash0/`)
 
-- `discovery.new.tsx` — extend the `ScanMethod` type (`:38`, currently `"lan" | "freebox"`)
-  and the scan-method `Select` (`:165-178`) with **Kubernetes** (shown only when ≥1 cluster
-  connection exists, exactly as Freebox is gated on granted channels at `:50-58`). When
-  selected: a cluster `Select` + an optional "namespaces" input + the shared confirmation
-  checkbox; submit dispatches a new `useStartKubernetesScan` hook and navigates to scan
-  detail.
-- `discovery.index.tsx` — extend `scanSource` (`:51-53`) and the source-filter `Select`
-  (`:136-148`) with `kubernetes`.
-- Scan detail / host list (`discovery.$jobUid.index.tsx`, `HostRow` at `:57-125`, headers
-  `:261-270`) — render workload rows: `namespace/name` (from `hostname`), a kind +
-  `ready/desired` replica badge from `metadata`, endpoints from `metadata`, and the
-  suggested checks. The list already renders hostname/openPorts/suggestedChecks, so
-  workloads slot in; only the kind+replica badge is new.
-- Promote page (`discovery.$jobUid.$hostUid.promote.tsx`) — unchanged; `kubernetes` appears
-  as a selectable suggested type, prefilled with `clusterUid`+`namespace`+`kind`+`name`.
-- `web/dash0/src/api/hooks.ts` — extend `DiscoverySource` (`:3229`, currently
-  `"lan" | "freebox"`) with `kubernetes`; add `useStartKubernetesScan` (mirror
-  `useStartFreeboxScan`, `:3278-3293`); extend `canSource`/`CAPABILITIES` (`:2742-2764`) so
-  `kubernetes` is sourceable.
-- i18n — add `methodKubernetes`, `selectCluster`, `clusterNamespaces`,
-  `kubernetesScanStarted`, `sourceKubernetes`, replica/kind labels to
-  `web/dash0/src/locales/{en,fr,de,es}/discovery.json` (existing source/method keys:
-  `sourceLan`/`sourceFreebox` ~`:67-68`, `methodLan`/`methodFreebox` ~`:72-73`).
+*All new UI reuses the design-reference primitives per `web/dash0/CLAUDE.md`; start from
+`design-reference.tsx`.* (The "Kubernetes clusters" management surface is built in `…-02`;
+this slice only consumes existing connections.)
+
+- `discovery.new.tsx` — the registry-driven scan-start form from `…-00` lists types from
+  `scantypes.List()`; add a **kubernetes** parameter sub-form (the `DISCOVERY_TYPES`
+  descriptor: label + capability gate + a parameter component): a cluster `Select` + an
+  optional "namespaces" input, shown only when ≥1 cluster connection exists. Submit
+  dispatches the single `useStartDiscoveryScan({ type: "kubernetes", parameters })`.
+- `discovery.index.tsx` — the source filter is registry-driven; `kubernetes` appears
+  automatically once the type is registered (gate via `canSource`).
+- `discovery.$jobUid.index.tsx` — the grouped render from `…-00` groups
+  `discovered_checks` by `groupLabel`. For the `kubernetes` source, the group header shows
+  `namespace/name` (the `group_label`) with a kind + `ready/desired` replica badge and
+  endpoints drawn from the group's `metadata`; the suggested `kubernetes` + endpoint checks
+  render beneath with the shared per-check checkbox, "select all in group", **Promote
+  selected**, and per-check/per-group dismiss. Only the kind+replica badge is k8s-specific.
+- Promotion is inline on the grouped list (`POST /discovery/checks/promote {uids:[…]}`,
+  `…-00` §4) — there is no standalone promote page; the `kubernetes` suggested check is
+  prefilled with `clusterUid`+`namespace`+`kind`+`name` on its row.
+- `web/dash0/src/api/hooks.ts` — extend the `DiscoverySource` union and
+  `canSource`/`CAPABILITIES` with `kubernetes`; **no new start hook** — the generic
+  `useStartDiscoveryScan({ type, parameters })` from `…-00` carries the kubernetes
+  parameters.
+- i18n — add `methodKubernetes`, `selectCluster`, `clusterNamespaces`, `sourceKubernetes`,
+  and replica/kind labels to `web/dash0/src/locales/{en,fr,de,es}/discovery.json`,
+  alongside the foundation's group vocabulary.
 
 ## Decisions (applied 2026-06-21)
 
 1. **Workload set → Deployments + bare ReplicaSets in v1.** Deployment-owned ReplicaSets
    are folded into their Deployment (not surfaced twice); StatefulSet / DaemonSet / etc. are
-   a follow-up on the same code path (and the `02` checker supports only these two kinds).
+   a follow-up on the same code path (and the `…-02` checker supports only these two kinds).
 2. **Source name → `kubernetes`.** Distinct from the `docker`-flavoured `container` source;
    the promoted check type is `kubernetes`.
-3. **Identity column → reuse the shared generic `resource_uid` + `metadata`** from
-   container-discovery (`01`'s decision 5), so the two sibling specs do not each bolt a
-   bespoke identity column onto `discovered_hosts`. For Kubernetes, `resource_uid` =
-   `metadata.uid`.
+3. **Identity → the check-centric grouping from `…-00`, no identity column.** A workload is
+   a *group* (`group_key = metadata.uid`, `group_label = "namespace/name"`) of
+   `discovered_checks` rows; there is no `ip` to collide on and therefore no bespoke
+   identity column or migration — the check-centric model dissolves the per-workload
+   identity problem the old host-centric table had.
 4. **Reachability → only `NodePort`/`LoadBalancer`/`Ingress` endpoints** get HTTP/TCP
    suggestions; ClusterIP services and pod IPs are not worker-reachable, so the `kubernetes`
    check covers those (the "published ports only" analog).
@@ -251,21 +262,25 @@ management surface is built in `02`; this slice only consumes existing connectio
 - `server/internal/discovery/kubernetes.go` + `kubernetes_test.go` — `ListWorkloads`
   against a `client-go` `fake.Clientset`.
 - `server/internal/jobs/jobtypes/job_kubernetes_discovery.go` + test.
+- `server/internal/discovery/scantypes/kubernetes.go` + test — the `scantypes.Definition`
+  (`Type`/`Source`/`BuildJob`, `clusterUid` validation).
 
 ### Modified (backend)
-- `server/internal/db/models/discovered_host.go` — `DiscoverySourceKubernetes` (reuses the
-  `ResourceUID`/`Metadata` fields added by `01`; **no migration here** — `003_discovery_resources`
-  already exists).
-- `server/internal/discovery/suggest.go` — `SuggestKubernetesChecks`, `checkTypeKubernetes`.
-- `server/internal/jobs/jobdef/types.go` + `jobtypes/registry.go` — register the job.
-- `server/internal/handlers/discovery/{handler,service}.go` + tests — `kubernetes-scans`
-  route, `StartKubernetesScan`, cluster validation, `KUBERNETES_CLUSTER_NOT_FOUND`.
+- `server/internal/db/models/discovered_check.go` — add the `DiscoverySourceKubernetes`
+  source constant. **No migration** — the `discovered_checks` model from `…-00` is consumed
+  unchanged.
+- `server/internal/discovery/suggest.go` — `SuggestKubernetesChecks` (grouped rows),
+  `checkTypeKubernetes`.
+- `server/internal/jobs/jobdef/types.go` + `jobtypes/registry.go` — register the job
+  (`JobDefinition`).
 
 ### New / modified (frontend)
-- `discovery.new.tsx`, `discovery.index.tsx`, host-list / scan-detail components.
-- `web/dash0/src/api/hooks.ts` — `useStartKubernetesScan`, `DiscoverySource`, `canSource`.
+- `discovery.new.tsx` (kubernetes parameter sub-form for the registry-driven scan form),
+  grouped scan-detail render for the `kubernetes` source.
+- `web/dash0/src/api/hooks.ts` — extend `DiscoverySource` / `canSource` with `kubernetes`
+  (no new start hook; the generic `useStartDiscoveryScan` carries the parameters).
 - `web/dash0/src/locales/{en,fr,de,es}/discovery.json`.
-- `web/dash0/e2e/discovery.spec.ts` — Kubernetes method coverage.
+- `web/dash0/e2e/discovery.spec.ts` — Kubernetes coverage via the generic scan endpoint.
 
 ## Verification
 
@@ -273,15 +288,20 @@ management surface is built in `02`; this slice only consumes existing connectio
   - `ListWorkloads` against a `fake.Clientset`: Deployments + bare ReplicaSets surfaced,
     Deployment-owned ReplicaSets skipped; LoadBalancer/NodePort/Ingress matched to endpoints
     by selector; ClusterIP → no endpoint; per-namespace error skip.
-  - `SuggestKubernetesChecks`: `kubernetes` check always present; LB/NodePort/Ingress →
-    http(s)/tcp per `defaultPorts`; ClusterIP-only → no endpoint suggestion.
-- **Re-scan upsert** (Postgres + SQLite): a second scan of the same cluster upserts on
-  `resource_uid` (`metadata.uid`), not IP — no duplicate rows when the API-server IP is shared.
+  - `SuggestKubernetesChecks` → grouped rows: every workload yields a `kubernetes` row plus
+    one http/tcp row per LB/NodePort/Ingress endpoint (per `defaultPorts`), all sharing
+    `group_key = metadata.uid`, `group_label = "namespace/name"`, distinct slugs, and the
+    expected `metadata`; ClusterIP-only → only the `kubernetes` row.
+  - `scantypes` `kubernetes` `BuildJob`: valid `{clusterUid,…}` → `("kubernetes_discovery",
+    cfg)`; unknown `clusterUid` → `KUBERNETES_CLUSTER_NOT_FOUND`.
 - **End-to-end** (`make dev-test`, against a `kind`/minikube cluster or a stored kubeconfig,
-  with `02` already merged): register a cluster (via `02`'s UI), start a Kubernetes scan,
-  confirm Deployments appear with a `kubernetes` suggestion (+ endpoint suggestions for any
-  LB/NodePort), promote one, confirm the resulting check carries `auto-discovery: true` and
-  reports the workload's replica health.
+  with `…-02` already merged): register a cluster (via `…-02`'s UI), start a scan through
+  the generic `POST /discovery/scans {type:"kubernetes",…}`, confirm Deployments render
+  **grouped by `namespace/name`** with a `kubernetes` suggestion (+ endpoint suggestions for
+  any LB/NodePort), select a group and promote, confirm the resulting check carries
+  `auto-discovery: true` and reports the workload's replica health. A re-scan upserts on
+  `(org, source, group_key, slug)` (the foundation's identity index) — no duplicate rows
+  when the API-server IP is shared.
 - **Guards:** unknown `clusterUid` → 404 `KUBERNETES_CLUSTER_NOT_FOUND`; second concurrent
   Kubernetes scan → 409 `DISCOVERY_ALREADY_RUNNING`; non-admin → 403.
 - `make build && make lint && make test && make test-dash`.
@@ -290,10 +310,12 @@ management surface is built in `02`; this slice only consumes existing connectio
 
 | Risk | Mitigation |
 |---|---|
-| Depends on the `02` checker + cluster connection existing | `02` is the explicit prerequisite (ships first); this spec builds no checker/connection and fails fast if `clusterUid` does not resolve |
+| Depends on the `…-02` checker + cluster connection existing | `…-02` is the explicit prerequisite (ships first); this spec builds no checker/connection and the `kubernetes` `scantypes` definition fails fast if `clusterUid` does not resolve |
+| `client-go` is a heavy dependency to add to the server module | Bounded: the discovery engine and the `…-02` checker share the one `client-go` import; pinned and vendored like any other module dependency |
+| RBAC gaps — the service account may lack `list`/`get` on some namespaces | Strictly read-only `list`/`get`; a per-namespace authorization error is logged and skipped (never aborts the run), so a partial result still surfaces what is visible |
 | Pod IPs / ClusterIP services look monitorable but aren't worker-reachable | Only `NodePort`/`LoadBalancer`/`Ingress` endpoints get HTTP/TCP suggestions; the `kubernetes` replica check covers the rest |
-| Workload `metadata.uid` churns when an object is deleted+recreated | Upsert on the stable `uid` (`resource_uid`); promotion snapshots `{clusterUid,namespace,kind,name}` into the check, which is then independent (no sync) — the Freebox/container stance |
-| Two sibling specs both rework the IP unique index and add an identity column | Converged on one generic `resource_uid` + `metadata` and an `IN ('lan','freebox')`-scoped IP index, introduced once by `01`; this spec only adds the `kubernetes` enum value (decision 3) |
+| An in-cluster connection only works for a worker running inside that cluster | Same in-process-worker locality caveat as a `unix://` Docker socket; documented, not blocked — out-of-cluster connections use the stored kubeconfig from `…-02` |
+| Workload `metadata.uid` churns when an object is deleted+recreated | `group_key = metadata.uid` upserts on the stable uid; promotion snapshots `{clusterUid,namespace,kind,name}` into the check, which is then independent (no sync) — the Freebox/container stance |
 | Mapping Services/Ingresses to workloads by label selector is best-effort | Endpoint suggestions are secondary; the always-present `kubernetes` check never depends on the match, so a missed match only drops an optional HTTP/TCP suggestion |
 
-**Status**: Todo | **Created**: 2026-06-21 | **Clarified**: 2026-06-26 — split from the original kubernetes-discovery spec (checker+connection moved to `02`); renumbered `02`→`03`; converged on container-discovery's shared `resource_uid`/`metadata` migration (no migration added here); references verified against current code.
+**Status**: Todo | **Created**: 2026-06-21 | **Reworked**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type,parameters}` scan API (`2026-06-21-00`): dropped the old host-centric model/migration slice and the dedicated per-type scan endpoint, now registers a `kubernetes` `scantypes` definition and emits grouped `discovered_checks` rows; checker + cluster connection remain the prerequisite from `2026-06-21-02`.
