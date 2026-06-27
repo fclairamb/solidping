@@ -381,7 +381,7 @@ changes beyond the rows existing.
 | EXPOSE-only ports look monitorable but aren't worker-reachable | Only `PublicPort != 0` ports get HTTP/TCP suggestions; the `docker` check covers the rest |
 | Container names/IDs churn between scans | Upsert on the stable `group_key` (the container ID) via the foundation's group identity index; promotion snapshots config into the check, which is then independent (no sync), matching the Freebox stance |
 
-**Status**: Todo | **Created**: 2026-06-21 | **Rebased**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type, parameters}` scan API (`2026-06-21-00`): dropped the bespoke identity column + its migration, the dedicated scan route and per-source service method, and the type-specific endpoint error code; the source now registers a `scantypes.Definition`, reuses the foundation's `DISCOVERY_INVALID_PARAMETERS`, and emits grouped suggested-check rows. No schema change in this spec.
+**Status**: Done | **Created**: 2026-06-21 | **Rebased**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type, parameters}` scan API (`2026-06-21-00`): dropped the bespoke identity column + its migration, the dedicated scan route and per-source service method, and the type-specific endpoint error code; the source now registers a `scantypes.Definition`, reuses the foundation's `DISCOVERY_INVALID_PARAMETERS`, and emits grouped suggested-check rows. No schema change in this spec.
 
 ## Implementation Plan
 
