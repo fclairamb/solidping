@@ -71,15 +71,15 @@ type Definition interface {
 
 //nolint:gochecknoglobals // process-wide registry, mirrors the checker registry
 var (
-	mu       sync.RWMutex
-	registry = map[string]Definition{}
+	registryMu sync.RWMutex
+	registry   = map[string]Definition{}
 )
 
 // Register adds a discovery type to the registry. It is called from each type's
 // wiring (see RegisterDefaults). A duplicate Type() overwrites the prior entry.
 func Register(d Definition) {
-	mu.Lock()
-	defer mu.Unlock()
+	registryMu.Lock()
+	defer registryMu.Unlock()
 
 	registry[d.Type()] = d
 }
@@ -88,8 +88,8 @@ func Register(d Definition) {
 //
 //nolint:ireturn // registry pattern returns the Definition interface
 func Get(typ string) (Definition, bool) {
-	mu.RLock()
-	defer mu.RUnlock()
+	registryMu.RLock()
+	defer registryMu.RUnlock()
 
 	d, ok := registry[typ]
 
@@ -99,8 +99,8 @@ func Get(typ string) (Definition, bool) {
 // List returns every registered definition, sorted by Type() for stable output
 // (drives the frontend capability list and the activation test).
 func List() []Definition {
-	mu.RLock()
-	defer mu.RUnlock()
+	registryMu.RLock()
+	defer registryMu.RUnlock()
 
 	out := make([]Definition, 0, len(registry))
 	for _, d := range registry {

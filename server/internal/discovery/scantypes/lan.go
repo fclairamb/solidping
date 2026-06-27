@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
-	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	disc "github.com/fclairamb/solidping/server/internal/discovery"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 

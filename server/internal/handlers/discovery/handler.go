@@ -270,7 +270,7 @@ func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) 
 		}
 	}
 
-	rows, err := h.svc.ListDiscoveredChecks(req.Context(), org.UID, opts)
+	rows, err := h.svc.ListDiscoveredChecks(req.Context(), org.UID, &opts)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}

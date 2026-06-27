@@ -344,8 +344,8 @@ func fillSingleJobProgress(job *models.Job, progress *ScanProgress) {
 
 // countDiscovered returns the distinct group count and total check count rolled
 // up under a scan UID.
-func (s *Service) countDiscovered(ctx context.Context, orgUID, scanUID string) (groupCount, checkCount int, err error) {
-	checkCount, err = s.db.NewSelect().
+func (s *Service) countDiscovered(ctx context.Context, orgUID, scanUID string) (int, int, error) {
+	checkCount, err := s.db.NewSelect().
 		TableExpr("discovered_checks").
 		Where("organization_uid = ?", orgUID).
 		Where("job_uid = ?", scanUID).
@@ -354,6 +354,8 @@ func (s *Service) countDiscovered(ctx context.Context, orgUID, scanUID string) (
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to count discovered checks: %w", err)
 	}
+
+	var groupCount int
 
 	err = s.db.NewSelect().
 		ColumnExpr("COUNT(DISTINCT group_key)").
@@ -444,7 +446,7 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 // ListDiscoveredChecks returns discovered checks for an org with optional
 // filters. Rows are ordered by group then slug so the frontend can group them.
 func (s *Service) ListDiscoveredChecks(
-	ctx context.Context, orgUID string, opts ListChecksOptions,
+	ctx context.Context, orgUID string, opts *ListChecksOptions,
 ) ([]*models.DiscoveredCheck, error) {
 	var rows []*models.DiscoveredCheck
 
@@ -503,7 +505,7 @@ func (s *Service) getChecks(ctx context.Context, orgUID string, uids []string) (
 	err := s.db.NewSelect().
 		Model(&rows).
 		Where("organization_uid = ?", orgUID).
-		Where("uid IN (?)", bun.In(uids)).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
 	if err != nil {

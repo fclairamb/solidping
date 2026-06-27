@@ -36,13 +36,13 @@ func UpsertDiscoveredChecks(
 	for i := range rows {
 		row := rows[i]
 
-		dc := models.NewDiscoveredCheck(
+		check := models.NewDiscoveredCheck(
 			orgUID, jobUID, source,
 			row.GroupKey, row.GroupLabel, row.Name, row.Slug, row.Type,
 			row.Config, row.Metadata,
 		)
 
-		if err := upsertOne(ctx, db, dc, isPostgres); err != nil {
+		if err := upsertOne(ctx, db, check, isPostgres); err != nil {
 			log.WarnContext(ctx, "failed to upsert discovered check",
 				"group_key", row.GroupKey, "slug", row.Slug, "error", err)
 			// Continue with other rows; don't abort the whole scan.
@@ -53,7 +53,7 @@ func UpsertDiscoveredChecks(
 }
 
 // upsertOne upserts a single DiscoveredCheck on the group identity key.
-func upsertOne(ctx context.Context, db *bun.DB, dc *models.DiscoveredCheck, isPostgres bool) error {
+func upsertOne(ctx context.Context, db *bun.DB, check *models.DiscoveredCheck, isPostgres bool) error {
 	conflict := "CONFLICT (organization_uid, source, group_key, slug) " +
 		"WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE"
 
@@ -63,7 +63,7 @@ func upsertOne(ctx context.Context, db *bun.DB, dc *models.DiscoveredCheck, isPo
 	}
 
 	_, err := db.NewInsert().
-		Model(dc).
+		Model(check).
 		On(conflict).
 		Set("job_uid = " + excluded + ".job_uid").
 		Set("group_label = " + excluded + ".group_label").

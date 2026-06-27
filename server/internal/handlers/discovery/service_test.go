@@ -186,7 +186,7 @@ func TestStartScanFreeboxGranted(t *testing.T) {
 	srv := startFakeFreebox(t)
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusGranted)
 
-	params, _ := json.Marshal(map[string]string{"channelUid": conn.UID})
+	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
 	job, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
 	r.NoError(err)
 	r.NotNil(job)
@@ -201,7 +201,7 @@ func TestStartScanFreeboxNotGranted(t *testing.T) {
 	srv := startFakeFreebox(t)
 	conn := f.newFreeboxChannel(t, srv.URL, models.FreeboxStatusPairing)
 
-	params, _ := json.Marshal(map[string]string{"channelUid": conn.UID})
+	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
 	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
 	r.Error(err)
 
@@ -223,7 +223,7 @@ func TestStartScanFreeboxGuardsDuplicate(t *testing.T) {
 	running.Status = models.JobStatusRunning
 	r.NoError(f.dbSvc.CreateJob(t.Context(), running))
 
-	params, _ := json.Marshal(map[string]string{"channelUid": conn.UID})
+	params := json.RawMessage(`{"channelUid":"` + conn.UID + `"}`)
 	_, err := f.svc.StartScan(t.Context(), f.org.UID, "freebox", params)
 	r.ErrorIs(err, discovery.ErrAlreadyRunning)
 }
@@ -247,7 +247,7 @@ func TestPromoteChecksMultiple(t *testing.T) {
 	r.NoError(err)
 	r.Len(resp, 2)
 
-	// Each created check is labelled auto-discovery and has a distinct slug.
+	// Each created check is labeled auto-discovery and has a distinct slug.
 	r.NotEqual(*resp[0].Slug, *resp[1].Slug)
 	for _, cr := range resp {
 		r.Equal("true", cr.Labels["auto-discovery"])
@@ -355,11 +355,11 @@ func TestListDiscoveredChecksFilters(t *testing.T) {
 	f.insertCheck(t, jobUID, "192.168.1.20", "b-icmp", "ping",
 		models.DiscoverySourceFreebox, json.RawMessage(`{"host":"192.168.1.20"}`))
 
-	all, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{})
+	all, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Len(all, 2)
 
-	fbOnly, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{
+	fbOnly, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{
 		Sources: []models.DiscoverySource{models.DiscoverySourceFreebox},
 	})
 	r.NoError(err)
@@ -367,7 +367,7 @@ func TestListDiscoveredChecksFilters(t *testing.T) {
 	r.Equal(models.DiscoverySourceFreebox, fbOnly[0].Source)
 	r.Equal("192.168.1.20", fbOnly[0].GroupKey)
 
-	grouped, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{
+	grouped, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{
 		Group: "192.168.1.10",
 	})
 	r.NoError(err)
@@ -387,7 +387,7 @@ func TestDismissCheck(t *testing.T) {
 
 	r.NoError(f.svc.SoftDeleteCheck(t.Context(), f.org.UID, uid))
 
-	all, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{})
+	all, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Empty(all, "a dismissed check must not appear in the list")
 
@@ -413,7 +413,7 @@ func TestDismissGroup(t *testing.T) {
 	r.NoError(err)
 	r.Equal(2, n)
 
-	remaining, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{})
+	remaining, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Len(remaining, 1)
 	r.Equal("192.168.1.41", remaining[0].GroupKey)
@@ -597,7 +597,7 @@ func TestUpsertDiscoveredChecksRescanUpdatesInPlace(t *testing.T) {
 	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
 	r.NoError(disc.UpsertDiscoveredChecks(ctx, f.dbSvc.DB(), f.org.UID, jobUID, models.DiscoverySourceLAN, rows, nil))
 
-	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, discovery.ListChecksOptions{})
+	all, err := f.svc.ListDiscoveredChecks(ctx, f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Len(all, 1, "re-scan of the same (org, source, group, slug) must update in place")
 }

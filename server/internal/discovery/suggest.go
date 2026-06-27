@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -13,8 +14,6 @@ const (
 	checkTypePing = "ping"
 	checkTypeHTTP = "http"
 	checkTypeTCP  = "tcp"
-	// checkTypeICMP is the registered check type an ICMP suggestion maps to.
-	checkTypeICMP = "icmp"
 )
 
 // schemeICMP is the scheme label used when building an ICMP check name/slug.
@@ -156,7 +155,7 @@ func checkName(groupLabel, scheme string) string {
 func checkSlug(groupLabel, scheme string, port int) string {
 	parts := []string{slugify(scheme), slugify(groupLabel)}
 	if port != 0 {
-		parts = append(parts, fmt.Sprintf("%d", port))
+		parts = append(parts, strconv.Itoa(port))
 	}
 
 	slug := strings.Trim(strings.Join(parts, "-"), "-")

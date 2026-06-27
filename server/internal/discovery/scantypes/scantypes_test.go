@@ -165,7 +165,7 @@ func TestFreeboxBuildJobGranted(t *testing.T) {
 	r.Equal("freebox", def.Type())
 	r.Equal(models.DiscoverySourceFreebox, def.Source())
 
-	params, _ := json.Marshal(map[string]string{"channelUid": channelUID})
+	params := json.RawMessage(`{"channelUid":"` + channelUID + `"}`)
 	jobType, cfg, err := def.BuildJob(t.Context(), deps, orgUID, params)
 	r.NoError(err)
 	r.Equal(string(jobdef.JobTypeFreeboxLanDiscovery), jobType)
@@ -179,7 +179,7 @@ func TestFreeboxBuildJobNotGranted(t *testing.T) {
 	deps, orgUID, channelUID := freeboxFixture(t, models.FreeboxStatusPairing)
 
 	def := &scantypes.FreeboxDefinition{}
-	params, _ := json.Marshal(map[string]string{"channelUid": channelUID})
+	params := json.RawMessage(`{"channelUid":"` + channelUID + `"}`)
 	_, _, err := def.BuildJob(t.Context(), deps, orgUID, params)
 	r.Error(err)
 	r.Equal(scantypes.CodeFreeboxNotGranted, codeOf(err))

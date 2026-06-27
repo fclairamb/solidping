@@ -367,7 +367,7 @@ func TestHandlerDismissGroup(t *testing.T) {
 		"/api/v1/orgs/"+f.org.Slug+"/discovery/checks?jobUid="+jobUID+"&group=10.0.0.9", nil)
 	r.Equal(http.StatusNoContent, rec.Code)
 
-	remaining, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, discovery.ListChecksOptions{})
+	remaining, err := f.svc.ListDiscoveredChecks(t.Context(), f.org.UID, &discovery.ListChecksOptions{})
 	r.NoError(err)
 	r.Empty(remaining)
 }

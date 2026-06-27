@@ -26,26 +26,22 @@ const (
 // grouped for display by GroupKey (an IP, container ID, workload UID…) — the
 // group is purely a rendering concern; the stored unit is the check itself.
 type DiscoveredCheck struct {
-	UID             string          `bun:"uid,pk,type:varchar(36)" json:"uid"`
-	OrganizationUID string          `bun:"organization_uid,notnull" json:"organizationUid"`
-	JobUID          string          `bun:"job_uid,notnull" json:"jobUid"` // the scan (plan UID for chunked)
-	Source          DiscoverySource `bun:"source,notnull" json:"source"`  // lan|freebox|container|kubernetes
-
-	GroupKey   string `bun:"group_key,notnull" json:"groupKey"`     // stable grouping identity
-	GroupLabel string `bun:"group_label,notnull" json:"groupLabel"` // display label
-
-	Name   string          `bun:"name,notnull" json:"name"`        // suggested check name
-	Slug   string          `bun:"slug,notnull" json:"slug"`        // suggested check slug (unique per group)
-	Type   string          `bun:"type,notnull" json:"type"`        // check type: http|tcp|icmp|docker|kubernetes…
-	Config json.RawMessage `bun:"config,type:jsonb" json:"config"` // the check config
-
-	Metadata json.RawMessage `bun:"metadata,type:jsonb" json:"metadata,omitempty"` // group-display hints (denormalized)
-
-	PromotedToCheckUID *string    `bun:"promoted_to_check_uid" json:"promotedToCheckUid,omitempty"` //nolint:lll
-	DiscoveredAt       time.Time  `bun:"discovered_at,notnull,default:current_timestamp" json:"discoveredAt"`
-	CreatedAt          time.Time  `bun:"created_at,notnull,default:current_timestamp" json:"createdAt"`
-	UpdatedAt          time.Time  `bun:"updated_at,notnull,default:current_timestamp" json:"updatedAt"`
-	DeletedAt          *time.Time `bun:"deleted_at,soft_delete" json:"deletedAt,omitempty"`
+	UID                string          `bun:"uid,pk,type:varchar(36)"                         json:"uid"`
+	OrganizationUID    string          `bun:"organization_uid,notnull"                        json:"organizationUid"`
+	JobUID             string          `bun:"job_uid,notnull"                                 json:"jobUid"`
+	Source             DiscoverySource `bun:"source,notnull"                                  json:"source"`
+	GroupKey           string          `bun:"group_key,notnull"                               json:"groupKey"`
+	GroupLabel         string          `bun:"group_label,notnull"                             json:"groupLabel"`
+	Name               string          `bun:"name,notnull"                                    json:"name"`
+	Slug               string          `bun:"slug,notnull"                                    json:"slug"`
+	Type               string          `bun:"type,notnull"                                    json:"type"`
+	Config             json.RawMessage `bun:"config,type:jsonb"                               json:"config"`
+	Metadata           json.RawMessage `bun:"metadata,type:jsonb"                             json:"metadata,omitempty"`
+	PromotedToCheckUID *string         `bun:"promoted_to_check_uid"                           json:"promotedToCheckUid,omitempty"` //nolint:lll // aligned tag width
+	DiscoveredAt       time.Time       `bun:"discovered_at,notnull,default:current_timestamp" json:"discoveredAt"`
+	CreatedAt          time.Time       `bun:"created_at,notnull,default:current_timestamp"    json:"createdAt"`
+	UpdatedAt          time.Time       `bun:"updated_at,notnull,default:current_timestamp"    json:"updatedAt"`
+	DeletedAt          *time.Time      `bun:"deleted_at,soft_delete"                          json:"deletedAt,omitempty"`
 }
 
 // NewDiscoveredCheck builds a DiscoveredCheck row from the fully-formed pieces a

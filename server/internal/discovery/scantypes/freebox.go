@@ -10,13 +10,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
-// freeboxParams is the parameter schema for a Freebox discovery scan.
+// freeboxParams is the parameter schema for a Freebox discovery scan. It is also
+// the job config payload (the freebox_lan_discovery job reads the same
+// {channelUid} shape), so it is reused on both sides.
 type freeboxParams struct {
-	ChannelUID string `json:"channelUid"`
-}
-
-// freeboxJobConfig is the config payload for a freebox_lan_discovery job.
-type freeboxJobConfig struct {
 	ChannelUID string `json:"channelUid"`
 }
 
@@ -66,7 +63,7 @@ func (d *FreeboxDefinition) BuildJob(
 		}
 	}
 
-	cfgBytes, err := json.Marshal(freeboxJobConfig{ChannelUID: params.ChannelUID})
+	cfgBytes, err := json.Marshal(params)
 	if err != nil {
 		return "", nil, NewError(CodeInvalidParameters, "failed to encode Freebox scan config: "+err.Error())
 	}
