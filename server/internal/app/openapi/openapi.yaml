@@ -31,6 +31,8 @@ tags:
     description: Organization member management
   - name: Jobs
     description: Background job management
+  - name: Discovery
+    description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
 
@@ -1155,6 +1157,282 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/discovery/types:
+    get:
+      tags: [Discovery]
+      summary: List registered discovery types
+      description: Returns the discovery types (lan, freebox, …) available to drive a scan, so a client can build its type picker without hard-coding the set.
+      operationId: listDiscoveryTypes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Registered discovery types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveryType"
+
+  /api/v1/orgs/{org}/discovery/scans:
+    get:
+      tags: [Discovery]
+      summary: List discovery scans
+      operationId: listDiscoveryScans
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of scans (one entry per user-initiated scan; fan-out child chunks are omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveryScan"
+    post:
+      tags: [Discovery]
+      summary: Start a discovery scan
+      description: |
+        Admin only. The generic body is `{type, parameters}`; the discovery-type
+        registry validates the parameters and resolves the job to enqueue. For LAN,
+        parameters are `{cidrs, ports?, concurrency?, timeout?}`; for Freebox,
+        `{channelUid}`.
+      operationId: startDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDiscoveryScanRequest"
+      responses:
+        "201":
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DiscoveryScan"
+                  progress:
+                    $ref: "#/components/schemas/DiscoveryScanProgress"
+        "400":
+          description: Unknown discovery type (DISCOVERY_UNKNOWN_TYPE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: A scan of this type is already running (DISCOVERY_ALREADY_RUNNING), or a Freebox channel is not paired (FREEBOX_NOT_GRANTED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid parameters (DISCOVERY_INVALID_PARAMETERS) or range too large (DISCOVERY_RANGE_TOO_LARGE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/discovery/scans/{jobUid}:
+    get:
+      tags: [Discovery]
+      summary: Get a discovery scan with progress
+      description: Returns the scan job plus a uniform progress block for every scan type (chunked scans roll up their children; non-chunked scans report totalChunks=1).
+      operationId: getDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "200":
+          description: Scan with progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DiscoveryScan"
+                  progress:
+                    $ref: "#/components/schemas/DiscoveryScanProgress"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/scans/{jobUid}/cancel:
+    post:
+      tags: [Discovery]
+      summary: Cancel a discovery scan
+      description: Admin only. Cancels the scan and drops every pending fan-out child chunk. Children already running finish naturally.
+      operationId: cancelDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/JobUidPath"
+      responses:
+        "204":
+          description: Scan cancelled
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/checks:
+    get:
+      tags: [Discovery]
+      summary: List discovered (suggested) checks
+      description: Returns suggested checks for the org, ordered by group then slug so clients can render them grouped by groupKey.
+      operationId: listDiscoveredChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: jobUid
+          in: query
+          description: Filter to one scan's checks
+          schema:
+            type: string
+        - name: group
+          in: query
+          description: Narrow to one group (groupKey)
+          schema:
+            type: string
+        - name: source
+          in: query
+          description: Comma-separated discovery sources (e.g. "lan,freebox")
+          schema:
+            type: string
+        - name: promoted
+          in: query
+          description: Filter by promotion state
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Discovered checks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveredCheck"
+    delete:
+      tags: [Discovery]
+      summary: Dismiss a whole group of discovered checks
+      description: Admin only. Soft-deletes every check in the given group (optionally scoped to one scan).
+      operationId: dismissDiscoveredGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: group
+          in: query
+          required: true
+          description: The group (groupKey) to dismiss
+          schema:
+            type: string
+        - name: jobUid
+          in: query
+          description: Restrict the dismissal to one scan
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Group dismissed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/checks/promote:
+    post:
+      tags: [Discovery]
+      summary: Promote discovered checks into real checks
+      description: |
+        Admin only. Creates one real check per referenced discovered-check row
+        (config/name/slug already on the row; `overrides` may adjust name/period).
+        Created checks are labelled `auto-discovery: true` and `discovery-job: <jobUid>`.
+      operationId: promoteDiscoveredChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteChecksRequest"
+      responses:
+        "201":
+          description: Checks created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Check"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A referenced check was already promoted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/discovery/checks/{uid}:
+    delete:
+      tags: [Discovery]
+      summary: Dismiss a single discovered check
+      operationId: dismissDiscoveredCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: uid
+          in: path
+          required: true
+          description: Discovered check UID
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Check dismissed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -2079,3 +2357,139 @@ components:
         secret:
           type: boolean
           description: Whether this is a secret parameter (optional, defaults to false)
+
+    DiscoveryType:
+      type: object
+      description: A registered discovery type that can drive a scan.
+      properties:
+        type:
+          type: string
+          description: User-facing discovery type id
+          example: lan
+        source:
+          type: string
+          description: The discovery source rows from this type carry
+          example: lan
+
+    StartDiscoveryScanRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: A registered discovery type (see /discovery/types)
+          example: lan
+        parameters:
+          type: object
+          description: Type-specific parameters. LAN -> {cidrs, ports?, concurrency?, timeout?}; Freebox -> {channelUid}.
+          additionalProperties: true
+          example:
+            cidrs: ["192.168.1.0/24"]
+
+    DiscoveryScan:
+      type: object
+      description: A discovery scan job. Its UID is the scan UID.
+      properties:
+        uid:
+          type: string
+        type:
+          type: string
+          description: The underlying job type (e.g. network_discovery_plan, freebox_lan_discovery)
+        status:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        scheduledAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DiscoveryScanProgress:
+      type: object
+      description: Uniform progress view for any scan. Non-chunked scans report totalChunks=1.
+      properties:
+        totalChunks:
+          type: integer
+        completedChunks:
+          type: integer
+        failedChunks:
+          type: integer
+        runningChunks:
+          type: integer
+        pendingChunks:
+          type: integer
+        derivedStatus:
+          type: string
+          enum: [pending, running, success, failed]
+        groupCount:
+          type: integer
+          description: Distinct group_key count rolled up under the scan
+        checkCount:
+          type: integer
+          description: Total suggested-check count rolled up under the scan
+
+    DiscoveredCheck:
+      type: object
+      description: One suggested check produced by a scan. Grouped for display by groupKey.
+      properties:
+        uid:
+          type: string
+        organizationUid:
+          type: string
+        jobUid:
+          type: string
+          description: The scan UID (plan UID for chunked scans)
+        source:
+          type: string
+          example: lan
+        groupKey:
+          type: string
+          description: Stable grouping identity (IP, container ID, workload uid)
+        groupLabel:
+          type: string
+          description: Display label (hostname-or-IP, container name, "ns/name")
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          type: string
+          description: Check type (http|tcp|icmp|docker|kubernetes…)
+        config:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          description: Denormalized group-display hints (identical across a group's rows)
+          additionalProperties: true
+        promotedToCheckUid:
+          type: string
+          nullable: true
+        discoveredAt:
+          type: string
+          format: date-time
+
+    PromoteChecksRequest:
+      type: object
+      required: [uids]
+      properties:
+        uids:
+          type: array
+          description: The discovered-check UIDs to promote (a group's UIDs promote the whole group)
+          items:
+            type: string
+        overrides:
+          type: object
+          description: Optional adjustments applied to every created check
+          properties:
+            name:
+              type: string
+            period:
+              type: string
+              description: ISO 8601 duration (e.g. PT1M)
