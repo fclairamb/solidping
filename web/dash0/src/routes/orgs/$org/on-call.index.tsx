@@ -93,12 +93,13 @@ function OnCallListPage() {
       <div className="flex flex-wrap items-center justify-end gap-4">
         <Button
           variant="outline"
-          size="icon"
           onClick={() => refetch()}
           disabled={isRefetching}
           data-testid="oncall-refresh"
+          aria-label={t("common:refresh")}
         >
-          <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+          <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
         </Button>
       </div>
 

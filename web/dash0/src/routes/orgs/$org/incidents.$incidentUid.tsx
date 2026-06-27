@@ -656,14 +656,14 @@ function IncidentDetailPage() {
           </Button>
           <Button
             variant="outline"
-            size="icon"
             aria-label={t("actions.refresh")}
             onClick={() => refetch()}
             disabled={isRefetching}
           >
             <RefreshCw
-              className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+              className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
             />
+            <span className="hidden sm:inline">{t("actions.refresh")}</span>
           </Button>
           {isActive && !incident.acknowledgedAt && !isSnoozed && (
             <Button

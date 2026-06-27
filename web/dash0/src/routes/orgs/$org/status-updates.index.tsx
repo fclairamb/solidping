@@ -353,14 +353,14 @@ function StatusUpdatesIndexPage() {
 
         <Button
           variant="outline"
-          size="icon"
           onClick={() => refetch()}
           disabled={isRefetching}
           aria-label="Refresh"
         >
           <RefreshCw
-            className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
           />
+          <span className="hidden sm:inline">Refresh</span>
         </Button>
       </div>
 

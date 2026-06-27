@@ -224,13 +224,14 @@ function TokensPage() {
         </div>
         <Button
           variant="outline"
-          size="icon"
           onClick={() => refetch()}
           disabled={isRefetching}
+          aria-label={t("common:refresh")}
         >
           <RefreshCw
-            className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`}
+            className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`}
           />
+          <span className="hidden sm:inline">{t("common:refresh")}</span>
         </Button>
         <Button data-testid="new-token-button" onClick={() => setCreateOpen(true)}>
           <Plus className="mr-2 h-4 w-4" />
