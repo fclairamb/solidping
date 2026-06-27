@@ -1,7 +1,6 @@
 package kubernetes_test
 
 import (
-	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -47,7 +46,9 @@ func newFixture(t *testing.T) *fixture {
 
 // newClusterConnection creates a kubernetes connection with the given public
 // settings and a plaintext token on Settings (credentials-disabled fallback).
-func (f *fixture) newClusterConnection(t *testing.T, settings *models.KubernetesSettings, token string) *models.Integration {
+func (f *fixture) newClusterConnection(
+	t *testing.T, settings *models.KubernetesSettings, token string,
+) *models.Integration {
 	t.Helper()
 
 	r := require.New(t)
@@ -77,6 +78,7 @@ func withFakeFactory(t *testing.T) {
 	t.Cleanup(restore)
 }
 
+//nolint:paralleltest // swaps the package-level clientset factory; must run serially.
 func TestResolveClientsetTokenAuth(t *testing.T) {
 	withFakeFactory(t)
 
@@ -91,6 +93,7 @@ func TestResolveClientsetTokenAuth(t *testing.T) {
 	r.NotNil(cs)
 }
 
+//nolint:paralleltest // swaps the package-level clientset factory; must run serially.
 func TestResolveClientsetByUID(t *testing.T) {
 	withFakeFactory(t)
 
@@ -106,6 +109,8 @@ func TestResolveClientsetByUID(t *testing.T) {
 }
 
 func TestResolveClientsetUnknownUID(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	f := newFixture(t)
 
@@ -116,6 +121,8 @@ func TestResolveClientsetUnknownUID(t *testing.T) {
 }
 
 func TestResolveClientsetWrongOrg(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	f := newFixture(t)
 	conn := f.newClusterConnection(t, &models.KubernetesSettings{APIServer: "https://x:6443"}, "tok")
@@ -125,6 +132,8 @@ func TestResolveClientsetWrongOrg(t *testing.T) {
 }
 
 func TestResolveClientsetWrongType(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 	f := newFixture(t)
 
@@ -153,8 +162,8 @@ func TestBuildRestConfigToken(t *testing.T) {
 	r.NoError(err)
 	r.Equal("https://api.example:6443", cfg.Host)
 	r.Equal("abc", cfg.BearerToken)
-	r.False(cfg.TLSClientConfig.Insecure)
-	r.NotEmpty(cfg.TLSClientConfig.CAData)
+	r.False(cfg.Insecure)
+	r.NotEmpty(cfg.CAData)
 }
 
 func TestBuildRestConfigInsecure(t *testing.T) {
@@ -171,8 +180,8 @@ func TestBuildRestConfigInsecure(t *testing.T) {
 		&models.KubernetesPrivateSettings{Token: "abc"},
 	)
 	r.NoError(err)
-	r.True(cfg.TLSClientConfig.Insecure)
-	r.Empty(cfg.TLSClientConfig.CAData, "CA must be ignored when insecure")
+	r.True(cfg.Insecure)
+	r.Empty(cfg.CAData, "CA must be ignored when insecure")
 }
 
 func TestBuildRestConfigMissingAPIServer(t *testing.T) {
@@ -254,7 +263,3 @@ func TestBuildRestConfigNilArgs(t *testing.T) {
 	_, err := integrationk8s.BuildRestConfig(nil, nil)
 	r.ErrorIs(err, integrationk8s.ErrMissingAPIServer)
 }
-
-// compile-time assurance that the resolver's return type is usable as a
-// kubernetes.Interface (the checker resolver contract).
-var _ func(context.Context, db.Service, credentials.Service, string, string) (kubernetes.Interface, error) = integrationk8s.ResolveClientset

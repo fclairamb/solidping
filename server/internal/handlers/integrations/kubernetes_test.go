@@ -77,6 +77,8 @@ func TestCreateKubernetesConnectionEncryptsToken(t *testing.T) {
 // TestTestKubernetesConnectionSuccess routes a kubernetes connection through the
 // TestIntegration path and confirms a healthy cluster probe reports success
 // with the server version, rather than being rejected as non-notifiable.
+//
+//nolint:paralleltest // swaps the package-level clientset factory; must run serially.
 func TestTestKubernetesConnectionSuccess(t *testing.T) {
 	restore := integrationk8s.SetClientsetFactory(func(*rest.Config) (kubernetes.Interface, error) {
 		cs := fake.NewSimpleClientset()
@@ -105,6 +107,8 @@ func TestTestKubernetesConnectionSuccess(t *testing.T) {
 
 // TestTestKubernetesConnectionFailure confirms an auth/RBAC failure on the probe
 // is surfaced as Success=false with the error (not an error return).
+//
+//nolint:paralleltest // swaps the package-level clientset factory; must run serially.
 func TestTestKubernetesConnectionFailure(t *testing.T) {
 	restore := integrationk8s.SetClientsetFactory(func(*rest.Config) (kubernetes.Interface, error) {
 		cs := fake.NewSimpleClientset()

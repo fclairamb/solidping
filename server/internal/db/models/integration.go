@@ -269,6 +269,8 @@ type FreeboxPrivateSettings struct {
 // "kubeconfig" keys (see KubernetesPrivateSettings). An in-cluster connection
 // (InCluster=true) stores no secret and is resolved via the mounted service
 // account at connect time.
+//
+//nolint:tagliatelle // keep the TLS acronym uppercase (matches spec + kubeconfig).
 type KubernetesSettings struct {
 	// APIServer is the cluster API server URL (e.g. "https://10.0.0.1:6443").
 	// Empty when InCluster is true.
@@ -330,13 +332,13 @@ type KubernetesPrivateSettings struct {
 // KubernetesPrivateSettingsFromMap parses the decrypted secret half from a
 // plaintext map (the shape returned by credentials.DecryptForOrg or the
 // plaintext fallback on Settings).
-func KubernetesPrivateSettingsFromMap(m map[string]any) *KubernetesPrivateSettings {
+func KubernetesPrivateSettingsFromMap(decrypted map[string]any) *KubernetesPrivateSettings {
 	priv := &KubernetesPrivateSettings{}
-	if v, ok := m["token"].(string); ok {
+	if v, ok := decrypted["token"].(string); ok {
 		priv.Token = v
 	}
 
-	if v, ok := m["kubeconfig"].(string); ok {
+	if v, ok := decrypted["kubeconfig"].(string); ok {
 		priv.Kubeconfig = v
 	}
 

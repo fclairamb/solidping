@@ -17,11 +17,19 @@ import (
 
 const microsecondsPerMilli = 1000.0
 
+// metricQueryTimeMs is the metric key for the per-execution API query time.
+const metricQueryTimeMs = "query_time_ms"
+
 // reasonProgressDeadlineExceeded is the Deployment Progressing-condition reason
 // the controller sets when a rollout exceeds its progress deadline (a stuck
 // rollout). It is a stable Kubernetes API string; we match on it without
 // importing the kubernetes core package (not vendored).
 const reasonProgressDeadlineExceeded = "ProgressDeadlineExceeded"
+
+// ErrUnsupportedKind is returned for a workload kind not handled by the
+// checker. Validate rejects bad kinds before Execute, so this is unreachable in
+// practice; it exists to satisfy the static-error contract.
+var ErrUnsupportedKind = errors.New("kubernetes: unsupported workload kind")
 
 // ClientsetResolver resolves a stored cluster connection UID to an
 // authenticated clientset. Implementations own the DB lookup and the
@@ -175,13 +183,13 @@ func fetchWorkloadStatus(
 		return replicaSetStatus(rs), nil
 	default:
 		// Unreachable: Validate rejects other kinds before Execute.
-		return nil, fmt.Errorf("unsupported workload kind %q", cfg.Kind)
+		return nil, fmt.Errorf("%w: %q", ErrUnsupportedKind, cfg.Kind)
 	}
 }
 
 // deploymentStatus normalizes a Deployment's spec/status into a workloadStatus.
 func deploymentStatus(dep *appsv1.Deployment) *workloadStatus {
-	ws := &workloadStatus{
+	status := &workloadStatus{
 		desired:     derefReplicas(dep.Spec.Replicas),
 		ready:       dep.Status.ReadyReplicas,
 		available:   dep.Status.AvailableReplicas,
@@ -190,8 +198,10 @@ func deploymentStatus(dep *appsv1.Deployment) *workloadStatus {
 		images:      containerImages(dep.Spec.Template.Spec.Containers),
 	}
 
-	for _, cond := range dep.Status.Conditions {
-		ws.conditions = append(ws.conditions, conditionView{
+	conds := dep.Status.Conditions
+	for i := range conds {
+		cond := &conds[i]
+		status.conditions = append(status.conditions, conditionView{
 			Type:   string(cond.Type),
 			Status: string(cond.Status),
 			Reason: cond.Reason,
@@ -200,48 +210,48 @@ func deploymentStatus(dep *appsv1.Deployment) *workloadStatus {
 		if cond.Type == appsv1.DeploymentProgressing &&
 			cond.Status == corev1.ConditionFalse &&
 			cond.Reason == reasonProgressDeadlineExceeded {
-			ws.stuckRollout = true
+			status.stuckRollout = true
 		}
 	}
 
-	return ws
+	return status
 }
 
 // replicaSetStatus normalizes a ReplicaSet's spec/status. ReplicaSets have no
 // Progressing condition, so stuckRollout is never set.
-func replicaSetStatus(rs *appsv1.ReplicaSet) *workloadStatus {
+func replicaSetStatus(replicaSet *appsv1.ReplicaSet) *workloadStatus {
 	return &workloadStatus{
-		desired:   derefReplicas(rs.Spec.Replicas),
-		ready:     rs.Status.ReadyReplicas,
-		available: rs.Status.AvailableReplicas,
-		updated:   rs.Status.FullyLabeledReplicas,
-		images:    containerImages(rs.Spec.Template.Spec.Containers),
+		desired:   derefReplicas(replicaSet.Spec.Replicas),
+		ready:     replicaSet.Status.ReadyReplicas,
+		available: replicaSet.Status.AvailableReplicas,
+		updated:   replicaSet.Status.FullyLabeledReplicas,
+		images:    containerImages(replicaSet.Spec.Template.Spec.Containers),
 	}
 }
 
 // buildResult applies the spec's Q1 up/warning/down rule and assembles the
 // Result with outputs + metrics.
 func buildResult(
-	cfg *KubernetesConfig, ws *workloadStatus, start time.Time,
+	cfg *KubernetesConfig, workload *workloadStatus, start time.Time,
 ) *checkerdef.Result {
 	output := map[string]any{
 		"namespace":  cfg.Namespace,
 		"kind":       cfg.Kind,
 		"name":       cfg.Name,
-		"images":     ws.images,
-		"conditions": ws.conditions,
+		"images":     workload.images,
+		"conditions": workload.conditions,
 	}
 
 	metrics := map[string]any{
-		"desiredReplicas":     ws.desired,
-		"readyReplicas":       ws.ready,
-		"availableReplicas":   ws.available,
-		"updatedReplicas":     ws.updated,
-		"unavailableReplicas": ws.unavailable,
-		"query_time_ms":       durationMs(time.Since(start)),
+		"desiredReplicas":     workload.desired,
+		"readyReplicas":       workload.ready,
+		"availableReplicas":   workload.available,
+		"updatedReplicas":     workload.updated,
+		"unavailableReplicas": workload.unavailable,
+		metricQueryTimeMs:     durationMs(time.Since(start)),
 	}
 
-	status, note := classifyReplicaHealth(ws)
+	status, note := classifyReplicaHealth(workload)
 	if note != "" {
 		output[checkerdef.OutputKeyError] = note
 	}
@@ -263,21 +273,21 @@ func buildResult(
 //   - up: ready == desired and desired > 0.
 //
 // The returned note is a human-readable reason for non-up statuses.
-func classifyReplicaHealth(ws *workloadStatus) (checkerdef.Status, string) {
-	if ws.stuckRollout {
+func classifyReplicaHealth(workload *workloadStatus) (checkerdef.Status, string) {
+	if workload.stuckRollout {
 		return checkerdef.StatusDown, "rollout stuck: " + reasonProgressDeadlineExceeded
 	}
 
-	if ws.desired == 0 {
+	if workload.desired == 0 {
 		return checkerdef.StatusWarning, "workload is scaled to zero (0 desired replicas)"
 	}
 
-	if ws.ready == 0 {
-		return checkerdef.StatusDown, fmt.Sprintf("no ready replicas (0/%d ready)", ws.desired)
+	if workload.ready == 0 {
+		return checkerdef.StatusDown, fmt.Sprintf("no ready replicas (0/%d ready)", workload.desired)
 	}
 
-	if ws.ready < ws.desired {
-		return checkerdef.StatusWarning, fmt.Sprintf("partially ready (%d/%d ready)", ws.ready, ws.desired)
+	if workload.ready < workload.desired {
+		return checkerdef.StatusWarning, fmt.Sprintf("partially ready (%d/%d ready)", workload.ready, workload.desired)
 	}
 
 	return checkerdef.StatusUp, ""
@@ -292,7 +302,7 @@ func classifyFetchError(ctx context.Context, err error, start time.Time) *checke
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusDown,
 			Duration: time.Since(start),
-			Metrics:  map[string]any{"query_time_ms": durationMs(time.Since(start))},
+			Metrics:  map[string]any{metricQueryTimeMs: durationMs(time.Since(start))},
 			Output:   map[string]any{checkerdef.OutputKeyError: "workload not found"},
 		}
 	}
@@ -301,7 +311,7 @@ func classifyFetchError(ctx context.Context, err error, start time.Time) *checke
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Metrics:  map[string]any{"query_time_ms": durationMs(time.Since(start))},
+			Metrics:  map[string]any{metricQueryTimeMs: durationMs(time.Since(start))},
 			Output:   map[string]any{checkerdef.OutputKeyError: "connection timeout"},
 		}
 	}
@@ -309,7 +319,7 @@ func classifyFetchError(ctx context.Context, err error, start time.Time) *checke
 	return &checkerdef.Result{
 		Status:   checkerdef.StatusDown,
 		Duration: time.Since(start),
-		Metrics:  map[string]any{"query_time_ms": durationMs(time.Since(start))},
+		Metrics:  map[string]any{metricQueryTimeMs: durationMs(time.Since(start))},
 		Output:   map[string]any{checkerdef.OutputKeyError: "workload fetch failed: " + err.Error()},
 	}
 }

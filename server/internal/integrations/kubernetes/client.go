@@ -138,7 +138,7 @@ func resolveClusterConnection(
 // resolvePrivateSettings decrypts the token/kubeconfig stored on a cluster
 // connection. Honors both the encrypted-private path and the plaintext fallback
 // (credentials disabled), matching the integrations service's
-// applySettingsEncryption fallback behaviour.
+// applySettingsEncryption fallback behavior.
 func resolvePrivateSettings(
 	ctx context.Context, creds credentials.Service, conn *models.Integration,
 ) (*models.KubernetesPrivateSettings, error) {
@@ -156,7 +156,8 @@ func resolvePrivateSettings(
 	}
 
 	// Plaintext fallback (credentials disabled): the same keys live on the
-	// public Settings map.
+	// public Settings map (matching the integrations service's
+	// applySettingsEncryption fallback behavior).
 	return models.KubernetesPrivateSettingsFromMap(conn.Settings), nil
 }
 
@@ -215,12 +216,10 @@ func buildTokenConfig(
 		BearerToken: priv.Token,
 	}
 
-	cfg.TLSClientConfig = rest.TLSClientConfig{
-		Insecure: settings.InsecureSkipTLSVerify,
-	}
+	cfg.Insecure = settings.InsecureSkipTLSVerify
 
 	if !settings.InsecureSkipTLSVerify && settings.CACert != "" {
-		cfg.TLSClientConfig.CAData = []byte(settings.CACert)
+		cfg.CAData = []byte(settings.CACert)
 	}
 
 	return cfg, nil

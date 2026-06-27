@@ -2,7 +2,6 @@ package kubernetes_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -16,7 +15,7 @@ import (
 	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 )
 
-// contextCancelled returns an already-cancelled context plus its cancel func.
+// contextCancelled returns an already-canceled context plus its cancel func.
 func contextCancelled() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -75,6 +74,5 @@ func TestValidateConnectionContextCancelled(t *testing.T) {
 
 	cs := fake.NewSimpleClientset()
 	_, err := integrationk8s.ValidateConnection(ctx, cs)
-	r.Error(err)
-	r.True(errors.Is(err, context.Canceled))
+	r.ErrorIs(err, context.Canceled)
 }

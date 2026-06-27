@@ -25,6 +25,9 @@ const (
 	testCluster   = "cluster-uid"
 )
 
+// errBadCluster is a static sentinel for the resolver-failure test (err113).
+var errBadCluster = errors.New("bad cluster")
+
 func ptrInt32(v int32) *int32 { return &v }
 
 // deployment builds an apps/v1 Deployment fixture with the given replica counts.
@@ -181,7 +184,7 @@ func TestExecuteResolverError(t *testing.T) {
 
 	r := require.New(t)
 	resolver := func(_ context.Context, _ string) (kubernetes.Interface, error) {
-		return nil, errors.New("bad cluster")
+		return nil, errBadCluster
 	}
 
 	res := runExecute(t, deploymentConfig("web"), resolver)
