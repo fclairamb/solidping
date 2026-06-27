@@ -367,7 +367,7 @@ changes beyond the rows existing.
   ["unix:///var/run/docker.sock"] } }`; confirm running containers render **grouped**
   with a `docker` suggestion + published-port suggestions, select a group and promote,
   confirm the resulting checks carry `auto-discovery: true` and run green.
-- **Guards:** invalid endpoint scheme → 400 `DISCOVERY_INVALID_PARAMETERS`; second
+- **Guards:** invalid endpoint scheme → 422 `DISCOVERY_INVALID_PARAMETERS`; second
   concurrent container scan → 409 `DISCOVERY_ALREADY_RUNNING`; non-admin → 403.
 - `make lint && make test && make test-dash`.
 
