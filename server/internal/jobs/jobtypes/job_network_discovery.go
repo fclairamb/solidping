@@ -5,9 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
-
-	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
@@ -44,7 +41,8 @@ type NetworkDiscoveryJobRun struct {
 	config disc.Config
 }
 
-// Run executes the network discovery scan.
+// Run executes the network discovery scan and persists the suggested checks it
+// produces (grouped by host IP) into discovered_checks.
 func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
@@ -54,9 +52,9 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 
 	orgUID := *jctx.OrganizationUID
 
-	// Hosts roll up under the parent plan job when this is a fan-out child, so the
-	// scan-detail page sees every chunk's hosts under one UID. A standalone scan
-	// (no parent) persists under its own job UID.
+	// Suggested checks roll up under the parent plan job when this is a fan-out
+	// child, so the scan-detail page sees every chunk's checks under one UID. A
+	// standalone scan (no parent) persists under its own job UID.
 	jobUID := jctx.Job.UID
 	if r.config.ParentJobUID != "" {
 		jobUID = r.config.ParentJobUID
@@ -76,61 +74,18 @@ func (r *NetworkDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContex
 		return fmt.Errorf("scan failed: %w", err)
 	}
 
+	// Flatten every host's grouped suggested checks into a single row set.
+	rows := make([]disc.SuggestedCheck, 0, len(hosts))
+	for i := range hosts {
+		rows = append(rows, hosts[i].SuggestedChecks...)
+	}
+
 	log.InfoContext(ctx, "Network discovery scan complete",
 		"host_count", len(hosts),
+		"check_count", len(rows),
 		"org_uid", orgUID,
 		"job_uid", jobUID,
 	)
 
-	if err := r.persistHosts(ctx, jctx.DB, orgUID, jobUID, hosts, log); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// persistHosts upserts the discovered hosts into the database.
-func (r *NetworkDiscoveryJobRun) persistHosts(
-	ctx context.Context,
-	db *bun.DB,
-	orgUID, jobUID string,
-	hosts []disc.DiscoveredHost,
-	log *slog.Logger,
-) error {
-	for idx := range hosts {
-		discovered := &hosts[idx]
-		openPortsJSON, err := json.Marshal(discovered.OpenPorts)
-		if err != nil {
-			return fmt.Errorf("marshal open_ports for %s: %w", discovered.IP, err)
-		}
-
-		suggestedJSON, err := json.Marshal(discovered.SuggestedChecks)
-		if err != nil {
-			return fmt.Errorf("marshal suggested_checks for %s: %w", discovered.IP, err)
-		}
-
-		host := models.NewDiscoveredHost(orgUID, jobUID, discovered.IP, models.DiscoverySourceLAN)
-		host.Hostname = discovered.Hostname
-		host.ICMPReachable = discovered.ICMPReachable
-		host.OpenPorts = openPortsJSON
-		host.SuggestedChecks = suggestedJSON
-
-		_, err = db.NewInsert().
-			Model(host).
-			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
-			Set("job_uid = EXCLUDED.job_uid").
-			Set("hostname = EXCLUDED.hostname").
-			Set("open_ports = EXCLUDED.open_ports").
-			Set("icmp_reachable = EXCLUDED.icmp_reachable").
-			Set("suggested_checks = EXCLUDED.suggested_checks").
-			Set("discovered_at = EXCLUDED.discovered_at").
-			Exec(ctx)
-		if err != nil {
-			log.WarnContext(ctx, "failed to upsert discovered host",
-				"ip", discovered.IP, "error", err)
-			// Continue with other hosts; don't abort the whole scan.
-		}
-	}
-
-	return nil
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceLAN, rows, log)
 }
