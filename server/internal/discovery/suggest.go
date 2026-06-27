@@ -23,6 +23,13 @@ const (
 // schemeICMP is the scheme label used when building an ICMP check name/slug.
 const schemeICMP = "icmp"
 
+// Config keys shared across suggested-check builders.
+const (
+	cfgKeyHost = "host"
+	cfgKeyURL  = "url"
+	cfgKeyPort = "port"
+)
+
 // nonSlugChars matches any run of characters that are not lowercase
 // alphanumerics, for slug normalization.
 var nonSlugChars = regexp.MustCompile(`[^a-z0-9]+`)
@@ -65,7 +72,7 @@ func SuggestChecks(ip, hostname string, icmpReachable bool, openPorts []int) []S
 			Name:       checkName(groupLabel, schemeICMP),
 			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeICMP, 0)),
 			Type:       checkTypePing,
-			Config:     mustJSON(map[string]any{"host": ip}),
+			Config:     mustJSON(map[string]any{cfgKeyHost: ip}),
 			Metadata:   meta,
 		})
 	}
@@ -113,7 +120,7 @@ func suggestForPort(ip, groupLabel string, port int, seen map[string]struct{}) *
 				Name:       checkName(groupLabel, scheme),
 				Slug:       dedupSlug(seen, checkSlug(groupLabel, scheme, port)),
 				Type:       checkTypeHTTP,
-				Config:     mustJSON(map[string]any{"url": fmt.Sprintf(spec.URLTmpl, ip)}),
+				Config:     mustJSON(map[string]any{cfgKeyURL: fmt.Sprintf(spec.URLTmpl, ip)}),
 			}
 		}
 
@@ -123,7 +130,7 @@ func suggestForPort(ip, groupLabel string, port int, seen map[string]struct{}) *
 			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, scheme), port),
 			Slug:       dedupSlug(seen, checkSlug(groupLabel, scheme, port)),
 			Type:       checkTypeTCP,
-			Config:     mustJSON(map[string]any{"host": ip, "port": port}),
+			Config:     mustJSON(map[string]any{cfgKeyHost: ip, cfgKeyPort: port}),
 		}
 	}
 
@@ -225,32 +232,41 @@ type ContainerSuggestInput struct {
 	Ports        []ContainerPort
 }
 
+// schemeDocker/schemeHTTP/schemeHTTPS/schemeTCP are the scheme labels used when
+// building suggested-check names/slugs for a container.
+const (
+	schemeDocker = "docker"
+	schemeHTTP   = "HTTP"
+	schemeHTTPS  = "HTTPS"
+	schemeTCP    = "TCP"
+)
+
 // SuggestContainerChecks returns the grouped suggested checks for one discovered
 // container. Every row shares group_key=containerID, group_label=name, and
 // metadata={image, state, healthStatus, dockerHost}. A `docker` check is always
 // emitted (the HEALTHCHECK mirror); each PUBLISHED port additionally yields an
 // http/https/tcp check on the host-published port. Slugs are deduped within the
 // group.
-func SuggestContainerChecks(in ContainerSuggestInput) []SuggestedCheck {
-	groupLabel := in.Name
+func SuggestContainerChecks(input *ContainerSuggestInput) []SuggestedCheck {
+	groupLabel := input.Name
 	if groupLabel == "" {
-		groupLabel = in.ContainerID
+		groupLabel = input.ContainerID
 	}
 
-	meta := containerMetadata(in)
+	meta := containerMetadata(input)
 	seen := make(map[string]struct{})
 
 	var suggestions []SuggestedCheck
 
 	// Primary: the docker check. Always emitted — it covers containers that
 	// publish no ports (the "internal service behind a reverse proxy" case).
-	dockerCfg := map[string]any{"containerName": in.Name}
-	if in.DockerHost != "" {
-		dockerCfg["host"] = in.DockerHost
+	dockerCfg := map[string]any{"containerName": input.Name}
+	if input.DockerHost != "" {
+		dockerCfg[cfgKeyHost] = input.DockerHost
 	}
 
 	suggestions = append(suggestions, SuggestedCheck{
-		GroupKey:   in.ContainerID,
+		GroupKey:   input.ContainerID,
 		GroupLabel: groupLabel,
 		Name:       checkName(groupLabel, schemeDocker),
 		Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeDocker, 0)),
@@ -260,13 +276,13 @@ func SuggestContainerChecks(in ContainerSuggestInput) []SuggestedCheck {
 	})
 
 	// Secondary: one check per published port, reachable on the host address.
-	host := in.HostAddress
+	host := input.HostAddress
 	if host == "" {
-		host = dockerHostAddress(in.DockerHost)
+		host = dockerHostAddress(input.DockerHost)
 	}
 
-	for _, port := range in.Ports {
-		sc := suggestForContainerPort(in.ContainerID, groupLabel, host, port, seen)
+	for i := range input.Ports {
+		sc := suggestForContainerPort(input.ContainerID, groupLabel, host, input.Ports[i], seen)
 		if sc != nil {
 			sc.Metadata = meta
 			suggestions = append(suggestions, *sc)
@@ -276,17 +292,14 @@ func SuggestContainerChecks(in ContainerSuggestInput) []SuggestedCheck {
 	return suggestions
 }
 
-// schemeDocker is the scheme label used when building a docker check name/slug.
-const schemeDocker = "docker"
-
 // containerMetadata builds the denormalized group-display metadata shared across
 // a container's suggested-check rows.
-func containerMetadata(in ContainerSuggestInput) json.RawMessage {
+func containerMetadata(input *ContainerSuggestInput) json.RawMessage {
 	return mustJSON(map[string]any{
-		"image":        in.Image,
-		"state":        in.State,
-		"healthStatus": in.HealthStatus,
-		"dockerHost":   in.DockerHost,
+		"image":        input.Image,
+		"state":        input.State,
+		"healthStatus": input.HealthStatus,
+		"dockerHost":   input.DockerHost,
 	})
 }
 
@@ -302,34 +315,35 @@ func suggestForContainerPort(
 	}
 
 	public := int(port.PublicPort)
+	hostPort := net.JoinHostPort(host, strconv.Itoa(public))
 
 	switch port.PrivatePort {
 	case 80, 8080:
 		return &SuggestedCheck{
 			GroupKey:   containerID,
 			GroupLabel: groupLabel,
-			Name:       checkName(groupLabel, "HTTP"),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, "HTTP", public)),
+			Name:       checkName(groupLabel, schemeHTTP),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTP, public)),
 			Type:       checkTypeHTTP,
-			Config:     mustJSON(map[string]any{"url": fmt.Sprintf("http://%s:%d", host, public)}),
+			Config:     mustJSON(map[string]any{cfgKeyURL: "http://" + hostPort}),
 		}
 	case 443, 8443:
 		return &SuggestedCheck{
 			GroupKey:   containerID,
 			GroupLabel: groupLabel,
-			Name:       checkName(groupLabel, "HTTPS"),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, "HTTPS", public)),
+			Name:       checkName(groupLabel, schemeHTTPS),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTPS, public)),
 			Type:       checkTypeHTTP,
-			Config:     mustJSON(map[string]any{"url": fmt.Sprintf("https://%s:%d", host, public)}),
+			Config:     mustJSON(map[string]any{cfgKeyURL: "https://" + hostPort}),
 		}
 	default:
 		return &SuggestedCheck{
 			GroupKey:   containerID,
 			GroupLabel: groupLabel,
-			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, "TCP"), public),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, "TCP", public)),
+			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, schemeTCP), public),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeTCP, public)),
 			Type:       checkTypeTCP,
-			Config:     mustJSON(map[string]any{"host": host, "port": public}),
+			Config:     mustJSON(map[string]any{cfgKeyHost: host, cfgKeyPort: public}),
 		}
 	}
 }

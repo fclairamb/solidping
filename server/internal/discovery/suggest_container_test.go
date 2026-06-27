@@ -63,12 +63,12 @@ func TestSuggestContainerChecksGroupedRows(t *testing.T) {
 				Name:         "web",
 				Image:        "nginx:latest",
 				State:        "running",
-				HealthStatus: "healthy",
+				HealthStatus: HealthHealthy,
 				DockerHost:   "unix:///var/run/docker.sock",
 				Ports:        tc.ports,
 			}
 
-			got := SuggestContainerChecks(in)
+			got := SuggestContainerChecks(&in)
 			r.Len(got, len(tc.wantTypes))
 
 			for i, wantType := range tc.wantTypes {
@@ -90,7 +90,7 @@ func TestSuggestContainerChecksGroupedRows(t *testing.T) {
 				r.NoError(json.Unmarshal(got[i].Metadata, &meta))
 				r.Equal("nginx:latest", meta.Image)
 				r.Equal("running", meta.State)
-				r.Equal("healthy", meta.HealthStatus)
+				r.Equal(HealthHealthy, meta.HealthStatus)
 				r.Equal("unix:///var/run/docker.sock", meta.DockerHost)
 			}
 		})
@@ -102,7 +102,7 @@ func TestSuggestContainerChecksDockerConfigAlwaysPresent(t *testing.T) {
 
 	r := require.New(t)
 
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "id-1",
 		Name:        "db",
 		DockerHost:  "tcp://10.0.0.5:2375",
@@ -126,7 +126,7 @@ func TestSuggestContainerChecksPublishedPortUsesHostAddress(t *testing.T) {
 
 	// A tcp:// endpoint: the published-port check targets the endpoint host, not
 	// localhost, with the host-published port (not the container-side port).
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "id-2",
 		Name:        "api",
 		DockerHost:  "tcp://10.0.0.5:2375",
@@ -157,7 +157,7 @@ func TestSuggestContainerChecksUnixHostFallsBackToLoopback(t *testing.T) {
 
 	r := require.New(t)
 
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "id-3",
 		Name:        "cache",
 		DockerHost:  "unix:///var/run/docker.sock",
@@ -179,7 +179,7 @@ func TestSuggestContainerChecksExplicitHostAddressWins(t *testing.T) {
 
 	r := require.New(t)
 
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "id-4",
 		Name:        "svc",
 		DockerHost:  "unix:///var/run/docker.sock",
@@ -202,7 +202,7 @@ func TestSuggestContainerChecksSlugsDedupedWithinGroup(t *testing.T) {
 
 	// Two published ports that both map to HTTP would collide on a port-less slug
 	// were it not for the port suffix + dedup; assert all slugs are distinct.
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "id-5",
 		Name:        "multi",
 		DockerHost:  "tcp://10.0.0.9:2375",
@@ -226,7 +226,7 @@ func TestSuggestContainerChecksGroupLabelFallsBackToID(t *testing.T) {
 
 	r := require.New(t)
 
-	got := SuggestContainerChecks(ContainerSuggestInput{
+	got := SuggestContainerChecks(&ContainerSuggestInput{
 		ContainerID: "deadbeef",
 		Name:        "",
 		DockerHost:  "unix:///var/run/docker.sock",

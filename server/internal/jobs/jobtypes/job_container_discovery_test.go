@@ -22,8 +22,13 @@ import (
 
 // startFakeDocker stands up an httptest Docker API serving the negotiation ping
 // and GET /containers/json, returning a tcp:// endpoint for the Docker client.
+// The container list is marshaled up front so the handler (which runs on the
+// server's goroutine) does no assertions.
 func startFakeDocker(t *testing.T, summaries []container.Summary) string {
 	t.Helper()
+
+	body, err := json.Marshal(summaries)
+	require.NoError(t, err)
 
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -33,7 +38,7 @@ func startFakeDocker(t *testing.T, summaries []container.Summary) string {
 			w.WriteHeader(http.StatusOK)
 		case strings.HasSuffix(r.URL.Path, "/containers/json"):
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(summaries)
+			_, _ = w.Write(body)
 		default:
 			http.NotFound(w, r)
 		}

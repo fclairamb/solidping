@@ -14,6 +14,13 @@ import (
 // config does not set one.
 const defaultContainerListTimeout = 10 * time.Second
 
+// Container health-status words recognized in a container's Status string.
+const (
+	HealthHealthy   = "healthy"
+	HealthUnhealthy = "unhealthy"
+	HealthStarting  = "starting"
+)
+
 // DiscoveredContainer is one running container enumerated from a configured
 // Docker-compatible endpoint. It is the engine's output, independent of the job
 // plumbing and of the suggested-check shape, so it can be unit-tested against a
@@ -60,30 +67,30 @@ func ListContainers(ctx context.Context, endpoint string, timeout time.Duration)
 
 	out := make([]DiscoveredContainer, 0, len(summaries))
 	for i := range summaries {
-		out = append(out, mapSummary(summaries[i]))
+		out = append(out, mapSummary(&summaries[i]))
 	}
 
 	return out, nil
 }
 
 // mapSummary converts a Docker container summary into a DiscoveredContainer.
-func mapSummary(s container.Summary) DiscoveredContainer {
-	ports := make([]ContainerPort, 0, len(s.Ports))
-	for _, p := range s.Ports {
+func mapSummary(summary *container.Summary) DiscoveredContainer {
+	ports := make([]ContainerPort, 0, len(summary.Ports))
+	for i := range summary.Ports {
 		ports = append(ports, ContainerPort{
-			PrivatePort: p.PrivatePort,
-			PublicPort:  p.PublicPort,
-			Type:        p.Type,
+			PrivatePort: summary.Ports[i].PrivatePort,
+			PublicPort:  summary.Ports[i].PublicPort,
+			Type:        summary.Ports[i].Type,
 		})
 	}
 
 	return DiscoveredContainer{
-		ID:           s.ID,
-		Name:         containerName(s.Names),
-		Image:        s.Image,
-		State:        s.State,
-		Status:       s.Status,
-		HealthStatus: parseHealthStatus(s.Status),
+		ID:           summary.ID,
+		Name:         containerName(summary.Names),
+		Image:        summary.Image,
+		State:        summary.State,
+		Status:       summary.Status,
+		HealthStatus: parseHealthStatus(summary.Status),
 		Ports:        ports,
 	}
 }
@@ -121,7 +128,7 @@ func parseHealthStatus(status string) string {
 	}
 
 	switch inner {
-	case "healthy", "unhealthy", "starting":
+	case HealthHealthy, HealthUnhealthy, HealthStarting:
 		return inner
 	default:
 		return ""

@@ -47,20 +47,20 @@ func (d *ContainerDefinition) BuildJob(
 
 	hosts := make([]string, 0, len(params.Hosts))
 
-	for _, h := range params.Hosts {
-		h = strings.TrimSpace(h)
-		if h == "" {
+	for _, endpoint := range params.Hosts {
+		endpoint = strings.TrimSpace(endpoint)
+		if endpoint == "" {
 			continue
 		}
 
-		if !isSupportedDockerEndpoint(h) {
+		if !isSupportedDockerEndpoint(endpoint) {
 			return "", nil, NewError(
 				CodeInvalidParameters,
-				"endpoint must start with unix:// or tcp:// (got "+h+")",
+				"endpoint must start with unix:// or tcp:// (got "+endpoint+")",
 			)
 		}
 
-		hosts = append(hosts, h)
+		hosts = append(hosts, endpoint)
 	}
 
 	if len(hosts) == 0 {

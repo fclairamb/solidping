@@ -19,6 +19,11 @@ import (
 func fakeDockerAPI(t *testing.T, summaries []container.Summary) string {
 	t.Helper()
 
+	// Marshal up front so the handler (running on the server goroutine) does no
+	// assertions — testifylint forbids require inside an http handler.
+	body, err := json.Marshal(summaries)
+	require.NoError(t, err)
+
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/_ping"):
@@ -27,7 +32,7 @@ func fakeDockerAPI(t *testing.T, summaries []container.Summary) string {
 			w.WriteHeader(http.StatusOK)
 		case strings.HasSuffix(r.URL.Path, "/containers/json"):
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(summaries)
+			_, _ = w.Write(body)
 		default:
 			http.NotFound(w, r)
 		}
@@ -75,7 +80,7 @@ func TestListContainersMapsSummaries(t *testing.T) {
 	r.Equal("web", web.Name, "leading slash must be stripped")
 	r.Equal("nginx:latest", web.Image)
 	r.Equal("running", web.State)
-	r.Equal("healthy", web.HealthStatus)
+	r.Equal(HealthHealthy, web.HealthStatus)
 	r.Len(web.Ports, 2)
 	r.Equal(uint16(80), web.Ports[0].PrivatePort)
 	r.Equal(uint16(8080), web.Ports[0].PublicPort)
@@ -83,7 +88,7 @@ func TestListContainersMapsSummaries(t *testing.T) {
 
 	db := got[1]
 	r.Equal("db", db.Name)
-	r.Equal("", db.HealthStatus, "no health suffix means empty health status")
+	r.Empty(db.HealthStatus, "no health suffix means empty health status")
 }
 
 func TestListContainersEmpty(t *testing.T) {
@@ -115,9 +120,9 @@ func TestParseHealthStatus(t *testing.T) {
 		status string
 		want   string
 	}{
-		{"Up 2 hours (healthy)", "healthy"},
-		{"Up 5 minutes (unhealthy)", "unhealthy"},
-		{"Up 1 second (health: starting)", "starting"},
+		{"Up 2 hours (" + HealthHealthy + ")", HealthHealthy},
+		{"Up 5 minutes (" + HealthUnhealthy + ")", HealthUnhealthy},
+		{"Up 1 second (health: " + HealthStarting + ")", HealthStarting},
 		{"Up 3 days", ""},
 		{"Exited (0) 2 hours ago", ""}, // "(0)" is not a health word
 		{"", ""},

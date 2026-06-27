@@ -88,7 +88,7 @@ func (r *ContainerDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCont
 		}
 
 		for i := range containers {
-			rows = append(rows, buildContainerRows(host, containers[i])...)
+			rows = append(rows, buildContainerRows(host, &containers[i])...)
 		}
 	}
 
@@ -119,14 +119,14 @@ func (r *ContainerDiscoveryJobRun) resolveTimeout() time.Duration {
 
 // buildContainerRows turns one discovered container into its group of
 // suggested-check rows, carrying the endpoint as the docker host.
-func buildContainerRows(host string, c disc.DiscoveredContainer) []disc.SuggestedCheck {
-	return disc.SuggestContainerChecks(disc.ContainerSuggestInput{
-		ContainerID:  c.ID,
-		Name:         c.Name,
-		Image:        c.Image,
-		State:        c.State,
-		HealthStatus: c.HealthStatus,
+func buildContainerRows(host string, cont *disc.DiscoveredContainer) []disc.SuggestedCheck {
+	return disc.SuggestContainerChecks(&disc.ContainerSuggestInput{
+		ContainerID:  cont.ID,
+		Name:         cont.Name,
+		Image:        cont.Image,
+		State:        cont.State,
+		HealthStatus: cont.HealthStatus,
 		DockerHost:   host,
-		Ports:        c.Ports,
+		Ports:        cont.Ports,
 	})
 }
