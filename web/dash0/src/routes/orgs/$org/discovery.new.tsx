@@ -55,19 +55,30 @@ function NewScanPage() {
     [channels],
   );
 
+  // Kubernetes cluster connections — Kubernetes is only offered when one exists.
+  const kubernetesClusters = useMemo(
+    () => (channels ?? []).filter((c) => c.type === "kubernetes"),
+    [channels],
+  );
+
   // The selectable types are the registry's, gated by client capability: Freebox
-  // only appears when a granted channel exists.
+  // only appears when a granted channel exists; Kubernetes only when a cluster
+  // connection exists.
   const availableTypes = useMemo(() => {
     const registered = (types ?? []).map((d) => d.type);
     // Default to LAN even before the registry list loads, so the form is usable.
     const set = registered.length > 0 ? registered : ["lan"];
-    return set.filter(
-      (typ) => typ !== "freebox" || grantedFreeboxChannels.length > 0,
-    );
-  }, [types, grantedFreeboxChannels]);
+    return set.filter((typ) => {
+      if (typ === "freebox") return grantedFreeboxChannels.length > 0;
+      if (typ === "kubernetes") return kubernetesClusters.length > 0;
+      return true;
+    });
+  }, [types, grantedFreeboxChannels, kubernetesClusters]);
 
   const [type, setType] = useState("lan");
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
+  const [selectedClusterUid, setSelectedClusterUid] = useState("");
+  const [namespacesText, setNamespacesText] = useState("");
   const [cidrsText, setCidrsText] = useState("");
   const [containerHostsText, setContainerHostsText] = useState(
     "unix:///var/run/docker.sock",
@@ -101,7 +112,9 @@ function NewScanPage() {
       ? !cidrsText.trim()
       : type === "container"
         ? !containerHostsText.trim()
-        : !selectedChannelUid;
+        : type === "kubernetes"
+          ? !selectedClusterUid
+          : !selectedChannelUid;
 
   const submitDisabled = isPending || !confirmed || requiredFieldMissing;
 
@@ -121,6 +134,19 @@ function NewScanPage() {
         .filter(Boolean);
       if (hosts.length === 0) return null;
       return { type: "container", parameters: { hosts } };
+    }
+
+    if (type === "kubernetes") {
+      if (!selectedClusterUid) return null;
+      const namespaces = namespacesText
+        .split(/[\n,]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+      const parameters: Record<string, unknown> = {
+        clusterUid: selectedClusterUid,
+      };
+      if (namespaces.length > 0) parameters.namespaces = namespaces;
+      return { type: "kubernetes", parameters };
     }
 
     // LAN
@@ -298,6 +324,42 @@ function NewScanPage() {
                 </SelectContent>
               </Select>
             </div>
+          ) : type === "kubernetes" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="k8s-cluster">{t("selectCluster")}</Label>
+                <Select
+                  value={selectedClusterUid}
+                  onValueChange={setSelectedClusterUid}
+                >
+                  <SelectTrigger
+                    id="k8s-cluster"
+                    aria-label={t("selectCluster")}
+                  >
+                    <SelectValue placeholder={t("selectCluster")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kubernetesClusters.map((c) => (
+                      <SelectItem key={c.uid} value={c.uid}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="k8s-namespaces">{t("clusterNamespaces")}</Label>
+                <Input
+                  id="k8s-namespaces"
+                  placeholder="prod, staging"
+                  value={namespacesText}
+                  onChange={(e) => setNamespacesText(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("clusterNamespacesHelp")}
+                </p>
+              </div>
+            </>
           ) : null}
 
           {type === "lan" && cidrEstimate.totalHosts > 4096 && (

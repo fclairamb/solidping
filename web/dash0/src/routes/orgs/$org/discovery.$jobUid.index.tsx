@@ -104,12 +104,70 @@ function healthBadgeVariant(
   }
 }
 
+// replicaBadgeVariant maps a ready/desired ratio to a badge variant: all ready
+// → default (green), some ready → secondary, none ready → destructive.
+function replicaBadgeVariant(
+  ready: number,
+  desired: number,
+): "default" | "secondary" | "destructive" | "outline" {
+  if (desired === 0) return "outline";
+  if (ready >= desired) return "default";
+  if (ready === 0) return "destructive";
+  return "secondary";
+}
+
+// KubernetesBadges renders the k8s-specific group hints: a kind badge, a
+// ready/desired replica badge, and one badge per externally-reachable endpoint.
+function KubernetesBadges({ metadata }: { metadata: Record<string, unknown> }) {
+  const { t } = useTranslation("discovery");
+
+  const kind = typeof metadata.kind === "string" ? metadata.kind : "";
+  const desired =
+    typeof metadata.desiredReplicas === "number" ? metadata.desiredReplicas : 0;
+  const ready =
+    typeof metadata.readyReplicas === "number" ? metadata.readyReplicas : 0;
+  const endpoints = Array.isArray(metadata.endpoints)
+    ? (metadata.endpoints as Record<string, unknown>[])
+    : [];
+
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {kind && <Badge variant="secondary">{kind}</Badge>}
+      <Badge variant={replicaBadgeVariant(ready, desired)}>
+        {t("replicaCount", { ready, desired })}
+      </Badge>
+      {endpoints.map((ep, i) => {
+        const addr = typeof ep.address === "string" ? ep.address : "";
+        const port = typeof ep.port === "number" ? ep.port : undefined;
+        const label = addr
+          ? port !== undefined
+            ? `${addr}:${port}`
+            : addr
+          : typeof ep.source === "string"
+            ? ep.source
+            : "";
+        if (!label) return null;
+        return (
+          <Badge key={i} variant="outline" className="font-mono text-xs">
+            {label}
+          </Badge>
+        );
+      })}
+    </div>
+  );
+}
+
 // MetadataBadges renders a group's metadata hints as small badges. It handles
-// both the LAN/Freebox shape (open ports, ICMP) and the container shape
-// (image, state, health status).
+// the LAN/Freebox shape (open ports, ICMP), the container shape (image, state,
+// health status), and the kubernetes shape (kind, replicas, endpoints).
 function MetadataBadges({ metadata }: { metadata?: Record<string, unknown> }) {
   const { t } = useTranslation("discovery");
   if (!metadata) return null;
+
+  // Kubernetes metadata: kind + replicas + endpoints (distinct keys).
+  if (metadata.kind !== undefined || metadata.desiredReplicas !== undefined) {
+    return <KubernetesBadges metadata={metadata} />;
+  }
 
   // Container metadata: image / state / health.
   const image = typeof metadata.image === "string" ? metadata.image : "";

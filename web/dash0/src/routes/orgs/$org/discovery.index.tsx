@@ -55,6 +55,8 @@ function scanSource(type: string): string {
       return "freebox";
     case "container_discovery":
       return "container";
+    case "kubernetes_discovery":
+      return "kubernetes";
     default:
       return "lan";
   }
