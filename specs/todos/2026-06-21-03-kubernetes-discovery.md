@@ -319,3 +319,56 @@ this slice only consumes existing connections.)
 | Mapping Services/Ingresses to workloads by label selector is best-effort | Endpoint suggestions are secondary; the always-present `kubernetes` check never depends on the match, so a missed match only drops an optional HTTP/TCP suggestion |
 
 **Status**: Todo | **Created**: 2026-06-21 | **Reworked**: 2026-06-27 — rebased onto the check-centric `discovered_checks` model + generic `{type,parameters}` scan API (`2026-06-21-00`): dropped the old host-centric model/migration slice and the dedicated per-type scan endpoint, now registers a `kubernetes` `scantypes` definition and emits grouped `discovered_checks` rows; checker + cluster connection remain the prerequisite from `2026-06-21-02`.
+
+## Implementation Plan
+
+Each step is independently committable. Foundation (`…-00`) + checker/connection (`…-02`)
+are already on `batch/2026-06-23`; this only adds the kubernetes discovery story.
+
+1. **Model source constant.** Add `DiscoverySourceKubernetes = "kubernetes"` to
+   `server/internal/db/models/discovered_check.go` (no migration). _Commit: `feat: add kubernetes discovery source constant`._
+
+2. **Discovery engine.** New `server/internal/discovery/kubernetes.go` exporting
+   `ListWorkloads(ctx, client kubernetes.Interface, namespaces []string, timeout) ([]DiscoveredWorkload, error)`:
+   lists Deployments + bare ReplicaSets (skip Deployment-owned RS via ownerReference),
+   lists `NodePort`/`LoadBalancer` Services + Ingresses, best-effort label-selector matches
+   them to workloads → `WorkloadEndpoint`s, populates `metadata.uid`/kind/namespace/name/
+   images/replicas/conditions. Per-namespace list error logged + skipped. Pure (takes the
+   interface). `kubernetes_test.go` against a `fake.Clientset`. _Commit: `feat: kubernetes discovery engine (ListWorkloads)`._
+
+3. **Suggester.** `SuggestKubernetesChecks` + `checkTypeKubernetes` in
+   `server/internal/discovery/suggest.go`: per workload a group (`group_key=uid`,
+   `group_label="ns/name"`) with a primary `kubernetes` row (config `{clusterUid,namespace,
+   kind,name}`) + one http/tcp row per endpoint (scheme via `defaultPorts`). Table-driven
+   test. _Commit: `feat: SuggestKubernetesChecks grouped suggestions`._
+
+4. **Job type + engine job.** Register `JobTypeKubernetesDiscovery="kubernetes_discovery"`
+   in `jobdef/types.go` + `jobtypes/registry.go`. New
+   `jobtypes/job_kubernetes_discovery.go` (`KubernetesDiscoveryConfig{ClusterUID,Namespaces,
+   Timeout}`): `Run` resolves a clientset via a swappable resolver seam (default
+   `integrationk8s.ResolveClientsetByUID(ctx, jctx.DBService, jctx.Services.Credentials, …)`),
+   calls `ListWorkloads`, `SuggestKubernetesChecks`, persists via `UpsertDiscoveredChecks`
+   (source kubernetes), per-row log-and-continue. Test via fake clientset factory +
+   in-memory DB. _Commit: `feat: kubernetes_discovery job type + runner`._
+
+5. **scantypes registration.** New `scantypes/kubernetes.go` implementing `Definition`
+   (`Type"kubernetes"`, `Source`, `BuildJob` validating `{clusterUid,namespaces?,timeout?}`
+   — probe via `integrationk8s.ValidateConnection(ResolveClientsetByUID)`; unknown/wrong-org
+   cluster → `KUBERNETES_CLUSTER_NOT_FOUND`). Add the code constant; register in
+   `RegisterDefaults`; add to service `scanJobTypes()`; map the new code → 404 in the
+   handler's `statusForDiscoveryCode`. Tests (build-job + activation guard). _Commit:
+   `feat: register kubernetes discovery scantype + 404 mapping`._
+
+6. **Frontend.** `discovery.new.tsx` kubernetes sub-form (cluster `Select` from
+   kubernetes connections + optional namespaces input, gated on ≥1 cluster);
+   `discovery.index.tsx` `scanSource` maps `kubernetes_discovery`→`kubernetes`;
+   `discovery.$jobUid.index.tsx` `MetadataBadges` kubernetes branch (kind + ready/desired +
+   endpoints). hooks.ts already carries the union; add i18n keys (`methodKubernetes` area:
+   `selectCluster`, `clusterNamespaces`, replica/kind labels) in en/fr/de/es. _Commit:
+   `feat: dash0 kubernetes discovery scan form + grouped render`._
+
+7. **E2E + docs.** Add kubernetes coverage to `web/dash0/e2e/discovery.spec.ts`; document
+   the kubernetes parameters + `KUBERNETES_CLUSTER_NOT_FOUND` 404 in `openapi.yaml`.
+   _Commit: `test: e2e + docs for kubernetes discovery`._
+
+8. **QA + audit + archive.**
