@@ -18,6 +18,10 @@ const (
 	// checkTypeDocker is the promoted check type for a discovered container; it
 	// passes through normalizeCheckType unchanged.
 	checkTypeDocker = "docker"
+	// checkTypeKubernetes is the promoted check type for a discovered workload
+	// (the replica-health monitor); it passes through normalizeCheckType
+	// unchanged.
+	checkTypeKubernetes = "kubernetes"
 )
 
 // schemeICMP is the scheme label used when building an ICMP check name/slug.
@@ -344,6 +348,167 @@ func suggestForContainerPort(
 			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeTCP, public)),
 			Type:       checkTypeTCP,
 			Config:     mustJSON(map[string]any{cfgKeyHost: host, cfgKeyPort: public}),
+		}
+	}
+}
+
+// Config keys for a promoted kubernetes (workload replica-health) check. They
+// match the checkkubernetes.KubernetesConfig JSON shape so promotion creates a
+// valid check directly.
+const (
+	cfgKeyClusterUID = "clusterUid"
+	cfgKeyNamespace  = "namespace"
+	cfgKeyKind       = "kind"
+	cfgKeyName       = "name"
+)
+
+// schemeKubernetes is the scheme label used when building the workload
+// replica-health check name/slug.
+const schemeKubernetes = "k8s"
+
+// KubernetesEndpoint is one externally-reachable address discovered for a
+// workload (mirrors discovery.WorkloadEndpoint, decoupled so the suggester is
+// independent of the engine's struct). Address may be empty for a NodePort whose
+// node IP is unknown out-of-cluster — such an endpoint yields no suggestion.
+type KubernetesEndpoint struct {
+	Address string // worker-reachable host
+	Port    int    // worker-reachable port
+	Scheme  string // "http" | "https" | "tcp"
+	Source  string // "LoadBalancer" | "NodePort" | "Ingress" (display hint)
+}
+
+// KubernetesSuggestInput carries the fields one workload contributes to its
+// suggested-check group.
+type KubernetesSuggestInput struct {
+	UID               string // group_key; the workload metadata.uid
+	ClusterUID        string // the cluster connection the promoted check references
+	Kind              string // "Deployment" | "ReplicaSet"
+	Namespace         string
+	Name              string
+	Images            []string
+	DesiredReplicas   int32
+	ReadyReplicas     int32
+	AvailableReplicas int32
+	Endpoints         []KubernetesEndpoint
+}
+
+// SuggestKubernetesChecks returns the grouped suggested checks for one
+// discovered workload. Every row shares group_key=workload uid,
+// group_label="namespace/name", and the denormalized metadata. A primary
+// `kubernetes` replica-health check is always emitted (it covers a workload that
+// exposes nothing externally — the common ClusterIP case); each externally
+// reachable endpoint additionally yields an http/https/tcp check. Slugs are
+// deduped within the group.
+func SuggestKubernetesChecks(input *KubernetesSuggestInput) []SuggestedCheck {
+	groupLabel := input.Namespace + "/" + input.Name
+	if input.Name == "" {
+		groupLabel = input.UID
+	}
+
+	meta := kubernetesMetadata(input)
+	seen := make(map[string]struct{})
+
+	suggestions := make([]SuggestedCheck, 0, 1+len(input.Endpoints))
+
+	// Primary: the replica-health check. Always emitted.
+	suggestions = append(suggestions, SuggestedCheck{
+		GroupKey:   input.UID,
+		GroupLabel: groupLabel,
+		Name:       checkName(groupLabel, schemeKubernetes),
+		Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeKubernetes, 0)),
+		Type:       checkTypeKubernetes,
+		Config: mustJSON(map[string]any{
+			cfgKeyClusterUID: input.ClusterUID,
+			cfgKeyNamespace:  input.Namespace,
+			cfgKeyKind:       input.Kind,
+			cfgKeyName:       input.Name,
+		}),
+		Metadata: meta,
+	})
+
+	// Secondary: one check per externally-reachable endpoint.
+	for i := range input.Endpoints {
+		sc := suggestForKubernetesEndpoint(input.UID, groupLabel, &input.Endpoints[i], seen)
+		if sc != nil {
+			sc.Metadata = meta
+			suggestions = append(suggestions, *sc)
+		}
+	}
+
+	return suggestions
+}
+
+// kubernetesMetadata builds the denormalized group-display metadata shared
+// across a workload's suggested-check rows.
+func kubernetesMetadata(input *KubernetesSuggestInput) json.RawMessage {
+	images := input.Images
+	if images == nil {
+		images = []string{}
+	}
+
+	endpoints := make([]map[string]any, 0, len(input.Endpoints))
+	for i := range input.Endpoints {
+		ep := &input.Endpoints[i]
+		endpoints = append(endpoints, map[string]any{
+			"address": ep.Address,
+			"port":    ep.Port,
+			"scheme":  ep.Scheme,
+			"source":  ep.Source,
+		})
+	}
+
+	return mustJSON(map[string]any{
+		cfgKeyClusterUID:    input.ClusterUID,
+		cfgKeyKind:          input.Kind,
+		cfgKeyNamespace:     input.Namespace,
+		cfgKeyName:          input.Name,
+		"images":            images,
+		"desiredReplicas":   input.DesiredReplicas,
+		"readyReplicas":     input.ReadyReplicas,
+		"availableReplicas": input.AvailableReplicas,
+		"endpoints":         endpoints,
+	})
+}
+
+// suggestForKubernetesEndpoint maps one externally-reachable workload endpoint
+// to a suggested http/tcp check. An endpoint without a worker-reachable address
+// (a NodePort whose node IP is unknown out-of-cluster) yields no suggestion.
+func suggestForKubernetesEndpoint(
+	groupKey, groupLabel string, ep *KubernetesEndpoint, seen map[string]struct{},
+) *SuggestedCheck {
+	if ep.Address == "" {
+		return nil
+	}
+
+	hostPort := net.JoinHostPort(ep.Address, strconv.Itoa(ep.Port))
+
+	switch ep.Scheme {
+	case checkTypeHTTP:
+		return &SuggestedCheck{
+			GroupKey:   groupKey,
+			GroupLabel: groupLabel,
+			Name:       checkName(groupLabel, schemeHTTP),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTP, ep.Port)),
+			Type:       checkTypeHTTP,
+			Config:     mustJSON(map[string]any{cfgKeyURL: "http://" + hostPort}),
+		}
+	case "https":
+		return &SuggestedCheck{
+			GroupKey:   groupKey,
+			GroupLabel: groupLabel,
+			Name:       checkName(groupLabel, schemeHTTPS),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTPS, ep.Port)),
+			Type:       checkTypeHTTP,
+			Config:     mustJSON(map[string]any{cfgKeyURL: "https://" + hostPort}),
+		}
+	default:
+		return &SuggestedCheck{
+			GroupKey:   groupKey,
+			GroupLabel: groupLabel,
+			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, schemeTCP), ep.Port),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeTCP, ep.Port)),
+			Type:       checkTypeTCP,
+			Config:     mustJSON(map[string]any{cfgKeyHost: ep.Address, cfgKeyPort: ep.Port}),
 		}
 	}
 }
