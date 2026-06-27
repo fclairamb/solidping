@@ -170,6 +170,9 @@ const (
 	CheckTypeDNSBL CheckType = "dnsbl"
 	// CheckTypeSIP checks SIP server reachability (OPTIONS) and registration (REGISTER).
 	CheckTypeSIP CheckType = "sip"
+	// CheckTypeKubernetes monitors a Kubernetes workload's replica health
+	// (Deployment / ReplicaSet ready vs desired replicas).
+	CheckTypeKubernetes CheckType = "kubernetes"
 )
 
 // Common output and config map keys used across checker implementations.
@@ -203,6 +206,7 @@ const (
 	labelReqScripting       = "requires:scripting-runtime"
 	labelReqDockerSocket    = "requires:docker-socket"
 	labelReqChrome          = "requires:chrome"
+	labelReqK8sCluster      = "requires:kubernetes-cluster"
 
 	labelCatNetwork        = "category:network"
 	labelCatSecurity       = "category:security"
@@ -263,6 +267,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour},
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
+	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
@@ -352,5 +357,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,
 		CheckTypeSIP,
+		CheckTypeKubernetes,
 	}
 }

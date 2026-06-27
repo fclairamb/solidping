@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkminecraft"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
@@ -134,6 +135,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkdnsbl.DNSBLChecker{}, true
 	case checkerdef.CheckTypeSIP:
 		return &checksip.SIPChecker{}, true
+	case checkerdef.CheckTypeKubernetes:
+		return &checkkubernetes.KubernetesChecker{}, true
 	default:
 		return nil, false
 	}
@@ -217,6 +220,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkdnsbl.DNSBLConfig{}, true
 	case checkerdef.CheckTypeSIP:
 		return &checksip.SIPConfig{}, true
+	case checkerdef.CheckTypeKubernetes:
+		return &checkkubernetes.KubernetesConfig{}, true
 	default:
 		return nil, false
 	}

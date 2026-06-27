@@ -23,10 +23,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/uptrace/bunrouter"
+	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -78,6 +80,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -270,6 +273,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// importable from unit tests without a live database. Mirrors the
 	// checkjs.ResolveChecker indirection pattern set up by the registry.
 	checkfreeboxline.ConnectionResolverFunc = newFreeboxConnectionResolver(dbService, credSvc)
+
+	// Wire the kubernetes checker's clientset resolver. Same indirection: the
+	// resolver owns the DB lookup + credential decrypt (via the integrations
+	// kubernetes package's single chokepoint) so the checker package stays
+	// importable from unit tests without a live database or cluster.
+	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
+		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
+	}
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {

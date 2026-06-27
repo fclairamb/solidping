@@ -72,6 +72,34 @@ func ResolveClientset(
 	return clientsetFactory(restCfg)
 }
 
+// ResolveClientsetByUID resolves a cluster connection to a clientset by UID
+// alone, deriving the owning org from the connection row. This is the entry
+// point the `kubernetes` checker uses: a check can only reference a connection
+// in its own org (enforced at check creation), so no separate org argument is
+// needed — exactly how the freebox_line checker resolver scopes by connection
+// UID. Verifies the connection is a kubernetes-type row.
+func ResolveClientsetByUID(
+	ctx context.Context,
+	dbSvc db.Service,
+	creds credentials.Service,
+	clusterUID string,
+) (kubernetes.Interface, error) {
+	conn, err := dbSvc.GetChannel(ctx, clusterUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrClusterNotFound
+		}
+
+		return nil, fmt.Errorf("get cluster connection: %w", err)
+	}
+
+	if conn.Type != models.ConnectionTypeKubernetes {
+		return nil, ErrClusterNotFound
+	}
+
+	return ResolveClientset(ctx, dbSvc, creds, conn.OrganizationUID, clusterUID)
+}
+
 // resolveClusterConnection loads the connection, verifies org + type, parses
 // the public settings, and decrypts the secret half. Mirrors the freebox
 // resolveGrantedFreeboxChannel helper but with no handler dependencies.
