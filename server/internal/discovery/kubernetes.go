@@ -48,6 +48,14 @@ type WorkloadEndpoint struct {
 	Source string
 }
 
+// WorkloadCondition is a compact, JSON-friendly view of a workload status
+// condition (a group-display hint denormalized onto the suggested-check rows).
+type WorkloadCondition struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // DiscoveredWorkload is one Deployment or bare ReplicaSet enumerated from a
 // cluster. It is the engine's output, independent of the job plumbing and of the
 // suggested-check shape, so it can be unit-tested against a fake clientset.
@@ -60,6 +68,7 @@ type DiscoveredWorkload struct {
 	DesiredReplicas   int32
 	ReadyReplicas     int32
 	AvailableReplicas int32
+	Conditions        []WorkloadCondition
 	// matchLabels is the workload's pod-template label set, used to match
 	// Services/Ingresses by selector. Not exported — an internal join key.
 	matchLabels map[string]string
@@ -209,6 +218,16 @@ func ownedByDeployment(owners []metav1.OwnerReference) bool {
 
 // deploymentWorkload maps a Deployment to a DiscoveredWorkload.
 func deploymentWorkload(dep *appsv1.Deployment) DiscoveredWorkload {
+	conds := make([]WorkloadCondition, 0, len(dep.Status.Conditions))
+	for i := range dep.Status.Conditions {
+		cond := &dep.Status.Conditions[i]
+		conds = append(conds, WorkloadCondition{
+			Type:   string(cond.Type),
+			Status: string(cond.Status),
+			Reason: cond.Reason,
+		})
+	}
+
 	return DiscoveredWorkload{
 		UID:               string(dep.UID),
 		Kind:              workloadKindDeployment,
@@ -218,6 +237,7 @@ func deploymentWorkload(dep *appsv1.Deployment) DiscoveredWorkload {
 		DesiredReplicas:   derefReplicas(dep.Spec.Replicas),
 		ReadyReplicas:     dep.Status.ReadyReplicas,
 		AvailableReplicas: dep.Status.AvailableReplicas,
+		Conditions:        conds,
 		matchLabels:       dep.Spec.Template.Labels,
 	}
 }

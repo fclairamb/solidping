@@ -29,6 +29,9 @@ func TestSuggestKubernetesChecksAlwaysEmitsReplicaHealthCheck(t *testing.T) {
 		Images:          []string{"nginx:1.27"},
 		DesiredReplicas: 3,
 		ReadyReplicas:   2,
+		Conditions: []KubernetesCondition{
+			{Type: "Available", Status: "True"},
+		},
 		// No endpoints (ClusterIP-only) → only the kubernetes check.
 	})
 
@@ -50,6 +53,8 @@ func TestSuggestKubernetesChecksAlwaysEmitsReplicaHealthCheck(t *testing.T) {
 	r.Contains(string(row.Metadata), "nginx:1.27")
 	r.Contains(string(row.Metadata), "desiredReplicas")
 	r.Contains(string(row.Metadata), "readyReplicas")
+	r.Contains(string(row.Metadata), "conditions")
+	r.Contains(string(row.Metadata), "Available")
 }
 
 func TestSuggestKubernetesChecksAddsEndpointRows(t *testing.T) {

@@ -119,6 +119,8 @@ func TestHandlerListTypes(t *testing.T) {
 	}
 	r.Equal("lan", types["lan"])
 	r.Equal("freebox", types["freebox"])
+	// The kubernetes discovery type appears automatically once registered.
+	r.Equal("kubernetes", types["kubernetes"])
 }
 
 func TestHandlerStartScanLANCreatesPlan(t *testing.T) {
@@ -192,6 +194,45 @@ func TestHandlerStartScanNonAdminForbidden(t *testing.T) {
 	router := f.newRouter(t)
 
 	body := discovery.StartScanRequest{Type: "lan", Parameters: json.RawMessage(`{"cidrs":["10.0.0.0/24"]}`)}
+	rec := f.doUserRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusForbidden, rec.Code)
+}
+
+func TestHandlerStartScanKubernetesUnknownClusterReturns404(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	// An unknown clusterUid does not resolve to a cluster connection in the org,
+	// so the kubernetes scantype fails fast with KUBERNETES_CLUSTER_NOT_FOUND →
+	// 404 (the spec's guard).
+	body := discovery.StartScanRequest{
+		Type:       "kubernetes",
+		Parameters: json.RawMessage(`{"clusterUid":"00000000-0000-0000-0000-000000000000"}`),
+	}
+	rec := f.doAdminRequest(t, router, http.MethodPost, f.scansPath(), body)
+	r.Equal(http.StatusNotFound, rec.Code)
+
+	var resp struct {
+		Code string `json:"code"`
+	}
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	r.Equal("KUBERNETES_CLUSTER_NOT_FOUND", resp.Code)
+}
+
+func TestHandlerStartScanKubernetesNonAdminForbidden(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newDiscoveryFixture(t)
+	router := f.newRouter(t)
+
+	body := discovery.StartScanRequest{
+		Type:       "kubernetes",
+		Parameters: json.RawMessage(`{"clusterUid":"any"}`),
+	}
 	rec := f.doUserRequest(t, router, http.MethodPost, f.scansPath(), body)
 	r.Equal(http.StatusForbidden, rec.Code)
 }

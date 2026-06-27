@@ -167,12 +167,22 @@ func credsFrom(jctx *jobdef.JobContext) credentials.Service {
 func buildKubernetesRows(clusterUID string, workload *disc.DiscoveredWorkload) []disc.SuggestedCheck {
 	endpoints := make([]disc.KubernetesEndpoint, 0, len(workload.Endpoints))
 	for i := range workload.Endpoints {
-		ep := &workload.Endpoints[i]
+		endpoint := &workload.Endpoints[i]
 		endpoints = append(endpoints, disc.KubernetesEndpoint{
-			Address: ep.Address,
-			Port:    ep.Port,
-			Scheme:  ep.Scheme,
-			Source:  ep.Source,
+			Address: endpoint.Address,
+			Port:    endpoint.Port,
+			Scheme:  endpoint.Scheme,
+			Source:  endpoint.Source,
+		})
+	}
+
+	conditions := make([]disc.KubernetesCondition, 0, len(workload.Conditions))
+	for i := range workload.Conditions {
+		cond := &workload.Conditions[i]
+		conditions = append(conditions, disc.KubernetesCondition{
+			Type:   cond.Type,
+			Status: cond.Status,
+			Reason: cond.Reason,
 		})
 	}
 
@@ -186,6 +196,7 @@ func buildKubernetesRows(clusterUID string, workload *disc.DiscoveredWorkload) [
 		DesiredReplicas:   workload.DesiredReplicas,
 		ReadyReplicas:     workload.ReadyReplicas,
 		AvailableReplicas: workload.AvailableReplicas,
+		Conditions:        conditions,
 		Endpoints:         endpoints,
 	})
 }

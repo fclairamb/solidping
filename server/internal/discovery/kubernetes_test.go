@@ -274,6 +274,32 @@ func TestListWorkloadsServiceSelectorMustMatch(t *testing.T) {
 	r.Empty(dep.Endpoints, "a non-matching service selector yields no endpoint")
 }
 
+func TestListWorkloadsCapturesDeploymentConditions(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	dep := depFixture("dep-uid", "api", 3, 1, map[string]string{"app": "api"})
+	dep.Status.Conditions = []appsv1.DeploymentCondition{
+		{
+			Type:   appsv1.DeploymentProgressing,
+			Status: corev1.ConditionFalse,
+			Reason: "ProgressDeadlineExceeded",
+		},
+	}
+
+	cs := fake.NewSimpleClientset(dep)
+
+	workloads, err := ListWorkloads(t.Context(), cs, nil, time.Second, nil)
+	r.NoError(err)
+
+	got := findWorkload(workloads, "dep-uid")
+	r.NotNil(got)
+	r.Len(got.Conditions, 1)
+	r.Equal("Progressing", got.Conditions[0].Type)
+	r.Equal("ProgressDeadlineExceeded", got.Conditions[0].Reason)
+}
+
 func TestListWorkloadsSkipsNamespaceListError(t *testing.T) {
 	t.Parallel()
 

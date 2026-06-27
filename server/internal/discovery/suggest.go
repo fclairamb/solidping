@@ -384,6 +384,14 @@ type KubernetesEndpoint struct {
 	Source  string // "LoadBalancer" | "NodePort" | "Ingress" (display hint)
 }
 
+// KubernetesCondition is a compact workload status condition (a group-display
+// hint), mirroring discovery.WorkloadCondition.
+type KubernetesCondition struct {
+	Type   string `json:"type"`
+	Status string `json:"status"`
+	Reason string `json:"reason,omitempty"`
+}
+
 // KubernetesSuggestInput carries the fields one workload contributes to its
 // suggested-check group.
 type KubernetesSuggestInput struct {
@@ -396,6 +404,7 @@ type KubernetesSuggestInput struct {
 	DesiredReplicas   int32
 	ReadyReplicas     int32
 	AvailableReplicas int32
+	Conditions        []KubernetesCondition
 	Endpoints         []KubernetesEndpoint
 }
 
@@ -455,12 +464,22 @@ func kubernetesMetadata(input *KubernetesSuggestInput) json.RawMessage {
 
 	endpoints := make([]map[string]any, 0, len(input.Endpoints))
 	for i := range input.Endpoints {
-		ep := &input.Endpoints[i]
+		endpoint := &input.Endpoints[i]
 		endpoints = append(endpoints, map[string]any{
-			"address": ep.Address,
-			"port":    ep.Port,
-			"scheme":  ep.Scheme,
-			"source":  ep.Source,
+			"address": endpoint.Address,
+			"port":    endpoint.Port,
+			"scheme":  endpoint.Scheme,
+			"source":  endpoint.Source,
+		})
+	}
+
+	conditions := make([]map[string]any, 0, len(input.Conditions))
+	for i := range input.Conditions {
+		cond := &input.Conditions[i]
+		conditions = append(conditions, map[string]any{
+			"type":   cond.Type,
+			"status": cond.Status,
+			"reason": cond.Reason,
 		})
 	}
 
@@ -473,6 +492,7 @@ func kubernetesMetadata(input *KubernetesSuggestInput) json.RawMessage {
 		"desiredReplicas":   input.DesiredReplicas,
 		"readyReplicas":     input.ReadyReplicas,
 		"availableReplicas": input.AvailableReplicas,
+		"conditions":        conditions,
 		"endpoints":         endpoints,
 	})
 }
