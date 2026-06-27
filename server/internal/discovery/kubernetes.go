@@ -99,7 +99,7 @@ func ListWorkloads(
 		scopes = []string{metav1.NamespaceAll}
 	}
 
-	workloads := make([]DiscoveredWorkload, 0)
+	workloads := make([]DiscoveredWorkload, 0, len(scopes))
 	endpoints := newEndpointIndex()
 
 	for _, ns := range scopes {
@@ -349,6 +349,10 @@ func serviceEndpoints(svc *corev1.Service) []WorkloadEndpoint {
 		return loadBalancerEndpoints(svc)
 	case corev1.ServiceTypeNodePort:
 		return nodePortEndpoints(svc)
+	case corev1.ServiceTypeClusterIP, corev1.ServiceTypeExternalName:
+		// Not worker-reachable; only kept in the index to resolve Ingress
+		// backends. The kubernetes replica-health check covers these workloads.
+		return nil
 	default:
 		return nil
 	}
@@ -425,9 +429,9 @@ func nodePortEndpoints(svc *corev1.Service) []WorkloadEndpoint {
 // rules whose backing service was matched to this workload are emitted, so an
 // Ingress fanning out to many services only contributes the relevant hosts.
 func ingressEndpoints(ing *networkingv1.Ingress, matchedServices map[string]struct{}) []WorkloadEndpoint {
-	scheme := "http"
+	scheme := schemeHTTPLower
 	if len(ing.Spec.TLS) > 0 {
-		scheme = "https"
+		scheme = schemeHTTPSLower
 	}
 
 	var endpoints []WorkloadEndpoint
@@ -472,7 +476,7 @@ func ruleBacksMatchedService(rule *networkingv1.IngressRule, matchedServices map
 
 // ingressPortForScheme returns the conventional port for an Ingress scheme.
 func ingressPortForScheme(scheme string) int {
-	if scheme == "https" {
+	if scheme == schemeHTTPSLower {
 		return 443
 	}
 
@@ -490,11 +494,11 @@ func schemeForEndpointPort(port int) string {
 		}
 
 		if defaultPorts[i].CheckType == checkTypeHTTP {
-			if strings.HasPrefix(defaultPorts[i].URLTmpl, "https") {
-				return "https"
+			if strings.HasPrefix(defaultPorts[i].URLTmpl, schemeHTTPSLower) {
+				return schemeHTTPSLower
 			}
 
-			return "http"
+			return schemeHTTPLower
 		}
 
 		return checkTypeTCP

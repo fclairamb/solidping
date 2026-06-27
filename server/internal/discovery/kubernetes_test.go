@@ -261,7 +261,7 @@ func TestListWorkloadsServiceSelectorMustMatch(t *testing.T) {
 	r := require.New(t)
 
 	cs := fake.NewSimpleClientset(
-		depFixture("dep-uid", "web", 1, 1, map[string]string{"app": "web"}),
+		depFixture("web-uid", "web", 1, 1, map[string]string{"app": "web"}),
 		// Selector points at a different workload.
 		loadBalancerService("other-lb", map[string]string{"app": "other"}, 80, "203.0.113.20"),
 	)
@@ -269,7 +269,7 @@ func TestListWorkloadsServiceSelectorMustMatch(t *testing.T) {
 	workloads, err := ListWorkloads(t.Context(), cs, nil, time.Second, nil)
 	r.NoError(err)
 
-	dep := findWorkload(workloads, "dep-uid")
+	dep := findWorkload(workloads, "web-uid")
 	r.NotNil(dep)
 	r.Empty(dep.Endpoints, "a non-matching service selector yields no endpoint")
 }

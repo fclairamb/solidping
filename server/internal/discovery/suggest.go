@@ -245,6 +245,13 @@ const (
 	schemeTCP    = "TCP"
 )
 
+// Lowercase scheme tokens used in URLs and as endpoint scheme keys (distinct
+// from the uppercase name labels above).
+const (
+	schemeHTTPLower  = "http"
+	schemeHTTPSLower = "https"
+)
+
 // SuggestContainerChecks returns the grouped suggested checks for one discovered
 // container. Every row shares group_key=containerID, group_label=name, and
 // metadata={image, state, healthStatus, dockerHost}. A `docker` check is always
@@ -474,41 +481,41 @@ func kubernetesMetadata(input *KubernetesSuggestInput) json.RawMessage {
 // to a suggested http/tcp check. An endpoint without a worker-reachable address
 // (a NodePort whose node IP is unknown out-of-cluster) yields no suggestion.
 func suggestForKubernetesEndpoint(
-	groupKey, groupLabel string, ep *KubernetesEndpoint, seen map[string]struct{},
+	groupKey, groupLabel string, endpoint *KubernetesEndpoint, seen map[string]struct{},
 ) *SuggestedCheck {
-	if ep.Address == "" {
+	if endpoint.Address == "" {
 		return nil
 	}
 
-	hostPort := net.JoinHostPort(ep.Address, strconv.Itoa(ep.Port))
+	hostPort := net.JoinHostPort(endpoint.Address, strconv.Itoa(endpoint.Port))
 
-	switch ep.Scheme {
-	case checkTypeHTTP:
+	switch endpoint.Scheme {
+	case schemeHTTPLower:
 		return &SuggestedCheck{
 			GroupKey:   groupKey,
 			GroupLabel: groupLabel,
 			Name:       checkName(groupLabel, schemeHTTP),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTP, ep.Port)),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTP, endpoint.Port)),
 			Type:       checkTypeHTTP,
-			Config:     mustJSON(map[string]any{cfgKeyURL: "http://" + hostPort}),
+			Config:     mustJSON(map[string]any{cfgKeyURL: schemeHTTPLower + "://" + hostPort}),
 		}
-	case "https":
+	case schemeHTTPSLower:
 		return &SuggestedCheck{
 			GroupKey:   groupKey,
 			GroupLabel: groupLabel,
 			Name:       checkName(groupLabel, schemeHTTPS),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTPS, ep.Port)),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeHTTPS, endpoint.Port)),
 			Type:       checkTypeHTTP,
-			Config:     mustJSON(map[string]any{cfgKeyURL: "https://" + hostPort}),
+			Config:     mustJSON(map[string]any{cfgKeyURL: schemeHTTPSLower + "://" + hostPort}),
 		}
 	default:
 		return &SuggestedCheck{
 			GroupKey:   groupKey,
 			GroupLabel: groupLabel,
-			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, schemeTCP), ep.Port),
-			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeTCP, ep.Port)),
+			Name:       fmt.Sprintf("%s/%d", checkName(groupLabel, schemeTCP), endpoint.Port),
+			Slug:       dedupSlug(seen, checkSlug(groupLabel, schemeTCP, endpoint.Port)),
 			Type:       checkTypeTCP,
-			Config:     mustJSON(map[string]any{cfgKeyHost: ep.Address, cfgKeyPort: ep.Port}),
+			Config:     mustJSON(map[string]any{cfgKeyHost: endpoint.Address, cfgKeyPort: endpoint.Port}),
 		}
 	}
 }
