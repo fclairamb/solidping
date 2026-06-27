@@ -414,3 +414,24 @@ references. `git grep -n discovered_host` and `DiscoveredHost` must come back em
 | `container`/`kubernetes` specs assume this landed | This spec is ordered first (`…-00`); `…-01`/`…-03` state the dependency explicitly. |
 
 **Status**: Todo | **Created**: 2026-06-27
+
+## Implementation Plan
+
+Backend (slices 1–4, 6) then frontend (slice 5), each committed granularly.
+
+1. **Model + migration** (`discovered_check.go`, `003_discovery_checks.{up,down}.sql` PG+SQLite).
+   - New `models.DiscoveredCheck` + `NewDiscoveredCheck`; keep `DiscoverySource` enum in the same file. Drop `discovered_host.go` + its model test.
+   - Migration `003` drops `discovered_hosts`, creates `discovered_checks` + 3 indexes; `.down` reverses (recreate empty `discovered_hosts`, drop `discovered_checks`). Mirror PG/SQLite.
+2. **Suggested checks → grouped rows** (`discovery/suggest.go`).
+   - `SuggestedCheck` gains `GroupKey/GroupLabel/Name/Slug/Type/Config/Metadata`. Add `checkName`/`checkSlug` helpers (dedup within group). Refactor LAN `SuggestChecks` to emit grouped rows (HTTP/HTTPS/TCP per port + ICMP), `groupKey=ip`, `groupLabel=hostname||ip`, `metadata={openPorts,icmpReachable}`. Update `suggest_test.go`.
+3. **Discovery-type registry** (`discovery/scantypes/{registry,lan,freebox}.go` + tests).
+   - `Definition` interface (`Type`, `Source`, `BuildJob`), `Register`/`Get`/`List`, `Deps`, `DiscoveryError` with codes `DISCOVERY_UNKNOWN_TYPE`/`DISCOVERY_INVALID_PARAMETERS`/`DISCOVERY_ALREADY_RUNNING`/`FREEBOX_NOT_GRANTED`. `lan` validates `{cidrs,ports?,concurrency?,timeout?}`→`network_discovery_plan`; `freebox` validates `{channelUid}` granted→`freebox_lan_discovery`. Activation test: every scantype has a matching `JobDefinition`.
+4. **Persistence + jobs** (`UpsertDiscoveredChecks` in handlers/discovery/service.go; rework `job_network_discovery.go`, `job_freebox_lan_discovery.go`; plan unchanged).
+   - Shared `UpsertDiscoveredChecks(ctx, db, orgUID, jobUID, source, rows)` upsert on `(org,source,group_key,slug)`, log-and-continue. Jobs build `SuggestedCheck` rows from scan results and call it. LAN child rolls up under plan UID.
+5. **API + service** (handlers/discovery/{handler,service}.go + tests).
+   - Generic `POST /scans {type,parameters}` → `Service.StartScan(ctx,orgUID,typ,params)` via registry. Generalize `ListScans`/`GetScan` (progress for every scan)/`CancelScan`. `ScanProgress`: drop `hostCount`, add `groupCount`+`checkCount` from `discovered_checks`; non-chunked → `totalChunks=1`. `GET /checks`, `POST /checks/promote {uids,overrides}`, `DELETE /checks/:uid`, `DELETE /checks?jobUid=&group=`. Error codes. Rewrite handler/service tests.
+6. **Remove old surface**: delete `/hosts` handlers, `StartFreeboxScan`/old `StartScan`, host DTOs, host service methods, model + test. `git grep DiscoveredHost`/`discovered_hosts` empty (except `disc.DiscoveredHost` scan-result struct, which stays).
+7. **OpenAPI** (`openapi.yaml`): document generic scan route + `discovered_checks` schema + `/checks` endpoints.
+8. **Frontend** (`web/dash0`): registry-driven `discovery.new.tsx`; `discovery.index.tsx` source filter; grouped `discovery.$jobUid.index.tsx` with select-all-in-group + Promote selected + dismiss; remove `$hostUid.promote.tsx`; rewrite hooks (`DiscoveredCheck`/`DiscoveryScan`/`useStartDiscoveryScan`/`useListDiscoveredChecks`/`usePromoteChecks`/`useDismissCheck`, remove host hooks); restructure `discovery.json` (en/fr/de/es); update `e2e/discovery.spec.ts`.
+9. **Test seed** (`server/test/testdata/testdata.go`): seed `discovered_checks` rows instead of a discovered host (keep scan UID `…07`).
+10. **QA**: `make build-backend lint-back test` (+`build-dash0 lint-dash`). Fix code until green.
