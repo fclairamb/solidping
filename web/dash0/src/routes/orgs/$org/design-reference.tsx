@@ -38,6 +38,7 @@ import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -929,6 +930,43 @@ function ButtonsBadgesSection() {
             </Button>
           }
           importLine={`import { Button } from "@/components/ui/button";\nimport { Badge } from "@/components/ui/badge";\n\n<Button variant="outline" className="w-full">\n  <KeyRound className="mr-2 h-4 w-4" />\n  Sign in with passkey\n  <Badge variant="secondary" className="ml-2">Last used</Badge>\n</Button>`}
+        />
+
+        <h3 className="text-sm font-medium">Status dot</h3>
+        <p className="text-sm text-muted-foreground">
+          The small dot rendered beside a check name (listing) and the detail
+          header. Colours come from the single source of truth{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">statusStyle()</code>{" "}
+          so the dot always matches the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code>{" "}
+          beside it. A <strong>disabled</strong> check (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">enabled === false</code>)
+          renders a neutral grey dot that overrides the last/live status colour, so a
+          paused check no longer reads as "healthy & live". Pass a localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> (the
+          translated "Disabled") for the tooltip and accessible label.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="up" /> Up
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="warning" /> Warning
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="down" /> Down
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="unknown" /> Unknown
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="up" enabled={false} title="Disabled" /> Disabled
+              </span>
+            </>
+          }
+          importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
         />
       </div>
     </Section>
