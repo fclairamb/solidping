@@ -32,6 +32,7 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
@@ -132,6 +133,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
+  { id: "maintenance-schedule", label: "Maintenance schedule" },
 ];
 
 function DesignReferencePage() {
@@ -160,6 +162,7 @@ function DesignReferencePage() {
       <KpiTileSection />
       <UptimeStripSection />
       <JobsPrimitivesSection />
+      <MaintenanceScheduleSection />
     </div>
   );
 }
@@ -1913,6 +1916,100 @@ function JobsPrimitivesSection() {
           import {"{ JsonViewer }"} from "@/components/shared/json-viewer"
         </p>
         <JsonViewer value={{ url: "https://example.com", timeout: 5000 }} />
+      </div>
+    </Section>
+  );
+}
+
+function MaintenanceScheduleSection() {
+  const [weekday, setWeekday] = useState(3); // Wed
+  const [durationValue, setDurationValue] = useState("1");
+  const [durationUnit, setDurationUnit] = useState("hours");
+
+  // Mon..Sun, labelled via Intl from a reference week (2024-01-01 is a Monday).
+  const weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const weekdayLabel = (dow: number) =>
+    new Date(2024, 0, 1 + ((dow - 1 + 7) % 7)).toLocaleDateString(undefined, {
+      weekday: "short",
+    });
+
+  // A sample weekly window for the summary panel preview.
+  const now = new Date();
+  const sampleStart = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 22, 0),
+  );
+  const sampleWindow = {
+    uid: "dr-sample",
+    title: "Weekly DB backup",
+    startAt: sampleStart.toISOString(),
+    endAt: new Date(sampleStart.getTime() + 3600000).toISOString(),
+    recurrence: "weekly" as const,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+  };
+
+  return (
+    <Section
+      id="maintenance-schedule"
+      title="Maintenance schedule"
+      description="Recurrence-aware controls used by the maintenance-window form: a single-select weekday chip row, a number+unit duration input, and the plain-language schedule summary panel (which also previews the next occurrences)."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Weekday chips (single-select)</h3>
+        <p className="text-xs text-muted-foreground">
+          Built from {"<Button>"} — variant "default" when selected, "outline"
+          otherwise, with aria-pressed.
+        </p>
+        <div className="flex flex-wrap gap-2" role="group">
+          {weekdayOrder.map((dow) => (
+            <Button
+              key={dow}
+              type="button"
+              size="sm"
+              variant={weekday === dow ? "default" : "outline"}
+              aria-pressed={weekday === dow}
+              onClick={() => setWeekday(dow)}
+            >
+              {weekdayLabel(dow)}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Duration input (number + unit)</h3>
+        <p className="text-xs text-muted-foreground">
+          {"<Input type=\"number\">"} paired with a unit {"<Select>"}.
+        </p>
+        <div className="flex gap-2 max-w-xs">
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={durationValue}
+            onChange={(e) => setDurationValue(e.target.value)}
+            className="max-w-[7rem]"
+          />
+          <Select value={durationUnit} onValueChange={setDurationUnit}>
+            <SelectTrigger className="flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minutes">minutes</SelectItem>
+              <SelectItem value="hours">hours</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Schedule summary panel</h3>
+        <p className="text-xs text-muted-foreground">
+          import{" "}
+          {"{ MaintenanceScheduleSummary }"} from
+          "@/components/shared/maintenance-schedule-summary"
+        </p>
+        <MaintenanceScheduleSummary window={sampleWindow} />
       </div>
     </Section>
   );
