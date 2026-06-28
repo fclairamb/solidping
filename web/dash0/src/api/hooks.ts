@@ -3788,6 +3788,13 @@ export function useCheckJob(org: string, uid: string, opts?: JobsScope) {
 // client-side (see lib/maintenance-window-status.ts) and counts from the
 // /checks association endpoint.
 
+// One concrete activation of a (possibly recurring) maintenance window.
+// Mirrors models.Occurrence on the backend.
+export interface MaintenanceOccurrence {
+  startAt: string;
+  endAt: string;
+}
+
 export interface MaintenanceWindow {
   uid: string;
   title: string;
@@ -3799,6 +3806,12 @@ export interface MaintenanceWindow {
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  // Server-computed lifecycle at response time. Optional so the client keeps
+  // working against older servers; views fall back to computeMaintenanceStatus.
+  status?: "active" | "upcoming" | "past";
+  // Server-computed upcoming activations (active one first). Optional; views
+  // fall back to the client nextOccurrences port.
+  nextOccurrences?: MaintenanceOccurrence[];
 }
 
 export interface MaintenanceWindowCheck {
