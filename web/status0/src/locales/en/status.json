@@ -3,6 +3,7 @@
   "outage": "Outage",
   "degraded": "Degraded",
   "warning": "Warning",
+  "scheduledMaintenance": "Scheduled Maintenance",
   "unknown": "Unknown",
   "allSystemsOperational": "All Systems Operational",
   "someSystemsDegraded": "Some Systems Degraded",

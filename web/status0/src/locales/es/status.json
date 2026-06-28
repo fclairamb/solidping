@@ -3,6 +3,7 @@
   "outage": "Caída",
   "degraded": "Degradado",
   "warning": "Advertencia",
+  "scheduledMaintenance": "Mantenimiento programado",
   "unknown": "Desconocido",
   "allSystemsOperational": "Todos los sistemas operativos",
   "someSystemsDegraded": "Algunos sistemas degradados",

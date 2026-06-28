@@ -5,6 +5,9 @@ export interface ResourceCheckInfo {
   name?: string;
   type: string;
   status: string;
+  // True when the check is inside an active maintenance window right now, so
+  // the public page shows a "Scheduled Maintenance" badge instead of raw status.
+  inMaintenance?: boolean;
 }
 
 export interface DailyAvailabilityPoint {
