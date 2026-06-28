@@ -1040,6 +1040,16 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mgmt.GET("/limits", s.getLimits)
 	mgmt.POST("/report", feedbackHandler.SubmitReport)
 
+	// Memory snapshot (super-admin only): runtime memstats, process RSS,
+	// suspect-subsystem sizes and build cgo/SQLite-driver facts. Gated because
+	// memstats + subsystem cardinality are operationally sensitive, unlike
+	// health/version. The raw pprof surface stays on the localhost-bound
+	// profiler server.
+	mgmtAdmin := mainGroup.NewGroup("/api/mgmt").
+		Use(authMiddleware.RequireAuth).
+		Use(authMiddleware.RequireSuperAdmin)
+	mgmtAdmin.GET("/memory", s.getMemory)
+
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {
 		prommetrics.Register(prometheus.DefaultRegisterer)
