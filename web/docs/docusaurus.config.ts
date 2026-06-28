@@ -29,6 +29,11 @@ const config: Config = {
 
   onBrokenLinks: "throw",
 
+  // Enable Mermaid so ```mermaid fences render as themed diagrams.
+  markdown: {
+    mermaid: true,
+  },
+
   i18n: {
     defaultLocale: "en",
     locales: ["en"],
@@ -88,12 +93,16 @@ const config: Config = {
     ],
   ],
 
-  themes: ["docusaurus-theme-openapi-docs"],
+  themes: ["docusaurus-theme-openapi-docs", "@docusaurus/theme-mermaid"],
 
   themeConfig: {
     colorMode: {
       defaultMode: "light",
       respectPrefersColorScheme: true,
+    },
+    // Match Mermaid's light/dark palettes to the site's color modes.
+    mermaid: {
+      theme: { light: "neutral", dark: "dark" },
     },
     navbar: {
       title: "SolidPing",
