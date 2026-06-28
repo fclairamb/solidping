@@ -124,6 +124,10 @@ type ResourceCheckInfo struct {
 	Name   *string `json:"name,omitempty"`
 	Type   string  `json:"type"`
 	Status string  `json:"status"`
+	// InMaintenance is true when the check is inside an active maintenance
+	// window at request time, so the public page can show a "Scheduled
+	// Maintenance" badge instead of a raw up/down state.
+	InMaintenance bool `json:"inMaintenance"`
 }
 
 // ResourceAvailabilityData contains availability and performance data for public display.
@@ -1430,10 +1434,27 @@ func (s *Service) getCheckInfo(ctx context.Context, orgUID, checkUID string) (*R
 		statusStr = "degraded"
 	}
 
+	// Flag the resource as under maintenance when the check sits inside an
+	// active maintenance window right now. A lookup error must never take the
+	// public page down, so we log nothing fatal and default to false.
+	inMaintenance := false
+
+	if windows, errMW := s.db.ListMaintenanceWindowsForCheck(ctx, checkUID); errMW == nil {
+		now := time.Now()
+		for _, w := range windows {
+			if models.IsActiveAt(w, now) {
+				inMaintenance = true
+
+				break
+			}
+		}
+	}
+
 	return &ResourceCheckInfo{
-		Name:   check.Name,
-		Type:   check.Type,
-		Status: statusStr,
+		Name:          check.Name,
+		Type:          check.Type,
+		Status:        statusStr,
+		InMaintenance: inMaintenance,
 	}, nil
 }
 
