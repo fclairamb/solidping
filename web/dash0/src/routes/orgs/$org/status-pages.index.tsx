@@ -173,35 +173,35 @@ function StatusPagesIndexPage() {
         title={t("statusPages:title")}
         description={t("statusPages:subtitle")}
         actions={
-          <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              {t("statusPages:newStatusPage")}
+          <>
+            <Button
+              variant="outline"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              aria-label={t("common:refresh")}
+            >
+              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{t("common:refresh")}</span>
             </Button>
-          </Link>
+            <Link to="/orgs/$org/status-pages/new" params={{ org }}>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                {t("statusPages:newStatusPage")}
+              </Button>
+            </Link>
+          </>
         }
         className="flex-wrap"
       />
 
-      <div className="flex items-center gap-4">
-        <div className="relative flex-1 max-w-sm">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={t("statusPages:searchPlaceholder")}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
-        <Button
-          variant="outline"
-          onClick={() => refetch()}
-          disabled={isRefetching}
-          aria-label={t("common:refresh")}
-        >
-          <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
-          <span className="hidden sm:inline">{t("common:refresh")}</span>
-        </Button>
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder={t("statusPages:searchPlaceholder")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+        />
       </div>
 
       {error ? (
@@ -243,13 +243,7 @@ function StatusPagesIndexPage() {
         </div>
       ) : (
         <div className="text-center py-12 text-muted-foreground">
-          <p className="mb-2">{t("statusPages:noStatusPages")}</p>
-          <Link to="/orgs/$org/status-pages/new" params={{ org }}>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              {t("statusPages:createFirst")}
-            </Button>
-          </Link>
+          <p>{t("statusPages:noStatusPages")}</p>
         </div>
       )}
 
