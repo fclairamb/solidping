@@ -482,4 +482,63 @@ test.describe("Checks", () => {
       fullPage: true,
     });
   });
+
+  test("disabled check shows a grey (data-disabled) status dot on the listing", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const stamp = Date.now();
+    const enabledName = `E2E Dot Enabled ${stamp}`;
+    const disabledName = `E2E Dot Disabled ${stamp}`;
+
+    // Helper: create an HTTP check and land on its detail page.
+    async function createCheck(name: string) {
+      await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+      await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("new-check-button").click();
+      await page.waitForURL(/\/checks\/new/);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByTestId("check-name-input")).toBeVisible();
+      await page.getByTestId("check-name-input").fill(name);
+      await page.getByTestId("check-url-input").fill("https://example.com/dot-test");
+      await page.getByTestId("check-submit-button").click();
+      await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("heading", { name })).toBeVisible();
+    }
+
+    // Create one check that stays enabled.
+    await createCheck(enabledName);
+
+    // Create a second check and disable it from its detail page.
+    await createCheck(disabledName);
+    await page.getByRole("button", { name: /Disable|Enable/ }).click();
+    // Once disabled the toggle relabels to "Enable" — wait for the flip.
+    await expect(page.getByRole("button", { name: /Enable/ })).toBeVisible();
+
+    // Back to the listing.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks$/);
+    await page.waitForLoadState("networkidle");
+
+    // The disabled row's dot reports data-disabled="true" and carries the
+    // localized "Disabled" tooltip/aria-label; the enabled row's dot is "false".
+    const disabledRow = page.locator("tr", { hasText: disabledName });
+    const enabledRow = page.locator("tr", { hasText: enabledName });
+    await expect(disabledRow).toBeVisible();
+    await expect(enabledRow).toBeVisible();
+
+    const disabledDot = disabledRow.getByTestId("check-status-dot");
+    const enabledDot = enabledRow.getByTestId("check-status-dot");
+    await expect(disabledDot).toHaveAttribute("data-disabled", "true");
+    await expect(disabledDot).toHaveAttribute("aria-label", "Disabled");
+    await expect(disabledDot).toHaveAttribute("title", "Disabled");
+    await expect(enabledDot).toHaveAttribute("data-disabled", "false");
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-disabled-dot-listing.png",
+      fullPage: true,
+    });
+  });
 });

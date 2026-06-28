@@ -240,4 +240,53 @@ test.describe("Check Detail Page", () => {
       .evaluate((el) => el.scrollWidth > el.clientWidth + 1);
     expect(headerOverflow).toBe(false);
   });
+
+  test("disabling a check turns the header status dot grey and toggling re-colours it", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create an enabled HTTP check and land on its detail page.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Detail Dot ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/detail-dot");
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    const header = page.getByTestId("check-detail-header");
+    const dot = header.getByTestId("check-status-dot");
+
+    // Enabled by default: the dot is not in the disabled state, and there is no
+    // "Disabled" badge in the status block.
+    await expect(dot).toHaveAttribute("data-disabled", "false");
+
+    // Disable from the header toggle. The dot goes grey (data-disabled="true",
+    // overriding the last/live status colour) and the outline "Disabled" badge
+    // appears beside the StatusBadge.
+    await page.getByRole("button", { name: /Disable|Enable/ }).click();
+    await expect(page.getByRole("button", { name: /Enable/ })).toBeVisible();
+    await expect(dot).toHaveAttribute("data-disabled", "true");
+    await expect(dot).toHaveAttribute("aria-label", "Disabled");
+    await expect(page.getByText("Disabled", { exact: true })).toBeVisible();
+
+    await page.screenshot({
+      path: "test-results/screenshots/check-detail-disabled-dot.png",
+      fullPage: true,
+    });
+
+    // Re-enable: the dot flips back out of the disabled state live, no reload.
+    await page.getByRole("button", { name: /Enable/ }).click();
+    await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
+    await expect(dot).toHaveAttribute("data-disabled", "false");
+  });
 });
