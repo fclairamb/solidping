@@ -1933,20 +1933,23 @@ function MaintenanceScheduleSection() {
       weekday: "short",
     });
 
-  // A sample weekly window for the summary panel preview.
-  const now = new Date();
-  const sampleStart = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 22, 0),
-  );
-  const sampleWindow = {
-    uid: "dr-sample",
-    title: "Weekly DB backup",
-    startAt: sampleStart.toISOString(),
-    endAt: new Date(sampleStart.getTime() + 3600000).toISOString(),
-    recurrence: "weekly" as const,
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-  };
+  // A sample weekly window for the summary panel preview. Computed once (the
+  // current date is read in an effect-free memo to avoid impure render calls).
+  const sampleWindow = useMemo(() => {
+    const now = new Date();
+    const sampleStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 22, 0),
+    );
+    return {
+      uid: "dr-sample",
+      title: "Weekly DB backup",
+      startAt: sampleStart.toISOString(),
+      endAt: new Date(sampleStart.getTime() + 3600000).toISOString(),
+      recurrence: "weekly" as const,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  }, []);
 
   return (
     <Section
