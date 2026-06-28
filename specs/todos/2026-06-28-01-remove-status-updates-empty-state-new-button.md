@@ -129,3 +129,22 @@ fresh org):
   `mb-2`.
 - [`web/dash0/e2e/status-updates.spec.ts`](../../web/dash0/e2e/status-updates.spec.ts)
   — existing E2E, unaffected (targets the header button by test id).
+
+## Implementation Plan
+
+1. **Edit the empty-state branch** in
+   `web/dash0/src/routes/orgs/$org/status-updates.index.tsx` (lines ~403-414):
+   - Remove the `<Button asChild><Link …>…New update…</Link></Button>` CTA.
+   - Drop the `mb-2` class on the `<p>No status updates yet.</p>` so no trailing
+     bottom margin remains.
+   - Resulting block: `<div>` with `<Megaphone …/>` + `<p>No status updates yet.</p>`.
+   - Leave all imports (`Button`, `Plus`, `Link`, `Megaphone`) untouched — each is
+     still used elsewhere on the page (header action, row actions, row title link).
+2. **Format & verify**: `make fmt`, then QA — `make build-dash0`, `make build-backend`,
+   `make lint-back`, `make test`, and `cd web/dash0 && bun run lint` (gate: no NEW
+   eslint errors vs. the known ~25-error react-hooks base debt).
+3. **E2E**: no new test needed — `web/dash0/e2e/status-updates.spec.ts` already
+   targets the header button via `getByTestId("status-updates-new")`; the removed
+   empty-state CTA had no test id. Confirm the existing spec still references only the
+   header button (no assertion on a second/empty-state button) so it stays green.
+4. **Archive** the spec to `specs/done/2026/06/`.
