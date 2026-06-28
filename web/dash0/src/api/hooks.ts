@@ -3781,3 +3781,151 @@ export function useCheckJob(org: string, uid: string, opts?: JobsScope) {
     enabled: !!org && !!uid,
   });
 }
+
+// Maintenance windows ---------------------------------------------------------
+// Backend: server/internal/handlers/maintenancewindows. The window response
+// carries no server-computed status or check counts — the UI derives status
+// client-side (see lib/maintenance-window-status.ts) and counts from the
+// /checks association endpoint.
+
+export interface MaintenanceWindow {
+  uid: string;
+  title: string;
+  description?: string;
+  startAt: string;
+  endAt: string;
+  recurrence: "none" | "daily" | "weekly" | "monthly";
+  recurrenceEnd?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MaintenanceWindowCheck {
+  uid: string;
+  checkUid?: string;
+  checkGroupUid?: string;
+}
+
+export interface CreateMaintenanceWindowRequest {
+  title: string;
+  description?: string;
+  startAt: string;
+  endAt: string;
+  recurrence: string;
+  recurrenceEnd?: string | null;
+}
+
+export type UpdateMaintenanceWindowRequest = Partial<CreateMaintenanceWindowRequest>;
+
+export interface SetMaintenanceWindowChecksRequest {
+  checkUids: string[];
+  checkGroupUids: string[];
+}
+
+export function useMaintenanceWindows(
+  org: string,
+  params?: { status?: string; limit?: number },
+) {
+  return useQuery({
+    queryKey: ["maintenanceWindows", org, params ?? {}],
+    queryFn: async () => {
+      const search = new URLSearchParams();
+      if (params?.status) search.set("status", params.status);
+      if (params?.limit) search.set("limit", String(params.limit));
+      const query = search.toString();
+      const response = await apiFetch<{ data?: MaintenanceWindow[] }>(
+        `/api/v1/orgs/${org}/maintenance-windows${query ? `?${query}` : ""}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useMaintenanceWindow(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["maintenanceWindow", org, uid],
+    queryFn: () =>
+      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useMaintenanceWindowChecks(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["maintenanceWindowChecks", org, uid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: MaintenanceWindowCheck[] }>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}/checks`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateMaintenanceWindow(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateMaintenanceWindowRequest) =>
+      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+    },
+  });
+}
+
+export function useUpdateMaintenanceWindow(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateMaintenanceWindowRequest) =>
+      apiFetch<MaintenanceWindow>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(request),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindow", org, uid] });
+    },
+  });
+}
+
+export function useDeleteMaintenanceWindow(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+    },
+  });
+}
+
+export function useSetMaintenanceWindowChecks(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: SetMaintenanceWindowChecksRequest) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/maintenance-windows/${uid}/checks`, {
+        method: "PUT",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenanceWindowChecks", org, uid],
+      });
+    },
+  });
+}
