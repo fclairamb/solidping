@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Network, Plus, RefreshCw, Scan } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -62,33 +62,68 @@ function scanSource(type: string): string {
   }
 }
 
+// scanDetails returns a generic, source-aware one-line summary of a scan's
+// config, replacing the old LAN-only "CIDRs" cell: CIDRs for LAN, hosts for
+// container, namespaces for kubernetes (empty ⇒ "All namespaces"), "—" otherwise.
+function scanDetails(
+  source: string,
+  config: Record<string, unknown> | undefined,
+  allNamespacesLabel: string,
+): string {
+  const cfg = config ?? {};
+  const joinList = (key: string) =>
+    Array.isArray(cfg[key]) ? (cfg[key] as unknown[]).map(String).join(", ") : "";
+  switch (source) {
+    case "lan":
+      return joinList("cidrs") || "—";
+    case "container":
+      return joinList("hosts") || "—";
+    case "kubernetes":
+      return joinList("namespaces") || allNamespacesLabel;
+    default:
+      return "—";
+  }
+}
+
 function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
   const { t } = useTranslation("discovery");
+  const navigate = useNavigate();
   const statusLabel = t(`scanStatus.${scan.status}`, scan.status);
   const source = scanSource(scan.type);
+  const details = scanDetails(
+    source,
+    scan.config as Record<string, unknown> | undefined,
+    t("allNamespaces"),
+  );
+
+  const open = () =>
+    void navigate({
+      to: "/orgs/$org/discovery/$jobUid",
+      params: { org, jobUid: scan.uid },
+    });
 
   return (
-    <TableRow>
+    <TableRow
+      className="cursor-pointer hover:bg-muted/50"
+      role="link"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
       <TableCell>
         <Badge variant="outline">{t(`sourceLabel.${source}`, source)}</Badge>
       </TableCell>
       <TableCell>
         <Badge variant={statusBadgeVariant(scan.status)}>{statusLabel}</Badge>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {Array.isArray((scan.config as { cidrs?: string[] })?.cidrs)
-          ? ((scan.config as { cidrs?: string[] }).cidrs ?? []).join(", ")
-          : "—"}
-      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">{details}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {new Date(scan.createdAt).toLocaleString()}
-      </TableCell>
-      <TableCell className="text-right">
-        <Button asChild variant="ghost" size="sm">
-          <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid: scan.uid }}>
-            {t("viewChecks")}
-          </Link>
-        </Button>
       </TableCell>
     </TableRow>
   );
@@ -137,9 +172,10 @@ function DiscoveryIndexPage() {
                 to="/orgs/$org/discovery/new"
                 params={{ org }}
                 search={{ method: "lan" }}
+                aria-label={t("newScan")}
               >
-                <Plus className="h-4 w-4 mr-1" />
-                {t("newScan")}
+                <Plus className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{t("newScan")}</span>
               </Link>
             </Button>
           </>
@@ -184,9 +220,8 @@ function DiscoveryIndexPage() {
                 <TableRow>
                   <TableHead>{t("source")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
-                  <TableHead>{t("cidrs")}</TableHead>
+                  <TableHead>{t("details")}</TableHead>
                   <TableHead>{t("startedAt")}</TableHead>
-                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>
