@@ -164,6 +164,19 @@ func (n *PgEventNotifier) Listen(eventType string) <-chan string {
 	return ch
 }
 
+// ListenerCount returns the total number of registered listener channels across
+// all event types. Mirrors LocalEventNotifier.ListenerCount so the memory
+// surface can report listener cardinality regardless of the DB backend.
+func (n *PgEventNotifier) ListenerCount() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	total := 0
+	for _, channels := range n.listeners {
+		total += len(channels)
+	}
+	return total
+}
+
 // Close releases resources used by the PostgreSQL listener.
 func (n *PgEventNotifier) Close() error {
 	var err error

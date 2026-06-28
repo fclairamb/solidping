@@ -337,6 +337,29 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	return server, nil
 }
 
+// registerSubsystemMetrics wires the A2 subsystem-size collector to the live
+// services (DEK cache, event listeners) and rate limiter. Reads are taken at
+// scrape time via closures, so the collector holds no copies and costs nothing
+// at idle. Guards each source for nil so a partially-initialized server (or a
+// future role that skips a subsystem) degrades to 0 rather than panicking.
+func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
+	sizes := prommetrics.SubsystemSizes{}
+
+	if s.services != nil {
+		if cred := s.services.Credentials; cred != nil {
+			sizes.DEKCacheEntries = cred.DEKCacheLen
+		}
+		if ev := s.services.EventNotifier; ev != nil {
+			sizes.EventListeners = func() int { return notifier.ListenerCount(ev) }
+		}
+	}
+	if s.rateLimiter != nil {
+		sizes.RateLimitEntries = s.rateLimiter.EntryCount
+	}
+
+	prommetrics.RegisterSubsystems(reg, sizes)
+}
+
 // SetupRoutes builds the HTTP router and registers every handler. It must
 // be called after InitializeSystemConfig so handlers see the post-overlay
 // config (e.g. PasskeyService deriving its RP ID from cfg.Server.BaseURL,
@@ -1020,6 +1043,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {
 		prommetrics.Register(prometheus.DefaultRegisterer)
+		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
 
 		metricsPath := s.config.Prometheus.Path
 		if metricsPath == "" {

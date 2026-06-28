@@ -23,6 +23,23 @@ type EventNotifier interface {
 	Close() error
 }
 
+// ListenerCounter is implemented by notifiers that can report how many listener
+// channels are currently registered. Both LocalEventNotifier and
+// PgEventNotifier satisfy it; the memory surface uses a type assertion so the
+// EventNotifier interface itself stays minimal.
+type ListenerCounter interface {
+	ListenerCount() int
+}
+
+// ListenerCount returns n's registered listener-channel count, or 0 if n does
+// not implement ListenerCounter.
+func ListenerCount(n EventNotifier) int {
+	if lc, ok := n.(ListenerCounter); ok {
+		return lc.ListenerCount()
+	}
+	return 0
+}
+
 // New creates an EventNotifier appropriate for the database type.
 // For PostgreSQL, it uses NOTIFY/LISTEN for optimal performance.
 // For SQLite and other databases, it uses in-memory channels.

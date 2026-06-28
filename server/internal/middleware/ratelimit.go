@@ -298,6 +298,19 @@ func (rl *RateLimiter) Config() config.RateLimitConfig {
 	return rl.cfg
 }
 
+// EntryCount returns the number of per-IP entries currently held in the
+// limiter's map. The map grows O(unique IPs) and is pruned by cleanupLoop;
+// this count lets the memory surface verify cleanup keeps pace under a wide
+// client base or scan. O(n) range; only called at metrics scrape time.
+func (rl *RateLimiter) EntryCount() int {
+	count := 0
+	rl.entries.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
+}
+
 // ExtractIP returns the client IP for the request using the configured
 // TrustedProxies count. Exposed so handlers (e.g. /api/mgmt/limits) can use
 // the same logic as the middlewares.
