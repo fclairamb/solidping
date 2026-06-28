@@ -81,9 +81,7 @@ func TestKnownSlackKeys(t *testing.T) {
 // TestInitializeAppliesSlackParams verifies the full DB -> cfg apply path that
 // the dashboard depends on: rows persisted under the auth.slack.* keys must land
 // on cfg.Slack on Initialize, and env vars must override the DB value
-// (env > db > default).
-//
-//nolint:paralleltest // env-precedence case uses t.Setenv (process-global env)
+// (env > db > default). t.Setenv below makes this test non-parallel.
 func TestInitializeAppliesSlackParams(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -120,7 +118,9 @@ func TestInitializeAppliesSlackParams(t *testing.T) {
 				string(KeySlackAppToken):          {value: "xapp-from-db", secret: true},
 			},
 			env: map[string]string{
-				"SP_SLACK_SOCKET_MODE_ENABLED": "true",
+				// boolStringTrue ("true") is reused instead of a fresh literal
+				// to keep the package under the goconst occurrence threshold.
+				"SP_SLACK_SOCKET_MODE_ENABLED": boolStringTrue,
 				"SP_SLACK_APP_TOKEN":           "xapp-from-env",
 			},
 			wantSocketMode: true,
@@ -139,7 +139,7 @@ func TestInitializeAppliesSlackParams(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) { //nolint:paralleltest // mutates process-global env via t.Setenv
+		t.Run(tt.name, func(t *testing.T) {
 			r := require.New(t)
 			ctx := context.Background()
 
