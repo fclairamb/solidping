@@ -40,13 +40,16 @@ func TestMaintenanceWindowDescriptionsIncludeExamples(t *testing.T) {
 	props, ok := schema["properties"].(map[string]any)
 	r.True(ok)
 
-	// Recurrence description must show concrete RRULE examples (LLMs guess otherwise)
+	// Recurrence description must document the real enum, NOT iCalendar RRULE — the
+	// service only accepts none|daily|weekly|monthly, so advertising RRULE breaks LLMs.
 	rec, ok := props[propRecurrence].(map[string]any)
 	r.True(ok)
 	desc, ok := rec[schemaKeyDescription].(string)
 	r.True(ok)
-	r.Contains(desc, "FREQ=WEEKLY")
-	r.Contains(desc, "FREQ=MONTHLY")
+	r.Contains(desc, "daily")
+	r.Contains(desc, "weekly")
+	r.Contains(desc, "monthly")
+	r.NotContains(desc, "FREQ=", "recurrence docs must not advertise iCalendar RRULE")
 
 	// startAt and endAt must show concrete RFC3339 examples
 	for _, key := range []string{propStartAt, propEndAt} {
@@ -56,6 +59,26 @@ func TestMaintenanceWindowDescriptionsIncludeExamples(t *testing.T) {
 		r.True(ok)
 		r.Contains(desc, "2026-")
 	}
+}
+
+// TestUpdateMaintenanceRecurrenceDocsNoRRULE locks the update tool's recurrence
+// docs to the enum too (it previously advertised RRULE).
+func TestUpdateMaintenanceRecurrenceDocsNoRRULE(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	def := updateMaintenanceWindowDef()
+	schema, ok := def.InputSchema.(map[string]any)
+	r.True(ok)
+	props, ok := schema["properties"].(map[string]any)
+	r.True(ok)
+
+	rec, ok := props[propRecurrence].(map[string]any)
+	r.True(ok)
+	desc, ok := rec[schemaKeyDescription].(string)
+	r.True(ok)
+	r.NotContains(desc, "FREQ=", "update recurrence docs must not advertise iCalendar RRULE")
+	r.Contains(desc, "monthly")
 }
 
 func TestMaintenanceWindowRequiredArgs(t *testing.T) {
@@ -145,7 +168,7 @@ func TestBuildCreateMaintenanceRequest_Happy(t *testing.T) {
 		"startAt":       "2026-05-03T22:00:00Z",
 		"endAt":         "2026-05-03T23:30:00Z",
 		"description":   "Upgrade Postgres major version",
-		"recurrence":    "FREQ=WEEKLY;BYDAY=SU",
+		"recurrence":    "weekly",
 		"recurrenceEnd": "2026-12-31T00:00:00Z",
 	}
 	req, errMsg := buildCreateMaintenanceRequest(args)
@@ -155,7 +178,7 @@ func TestBuildCreateMaintenanceRequest_Happy(t *testing.T) {
 	r.NotNil(req.Description)
 	r.Equal("Upgrade Postgres major version", *req.Description)
 	r.Equal(2026, req.StartAt.Year())
-	r.Equal("FREQ=WEEKLY;BYDAY=SU", req.Recurrence)
+	r.Equal("weekly", req.Recurrence)
 	r.NotNil(req.RecurrenceEnd)
 }
 
