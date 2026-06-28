@@ -1,6 +1,7 @@
 package prommetrics_test
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -37,6 +38,16 @@ func TestMetrics(t *testing.T) {
 
 	r.True(names["solidping_check_executions_total"], "missing solidping_check_executions_total")
 	r.True(names["solidping_check_duration_seconds"], "missing solidping_check_duration_seconds")
+
+	// Runtime + process collectors (A1) must be registered by Register so both
+	// the API server and worker expose heap/RSS/goroutine series on /metrics.
+	r.True(names["go_memstats_heap_inuse_bytes"], "missing go_memstats_heap_inuse_bytes (Go collector)")
+	r.True(names["go_goroutines"], "missing go_goroutines (Go collector)")
+	// process_* depends on the OS; assert on platforms where it is supported
+	// (the process collector silently emits nothing on unsupported OSes).
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		r.True(names["process_resident_memory_bytes"], "missing process_resident_memory_bytes (process collector)")
+	}
 
 	// Record scheduling delay
 	prommetrics.RecordSchedulingDelay("eu-west-1", 2.5)

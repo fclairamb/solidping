@@ -303,9 +303,13 @@ var (
 	}
 )
 
-// Register registers all SolidPing metrics with the given registerer.
+// Register registers all SolidPing metrics with the given registerer, plus the
+// Go runtime and process collectors (heap/RSS/goroutine/GC time series) that
+// memory leak detection depends on. Called for every node role so the API
+// server and worker expose the same /metrics surface.
 func Register(reg prometheus.Registerer) {
 	for _, c := range allCollectors {
 		reg.MustRegister(c)
 	}
+	registerRuntimeCollectors(reg)
 }
