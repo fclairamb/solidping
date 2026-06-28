@@ -42,8 +42,18 @@
     "descriptionPlaceholder": "Optionaler Kontext, der neben diesem Fenster angezeigt wird",
     "start": "Beginn",
     "end": "Ende",
+    "startTime": "Startzeit",
+    "duration": "Dauer",
+    "durationUnitMinutes": "Minuten",
+    "durationUnitHours": "Stunden",
+    "firstDay": "Erster Tag",
+    "repeatOn": "Wiederholen am",
+    "dayOfMonth": "Tag des Monats",
+    "dayOfMonthHelp": "Monate, die kürzer als der gewählte Tag sind, laufen an ihrem letzten Tag.",
     "recurrence": "Wiederholung",
     "recurrenceEnd": "Wiederholungsende",
+    "until": "Bis",
+    "untilHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
     "recurrenceEndHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
     "checks": "Prüfungen",
     "groups": "Prüfgruppen",
@@ -53,11 +63,34 @@
     "errors": {
       "titleRequired": "Titel ist erforderlich",
       "endAfterStart": "Die Endzeit muss nach der Startzeit liegen",
-      "recurrenceEndAfterStart": "Das Wiederholungsende muss nach der Startzeit liegen"
+      "recurrenceEndAfterStart": "Das Wiederholungsende muss nach der Startzeit liegen",
+      "durationRequired": "Die Dauer muss größer als null sein",
+      "durationOverlapsWarning": "Diese Dauer ist länger als das Wiederholungsintervall, sodass sich die Vorkommen überschneiden.",
+      "firstDayRequired": "Der erste Tag ist erforderlich",
+      "untilAfterFirstDay": "Das Enddatum muss nach dem ersten Tag liegen"
     }
+  },
+  "summary": {
+    "once": "Einmalig: {{start}} – {{end}}",
+    "daily": "Täglich, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Jeden {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "Am {{day}}. jedes Monats, {{start}} – {{end}} ({{duration}})",
+    "until": " · bis {{date}}",
+    "noEnd": " · kein Enddatum",
+    "alertsPaused": "Vorfallsbenachrichtigungen für die betroffenen Prüfungen sind während jedes Vorkommens pausiert.",
+    "nextLabel": "Nächste:",
+    "nextNone": "Keine bevorstehenden Vorkommen"
+  },
+  "duration": {
+    "hoursShort": "Std.",
+    "minutesShort": "Min.",
+    "daysShort": "T"
   },
   "detail": {
     "schedule": "Zeitplan",
+    "summary": "Zusammenfassung",
+    "nextOccurrences": "Nächste Vorkommen",
+    "noNextOccurrences": "Keine bevorstehenden Vorkommen",
     "affectedChecks": "Betroffene Prüfungen",
     "start": "Beginn",
     "end": "Ende",

@@ -42,8 +42,18 @@
     "descriptionPlaceholder": "Contexte optionnel affiché avec cette fenêtre",
     "start": "Début",
     "end": "Fin",
+    "startTime": "Heure de début",
+    "duration": "Durée",
+    "durationUnitMinutes": "minutes",
+    "durationUnitHours": "heures",
+    "firstDay": "Premier jour",
+    "repeatOn": "Répéter le",
+    "dayOfMonth": "Jour du mois",
+    "dayOfMonthHelp": "Les mois plus courts que le jour choisi s'exécutent leur dernier jour.",
     "recurrence": "Récurrence",
     "recurrenceEnd": "Fin de récurrence",
+    "until": "Jusqu'au",
+    "untilHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
     "recurrenceEndHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
     "checks": "Contrôles",
     "groups": "Groupes de contrôles",
@@ -53,11 +63,34 @@
     "errors": {
       "titleRequired": "Le titre est obligatoire",
       "endAfterStart": "L'heure de fin doit être postérieure à l'heure de début",
-      "recurrenceEndAfterStart": "La fin de récurrence doit être postérieure à l'heure de début"
+      "recurrenceEndAfterStart": "La fin de récurrence doit être postérieure à l'heure de début",
+      "durationRequired": "La durée doit être supérieure à zéro",
+      "durationOverlapsWarning": "Cette durée est plus longue que l'intervalle de répétition ; les occurrences se chevauchent.",
+      "firstDayRequired": "Le premier jour est obligatoire",
+      "untilAfterFirstDay": "La date de fin doit être postérieure au premier jour"
     }
+  },
+  "summary": {
+    "once": "Ponctuelle : {{start}} – {{end}}",
+    "daily": "Tous les jours, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Tous les {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "Le {{day}} de chaque mois, {{start}} – {{end}} ({{duration}})",
+    "until": " · jusqu'au {{date}}",
+    "noEnd": " · sans date de fin",
+    "alertsPaused": "Les alertes d'incident sont suspendues pour les contrôles concernés pendant chaque occurrence.",
+    "nextLabel": "Prochaines :",
+    "nextNone": "Aucune occurrence à venir"
+  },
+  "duration": {
+    "hoursShort": "h",
+    "minutesShort": "min",
+    "daysShort": "j"
   },
   "detail": {
     "schedule": "Planification",
+    "summary": "Résumé",
+    "nextOccurrences": "Prochaines occurrences",
+    "noNextOccurrences": "Aucune occurrence à venir",
     "affectedChecks": "Contrôles concernés",
     "start": "Début",
     "end": "Fin",

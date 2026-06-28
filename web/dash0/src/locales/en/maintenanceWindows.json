@@ -42,8 +42,18 @@
     "descriptionPlaceholder": "Optional context shown alongside this window",
     "start": "Start",
     "end": "End",
+    "startTime": "Start time",
+    "duration": "Duration",
+    "durationUnitMinutes": "minutes",
+    "durationUnitHours": "hours",
+    "firstDay": "First day",
+    "repeatOn": "Repeat on",
+    "dayOfMonth": "Day of month",
+    "dayOfMonthHelp": "Months shorter than your chosen day run on their last day.",
     "recurrence": "Recurrence",
     "recurrenceEnd": "Recurrence end",
+    "until": "Until",
+    "untilHelp": "Optional. After this date the window no longer recurs.",
     "recurrenceEndHelp": "Optional. After this date the window no longer recurs.",
     "checks": "Checks",
     "groups": "Check groups",
@@ -53,11 +63,34 @@
     "errors": {
       "titleRequired": "Title is required",
       "endAfterStart": "End time must be after start time",
-      "recurrenceEndAfterStart": "Recurrence end must be after the start time"
+      "recurrenceEndAfterStart": "Recurrence end must be after the start time",
+      "durationRequired": "Duration must be greater than zero",
+      "durationOverlapsWarning": "This duration is longer than the repeat interval, so occurrences overlap.",
+      "firstDayRequired": "First day is required",
+      "untilAfterFirstDay": "Until must be after the first day"
     }
+  },
+  "summary": {
+    "once": "One-time: {{start}} – {{end}}",
+    "daily": "Every day, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Every {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "On day {{day}} each month, {{start}} – {{end}} ({{duration}})",
+    "until": " · until {{date}}",
+    "noEnd": " · no end date",
+    "alertsPaused": "Incident alerts are paused for the affected checks during each occurrence.",
+    "nextLabel": "Next:",
+    "nextNone": "No upcoming occurrences"
+  },
+  "duration": {
+    "hoursShort": "h",
+    "minutesShort": "m",
+    "daysShort": "d"
   },
   "detail": {
     "schedule": "Schedule",
+    "summary": "Summary",
+    "nextOccurrences": "Next occurrences",
+    "noNextOccurrences": "No upcoming occurrences",
     "affectedChecks": "Affected checks",
     "start": "Start",
     "end": "End",
