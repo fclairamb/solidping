@@ -21,6 +21,7 @@ import {
   Server,
   MessageSquare,
   Workflow,
+  Wrench,
 } from "lucide-react";
 import {
   Sidebar,
@@ -98,6 +99,11 @@ const navItems = [
     titleKey: "statusUpdates",
     path: "/orgs/$org/status-updates" as const,
     icon: MessageSquare,
+  },
+  {
+    titleKey: "maintenanceWindows",
+    path: "/orgs/$org/maintenance-windows" as const,
+    icon: Wrench,
   },
   {
     titleKey: "badges",

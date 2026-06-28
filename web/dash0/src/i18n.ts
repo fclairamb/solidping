@@ -20,6 +20,7 @@ import enEscalation from "./locales/en/escalation.json";
 import enIntegrations from "./locales/en/integrations.json";
 import enDiscovery from "./locales/en/discovery.json";
 import enJobs from "./locales/en/jobs.json";
+import enMaintenanceWindows from "./locales/en/maintenanceWindows.json";
 import frCommon from "./locales/fr/common.json";
 import frNav from "./locales/fr/nav.json";
 import frAuth from "./locales/fr/auth.json";
@@ -39,6 +40,7 @@ import frEscalation from "./locales/fr/escalation.json";
 import frIntegrations from "./locales/fr/integrations.json";
 import frDiscovery from "./locales/fr/discovery.json";
 import frJobs from "./locales/fr/jobs.json";
+import frMaintenanceWindows from "./locales/fr/maintenanceWindows.json";
 import deCommon from "./locales/de/common.json";
 import deNav from "./locales/de/nav.json";
 import deAuth from "./locales/de/auth.json";
@@ -58,6 +60,7 @@ import deEscalation from "./locales/de/escalation.json";
 import deIntegrations from "./locales/de/integrations.json";
 import deDiscovery from "./locales/de/discovery.json";
 import deJobs from "./locales/de/jobs.json";
+import deMaintenanceWindows from "./locales/de/maintenanceWindows.json";
 import esCommon from "./locales/es/common.json";
 import esNav from "./locales/es/nav.json";
 import esAuth from "./locales/es/auth.json";
@@ -77,6 +80,7 @@ import esEscalation from "./locales/es/escalation.json";
 import esIntegrations from "./locales/es/integrations.json";
 import esDiscovery from "./locales/es/discovery.json";
 import esJobs from "./locales/es/jobs.json";
+import esMaintenanceWindows from "./locales/es/maintenanceWindows.json";
 
 i18n
   .use(LanguageDetector)
@@ -103,6 +107,7 @@ i18n
         integrations: enIntegrations,
         discovery: enDiscovery,
         jobs: enJobs,
+        maintenanceWindows: enMaintenanceWindows,
       },
       fr: {
         common: frCommon,
@@ -124,6 +129,7 @@ i18n
         integrations: frIntegrations,
         discovery: frDiscovery,
         jobs: frJobs,
+        maintenanceWindows: frMaintenanceWindows,
       },
       de: {
         common: deCommon,
@@ -145,6 +151,7 @@ i18n
         integrations: deIntegrations,
         discovery: deDiscovery,
         jobs: deJobs,
+        maintenanceWindows: deMaintenanceWindows,
       },
       es: {
         common: esCommon,
@@ -166,6 +173,7 @@ i18n
         integrations: esIntegrations,
         discovery: esDiscovery,
         jobs: esJobs,
+        maintenanceWindows: esMaintenanceWindows,
       },
     },
     defaultNS: "common",

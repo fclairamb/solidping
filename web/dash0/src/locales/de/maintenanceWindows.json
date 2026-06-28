@@ -1,0 +1,82 @@
+{
+  "title": "Wartungsfenster",
+  "subtitle": "Planen Sie Wartungen, um Vorfallsbenachrichtigungen zu unterdrücken",
+  "new": "Neues Fenster",
+  "empty": "Keine Wartungsfenster geplant",
+  "searchPlaceholder": "Wartungsfenster suchen...",
+  "noMatch": "Keine Wartungsfenster entsprechen Ihrer Suche",
+  "backToList": "Zurück zu den Wartungsfenstern",
+  "edit": "Bearbeiten",
+  "checksCount_one": "{{count}} Prüfung",
+  "checksCount_other": "{{count}} Prüfungen",
+  "table": {
+    "title": "Titel",
+    "schedule": "Zeitplan",
+    "recurrence": "Wiederholung",
+    "status": "Status",
+    "checks": "Prüfungen"
+  },
+  "recurrence": {
+    "none": "Einmalig",
+    "daily": "Täglich",
+    "weekly": "Wöchentlich",
+    "monthly": "Monatlich"
+  },
+  "status": {
+    "active": "Aktiv",
+    "upcoming": "Bevorstehend",
+    "past": "Vergangen"
+  },
+  "form": {
+    "createTitle": "Neues Wartungsfenster",
+    "editTitle": "Wartungsfenster bearbeiten",
+    "createDescription": "Planen Sie einen Wartungszeitraum, in dem Vorfallsbenachrichtigungen für die ausgewählten Prüfungen unterdrückt werden.",
+    "editDescription": "Aktualisieren Sie den Zeitplan und die betroffenen Prüfungen dieses Wartungsfensters.",
+    "detailsTitle": "Details",
+    "scheduleTitle": "Zeitplan",
+    "affectedTitle": "Betroffene Prüfungen",
+    "affectedDescription": "Vorfälle für diese Prüfungen und Gruppen werden unterdrückt, während das Fenster aktiv ist.",
+    "title": "Titel",
+    "titlePlaceholder": "Wöchentliches DB-Backup",
+    "description": "Beschreibung",
+    "descriptionPlaceholder": "Optionaler Kontext, der neben diesem Fenster angezeigt wird",
+    "start": "Beginn",
+    "end": "Ende",
+    "recurrence": "Wiederholung",
+    "recurrenceEnd": "Wiederholungsende",
+    "recurrenceEndHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
+    "checks": "Prüfungen",
+    "groups": "Prüfgruppen",
+    "submitCreate": "Fenster erstellen",
+    "submitSave": "Änderungen speichern",
+    "cancel": "Abbrechen",
+    "errors": {
+      "titleRequired": "Titel ist erforderlich",
+      "endAfterStart": "Die Endzeit muss nach der Startzeit liegen",
+      "recurrenceEndAfterStart": "Das Wiederholungsende muss nach der Startzeit liegen"
+    }
+  },
+  "detail": {
+    "schedule": "Zeitplan",
+    "affectedChecks": "Betroffene Prüfungen",
+    "start": "Beginn",
+    "end": "Ende",
+    "recurrence": "Wiederholung",
+    "recurrenceEnd": "Wiederholungsende",
+    "noAffected": "Keine Prüfungen oder Gruppen sind von diesem Fenster betroffen.",
+    "createdBy": "Erstellt von",
+    "view": "Anzeigen"
+  },
+  "toast": {
+    "created": "Wartungsfenster erstellt",
+    "updated": "Wartungsfenster aktualisiert",
+    "deleted": "Wartungsfenster gelöscht",
+    "createFailed": "Wartungsfenster konnte nicht erstellt werden",
+    "updateFailed": "Wartungsfenster konnte nicht aktualisiert werden",
+    "deleteFailed": "Wartungsfenster konnte nicht gelöscht werden"
+  },
+  "delete": {
+    "confirmTitle": "Wartungsfenster löschen?",
+    "confirmBody": "Möchten Sie dieses Wartungsfenster wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+  }
+}
