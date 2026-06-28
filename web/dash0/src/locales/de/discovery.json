@@ -14,7 +14,6 @@
   },
   "scans": "Scans",
   "hosts": "Entdeckte Hosts",
-  "viewChecks": "Prüfungen anzeigen",
   "suggestedChecks": "Vorgeschlagene Prüfungen",
   "noChecks": "Noch keine Prüfungen entdeckt",
   "noChecksDescription": "Starten Sie einen Scan oder warten Sie auf den Abschluss des aktuellen Scans.",
@@ -73,7 +72,8 @@
   "back": "Zurück",
   "refresh": "Aktualisieren",
   "scanDetails": "Scan-Details",
-  "cidrs": "CIDRs",
+  "details": "Details",
+  "allNamespaces": "Alle Namespaces",
   "startedAt": "Gestartet am",
   "source": "Quelle",
   "sourceLabel": {

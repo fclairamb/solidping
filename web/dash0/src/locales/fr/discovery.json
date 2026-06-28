@@ -14,7 +14,6 @@
   },
   "scans": "Scans",
   "hosts": "Hôtes découverts",
-  "viewChecks": "Voir les vérifications",
   "suggestedChecks": "Vérifications suggérées",
   "noChecks": "Aucune vérification découverte",
   "noChecksDescription": "Lancez un scan pour découvrir des vérifications suggérées, ou attendez la fin du scan en cours.",
@@ -73,7 +72,8 @@
   "back": "Retour",
   "refresh": "Actualiser",
   "scanDetails": "Détails du scan",
-  "cidrs": "CIDRs",
+  "details": "Détails",
+  "allNamespaces": "Tous les espaces de noms",
   "startedAt": "Démarré le",
   "source": "Source",
   "sourceLabel": {

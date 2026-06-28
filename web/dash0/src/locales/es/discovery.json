@@ -14,7 +14,6 @@
   },
   "scans": "Escaneos",
   "hosts": "Hosts descubiertos",
-  "viewChecks": "Ver comprobaciones",
   "suggestedChecks": "Comprobaciones sugeridas",
   "noChecks": "Ninguna comprobación descubierta aún",
   "noChecksDescription": "Inicie un escaneo para descubrir comprobaciones sugeridas o espere a que finalice el actual.",
@@ -73,7 +72,8 @@
   "back": "Volver",
   "refresh": "Actualizar",
   "scanDetails": "Detalles del escaneo",
-  "cidrs": "CIDRs",
+  "details": "Detalles",
+  "allNamespaces": "Todos los espacios de nombres",
   "startedAt": "Iniciado el",
   "source": "Origen",
   "sourceLabel": {
