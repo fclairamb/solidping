@@ -335,6 +335,77 @@ test.describe("Network Discovery", () => {
     ).toBeVisible();
   });
 
+  // The index "Start new scan" button mirrors every other primary "New X"
+  // button: icon-only below the Tailwind `sm` (640px) breakpoint, full label at
+  // and above it. Its accessible name ("Start new scan") survives at every width
+  // via the aria-label on the link.
+  test("index Start-new-scan button is icon-only on mobile and labelled on desktop", async ({
+    page,
+  }) => {
+    // Mobile width: the button is present (by accessible name) but its text label
+    // is hidden.
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /start new scan/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/start new scan/i)).toBeHidden();
+
+    // Desktop width: the text label is revealed.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByText(/start new scan/i)).toBeVisible();
+  });
+
+  // Clicking anywhere in a scan row navigates to that scan's detail page (the
+  // row is the link target; there is no trailing "View checks" cell anymore).
+  test("clicking a scan row navigates to the scan detail page", async ({
+    page,
+  }) => {
+    // Seed a row by creating a scan (navigates to the detail page on success).
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.fill("textarea", "127.0.0.1/32");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /start scan/i }).click();
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+
+    // Back on the index, click the first body row — the whole row is clickable.
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(page.getByRole("table")).toBeVisible();
+    const firstRow = page.locator("tbody tr").first();
+    await expect(firstRow).toBeVisible();
+    await firstRow.click();
+
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+    await expect(
+      page.getByRole("heading", { name: /scan details/i }),
+    ).toBeVisible();
+  });
+
+  // The redundant "View checks" link and the LAN-only "CIDRs" column header are
+  // both gone — superseded by the clickable row and the generic "Details" column.
+  test("scan list has no View-checks link and no CIDRs column header", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole("link", { name: /view checks/i }),
+    ).toHaveCount(0);
+
+    const headerRow = page.locator("thead tr");
+    if (await headerRow.count()) {
+      await expect(headerRow.getByText(/^CIDRs$/i)).toHaveCount(0);
+      // The generic "Details" header replaces it.
+      await expect(headerRow.getByText(/^Details$/i)).toBeVisible();
+    }
+  });
+
   test("notifications page renders the My pages header", async ({ page }) => {
     await page.goto("/dash0/orgs/test/me/notifications");
     await expect(page.getByTestId("my-notifications-page")).toBeVisible();
