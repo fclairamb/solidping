@@ -32,7 +32,7 @@ func NewMaintenanceWindow(orgUID, title string, startAt, endAt time.Time) *Maint
 		Title:           title,
 		StartAt:         startAt,
 		EndAt:           endAt,
-		Recurrence:      "none",
+		Recurrence:      RecurrenceNone,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -63,6 +63,28 @@ type MaintenanceWindowCheck struct {
 	CreatedAt            time.Time `bun:"created_at,notnull"`
 }
 
+// Maintenance window recurrence cadences.
+const (
+	// RecurrenceNone marks a one-off (non-recurring) window.
+	RecurrenceNone = "none"
+	// RecurrenceDaily repeats the window every day at the anchor's time-of-day.
+	RecurrenceDaily = "daily"
+	// RecurrenceWeekly repeats the window every week on the anchor's weekday.
+	RecurrenceWeekly = "weekly"
+	// RecurrenceMonthly repeats the window every month on the anchor's day-of-month.
+	RecurrenceMonthly = "monthly"
+)
+
+// Maintenance window lifecycle statuses (returned by Status).
+const (
+	// MaintenanceStatusActive means a window occurrence covers now.
+	MaintenanceStatusActive = "active"
+	// MaintenanceStatusUpcoming means the window has future occurrences but none cover now.
+	MaintenanceStatusUpcoming = "upcoming"
+	// MaintenanceStatusPast means the window has no remaining occurrences.
+	MaintenanceStatusPast = "past"
+)
+
 // Occurrence is one concrete activation of a (possibly recurring) maintenance window.
 type Occurrence struct {
 	StartAt time.Time `json:"startAt"`
@@ -75,7 +97,7 @@ const maxNextOccurrences = 100
 
 // IsActiveAt determines whether a maintenance window is active at the given time.
 func IsActiveAt(window *MaintenanceWindow, target time.Time) bool {
-	if window.Recurrence == "none" {
+	if window.Recurrence == RecurrenceNone {
 		return !target.Before(window.StartAt) && target.Before(window.EndAt)
 	}
 
@@ -106,22 +128,22 @@ func IsActiveAt(window *MaintenanceWindow, target time.Time) bool {
 // window after its start, or a recurring window after its RecurrenceEnd; else upcoming.
 func Status(window *MaintenanceWindow, now time.Time) string {
 	if IsActiveAt(window, now) {
-		return "active"
+		return MaintenanceStatusActive
 	}
 
-	if window.Recurrence == "none" {
+	if window.Recurrence == RecurrenceNone {
 		if now.Before(window.StartAt) {
-			return "upcoming"
+			return MaintenanceStatusUpcoming
 		}
 
-		return "past"
+		return MaintenanceStatusPast
 	}
 
 	if window.RecurrenceEnd != nil && now.After(*window.RecurrenceEnd) {
-		return "past"
+		return MaintenanceStatusPast
 	}
 
-	return "upcoming"
+	return MaintenanceStatusUpcoming
 }
 
 // NextOccurrences returns up to n occurrences whose end is at/after from, in
@@ -139,7 +161,7 @@ func NextOccurrences(window *MaintenanceWindow, from time.Time, n int) []Occurre
 
 	duration := window.EndAt.Sub(window.StartAt)
 
-	if window.Recurrence == "none" {
+	if window.Recurrence == RecurrenceNone {
 		if !window.EndAt.After(from) {
 			return nil
 		}
@@ -192,11 +214,11 @@ type timeAdder func(t time.Time, n int) time.Time
 
 func adderFor(recurrence string) timeAdder {
 	switch recurrence {
-	case "daily":
+	case RecurrenceDaily:
 		return addDays
-	case "weekly":
+	case RecurrenceWeekly:
 		return addWeeks
-	case "monthly":
+	case RecurrenceMonthly:
 		return addMonths
 	default:
 		return nil
@@ -211,21 +233,24 @@ func addWeeks(t time.Time, n int) time.Time {
 	return t.AddDate(0, 0, n*7)
 }
 
-// addMonths shifts t by n months, clamping the day to the last day of the
+// addMonths shifts base by n months, clamping the day to the last day of the
 // target month (Jan 31 +1mo -> Feb 28/29, not Mar 3).
-func addMonths(t time.Time, n int) time.Time {
-	y, m, d := t.Date()
-	first := time.Date(y, m, 1, t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location())
+func addMonths(base time.Time, n int) time.Time {
+	year, month, day := base.Date()
+	first := time.Date(
+		year, month, 1,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location(),
+	)
 	target := first.AddDate(0, n, 0) // first-of-month never overflows
 
 	last := daysIn(target.Year(), target.Month())
-	if d > last {
-		d = last
+	if day > last {
+		day = last
 	}
 
 	return time.Date(
-		target.Year(), target.Month(), d,
-		t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), t.Location(),
+		target.Year(), target.Month(), day,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location(),
 	)
 }
 

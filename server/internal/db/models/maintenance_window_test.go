@@ -18,8 +18,8 @@ func mw(start, end time.Time, recurrence string, recurrenceEnd *time.Time) *Main
 	}
 }
 
-func ts(y int, m time.Month, d, h, min int) time.Time {
-	return time.Date(y, m, d, h, min, 0, 0, time.UTC)
+func ts(y int, m time.Month, d, h, minute int) time.Time {
+	return time.Date(y, m, d, h, minute, 0, 0, time.UTC)
 }
 
 func TestDaysIn(t *testing.T) {

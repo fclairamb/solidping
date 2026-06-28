@@ -28,7 +28,7 @@ var (
 // isValidRecurrence checks if a recurrence value is valid.
 func isValidRecurrence(recurrence string) bool {
 	switch recurrence {
-	case "none", "daily", "weekly", "monthly":
+	case models.RecurrenceNone, models.RecurrenceDaily, models.RecurrenceWeekly, models.RecurrenceMonthly:
 		return true
 	default:
 		return false
