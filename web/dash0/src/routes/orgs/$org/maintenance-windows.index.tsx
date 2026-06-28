@@ -39,25 +39,11 @@ import {
   computeMaintenanceStatus,
   maintenanceStatusBadgeVariant,
 } from "@/lib/maintenance-window-status";
+import { describeSchedule } from "@/lib/maintenance-window-schedule";
 
 export const Route = createFileRoute("/orgs/$org/maintenance-windows/")({
   component: MaintenanceWindowsIndexPage,
 });
-
-function formatSchedule(window: MaintenanceWindow): string {
-  const fmt = (iso: string) => {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString(undefined, {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
-  };
-  return `${fmt(window.startAt)} – ${fmt(window.endAt)}`;
-}
 
 function ChecksCountCell({ org, uid }: { org: string; uid: string }) {
   const { t } = useTranslation("maintenanceWindows");
@@ -80,7 +66,8 @@ function MaintenanceWindowRow({
   onDelete: (uid: string) => void;
 }) {
   const { t } = useTranslation("maintenanceWindows");
-  const status = computeMaintenanceStatus(window);
+  // Prefer the server-computed status when present (newer backends).
+  const status = window.status ?? computeMaintenanceStatus(window);
   return (
     <TableRow>
       <TableCell>
@@ -93,10 +80,12 @@ function MaintenanceWindowRow({
           {window.title}
         </Link>
       </TableCell>
-      <TableCell className="text-muted-foreground">
-        {formatSchedule(window)}
+      <TableCell
+        className="text-muted-foreground max-w-[18rem] sm:max-w-none truncate"
+        data-testid={`mw-row-schedule-${window.uid}`}
+      >
+        {describeSchedule(window, t)}
       </TableCell>
-      <TableCell>{t(`recurrence.${window.recurrence}`)}</TableCell>
       <TableCell>
         <Badge variant={maintenanceStatusBadgeVariant(status)}>
           {t(`status.${status}`)}
@@ -235,7 +224,6 @@ function MaintenanceWindowsIndexPage() {
               <TableRow>
                 <TableHead>{t("maintenanceWindows:table.title")}</TableHead>
                 <TableHead>{t("maintenanceWindows:table.schedule")}</TableHead>
-                <TableHead>{t("maintenanceWindows:table.recurrence")}</TableHead>
                 <TableHead>{t("maintenanceWindows:table.status")}</TableHead>
                 <TableHead>{t("maintenanceWindows:table.checks")}</TableHead>
                 <TableHead className="w-[50px]" />

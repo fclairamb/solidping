@@ -31,11 +31,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { ApiError } from "@/api/client";
 import {
   computeMaintenanceStatus,
   maintenanceStatusBadgeVariant,
 } from "@/lib/maintenance-window-status";
+import {
+  formatOccurrenceDate,
+  nextOccurrences,
+} from "@/lib/maintenance-window-schedule";
 
 export const Route = createFileRoute(
   "/orgs/$org/maintenance-windows/$maintenanceWindowUid/",
@@ -135,7 +140,11 @@ function MaintenanceWindowDetailPage() {
 
   if (!window) return null;
 
-  const status = computeMaintenanceStatus(window);
+  // Prefer the server-computed lifecycle and occurrences when present (newer
+  // backends), falling back to the client port otherwise.
+  const status = window.status ?? computeMaintenanceStatus(window);
+  const occurrences =
+    window.nextOccurrences ?? nextOccurrences(window, new Date(), 3);
 
   return (
     <div className="space-y-6">
@@ -232,39 +241,72 @@ function MaintenanceWindowDetailPage() {
         <CardHeader>
           <CardTitle>{t("maintenanceWindows:detail.schedule")}</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2">
+        <CardContent className="space-y-6">
+          {/* Plain-language summary + next-occurrence preview (prefers server
+              data via the occurrences passed in). */}
+          <MaintenanceScheduleSummary
+            window={window}
+            occurrences={occurrences}
+          />
+
           <div>
-            <p className="text-sm text-muted-foreground">
-              {t("maintenanceWindows:detail.start")}
+            <p className="text-sm font-medium mb-2">
+              {t("maintenanceWindows:detail.nextOccurrences")}
             </p>
-            <p className="font-medium">{formatDateTime(window.startAt)}</p>
+            {occurrences.length > 0 ? (
+              <ul
+                className="space-y-1 text-sm"
+                data-testid="mw-detail-next-occurrences"
+              >
+                {occurrences.map((o) => (
+                  <li key={o.startAt} className="text-muted-foreground">
+                    {formatOccurrenceDate(o.startAt)} –{" "}
+                    {formatOccurrenceDate(o.endAt)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                {t("maintenanceWindows:detail.noNextOccurrences")}
+              </p>
+            )}
           </div>
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {t("maintenanceWindows:detail.end")}
-            </p>
-            <p className="font-medium">{formatDateTime(window.endAt)}</p>
-          </div>
-          <div>
-            <p className="text-sm text-muted-foreground">
-              {t("maintenanceWindows:detail.recurrence")}
-            </p>
-            <p className="font-medium">
-              {t(`maintenanceWindows:recurrence.${window.recurrence}`)}
-            </p>
-          </div>
-          {window.recurrence !== "none" && (
+
+          {/* Raw fields kept below the summary as detail. */}
+          <div className="grid gap-4 sm:grid-cols-2 border-t pt-4">
             <div>
               <p className="text-sm text-muted-foreground">
-                {t("maintenanceWindows:detail.recurrenceEnd")}
+                {t("maintenanceWindows:detail.start")}
+              </p>
+              <p className="font-medium">{formatDateTime(window.startAt)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {t("maintenanceWindows:detail.end")}
+              </p>
+              <p className="font-medium">{formatDateTime(window.endAt)}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">
+                {t("maintenanceWindows:detail.recurrence")}
               </p>
               <p className="font-medium">
-                {window.recurrenceEnd
-                  ? formatDateTime(window.recurrenceEnd)
-                  : "—"}
+                {t(`maintenanceWindows:recurrence.${window.recurrence}`)}
               </p>
             </div>
-          )}
+            {window.recurrence !== "none" && (
+              <div>
+                <p className="text-sm text-muted-foreground">
+                  {t("maintenanceWindows:detail.recurrenceEnd")}
+                </p>
+                <p className="font-medium">
+                  {window.recurrenceEnd
+                    ? formatDateTime(window.recurrenceEnd)
+                    : "—"}
+                </p>
+              </div>
+            )}
+          </div>
         </CardContent>
       </Card>
 
