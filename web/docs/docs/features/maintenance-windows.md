@@ -16,7 +16,22 @@ Maintenance windows let you **suppress alerts during planned work** — deployme
 | Recurrence | `none`, `daily`, `weekly`, or `monthly` |
 | Recurrence End | Optional date after which the recurrence stops |
 
-A one-time window uses `recurrence: none`. Recurring windows repeat the same time-of-day slot on the chosen cadence until the recurrence end (or indefinitely).
+A one-time window uses `recurrence: none`. Recurring windows are **anchored to `Start At`** and repeat the same slot (length `End At − Start At`) on the chosen cadence until the recurrence end (or indefinitely):
+
+- **daily** — repeats `Start At`'s time-of-day every day.
+- **weekly** — repeats on `Start At`'s weekday.
+- **monthly** — repeats on `Start At`'s day-of-month. On shorter months the day is **clamped to the last day**: a monthly window anchored on the 31st runs on Feb 28 (29 in a leap year), Mar 31, Apr 30, and so on — it never drifts onto the wrong day.
+
+Recurring times are anchored in UTC (they shift by an hour in local time across daylight-saving changes).
+
+### Response fields
+
+Every maintenance window returned by the API also carries two read-only, server-computed fields:
+
+| Field | Description |
+|-------|-------------|
+| `status` | Lifecycle right now: `active`, `upcoming`, or `past` |
+| `nextOccurrences` | The next concrete activations (`startAt`/`endAt` pairs, RFC3339 UTC) — the currently-active one first |
 
 ## Scope
 
