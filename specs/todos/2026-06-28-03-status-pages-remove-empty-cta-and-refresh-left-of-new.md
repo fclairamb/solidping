@@ -281,3 +281,49 @@ With `make dev-test` running, open `/dash0/orgs/{org}/status-pages`:
   — canonical `Refresh` + primary "New X" header pattern (reference).
 - [`web/dash0/e2e/status-pages.spec.ts`](../../web/dash0/e2e/status-pages.spec.ts)
   — existing E2E, unaffected (creates via the header button).
+
+## Implementation Plan
+
+Pre-flight findings (committed baseline on `batch/2026-06-23`):
+
+- `status-pages.index.tsx` already uses the **responsive `sm:` Refresh pattern**
+  established by spec `2026-06-27-02` (`variant="outline"`, no `size="icon"`,
+  `RefreshCw` with `sm:mr-2`, `aria-label={t("common:refresh")}`, label span
+  `hidden sm:inline`). So the Refresh button markup is moved **verbatim** into
+  the header `actions` — no restyle, mirroring `discovery.index.tsx`.
+- `discovery.index.tsx` header `actions` (the canonical pattern) is a fragment of
+  `[Refresh, New]` with Refresh first, inside `PageHeader` (`className="flex-wrap"`).
+- `PageHeader` renders `actions` in `div.ml-auto.flex.shrink-0.items-center.gap-2`.
+- The existing E2E (`status-pages.spec.ts`) creates pages via the header
+  `New Status Page` link, never the empty-state CTA — so removing the CTA is safe.
+
+### Files to touch
+1. `web/dash0/src/routes/orgs/$org/status-pages.index.tsx`
+   - Move the Refresh `<Button>` (verbatim) into `PageHeader` `actions`, as a
+     fragment **before** the existing `New Status Page` link. Keep
+     `className="flex-wrap"`. Keep the New button as `Link > Button` (spec says
+     leave it as-is — do not convert to discovery's `Button asChild`).
+   - Slim the toolbar row: drop the `flex items-center gap-4` wrapper and the
+     search div's `flex-1`, leaving just the search `<div className="relative max-w-sm">`.
+   - Delete the empty-state CTA (`Link > Button` "Create your first status page")
+     and drop the now-dangling `mb-2` on the `<p>`.
+2. `web/dash0/src/locales/{en,fr,de,es}/statusPages.json`
+   - Remove the now-dead `"createFirst"` key (only used by the deleted button).
+     Leave `noStatusPages` and `noMatch`.
+
+Imports stay as-is (`RefreshCw`, `Plus`, `Link`, `Button` all still used).
+No state/handler/data changes — `refetch`/`isRefetching` already exist.
+
+### Responsive behavior
+Refresh keeps its existing `sm:` collapse (icon-only below `sm`); `flex-wrap` on
+`PageHeader` lets the `[Refresh, New]` cluster wrap under the title on narrow
+viewports. The `New Status Page` label stays always-visible (per spec out-of-scope).
+
+### Tests
+Extend `web/dash0/e2e/status-pages.spec.ts`: assert on the list page that
+Refresh and New Status Page share the header action cluster
+(`div.ml-auto.flex.shrink-0.items-center.gap-2`) with Refresh first in DOM order
+(mirrors the existing back-arrow ordering check), and that no
+"Create your first status page" button exists. Author the test; run if the
+local devloop permits (`:4000` is not in `SP_RUNMODE=test`, so test-org login may
+401 — note authored-but-not-run if so).
