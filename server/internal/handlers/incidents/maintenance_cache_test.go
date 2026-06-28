@@ -109,3 +109,63 @@ func TestMaintenanceWindowTTLCache(t *testing.T) {
 	r.Equal(int64(2), counting.mwFetches.Load(),
 		"a result past the TTL must re-fetch exactly once")
 }
+
+// TestMonthlyMonthEndSuppression pins the P1 fix through the suppression path: a
+// monthly window anchored on the 31st must suppress on the last day of a shorter
+// month (Feb 28), not drift onto Mar 3.
+func TestMonthlyMonthEndSuppression(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	// Anchor a monthly window on Jan 31 22:00-23:00.
+	anchorStart := time.Date(2026, 1, 31, 22, 0, 0, 0, time.UTC)
+	window := models.NewMaintenanceWindow(
+		"org-placeholder", "monthly-deploy", anchorStart, anchorStart.Add(time.Hour),
+	)
+	window.Recurrence = "monthly"
+
+	// Feb 28 22:30 -> clamped occurrence is active (suppressed).
+	r.True(models.IsActiveAt(window, time.Date(2026, 2, 28, 22, 30, 0, 0, time.UTC)),
+		"monthly-on-31st must be active on Feb 28")
+	// Mar 3 22:30 -> the old drift bug; must NOT be active.
+	r.False(models.IsActiveAt(window, time.Date(2026, 3, 3, 22, 30, 0, 0, time.UTC)),
+		"monthly-on-31st must NOT drift onto Mar 3")
+	// Mar 31 22:30 -> active again, no accumulated drift.
+	r.True(models.IsActiveAt(window, time.Date(2026, 3, 31, 22, 30, 0, 0, time.UTC)),
+		"monthly-on-31st must be active on Mar 31")
+
+	// Drive it through the real suppression path with a fake clock at Feb 28 22:30:
+	// a failing check inside the window must NOT open an incident.
+	fakeClock := clock.NewFake(time.Date(2026, 2, 28, 22, 30, 0, 0, time.UTC))
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := incidents.NewService(dbSvc, jobs, fakeClock)
+
+	org := models.NewOrganization("mw-monthly-test", "MW Monthly Test")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "api", "http")
+	check.Status = models.CheckStatusUp
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	// Recreate the window against the real org and attach the check.
+	realWindow := models.NewMaintenanceWindow(
+		org.UID, "monthly-deploy", anchorStart, anchorStart.Add(time.Hour),
+	)
+	realWindow.Recurrence = "monthly"
+	r.NoError(dbSvc.CreateMaintenanceWindow(ctx, realWindow))
+	r.NoError(dbSvc.SetMaintenanceWindowChecks(ctx, realWindow.UID, []string{check.UID}, nil))
+
+	result := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 0)
+	r.NoError(dbSvc.CreateResult(ctx, result))
+	r.NoError(svc.ProcessCheckResult(ctx, check, result))
+
+	openIncidents, err := dbSvc.ListIncidents(ctx, &models.ListIncidentsFilter{OrganizationUID: org.UID})
+	r.NoError(err)
+	r.Empty(openIncidents, "failure inside an active monthly window must be suppressed")
+}
