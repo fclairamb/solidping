@@ -144,7 +144,8 @@
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
       "saveButton": "Save",
-      "notEnabledHint": "Slack integration is not enabled. Configure it under Authentication settings or set SP_SLACK_ENABLED=true."
+      "notEnabledHint": "Slack integration is not enabled. Configure it under Authentication settings or set SP_SLACK_ENABLED=true.",
+      "restartHint": "Changes take effect after the server restarts."
     },
     "status": {
       "title": "Connection Status",

@@ -144,7 +144,8 @@
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
       "saveButton": "Guardar",
-      "notEnabledHint": "La integración de Slack no está activada. Configúrela en los ajustes de autenticación o establezca SP_SLACK_ENABLED=true."
+      "notEnabledHint": "La integración de Slack no está activada. Configúrela en los ajustes de autenticación o establezca SP_SLACK_ENABLED=true.",
+      "restartHint": "Los cambios surten efecto después de reiniciar el servidor."
     },
     "status": {
       "title": "Estado de la conexión",

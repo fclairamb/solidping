@@ -144,7 +144,8 @@
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
       "saveButton": "Speichern",
-      "notEnabledHint": "Die Slack-Integration ist nicht aktiviert. Konfigurieren Sie sie in den Authentifizierungseinstellungen oder setzen Sie SP_SLACK_ENABLED=true."
+      "notEnabledHint": "Die Slack-Integration ist nicht aktiviert. Konfigurieren Sie sie in den Authentifizierungseinstellungen oder setzen Sie SP_SLACK_ENABLED=true.",
+      "restartHint": "Änderungen werden nach einem Neustart des Servers wirksam."
     },
     "status": {
       "title": "Verbindungsstatus",

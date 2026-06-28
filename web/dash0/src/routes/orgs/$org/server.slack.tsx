@@ -27,9 +27,14 @@ export const Route = createFileRoute("/orgs/$org/server/slack")({
   component: SlackSettingsPage,
 });
 
-const KEY_ENABLED = "slack.enabled";
-const KEY_SOCKET_ENABLED = "slack.socket_mode_enabled";
-const KEY_APP_TOKEN = "slack.app_token";
+// These MUST match the keys the backend reads in
+// server/internal/systemconfig/systemconfig.go (KeySlackEnabled,
+// KeySlackSocketModeEnabled, KeySlackAppToken). Writing the bare `slack.*`
+// namespace persists rows the backend never loads — the toggle silently does
+// nothing. A backend test in systemconfig_test.go guards this contract.
+const KEY_ENABLED = "auth.slack.enabled";
+const KEY_SOCKET_ENABLED = "auth.slack.socket_mode_enabled";
+const KEY_APP_TOKEN = "auth.slack.app_token";
 
 function SlackSettingsPage() {
   const { t, i18n } = useTranslation(["server", "common"]);
@@ -250,6 +255,13 @@ function SlackSettingsPage() {
                 </div>
               )}
             </div>
+
+            <Alert data-testid="slack-socket-restart-hint">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                {t("server:slack.socketMode.restartHint")}
+              </AlertDescription>
+            </Alert>
 
             <Button
               type="submit"
