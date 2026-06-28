@@ -306,11 +306,22 @@ match that exactly: `adder(startAt, k)`, stepping in **UTC**.
   `setMonth`): re-anchor monthly on the original start with clamping, stepping in UTC, so
   `computeMaintenanceStatus`/`isActiveAt` match the backend. Daily/weekly also stepped in UTC.
 
-### Step 3 — Unit tests `web/dash0/src/lib/maintenance-window-schedule.test.ts` (new)
-- Parity vectors mirrored from `server/internal/db/models/maintenance_window_test.go`
-  (Jan-31 monthly no-drift to Feb-28/Mar-31; daily slot; weekly weekday; `none`;
-  `recurrenceEnd` cutoff). Assert `nextOccurrences` + `isActiveAt` agree with the documented
-  backend results, and `describeSchedule`/`formatDuration` output.
+### Step 3 — Unit tests `web/dash0/src/lib/maintenance-window-schedule.test.ts` (new) — DONE
+- **Harness:** dash0 had no unit-test runner, so a minimal Vitest setup was added:
+  `vitest` devDependency, a `"test:unit": "vitest run"` script, and a node-environment
+  `web/dash0/vitest.config.ts` (with the `@` alias). To keep `tsc -b` (the `build` script /
+  `make build-dash0`) from compiling test files, `tsconfig.app.json` now excludes
+  `src/**/*.test.ts(x)`. `make build-dash0` still passes.
+- **Parity test:** vectors mirrored from `server/internal/db/models/maintenance_window_test.go`,
+  using the SAME anchor instants (expressed as the equivalent UTC ISO strings) so the vectors are
+  genuinely shared. Covers monthly no-drift / month-end clamp (Jan 31 → Feb 28 → Mar 31 → Apr 30,
+  anchored on the original start), a leap-year case (Jan 31/30 2024 → Feb 29), daily
+  chronological + active-first, weekly weekday, `recurrenceEnd` cutoff, and `none`
+  (upcoming/active/past). Asserts the client `occurrenceStartUTC` / `nextOccurrences` /
+  `isActiveAt` produce occurrence lists identical to the backend's known-good results
+  (31 assertions, green via `bun run test:unit`). `describeSchedule`/`formatDuration` rendering is
+  locale/timezone-dependent and is exercised by the E2E summary assertions rather than re-asserted
+  here.
 
 ### Step 4 — Schedule summary panel component (P1.2)
 - Reusable `MaintenanceScheduleSummary` (tinted card + `CalendarClock`) rendering
@@ -361,4 +372,5 @@ match that exactly: `adder(startAt, k)`, stepping in **UTC**.
 
 ### QA
 - `make build-dash0`; `cd web/dash0 && bun run lint` (no NEW errors in touched files).
+- `cd web/dash0 && bun run test:unit` — the parity unit test (Step 3) runs green.
 - Run the affected E2E file if the local server is in test mode; otherwise author-only.
