@@ -575,3 +575,69 @@ func TestCreateSection_AssignsSequentialPositions(t *testing.T) {
 	r.NoError(err)
 	r.Equal(3, third.Position)
 }
+
+// TestGetCheckInfo_InMaintenanceFlag verifies that getCheckInfo sets the public
+// payload's InMaintenance flag only when the check sits inside an active
+// maintenance window at request time.
+func TestGetCheckInfo_InMaintenanceFlag(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+
+	testCases := []struct {
+		name string
+		// window returns the (start, end) of a one-off window to attach to the
+		// check, or ok=false to attach no window at all.
+		window func() (start, end time.Time, ok bool)
+		want   bool
+	}{
+		{
+			name:   "no window",
+			window: func() (time.Time, time.Time, bool) { return time.Time{}, time.Time{}, false },
+			want:   false,
+		},
+		{
+			name: "active window now",
+			window: func() (time.Time, time.Time, bool) {
+				return now.Add(-1 * time.Hour), now.Add(1 * time.Hour), true
+			},
+			want: true,
+		},
+		{
+			name: "past window only",
+			window: func() (time.Time, time.Time, bool) {
+				return now.Add(-48 * time.Hour), now.Add(-24 * time.Hour), true
+			},
+			want: false,
+		},
+		{
+			name: "upcoming window only",
+			window: func() (time.Time, time.Time, bool) {
+				return now.Add(24 * time.Hour), now.Add(48 * time.Hour), true
+			},
+			want: false,
+		},
+	}
+
+	for i, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			ctx, svc, org := setupStatusPagesTest(t)
+
+			check := models.NewCheck(org.UID, fmt.Sprintf("chk-%d", i), "http")
+			r.NoError(svc.db.CreateCheck(ctx, check))
+
+			if start, end, ok := tc.window(); ok {
+				win := models.NewMaintenanceWindow(org.UID, "Planned", start, end)
+				r.NoError(svc.db.CreateMaintenanceWindow(ctx, win))
+				r.NoError(svc.db.SetMaintenanceWindowChecks(ctx, win.UID, []string{check.UID}, nil))
+			}
+
+			info, err := svc.getCheckInfo(ctx, org.UID, check.UID)
+			r.NoError(err)
+			r.Equal(tc.want, info.InMaintenance)
+		})
+	}
+}
