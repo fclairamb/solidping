@@ -403,13 +403,7 @@ function StatusUpdatesIndexPage() {
       ) : (
         <div className="text-center py-12 text-muted-foreground">
           <Megaphone className="h-8 w-8 mx-auto mb-2 opacity-50" />
-          <p className="mb-2">No status updates yet.</p>
-          <Button asChild>
-            <Link to="/orgs/$org/status-updates/new" params={{ org }}>
-              <Plus className="mr-2 h-4 w-4" />
-              New update
-            </Link>
-          </Button>
+          <p>No status updates yet.</p>
         </div>
       )}
 
