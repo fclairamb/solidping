@@ -35,8 +35,10 @@ export default defineConfig({
 
   use: {
     // Base URL to use in actions like `await page.goto('/')`
-    // This is the production server with embedded frontend
-    baseURL: "http://localhost:4000/dash0/",
+    // This is the production server with embedded frontend. Overridable via
+    // E2E_BASE_URL so a side-car test server (e.g. on another port) can be
+    // targeted locally without disturbing a dev server on :4000.
+    baseURL: process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/",
     // Collect trace when retrying the failed test
     trace: "on-first-retry",
     // Take screenshot on failure
