@@ -133,7 +133,11 @@ function DiscoveryIndexPage() {
               <span className="hidden sm:inline">{t("refresh")}</span>
             </Button>
             <Button asChild>
-              <Link to="/orgs/$org/discovery/new" params={{ org }}>
+              <Link
+                to="/orgs/$org/discovery/new"
+                params={{ org }}
+                search={{ method: "lan" }}
+              >
                 <Plus className="h-4 w-4 mr-1" />
                 {t("newScan")}
               </Link>

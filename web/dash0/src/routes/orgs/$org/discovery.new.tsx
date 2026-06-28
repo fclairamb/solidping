@@ -32,13 +32,26 @@ import {
   type StartDiscoveryScanRequest,
 } from "@/api/hooks";
 
+// All scan methods the form can render a sub-form for. Used only to validate the
+// initial ?method= URL value; which methods are actually *selectable* is gated by
+// availableTypes (registry + connection capability) below.
+const KNOWN_METHODS = ["lan", "container", "freebox", "kubernetes"];
+
 export const Route = createFileRoute("/orgs/$org/discovery/new")({
+  // The scan method is part of the page's core navigation, so it lives in the
+  // URL (?method=…) rather than local state — bookmarkable, deep-linkable, and
+  // survives refresh/back-forward (dash0 convention).
+  validateSearch: (search: Record<string, unknown>): { method?: string } => {
+    const m = search.method;
+    return typeof m === "string" && m.length > 0 ? { method: m } : {};
+  },
   component: NewScanPage,
 });
 
 function NewScanPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
+  const { method } = Route.useSearch();
   const navigate = useNavigate();
   const startScan = useStartDiscoveryScan(org);
   const { data: types } = useDiscoveryTypes(org);
@@ -75,7 +88,18 @@ function NewScanPage() {
     });
   }, [types, grantedFreeboxChannels, kubernetesClusters]);
 
-  const [type, setType] = useState("lan");
+  // The selected scan method lives in the URL (?method=…) so picking a method
+  // updates the route and a deep-link/refresh restores the right form. We seed
+  // local state from the URL once on mount (the discovery layout route otherwise
+  // races a second search-validation pass that drops the param on a cold load),
+  // and write the param back on every change so the URL stays the source of truth.
+  const [type, setTypeState] = useState(() =>
+    typeof method === "string" && KNOWN_METHODS.includes(method) ? method : "lan",
+  );
+  const setType = (next: string) => {
+    setTypeState(next);
+    navigate({ to: ".", search: { method: next } });
+  };
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
   const [selectedClusterUid, setSelectedClusterUid] = useState("");
   const [namespacesText, setNamespacesText] = useState("");
@@ -88,6 +112,17 @@ function NewScanPage() {
   const [concurrency, setConcurrency] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [advanced, setAdvanced] = useState(false);
+
+  // Preselect the connection when exactly one is available so "Start scan" is
+  // immediately submittable. Derived (not synced via an effect) so a single
+  // obvious choice doesn't leave Kubernetes/Freebox showing a disabled button.
+  // An explicit selection always wins over the auto-pick.
+  const effectiveClusterUid =
+    selectedClusterUid ||
+    (kubernetesClusters.length === 1 ? kubernetesClusters[0].uid : "");
+  const effectiveChannelUid =
+    selectedChannelUid ||
+    (grantedFreeboxChannels.length === 1 ? grantedFreeboxChannels[0].uid : "");
 
   const isPending = startScan.isPending;
 
@@ -113,8 +148,8 @@ function NewScanPage() {
       : type === "container"
         ? !containerHostsText.trim()
         : type === "kubernetes"
-          ? !selectedClusterUid
-          : !selectedChannelUid;
+          ? !effectiveClusterUid
+          : !effectiveChannelUid;
 
   const submitDisabled = isPending || !confirmed || requiredFieldMissing;
 
@@ -123,8 +158,11 @@ function NewScanPage() {
 
   const buildRequest = (): StartDiscoveryScanRequest | null => {
     if (type === "freebox") {
-      if (!selectedChannelUid) return null;
-      return { type: "freebox", parameters: { channelUid: selectedChannelUid } };
+      if (!effectiveChannelUid) return null;
+      return {
+        type: "freebox",
+        parameters: { channelUid: effectiveChannelUid },
+      };
     }
 
     if (type === "container") {
@@ -137,13 +175,13 @@ function NewScanPage() {
     }
 
     if (type === "kubernetes") {
-      if (!selectedClusterUid) return null;
+      if (!effectiveClusterUid) return null;
       const namespaces = namespacesText
         .split(/[\n,]+/)
         .map((n) => n.trim())
         .filter(Boolean);
       const parameters: Record<string, unknown> = {
-        clusterUid: selectedClusterUid,
+        clusterUid: effectiveClusterUid,
       };
       if (namespaces.length > 0) parameters.namespaces = namespaces;
       return { type: "kubernetes", parameters };
@@ -306,7 +344,7 @@ function NewScanPage() {
             <div className="space-y-1.5">
               <Label htmlFor="freebox-channel">{t("selectFreeboxChannel")}</Label>
               <Select
-                value={selectedChannelUid}
+                value={effectiveChannelUid}
                 onValueChange={setSelectedChannelUid}
               >
                 <SelectTrigger
@@ -329,7 +367,7 @@ function NewScanPage() {
               <div className="space-y-1.5">
                 <Label htmlFor="k8s-cluster">{t("selectCluster")}</Label>
                 <Select
-                  value={selectedClusterUid}
+                  value={effectiveClusterUid}
                   onValueChange={setSelectedClusterUid}
                 >
                   <SelectTrigger
