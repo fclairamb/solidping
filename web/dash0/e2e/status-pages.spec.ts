@@ -71,3 +71,54 @@ test.describe("Status page detail header", () => {
     await expect(page).toHaveURL(/\/dash0\/orgs\/[^/]+\/status-pages$/);
   });
 });
+
+test.describe("Status pages list header", () => {
+  test("Refresh sits in the header action cluster, left of New Status Page, and the empty state has no CTA", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Open the status pages list.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Status Pages" }).click();
+    await page.waitForURL(/\/status-pages$/);
+    await page.waitForLoadState("networkidle");
+
+    // Both header actions exist: Refresh (icon-only label hidden below sm, but
+    // its accessible name is always "Refresh") and the New Status Page link.
+    const refreshButton = page.getByRole("button", { name: "Refresh" });
+    await expect(refreshButton).toBeVisible();
+
+    const newLink = page.getByRole("link", { name: "New Status Page" });
+    await expect(newLink.first()).toBeVisible();
+
+    // Refresh and New Status Page share the same right-aligned PageHeader action
+    // cluster (`ml-auto flex shrink-0 items-center gap-2`), with Refresh first in
+    // DOM order.
+    const cluster = page
+      .locator("div.ml-auto.flex.shrink-0.items-center.gap-2")
+      .filter({ has: refreshButton });
+    await expect(cluster).toHaveCount(1);
+    await expect(cluster.getByRole("link", { name: "New Status Page" })).toBeVisible();
+
+    const refreshFirst = await refreshButton.evaluate((refresh) => {
+      const clusterEl = refresh.closest("div.ml-auto.flex.shrink-0.items-center.gap-2");
+      if (!clusterEl) return false;
+      const newAction = clusterEl.querySelector("a[href*='/status-pages/new']");
+      if (!newAction) return false;
+      // Refresh must come before New Status Page in document order.
+      return Boolean(
+        refresh.compareDocumentPosition(newAction) & Node.DOCUMENT_POSITION_FOLLOWING,
+      );
+    });
+    expect(refreshFirst).toBe(true);
+
+    // The redundant empty-state CTA is gone: there is no "Create your first
+    // status page" button anywhere on the page (regardless of empty/non-empty).
+    await expect(
+      page.getByRole("button", { name: "Create your first status page" }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("link", { name: "Create your first status page" }),
+    ).toHaveCount(0);
+  });
+});
