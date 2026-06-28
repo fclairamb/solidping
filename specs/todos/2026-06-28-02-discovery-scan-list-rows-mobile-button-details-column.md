@@ -279,3 +279,56 @@ already has a Container scan):
   — add the "Clickable table row" example.
 - [`web/dash0/e2e/discovery.spec.ts`](../../web/dash0/e2e/discovery.spec.ts)
   — extend with the mobile-button + row-click + column assertions.
+
+## Implementation Plan
+
+### Files to touch
+1. `web/dash0/src/routes/orgs/$org/discovery.index.tsx` — all four UI changes:
+   - Add `useNavigate` to the `@tanstack/react-router` import (keep `Link` — still
+     used by the header "Start new scan" button).
+   - **Button:** collapse "Start new scan" to icon-only below `sm` (mirror the
+     adjacent Refresh button + the canonical `checks.index.tsx` "New check"):
+     `<Plus className="sm:mr-2 h-4 w-4" /><span className="hidden sm:inline">…</span>`,
+     plus `aria-label={t("newScan")}` on the `Link` so the accessible name survives.
+     Preserve the existing `search={{ method: "lan" }}` discovery-routing convention.
+   - **ScanRow:** whole-`<TableRow>` navigates via `navigate({ to:
+     "/orgs/$org/discovery/$jobUid", params:{ org, jobUid: scan.uid } })`, with
+     `className="cursor-pointer hover:bg-muted/50"`, `role="link"`, `tabIndex={0}`,
+     and an `onKeyDown` Enter/Space handler. Remove the trailing "View checks"
+     `<TableCell>` (and its `<Button asChild><Link>`).
+   - **Details cell:** replace the LAN-only CIDRs cell with a generic, source-aware
+     summary — `cidrs` (lan) / `hosts` (container) / `namespaces` (kubernetes, empty
+     ⇒ `t("allNamespaces")`) / `—` (freebox & default). Read `scan.config` as
+     `Record<string, unknown>`, join array values with `, `.
+   - **Header row:** `t("cidrs")` → `t("details")`; drop the trailing empty
+     `<TableHead />` (View-checks column).
+2. `web/dash0/src/locales/{en,fr,de,es}/discovery.json` — add `details` +
+   `allNamespaces`; remove `viewChecks` and the bare `cidrs` column header.
+   Leave `cidrsLabel`/`cidrsPlaceholder`/`cidrsHelp` (new-scan form) untouched.
+3. `web/dash0/src/routes/orgs/$org/design-reference.tsx` — add a "Clickable rows"
+   variant to the existing `DataDisplaySection` table grid, demonstrating
+   `cursor-pointer hover:bg-muted/50` + `role="link"`/`tabIndex`/`onKeyDown` +
+   `onClick`, and document the real `useNavigate` target in the section's
+   `CodeSnippet` (the static reference page has no live route target, so the mock
+   row uses an inert handler — no unused `useNavigate` import added there).
+4. `web/dash0/e2e/discovery.spec.ts` — add three tests:
+   - mobile (`setViewportSize({ width: 390 })`): "Start new scan" present by role
+     but its text label hidden; visible again at ≥640px.
+   - clicking the first scan row navigates to `/\/discovery\/[0-9a-f-]{36}$/` with
+     the "Scan details" heading.
+   - index table has no "View checks" link and no "CIDRs" column header.
+
+### Responsive behavior
+- Header: two icon-only buttons (`↻`, `+`) below `sm`; labels reveal from `sm` up.
+  `aria-label` keeps both names at every width.
+- Table: unchanged column count drops from 5 → 4 (Source · Status · Details ·
+  Started at); the shared `<Table>` primitive already scrolls/stacks responsively.
+
+### Commits (granular)
+feat(button) → feat(clickable rows + drop View-checks + Details cell + headers) →
+feat(i18n) → feat(design-reference) → test(e2e). QA fixes folded in as needed.
+
+### Tests / QA
+`make build-dash0`, `make build-backend`, `make lint-back`, `make test`,
+`cd web/dash0 && bun run lint` (no NEW errors). E2E: run only `discovery.spec.ts`
+(authored; run if a server is available, else authored-but-not-run).
