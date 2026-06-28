@@ -1,5 +1,15 @@
 # Maintenance Windows
 
+> **Update 2026-06-28 — partially shipped.** The **backend** (sections 1–7: DB schema,
+> models, db.Service, handlers, REST API, incident suppression — plus MCP tools) is live in
+> `main`. The **frontend was never built**, and sections 8–10 below use stale paths
+> (`back/`, `apps/dash0/`) and a stale API contract. The remaining UI work has been
+> re-specified against the shipped code and moved to `specs/todos/`:
+> - `specs/todos/2026-06-28-05-maintenance-windows-dash0-ui.md` — dash0 management UI
+> - `specs/todos/2026-06-28-06-maintenance-windows-status0-badge.md` — status0 public badge
+>
+> Treat sections 8–10 here as historical; implement from the todos specs instead.
+
 ## Context
 
 SolidPing has no way to suppress alerts during planned downtime. Users performing scheduled maintenance (DB backups, deployments, infra upgrades) trigger false incidents and noisy notifications. This is a table-stakes feature offered by BetterStack, UptimeRobot, Pingdom, and StatusCake.
