@@ -40,6 +40,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-dot";
 import { PageHeader } from "@/components/shared/page-header";
 import {
   Table,
@@ -101,19 +102,6 @@ export const Route = createFileRoute("/orgs/$org/checks/")({
   }),
 });
 
-function StatusDot({ status }: { status?: string | null }) {
-  const color =
-    status === "up"
-      ? "bg-green-500"
-      : status === "down" || status === "error"
-        ? "bg-red-500"
-        : status === "validating" || status === "timeout"
-          ? "bg-yellow-500"
-          : "bg-muted-foreground";
-
-  return <div className={`h-2.5 w-2.5 rounded-full ${color}`} />;
-}
-
 function CheckRow({
   check,
   org,
@@ -165,7 +153,11 @@ function CheckRow({
           search={{ graphPeriod: undefined, graphFull: undefined }}
           className="flex items-center gap-2 hover:underline font-medium"
         >
-          <StatusDot status={check.status ?? check.lastResult?.status} />
+          <StatusDot
+            status={check.status ?? check.lastResult?.status}
+            enabled={check.enabled}
+            title={check.enabled === false ? t("checks:detail.disabled") : undefined}
+          />
           {check.name || check.slug || check.uid?.slice(0, 8)}
         </Link>
       </TableCell>
