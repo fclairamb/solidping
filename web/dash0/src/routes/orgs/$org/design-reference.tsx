@@ -31,6 +31,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
@@ -127,6 +128,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
+  { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
@@ -154,6 +156,7 @@ function DesignReferencePage() {
       <CollapsibleCodeSection />
       <FeedbackSection />
       <LabelFilterSection />
+      <CheckMultiPickerSection />
       <KpiTileSection />
       <UptimeStripSection />
       <JobsPrimitivesSection />
@@ -1829,6 +1832,34 @@ function ColorTokensSection() {
           {CHART_TOKENS.map((v, i) => (
             <Swatch key={v} varName={v} label={`chart-${i + 1}`} />
           ))}
+        </div>
+      </div>
+    </Section>
+  );
+}
+
+function CheckMultiPickerSection() {
+  const { org } = Route.useParams();
+  const [checkUids, setCheckUids] = useState<string[]>([]);
+  const [groupUids, setGroupUids] = useState<string[]>([]);
+
+  return (
+    <Section
+      id="check-multi-picker"
+      title="Check multi-picker"
+      description="Multi-select for checks or check groups, parameterized by kind. Selected items render as removable Badge chips. Used by the maintenance-window form (which needs multiple checks and multiple groups). Mirrors the single-value CheckPicker."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ CheckMultiPicker }"} from "@/components/shared/check-multi-picker"
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Checks</Label>
+          <CheckMultiPicker org={org} kind="checks" value={checkUids} onChange={setCheckUids} />
+        </div>
+        <div className="space-y-2">
+          <Label>Check groups</Label>
+          <CheckMultiPicker org={org} kind="groups" value={groupUids} onChange={setGroupUids} />
         </div>
       </div>
     </Section>
