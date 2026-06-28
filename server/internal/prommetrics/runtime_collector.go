@@ -18,6 +18,16 @@ import (
 // leak. Registered on every role's registry (API server and worker) so both
 // processes expose the same surface on /metrics.
 func registerRuntimeCollectors(reg prometheus.Registerer) {
+	// client_golang's package init() already registers a basic Go and Process
+	// collector on the default registry. Drop them first so the richer
+	// all-runtime-metrics Go collector can register without colliding on the
+	// descriptors they share (e.g. go_sched_gomaxprocs_threads, the go_memstats_*
+	// family, and process_*_bytes), which would otherwise panic on MustRegister.
+	// Unregister is a no-op on a fresh registry (e.g. in tests), so this stays
+	// correct whether reg is the default registerer or a private one.
+	reg.Unregister(collectors.NewGoCollector())
+	reg.Unregister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
 	reg.MustRegister(collectors.NewGoCollector(
 		collectors.WithGoCollectorRuntimeMetrics(collectors.MetricsAll),
 	))
