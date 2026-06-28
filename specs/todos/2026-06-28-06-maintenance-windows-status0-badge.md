@@ -162,6 +162,9 @@ make test   # backend (statuspages service tests)
   (a) an active window → `InMaintenance == true`, (b) a past window only → `false`,
   (c) no windows → `false`. Uses `CreateMaintenanceWindow` + `SetMaintenanceWindowChecks`.
   `testify/require`, `t.Parallel()`.
-- status0 E2E: status0 has no Playwright suite (only `tsc -b && vite build` + `eslint .`), so the
-  badge is covered by build/lint + the backend flag test; manual verification per the spec's
-  Verification block.
+- status0 E2E: status0 has a Playwright suite (`web/status0/e2e/`, `test:e2e`) that runs against a
+  live server at `:4000`. Author `e2e/maintenance-badge.spec.ts` asserting the
+  `resource-maintenance-badge` ("Scheduled Maintenance") renders when a resource's check is in an
+  active maintenance window. The default seed has no such resource, so the test detects the badge if
+  present and otherwise skips — it cannot be exercised against the stock seed (authored-but-not-run);
+  build/lint + the backend flag test provide the executed coverage.
