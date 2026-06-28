@@ -1221,6 +1221,47 @@ function EmptyTable() {
   );
 }
 
+/** ClickableTable demonstrates the whole-row navigation pattern: the entire
+ * <TableRow> is the click/keyboard target (no nested link or button), so the
+ * row reads as a single `role="link"` to assistive tech. Used by list pages
+ * whose rows open a detail route (e.g. discovery scans). In real code `onClick`
+ * calls `navigate(...)`; here it's inert because the reference page has no live
+ * detail target. */
+function ClickableTable() {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <MockTableHeader />
+        <TableBody>
+          {MOCK_ROWS.slice(0, 3).map((row) => (
+            <TableRow
+              key={row.id}
+              className="cursor-pointer hover:bg-muted/50"
+              role="link"
+              tabIndex={0}
+              onClick={() => {
+                /* navigate({ to: "/…/$uid", params: { uid: row.id } }) */
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  /* navigate(...) */
+                }
+              }}
+            >
+              <TableCell className="font-medium">{row.name}</TableCell>
+              <TableCell>
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="font-mono text-xs">{row.latency}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function DataDisplaySection() {
   return (
     <Section
@@ -1244,6 +1285,23 @@ function DataDisplaySection() {
       </div>
       <CodeSnippet
         code={`import {\n  Table,\n  TableBody,\n  TableCell,\n  TableHead,\n  TableHeader,\n  TableRow,\n} from "@/components/ui/table";\nimport { Skeleton } from "@/components/ui/skeleton";\nimport { useDebounce } from "@/lib/use-debounce";`}
+      />
+
+      <div className="space-y-2 pt-2">
+        <h3 className="text-sm font-medium">Clickable rows</h3>
+        <p className="text-sm text-muted-foreground">
+          When a row opens a detail route, make the whole <code>TableRow</code>{" "}
+          the target — not a trailing "View" link. Add{" "}
+          <code>cursor-pointer hover:bg-muted/50</code> for affordance, and keep
+          it keyboard-accessible with <code>role="link"</code>,{" "}
+          <code>tabIndex=&#123;0&#125;</code>, and an Enter/Space{" "}
+          <code>onKeyDown</code>. The row must contain no nested links or buttons
+          so the click target is unambiguous.
+        </p>
+        <ClickableTable />
+      </div>
+      <CodeSnippet
+        code={`import { useNavigate } from "@tanstack/react-router";\n\nconst navigate = useNavigate();\nconst open = () =>\n  void navigate({ to: "/orgs/$org/widgets/$uid", params: { org, uid: row.uid } });\n\n<TableRow\n  className="cursor-pointer hover:bg-muted/50"\n  role="link"\n  tabIndex={0}\n  onClick={open}\n  onKeyDown={(e) => {\n    if (e.key === "Enter" || e.key === " ") {\n      e.preventDefault();\n      open();\n    }\n  }}\n>\n  {/* cells — no nested <Link>/<Button> */}\n</TableRow>`}
       />
     </Section>
   );
