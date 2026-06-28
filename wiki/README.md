@@ -39,6 +39,12 @@ Project-wide standards and naming rules.
 - [conventions/frontend-errors.md](conventions/frontend-errors.md) — Frontend error handling by HTTP status code
 - [conventions/files.md](conventions/files.md) — File storage seam: backends (local FS, S3), signed URLs, group conventions
 
+## Runbooks
+
+Operational procedures for diagnosing the running system.
+
+- [runbooks/memory-profiling.md](runbooks/memory-profiling.md) — Memory profiling & leak detection: pprof heap/alloc/goroutine/block profiles per role, base-diffing, the off-heap (cgo/SQLite) rule, the `/api/mgmt/memory` snapshot + Prometheus surfaces, baseline/soak procedure, GC levers (`GOMEMLIMIT`/`GOGC`).
+
 ## Testing
 
 - [testing/e2e-ci.md](testing/e2e-ci.md) — E2E test infrastructure: CI environment, Playwright config, local execution
