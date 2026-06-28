@@ -46,16 +46,14 @@ func NewSubsystemCollector(sizes SubsystemSizes) prometheus.Collector {
 	}
 	return &subsystemCollector{
 		sizes:      sizes,
-		dekCache:   desc("solidping_dek_cache_entries", "Number of per-org DEKs cached in memory (grows O(orgs), never evicted)"),
-		rateLimit:  desc("solidping_ratelimit_entries", "Number of per-IP entries in the HTTP rate-limiter map (pruned by cleanup loop)"),
-		listeners:  desc("solidping_event_listeners", "Total registered local/pg event-notifier listener channels"),
+		dekCache:   desc("solidping_dek_cache_entries", "Per-org DEKs cached in memory (grows O(orgs), never evicted)"),
+		rateLimit:  desc("solidping_ratelimit_entries", "Per-IP entries in the HTTP rate-limiter map (pruned by cleanup)"),
+		listeners:  desc("solidping_event_listeners", "Registered local/pg event-notifier listener channels"),
 		goroutines: desc("solidping_runtime_goroutines", "runtime.NumGoroutine() — cross-checks go_goroutines"),
 	}
 }
 
 // Describe implements prometheus.Collector.
-//
-//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *subsystemCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- c.dekCache
 	ch <- c.rateLimit
@@ -64,8 +62,6 @@ func (c *subsystemCollector) Describe(ch chan<- *prometheus.Desc) {
 }
 
 // Collect implements prometheus.Collector.
-//
-//nolint:varnamelen // ch is the conventional name for the Collector channel
 func (c *subsystemCollector) Collect(ch chan<- prometheus.Metric) {
 	ch <- prometheus.MustNewConstMetric(c.dekCache, prometheus.GaugeValue, callOrZero(c.sizes.DEKCacheEntries))
 	ch <- prometheus.MustNewConstMetric(c.rateLimit, prometheus.GaugeValue, callOrZero(c.sizes.RateLimitEntries))

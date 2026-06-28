@@ -38,8 +38,9 @@ func TestMain(m *testing.M) {
 // leaves no leaked goroutines once Run returns. This is the regression guard for
 // the express-runner and notifier-listener leak hypotheses (B6): every goroutine
 // the worker spawns is tracked by its WaitGroup and must exit on context cancel.
+//
+//nolint:paralleltest // goleak.VerifyNone inspects all process goroutines; must not run concurrently with other tests
 func TestWorkerLifecycleNoGoroutineLeak(t *testing.T) {
-	// Not parallel: goleak.VerifyNone inspects the whole process's goroutines.
 	defer goleak.VerifyNone(t, leakIgnores...)
 
 	runner, dbSvc, ctx := setupTestRunner(t)

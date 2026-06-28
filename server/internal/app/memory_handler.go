@@ -21,9 +21,9 @@ type MemoryRuntime struct {
 	StackInuseBytes uint64  `json:"stackInuseBytes"`
 	SysBytes        uint64  `json:"sysBytes"`
 	NumGoroutine    int     `json:"numGoroutine"`
-	NumGC           uint32  `json:"numGC"`
+	NumGC           uint32  `json:"numGc"`
 	GCPauseTotalNs  uint64  `json:"gcPauseTotalNs"`
-	NextGCBytes     uint64  `json:"nextGCBytes"`
+	NextGCBytes     uint64  `json:"nextGcBytes"`
 	GCCPUFraction   float64 `json:"gcCpuFraction"`
 }
 
@@ -101,21 +101,21 @@ func gaugeUint(m *dto.Metric) uint64 {
 // collector, and the live subsystems. Exposed (lowercase, package-internal) so
 // the handler test can build it without an HTTP round-trip.
 func (s *Server) buildMemorySnapshot(gatherer prometheus.Gatherer) MemorySnapshot {
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
+	var memStats runtime.MemStats
+	runtime.ReadMemStats(&memStats)
 
 	snap := MemorySnapshot{
 		Runtime: MemoryRuntime{
-			HeapAllocBytes:  ms.HeapAlloc,
-			HeapInuseBytes:  ms.HeapInuse,
-			HeapObjects:     ms.HeapObjects,
-			StackInuseBytes: ms.StackInuse,
-			SysBytes:        ms.Sys,
+			HeapAllocBytes:  memStats.HeapAlloc,
+			HeapInuseBytes:  memStats.HeapInuse,
+			HeapObjects:     memStats.HeapObjects,
+			StackInuseBytes: memStats.StackInuse,
+			SysBytes:        memStats.Sys,
 			NumGoroutine:    runtime.NumGoroutine(),
-			NumGC:           ms.NumGC,
-			GCPauseTotalNs:  ms.PauseTotalNs,
-			NextGCBytes:     ms.NextGC,
-			GCCPUFraction:   ms.GCCPUFraction,
+			NumGC:           memStats.NumGC,
+			GCPauseTotalNs:  memStats.PauseTotalNs,
+			NextGCBytes:     memStats.NextGC,
+			GCCPUFraction:   memStats.GCCPUFraction,
 		},
 		Process: MemoryProcess{
 			RSSBytes: processRSSBytes(gatherer),

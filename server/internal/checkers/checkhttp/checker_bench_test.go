@@ -18,7 +18,8 @@ import (
 // (hypothesis #1): a remediation that reuses the transport should drop allocs/op
 // measurably against this baseline.
 //
-// Run: go test -run=XXX -bench=BenchmarkHTTPCheckerExecute -benchmem ./internal/checkers/checkhttp/
+// Run with: go test -run=XXX -bench=BenchmarkHTTPCheckerExecute -benchmem on
+// the ./internal/checkers/checkhttp/ package.
 func BenchmarkHTTPCheckerExecute(b *testing.B) {
 	if version.UserAgent == "" {
 		version.UserAgent = version.DefaultUserAgent()

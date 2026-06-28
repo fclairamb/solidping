@@ -74,6 +74,8 @@ func TestProfilerServer_Enabled(t *testing.T) {
 // TestProfilerServer_BlockProfiling verifies that BlockRate > 0 makes
 // /debug/pprof/block report contention. SetBlockProfileRate is a process-global
 // runtime setting, so this test is not parallel and resets the rate afterwards.
+//
+//nolint:paralleltest // SetBlockProfileRate is process-global; must not run concurrently with other tests
 func TestProfilerServer_BlockProfiling(t *testing.T) {
 	r := require.New(t)
 
