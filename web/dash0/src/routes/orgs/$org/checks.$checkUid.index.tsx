@@ -56,6 +56,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-dot";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
@@ -437,20 +438,17 @@ function CheckDetailPage() {
   }
 
   const headerStatus = check.status ?? check.lastResult?.status;
-  const statusColor =
-    headerStatus === "up"
-      ? "bg-green-500"
-      : headerStatus === "down" || headerStatus === "error"
-        ? "bg-red-500"
-        : headerStatus === "validating" || headerStatus === "timeout"
-          ? "bg-yellow-500"
-          : "bg-muted-foreground";
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
+          <StatusDot
+            status={headerStatus}
+            enabled={check.enabled}
+            className="h-3 w-3"
+            title={check.enabled === false ? t("checks:detail.disabled") : undefined}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
