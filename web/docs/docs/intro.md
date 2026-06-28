@@ -36,18 +36,12 @@ SolidPing consists of three main components:
 2. **Workers** - Distributed agents that execute health checks from different locations
 3. **Database** - PostgreSQL (recommended for production) or SQLite (for simple setups)
 
-```
-┌─────────────────┐     ┌─────────────────┐
-│   Dashboard     │────▶│     Server      │
-│   (React 19)    │     │     (Go)        │
-└─────────────────┘     └────────┬────────┘
-                                 │
-                    ┌────────────┼────────────┐
-                    ▼            ▼            ▼
-              ┌──────────┐ ┌──────────┐ ┌──────────┐
-              │ Worker 1 │ │ Worker 2 │ │ Worker 3 │
-              │ (US-East)│ │ (EU-West)│ │ (AP-South)│
-              └──────────┘ └──────────┘ └──────────┘
+```mermaid
+flowchart LR
+    Dashboard["Dashboard<br/>(React 19)"] --> Server["Server<br/>(Go)"]
+    Server --> W1["Worker 1<br/>(US-East)"]
+    Server --> W2["Worker 2<br/>(EU-West)"]
+    Server --> W3["Worker 3<br/>(AP-South)"]
 ```
 
 Workers use PostgreSQL's `SELECT FOR UPDATE SKIP LOCKED` for lease-based job distribution, ensuring reliable failover and no duplicate checks.

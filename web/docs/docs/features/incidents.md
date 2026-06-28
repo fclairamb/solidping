@@ -9,10 +9,14 @@ SolidPing automatically creates, tracks, and resolves incidents based on check r
 
 ## How Incidents Work
 
-```
-Check Fails → Threshold Reached → Incident Created → Notifications Sent
-     ↓                                                        ↓
-Check Recovers ←──────────────────────────────────── Incident Resolved
+```mermaid
+flowchart LR
+    Fail["Check Fails"] --> Threshold["Threshold Reached"]
+    Threshold --> Created["Incident Created"]
+    Created --> Notified["Notifications Sent"]
+    Notified --> Resolved["Incident Resolved"]
+    Resolved --> Recovers["Check Recovers"]
+    Recovers -.-> Fail
 ```
 
 ### Incident Lifecycle
@@ -114,12 +118,12 @@ recovery_threshold: 2  # Resolve after 2 consecutive successes
 
 With default thresholds (1, 3, 1):
 
-```
-Failure 1 → incident.created sent
-Failure 2 → (no notification)
-Failure 3 → incident.escalated sent
-Failure 4 → (no notification)
-Success 1 → incident.resolved sent
+```mermaid
+flowchart LR
+    F1["Failure 1"] --> F2["Failure 2"] --> F3["Failure 3"] --> F4["Failure 4"] --> Ok["Success 1"]
+    F1 -.-> C["incident.created"]
+    F3 -.-> E["incident.escalated"]
+    Ok -.-> R["incident.resolved"]
 ```
 
 ## Incident Details
