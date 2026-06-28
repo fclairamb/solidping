@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/pprof"
+	"runtime"
 	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -32,6 +33,12 @@ func (s *Server) Start(ctx context.Context) error {
 		slog.InfoContext(ctx, "Profiler server disabled")
 		return nil
 	}
+
+	// Enable block/mutex profiling when opted in. These have a runtime cost and
+	// default to 0 (off); when > 0 they populate /debug/pprof/block and
+	// /debug/pprof/mutex, which are otherwise empty because the rates are never
+	// set. Useful when goroutines pile up on a channel or lock and hold memory.
+	s.enableBlockMutexProfiling(ctx)
 
 	mux := http.NewServeMux()
 
@@ -63,6 +70,20 @@ func (s *Server) Start(ctx context.Context) error {
 	}()
 
 	return nil
+}
+
+// enableBlockMutexProfiling turns on block and/or mutex profiling when the
+// configured rates are positive. Both are process-global runtime settings, so
+// they are applied once here on profiler start.
+func (s *Server) enableBlockMutexProfiling(ctx context.Context) {
+	if s.config.BlockRate > 0 {
+		runtime.SetBlockProfileRate(s.config.BlockRate)
+		slog.InfoContext(ctx, "Block profiling enabled", "rate", s.config.BlockRate)
+	}
+	if s.config.MutexFraction > 0 {
+		runtime.SetMutexProfileFraction(s.config.MutexFraction)
+		slog.InfoContext(ctx, "Mutex profiling enabled", "fraction", s.config.MutexFraction)
+	}
 }
 
 // Shutdown gracefully shuts down the profiler server.

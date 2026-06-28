@@ -182,6 +182,14 @@ type NodeConfig struct {
 type ProfilerConfig struct {
 	Enabled bool   `koanf:"enabled"` // Enable the profiler server
 	Listen  string `koanf:"listen"`  // Listen address (e.g., "localhost:6060")
+	// BlockRate is passed to runtime.SetBlockProfileRate when > 0, enabling
+	// /debug/pprof/block. 1 = sample every blocking event (highest fidelity,
+	// highest cost); larger N samples 1/N. 0 (default) disables block profiling.
+	BlockRate int `koanf:"block_rate"`
+	// MutexFraction is passed to runtime.SetMutexProfileFraction when > 0,
+	// enabling /debug/pprof/mutex. 1 = report every mutex contention event;
+	// larger N reports 1/N. 0 (default) disables mutex profiling.
+	MutexFraction int `koanf:"mutex_fraction"`
 }
 
 // ShouldRunAPI returns true if this node should run the HTTP server.
@@ -570,6 +578,7 @@ func Load() (*Config, error) {
 	applyWebPushEnv(&cfg.WebPush)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
+	applyProfilerEnv(&cfg.Profiler)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -661,6 +670,24 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.DocsHost = v
 	} else if v := os.Getenv("SP_DOCS_HOST"); v != "" {
 		cfg.DocsHost = v
+	}
+}
+
+// applyProfilerEnv reads the multi-word SP_PROFILER_* knobs koanf's env loader
+// cannot bind (it would map them to profiler.block.rate / profiler.mutex.fraction
+// and miss the snake_case koanf tags "block_rate" / "mutex_fraction"). Both are
+// opt-in profiling-session levers with runtime cost; default 0 = off. See
+// project_koanf_env_quirk.
+func applyProfilerEnv(cfg *ProfilerConfig) {
+	if v := os.Getenv("SP_PROFILER_BLOCK_RATE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.BlockRate = n
+		}
+	}
+	if v := os.Getenv("SP_PROFILER_MUTEX_FRACTION"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MutexFraction = n
+		}
 	}
 }
 

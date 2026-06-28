@@ -321,6 +321,22 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	r.Equal("minio123", cfg.S3SecretKey)
 }
 
+// TestApplyProfilerEnv confirms SP_PROFILER_BLOCK_RATE / _MUTEX_FRACTION land on
+// the snake_case-tagged ProfilerConfig fields despite koanf's env
+// underscore→dot collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyProfilerEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_PROFILER_BLOCK_RATE", "5")
+	t.Setenv("SP_PROFILER_MUTEX_FRACTION", "7")
+
+	cfg := ProfilerConfig{}
+	applyProfilerEnv(&cfg)
+
+	r.Equal(5, cfg.BlockRate)
+	r.Equal(7, cfg.MutexFraction)
+}
+
 // TestApplyJobsEnv confirms SP_JOBS_* durations land on the snake_case-tagged
 // JobsConfig fields despite koanf's env underscore→dot collapse. Uses t.Setenv,
 // which is incompatible with t.Parallel.
