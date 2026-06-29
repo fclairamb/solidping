@@ -174,7 +174,9 @@
     "dnsbl": "DNSBL",
     "dnsblDescription": "Vérifier si une IP/domaine est sur des listes de blocage DNS",
     "sip": "SIP",
-    "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP"
+    "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP",
+    "ntp": "NTP",
+    "ntpDescription": "Surveiller les serveurs de temps NTP"
   },
   "freebox": {
     "discover": "Découvrir depuis Freebox",

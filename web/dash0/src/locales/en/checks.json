@@ -174,7 +174,9 @@
     "dnsbl": "DNSBL",
     "dnsblDescription": "Check if an IP/domain is on DNS blocklists",
     "sip": "SIP",
-    "sipDescription": "Check SIP server reachability and registration"
+    "sipDescription": "Check SIP server reachability and registration",
+    "ntp": "NTP",
+    "ntpDescription": "Monitor NTP time servers"
   },
   "freebox": {
     "discover": "Discover from Freebox",

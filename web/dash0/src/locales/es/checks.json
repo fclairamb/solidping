@@ -172,7 +172,9 @@
     "dnsbl": "DNSBL",
     "dnsblDescription": "Comprobar si una IP/dominio está en listas de bloqueo DNS",
     "sip": "SIP",
-    "sipDescription": "Comprobar la accesibilidad y el registro de un servidor SIP"
+    "sipDescription": "Comprobar la accesibilidad y el registro de un servidor SIP",
+    "ntp": "NTP",
+    "ntpDescription": "Monitorizar servidores de tiempo NTP"
   },
   "dnsbl": {
     "target": "IP o nombre de host objetivo",

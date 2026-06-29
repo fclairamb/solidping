@@ -172,7 +172,9 @@
     "dnsbl": "DNSBL",
     "dnsblDescription": "Prüfen, ob eine IP/Domain auf DNS-Blocklisten steht",
     "sip": "SIP",
-    "sipDescription": "Erreichbarkeit und Registrierung eines SIP-Servers prüfen"
+    "sipDescription": "Erreichbarkeit und Registrierung eines SIP-Servers prüfen",
+    "ntp": "NTP",
+    "ntpDescription": "NTP-Zeitserver überwachen"
   },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",

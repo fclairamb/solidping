@@ -52,7 +52,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -99,6 +99,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
+  { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -507,6 +508,20 @@ export function CheckForm({
     getConfigField(initialData?.config, "serverName") ||
       getConfigField(initialData?.config, "server_name"),
   );
+  // ntp state — host/port reuse the shared inputs. Version (3/4) plus the
+  // optional SSL-style offset warn/critical (ms) and max-stratum thresholds.
+  const [ntpVersion, setNtpVersion] = useState(
+    String(getConfigField(initialData?.config, "version") || "4"),
+  );
+  const [ntpOffsetWarnMs, setNtpOffsetWarnMs] = useState(
+    getConfigField(initialData?.config, "offset_warn_ms"),
+  );
+  const [ntpOffsetCritMs, setNtpOffsetCritMs] = useState(
+    getConfigField(initialData?.config, "offset_crit_ms"),
+  );
+  const [ntpMaxStratum, setNtpMaxStratum] = useState(
+    getConfigField(initialData?.config, "max_stratum"),
+  );
   // secretHeaders: array of {key, value} rows for the HTTP secret headers form section
   const [secretHeaders, setSecretHeaders] = useState<{ key: string; value: string }[]>(() => {
     const raw = initialData?.config?.secretHeaders;
@@ -653,6 +668,14 @@ export function CheckForm({
         if (serverName) cfg.serverName = serverName;
         if (criticalDays) cfg.criticalDays = parseInt(criticalDays, 10);
         if (warningDays) cfg.warningDays = parseInt(warningDays, 10);
+        break;
+      case "ntp":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (ntpVersion) cfg.version = parseInt(ntpVersion, 10);
+        if (ntpOffsetWarnMs) cfg.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
+        if (ntpOffsetCritMs) cfg.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
+        if (ntpMaxStratum) cfg.max_stratum = parseInt(ntpMaxStratum, 10);
         break;
       case "tcp":
       case "udp":
@@ -824,7 +847,8 @@ export function CheckForm({
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
-    sipTransport, sipMode, sipExpectStatus]);
+    sipTransport, sipMode, sipExpectStatus,
+    ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -873,6 +897,15 @@ export function CheckForm({
         if (serverName) config.serverName = serverName;
         if (criticalDays) config.criticalDays = parseInt(criticalDays, 10);
         if (warningDays) config.warningDays = parseInt(warningDays, 10);
+        break;
+      case "ntp":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (ntpVersion) config.version = parseInt(ntpVersion, 10);
+        if (ntpOffsetWarnMs) config.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
+        if (ntpOffsetCritMs) config.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
+        if (ntpMaxStratum) config.max_stratum = parseInt(ntpMaxStratum, 10);
         break;
       case "tcp":
       case "udp":
@@ -1271,6 +1304,49 @@ export function CheckForm({
                 <Input id="warningDays" type="number" placeholder="30" value={warningDays} onChange={(e) => setWarningDays(e.target.value)} data-testid="check-warning-days-input" />
                 <p className="text-xs text-muted-foreground">Amber warning (no page) at or below this. Must be ≥ Critical.</p>
               </div>
+            </div>
+          </>
+        );
+      case "ntp":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="pool.ntp.org" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="123" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="ntpVersion">Version</Label>
+              <Select value={ntpVersion} onValueChange={setNtpVersion}>
+                <SelectTrigger data-testid="check-ntp-version-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="4">4</SelectItem>
+                  <SelectItem value="3">3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 w-40">
+                <Label htmlFor="ntpOffsetCritMs">Offset critical (ms)</Label>
+                <Input id="ntpOffsetCritMs" type="number" min={0} placeholder="off" value={ntpOffsetCritMs} onChange={(e) => setNtpOffsetCritMs(e.target.value)} data-testid="check-ntp-offset-crit-input" />
+                <p className="text-xs text-muted-foreground">Down (pages) when |offset| exceeds this. Worker-relative.</p>
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="ntpOffsetWarnMs">Offset warning (ms)</Label>
+                <Input id="ntpOffsetWarnMs" type="number" min={0} placeholder="off" value={ntpOffsetWarnMs} onChange={(e) => setNtpOffsetWarnMs(e.target.value)} data-testid="check-ntp-offset-warn-input" />
+                <p className="text-xs text-muted-foreground">Amber (no page) when |offset| exceeds this. Must be ≤ Critical.</p>
+              </div>
+            </div>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="ntpMaxStratum">Max stratum (optional)</Label>
+              <Input id="ntpMaxStratum" type="number" min={1} max={15} placeholder="off" value={ntpMaxStratum} onChange={(e) => setNtpMaxStratum(e.target.value)} data-testid="check-ntp-max-stratum-input" />
+              <p className="text-xs text-muted-foreground">Down when the server's stratum exceeds this (1–15).</p>
             </div>
           </>
         );
