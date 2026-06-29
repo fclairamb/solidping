@@ -48,6 +48,7 @@ export const Route = createFileRoute(
   component: MaintenanceWindowDetailPage,
 });
 
+// A concrete instant (one-time start/end): browser local time, zone shown.
 function formatDateTime(iso?: string): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -58,6 +59,21 @@ function formatDateTime(iso?: string): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+// A recurrence boundary (recurrenceEnd): UTC-defined, render the UTC date so it
+// matches what the form set. No zone label needed on a bare date.
+function formatRecurrenceEnd(iso?: string): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -301,7 +317,7 @@ function MaintenanceWindowDetailPage() {
                 </p>
                 <p className="font-medium">
                   {window.recurrenceEnd
-                    ? formatDateTime(window.recurrenceEnd)
+                    ? formatRecurrenceEnd(window.recurrenceEnd)
                     : "—"}
                 </p>
               </div>

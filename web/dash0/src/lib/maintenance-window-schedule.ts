@@ -8,8 +8,13 @@ import { occurrenceStartUTC } from "@/lib/maintenance-window-status";
 //  - describeSchedule: a localized one-line human summary of a window.
 //  - formatDuration: a compact "1h" / "30m" / "2h 30m" / "1d" string.
 //
-// All dates/times for the summary are rendered with Intl (the browser's locale
-// and timezone). Occurrence stepping itself is done in UTC to match the server.
+// Rendering rule: concrete instants (one-time start/end, each next-occurrence
+// line) are shown in the browser's local timezone with the zone abbreviation
+// (e.g. "23:00 GMT+1"); the recurrence *pattern* wall-clock (weekly weekday,
+// monthly day-of-month, repeating HH:mm, "until" date) is shown in UTC with an
+// explicit "UTC" label, because those fields are UTC-defined and must read back
+// identically to what the form sets. Occurrence stepping itself is done in UTC
+// to match the server.
 
 // i18n translator shape we depend on (a subset of react-i18next's TFunction).
 type Translate = (key: string, opts?: Record<string, unknown>) => string;
@@ -95,24 +100,19 @@ export function formatDuration(ms: number, t: Translate): string {
   return parts.join(" ");
 }
 
-// Format a wall-clock time (HH:MM) of an instant in the browser's locale.
+// --- Instant formatters: local zone, abbreviation shown (e.g. "23:00 GMT+1").
+// Used for concrete moments (one-time start/end, next-occurrence lines).
+
+// Format a wall-clock time (HH:MM) of an instant in the browser's locale+zone.
 function fmtTime(d: Date): string {
   return d.toLocaleTimeString(undefined, {
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
   });
 }
 
-// Format a date (no time) in the browser's locale.
-function fmtDate(d: Date): string {
-  return d.toLocaleDateString(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-  });
-}
-
-// Format a full date+time in the browser's locale.
+// Format a full date+time of an instant in the browser's locale+zone.
 function fmtDateTime(d: Date): string {
   return d.toLocaleString(undefined, {
     year: "numeric",
@@ -120,6 +120,31 @@ function fmtDateTime(d: Date): string {
     day: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+// --- Pattern formatters: UTC, "UTC" label, for the recurrence wall-clock
+// (weekly weekday, repeating HH:mm) which is UTC-defined.
+
+// Format a recurrence-pattern clock time (HH:MM) in UTC, e.g. "22:00 UTC".
+function fmtTimeUtc(d: Date): string {
+  return d.toLocaleTimeString(undefined, {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC",
+    timeZoneName: "short",
+  });
+}
+
+// Format a recurrence boundary date (no time) in UTC; no zone label needed on a
+// bare date.
+function fmtDateUtc(d: Date): string {
+  return d.toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
   });
 }
 
@@ -134,22 +159,28 @@ export function describeSchedule(w: MaintenanceWindow, t: Translate): string {
     return "";
   }
 
-  const startTime = fmtTime(start);
-  const endTime = fmtTime(end);
   const duration = formatDuration(end.getTime() - start.getTime(), t);
 
   if (w.recurrence === "none") {
+    // One-time window: a single concrete instant → local time with zone.
     return t("summary.once", {
       start: fmtDateTime(start),
-      end: endTime,
+      end: fmtTime(end),
     });
   }
+
+  // Recurring: the wall-clock pattern is UTC-defined → render in UTC with label.
+  const startTime = fmtTimeUtc(start);
+  const endTime = fmtTimeUtc(end);
 
   let base: string;
   if (w.recurrence === "daily") {
     base = t("summary.daily", { start: startTime, end: endTime, duration });
   } else if (w.recurrence === "weekly") {
-    const weekday = start.toLocaleDateString(undefined, { weekday: "long" });
+    const weekday = start.toLocaleDateString(undefined, {
+      weekday: "long",
+      timeZone: "UTC",
+    });
     base = t("summary.weekly", {
       weekday,
       start: startTime,
@@ -169,7 +200,7 @@ export function describeSchedule(w: MaintenanceWindow, t: Translate): string {
   }
 
   const tail = w.recurrenceEnd
-    ? t("summary.until", { date: fmtDate(new Date(w.recurrenceEnd)) })
+    ? t("summary.until", { date: fmtDateUtc(new Date(w.recurrenceEnd)) })
     : t("summary.noEnd");
 
   return `${base}${tail}`;
