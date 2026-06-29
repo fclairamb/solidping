@@ -149,6 +149,7 @@ type Config struct {
 	Discord     DiscordOAuthConfig   `koanf:"discord"`
 	Node        NodeConfig           `koanf:"node"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
+	Runtime     RuntimeConfig        `koanf:"runtime"`
 	OTel        OTelConfig           `koanf:"otel"`
 	Sentry      SentryConfig         `koanf:"sentry"`
 	Prometheus  PrometheusConfig     `koanf:"prometheus"`
@@ -190,6 +191,25 @@ type ProfilerConfig struct {
 	// enabling /debug/pprof/mutex. 1 = report every mutex contention event;
 	// larger N reports 1/N. 0 (default) disables mutex profiling.
 	MutexFraction int `koanf:"mutex_fraction"`
+}
+
+// RuntimeConfig contains Go runtime memory guardrails (GOMEMLIMIT soft cap and
+// GOGC). Applied once at startup by internal/memlimit. A native GOMEMLIMIT /
+// GOGC env var always overrides these knobs.
+type RuntimeConfig struct {
+	// MemoryLimit is the explicit GOMEMLIMIT soft cap (SP_RUNTIME_MEMORY_LIMIT).
+	// Accepts human sizes ("400MiB", "1GiB") or raw bytes; empty = unset.
+	MemoryLimit string `koanf:"memory_limit"`
+	// AutoMemoryLimit derives the soft cap from the container's cgroup memory
+	// limit when MemoryLimit is unset and no GOMEMLIMIT env var is present
+	// (SP_RUNTIME_AUTO_MEMORY_LIMIT). Default true: a no-op off-container.
+	AutoMemoryLimit bool `koanf:"auto_memory_limit"`
+	// MemoryLimitRatio is the fraction of the detected cgroup limit to use as
+	// the soft cap (SP_RUNTIME_MEMORY_LIMIT_RATIO). Default 0.9.
+	MemoryLimitRatio float64 `koanf:"memory_limit_ratio"`
+	// GCPercent maps to GOGC / debug.SetGCPercent when > 0
+	// (SP_RUNTIME_GC_PERCENT). 0 leaves the runtime default untouched.
+	GCPercent int `koanf:"gc_percent"`
 }
 
 // ShouldRunAPI returns true if this node should run the HTTP server.
@@ -400,6 +420,14 @@ type DatabaseConfig struct {
 	Dir    string `koanf:"dir"`    // SQLite data directory (for "sqlite" type)
 	LogSQL bool   `koanf:"logsql"` // Enable SQL query logging using slog
 	Reset  bool   `koanf:"reset"`  // Reset database on startup (only for test/demo run modes)
+
+	// PostgreSQL connection-pool bounds. Without these, database/sql leaves the
+	// pool unbounded (default MaxOpenConns = 0 = unlimited), so a burst can open
+	// arbitrarily many connections — each with its own buffers client- and
+	// server-side. SQLite ignores these (it is pinned to a single writer).
+	MaxOpenConns    int           `koanf:"max_open_conns"`    // 0 = driver default (unlimited)
+	MaxIdleConns    int           `koanf:"max_idle_conns"`    // 0 = driver default (2)
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"` // 0 = no expiry
 }
 
 // Load reads configuration from defaults, config file, and environment variables.
@@ -435,8 +463,11 @@ func Load() (*Config, error) {
 			},
 		},
 		Database: DatabaseConfig{
-			Type: DatabaseTypeSQLite,
-			Dir:  ".",
+			Type:            DatabaseTypeSQLite,
+			Dir:             ".",
+			MaxOpenConns:    25,
+			MaxIdleConns:    10,
+			ConnMaxLifetime: time.Hour,
 		},
 		Auth: AuthConfig{
 			JWTSecret:          "change-me-in-production",
@@ -483,6 +514,10 @@ func Load() (*Config, error) {
 		Profiler: ProfilerConfig{
 			Enabled: false,
 			Listen:  "localhost:6060",
+		},
+		Runtime: RuntimeConfig{
+			AutoMemoryLimit:  true,
+			MemoryLimitRatio: 0.9,
 		},
 		Prometheus: PrometheusConfig{
 			Enabled: true,
@@ -579,6 +614,7 @@ func Load() (*Config, error) {
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
 	applyProfilerEnv(&cfg.Profiler)
+	applyRuntimeEnv(&cfg.Runtime)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -589,6 +625,8 @@ func Load() (*Config, error) {
 	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
 	}
+
+	applyDatabasePoolEnv(&cfg.Database)
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
@@ -687,6 +725,50 @@ func applyProfilerEnv(cfg *ProfilerConfig) {
 	if v := os.Getenv("SP_PROFILER_MUTEX_FRACTION"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MutexFraction = n
+		}
+	}
+}
+
+// applyDatabasePoolEnv reads the multi-word SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
+// knobs koanf's env loader cannot bind (it would collapse the underscores to dots
+// and miss the snake_case koanf tags). See project_koanf_env_quirk.
+func applyDatabasePoolEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_MAX_OPEN_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxOpenConns = n
+		}
+	}
+	if v := os.Getenv("SP_DB_MAX_IDLE_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxIdleConns = n
+		}
+	}
+	if v := os.Getenv("SP_DB_CONN_MAX_LIFETIME"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ConnMaxLifetime = d
+		}
+	}
+}
+
+// applyRuntimeEnv reads the multi-word SP_RUNTIME_* knobs koanf's env loader
+// cannot bind (it would collapse the underscores to dots and miss the snake_case
+// koanf tags "memory_limit" / "auto_memory_limit" / "memory_limit_ratio" /
+// "gc_percent"). See project_koanf_env_quirk.
+func applyRuntimeEnv(cfg *RuntimeConfig) {
+	if v := os.Getenv("SP_RUNTIME_MEMORY_LIMIT"); v != "" {
+		cfg.MemoryLimit = v
+	}
+	if v := os.Getenv("SP_RUNTIME_AUTO_MEMORY_LIMIT"); v != "" {
+		cfg.AutoMemoryLimit = v == envTrue || v == "1"
+	}
+	if v := os.Getenv("SP_RUNTIME_MEMORY_LIMIT_RATIO"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.MemoryLimitRatio = f
+		}
+	}
+	if v := os.Getenv("SP_RUNTIME_GC_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.GCPercent = n
 		}
 	}
 }

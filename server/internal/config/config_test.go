@@ -337,6 +337,44 @@ func TestApplyProfilerEnv(t *testing.T) {
 	r.Equal(7, cfg.MutexFraction)
 }
 
+// TestApplyRuntimeEnv confirms the SP_RUNTIME_* memory-guardrail knobs land on
+// the snake_case-tagged RuntimeConfig fields despite koanf's env underscore→dot
+// collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyRuntimeEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_RUNTIME_MEMORY_LIMIT", "400MiB")
+	t.Setenv("SP_RUNTIME_AUTO_MEMORY_LIMIT", "false")
+	t.Setenv("SP_RUNTIME_MEMORY_LIMIT_RATIO", "0.75")
+	t.Setenv("SP_RUNTIME_GC_PERCENT", "60")
+
+	cfg := RuntimeConfig{AutoMemoryLimit: true, MemoryLimitRatio: 0.9}
+	applyRuntimeEnv(&cfg)
+
+	r.Equal("400MiB", cfg.MemoryLimit)
+	r.False(cfg.AutoMemoryLimit)
+	r.InEpsilon(0.75, cfg.MemoryLimitRatio, 1e-9)
+	r.Equal(60, cfg.GCPercent)
+}
+
+// TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
+// pool knobs land on the snake_case-tagged DatabaseConfig fields. Uses t.Setenv,
+// which is incompatible with t.Parallel.
+func TestApplyDatabasePoolEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_DB_MAX_OPEN_CONNS", "40")
+	t.Setenv("SP_DB_MAX_IDLE_CONNS", "8")
+	t.Setenv("SP_DB_CONN_MAX_LIFETIME", "90m")
+
+	cfg := DatabaseConfig{MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifetime: time.Hour}
+	applyDatabasePoolEnv(&cfg)
+
+	r.Equal(40, cfg.MaxOpenConns)
+	r.Equal(8, cfg.MaxIdleConns)
+	r.Equal(90*time.Minute, cfg.ConnMaxLifetime)
+}
+
 // TestApplyJobsEnv confirms SP_JOBS_* durations land on the snake_case-tagged
 // JobsConfig fields despite koanf's env underscore→dot collapse. Uses t.Setenv,
 // which is incompatible with t.Parallel.
