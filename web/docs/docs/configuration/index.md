@@ -61,6 +61,7 @@ Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 |----------|---------|-------------|
 | `SP_AUTH_JWT_SECRET` | auto-generated | JWT signing secret |
 | `SP_AUTH_REGISTRATION_EMAIL_PATTERN` | - | Restrict registration by email regex |
+| `SP_AUTH_PASSWORD_ALGORITHM` | `argon2id` | Password hashing algorithm (`argon2id` or `bcrypt`) — see [Password Hashing](/configuration/authentication#password-hashing) for cost parameters |
 
 ### OAuth Providers
 
