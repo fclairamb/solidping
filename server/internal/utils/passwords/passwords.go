@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"runtime"
 	"strings"
 
 	"golang.org/x/crypto/argon2"
@@ -21,6 +22,41 @@ const (
 	maxParallelismValue = 255 // Maximum value for uint8 parallelism parameter
 )
 
+// maxConcurrentHashes caps how many argon2id derivations run at once. Each one
+// transiently allocates argon2Memory (64 MB), so without a bound a burst of
+// concurrent logins could spike memory by 64 MB × N. Capping at a small multiple
+// of the CPU count bounds the worst case (peak ≈ cap × 64 MB) while still letting
+// independent logins proceed in parallel. The trade-off is that excess
+// concurrent auth requests queue briefly rather than all allocating at once.
+const maxConcurrentHashes = 4
+
+// hashSem bounds concurrent argon2 derivations. Sized once at package init to
+// min(GOMAXPROCS, maxConcurrentHashes); a buffered channel is the idiomatic
+// counting semaphore.
+//
+//nolint:gochecknoglobals // process-wide counting semaphore bounding peak argon2 memory
+var hashSem = make(chan struct{}, hashConcurrency())
+
+func hashConcurrency() int {
+	n := runtime.GOMAXPROCS(0)
+	if n > maxConcurrentHashes {
+		n = maxConcurrentHashes
+	}
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// boundedIDKey runs argon2.IDKey while holding a hashSem slot, bounding the
+// number of simultaneous 64 MB derivations.
+func boundedIDKey(password, salt []byte, time, memory uint32, threads uint8, keyLen uint32) []byte {
+	hashSem <- struct{}{}
+	defer func() { <-hashSem }()
+
+	return argon2.IDKey(password, salt, time, memory, threads, keyLen)
+}
+
 // Hash creates an argon2id hash of the password.
 func Hash(password string) (string, error) {
 	salt := make([]byte, saltLength)
@@ -28,7 +64,7 @@ func Hash(password string) (string, error) {
 		return "", err
 	}
 
-	hash := argon2.IDKey([]byte(password), salt, argon2Time, argon2Memory, argon2Threads, keyLength)
+	hash := boundedIDKey([]byte(password), salt, argon2Time, argon2Memory, argon2Threads, keyLength)
 
 	// Encode salt and hash as base64
 	saltB64 := base64.RawStdEncoding.EncodeToString(salt)
@@ -73,7 +109,7 @@ func Verify(password, hash string) bool {
 	// Compute hash with same parameters
 	// parallelism is validated to be <= 255, safe to convert to uint8
 	// len(storedHash) is the key length, typically 32 bytes, safe to convert to uint32
-	computedHash := argon2.IDKey([]byte(password), salt, timeCost, memory, uint8(parallelism), uint32(len(storedHash)))
+	computedHash := boundedIDKey([]byte(password), salt, timeCost, memory, uint8(parallelism), uint32(len(storedHash)))
 
 	// Use constant-time comparison
 	return subtle.ConstantTimeCompare(storedHash, computedHash) == 1
