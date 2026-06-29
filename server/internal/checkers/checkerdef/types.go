@@ -173,6 +173,10 @@ const (
 	// CheckTypeKubernetes monitors a Kubernetes workload's replica health
 	// (Deployment / ReplicaSet ready vs desired replicas).
 	CheckTypeKubernetes CheckType = "kubernetes"
+	// CheckTypeNTP monitors an NTP time server: reachability plus the server's
+	// self-reported health (stratum, leap indicator, root distance), with
+	// optional clock-offset and max-stratum thresholds.
+	CheckTypeNTP CheckType = "ntp"
 )
 
 // Common output and config map keys used across checker implementations.
@@ -268,6 +272,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour},
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
 	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
+	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
@@ -358,5 +363,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeDNSBL,
 		CheckTypeSIP,
 		CheckTypeKubernetes,
+		CheckTypeNTP,
 	}
 }
