@@ -19,14 +19,14 @@ var ErrUnknownAlgorithm = errors.New("unknown password hashing algorithm")
 
 // Hash hashes password using the active default policy (argon2id by default).
 func Hash(password string) (string, error) {
-	p := getDefaultPolicy()
+	policy := getDefaultPolicy()
 
-	if p.Algorithm == bcryptID {
-		return hashBcrypt(password, p.Bcrypt)
+	if policy.Algorithm == bcryptID {
+		return hashBcrypt(password, policy.Bcrypt)
 	}
 
 	// Default / argon2id.
-	return hashArgon2id(password, p.Argon2)
+	return hashArgon2id(password, policy.Argon2)
 }
 
 // Verify verifies password against a stored hash, dispatching purely on the
@@ -48,7 +48,7 @@ func Verify(password, hash string) bool {
 // algorithm — or any of its cost parameters — differs from the active policy.
 // An unparseable / unknown hash returns true so it is upgraded on next login.
 func NeedsRehash(hash string) bool {
-	p := getDefaultPolicy()
+	policy := getDefaultPolicy()
 
 	storedIsBcrypt := isBcryptHash(hash)
 	storedIsArgon2id := !storedIsBcrypt && isArgon2idHash(hash)
@@ -58,22 +58,17 @@ func NeedsRehash(hash string) bool {
 		return true
 	}
 
-	switch p.Algorithm {
+	switch policy.Algorithm {
 	case bcryptID:
 		if !storedIsBcrypt {
 			return true // algorithm changed (argon2id -> bcrypt)
 		}
-		return bcryptNeedsRehash(hash, p.Bcrypt)
+		return bcryptNeedsRehash(hash, policy.Bcrypt)
 	default: // argon2id
 		if !storedIsArgon2id {
 			return true // algorithm changed (bcrypt -> argon2id)
 		}
-		return argon2idNeedsRehash(hash, p.Argon2)
+		return argon2idNeedsRehash(hash, policy.Argon2)
 	}
 }
 
-// isArgon2idHash reports whether hash is a well-formed argon2id PHC string.
-func isArgon2idHash(hash string) bool {
-	_, _, _, ok := parseArgon2id(hash)
-	return ok
-}

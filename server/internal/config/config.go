@@ -1016,36 +1016,50 @@ func (c *Config) Validate() error {
 // validatePasswordConfig fails fast at config load for an unsupported algorithm
 // or sub-floor cost parameters, so a misconfiguration can never lock everyone
 // out at first login. Near-floor (but accepted) values are warn-logged.
-func validatePasswordConfig(p *PasswordConfig) error {
-	switch p.Algorithm {
+func validatePasswordConfig(pwCfg *PasswordConfig) error {
+	// An empty algorithm means "unset" and resolves to the argon2id default at
+	// policy-resolution time; validating an unset/zero-value block as argon2id
+	// would reject the legitimate zero values, so accept it here.
+	if pwCfg.Algorithm == "" {
+		return nil
+	}
+
+	switch pwCfg.Algorithm {
 	case PasswordAlgorithmArgon2id:
-		if p.Argon2.Memory < argon2MemoryFloorKiB ||
-			p.Argon2.Time < argon2TimeFloor ||
-			p.Argon2.Threads < argon2ThreadsFloor ||
-			p.Argon2.KeyLength < argon2KeyLengthFloor ||
-			p.Argon2.SaltLength < argon2SaltLenFloor {
-			return fmt.Errorf("%w: memory=%d(KiB min %d) time=%d(min %d) threads=%d(min %d) key_length=%d(min %d) salt_length=%d(min %d)",
-				ErrInvalidArgon2Params,
-				p.Argon2.Memory, argon2MemoryFloorKiB,
-				p.Argon2.Time, argon2TimeFloor,
-				p.Argon2.Threads, argon2ThreadsFloor,
-				p.Argon2.KeyLength, argon2KeyLengthFloor,
-				p.Argon2.SaltLength, argon2SaltLenFloor)
-		}
-		if p.Argon2.Memory < argon2MemoryOWASPKiB {
-			slog.Warn("argon2id memory is below the OWASP floor; offline-crack resistance is reduced",
-				"memoryKiB", p.Argon2.Memory, "owaspFloorKiB", argon2MemoryOWASPKiB)
+		if err := validateArgon2Params(&pwCfg.Argon2); err != nil {
+			return err
 		}
 	case PasswordAlgorithmBcrypt:
-		if p.Bcrypt.Cost < bcryptCostMin || p.Bcrypt.Cost > bcryptCostMax {
-			return fmt.Errorf("%w, got %d", ErrInvalidBcryptCost, p.Bcrypt.Cost)
+		if pwCfg.Bcrypt.Cost < bcryptCostMin || pwCfg.Bcrypt.Cost > bcryptCostMax {
+			return fmt.Errorf("%w, got %d", ErrInvalidBcryptCost, pwCfg.Bcrypt.Cost)
 		}
-		if p.Bcrypt.Cost < bcryptCostAdvisory {
+		if pwCfg.Bcrypt.Cost < bcryptCostAdvisory {
 			slog.Warn("bcrypt cost is below the recommended value",
-				"cost", p.Bcrypt.Cost, "recommended", bcryptCostAdvisory)
+				"cost", pwCfg.Bcrypt.Cost, "recommended", bcryptCostAdvisory)
 		}
 	default:
-		return fmt.Errorf("%w, got '%s'", ErrInvalidPasswordAlgorithm, p.Algorithm)
+		return fmt.Errorf("%w, got '%s'", ErrInvalidPasswordAlgorithm, pwCfg.Algorithm)
+	}
+
+	return nil
+}
+
+// validateArgon2Params rejects sub-floor argon2id parameters and warn-logs
+// memory below the OWASP floor (which is allowed).
+func validateArgon2Params(params *Argon2Params) error {
+	if params.Memory < argon2MemoryFloorKiB ||
+		params.Time < argon2TimeFloor ||
+		params.Threads < argon2ThreadsFloor ||
+		params.KeyLength < argon2KeyLengthFloor ||
+		params.SaltLength < argon2SaltLenFloor {
+		return fmt.Errorf("%w: memory=%d(min %d KiB) time=%d threads=%d key_length=%d salt_length=%d",
+			ErrInvalidArgon2Params,
+			params.Memory, argon2MemoryFloorKiB,
+			params.Time, params.Threads, params.KeyLength, params.SaltLength)
+	}
+	if params.Memory < argon2MemoryOWASPKiB {
+		slog.Warn("argon2id memory is below the OWASP floor; offline-crack resistance is reduced",
+			"memoryKiB", params.Memory, "owaspFloorKiB", argon2MemoryOWASPKiB)
 	}
 
 	return nil

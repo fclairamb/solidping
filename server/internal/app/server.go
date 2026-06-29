@@ -162,7 +162,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// Install the process-wide password-hashing policy from config. Parameters
 	// are already validated by cfg.Validate() at startup, so a failure here is a
 	// genuinely unknown algorithm and must abort (never silently fall back).
-	pwPolicy, err := passwords.PolicyFromConfig(cfg.Auth)
+	pwPolicy, err := passwords.PolicyFromConfig(&cfg.Auth)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve password hashing policy: %w", err)
 	}

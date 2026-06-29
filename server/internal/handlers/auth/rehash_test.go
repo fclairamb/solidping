@@ -54,7 +54,7 @@ func hashUnderPolicy(t *testing.T, p passwords.Policy, password string) string {
 
 // seedLoginUser creates an org + admin member with the supplied stored hash and
 // returns the user.
-func seedLoginUser(t *testing.T, dbSvc db.Service, ctx context.Context, orgSlug, email, storedHash string) *models.User {
+func seedLoginUser(ctx context.Context, t *testing.T, dbSvc db.Service, orgSlug, email, storedHash string) *models.User {
 	t.Helper()
 	r := require.New(t)
 
@@ -74,6 +74,8 @@ func seedLoginUser(t *testing.T, dbSvc db.Service, ctx context.Context, orgSlug,
 // TestRehashOnLogin exercises the transparent rehash-on-login upgrade. These
 // subtests mutate the process-wide password policy, so the parent is not
 // parallel.
+//
+//nolint:paralleltest // mutates the process-wide default policy via usePolicy
 func TestRehashOnLogin(t *testing.T) {
 	const password = "rehash-secret-pw"
 
@@ -84,7 +86,7 @@ func TestRehashOnLogin(t *testing.T) {
 		// Stored hash is bcrypt; active policy is argon2id (default).
 		usePolicy(t, argon2idDefaultPolicy())
 		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
-		user := seedLoginUser(t, dbSvc, ctx, "rehash-up", "up@example.com", stored)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-up", "up@example.com", stored)
 
 		resp, err := svc.Login(ctx, "rehash-up", "up@example.com", password, Context{})
 		r.NoError(err)
@@ -106,7 +108,7 @@ func TestRehashOnLogin(t *testing.T) {
 		// Stored hash already matches the active policy.
 		usePolicy(t, argon2idDefaultPolicy())
 		stored := hashUnderPolicy(t, argon2idDefaultPolicy(), password)
-		user := seedLoginUser(t, dbSvc, ctx, "rehash-noop", "noop@example.com", stored)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-noop", "noop@example.com", stored)
 
 		resp, err := svc.Login(ctx, "rehash-noop", "noop@example.com", password, Context{})
 		r.NoError(err)
@@ -124,7 +126,7 @@ func TestRehashOnLogin(t *testing.T) {
 
 		usePolicy(t, argon2idDefaultPolicy())
 		stored := "$plaintext$" + password
-		user := seedLoginUser(t, dbSvc, ctx, "rehash-plain", "plain@example.com", stored)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-plain", "plain@example.com", stored)
 
 		resp, err := svc.Login(ctx, "rehash-plain", "plain@example.com", password, Context{})
 		r.NoError(err)
@@ -142,7 +144,7 @@ func TestRehashOnLogin(t *testing.T) {
 
 		usePolicy(t, argon2idDefaultPolicy())
 		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
-		user := seedLoginUser(t, dbSvc, ctx, "rehash-err", "err@example.com", stored)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-err", "err@example.com", stored)
 
 		// Swap in a db whose UpdateUser always fails; everything else delegates.
 		svc.db = failingUpdateDB{Service: dbSvc}

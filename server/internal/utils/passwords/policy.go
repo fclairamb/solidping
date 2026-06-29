@@ -29,6 +29,9 @@ type Policy struct {
 	Bcrypt    BcryptParams
 }
 
+// defaultBcryptCost is the fallback bcrypt cost when none is configured.
+const defaultBcryptCost = 12
+
 // defaultArgon2Params reproduces the historically hardcoded argon2id profile
 // (m=64 MiB, t=3, p=4, 32-byte key, 16-byte salt). Used as the fallback when no
 // policy has been set so package-level Hash keeps working out of the box.
@@ -54,7 +57,7 @@ var (
 	defaultPolicy = Policy{
 		Algorithm: argon2idID,
 		Argon2:    defaultArgon2Params,
-		Bcrypt:    BcryptParams{Cost: 12},
+		Bcrypt:    BcryptParams{Cost: defaultBcryptCost},
 	}
 )
 
@@ -74,29 +77,64 @@ func getDefaultPolicy() Policy {
 }
 
 // PolicyFromConfig maps the password-hashing config block onto a resolved
-// Policy. Validation (algorithm in the supported set, cost floors) is performed
-// by config.Config.Validate at load time; this returns an error only for a
-// genuinely unknown algorithm, as a defensive backstop so an unvalidated config
-// can never silently fall back.
-func PolicyFromConfig(c config.AuthConfig) (Policy, error) {
-	pw := c.Password
+// Policy. Validation (cost floors etc.) is performed by config.Config.Validate
+// at load time.
+//
+// A zero-value / unset block resolves to the legacy argon2id default profile, so
+// a Config assembled directly (e.g. in tests) without going through config.Load
+// behaves exactly like the documented default. A genuinely *unknown* (non-empty
+// but unsupported) algorithm is rejected — never a silent fallback.
+func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
+	pwCfg := authCfg.Password
 
-	p := Policy{
-		Algorithm: pw.Algorithm,
-		Argon2: Argon2Params{
-			Memory:     pw.Argon2.Memory,
-			Time:       pw.Argon2.Time,
-			Threads:    pw.Argon2.Threads,
-			KeyLength:  pw.Argon2.KeyLength,
-			SaltLength: pw.Argon2.SaltLength,
-		},
-		Bcrypt: BcryptParams{Cost: pw.Bcrypt.Cost},
+	algorithm := pwCfg.Algorithm
+	if algorithm == "" {
+		algorithm = argon2idID
 	}
 
-	switch p.Algorithm {
+	policy := Policy{
+		Algorithm: algorithm,
+		Argon2:    resolveArgon2Params(pwCfg.Argon2),
+		Bcrypt:    BcryptParams{Cost: pwCfg.Bcrypt.Cost},
+	}
+	if policy.Bcrypt.Cost == 0 {
+		policy.Bcrypt.Cost = defaultBcryptCost
+	}
+
+	switch policy.Algorithm {
 	case argon2idID, bcryptID:
-		return p, nil
+		return policy, nil
 	default:
-		return Policy{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, p.Algorithm)
+		return Policy{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, policy.Algorithm)
 	}
+}
+
+// resolveArgon2Params maps config argon2 params onto the policy struct, filling
+// any zero-value field with the legacy default so a partially-specified or
+// zero-value block is still usable.
+func resolveArgon2Params(c config.Argon2Params) Argon2Params {
+	p := Argon2Params{
+		Memory:     c.Memory,
+		Time:       c.Time,
+		Threads:    c.Threads,
+		KeyLength:  c.KeyLength,
+		SaltLength: c.SaltLength,
+	}
+	if p.Memory == 0 {
+		p.Memory = defaultArgon2Params.Memory
+	}
+	if p.Time == 0 {
+		p.Time = defaultArgon2Params.Time
+	}
+	if p.Threads == 0 {
+		p.Threads = defaultArgon2Params.Threads
+	}
+	if p.KeyLength == 0 {
+		p.KeyLength = defaultArgon2Params.KeyLength
+	}
+	if p.SaltLength == 0 {
+		p.SaltLength = defaultArgon2Params.SaltLength
+	}
+
+	return p
 }

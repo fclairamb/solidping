@@ -42,8 +42,8 @@ func bcryptPrehash(password string) []byte {
 
 // hashBcrypt derives a native bcrypt hash of password at the given cost,
 // applying the sha256+base64 pre-hash.
-func hashBcrypt(password string, p BcryptParams) (string, error) {
-	out, err := bcrypt.GenerateFromPassword(bcryptPrehash(password), p.Cost)
+func hashBcrypt(password string, params BcryptParams) (string, error) {
+	out, err := bcrypt.GenerateFromPassword(bcryptPrehash(password), params.Cost)
 	if err != nil {
 		return "", err
 	}
