@@ -55,6 +55,7 @@
     "until": "Bis",
     "untilHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
     "recurrenceEndHelp": "Optional. Nach diesem Datum wird das Fenster nicht mehr wiederholt.",
+    "utcNote": "Alle Zeiten werden in UTC eingegeben und gespeichert.",
     "checks": "Prüfungen",
     "groups": "Prüfgruppen",
     "submitCreate": "Fenster erstellen",

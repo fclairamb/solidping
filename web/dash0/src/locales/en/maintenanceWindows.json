@@ -55,6 +55,7 @@
     "until": "Until",
     "untilHelp": "Optional. After this date the window no longer recurs.",
     "recurrenceEndHelp": "Optional. After this date the window no longer recurs.",
+    "utcNote": "All times are entered and stored in UTC.",
     "checks": "Checks",
     "groups": "Check groups",
     "submitCreate": "Create Window",

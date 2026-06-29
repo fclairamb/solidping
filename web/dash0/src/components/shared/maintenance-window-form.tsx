@@ -40,57 +40,62 @@ export interface MaintenanceWindowFormSubmit {
 }
 
 // Converts an RFC3339/UTC instant to a value suitable for an
-// <input type="datetime-local"> (local wall-clock, no zone, minute precision).
-function isoToLocalInput(iso?: string): string {
+// <input type="datetime-local">, using the instant's UTC wall-clock (no zone,
+// minute precision). Times are entered/stored in UTC so the chosen wall clock
+// matches the backend's UTC recurrence expansion exactly.
+function isoToUtcInput(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
   const pad = (n: number) => String(n).padStart(2, "0");
   return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` +
-    `T${pad(d.getHours())}:${pad(d.getMinutes())}`
+    `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` +
+    `T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`
   );
 }
 
-// Converts a datetime-local value (interpreted in the browser's local zone)
-// back to an RFC3339 UTC instant for the API.
-function localInputToIso(local: string): string {
+// Converts a datetime-local value (interpreted as UTC wall-clock) back to an
+// RFC3339 UTC instant for the API.
+function utcInputToIso(local: string): string {
   if (!local) return "";
-  const d = new Date(local);
+  const d = new Date(`${local}:00Z`);
   if (Number.isNaN(d.getTime())) return "";
   return d.toISOString();
 }
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-// Local "HH:mm" of an instant, for <input type="time">.
-function isoToLocalTime(iso?: string): string {
+// UTC "HH:mm" of an instant, for <input type="time">.
+function isoToUtcTime(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  return `${pad2(d.getUTCHours())}:${pad2(d.getUTCMinutes())}`;
 }
 
-// Local "YYYY-MM-DD" of an instant, for <input type="date">.
-function isoToLocalDate(iso?: string): string {
+// UTC "YYYY-MM-DD" of an instant, for <input type="date">.
+function isoToUtcDate(iso?: string): string {
   if (!iso) return "";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
 type Recurrence = "none" | "daily" | "weekly" | "monthly";
 type DurationUnit = "minutes" | "hours";
 
-// Parse "YYYY-MM-DD" + "HH:mm" into a local Date (browser zone).
-function composeLocalDateTime(date: string, time: string): Date | null {
+// Parse "YYYY-MM-DD" + "HH:mm" into a Date whose UTC wall-clock is the chosen
+// date/time (the value is interpreted as UTC, not the browser zone).
+function composeUtcDateTime(date: string, time: string): Date | null {
   if (!date || !time) return null;
-  const d = new Date(`${date}T${time}`);
+  const d = new Date(`${date}T${time}:00Z`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
 // Snap an anchor date so its cadence matches the picker, choosing the first
-// matching day on/after the given local datetime. Returns a new Date.
+// matching day on/after the given datetime. All components are read/written in
+// UTC so the weekday/day-of-month match the backend's UTC expansion. Returns a
+// new Date.
 //  - daily: as-is.
 //  - weekly: advance to the next `weekday` (0=Sun..6=Sat) on/after the date.
 //  - monthly: set day-of-month to `dayOfMonth` (clamped to month length) on/after
@@ -105,20 +110,22 @@ function snapAnchor(
 
   if (recurrence === "weekly") {
     const out = new Date(dt);
-    const diff = (weekday - out.getDay() + 7) % 7;
-    out.setDate(out.getDate() + diff);
+    const diff = (weekday - out.getUTCDay() + 7) % 7;
+    out.setUTCDate(out.getUTCDate() + diff);
     return out;
   }
 
   // monthly
   const clampDay = (year: number, monthIdx: number, day: number) => {
-    const last = new Date(year, monthIdx + 1, 0).getDate();
+    const last = new Date(Date.UTC(year, monthIdx + 1, 0)).getUTCDate();
     return Math.min(day, last);
   };
-  let year = dt.getFullYear();
-  let monthIdx = dt.getMonth();
+  let year = dt.getUTCFullYear();
+  let monthIdx = dt.getUTCMonth();
   let day = clampDay(year, monthIdx, dayOfMonth);
-  let candidate = new Date(year, monthIdx, day, dt.getHours(), dt.getMinutes());
+  let candidate = new Date(
+    Date.UTC(year, monthIdx, day, dt.getUTCHours(), dt.getUTCMinutes()),
+  );
   if (candidate.getTime() < dt.getTime()) {
     // Chosen day already passed this month → next month.
     monthIdx += 1;
@@ -127,7 +134,9 @@ function snapAnchor(
       year += 1;
     }
     day = clampDay(year, monthIdx, dayOfMonth);
-    candidate = new Date(year, monthIdx, day, dt.getHours(), dt.getMinutes());
+    candidate = new Date(
+      Date.UTC(year, monthIdx, day, dt.getUTCHours(), dt.getUTCMinutes()),
+    );
   }
   return candidate;
 }
@@ -188,8 +197,8 @@ export function MaintenanceWindowForm({
   );
 
   // --- one-time fields (recurrence === "none") -----------------------------
-  const [startAt, setStartAt] = useState(isoToLocalInput(initialData?.startAt));
-  const [endAt, setEndAt] = useState(isoToLocalInput(initialData?.endAt));
+  const [startAt, setStartAt] = useState(isoToUtcInput(initialData?.startAt));
+  const [endAt, setEndAt] = useState(isoToUtcInput(initialData?.endAt));
 
   // --- recurring fields -----------------------------------------------------
   const initialStart = initialData?.startAt
@@ -201,10 +210,10 @@ export function MaintenanceWindowForm({
         new Date(initialData.startAt).getTime()
       : 3600000; // default 1h
   const initialDuration = decodeDuration(initialDurationMs);
-  const initialDom = initialStart ? initialStart.getDate() : 1;
+  const initialDom = initialStart ? initialStart.getUTCDate() : 1;
 
   const [startTime, setStartTime] = useState(
-    isoToLocalTime(initialData?.startAt) || "22:00",
+    isoToUtcTime(initialData?.startAt) || "22:00",
   );
   const [durationValue, setDurationValue] = useState<string>(
     String(initialDuration.value || 1),
@@ -213,7 +222,7 @@ export function MaintenanceWindowForm({
     initialDuration.unit,
   );
   const [weekday, setWeekday] = useState<number>(
-    initialStart ? initialStart.getDay() : new Date().getDay(),
+    initialStart ? initialStart.getUTCDay() : new Date().getUTCDay(),
   );
   // Day-of-month selector is capped at 28; surface a note when the stored value
   // exceeds it (a window created via the API, before this cap existed).
@@ -221,9 +230,10 @@ export function MaintenanceWindowForm({
     Math.min(initialDom, 28),
   );
   const [firstDay, setFirstDay] = useState(
-    isoToLocalDate(initialData?.startAt) || isoToLocalDate(new Date().toISOString()),
+    isoToUtcDate(initialData?.startAt) ||
+      isoToUtcDate(new Date().toISOString()),
   );
-  const [until, setUntil] = useState(isoToLocalDate(initialData?.recurrenceEnd));
+  const [until, setUntil] = useState(isoToUtcDate(initialData?.recurrenceEnd));
 
   const [checkUids, setCheckUids] = useState<string[]>(
     initialChecks?.checkUids ?? [],
@@ -243,14 +253,14 @@ export function MaintenanceWindowForm({
       return {
         title: title.trim(),
         description: description.trim() || undefined,
-        startAt: localInputToIso(startAt),
-        endAt: localInputToIso(endAt),
+        startAt: utcInputToIso(startAt),
+        endAt: utcInputToIso(endAt),
         recurrence: "none",
         recurrenceEnd: null,
       };
     }
 
-    const base = composeLocalDateTime(firstDay, startTime);
+    const base = composeUtcDateTime(firstDay, startTime);
     if (!base) return null;
     const anchor = snapAnchor(base, recurrence, weekday, dayOfMonth);
     const start = anchor.toISOString();
@@ -258,8 +268,8 @@ export function MaintenanceWindowForm({
 
     let recurrenceEnd: string | null = null;
     if (until) {
-      // Encode "Until" as the end of that local day so the last day is inclusive.
-      const endOfDay = new Date(`${until}T23:59:59`);
+      // Encode "Until" as the end of that UTC day so the last day is inclusive.
+      const endOfDay = new Date(`${until}T23:59:59Z`);
       if (!Number.isNaN(endOfDay.getTime())) {
         recurrenceEnd = endOfDay.toISOString();
       }
@@ -314,8 +324,9 @@ export function MaintenanceWindowForm({
     if (!title.trim()) next.title = t("form.errors.titleRequired");
 
     if (recurrence === "none") {
-      const start = startAt ? new Date(startAt) : null;
-      const end = endAt ? new Date(endAt) : null;
+      // Both inputs are UTC wall-clock; compare as UTC instants.
+      const start = startAt ? new Date(`${startAt}:00Z`) : null;
+      const end = endAt ? new Date(`${endAt}:00Z`) : null;
       if (start && end && end <= start) {
         next.endAt = t("form.errors.endAfterStart");
       }
@@ -323,7 +334,7 @@ export function MaintenanceWindowForm({
       if (durationMs <= 0) next.duration = t("form.errors.durationRequired");
       if (!firstDay) next.firstDay = t("form.errors.firstDayRequired");
       if (until && firstDay) {
-        if (new Date(`${until}T23:59:59`) <= new Date(`${firstDay}T00:00:00`)) {
+        if (new Date(`${until}T23:59:59Z`) <= new Date(`${firstDay}T00:00:00Z`)) {
           next.until = t("form.errors.untilAfterFirstDay");
         }
       }
@@ -437,6 +448,12 @@ export function MaintenanceWindowForm({
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p
+              className="text-xs text-muted-foreground"
+              data-testid="mw-utc-note"
+            >
+              {t("form.utcNote")}
+            </p>
           </div>
 
           {recurrence === "none" ? (

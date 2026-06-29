@@ -55,6 +55,7 @@
     "until": "Jusqu'au",
     "untilHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
     "recurrenceEndHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
+    "utcNote": "Toutes les heures sont saisies et stockées en UTC.",
     "checks": "Contrôles",
     "groups": "Groupes de contrôles",
     "submitCreate": "Créer la fenêtre",

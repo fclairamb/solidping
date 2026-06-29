@@ -55,6 +55,7 @@
     "until": "Hasta",
     "untilHelp": "Opcional. Después de esta fecha, la ventana deja de repetirse.",
     "recurrenceEndHelp": "Opcional. Después de esta fecha, la ventana deja de repetirse.",
+    "utcNote": "Todas las horas se introducen y almacenan en UTC.",
     "checks": "Comprobaciones",
     "groups": "Grupos de comprobaciones",
     "submitCreate": "Crear ventana",
