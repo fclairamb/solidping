@@ -2,8 +2,10 @@ package app
 
 import (
 	"encoding/json"
+	"math"
 	"net/http"
 	"runtime"
+	"runtime/debug"
 
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
@@ -25,6 +27,11 @@ type MemoryRuntime struct {
 	GCPauseTotalNs  uint64  `json:"gcPauseTotalNs"`
 	NextGCBytes     uint64  `json:"nextGcBytes"`
 	GCCPUFraction   float64 `json:"gcCpuFraction"`
+	// GoMemLimitBytes is the effective GOMEMLIMIT soft cap; 0 means unlimited.
+	// Lets an operator confirm the runtime guardrail took effect without scraping.
+	GoMemLimitBytes int64 `json:"goMemLimitBytes"`
+	// GoMaxProcs is GOMAXPROCS — relevant because per-P caches scale memory with it.
+	GoMaxProcs int `json:"goMaxProcs"`
 }
 
 // MemoryProcess holds OS-level process memory. rssBytes makes the
@@ -104,6 +111,13 @@ func (s *Server) buildMemorySnapshot(gatherer prometheus.Gatherer) MemorySnapsho
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)
 
+	// debug.SetMemoryLimit(-1) reads the effective GOMEMLIMIT without changing it;
+	// math.MaxInt64 is the runtime's "no limit" sentinel, normalized to 0 here.
+	memLimit := debug.SetMemoryLimit(-1)
+	if memLimit == math.MaxInt64 {
+		memLimit = 0
+	}
+
 	snap := MemorySnapshot{
 		Runtime: MemoryRuntime{
 			HeapAllocBytes:  memStats.HeapAlloc,
@@ -116,6 +130,8 @@ func (s *Server) buildMemorySnapshot(gatherer prometheus.Gatherer) MemorySnapsho
 			GCPauseTotalNs:  memStats.PauseTotalNs,
 			NextGCBytes:     memStats.NextGC,
 			GCCPUFraction:   memStats.GCCPUFraction,
+			GoMemLimitBytes: memLimit,
+			GoMaxProcs:      runtime.GOMAXPROCS(0),
 		},
 		Process: MemoryProcess{
 			RSSBytes: processRSSBytes(gatherer),
