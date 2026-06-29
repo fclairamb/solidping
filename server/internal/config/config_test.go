@@ -420,3 +420,155 @@ func TestApplyFileStorageEnv_PathStyleVariants(t *testing.T) {
 	applyFileStorageEnv(&c2)
 	r.False(c2.S3UsePathStyle)
 }
+
+// defaultPasswordConfig returns the same PasswordConfig the Load() defaults
+// literal installs — the historical argon2id profile.
+func defaultPasswordConfig() PasswordConfig {
+	return PasswordConfig{
+		Algorithm: PasswordAlgorithmArgon2id,
+		Argon2: Argon2Params{
+			Memory:     64 * 1024,
+			Time:       3,
+			Threads:    4,
+			KeyLength:  32,
+			SaltLength: 16,
+		},
+		Bcrypt: BcryptParams{Cost: 12},
+	}
+}
+
+// validBaseConfig returns a minimal Config that passes Validate, so password
+// validation can be exercised in isolation.
+func validBaseConfig() *Config {
+	return &Config{
+		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: "."},
+		Node:     NodeConfig{Role: NodeRoleAll},
+		Aggregation: AggregationConfig{
+			RetentionRaw:  24,
+			RetentionHour: 30,
+			RetentionDay:  12,
+		},
+		Deployment: DeploymentConfig{Mode: DeploymentModeSelfHosted},
+		Auth:       AuthConfig{Password: defaultPasswordConfig()},
+	}
+}
+
+// TestPasswordConfigDefaults asserts the Load() defaults reproduce today's exact
+// argon2id profile, so upgrading the binary is a no-op until reconfigured.
+func TestPasswordConfigDefaults(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	defaults := defaultPasswordConfig()
+	r.Equal(PasswordAlgorithmArgon2id, defaults.Algorithm)
+	r.Equal(uint32(64*1024), defaults.Argon2.Memory)
+	r.Equal(uint32(3), defaults.Argon2.Time)
+	r.Equal(uint8(4), defaults.Argon2.Threads)
+	r.Equal(uint32(32), defaults.Argon2.KeyLength)
+	r.Equal(uint32(16), defaults.Argon2.SaltLength)
+	r.Equal(12, defaults.Bcrypt.Cost)
+}
+
+// TestApplyPasswordHashingEnv confirms SP_AUTH_PASSWORD_* lands on the
+// snake_case-tagged fields despite koanf's env underscore→dot collapse. Uses
+// t.Setenv, which is incompatible with t.Parallel.
+func TestApplyPasswordHashingEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_PASSWORD_ALGORITHM", "bcrypt")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_MEMORY", "19456")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_TIME", "2")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_THREADS", "1")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", "24")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", "12")
+	t.Setenv("SP_AUTH_PASSWORD_BCRYPT_COST", "11")
+
+	cfg := defaultPasswordConfig()
+	applyPasswordHashingEnv(&cfg)
+
+	r.Equal("bcrypt", cfg.Algorithm)
+	r.Equal(uint32(19456), cfg.Argon2.Memory)
+	r.Equal(uint32(2), cfg.Argon2.Time)
+	r.Equal(uint8(1), cfg.Argon2.Threads)
+	r.Equal(uint32(24), cfg.Argon2.KeyLength)
+	r.Equal(uint32(12), cfg.Argon2.SaltLength)
+	r.Equal(11, cfg.Bcrypt.Cost)
+}
+
+// TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
+// bcrypt with honored cost passes, and each misconfiguration is rejected.
+func TestValidatePasswordConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		mutate  func(*PasswordConfig)
+		wantErr error
+	}{
+		{
+			name:   "argon2id defaults ok",
+			mutate: func(_ *PasswordConfig) {},
+		},
+		{
+			name: "bcrypt cost honored ok",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 12
+			},
+		},
+		{
+			name: "unknown algorithm rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = "scrypt"
+			},
+			wantErr: ErrInvalidPasswordAlgorithm,
+		},
+		{
+			name: "bcrypt cost too low rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 9
+			},
+			wantErr: ErrInvalidBcryptCost,
+		},
+		{
+			name: "bcrypt cost too high rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 32
+			},
+			wantErr: ErrInvalidBcryptCost,
+		},
+		{
+			name: "argon2 memory below floor rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Argon2.Memory = 4096
+			},
+			wantErr: ErrInvalidArgon2Params,
+		},
+		{
+			name: "argon2 key length below floor rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Argon2.KeyLength = 8
+			},
+			wantErr: ErrInvalidArgon2Params,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			cfg := validBaseConfig()
+			tc.mutate(&cfg.Auth.Password)
+
+			err := cfg.Validate()
+			if tc.wantErr != nil {
+				r.ErrorIs(err, tc.wantErr)
+			} else {
+				r.NoError(err)
+			}
+		})
+	}
+}
