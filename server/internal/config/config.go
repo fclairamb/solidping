@@ -67,6 +67,31 @@ var (
 	ErrInvalidAggregationRetention = errors.New("aggregation retention values must be >= 1")
 	// ErrInvalidDeploymentMode is returned when SP_DEPLOYMENT_MODE is set to something other than "saas" / "self-hosted".
 	ErrInvalidDeploymentMode = errors.New("deployment mode must be 'saas' or 'self-hosted'")
+	// ErrInvalidPasswordAlgorithm is returned when auth.password.algorithm is not a supported algorithm.
+	ErrInvalidPasswordAlgorithm = errors.New("password hashing algorithm must be 'argon2id' or 'bcrypt'")
+	// ErrInvalidArgon2Params is returned when an argon2id cost parameter is below its hard floor.
+	ErrInvalidArgon2Params = errors.New("invalid argon2id parameters")
+	// ErrInvalidBcryptCost is returned when bcrypt cost is outside the accepted [10,31] range.
+	ErrInvalidBcryptCost = errors.New("bcrypt cost must be between 10 and 31")
+)
+
+// Supported password-hashing algorithm identifiers.
+const (
+	PasswordAlgorithmArgon2id = "argon2id"
+	PasswordAlgorithmBcrypt   = "bcrypt"
+)
+
+// Hard floors / OWASP advisory thresholds for password-hashing validation.
+const (
+	argon2MemoryFloorKiB = 8192  // hard reject below this (KiB)
+	argon2MemoryOWASPKiB = 19456 // warn below this OWASP floor (KiB)
+	argon2TimeFloor      = 1
+	argon2ThreadsFloor   = 1
+	argon2KeyLengthFloor = 16
+	argon2SaltLenFloor   = 8
+	bcryptCostMin        = 10
+	bcryptCostMax        = 31
+	bcryptCostAdvisory   = 12 // warn below this
 )
 
 // ValidNodeRoles returns all valid role values.
@@ -293,6 +318,32 @@ type AuthConfig struct {
 	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
 	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
 	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
+	Password                 PasswordConfig `koanf:"password"`
+}
+
+// PasswordConfig selects the password-hashing algorithm and its cost
+// parameters. Defaults reproduce the historical argon2id profile exactly, so
+// upgrading the binary changes nothing until an operator reconfigures it. On a
+// successful login, a stored hash whose algorithm or cost no longer matches this
+// policy is transparently re-hashed (see internal/utils/passwords).
+type PasswordConfig struct {
+	Algorithm string       `koanf:"algorithm"` // "argon2id" (default) | "bcrypt"
+	Argon2    Argon2Params `koanf:"argon2"`
+	Bcrypt    BcryptParams `koanf:"bcrypt"`
+}
+
+// Argon2Params are the argon2id cost parameters (memory in KiB).
+type Argon2Params struct {
+	Memory     uint32 `koanf:"memory"`      // KiB, default 65536 (64 MiB)
+	Time       uint32 `koanf:"time"`        // default 3
+	Threads    uint8  `koanf:"threads"`     // default 4
+	KeyLength  uint32 `koanf:"key_length"`  // default 32
+	SaltLength uint32 `koanf:"salt_length"` // default 16
+}
+
+// BcryptParams are the bcrypt cost parameters.
+type BcryptParams struct {
+	Cost int `koanf:"cost"` // default 12 (bcrypt range 4–31; validated >= 10)
 }
 
 // WebAuthnConfig configures the passkey / WebAuthn relying party. RPID
@@ -477,6 +528,20 @@ func Load() (*Config, error) {
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
 			},
+			// Defaults reproduce the historical hardcoded argon2id profile
+			// (m=64 MiB, t=3, p=4, 32-byte key, 16-byte salt) so upgrading
+			// changes nothing until reconfigured.
+			Password: PasswordConfig{
+				Algorithm: PasswordAlgorithmArgon2id,
+				Argon2: Argon2Params{
+					Memory:     64 * 1024,
+					Time:       3,
+					Threads:    4,
+					KeyLength:  32,
+					SaltLength: 16,
+				},
+				Bcrypt: BcryptParams{Cost: 12},
+			},
 		},
 		Email: EmailConfig{
 			Port:     587,
@@ -609,6 +674,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyJobsEnv(&cfg.Jobs)
@@ -679,6 +745,55 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	intEnv("SP_SERVER_RATE_LIMITING_RATE_QUEUE", &cfg.RateQueue)
 	intEnv("SP_SERVER_RATE_LIMITING_CONCURRENCY_QUEUE", &cfg.ConcurrencyQueue)
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
+}
+
+// applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so multi-word keys
+// like SP_AUTH_PASSWORD_ARGON2_MEMORY / ..._KEY_LENGTH / ..._BCRYPT_COST mis-map
+// (e.g. auth.password.argon2.key.length). Reading them here keeps the
+// password-hashing policy env-configurable, mirroring applyRateLimitingEnv.
+// SP_AUTH_PASSWORD_ALGORITHM (single word) is folded in for consistency.
+func applyPasswordHashingEnv(cfg *PasswordConfig) {
+	strEnv := func(name string, dst *string) {
+		if v := os.Getenv(name); v != "" {
+			*dst = v
+		}
+	}
+	u32Env := func(name string, dst *uint32) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+			*dst = uint32(n)
+		}
+	}
+	u8Env := func(name string, dst *uint8) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.ParseUint(v, 10, 8); err == nil {
+			*dst = uint8(n)
+		}
+	}
+	intEnv := func(name string, dst *int) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			*dst = n
+		}
+	}
+
+	strEnv("SP_AUTH_PASSWORD_ALGORITHM", &cfg.Algorithm)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_MEMORY", &cfg.Argon2.Memory)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_TIME", &cfg.Argon2.Time)
+	u8Env("SP_AUTH_PASSWORD_ARGON2_THREADS", &cfg.Argon2.Threads)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", &cfg.Argon2.KeyLength)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", &cfg.Argon2.SaltLength)
+	intEnv("SP_AUTH_PASSWORD_BCRYPT_COST", &cfg.Bcrypt.Cost)
 }
 
 // applyJobsEnv reads SP_JOBS_* into cfg. koanf's env loader collapses every
@@ -889,6 +1004,48 @@ func (c *Config) Validate() error {
 	}
 	if !slices.Contains(ValidDeploymentModes(), c.Deployment.Mode) {
 		return fmt.Errorf("%w, got '%s'", ErrInvalidDeploymentMode, c.Deployment.Mode)
+	}
+
+	if err := validatePasswordConfig(&c.Auth.Password); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validatePasswordConfig fails fast at config load for an unsupported algorithm
+// or sub-floor cost parameters, so a misconfiguration can never lock everyone
+// out at first login. Near-floor (but accepted) values are warn-logged.
+func validatePasswordConfig(p *PasswordConfig) error {
+	switch p.Algorithm {
+	case PasswordAlgorithmArgon2id:
+		if p.Argon2.Memory < argon2MemoryFloorKiB ||
+			p.Argon2.Time < argon2TimeFloor ||
+			p.Argon2.Threads < argon2ThreadsFloor ||
+			p.Argon2.KeyLength < argon2KeyLengthFloor ||
+			p.Argon2.SaltLength < argon2SaltLenFloor {
+			return fmt.Errorf("%w: memory=%d(KiB min %d) time=%d(min %d) threads=%d(min %d) key_length=%d(min %d) salt_length=%d(min %d)",
+				ErrInvalidArgon2Params,
+				p.Argon2.Memory, argon2MemoryFloorKiB,
+				p.Argon2.Time, argon2TimeFloor,
+				p.Argon2.Threads, argon2ThreadsFloor,
+				p.Argon2.KeyLength, argon2KeyLengthFloor,
+				p.Argon2.SaltLength, argon2SaltLenFloor)
+		}
+		if p.Argon2.Memory < argon2MemoryOWASPKiB {
+			slog.Warn("argon2id memory is below the OWASP floor; offline-crack resistance is reduced",
+				"memoryKiB", p.Argon2.Memory, "owaspFloorKiB", argon2MemoryOWASPKiB)
+		}
+	case PasswordAlgorithmBcrypt:
+		if p.Bcrypt.Cost < bcryptCostMin || p.Bcrypt.Cost > bcryptCostMax {
+			return fmt.Errorf("%w, got %d", ErrInvalidBcryptCost, p.Bcrypt.Cost)
+		}
+		if p.Bcrypt.Cost < bcryptCostAdvisory {
+			slog.Warn("bcrypt cost is below the recommended value",
+				"cost", p.Bcrypt.Cost, "recommended", bcryptCostAdvisory)
+		}
+	default:
+		return fmt.Errorf("%w, got '%s'", ErrInvalidPasswordAlgorithm, p.Algorithm)
 	}
 
 	return nil
