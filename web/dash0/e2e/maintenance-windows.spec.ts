@@ -57,6 +57,11 @@ async function fillSchedule(page: Page, startLocal: string, endLocal: string) {
 }
 
 test.describe("Maintenance windows", () => {
+  // Pin a non-UTC browser zone so timezone regressions are observable: times
+  // are entered/stored in UTC, the recurrence pattern renders "UTC", and
+  // concrete occurrences render in this local zone (America/New_York = UTC-5/-4).
+  test.use({ timezoneId: "America/New_York" });
+
   test("list page renders with heading, New button, and empty/list state", async ({
     authenticatedPage,
   }) => {
@@ -201,6 +206,9 @@ test.describe("Maintenance windows", () => {
     await page.waitForURL(/\/maintenance-windows\/new/);
     await page.waitForLoadState("networkidle");
 
+    // The "all times are UTC" affordance is visible on the form.
+    await expect(page.getByTestId("mw-utc-note")).toBeVisible();
+
     await page.getByTestId("mw-recurrence-select").click();
     await page.getByRole("option", { name: "Weekly" }).click();
 
@@ -212,7 +220,11 @@ test.describe("Maintenance windows", () => {
     const summary = page.getByTestId("mw-schedule-summary");
     await expect(summary).toBeVisible();
     // The localized weekly summary mentions a weekday and the time slot.
+    // In a non-UTC browser (America/New_York), 22:00 is entered as UTC and the
+    // weekday must NOT drift off Monday — the pattern is rendered in UTC.
     await expect(summary).toContainText("Monday");
+    // The recurrence pattern clock carries an explicit "UTC" label.
+    await expect(summary).toContainText("UTC");
     // A non-empty "Next:" preview appears for a future recurring draft.
     await expect(summary).toContainText("Next:");
   });
@@ -291,6 +303,58 @@ test.describe("Maintenance windows", () => {
     // First day round-trips.
     await expect(page.getByTestId("mw-first-day-input")).toHaveValue(
       "2030-01-02",
+    );
+  });
+
+  test("weekly UTC round-trip: pattern shows UTC, occurrences show local zone", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const suffix = Date.now().toString().slice(-9);
+
+    await gotoList(page);
+    await page.getByTestId("mw-new-button").click();
+    await page.waitForURL(/\/maintenance-windows\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const title = `e2e utc weekly ${suffix}`;
+    await page.getByTestId("mw-title-input").fill(title);
+    await page.getByTestId("mw-recurrence-select").click();
+    await page.getByRole("option", { name: "Weekly" }).click();
+
+    // Monday 22:00 UTC, far-future first day that is itself a Monday.
+    await page.getByTestId("mw-weekday-1").click(); // Monday
+    await page.getByTestId("mw-start-time-input").fill("22:00");
+    await page.getByTestId("mw-first-day-input").fill("2030-01-07"); // a Monday
+
+    await page.getByTestId("mw-submit-button").click();
+    await page.waitForURL(/\/maintenance-windows\/[^/]+$/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: title })).toBeVisible();
+
+    // The pattern summary stays Monday (no UTC↔local weekday drift) and is
+    // explicitly labelled UTC — this is the core regression guard for the fix.
+    const summary = page.getByTestId("mw-schedule-summary");
+    await expect(summary).toContainText("Monday");
+    await expect(summary).toContainText("UTC");
+
+    // The concrete "Next occurrences" lines render in the browser's local zone
+    // (America/New_York → "GMT-5"/"GMT-4" or "EST"/"EDT"), never "UTC".
+    const occurrences = page.getByTestId("mw-detail-next-occurrences");
+    await expect(occurrences).toBeVisible();
+    await expect(occurrences).not.toContainText("UTC");
+    await expect(occurrences).toContainText(/GMT[+-]\d|EST|EDT/);
+
+    // Reopen edit: Monday + 22:00 round-trip back to the exact UTC wall clock.
+    await page.getByTestId("mw-detail-edit-button").click();
+    await page.waitForURL(/\/maintenance-windows\/[^/]+\/edit/, {
+      timeout: 10000,
+    });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("mw-start-time-input")).toHaveValue("22:00");
+    await expect(page.getByTestId("mw-weekday-1")).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
   });
 
