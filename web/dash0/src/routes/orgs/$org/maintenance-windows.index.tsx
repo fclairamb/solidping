@@ -189,9 +189,14 @@ function MaintenanceWindowsIndexPage() {
               <span className="hidden sm:inline">{t("common:refresh")}</span>
             </Button>
             <Link to="/orgs/$org/maintenance-windows/new" params={{ org }}>
-              <Button data-testid="mw-new-button">
-                <Plus className="mr-2 h-4 w-4" />
-                {t("maintenanceWindows:new")}
+              <Button
+                data-testid="mw-new-button"
+                aria-label={t("maintenanceWindows:new")}
+              >
+                <Plus className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {t("maintenanceWindows:new")}
+                </span>
               </Button>
             </Link>
           </>
