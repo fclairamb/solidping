@@ -422,10 +422,17 @@ func (s *Service) Login(
 			return nil, ErrInvalidCredentials
 		}
 	} else {
-		// Verify argon2id hash
+		// Verify the stored hash (algorithm is read from the stored marker).
 		if !passwords.Verify(password, *user.PasswordHash) {
 			return nil, ErrInvalidCredentials
 		}
+
+		// Rehash-on-login: if the stored hash's algorithm or cost no longer
+		// matches the configured policy, transparently re-hash the just-verified
+		// plaintext and persist it. Best-effort only — the user is already
+		// authenticated, so a rehash error never affects the login result; it is
+		// logged and retried on the next login.
+		s.maybeRehashPassword(ctx, user, password)
 	}
 
 	// Resolve organization treating orgSlug as a preference
@@ -453,6 +460,31 @@ func (s *Service) Login(
 	}
 
 	return s.completeLogin(ctx, user, resolvedOrg, role, loginAction, orgSummaries, "password", authContext)
+}
+
+// maybeRehashPassword transparently upgrades a user's stored password hash when
+// it no longer matches the configured hashing policy (algorithm or cost
+// parameters changed). It is called with the just-verified plaintext on a
+// successful password login.
+//
+// It is strictly best-effort: the caller is already authenticated, so any error
+// (hashing or persistence) is logged and swallowed — never propagated — and the
+// upgrade is simply retried on the next login. Concurrent logins for the same
+// user are safe (both write a valid current-policy hash; last writer wins).
+func (s *Service) maybeRehashPassword(ctx context.Context, user *models.User, password string) {
+	if user.PasswordHash == nil || !passwords.NeedsRehash(*user.PasswordHash) {
+		return
+	}
+
+	newHash, err := passwords.Hash(password)
+	if err != nil {
+		slog.WarnContext(ctx, "password rehash failed", "userUid", user.UID, "error", err)
+		return
+	}
+
+	if err := s.db.UpdateUser(ctx, user.UID, &models.UserUpdate{PasswordHash: &newHash}); err != nil {
+		slog.WarnContext(ctx, "password rehash persist failed", "userUid", user.UID, "error", err)
+	}
 }
 
 // completeLogin is the shared post-authentication path used by Login,

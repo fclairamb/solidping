@@ -96,6 +96,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
 	"github.com/fclairamb/solidping/server/test/testdata"
@@ -157,6 +158,15 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		dbService db.Service
 		err       error
 	)
+
+	// Install the process-wide password-hashing policy from config. Parameters
+	// are already validated by cfg.Validate() at startup, so a failure here is a
+	// genuinely unknown algorithm and must abort (never silently fall back).
+	pwPolicy, err := passwords.PolicyFromConfig(cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve password hashing policy: %w", err)
+	}
+	passwords.SetDefaultPolicy(pwPolicy)
 
 	// Initialize database service based on configuration
 
