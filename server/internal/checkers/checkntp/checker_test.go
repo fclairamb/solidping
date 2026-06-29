@@ -281,6 +281,13 @@ func TestNTPChecker_Execute(t *testing.T) {
 			wantStatus: checkerdef.StatusDown,
 		},
 		{
+			name:       "nil response down not panic",
+			cfg:        &checkntp.NTPConfig{Host: "h"},
+			resp:       nil,
+			queryErr:   nil,
+			wantStatus: checkerdef.StatusDown,
+		},
+		{
 			name:     "deadline exceeded timeout",
 			cfg:      &checkntp.NTPConfig{Host: "h"},
 			queryErr: errQuery,

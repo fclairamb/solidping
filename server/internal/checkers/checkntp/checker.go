@@ -7,6 +7,7 @@ package checkntp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -134,8 +135,18 @@ func (c *NTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*ch
 		return queryErrorResult(ctx, cfg, port, start, err), nil
 	}
 
+	// Defensive: the library never returns (nil, nil), but a nil response must
+	// surface as Down rather than panicking on a field access in classify.
+	if resp == nil {
+		return queryErrorResult(ctx, cfg, port, start, errNilResponse), nil
+	}
+
 	return classify(cfg, port, start, resp), nil
 }
+
+// errNilResponse guards the (nil, nil) query return that the real client never
+// produces but a faulty stub could.
+var errNilResponse = errors.New("nil NTP response")
 
 // queryErrorResult maps a transport/query error to Timeout (when the context
 // deadline fired) or Down (any other failure: refused, unreachable, malformed).
