@@ -25,6 +25,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkntp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
@@ -137,6 +138,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checksip.SIPChecker{}, true
 	case checkerdef.CheckTypeKubernetes:
 		return &checkkubernetes.KubernetesChecker{}, true
+	case checkerdef.CheckTypeNTP:
+		return &checkntp.NTPChecker{}, true
 	default:
 		return nil, false
 	}
@@ -222,6 +225,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checksip.SIPConfig{}, true
 	case checkerdef.CheckTypeKubernetes:
 		return &checkkubernetes.KubernetesConfig{}, true
+	case checkerdef.CheckTypeNTP:
+		return &checkntp.NTPConfig{}, true
 	default:
 		return nil, false
 	}
