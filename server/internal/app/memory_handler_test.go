@@ -99,6 +99,8 @@ func TestMemorySnapshotJSONShape(t *testing.T) {
 	// camelCase, not snake_case.
 	r.Contains(rt, "heapInuseBytes")
 	r.Contains(rt, "numGoroutine")
+	r.Contains(rt, "goMemLimitBytes")
+	r.Contains(rt, "goMaxProcs")
 	r.NotContains(rt, "heap_inuse_bytes")
 
 	var build map[string]json.RawMessage

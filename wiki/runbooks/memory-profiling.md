@@ -181,7 +181,7 @@ Static analysis (per repo policy — fix findings in code, never relax the confi
 | 1 | New `http.Client` per check (`checkhttp/checker.go`) | _tbd_ | baseline allocs/op: `BenchmarkHTTPCheckerExecute` |
 | 2 | DEK cache never evicts (`crypto/credentials/service.go`) | _tbd_ | watch `solidping_dek_cache_entries` over soak |
 | 3 | Aggregation loads full result set (`jobs/jobtypes/job_aggregation.go`) | _tbd_ | look for transient `alloc_space` spikes |
-| 4 | Postgres pool unbounded (`db/postgres/postgres.go`) | _tbd_ | `solidping_db_pool_open_connections` under load |
+| 4 | Postgres pool unbounded (`db/postgres/postgres.go`) | **fixed** — bounded pool (defaults 25 open / 10 idle / 1h lifetime, `SP_DB_MAX_OPEN_CONNS` etc.) | `solidping_db_pool_open_connections` under load |
 | 5 | 10 MB body buffered per HTTP check (`checkhttp/checker.go`) | _tbd_ | `BenchmarkHTTPCheckerExecuteBodyMatch` bytes/op |
 | 6 | Rate-limiter IP map (`middleware/ratelimit.go`) | _tbd_ | `solidping_ratelimit_entries` vs cleanup cadence |
 | 7 | Event-listener channels (`notifier/local.go`) | _tbd_ | `solidping_event_listeners` + goleak guard |
@@ -190,6 +190,14 @@ Static analysis (per repo policy — fix findings in code, never relax the confi
 
 **Prioritized remediation backlog** (file each as its own spec once confirmed):
 record here, ranked by measured impact.
+
+**Shipped guardrails** (2026-06-29, see `specs/done/2026/06/2026-06-29-04-memory-runtime-guardrails.md`):
+- Runtime GC levers wired in-process with cgroup-aware `GOMEMLIMIT` auto-cap
+  (Appendix B), so containers get an OOM guardrail by default.
+- Postgres pool bounded (suspect #4 above).
+- Argon2id derivations bounded to ≤ `min(GOMAXPROCS, 4)` concurrent, capping the
+  64 MB-per-hash transient spike during login bursts
+  (`internal/utils/passwords`).
 
 ---
 
@@ -217,14 +225,26 @@ follow-up; it is **not** set up here.
 
 ## Appendix B — GC levers (A6, operational knobs)
 
+The soft cap and heap-growth target are applied at startup by
+`internal/memlimit` (logged as `Runtime memory guardrails applied` with the
+effective value and its source) and surfaced in `GET /api/mgmt/memory`
+(`runtime.goMemLimitBytes`, `runtime.goMaxProcs`). **Precedence: a native
+`GOMEMLIMIT` / `GOGC` env var always wins**; the `SP_RUNTIME_*` knobs and cgroup
+auto-derivation only apply when the raw env var is absent.
+
 - **`GOMEMLIMIT`** — a soft memory cap. Valuable on memory-constrained
   self-hosted boxes: the GC works harder as RSS approaches the limit, trading CPU
-  to avoid the OOM killer. Set it a bit below the container/host limit (e.g.
-  `GOMEMLIMIT=400MiB`). It is a *soft* limit — Go will still exceed it rather than
-  stall forever.
+  to avoid the OOM killer. It is a *soft* limit — Go will still exceed it rather
+  than stall forever. Three ways to set it, in precedence order:
+  - native `GOMEMLIMIT=400MiB` (raw Go env, wins over everything);
+  - `SP_RUNTIME_MEMORY_LIMIT=400MiB` (human size or bytes);
+  - **auto** (default `SP_RUNTIME_AUTO_MEMORY_LIMIT=true`): on a container with a
+    cgroup memory limit, derives the cap from that limit ×
+    `SP_RUNTIME_MEMORY_LIMIT_RATIO` (default `0.9`). A no-op off-container, so
+    Kubernetes pods get an OOM guardrail with zero operator action.
 - **`GOGC`** — the heap-growth target (default 100 = GC when heap doubles).
-  Lower (e.g. `50`) trims footprint at the cost of more frequent GC; higher
-  (e.g. `200`) favors throughput at the cost of a larger heap. Quantify the
-  baseline with section 5 before turning this dial.
-
-Both are environment variables; no application code is involved.
+  Lower trims footprint at the cost of more frequent GC; higher favors throughput
+  at the cost of a larger heap. Set via native `GOGC` or `SP_RUNTIME_GC_PERCENT`
+  (0 = leave the runtime default). Measured trade under login load:
+  `GOGC=25` cut heap-inuse ~47% and RSS ~25% for ~2× GC cycles. Quantify with
+  section 5 before turning this dial in production.

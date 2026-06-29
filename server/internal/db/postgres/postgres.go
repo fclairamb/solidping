@@ -62,6 +62,28 @@ type Config struct {
 
 	// Reset drops all tables before running migrations (only for test/demo run modes)
 	Reset bool
+
+	// Connection-pool bounds. Zero values leave database/sql's defaults
+	// (MaxOpenConns unlimited, MaxIdleConns 2, no lifetime), so an unset config
+	// behaves exactly as before.
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+// applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
+// arbitrarily many Postgres connections, each consuming client- and server-side
+// memory; the cap trades a little queueing for a predictable ceiling.
+func applyPoolLimits(sqldb *sql.DB, cfg *Config) {
+	if cfg.MaxOpenConns > 0 {
+		sqldb.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+	if cfg.MaxIdleConns > 0 {
+		sqldb.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	if cfg.ConnMaxLifetime > 0 {
+		sqldb.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
 }
 
 // Service implements db.Service for PostgreSQL.
@@ -76,12 +98,13 @@ type Service struct {
 var _ db.Service = (*Service)(nil)
 
 // New creates a new PostgreSQL service with an external database.
-func New(ctx context.Context, cfg Config) (*Service, error) {
+func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
 		return NewEmbedded(ctx, cfg.EmbeddedDir, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
+	applyPoolLimits(sqldb, cfg)
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed: it emits Prometheus histograms

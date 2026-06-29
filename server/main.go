@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/postgres"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/memlimit"
 	"github.com/fclairamb/solidping/server/internal/otelsetup"
 	slogutil "github.com/fclairamb/solidping/server/internal/utils/slog"
 	"github.com/fclairamb/solidping/server/internal/version"
@@ -101,6 +102,22 @@ func serve(ctx context.Context, _ *cli.Command) error {
 		slog.ErrorContext(ctx, "Invalid configuration", "error", validationErr)
 		return cli.Exit(validationErr.Error(), 1)
 	}
+
+	// Apply Go runtime memory guardrails (GOMEMLIMIT soft cap, GOGC) as early as
+	// possible so the GC honors them for the whole process lifetime. On a
+	// container with a memory limit this auto-derives a soft cap that keeps RSS
+	// below the cgroup limit; off-container it is a no-op unless configured.
+	memGuard := memlimit.Apply(memlimit.Config{
+		MemoryLimit: cfg.Runtime.MemoryLimit,
+		Auto:        cfg.Runtime.AutoMemoryLimit,
+		Ratio:       cfg.Runtime.MemoryLimitRatio,
+		GCPercent:   cfg.Runtime.GCPercent,
+	})
+	slog.InfoContext(ctx, "Runtime memory guardrails applied",
+		"memoryLimit", memGuard.MemoryLimitHuman(),
+		"memoryLimitSource", memGuard.MemoryLimitSource,
+		"gcPercent", memGuard.GCPercent,
+		"gcPercentSource", memGuard.GCPercentSource)
 
 	// Apply user-agent from config, or use default with version
 	if cfg.UserAgent != "" {
@@ -311,9 +328,9 @@ func encryptCredentials(ctx context.Context, cmd *cli.Command) error {
 func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
 	switch cfg.Database.Type {
 	case "postgres":
-		return postgres.New(ctx, postgres.Config{DSN: cfg.Database.URL, Embedded: false})
+		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false})
 	case "postgres-embedded":
-		return postgres.New(ctx, postgres.Config{
+		return postgres.New(ctx, &postgres.Config{
 			Embedded:    true,
 			EmbeddedDir: "/tmp/solidping-postgres-test",
 			Port:        embeddedPostgresPort,
@@ -335,12 +352,12 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 
 	switch cfg.Database.Type {
 	case "postgres":
-		svc, err = postgres.New(ctx, postgres.Config{
+		svc, err = postgres.New(ctx, &postgres.Config{
 			DSN:      cfg.Database.URL,
 			Embedded: false,
 		})
 	case "postgres-embedded":
-		svc, err = postgres.New(ctx, postgres.Config{
+		svc, err = postgres.New(ctx, &postgres.Config{
 			Embedded:    true,
 			EmbeddedDir: "/tmp/solidping-postgres-test",
 			Port:        embeddedPostgresPort,
