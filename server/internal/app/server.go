@@ -162,18 +162,21 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 
 	switch cfg.Database.Type {
 	case "postgres":
-		dbService, err = postgres.New(ctx, postgres.Config{
-			DSN:      cfg.Database.URL,
-			Embedded: false,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+		dbService, err = postgres.New(ctx, &postgres.Config{
+			DSN:             cfg.Database.URL,
+			Embedded:        false,
+			LogSQL:          cfg.Database.LogSQL,
+			RunMode:         cfg.RunMode,
+			Reset:           cfg.Database.Reset,
+			MaxOpenConns:    cfg.Database.MaxOpenConns,
+			MaxIdleConns:    cfg.Database.MaxIdleConns,
+			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)
 		}
 	case "postgres-embedded":
-		dbService, err = postgres.New(ctx, postgres.Config{
+		dbService, err = postgres.New(ctx, &postgres.Config{
 			Embedded:    true,
 			EmbeddedDir: "/tmp/solidping-postgres-test",
 			Port:        embeddedPostgresPort,
