@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **35 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **36 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 ## Network Checks
 
@@ -486,6 +486,28 @@ tls://host:5061
 
 - **OPTIONS mode** succeeds when the server returns a valid SIP status code (matching `expect_status` if set).
 - **REGISTER mode** performs the standard two-step challenge/response and succeeds only on a final `200 OK`.
+
+### NTP (Time Server)
+
+Monitor an NTP time server. Unlike a plain UDP/123 reachability probe, this checker sends a real NTP request and judges the server **as a clock**: it confirms the server returns a valid response and reports itself healthy (stratum, leap indicator, and root distance, via the server's own self-report — no trust in the worker's clock). Two optional, opt-in thresholds let you also alert on the measured clock offset and on the server's stratum depth.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Host | NTP server hostname or IP | - (required) |
+| Port | NTP UDP port | `123` |
+| Version | NTP protocol version (`3` or `4`) | `4` |
+| Timeout | Query timeout (max `60s`) | `5s` |
+| Offset warn (ms) | Mark **warning** when the absolute clock offset exceeds this. `0` = off | off |
+| Offset critical (ms) | Mark **down** when the absolute clock offset exceeds this. Must be ≥ Offset warn. `0` = off | off |
+| Max stratum | Mark **down** when the server's stratum exceeds this (`1`–`15`). `0` = off | off |
+
+- **Default verdict** = reachable **and** the server reports a usable clock. A Kiss-o'-Death (stratum 0), an unsynchronized server (stratum 16), a `LeapNotInSync` leap indicator, or an out-of-range root distance all yield **down**.
+- **Clock offset is measured relative to the worker's own clock.** A worker whose clock is itself skewed will report a misleading offset, so the offset thresholds are opt-in rather than the default verdict — keep this in mind when running across a distributed worker fleet.
+- Metrics exposed: clock offset, RTT, stratum, root delay, root dispersion, root distance, poll interval, and precision.
+
+:::note Egress
+NTP uses outbound **UDP port 123**, which is frequently blocked by egress firewalls. A blocked path surfaces deterministically as `down`/`timeout`.
+:::
 
 ## Infrastructure
 

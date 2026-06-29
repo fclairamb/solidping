@@ -10,7 +10,7 @@ SolidPing is a **distributed monitoring platform** designed for checking the ava
 
 ## Key Features
 
-- **35 Check Types** - HTTP/HTTPS, TCP, UDP, ICMP, DNS, DNSBL, SSL, Domain, WebSocket, databases (PostgreSQL, MySQL, Redis, MongoDB, MSSQL, Oracle), email (SMTP, IMAP, POP3, and passive JMAP inbox), messaging (gRPC, Kafka, RabbitMQ, MQTT), SSH, FTP, SFTP, SNMP, Docker, SIP, game servers (A2S, Minecraft), Freebox lines, and more
+- **36 Check Types** - HTTP/HTTPS, TCP, UDP, ICMP, DNS, DNSBL, NTP, SSL, Domain, WebSocket, databases (PostgreSQL, MySQL, Redis, MongoDB, MSSQL, Oracle), email (SMTP, IMAP, POP3, and passive JMAP inbox), messaging (gRPC, Kafka, RabbitMQ, MQTT), SSH, FTP, SFTP, SNMP, Docker, SIP, game servers (A2S, Minecraft), Freebox lines, and more
 - **Distributed Workers** - Execute checks from multiple locations and regions with lease-based job distribution
 - **Multi-Tenant Architecture** - Organization-scoped data isolation with role-based access control and TOTP two-factor authentication
 - **Low Resource Footprint** - Single binary with PostgreSQL or SQLite as the only dependency
@@ -67,7 +67,7 @@ Then open [http://localhost:4000](http://localhost:4000) in your browser.
 
 - [Docker Installation](/installation/docker) - Recommended for most users
 - [Configuration Guide](/configuration) - Environment variables and settings
-- [Check Types](/features/check-types) - All 35 supported protocols and options
+- [Check Types](/features/check-types) - All 36 supported protocols and options
 - [Notifications](/configuration/notifications) - Set up alerting channels
 - [On-Call & Escalation](/features/on-call) - Rotation schedules and escalation policies
 - [Maintenance Windows](/features/maintenance-windows) - Suppress alerts during planned work
