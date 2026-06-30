@@ -41,6 +41,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
@@ -722,6 +723,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Per-check single result fetch (with fallback to covering aggregation)
 	orgChecksResults := api.NewGroup("/orgs/:org/checks/:check/results").Use(authMiddleware.RequireAuth)
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
+
+	// Per-check availability statistics (real per-period probe-ratio + incidents)
+	availabilityService := availability.NewService(s.dbService)
+	availabilityHandler := availability.NewHandler(availabilityService, s.config)
+	orgChecksAvail := api.NewGroup("/orgs/:org/checks/:check/availability").Use(authMiddleware.RequireAuth)
+	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
 
 	// Incidents routes (authentication required)
 	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
