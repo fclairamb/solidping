@@ -37,6 +37,11 @@ const (
 	// hour + day, and the day tier keeps ~12 months by default. Anything longer
 	// would need the month tier added to WindowAvailability.
 	dayTierRetentionMonths = 12
+
+	// Calendar period tokens, resolved against the request timezone.
+	tokenToday = "today"
+	tokenMTD   = "mtd"
+	tokenYTD   = "ytd"
 )
 
 // Service provides business logic for the availability endpoint.
@@ -59,9 +64,9 @@ type PeriodIncidents struct {
 	TotalDowntimeSeconds int64 `json:"totalDowntimeSeconds,omitempty"`
 }
 
-// AvailabilityPeriod is one row of the response: the probe-ratio availability
+// Period is one row of the response: the probe-ratio availability
 // (definition A — primary) plus the incident wall-clock block (definition B).
-type AvailabilityPeriod struct {
+type Period struct {
 	Period           string    `json:"period"`
 	WindowStart      time.Time `json:"windowStart"`
 	WindowEnd        time.Time `json:"windowEnd"`
@@ -79,7 +84,7 @@ type AvailabilityPeriod struct {
 
 // ListAvailabilityResponse wraps the period list in `data` per repo convention.
 type ListAvailabilityResponse struct {
-	Data []AvailabilityPeriod `json:"data"`
+	Data []Period `json:"data"`
 }
 
 // GetAvailabilityOptions carries the parsed request parameters.
@@ -115,10 +120,10 @@ func (s *Service) GetAvailability(
 		return nil, ErrCheckNotFound
 	}
 
-	periods := make([]AvailabilityPeriod, 0, len(windows))
+	periods := make([]Period, 0, len(windows))
 
-	for _, w := range windows {
-		row, periodErr := s.computePeriod(ctx, org.UID, check, w, now)
+	for i := range windows {
+		row, periodErr := s.computePeriod(ctx, org.UID, check, windows[i], now)
 		if periodErr != nil {
 			return nil, periodErr
 		}
@@ -138,35 +143,36 @@ type periodWindow struct {
 
 // computePeriod builds the DTO for one resolved window.
 func (s *Service) computePeriod(
-	ctx context.Context, orgUID string, check *models.Check, w periodWindow, now time.Time,
-) (AvailabilityPeriod, error) {
-	monitored := monitoredDuration(w, check.CreatedAt.UTC(), now)
+	ctx context.Context, orgUID string, check *models.Check, window periodWindow, now time.Time,
+) (Period, error) {
+	monitored := monitoredDuration(window, check.CreatedAt.UTC(), now)
 
-	stats, err := uptimebar.WindowAvailability(ctx, s.db, orgUID, []string{check.UID}, w.start, w.end)
+	stats, err := uptimebar.WindowAvailability(
+		ctx, s.db, orgUID, []string{check.UID}, window.start, window.end)
 	if err != nil {
-		return AvailabilityPeriod{}, err
+		return Period{}, err
 	}
 
 	bucket := stats[check.UID]
 
-	row := buildPeriodRow(w, bucket, monitored, check.CreatedAt.UTC())
+	row := buildPeriodRow(window, bucket, monitored, check.CreatedAt.UTC())
 
-	incidents, err := s.fetchIncidents(ctx, orgUID, check.UID, w)
+	incidents, err := s.fetchIncidents(ctx, orgUID, check.UID, window)
 	if err != nil {
-		return AvailabilityPeriod{}, err
+		return Period{}, err
 	}
 
-	row.Incidents = incidentBlock(incidents, w, now)
+	row.Incidents = incidentBlock(incidents, window, now)
 
 	return row, nil
 }
 
 // monitoredDuration is min(windowLength, now − createdAt): the check did not
 // exist before createdAt, so that time is not measured (and not downtime).
-func monitoredDuration(w periodWindow, createdAt, now time.Time) time.Duration {
-	monitored := w.end.Sub(w.start)
+func monitoredDuration(window periodWindow, createdAt, now time.Time) time.Duration {
+	monitored := window.end.Sub(window.start)
 
-	if createdAt.After(w.start) {
+	if createdAt.After(window.start) {
 		if fromCreation := now.Sub(createdAt); fromCreation < monitored {
 			monitored = fromCreation
 		}
@@ -183,14 +189,14 @@ func monitoredDuration(w periodWindow, createdAt, now time.Time) time.Duration {
 // folded BucketStats. availabilityPct is nil (hasData false) when the window has
 // no countable checks — no data ≠ 100%.
 func buildPeriodRow(
-	w periodWindow, bucket uptimebar.BucketStats, monitored time.Duration, createdAt time.Time,
-) AvailabilityPeriod {
-	row := AvailabilityPeriod{
-		Period:           w.token,
-		WindowStart:      w.start,
-		WindowEnd:        w.end,
+	window periodWindow, bucket uptimebar.BucketStats, monitored time.Duration, createdAt time.Time,
+) Period {
+	row := Period{
+		Period:           window.token,
+		WindowStart:      window.start,
+		WindowEnd:        window.end,
 		MonitoredSeconds: int64(monitored.Seconds()),
-		Partial:          createdAt.After(w.start),
+		Partial:          createdAt.After(window.start),
 		TotalChecks:      bucket.Total,
 		SuccessfulChecks: bucket.Up,
 	}
@@ -213,13 +219,13 @@ func buildPeriodRow(
 // fetchIncidents loads incidents whose started_at falls in the window for the
 // check (per-check or as a group member).
 func (s *Service) fetchIncidents(
-	ctx context.Context, orgUID, checkUID string, w periodWindow,
+	ctx context.Context, orgUID, checkUID string, window periodWindow,
 ) ([]*models.Incident, error) {
 	filter := &models.ListIncidentsFilter{
 		OrganizationUID: orgUID,
 		MemberCheckUID:  checkUID,
-		Since:           &w.start,
-		Until:           &w.end,
+		Since:           &window.start,
+		Until:           &window.end,
 		Limit:           1000,
 	}
 
@@ -230,7 +236,7 @@ func (s *Service) fetchIncidents(
 // each incident to the window (an unresolved incident runs to now). Incidents
 // that didn't actually start inside the window are ignored (defensive against a
 // loose filter).
-func incidentBlock(incidents []*models.Incident, w periodWindow, now time.Time) PeriodIncidents {
+func incidentBlock(incidents []*models.Incident, window periodWindow, now time.Time) PeriodIncidents {
 	var (
 		count   int
 		longest int64
@@ -239,7 +245,7 @@ func incidentBlock(incidents []*models.Incident, w periodWindow, now time.Time) 
 
 	for _, inc := range incidents {
 		startedAt := inc.StartedAt.UTC()
-		if startedAt.Before(w.start) || !startedAt.Before(w.end) {
+		if startedAt.Before(window.start) || !startedAt.Before(window.end) {
 			continue
 		}
 
@@ -249,8 +255,8 @@ func incidentBlock(incidents []*models.Incident, w periodWindow, now time.Time) 
 		}
 
 		clampedEnd := end
-		if clampedEnd.After(w.end) {
-			clampedEnd = w.end
+		if clampedEnd.After(window.end) {
+			clampedEnd = window.end
 		}
 
 		dur := int64(clampedEnd.Sub(startedAt).Seconds())
@@ -278,14 +284,14 @@ func incidentBlock(incidents []*models.Incident, w periodWindow, now time.Time) 
 }
 
 // resolveLocation loads the IANA zone for calendar-token resolution; empty → UTC.
-func resolveLocation(tz string) (*time.Location, error) {
-	if tz == "" {
+func resolveLocation(timezone string) (*time.Location, error) {
+	if timezone == "" {
 		return time.UTC, nil
 	}
 
-	loc, err := time.LoadLocation(tz)
+	loc, err := time.LoadLocation(timezone)
 	if err != nil {
-		return nil, fmt.Errorf("%w: unknown timezone %q", ErrInvalidPeriod, tz)
+		return nil, fmt.Errorf("%w: unknown timezone %q", ErrInvalidPeriod, timezone)
 	}
 
 	return loc, nil
@@ -333,17 +339,17 @@ func parsePeriods(tokens []string, now time.Time, loc *time.Location) ([]periodW
 //   - Trailing durations (24h/7d/30d/90d/365d/1y, suffix h/d/w/y) are tz-independent.
 func resolvePeriodStart(token string, now time.Time, loc *time.Location) (time.Time, error) {
 	switch strings.ToLower(token) {
-	case "today":
+	case tokenToday:
 		local := now.In(loc)
 		midnight := time.Date(local.Year(), local.Month(), local.Day(), 0, 0, 0, 0, loc)
 
 		return midnight.UTC(), nil
-	case "mtd":
+	case tokenMTD:
 		local := now.In(loc)
 		monthStart := time.Date(local.Year(), local.Month(), 1, 0, 0, 0, 0, loc)
 
 		return monthStart.UTC(), nil
-	case "ytd":
+	case tokenYTD:
 		local := now.In(loc)
 		yearStart := time.Date(local.Year(), 1, 1, 0, 0, 0, 0, loc)
 
