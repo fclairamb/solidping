@@ -1830,6 +1830,29 @@ components:
               type: string
               enum: [INITIAL, UP, DOWN, TIMEOUT, ERROR, UNKNOWN]
               description: The status that the check transitioned to
+        flappingWindowSeconds:
+          type: integer
+          description: >-
+            Flapping (adaptive recovery) window. If a check flaps repeatedly
+            within this rolling window, it must stay stable progressively longer
+            before each auto-resolve. 0 = adaptive recovery off (constant
+            recovery period).
+          default: 21600
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off (constant recovery period).
+          default: 2
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          description: >-
+            Cap on the adaptive recovery period: required recovery never exceeds
+            this multiple of the base recovery period (also hard-capped at 30
+            minutes).
+          default: 8
         createdAt:
           type: string
           format: date-time
@@ -1905,6 +1928,27 @@ components:
           example:
             env: prod
             app: api
+        flappingWindowSeconds:
+          type: integer
+          minimum: 0
+          default: 21600
+          description: >-
+            Flapping (adaptive recovery) window in seconds. Outages within this
+            rolling window accumulate the recovery backoff. 0 = off.
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          default: 2
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off (constant recovery).
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          default: 8
+          description: >-
+            Cap: required recovery never exceeds this multiple of the base
+            recovery period (also hard-capped at 30 minutes).
 
     UpdateCheckRequest:
       type: object
@@ -1931,6 +1975,24 @@ components:
           additionalProperties:
             type: string
           description: Key-value pairs (null = no change, empty object = clear all)
+        flappingWindowSeconds:
+          type: integer
+          minimum: 0
+          description: >-
+            Flapping (adaptive recovery) window in seconds. 0 = off. Omit to
+            leave unchanged.
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off. Omit to leave unchanged.
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          description: >-
+            Cap on the adaptive recovery period (multiple of the base recovery
+            period). Omit to leave unchanged.
 
     UpsertCheckRequest:
       type: object
