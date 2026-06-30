@@ -46,13 +46,13 @@ func TestCheckStatusString(t *testing.T) {
 		status models.CheckStatus
 		want   string
 	}{
-		{models.CheckStatusCreated, "created"},
-		{models.CheckStatusUp, "up"},
-		{models.CheckStatusDown, "down"},
-		{models.CheckStatusValidating, "validating"},
-		{models.CheckStatusDegraded, "degraded"},
-		{models.CheckStatusWarning, "warning"},
-		{models.CheckStatus(99), "unknown"},
+		{models.CheckStatusCreated, models.WireStatusCreated},
+		{models.CheckStatusUp, models.WireStatusUp},
+		{models.CheckStatusDown, models.WireStatusDown},
+		{models.CheckStatusValidating, models.WireStatusValidating},
+		{models.CheckStatusDegraded, models.WireStatusDegraded},
+		{models.CheckStatusWarning, models.WireStatusWarning},
+		{models.CheckStatus(99), models.WireStatusUnknown},
 	}
 
 	for _, tc := range tests {

@@ -14,14 +14,14 @@ func TestResultStatusIsLifecycleMarker(t *testing.T) {
 		status ResultStatus
 		want   bool
 	}{
-		{"created", ResultStatusCreated, true},
-		{"running", ResultStatusRunning, true},
-		{"up", ResultStatusUp, false},
-		{"down", ResultStatusDown, false},
-		{"timeout", ResultStatusTimeout, false},
-		{"error", ResultStatusError, false},
-		{"degraded", ResultStatusDegraded, false},
-		{"warning", ResultStatusWarning, false},
+		{WireStatusCreated, ResultStatusCreated, true},
+		{WireStatusRunning, ResultStatusRunning, true},
+		{WireStatusUp, ResultStatusUp, false},
+		{WireStatusDown, ResultStatusDown, false},
+		{WireStatusTimeout, ResultStatusTimeout, false},
+		{WireStatusError, ResultStatusError, false},
+		{WireStatusDegraded, ResultStatusDegraded, false},
+		{WireStatusWarning, ResultStatusWarning, false},
 	}
 
 	for _, tt := range tests {
@@ -40,17 +40,17 @@ func TestResultStatusCountsAsUp(t *testing.T) {
 		status ResultStatus
 		want   bool
 	}{
-		{"created", ResultStatusCreated, false},
-		{"running", ResultStatusRunning, false},
-		{"up", ResultStatusUp, true},
-		{"down", ResultStatusDown, false},
-		{"timeout", ResultStatusTimeout, false},
-		{"error", ResultStatusError, false},
+		{WireStatusCreated, ResultStatusCreated, false},
+		{WireStatusRunning, ResultStatusRunning, false},
+		{WireStatusUp, ResultStatusUp, true},
+		{WireStatusDown, ResultStatusDown, false},
+		{WireStatusTimeout, ResultStatusTimeout, false},
+		{WireStatusError, ResultStatusError, false},
 		// Degraded is an aggregated rollup status, never on a raw row; it does
 		// not count as up for raw availability.
-		{"degraded", ResultStatusDegraded, false},
+		{WireStatusDegraded, ResultStatusDegraded, false},
 		// Warning is "up with something to report" — counts as up.
-		{"warning", ResultStatusWarning, true},
+		{WireStatusWarning, ResultStatusWarning, true},
 	}
 
 	for _, tt := range tests {

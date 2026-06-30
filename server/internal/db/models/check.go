@@ -40,19 +40,19 @@ const (
 func (s CheckStatus) String() string {
 	switch s {
 	case CheckStatusCreated:
-		return "created"
+		return WireStatusCreated
 	case CheckStatusUp:
-		return "up"
+		return WireStatusUp
 	case CheckStatusDown:
-		return "down"
+		return WireStatusDown
 	case CheckStatusValidating:
-		return "validating"
+		return WireStatusValidating
 	case CheckStatusDegraded:
-		return "degraded"
+		return WireStatusDegraded
 	case CheckStatusWarning:
-		return "warning"
+		return WireStatusWarning
 	default:
-		return "unknown"
+		return WireStatusUnknown
 	}
 }
 
