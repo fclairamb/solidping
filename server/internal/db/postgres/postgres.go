@@ -3279,6 +3279,10 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 		query = query.Set("history_days = ?", *update.HistoryDays)
 	}
 
+	if update.HistoryPeriod != nil {
+		query = query.Set("history_period = ?", *update.HistoryPeriod)
+	}
+
 	if update.Language != nil {
 		query = query.Set("language = ?", *update.Language)
 	}
