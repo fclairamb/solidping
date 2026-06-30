@@ -250,6 +250,75 @@ func TestMigrationDiscoveredChecksDefaultConfig(t *testing.T) {
 	r.Equal("{}", cfg, "rows inserted without a config must default to an empty object")
 }
 
+// TestMigrationCheckJobSchedulingColumns verifies migration 006 adds the
+// cost-aware, plan-weighted scheduling columns to check_jobs, with the documented
+// off-by-default zero values and the ordering index.
+func TestMigrationCheckJobSchedulingColumns(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('check_jobs')").Scan(ctx, &columns))
+
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+	for _, expected := range []string{"cost_ewma_ms", "plan_weight", "effective_scheduled_at"} {
+		assert.Contains(t, colNames, expected, "%s column must exist after migration 006", expected)
+	}
+
+	// The ordering index must exist.
+	var idxCount int
+	r.NoError(svc.db.NewRaw(
+		"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?",
+		"idx_check_jobs_effective_scheduled_at",
+	).Scan(ctx, &idxCount))
+	assert.Equal(t, 1, idxCount, "the effective_scheduled_at ordering index must exist")
+
+	// A check_job materialized without explicit scheduling values defaults to
+	// the off-by-default zeros (pure-FIFO equivalent).
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "sched-org", "Sched Org",
+	).Exec(ctx)
+	r.NoError(err)
+	checkUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
+		checkUID, orgUID, "sched-check", "http", "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+	jobUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO check_jobs (uid, organization_uid, check_uid, period) VALUES (?, ?, ?, ?)",
+		jobUID, orgUID, checkUID, "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+
+	type schedRow struct {
+		CostEWMAMs float64 `bun:"cost_ewma_ms"`
+		PlanWeight int     `bun:"plan_weight"`
+	}
+	var got schedRow
+	r.NoError(svc.db.NewRaw(
+		"SELECT cost_ewma_ms, plan_weight FROM check_jobs WHERE uid = ?", jobUID,
+	).Scan(ctx, &got))
+	assert.InDelta(t, 0.0, got.CostEWMAMs, 0.001, "cost_ewma_ms defaults to 0")
+	assert.Equal(t, 0, got.PlanWeight, "plan_weight defaults to 0 (free)")
+}
+
 // TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated
 // v0.1.0 migration the integration-related tables use their final names
 // (integrations / check_channels / integration_uid) and the old names are absent.

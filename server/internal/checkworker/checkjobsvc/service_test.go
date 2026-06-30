@@ -292,6 +292,54 @@ func TestClaimJobs(t *testing.T) {
 	})
 }
 
+// setEffective stamps the cost-aware ordering fields on a job so the claim
+// SELECT's ORDER BY effective_scheduled_at can be exercised at the DB level.
+//
+//nolint:revive // Test helper function, context parameter order is acceptable
+func setEffective(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, effective time.Time) {
+	t.Helper()
+
+	_, err := svc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("effective_scheduled_at = ?", effective).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+	require.NoError(t, err, "failed to set effective_scheduled_at")
+}
+
+// TestClaimOrdersByEffectiveScheduledAt verifies the WFQ ordering (spec
+// 2026-06-30-09, D2/Option A): all jobs are due (gate is on scheduled_at) but
+// the claim picks them in effective_scheduled_at order, so a fast/paid job whose
+// effective deadline is earlier is claimed ahead of a slow/free job that became
+// due at the same wall-clock time.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	now := time.Now()
+	// Both jobs are due now (same scheduled_at), so the gate admits both.
+	slowFree := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+	fastPaid := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+
+	// The slow/free job carries a later effective deadline (penalized); the
+	// fast/paid job an earlier one (credited).
+	setEffective(t, ctx, dbSvc, slowFree.UID, now.Add(20*time.Second))
+	setEffective(t, ctx, dbSvc, fastPaid.UID, now.Add(-10*time.Second))
+
+	// Claim a single slot under contention: the earlier effective deadline wins.
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 5*time.Minute)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1, "should claim exactly one job under the limit")
+	assert.Equal(t, fastPaid.UID, jobs[0].UID,
+		"the job with the earlier effective_scheduled_at must be claimed first")
+}
+
 //nolint:paralleltest // Test shares database state
 func TestClaimJobsForCheck(t *testing.T) {
 	dbSvc, ctx := setupTestDB(t)
@@ -457,5 +505,59 @@ func TestReleaseLease(t *testing.T) {
 		nextScheduled := now.Add(5 * time.Minute)
 		err = svc.ReleaseLease(ctx, job.UID, worker.UID, nextScheduled)
 		require.Error(t, err, "should fail when trying to release another worker's lease")
+	})
+
+	t.Run("ReleaseReAnchorsEffectiveToNewSchedule", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+
+		leaseExpiry := now.Add(60 * time.Second)
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", worker.UID).
+			Set("lease_expires_at = ?", leaseExpiry).
+			Where("uid = ?", job.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		nextScheduled := now.Add(5 * time.Minute)
+		require.NoError(t, svc.ReleaseLease(ctx, job.UID, worker.UID, nextScheduled))
+
+		var dbJob models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&dbJob).Where("uid = ?", job.UID).Scan(ctx))
+		require.NotNil(t, dbJob.EffectiveScheduledAt)
+		assert.WithinDuration(t, nextScheduled, *dbJob.EffectiveScheduledAt, 1*time.Second,
+			"plain release re-anchors effective_scheduled_at to the new schedule")
+	})
+
+	t.Run("ReleaseWithSchedulingStatePersistsCostAndEffective", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+
+		leaseExpiry := now.Add(60 * time.Second)
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", worker.UID).
+			Set("lease_expires_at = ?", leaseExpiry).
+			Where("uid = ?", job.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		nextScheduled := now.Add(1 * time.Minute)
+		effective := now.Add(80 * time.Second) // penalized past the schedule
+		require.NoError(t, svc.ReleaseLeaseWithSchedulingState(
+			ctx, job.UID, worker.UID, nextScheduled, 1234.5, effective,
+		))
+
+		var dbJob models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&dbJob).Where("uid = ?", job.UID).Scan(ctx))
+		assert.InDelta(t, 1234.5, dbJob.CostEWMAMs, 0.001, "cost EWMA must be persisted")
+		require.NotNil(t, dbJob.EffectiveScheduledAt)
+		assert.WithinDuration(t, effective, *dbJob.EffectiveScheduledAt, 1*time.Second,
+			"effective_scheduled_at must be persisted from the cost-folding release")
+		assert.WithinDuration(t, nextScheduled, *dbJob.ScheduledAt, 1*time.Second)
+		assert.Nil(t, dbJob.LeaseWorkerUID, "lease must be released")
 	})
 }
