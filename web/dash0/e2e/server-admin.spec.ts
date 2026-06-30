@@ -226,4 +226,83 @@ test.describe("Server Admin — Password Hashing", () => {
 
     await expect(page.getByTestId("hashing-saved")).toBeVisible({ timeout: 10000 });
   });
+
+  test("server-side 422 validation surfaces when the client guard is bypassed", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+    await navigateToHashing(page);
+
+    await selectAlgorithm(page, "bcrypt");
+
+    const cost = page.getByTestId("hashing-bcrypt-cost");
+    await expect(cost).toBeVisible();
+
+    // Strip the native max bound so the out-of-range value passes the browser's
+    // client-side validity check and actually round-trips to the API. This is the
+    // path that proves the server-side validation (422 VALIDATION_ERROR) reaches
+    // the user, not just the native min/max guard.
+    await cost.evaluate((el: HTMLInputElement) => el.removeAttribute("max"));
+    await cost.fill("99"); // outside the accepted [10,31] range
+
+    // Capture the PUT to the bcrypt-cost parameter so we can assert the API itself
+    // returns 422, independent of the UI rendering.
+    const responsePromise = page.waitForResponse(
+      (res) =>
+        res.url().includes("/api/v1/system/parameters/auth.password.bcrypt.cost") &&
+        res.request().method() === "PUT",
+      { timeout: 10000 },
+    );
+
+    await page.getByTestId("hashing-save").click();
+
+    const response = await responsePromise;
+    expect(response.status()).toBe(422);
+
+    // The UI surfaces the API validation error (no saved confirmation).
+    await expect(page.getByTestId("hashing-error")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("hashing-saved")).toHaveCount(0);
+  });
+});
+
+// A non-super-admin who reaches the Server Settings area (here, the Hashing tab)
+// must be redirected away by the route guard in server.tsx, never shown the
+// settings. We can't log in as a non-super-admin through the seeded test user
+// (it is a super-admin), so we stub /auth/me to return a plain admin and assert
+// the guard bounces us back to the org dashboard.
+test.describe("Server Admin — non-super-admin guard", () => {
+  test("non-super-admin is redirected away from the Hashing route", async ({
+    page,
+  }) => {
+    // Return a non-super-admin (role: "admin") from /auth/me so AuthContext sets
+    // isSuperAdmin=false.
+    await page.route("**/api/v1/auth/me", (route) =>
+      route.fulfill({
+        status: 200,
+        body: JSON.stringify({
+          user: { email: "member@example.com", role: "admin" },
+          organization: { slug: "test" },
+          organizations: [{ slug: "test", name: "Test" }],
+        }),
+      }),
+    );
+
+    // Pre-set a token so AuthContext attempts to resolve the (stubbed) session.
+    await page.addInitScript(() => {
+      window.localStorage.setItem("solidping_token", "stub");
+    });
+
+    await page.goto("orgs/test/server/hashing");
+    await page.waitForLoadState("networkidle");
+
+    // The guard navigates back to /orgs/test (replace), dropping /server.
+    await page.waitForURL((url) => !url.pathname.includes("/server"), {
+      timeout: 10000,
+    });
+    expect(page.url()).not.toContain("/server");
+
+    // The hashing form must never have rendered.
+    await expect(page.getByTestId("hashing-algorithm")).toHaveCount(0);
+  });
 });
