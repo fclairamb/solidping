@@ -116,3 +116,89 @@ test.describe("Server Admin", () => {
     await expect(page.getByTestId("send-test-email-button")).toBeVisible();
   });
 });
+
+// navigateToHashing opens Server Settings and lands on the Password Hashing tab.
+async function navigateToHashing(page: Page) {
+  await navigateToServer(page);
+  await page.getByRole("link", { name: "Password Hashing" }).click();
+  await page.waitForURL(/\/server\/hashing/, { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+}
+
+test.describe("Server Admin — Password Hashing", () => {
+  test("super-admin can open the Hashing tab and sees the restart notice", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await navigateToServer(page);
+    await expect(
+      page.getByRole("link", { name: "Password Hashing" }),
+    ).toBeVisible();
+
+    await navigateToHashing(page);
+
+    // The algorithm select and the restart notice must be present.
+    await expect(page.getByTestId("hashing-algorithm")).toBeVisible();
+    await expect(page.getByText(/take effect after a server restart/i)).toBeVisible();
+  });
+
+  test("switching to bcrypt cost 12 saves with a confirmation", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+    await navigateToHashing(page);
+
+    // Switch algorithm to bcrypt (Radix Select).
+    await page.getByTestId("hashing-algorithm").click();
+    await page.getByRole("option", { name: "bcrypt" }).click();
+
+    // The bcrypt cost input appears; set a valid cost.
+    const cost = page.getByTestId("hashing-bcrypt-cost");
+    await expect(cost).toBeVisible();
+    await cost.fill("12");
+
+    await page.getByTestId("hashing-save").click();
+
+    await expect(page.getByTestId("hashing-saved")).toBeVisible({ timeout: 10000 });
+  });
+
+  test("out-of-range bcrypt cost surfaces the API validation error", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+    await navigateToHashing(page);
+
+    await page.getByTestId("hashing-algorithm").click();
+    await page.getByRole("option", { name: "bcrypt" }).click();
+
+    const cost = page.getByTestId("hashing-bcrypt-cost");
+    await expect(cost).toBeVisible();
+    // 99 is outside the accepted [10,31] range — the backend must reject it 422.
+    await cost.fill("99");
+
+    await page.getByTestId("hashing-save").click();
+
+    // The validation error from the API is rendered in the error alert.
+    await expect(page.getByTestId("hashing-error")).toBeVisible({ timeout: 10000 });
+    await expect(page.getByTestId("hashing-saved")).toHaveCount(0);
+  });
+
+  test("argon2 preset fills the cost inputs", async ({ authenticatedPage }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+    await navigateToHashing(page);
+
+    // Ensure argon2id is selected (default) so the preset buttons are shown.
+    await expect(page.getByTestId("hashing-preset-owasp")).toBeVisible();
+    await page.getByTestId("hashing-preset-owasp").click();
+
+    // The OWASP profile is 19 MiB / t2 / p1.
+    await expect(page.getByTestId("hashing-argon2-memory")).toHaveValue("19456");
+    await expect(page.getByTestId("hashing-argon2-time")).toHaveValue("2");
+    await expect(page.getByTestId("hashing-argon2-threads")).toHaveValue("1");
+  });
+});
