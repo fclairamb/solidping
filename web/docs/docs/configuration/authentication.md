@@ -34,6 +34,49 @@ SP_AUTH_JWT_SECRET=your-secure-random-secret-at-least-32-chars
 Always set `SP_AUTH_JWT_SECRET` in production. If left unset, a random secret is generated on each restart, invalidating all existing sessions.
 :::
 
+### Password Hashing
+
+You can choose the password-hashing algorithm and its cost parameters. The defaults reproduce SolidPing's historical profile exactly, so upgrading the binary changes nothing until you reconfigure it.
+
+Two algorithms ship:
+
+- **`argon2id`** (default) — memory-hard, the modern recommendation.
+- **`bcrypt`** — CPU-hard with a tiny constant memory footprint.
+
+```bash
+# Algorithm: "argon2id" (default) or "bcrypt"
+SP_AUTH_PASSWORD_ALGORITHM=argon2id
+
+# argon2id cost parameters
+SP_AUTH_PASSWORD_ARGON2_MEMORY=65536   # KiB (default 65536 = 64 MiB)
+SP_AUTH_PASSWORD_ARGON2_TIME=3         # iterations (default 3)
+SP_AUTH_PASSWORD_ARGON2_THREADS=4      # parallelism (default 4)
+SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH=32  # output bytes (default 32)
+SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH=16 # salt bytes (default 16)
+
+# bcrypt cost (only used when algorithm is "bcrypt")
+SP_AUTH_PASSWORD_BCRYPT_COST=12        # range 10–31 (default 12)
+```
+
+**Transparent rehash-on-login.** Stored hashes are self-identifying, so changing the algorithm or its cost parameters never invalidates existing passwords — old hashes keep verifying. On a user's next successful login, if their stored hash no longer matches the configured policy it is transparently re-hashed and persisted. There is no forced password reset and no background migration: users who never log in keep their old (still-valid) hash.
+
+**Recommended profiles:**
+
+| Algorithm | Parameters | Memory/login | Note |
+|---|---|---|---|
+| argon2id (default) | `m=65536, t=3, p=4` | 64 MiB | current; RFC 9106 memory-constrained profile |
+| argon2id (lighter) | `m=19456, t=2, p=1` | 19 MiB | OWASP; drops 4-thread CPU contention |
+| argon2id (min) | `m=9216, t=4, p=1` | 9 MiB | OWASP floor; still GPU-hostile |
+| bcrypt | `cost=12` | ~4 KiB | constant; not memory-hard (weaker vs GPU/ASIC) |
+
+:::note bcrypt and long passwords
+The `bcrypt` algorithm pre-hashes passwords as `base64(sha256(password))` before hashing. This sidesteps bcrypt's 72-byte input limit and its truncation at embedded NUL bytes — SolidPing's bcrypt hashes are produced and consumed only by SolidPing, so this is fully self-consistent.
+:::
+
+:::warning Validation
+The server validates the hashing policy at startup and **fails fast** on a misconfiguration (unknown algorithm; bcrypt cost outside `10–31`; argon2id memory below the `8192` KiB floor). Values below the OWASP-recommended floors are allowed but warn-logged. There is never a silent fallback.
+:::
+
 ## OAuth Providers
 
 SolidPing supports OAuth2 authentication with major identity providers. Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable each provider.
@@ -127,6 +170,16 @@ Users can secure their accounts with **TOTP** two-factor authentication (compati
 auth:
   jwt_secret: your-secure-random-secret
   registration_email_pattern: "@yourcompany\\.com$"
+  password:
+    algorithm: argon2id # or "bcrypt"
+    argon2:
+      memory: 65536 # KiB
+      time: 3
+      threads: 4
+      key_length: 32
+      salt_length: 16
+    bcrypt:
+      cost: 12
 
 google:
   client_id: your-google-client-id
