@@ -779,28 +779,13 @@ func parsePeriod(period string) time.Duration {
 	}
 }
 
+// calculateAvailability computes the availability percentage over raw results
+// using the shared rule (excludes created/running lifecycle markers; counts
+// up+warning as success), so badges agree with the status page and the
+// aggregation job. Warning now counts as up — a deliberate cross-surface
+// alignment (see spec 2026-06-30-02).
 func calculateAvailability(results []*models.Result) float64 {
-	if len(results) == 0 {
-		return 0
-	}
-
-	var upCount, total int
-
-	for _, result := range results {
-		if result.Status != nil {
-			status := models.ResultStatus(*result.Status)
-			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
-				continue
-			}
-
-			total++
-
-			if *result.Status == int(models.ResultStatusUp) {
-				upCount++
-			}
-		}
-	}
-
+	upCount, total := models.RawAvailability(results)
 	if total == 0 {
 		return 0
 	}
