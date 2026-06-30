@@ -90,7 +90,9 @@ function CheckEditPage() {
           config: data.config,
           regions: data.regions,
           reopenCooldownMultiplier: data.reopenCooldownMultiplier,
-          maxAdaptiveIncrease: data.maxAdaptiveIncrease,
+          flappingWindowSeconds: data.flappingWindowSeconds,
+          flapBackoffFactor: data.flapBackoffFactor,
+          maxRecoveryMultiplier: data.maxRecoveryMultiplier,
           ...(data.labels !== undefined ? { labels: data.labels } : {}),
         });
         if (data.connectionUids !== undefined) {

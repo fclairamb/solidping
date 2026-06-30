@@ -62,7 +62,9 @@ export interface Check {
     time?: string;
   };
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number;
+  flapBackoffFactor?: number;
+  maxRecoveryMultiplier?: number;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
 }
@@ -99,7 +101,9 @@ export interface UpdateCheckRequest {
   internal?: boolean;
   period?: string;
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
 }
@@ -391,7 +395,9 @@ export interface ExportCheck {
   escalationThreshold?: number;
   recoveryPeriodSeconds?: number;
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
 }
 
 export interface ImportResult {

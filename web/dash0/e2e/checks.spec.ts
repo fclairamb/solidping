@@ -317,7 +317,7 @@ test.describe("Checks", () => {
     });
   });
 
-  test("should persist adaptive resolution parameters after editing", async ({
+  test("should persist flapping parameters after editing", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -331,9 +331,9 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
-    const checkName = `E2E Adaptive ${Date.now()}`;
+    const checkName = `E2E Flapping ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(checkName);
-    await page.getByTestId("check-url-input").fill("https://example.com/adaptive-test");
+    await page.getByTestId("check-url-input").fill("https://example.com/flapping-test");
     await page.getByTestId("check-submit-button").click();
 
     // Wait for check detail page
@@ -346,9 +346,14 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Set adaptive resolution parameters
-    await page.locator("#reopenCooldownMultiplier").fill("3");
-    await page.locator("#maxAdaptiveIncrease").fill("7");
+    // Set flapping parameters (reopen multiplier is kept; window/factor/cap are new)
+    await page.getByTestId("reopen-cooldown-input").fill("3");
+    await page.getByTestId("flapping-window-input").fill("7200");
+    await page.getByTestId("flap-backoff-input").fill("3");
+    await page.getByTestId("max-recovery-multiplier-input").fill("6");
+
+    // The flapping window shows a human-duration estimate
+    await expect(page.getByTestId("flapping-window-estimate")).toContainText("2 h");
 
     // Submit the edit form
     await page.getByTestId("check-submit-button").click();
@@ -362,13 +367,15 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Verify the adaptive resolution values are still set
-    await expect(page.locator("#reopenCooldownMultiplier")).toHaveValue("3");
-    await expect(page.locator("#maxAdaptiveIncrease")).toHaveValue("7");
+    // Verify the flapping values are still set
+    await expect(page.getByTestId("reopen-cooldown-input")).toHaveValue("3");
+    await expect(page.getByTestId("flapping-window-input")).toHaveValue("7200");
+    await expect(page.getByTestId("flap-backoff-input")).toHaveValue("3");
+    await expect(page.getByTestId("max-recovery-multiplier-input")).toHaveValue("6");
 
     // Take screenshot
     await page.screenshot({
-      path: "test-results/screenshots/checks-adaptive-resolution-persisted.png",
+      path: "test-results/screenshots/checks-flapping-persisted.png",
       fullPage: true,
     });
   });

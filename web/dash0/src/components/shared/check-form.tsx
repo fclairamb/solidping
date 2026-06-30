@@ -5,7 +5,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
-import { describePeriod } from "@/lib/period-estimate";
+import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -216,7 +216,9 @@ export interface CheckFormData {
   config?: Record<string, unknown>;
   regions?: string[];
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
   labels?: Record<string, string>;
@@ -533,7 +535,9 @@ export function CheckForm({
   });
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
-  const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
+  const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
+  const [flapBackoffFactor, setFlapBackoffFactor] = useState(initialData?.flapBackoffFactor?.toString() ?? "");
+  const [maxRecoveryMultiplier, setMaxRecoveryMultiplier] = useState(initialData?.maxRecoveryMultiplier?.toString() ?? "");
   const [confirmationPeriodSeconds, setConfirmationPeriodSeconds] = useState(
     initialData?.confirmationPeriodSeconds?.toString() ?? "",
   );
@@ -1139,7 +1143,9 @@ export function CheckForm({
         ...(isPassiveType(type) && mode === "edit" ? {} : { config }),
         ...(showRegions ? { regions: selectedRegions } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
-        maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
+        ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
+        ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
+        ...(maxRecoveryMultiplier !== "" ? { maxRecoveryMultiplier: parseInt(maxRecoveryMultiplier, 10) } : {}),
         ...(confirmationPeriodSeconds !== ""
           ? { confirmationPeriodSeconds: parseInt(confirmationPeriodSeconds, 10) }
           : {}),
@@ -2364,17 +2370,33 @@ export function CheckForm({
             </div>
 
             <div className="space-y-2">
-              <Label className="text-base font-medium">Adaptive Resolution</Label>
-              <div className="grid grid-cols-2 gap-4">
+              <Label className="text-base font-medium">{t("form.flapping")}</Label>
+              <p className="text-xs text-muted-foreground">{t("form.flappingHelp")}</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">Reopen cooldown multiplier</Label>
-                  <Input id="reopenCooldownMultiplier" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">How many check periods to wait before closing a resolved incident. 0 = never reopen.</p>
+                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
+                  <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="maxAdaptiveIncrease" className="text-sm">Max adaptive increase</Label>
-                  <Input id="maxAdaptiveIncrease" type="number" min={0} placeholder="5 (default)" value={maxAdaptiveIncrease} onChange={(e) => setMaxAdaptiveIncrease(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Reserved for the reopen-cooldown calculation. 0 = no extra wait.</p>
+                  <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
+                  <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder="21600 (default)" value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.flappingWindowHelp")}</p>
+                  {flappingWindowSeconds.trim() !== "" && (parseInt(flappingWindowSeconds, 10) || 0) > 0 && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="flapping-window-estimate">
+                      {t("form.periodEstimate", { duration: formatDuration(parseInt(flappingWindowSeconds, 10) || 0) })}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="flapBackoffFactor" className="text-sm">{t("form.flapBackoffFactor")}</Label>
+                  <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder="2 (default)" value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.flapBackoffFactorHelp")}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="maxRecoveryMultiplier" className="text-sm">{t("form.maxRecoveryMultiplier")}</Label>
+                  <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder="8 (default)" value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.maxRecoveryMultiplierHelp")}</p>
                 </div>
               </div>
             </div>
