@@ -550,6 +550,9 @@ func (h *Handler) handleCreateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrInvalidCheckType):
 		return h.WriteErrorErr(
 			writer, http.StatusBadRequest, base.ErrorCodeValidationError, "Invalid check type", err)
+	case isCheckFieldValidationError(err):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
@@ -593,6 +596,9 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	case errors.Is(err, ErrCheckNotFound):
 		return h.WriteErrorErr(
 			writer, http.StatusNotFound, base.ErrorCodeCheckNotFound, "Check not found", err)
+	case isCheckFieldValidationError(err):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	case errors.Is(err, ErrSlugConflict):
 		return h.WriteValidationError(writer, "Slug already exists", []base.ValidationErrorField{
 			{
@@ -611,6 +617,17 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 	default:
 		return h.WriteInternalError(writer, err)
 	}
+}
+
+// isCheckFieldValidationError reports whether err is one of the request-field
+// validation failures (incident periods or flapping knobs) that should surface
+// as a 400 VALIDATION_ERROR rather than a 500. These are returned (possibly
+// wrapped) by CreateCheck / UpdateCheck.
+func isCheckFieldValidationError(err error) bool {
+	return errors.Is(err, errIncidentPeriodOutOfRange) ||
+		errors.Is(err, errFlappingWindowNegative) ||
+		errors.Is(err, errFlapBackoffTooSmall) ||
+		errors.Is(err, errMaxRecoveryMultTooSmall)
 }
 
 // handleUpsertError handles errors from UpsertCheck.

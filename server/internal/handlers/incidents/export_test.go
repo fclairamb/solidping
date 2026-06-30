@@ -2,6 +2,7 @@ package incidents
 
 import (
 	"context"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
@@ -11,4 +12,23 @@ import (
 // building suppressed child incidents.
 func (s *Service) ApplyRollupForTest(ctx context.Context, check *models.Check, incident *models.Incident) {
 	s.applyRollup(ctx, check, incident)
+}
+
+// EffectiveRecoveryPeriodForTest exposes the unexported effectiveRecoveryPeriod
+// so external tests can assert the flapping-backoff math (worked example, cap,
+// off-switches) directly against a check's flap state.
+func EffectiveRecoveryPeriodForTest(check *models.Check) time.Duration {
+	return effectiveRecoveryPeriod(check)
+}
+
+// RecoveryElapsedForTest exposes the unexported recoveryElapsed so external
+// tests can assert the flap-aware auto-resolve gate against the injected clock.
+func RecoveryElapsedForTest(check *models.Check, now time.Time) bool {
+	return recoveryElapsed(check, now)
+}
+
+// BumpFlapForTest exposes the unexported bumpFlap so external tests can verify
+// the rolling window reset/increment rule without a full DB round-trip.
+func BumpFlapForTest(check *models.Check, now time.Time) {
+	bumpFlap(check, now)
 }
