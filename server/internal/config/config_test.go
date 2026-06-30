@@ -582,8 +582,6 @@ func TestValidatePasswordConfig(t *testing.T) {
 // (float64 for numbers, string for the algorithm, bool for rehash). The bounds
 // must match the fail-fast checks in Validate so a value saved through the UI can
 // never abort the next startup.
-//
-//nolint:funlen // table-driven case data dominates the length
 func TestValidatePasswordParameter(t *testing.T) {
 	t.Parallel()
 

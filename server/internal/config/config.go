@@ -1137,8 +1137,6 @@ func paramToInt(value any) (int, bool) {
 // exact bounds enforced by Config.Validate, so a value saved through the
 // system-parameter API can never produce a config that aborts the next startup.
 // It is the single source of truth shared by the write handler and config load.
-//
-//nolint:cyclop // straight-line per-key bound checks, not branching complexity
 func ValidatePasswordParameter(key string, value any) error {
 	switch key {
 	case ParamKeyPasswordAlgorithm:

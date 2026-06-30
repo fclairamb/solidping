@@ -13,6 +13,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
+// paramValueField is the field name reported in a validation error for the
+// request body's "value" field.
+const paramValueField = "value"
+
 // Handler provides HTTP handlers for system parameter endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -127,7 +131,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
 	case errors.Is(err, ErrInvalidParameter):
 		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
-			{Name: "value", Message: err.Error()},
+			{Name: paramValueField, Message: err.Error()},
 		})
 	default:
 		return h.WriteInternalError(writer, err)

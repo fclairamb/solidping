@@ -3,7 +3,6 @@ package system
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"testing"
 	"time"
 
@@ -122,9 +121,7 @@ func TestSetParameterValidatesPasswordParams(t *testing.T) {
 			resp, err := svc.SetParameter(ctx, tt.key, tt.value, false)
 
 			if tt.wantErr {
-				r.Error(err)
-				r.True(errors.Is(err, ErrInvalidParameter),
-					"expected ErrInvalidParameter, got %v", err)
+				r.ErrorIs(err, ErrInvalidParameter)
 				r.Nil(resp)
 
 				// The bad value must NOT have been persisted.

@@ -179,8 +179,6 @@ func TestKnownPasswordKeys(t *testing.T) {
 // cfg.Auth.Password on Initialize, with numeric coercion (float64 -> uint32/int),
 // algorithm string, and the rehash bool. env > db precedence is also exercised.
 // t.Setenv below makes this test non-parallel.
-//
-//nolint:funlen // table-driven case data dominates the length
 func TestInitializeAppliesPasswordParams(t *testing.T) {
 	type paramRow struct {
 		value  any

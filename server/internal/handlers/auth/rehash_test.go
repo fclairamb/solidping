@@ -42,12 +42,15 @@ func usePolicy(t *testing.T, p passwords.Policy) {
 	t.Cleanup(func() { passwords.SetDefaultPolicy(argon2idDefaultPolicy()) })
 }
 
-// hashUnderPolicy mints a hash of password under policy p without leaving p
-// installed (restores the argon2id default afterwards).
-func hashUnderPolicy(t *testing.T, p passwords.Policy, password string) string {
+// rehashTestPassword is the plaintext used across the rehash-on-login tests.
+const rehashTestPassword = "rehash-secret-pw"
+
+// hashUnderPolicy mints a hash of rehashTestPassword under policy p without
+// leaving p installed (restores the argon2id default afterwards).
+func hashUnderPolicy(t *testing.T, p passwords.Policy) string {
 	t.Helper()
 	passwords.SetDefaultPolicy(p)
-	h, err := passwords.Hash(password)
+	h, err := passwords.Hash(rehashTestPassword)
 	require.NoError(t, err)
 	passwords.SetDefaultPolicy(argon2idDefaultPolicy())
 	return h
@@ -80,7 +83,7 @@ func seedLoginUser(
 //
 //nolint:paralleltest // mutates the process-wide default policy via usePolicy
 func TestRehashOnLogin(t *testing.T) {
-	const password = "rehash-secret-pw"
+	const password = rehashTestPassword
 
 	t.Run("stale algorithm is upgraded and persisted", func(t *testing.T) {
 		r := require.New(t)
@@ -88,7 +91,7 @@ func TestRehashOnLogin(t *testing.T) {
 
 		// Stored hash is bcrypt; active policy is argon2id (default).
 		usePolicy(t, argon2idDefaultPolicy())
-		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
+		stored := hashUnderPolicy(t, bcryptTestPolicy(10))
 		user := seedLoginUser(ctx, t, dbSvc, "rehash-up", "up@example.com", stored)
 
 		resp, err := svc.Login(ctx, "rehash-up", "up@example.com", password, Context{})
@@ -110,7 +113,7 @@ func TestRehashOnLogin(t *testing.T) {
 
 		// Stored hash already matches the active policy.
 		usePolicy(t, argon2idDefaultPolicy())
-		stored := hashUnderPolicy(t, argon2idDefaultPolicy(), password)
+		stored := hashUnderPolicy(t, argon2idDefaultPolicy())
 		user := seedLoginUser(ctx, t, dbSvc, "rehash-noop", "noop@example.com", stored)
 
 		resp, err := svc.Login(ctx, "rehash-noop", "noop@example.com", password, Context{})
@@ -131,7 +134,7 @@ func TestRehashOnLogin(t *testing.T) {
 		// first, THEN install the rehash-disabled argon2id policy — hashUnderPolicy
 		// restores the default policy when it returns, so the rehash-off policy
 		// must be installed afterwards to be the one Login sees.
-		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
+		stored := hashUnderPolicy(t, bcryptTestPolicy(10))
 		policy := argon2idDefaultPolicy()
 		policy.RehashOnLogin = false
 		usePolicy(t, policy)
@@ -170,7 +173,7 @@ func TestRehashOnLogin(t *testing.T) {
 		svc, dbSvc, ctx := setupAuthTestService(t)
 
 		usePolicy(t, argon2idDefaultPolicy())
-		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
+		stored := hashUnderPolicy(t, bcryptTestPolicy(10))
 		user := seedLoginUser(ctx, t, dbSvc, "rehash-err", "err@example.com", stored)
 
 		// Swap in a db whose UpdateUser always fails; everything else delegates.
