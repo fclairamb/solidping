@@ -47,9 +47,7 @@
     "down": "En panne",
     "downSubNone": "Tout est en ligne",
     "incidents": "Incidents actifs",
-    "incidentsSubNone": "Aucun actif",
-    "availability": "Disponibilité 24h",
-    "availabilityNoData": "Pas encore de données"
+    "incidentsSubNone": "Aucun actif"
   },
   "glance": {
     "title": "Sondes en un coup d'œil",

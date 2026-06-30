@@ -47,9 +47,7 @@
     "down": "Derzeit ausgefallen",
     "downSubNone": "Alle aktiv",
     "incidents": "Aktive Vorfälle",
-    "incidentsSubNone": "Keine aktiv",
-    "availability": "Verfügbarkeit 24 Std.",
-    "availabilityNoData": "Noch keine Daten"
+    "incidentsSubNone": "Keine aktiv"
   },
   "glance": {
     "title": "Prüfungen auf einen Blick",

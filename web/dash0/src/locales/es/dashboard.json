@@ -47,9 +47,7 @@
     "down": "Caídas actualmente",
     "downSubNone": "Todas activas",
     "incidents": "Incidentes activos",
-    "incidentsSubNone": "Ninguno activo",
-    "availability": "Disponibilidad 24h",
-    "availabilityNoData": "Aún sin datos"
+    "incidentsSubNone": "Ninguno activo"
   },
   "glance": {
     "title": "Comprobaciones de un vistazo",
