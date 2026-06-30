@@ -67,6 +67,41 @@ func TestEffectiveRecoveryPeriodWorkedExample(t *testing.T) {
 	}
 }
 
+// TestEffectiveRecoveryPeriodCapHolds proves the cap multiplier is genuinely
+// consumed (not hard-coded to the default 8): with CAP = 4 the required
+// recovery doubles to R×4 and then holds there, even as more flaps accumulate.
+func TestEffectiveRecoveryPeriodCapHolds(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const (
+		recovery = 120   // 2 min
+		window   = 21600 // 6h
+		factor   = 2
+		capMult  = 4 // deliberately below the default to exercise the cap
+	)
+
+	cases := []struct {
+		name      string
+		flapCount int
+		want      time.Duration
+	}{
+		{"k=1 below cap", 1, 4 * time.Minute},
+		{"k=2 reaches cap", 2, 8 * time.Minute},  // R·2^2 = 8m = R·CAP
+		{"k=3 holds at cap", 3, 8 * time.Minute}, // R·2^3 = 16m → cap R·4 = 8m
+		{"k=4 still at cap", 4, 8 * time.Minute},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			check := flapCheck(recovery, window, factor, capMult, tc.flapCount)
+			r.Equal(tc.want, incidents.EffectiveRecoveryPeriodForTest(check),
+				"flapCount=%d", tc.flapCount)
+		})
+	}
+}
+
 // TestEffectiveRecoveryPeriodHardCeiling proves the wall-clock HARD_CEILING
 // (30 min) clamps even when R × CAP would exceed it.
 func TestEffectiveRecoveryPeriodHardCeiling(t *testing.T) {

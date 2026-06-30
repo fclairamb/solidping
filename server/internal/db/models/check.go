@@ -110,7 +110,7 @@ type Check struct {
 	// flaps (repeated outages over a short horizon) the required stability
 	// before auto-resolving grows per flap, bounded by a cap. Off-by-default-
 	// equivalent: FlapBackoffFactor==1 or FlappingWindowSeconds==0 reproduces
-	// the constant RecoveryPeriodSeconds behaviour.
+	// the constant RecoveryPeriodSeconds behavior.
 	FlappingWindowSeconds int `bun:"flapping_window_seconds,notnull,default:21600"`
 	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull,default:2"`
 	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull,default:8"`

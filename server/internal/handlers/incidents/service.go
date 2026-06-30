@@ -497,7 +497,7 @@ const recoveryHardCeiling = 30 * time.Minute
 //	effective = min( R · F^flapCount , R · MaxRecoveryMultiplier , HARD_CEILING )
 //
 // where R = RecoveryPeriodSeconds and F = FlapBackoffFactor. It short-circuits
-// to a plain R (today's constant behaviour) when the flapping feature is off
+// to a plain R (today's constant behavior) when the flapping feature is off
 // for this check — F<=1, FlappingWindowSeconds==0, or no flaps accumulated yet
 // — so existing checks never regress.
 func effectiveRecoveryPeriod(check *models.Check) time.Duration {
