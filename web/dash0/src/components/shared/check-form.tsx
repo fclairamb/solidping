@@ -5,6 +5,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
+import { describePeriod } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -577,6 +578,12 @@ export function CheckForm({
     return buildIntervalOptions(minSec, maxSec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, checkTypeInfoMap]);
+
+  // Live polling interval (seconds) used by the Confirmation / Recovery estimate
+  // lines. Active checks have a real cadence (the selected HMS interval); passive
+  // checks (heartbeat / email) have no real probe cadence, so we pass 0 and the
+  // estimate shows the duration only — never a probe count.
+  const estimateIntervalSeconds = isPassiveType(type) ? 0 : hmsToSeconds(period);
 
   // Apply sample config to form
   function applySample(sample: SampleConfig) {
@@ -2327,11 +2334,31 @@ export function CheckForm({
                   <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
                   <Input id="confirmationPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
+                  {confirmationPeriodSeconds.trim() !== "" && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
+                      {describePeriod(
+                        parseInt(confirmationPeriodSeconds, 10) || 0,
+                        estimateIntervalSeconds,
+                        "confirmation",
+                        t,
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
                   <Input id="recoveryPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
+                  {recoveryPeriodSeconds.trim() !== "" && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">
+                      {describePeriod(
+                        parseInt(recoveryPeriodSeconds, 10) || 0,
+                        estimateIntervalSeconds,
+                        "recovery",
+                        t,
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
