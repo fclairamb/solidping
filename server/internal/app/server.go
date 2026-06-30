@@ -1996,20 +1996,8 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	}
 
 	// Re-resolve and re-install the password-hashing policy now that the
-	// system-parameter overlay has mutated cfg.Auth.Password.*. The policy
-	// installed in NewServer (server.go:165) only reflected YAML/env, so without
-	// this any auth.password.* values stored via the Server Settings UI would be
-	// ignored even across a restart (see spec Q2).
-	//
-	// This is deliberately best-effort and NON-fatal: a malformed stored value
-	// (e.g. set via the raw API, bypassing write validation) must never brick
-	// startup, so on error we warn and keep the prior policy. The early NewServer
-	// install remains the default for any hashing before this point.
-	if pol, err := passwords.PolicyFromConfig(&cfg.Auth); err != nil {
-		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
-	} else {
-		passwords.SetDefaultPolicy(pol)
-	}
+	// system-parameter overlay has mutated cfg.Auth.Password.* (see spec Q2).
+	reResolvePasswordPolicy(ctx, cfg)
 
 	// Update the server's auth config if JWT secret changed
 	if cfg.Auth.JWTSecret != s.config.Auth.JWTSecret {
@@ -2019,6 +2007,35 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	}
 
 	return nil
+}
+
+// reResolvePasswordPolicy re-resolves the process-wide password-hashing policy
+// from cfg.Auth.Password after the system-parameter overlay has mutated it. The
+// policy installed in NewServer (server.go:165) only reflected YAML/env, so
+// without this any auth.password.* values stored via the Server Settings UI
+// would be ignored even across a restart (see spec Q2).
+//
+// It is deliberately best-effort and NON-fatal: a malformed stored value (e.g.
+// set via the raw API, bypassing write validation) must never brick startup, so
+// on error we warn and keep the prior policy. The early NewServer install
+// remains the default for any hashing before this point. The overlaid block is
+// validated first (same bounds as config load) so a sub-floor value that slipped
+// past the write handler can't install a degraded policy either.
+func reResolvePasswordPolicy(ctx context.Context, cfg *config.Config) {
+	if err := config.ValidatePasswordConfigBlock(&cfg.Auth.Password); err != nil {
+		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
+
+		return
+	}
+
+	pol, err := passwords.PolicyFromConfig(&cfg.Auth)
+	if err != nil {
+		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
+
+		return
+	}
+
+	passwords.SetDefaultPolicy(pol)
 }
 
 // MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the

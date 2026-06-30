@@ -1034,6 +1034,14 @@ func (c *Config) Validate() error {
 	return nil
 }
 
+// ValidatePasswordConfigBlock validates a fully-resolved password config block
+// against the same bounds enforced at config load. It is exported so the startup
+// policy re-resolve (after the system-parameter overlay) can reject a malformed
+// stored value and keep the prior policy instead of installing a degraded one.
+func ValidatePasswordConfigBlock(pwCfg *PasswordConfig) error {
+	return validatePasswordConfig(pwCfg)
+}
+
 // validatePasswordConfig fails fast at config load for an unsupported algorithm
 // or sub-floor cost parameters, so a misconfiguration can never lock everyone
 // out at first login. Near-floor (but accepted) values are warn-logged.

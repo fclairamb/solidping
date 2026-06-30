@@ -433,7 +433,8 @@ func defaultPasswordConfig() PasswordConfig {
 			KeyLength:  32,
 			SaltLength: 16,
 		},
-		Bcrypt: BcryptParams{Cost: 12},
+		Bcrypt:        BcryptParams{Cost: 12},
+		RehashOnLogin: true,
 	}
 }
 
@@ -467,6 +468,7 @@ func TestPasswordConfigDefaults(t *testing.T) {
 	r.Equal(uint32(32), defaults.Argon2.KeyLength)
 	r.Equal(uint32(16), defaults.Argon2.SaltLength)
 	r.Equal(12, defaults.Bcrypt.Cost)
+	r.True(defaults.RehashOnLogin, "rehash-on-login defaults to true (preserves legacy migration behavior)")
 }
 
 // TestApplyPasswordHashingEnv confirms SP_AUTH_PASSWORD_* lands on the
@@ -482,8 +484,9 @@ func TestApplyPasswordHashingEnv(t *testing.T) {
 	t.Setenv("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", "24")
 	t.Setenv("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", "12")
 	t.Setenv("SP_AUTH_PASSWORD_BCRYPT_COST", "11")
+	t.Setenv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", "false")
 
-	cfg := defaultPasswordConfig()
+	cfg := defaultPasswordConfig() // starts with RehashOnLogin: true
 	applyPasswordHashingEnv(&cfg)
 
 	r.Equal("bcrypt", cfg.Algorithm)
@@ -493,6 +496,7 @@ func TestApplyPasswordHashingEnv(t *testing.T) {
 	r.Equal(uint32(24), cfg.Argon2.KeyLength)
 	r.Equal(uint32(12), cfg.Argon2.SaltLength)
 	r.Equal(11, cfg.Bcrypt.Cost)
+	r.False(cfg.RehashOnLogin, "SP_AUTH_PASSWORD_REHASH_ON_LOGIN=false must override the default")
 }
 
 // TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
@@ -571,4 +575,89 @@ func TestValidatePasswordConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestValidatePasswordParameter covers the single-key write-time validator used
+// by the system-parameter handler. Values arrive as encoding/json types
+// (float64 for numbers, string for the algorithm, bool for rehash). The bounds
+// must match the fail-fast checks in Validate so a value saved through the UI can
+// never abort the next startup.
+//
+//nolint:funlen // table-driven case data dominates the length
+func TestValidatePasswordParameter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		key     string
+		value   any
+		wantErr bool
+	}{
+		// Algorithm.
+		{name: "algorithm argon2id ok", key: ParamKeyPasswordAlgorithm, value: "argon2id"},
+		{name: "algorithm bcrypt ok", key: ParamKeyPasswordAlgorithm, value: "bcrypt"},
+		{name: "algorithm sha1 rejected", key: ParamKeyPasswordAlgorithm, value: "sha1", wantErr: true},
+		{name: "algorithm wrong type rejected", key: ParamKeyPasswordAlgorithm, value: float64(1), wantErr: true},
+		// Argon2 memory (floor 8192).
+		{name: "memory at floor ok", key: ParamKeyPasswordArgon2Memory, value: float64(8192)},
+		{name: "memory 19456 ok", key: ParamKeyPasswordArgon2Memory, value: float64(19456)},
+		{name: "memory 1024 rejected", key: ParamKeyPasswordArgon2Memory, value: float64(1024), wantErr: true},
+		{name: "memory non-number rejected", key: ParamKeyPasswordArgon2Memory, value: "lots", wantErr: true},
+		// Argon2 time (floor 1).
+		{name: "time 1 ok", key: ParamKeyPasswordArgon2Time, value: float64(1)},
+		{name: "time 0 rejected", key: ParamKeyPasswordArgon2Time, value: float64(0), wantErr: true},
+		// Argon2 threads (1..255).
+		{name: "threads 1 ok", key: ParamKeyPasswordArgon2Threads, value: float64(1)},
+		{name: "threads 255 ok", key: ParamKeyPasswordArgon2Threads, value: float64(255)},
+		{name: "threads 0 rejected", key: ParamKeyPasswordArgon2Threads, value: float64(0), wantErr: true},
+		{name: "threads 256 rejected", key: ParamKeyPasswordArgon2Threads, value: float64(256), wantErr: true},
+		// Argon2 key/salt length floors.
+		{name: "key_length 16 ok", key: ParamKeyPasswordArgon2KeyLen, value: float64(16)},
+		{name: "key_length 8 rejected", key: ParamKeyPasswordArgon2KeyLen, value: float64(8), wantErr: true},
+		{name: "salt_length 8 ok", key: ParamKeyPasswordArgon2SaltLen, value: float64(8)},
+		{name: "salt_length 4 rejected", key: ParamKeyPasswordArgon2SaltLen, value: float64(4), wantErr: true},
+		// Bcrypt cost (10..31).
+		{name: "cost 10 ok", key: ParamKeyPasswordBcryptCost, value: float64(10)},
+		{name: "cost 31 ok", key: ParamKeyPasswordBcryptCost, value: float64(31)},
+		{name: "cost 9 rejected", key: ParamKeyPasswordBcryptCost, value: float64(9), wantErr: true},
+		{name: "cost 99 rejected", key: ParamKeyPasswordBcryptCost, value: float64(99), wantErr: true},
+		// Rehash bool.
+		{name: "rehash true ok", key: ParamKeyPasswordRehashOnLogin, value: true},
+		{name: "rehash false ok", key: ParamKeyPasswordRehashOnLogin, value: false},
+		{name: "rehash string rejected", key: ParamKeyPasswordRehashOnLogin, value: "soon", wantErr: true},
+		// Unknown key.
+		{name: "unknown key rejected", key: "auth.password.unknown", value: float64(1), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			err := ValidatePasswordParameter(tc.key, tc.value)
+			if tc.wantErr {
+				r.ErrorIs(err, ErrInvalidPasswordParameter)
+			} else {
+				r.NoError(err)
+			}
+		})
+	}
+}
+
+// TestIsPasswordParameterKey pins the set of keys the write handler routes
+// through ValidatePasswordParameter.
+func TestIsPasswordParameterKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for _, key := range []string{
+		ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
+		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
+		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin,
+	} {
+		r.Truef(IsPasswordParameterKey(key), "%s should be a password parameter key", key)
+	}
+
+	r.False(IsPasswordParameterKey("server.base_url"))
+	r.False(IsPasswordParameterKey("auth.jwt_secret"))
 }
