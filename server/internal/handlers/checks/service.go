@@ -1716,6 +1716,16 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		return fmt.Errorf("failed to list check jobs: %w", err)
 	}
 
+	// Denormalize the org's plan weight onto every (re)materialized job so the
+	// cost-aware scheduler can reserve capacity and credit paid orgs without a
+	// per-claim entitlements lookup (spec 2026-06-30-09). Refreshed here on every
+	// reconcile, so a plan change propagates to the jobs the next time the check
+	// is touched. Free (weight 0) when entitlements are disabled.
+	planWeight := entcore.PlanWeightFree
+	if s.entitlements != nil {
+		planWeight = s.entitlements.PlanWeight(ctx, check.OrganizationUID)
+	}
+
 	// If check is disabled, delete all jobs
 	if !check.Enabled {
 		for _, job := range existingJobs {
@@ -1745,6 +1755,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		job.Type = check.Type
 		job.Config = check.Config
 		job.ScheduledAt = &now
+		job.PlanWeight = planWeight
 
 		return s.db.CreateCheckJob(ctx, job)
 	}
@@ -1776,9 +1787,10 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 
 	for i, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
-			// Update period, config, and type if changed
+			// Update period, config, type, and plan weight if changed
 			needsUpdate := existing.Period != splitPeriod ||
 				existing.Type != check.Type ||
+				existing.PlanWeight != planWeight ||
 				!configEqual(existing.Config, check.Config)
 
 			if needsUpdate {
@@ -1787,6 +1799,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 					Set("period = ?", splitPeriod).
 					Set("type = ?", check.Type).
 					Set("config = ?", check.Config).
+					Set("plan_weight = ?", planWeight).
 					Set("updated_at = ?", time.Now()).
 					Where("uid = ?", existing.UID).
 					Exec(ctx); err != nil {
@@ -1803,6 +1816,7 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			job.Config = check.Config
 			job.Region = &regionCopy
 			job.ScheduledAt = &scheduledAt
+			job.PlanWeight = planWeight
 
 			if err := s.db.CreateCheckJob(ctx, job); err != nil {
 				return fmt.Errorf("failed to create check job: %w", err)
