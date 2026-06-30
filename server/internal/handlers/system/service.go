@@ -19,6 +19,7 @@ import (
 // Errors for system parameter operations.
 var (
 	ErrParameterNotFound       = errors.New("parameter not found")
+	ErrInvalidParameter        = errors.New("invalid parameter value")
 	ErrEmailInboxNotConfigured = errors.New("email inbox not configured")
 	ErrEmailInboxDisabled      = errors.New("email inbox disabled")
 	ErrEmailInboxNotAvailable  = errors.New("email inbox manager not initialized")
@@ -189,8 +190,17 @@ func (s *Service) GetParameter(ctx context.Context, key string) (*ParameterRespo
 	return s.toResponse(param), nil
 }
 
-// SetParameter creates or updates a system parameter.
+// SetParameter creates or updates a system parameter. The auth.password.* keys
+// are validated against the exact bounds enforced at config load (see
+// config.ValidatePasswordParameter), so a value that would abort the next
+// startup is rejected here with a validation error instead of being persisted.
 func (s *Service) SetParameter(ctx context.Context, key string, value any, secret bool) (*ParameterResponse, error) {
+	if config.IsPasswordParameterKey(key) {
+		if err := config.ValidatePasswordParameter(key, value); err != nil {
+			return nil, fmt.Errorf("%w: %w", ErrInvalidParameter, err)
+		}
+	}
+
 	if err := s.db.SetSystemParameter(ctx, key, value, secret); err != nil {
 		return nil, err
 	}
