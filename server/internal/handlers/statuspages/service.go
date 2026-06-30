@@ -1106,30 +1106,28 @@ func (s *Service) fillTodayFromRaw(
 }
 
 // aggregateRawToDaily derives a synthetic daily Result from raw rows.
-// Availability = (status==up count) / total; duration is averaged over
-// successful rows only (failures often have skewed/zero durations).
+// Availability excludes lifecycle markers (created/running) from the
+// denominator and counts up+warning as success — the same rule the
+// aggregation job applies to stored daily rows, so today's synthesized
+// bucket matches the surrounding stored buckets and the badges endpoint.
+// Duration is averaged over successful rows only (failures often have
+// skewed/zero durations).
 func aggregateRawToDaily(checkUID string, rawResults []*models.Result, periodStart time.Time) *models.Result {
 	var (
-		upCount       int
-		total         int
 		durationSum   float64
 		durationCount int
 	)
+
+	successCount, total := models.RawAvailability(rawResults)
 
 	for _, rawResult := range rawResults {
 		if rawResult.Status == nil {
 			continue
 		}
 
-		total++
-
-		if *rawResult.Status == int(models.ResultStatusUp) {
-			upCount++
-
-			if rawResult.Duration != nil {
-				durationSum += float64(*rawResult.Duration)
-				durationCount++
-			}
+		if models.ResultStatus(*rawResult.Status).CountsAsUp() && rawResult.Duration != nil {
+			durationSum += float64(*rawResult.Duration)
+			durationCount++
 		}
 	}
 
@@ -1137,12 +1135,13 @@ func aggregateRawToDaily(checkUID string, rawResults []*models.Result, periodSta
 		return nil
 	}
 
-	avail := 100.0 * float64(upCount) / float64(total)
+	avail := 100.0 * float64(successCount) / float64(total)
 	out := &models.Result{
-		CheckUID:        checkUID,
-		PeriodStart:     periodStart,
-		AvailabilityPct: &avail,
-		TotalChecks:     &total,
+		CheckUID:         checkUID,
+		PeriodStart:      periodStart,
+		AvailabilityPct:  &avail,
+		TotalChecks:      &total,
+		SuccessfulChecks: &successCount,
 	}
 
 	if durationCount > 0 {

@@ -290,6 +290,104 @@ func TestAggregateRawToDaily_ReturnsNilOnEmpty(t *testing.T) {
 		"rows with nil status are ignored — if all are nil, return nil")
 }
 
+// TestAggregateRawToDaily_ExcludesLifecycleRows is the core regression guard for
+// spec 2026-06-30-02: lifecycle rows (created/running) are in-flight or
+// just-scheduled markers, not measurements, and must be excluded from the
+// availability denominator so a healthy check reads 100% — matching the badges
+// endpoint and the stored daily rows written by the aggregation job.
+func TestAggregateRawToDaily_ExcludesLifecycleRows(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	upStatus := int(models.ResultStatusUp)
+	createdStatus := int(models.ResultStatusCreated)
+	runningStatus := int(models.ResultStatusRunning)
+
+	// 18 up + 2 created + 1 running → lifecycle rows excluded → 100% over 18.
+	raw := make([]*models.Result, 0, 21)
+	for i := 0; i < 18; i++ {
+		s := upStatus
+		raw = append(raw, &models.Result{Status: &s, Duration: ptrFloat32(50)})
+	}
+	for i := 0; i < 2; i++ {
+		s := createdStatus
+		raw = append(raw, &models.Result{Status: &s})
+	}
+	raw = append(raw, &models.Result{Status: &runningStatus})
+
+	synth := aggregateRawToDaily("check-1", raw, periodStart)
+
+	r.NotNil(synth)
+	r.NotNil(synth.AvailabilityPct)
+	r.InDelta(100.0, *synth.AvailabilityPct, 0.001,
+		"a healthy check with only lifecycle rows besides up must read 100%")
+	r.NotNil(synth.TotalChecks)
+	r.Equal(18, *synth.TotalChecks, "lifecycle rows excluded from the denominator")
+	r.NotNil(synth.SuccessfulChecks)
+	r.Equal(18, *synth.SuccessfulChecks)
+}
+
+// TestAggregateRawToDaily_WarningCountsAsUp pins that a warning row counts as up
+// (target reachable, just something to report) — consistent with the aggregation
+// job's Decision A — and that its duration is included in the average.
+func TestAggregateRawToDaily_WarningCountsAsUp(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	upStatus := int(models.ResultStatusUp)
+	warningStatus := int(models.ResultStatusWarning)
+
+	// 2 up + 1 warning → still 100%; duration averages over all three.
+	raw := []*models.Result{
+		{Status: &upStatus, Duration: ptrFloat32(40)},
+		{Status: &warningStatus, Duration: ptrFloat32(70)},
+		{Status: &upStatus, Duration: ptrFloat32(60)},
+	}
+
+	synth := aggregateRawToDaily("check-1", raw, periodStart)
+
+	r.NotNil(synth)
+	r.NotNil(synth.AvailabilityPct)
+	r.InDelta(100.0, *synth.AvailabilityPct, 0.001, "warning counts as up → 100%")
+	r.NotNil(synth.TotalChecks)
+	r.Equal(3, *synth.TotalChecks)
+	// Duration averages up+warning rows: (40+70+60)/3 ≈ 56.67.
+	r.NotNil(synth.Duration)
+	r.InDelta(float32(56.6667), *synth.Duration, 0.01)
+}
+
+// TestAggregateRawToDaily_GenuineDownReflectsMiss confirms that excluding
+// lifecycle rows does not mask real downtime: a genuine down still lowers the
+// percentage over the countable (non-lifecycle) denominator.
+func TestAggregateRawToDaily_GenuineDownReflectsMiss(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	upStatus := int(models.ResultStatusUp)
+	downStatus := int(models.ResultStatusDown)
+	createdStatus := int(models.ResultStatusCreated)
+
+	// 3 up + 1 down + 1 created → created excluded → 3/4 = 75%.
+	raw := []*models.Result{
+		{Status: &upStatus, Duration: ptrFloat32(50)},
+		{Status: &upStatus, Duration: ptrFloat32(50)},
+		{Status: &upStatus, Duration: ptrFloat32(50)},
+		{Status: &downStatus},
+		{Status: &createdStatus},
+	}
+
+	synth := aggregateRawToDaily("check-1", raw, periodStart)
+
+	r.NotNil(synth)
+	r.NotNil(synth.AvailabilityPct)
+	r.InDelta(75.0, *synth.AvailabilityPct, 0.001, "real down still counts against availability")
+	r.NotNil(synth.TotalChecks)
+	r.Equal(4, *synth.TotalChecks, "lifecycle excluded, down included")
+}
+
 // TestBuildAvailabilityData_UTCBucketing pins that daily rows are looked up by
 // their UTC date, not the server's local date. Pre-fix the loop iterated days
 // in time.Local, so for servers west of UTC the most-recent stored daily row
