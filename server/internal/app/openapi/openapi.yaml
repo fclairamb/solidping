@@ -792,6 +792,68 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{check}/availability:
+    get:
+      tags: [Results]
+      summary: Per-period availability statistics for a single check
+      description: >
+        Returns real, server-measured availability for each requested period
+        (replacing the old client-side estimate). availabilityPct and
+        downtimeSeconds are probe-ratio (the share of probes that succeeded);
+        the incidents block reports confirmed-outage wall-clock time. A period
+        with no data has availabilityPct=null and hasData=false (no data is not
+        100%).
+      operationId: getCheckAvailability
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID (UUID) or slug
+          schema:
+            type: string
+        - name: periods
+          in: query
+          required: true
+          description: >
+            Comma-separated period tokens. Each is a trailing duration
+            (suffixes h/d/w/y, e.g. 24h, 7d, 30d, 90d, 365d, 1y) or a calendar
+            token (today, mtd, ytd) resolved against tz. Unknown tokens are
+            rejected (VALIDATION_ERROR); at most 12 periods, none exceeding the
+            day-tier retention horizon (~12 months).
+          schema:
+            type: string
+          example: "today,7d,30d,365d"
+        - name: tz
+          in: query
+          required: false
+          description: >
+            IANA time zone used to resolve the calendar tokens (today/mtd/ytd).
+            Trailing durations are tz-independent. Defaults to UTC.
+          schema:
+            type: string
+            default: UTC
+          example: "Europe/Paris"
+      responses:
+        "200":
+          description: Per-period availability statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckAvailabilityResponse"
+        "400":
+          description: Invalid period or timezone parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Incident APIs
   /api/v1/orgs/{org}/incidents:
     get:
@@ -2127,6 +2189,86 @@ components:
             $ref: "#/components/schemas/OrgResult"
         pagination:
           $ref: "#/components/schemas/CursorPagination"
+
+    CheckAvailabilityResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityPeriod"
+
+    AvailabilityPeriod:
+      type: object
+      properties:
+        period:
+          type: string
+          description: The requested period token, echoed back.
+          example: "7d"
+        windowStart:
+          type: string
+          format: date-time
+          description: Start of the resolved window (inclusive).
+        windowEnd:
+          type: string
+          format: date-time
+          description: End of the resolved window (exclusive) — always "now".
+        monitoredSeconds:
+          type: integer
+          format: int64
+          description: >
+            min(windowLength, now − check.createdAt). Time before the check
+            existed is not measured (and not downtime).
+        partial:
+          type: boolean
+          description: >
+            True when the check is younger than the window, so it was monitored
+            for only part of it.
+        hasData:
+          type: boolean
+          description: False when the window has no countable probes (then availabilityPct is null).
+        totalChecks:
+          type: integer
+          description: Total countable probes in the window.
+        successfulChecks:
+          type: integer
+          description: Probes counted as up (up + warning).
+        availabilityPct:
+          type: number
+          nullable: true
+          description: >
+            Probe-ratio availability (successfulChecks / totalChecks × 100).
+            Null when totalChecks == 0 — no data is not 100%.
+        downtimeSeconds:
+          type: integer
+          format: int64
+          description: >
+            Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+        incidents:
+          $ref: "#/components/schemas/PeriodIncidents"
+
+    PeriodIncidents:
+      type: object
+      description: >
+        Confirmed-outage (wall-clock) stats for the window, built from incidents
+        whose started_at falls inside it, clamped to the window edges (an
+        unresolved incident runs to now).
+      properties:
+        count:
+          type: integer
+          description: Number of incidents that started in the window.
+        longestSeconds:
+          type: integer
+          format: int64
+          description: Longest single incident, clamped to the window.
+        averageSeconds:
+          type: integer
+          format: int64
+          description: Average incident duration.
+        totalDowntimeSeconds:
+          type: integer
+          format: int64
+          description: Sum of clamped incident durations.
 
     OrgResult:
       type: object
