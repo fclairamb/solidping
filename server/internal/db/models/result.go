@@ -63,6 +63,37 @@ func StatusToString(status int) string {
 	}
 }
 
+// IsLifecycleMarker reports whether the status is a non-measurement lifecycle state
+// (created/running) that must be excluded from availability denominators.
+func (s ResultStatus) IsLifecycleMarker() bool {
+	return s == ResultStatusCreated || s == ResultStatusRunning
+}
+
+// CountsAsUp reports whether a raw result counts toward availability success.
+// Warning is "up with something to report" (the target is reachable), so it counts.
+func (s ResultStatus) CountsAsUp() bool {
+	return s == ResultStatusUp || s == ResultStatusWarning
+}
+
+// RawAvailability computes (successCount, countableTotal) over raw results, skipping
+// lifecycle markers. Callers derive pct = 100*success/total when total > 0.
+func RawAvailability(results []*Result) (success, total int) {
+	for _, r := range results {
+		if r.Status == nil {
+			continue
+		}
+		s := ResultStatus(*r.Status)
+		if s.IsLifecycleMarker() {
+			continue
+		}
+		total++
+		if s.CountsAsUp() {
+			success++
+		}
+	}
+	return success, total
+}
+
 // LastStatusChange represents the last time a check's status changed.
 type LastStatusChange struct {
 	Time   time.Time `json:"time"`
