@@ -139,13 +139,24 @@ SP_GITLAB_CLIENT_SECRET=your-gitlab-client-secret
 ```bash
 SP_MICROSOFT_CLIENT_ID=your-microsoft-client-id
 SP_MICROSOFT_CLIENT_SECRET=your-microsoft-client-secret
+SP_MICROSOFT_TENANT_ID=common
 ```
+
+`SP_MICROSOFT_TENANT_ID` selects the Entra (Azure AD) tenant embedded in the
+authorize/token URLs (`https://login.microsoftonline.com/{tenant}/oauth2/v2.0/...`).
+Accepted values: your directory (tenant) **GUID**, a **verified domain**
+(e.g. `contoso.onmicrosoft.com`), or one of `common` / `organizations` /
+`consumers`. Leave it unset (or empty) to default to `common` (multi-tenant).
+Set it to your tenant for a single-tenant app registration, which rejects
+`common` sign-ins. This is also settable from **Server Settings → Authentication**
+and takes effect after a server restart.
 
 **Setup:**
 1. Go to [Azure App Registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps)
 2. Register a new application
 3. Add redirect URI: `{SP_BASE_URL}/api/v1/auth/microsoft/callback`
 4. Create a client secret under "Certificates & secrets"
+5. For a single-tenant app, set `SP_MICROSOFT_TENANT_ID` to your directory (tenant) ID
 
 ### Slack
 
