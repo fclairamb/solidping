@@ -94,8 +94,10 @@ test.describe("Status page history period (24h)", () => {
     await page.getByRole("button", { name: "Create Status Page" }).click();
 
     // Lands on the detail route; go to the edit page where the History Period
-    // select lives.
-    await page.waitForURL(/\/status-pages\/[^/]+$/, { timeout: 10000 });
+    // select lives. Wait for a real UID segment — `(?!new$)` excludes the
+    // create route itself so we don't capture `.../status-pages/new` before
+    // the POST has redirected (that would make `/edit` 404 "not found").
+    await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     const statusPageUrl = page.url();
@@ -114,7 +116,7 @@ test.describe("Status page history period (24h)", () => {
 
     // Save.
     await page.getByRole("button", { name: "Save Changes" }).click();
-    await page.waitForURL(/\/status-pages\/[^/]+$/, { timeout: 10000 });
+    await page.waitForURL(/\/status-pages\/(?!new$)[^/]+$/, { timeout: 10000 });
     await page.waitForLoadState("networkidle");
 
     // Reload the edit page — the 24h choice must persist.
