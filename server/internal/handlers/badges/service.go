@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
 // Badge service errors.
@@ -229,83 +230,15 @@ func (s *Service) appendRowFragments(
 	return rows, totalHeight, nil
 }
 
-// bucketAccumulator accumulates availability and duration stats for one bucket
-// across multiple result rows (potentially from different period types).
-type bucketAccumulator struct {
-	up     int
-	total  int
-	durSum float64
-	durCnt int
-}
-
-// accumulateRaw merges a raw result row into acc.
-// Returns false when the row should be skipped (created/running status).
-func (acc *bucketAccumulator) accumulateRaw(result *models.Result) {
-	if result.Status == nil {
-		return
-	}
-
-	st := models.ResultStatus(*result.Status)
-	if st == models.ResultStatusCreated || st == models.ResultStatusRunning {
-		return
-	}
-
-	acc.total++
-
-	if *result.Status == int(models.ResultStatusUp) {
-		acc.up++
-	}
-
-	if result.Duration != nil {
-		acc.durSum += float64(*result.Duration)
-		acc.durCnt++
-	}
-}
-
-// accumulateAgg merges an hour/day aggregated result row into acc.
-func (acc *bucketAccumulator) accumulateAgg(result *models.Result) {
-	if result.TotalChecks != nil {
-		acc.total += *result.TotalChecks
-	}
-
-	if result.SuccessfulChecks != nil {
-		acc.up += *result.SuccessfulChecks
-	}
-
-	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
-		acc.durSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
-		acc.durCnt += *result.TotalChecks
-	}
-}
-
-// buildBucketMaps converts the per-bucket accumulators into the availability
-// and duration maps consumed by buildBarSegments / buildGraphPoints.
-func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]float64, map[time.Time]*float64) {
-	availMap := make(map[time.Time]float64, len(accMap))
-	durationMap := make(map[time.Time]*float64, len(accMap))
-
-	for bucket, acc := range accMap {
-		if acc.total > 0 {
-			availMap[bucket] = float64(acc.up) / float64(acc.total) * 100
-		}
-
-		if acc.durCnt > 0 {
-			v := acc.durSum / float64(acc.durCnt)
-			durationMap[bucket] = &v
-		}
-	}
-
-	return availMap, durationMap
-}
-
-// fetchBucketData runs a multi-tier query (raw + hour + day) and returns
-// per-bucket availability and average-duration maps. Because the tiers cover
-// non-overlapping age bands, unioning them never double-counts.
+// fetchBucketData returns per-bucket availability and average-duration maps for
+// the uptime bar. It is a thin single-check adapter over the shared
+// uptimebar.BucketAvailability, so the badge and the status page bucket from the
+// exact same raw+hour+day union and cannot diverge on which data feeds the bar.
 //
 // The window spans n buckets ending at the current, in-progress bucket, so a
 // freshly-created check shows its data immediately: the current bucket is filled
-// from raw rows (via accumulateRaw) until the hourly rollup runs, mirroring how
-// the status page synthesizes "today" from raw rows.
+// from raw rows until the hourly rollup runs. Warning rows count as up
+// (CountsAsUp), matching the rolled-up tier and the aggregation job.
 func (s *Service) fetchBucketData(
 	ctx context.Context, orgUID, checkUID, period string,
 ) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
@@ -317,37 +250,26 @@ func (s *Service) fetchBucketData(
 	// in-progress bucket inside the rendered window.
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
 
-	filter := &models.ListResultsFilter{
-		OrganizationUID:  orgUID,
-		CheckUIDs:        []string{checkUID},
-		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
-		PeriodStartAfter: &bucketStart,
-	}
-
-	res, err := s.dbSvc.ListResults(ctx, filter)
+	byCheck, err := uptimebar.BucketAvailability(
+		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
+	)
 	if err != nil {
 		return nil, nil, time.Time{}, 0, 0, err
 	}
 
-	accMap := make(map[time.Time]*bucketAccumulator, n)
+	availMap := make(map[time.Time]float64, n)
+	durationMap := make(map[time.Time]*float64, n)
 
-	for _, result := range res.Results {
-		bucket := result.PeriodStart.UTC().Truncate(bucketDuration)
-
-		acc := accMap[bucket]
-		if acc == nil {
-			acc = &bucketAccumulator{}
-			accMap[bucket] = acc
+	for bucket, stats := range byCheck[checkUID] {
+		if pct, ok := stats.AvailabilityPct(); ok {
+			availMap[bucket] = pct
 		}
 
-		if result.PeriodType == models.PeriodTypeRaw {
-			acc.accumulateRaw(result)
-		} else {
-			acc.accumulateAgg(result)
+		if dur, ok := stats.AvgDuration(); ok {
+			v := dur
+			durationMap[bucket] = &v
 		}
 	}
-
-	availMap, durationMap := buildBucketMaps(accMap)
 
 	return availMap, durationMap, bucketStart, n, bucketDuration, nil
 }
