@@ -266,6 +266,83 @@ test.describe("Server Admin — Password Hashing", () => {
   });
 });
 
+// navigateToAuth opens Server Settings and lands on the Authentication tab.
+async function navigateToAuth(page: Page) {
+  await navigateToServer(page);
+  await page.getByRole("link", { name: "Authentication" }).click();
+  await page.waitForURL(/\/server\/auth/, { timeout: 10000 });
+  await page.waitForLoadState("networkidle");
+}
+
+// The Microsoft Tenant ID field is a non-secret system parameter
+// (auth.microsoft.tenant_id). These tests write that shared parameter on a single
+// side-car server, so they run serially (the suite is already configured serial
+// above) to avoid stomping each other.
+test.describe("Server Admin — Microsoft Tenant ID", () => {
+  const tenantField = "provider-field-auth.microsoft.tenant_id";
+
+  test("Authentication tab shows the Microsoft Tenant ID field with help and common placeholder", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await navigateToAuth(page);
+
+    // The Microsoft card carries a Tenant ID label and a plain-text (non-secret)
+    // input defaulting its placeholder to "common".
+    await expect(page.getByText("Tenant ID", { exact: true })).toBeVisible();
+
+    const input = page.getByTestId(tenantField);
+    await expect(input).toBeVisible();
+    await expect(input).toHaveAttribute("placeholder", "common");
+    // Non-secret -> plain text input, not a password field.
+    await expect(input).toHaveAttribute("type", "text");
+
+    // The per-field help line documenting the accepted tenant forms is rendered.
+    await expect(
+      page.getByText(/Entra directory \(tenant\) ID/i),
+    ).toBeVisible();
+  });
+
+  test("entering a tenant marks the Microsoft card dirty and Save persists it across reload", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.waitForLoadState("networkidle");
+
+    await navigateToAuth(page);
+
+    const input = page.getByTestId(tenantField);
+    await expect(input).toBeVisible();
+
+    const tenant = "11111111-2222-3333-4444-555555555555";
+    await input.fill(tenant);
+
+    // The Microsoft card reports unsaved changes once the value diverges.
+    await expect(page.getByTestId("provider-dirty-microsoft")).toBeVisible();
+
+    // Save the Microsoft card. Its Save button is the one inside the Microsoft
+    // card; scope the click to that card to avoid the other providers' buttons.
+    const microsoftCard = page
+      .locator("div")
+      .filter({ has: page.getByTestId(tenantField) })
+      .filter({ hasText: "Microsoft" })
+      .last();
+    await microsoftCard.getByRole("button", { name: "Save" }).click();
+
+    await expect(page.getByText("Settings saved.")).toBeVisible({
+      timeout: 10000,
+    });
+
+    // Reload and confirm the non-secret value round-trips from GET
+    // /system/parameters (it is not masked).
+    await page.reload();
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId(tenantField)).toHaveValue(tenant);
+  });
+});
+
 // A non-super-admin who reaches the Server Settings area (here, the Hashing tab)
 // must be redirected away by the route guard in server.tsx, never shown the
 // settings. We can't log in as a non-super-admin through the seeded test user
