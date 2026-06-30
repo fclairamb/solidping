@@ -8,7 +8,7 @@
 // tests exercise the ordering/weighting/classification/timeout math directly.
 //
 // Off-by-default: with the zero-value Params (all knobs 0) every function
-// reproduces today's behaviour — no penalty, no credit, never slow, the flat
+// reproduces today's behavior — no penalty, no credit, never slow, the flat
 // 30s timeout — so the feature is inert until config turns it on.
 package scheduling
 

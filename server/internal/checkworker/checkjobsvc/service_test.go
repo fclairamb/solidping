@@ -507,7 +507,7 @@ func TestReleaseLease(t *testing.T) {
 		require.Error(t, err, "should fail when trying to release another worker's lease")
 	})
 
-	t.Run("ReleaseReAnchorsEffectiveToNewSchedule", func(t *testing.T) { //nolint:paralleltest // Test shares database state
+	t.Run("ReleaseReAnchorsEffectiveToNewSchedule", func(t *testing.T) { //nolint:paralleltest // shares DB
 		worker := createTestWorker(t, ctx, dbSvc, nil)
 		now := time.Now()
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)

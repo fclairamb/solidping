@@ -13,7 +13,7 @@ import (
 func TestAdmissionDisabledByDefault(t *testing.T) {
 	t.Parallel()
 
-	// Zero config = no caps: every class is always admitted (today's behaviour).
+	// Zero config = no caps: every class is always admitted (today's behavior).
 	a := newAdmissionController(5, config.SchedulingConfig{})
 
 	for i := 0; i < 100; i++ {
@@ -107,7 +107,7 @@ func TestPaidNotCountedAsFree(t *testing.T) {
 }
 
 // TestCapsClampedToPool: a misconfiguration (reserved >= poolSize) must not wedge
-// the pool — caps are clamped so at least the intended behaviour holds.
+// the pool — caps are clamped so at least the intended behavior holds.
 func TestCapsClampedToPool(t *testing.T) {
 	t.Parallel()
 

@@ -471,10 +471,10 @@ type ServerConfig struct {
 }
 
 // SchedulingConfig tunes cost-aware, plan-weighted check execution
-// (spec 2026-06-30-09). Every knob defaults to today's behaviour: penalty and
+// (spec 2026-06-30-09). Every knob defaults to today's behavior: penalty and
 // credit of 0 (pure FIFO ordering), caps equal to the pool size (no isolation),
 // and the flat 30s execution timeout. Turning a knob on opts into the fairness
-// behaviour without a redeploy.
+// behavior without a redeploy.
 type SchedulingConfig struct {
 	// SlowCostThresholdMs classifies a check as "slow" once its cost EWMA
 	// exceeds this many ms. 0 disables slow classification and the slow lane.

@@ -121,18 +121,18 @@ func NewCheckWorker(
 // schedulingParamsFromConfig converts the koanf SchedulingConfig (seconds / ms
 // scalars) into the worker's scheduling.Params (typed durations). Every zero
 // value maps to "feature off", so the default config reproduces pure-FIFO,
-// flat-30s behaviour.
-func schedulingParamsFromConfig(c config.SchedulingConfig) scheduling.Params {
-	secs := func(s float64) time.Duration { return time.Duration(s * float64(time.Second)) }
-	ms := func(s float64) time.Duration { return time.Duration(s * float64(time.Millisecond)) }
+// flat-30s behavior.
+func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
+	secs := func(seconds float64) time.Duration { return time.Duration(seconds * float64(time.Second)) }
+	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
 
 	return scheduling.Params{
-		SlowCostThresholdMs: c.SlowCostThresholdMs,
-		PenaltyCap:          secs(c.PenaltyCapSeconds),
-		TierCreditPerWeight: secs(c.TierCreditSeconds),
-		TierCreditMax:       secs(c.TierCreditMaxSeconds),
-		CostTimeoutFactor:   c.CostTimeoutFactor,
-		CostTimeoutFloor:    ms(c.CostTimeoutFloorMs),
+		SlowCostThresholdMs: cfg.SlowCostThresholdMs,
+		PenaltyCap:          secs(cfg.PenaltyCapSeconds),
+		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
+		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
+		CostTimeoutFactor:   cfg.CostTimeoutFactor,
+		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
 	}
 }
 
@@ -578,7 +578,7 @@ func (r *CheckWorker) executeJob(
 	// the right class. A denied job (slow lane full, or a free job when only
 	// paid-reserved slots remain) is rescheduled and reclaimed later rather than
 	// occupying a slot a fast/paid check needs. With the default (zero) config
-	// every job is admitted, reproducing today's single-pool behaviour.
+	// every job is admitted, reproducing today's single-pool behavior.
 	isSlow, isPaid := r.admission.classify(r.schedParams, checkJob.CostEWMAMs, checkJob.PlanWeight)
 	if reason := r.admission.tryAdmit(isSlow, isPaid); reason != admitOK {
 		prommetrics.ChecksAdmissionDeferred.WithLabelValues(reason).Inc()

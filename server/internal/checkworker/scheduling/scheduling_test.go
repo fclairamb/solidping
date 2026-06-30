@@ -228,7 +228,7 @@ func TestUpdateCostEWMA(t *testing.T) {
 }
 
 // TestZeroParamsAreInert verifies the off-by-default contract: the zero-value
-// Params reproduces today's behaviour exactly.
+// Params reproduces today's behavior exactly.
 func TestZeroParamsAreInert(t *testing.T) {
 	t.Parallel()
 

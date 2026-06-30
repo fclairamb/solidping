@@ -25,7 +25,7 @@ import (
 //
 // Disabled knobs (0) collapse a lane to "no cap": slowLaneMax 0 → slow checks
 // are never throttled, paidReserved 0 → no slots reserved. So the zero config
-// reproduces today's single-FIFO-pool behaviour.
+// reproduces today's single-FIFO-pool behavior.
 type admissionController struct {
 	poolSize     int
 	slowLaneMax  int // max concurrent slow checks; 0 = unlimited (no slow lane)
@@ -40,22 +40,22 @@ type admissionController struct {
 // newAdmissionController builds a controller for a pool of poolSize runners.
 // Caps are clamped to [0, poolSize] so a misconfiguration cannot wedge the pool
 // (e.g. paidReserved >= poolSize would block every free job forever).
-func newAdmissionController(poolSize int, c config.SchedulingConfig) *admissionController {
-	clamp := func(v int) int {
-		if v < 0 {
+func newAdmissionController(poolSize int, cfg config.SchedulingConfig) *admissionController {
+	clamp := func(value int) int {
+		if value < 0 {
 			return 0
 		}
-		if v > poolSize {
+		if value > poolSize {
 			return poolSize
 		}
 
-		return v
+		return value
 	}
 
 	return &admissionController{
 		poolSize:     poolSize,
-		slowLaneMax:  clamp(c.SlowLaneMax),
-		paidReserved: clamp(c.PaidReserved),
+		slowLaneMax:  clamp(cfg.SlowLaneMax),
+		paidReserved: clamp(cfg.PaidReserved),
 	}
 }
 
@@ -115,8 +115,9 @@ func (a *admissionController) release(isSlow, isPaid bool) {
 	}
 }
 
-// snapshot returns the current occupancy counters (for metrics / tests).
-func (a *admissionController) snapshot() (inFlight, slow, free int) {
+// snapshot returns the current occupancy counters (inFlight, slow, free) for
+// metrics / tests.
+func (a *admissionController) snapshot() (int, int, int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
@@ -125,8 +126,9 @@ func (a *admissionController) snapshot() (inFlight, slow, free int) {
 
 // classify decides whether a job is slow and/or paid from its denormalized
 // scheduling fields. A non-positive plan_weight is free tier; slowness is
-// delegated to the pure scheduling math (cost EWMA vs threshold).
-func (a *admissionController) classify(p schedClassifier, costEWMAMs float64, planWeight int) (isSlow, isPaid bool) {
+// delegated to the pure scheduling math (cost EWMA vs threshold). Returns
+// (isSlow, isPaid).
+func (a *admissionController) classify(p schedClassifier, costEWMAMs float64, planWeight int) (bool, bool) {
 	return p.IsSlow(costEWMAMs), planWeight > 0
 }
 
