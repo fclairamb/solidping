@@ -714,7 +714,17 @@ func (s *Service) Initialize(ctx context.Context) error {
 
 	knownParameters := getKnownParameters()
 
-	// Apply parameters with precedence: env > db > defaults
+	// Apply parameters with precedence: env > db > defaults.
+	//
+	// This is the AUTHORITATIVE overlay for every system parameter, including the
+	// auth.password.* keys. For those keys it intentionally overlaps the early
+	// env-only bootstrap in config.applyPasswordHashingEnv (see that function's
+	// doc comment): config.Load applies env before the DB is up so an env-only
+	// deployment still hashes correctly at boot, while this overlay is the only
+	// place a DB-stored auth.password.* value can win. Env stays highest in both
+	// paths, so the overlap is idempotent for env and additive for DB. After this
+	// loop mutates cfg.Auth.Password.*, the caller (app.InitializeSystemConfig)
+	// re-resolves and re-installs the hashing policy from the overlaid config.
 	for i := range knownParameters {
 		def := &knownParameters[i]
 		// Check environment variable first (highest priority)

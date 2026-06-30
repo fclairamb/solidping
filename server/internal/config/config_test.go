@@ -499,6 +499,32 @@ func TestApplyPasswordHashingEnv(t *testing.T) {
 	r.False(cfg.RehashOnLogin, "SP_AUTH_PASSWORD_REHASH_ON_LOGIN=false must override the default")
 }
 
+// TestApplyPasswordHashingEnvIsIdempotent pins the safety property behind the
+// deliberate dual read of SP_AUTH_PASSWORD_* (config.Load's early bootstrap path
+// AND systemconfig's authoritative overlay both read it): applying the env on top
+// of an already-env-applied config must be a no-op. This is what makes the
+// overlap harmless — env can only ever set the same value, never drift, so the
+// two read paths can never conflict. Uses t.Setenv, so it is not parallel.
+func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_PASSWORD_ALGORITHM", "bcrypt")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_MEMORY", "19456")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_TIME", "2")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_THREADS", "1")
+	t.Setenv("SP_AUTH_PASSWORD_BCRYPT_COST", "14")
+	t.Setenv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", "false")
+
+	cfg := defaultPasswordConfig()
+	applyPasswordHashingEnv(&cfg)
+	once := cfg
+
+	// Re-apply the same env (mimicking the second read path) — must not change a
+	// single field.
+	applyPasswordHashingEnv(&cfg)
+	r.Equal(once, cfg, "re-reading SP_AUTH_PASSWORD_* must be idempotent")
+}
+
 // TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
 // bcrypt with honored cost passes, and each misconfiguration is rejected.
 func TestValidatePasswordConfig(t *testing.T) {

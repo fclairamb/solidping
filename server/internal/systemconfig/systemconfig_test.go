@@ -10,6 +10,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
 
+// Env var names reused across the password precedence cases below, hoisted to
+// constants so the repeated literals don't trip goconst.
+const (
+	envPasswordAlgorithm    = "SP_AUTH_PASSWORD_ALGORITHM"
+	envPasswordArgon2Memory = "SP_AUTH_PASSWORD_ARGON2_MEMORY"
+)
+
 func TestParseBool(t *testing.T) {
 	t.Parallel()
 
@@ -221,17 +228,37 @@ func TestInitializeAppliesPasswordParams(t *testing.T) {
 			wantRehash:    false,
 		},
 		{
-			name: "env overrides db value",
+			// env > DB conflict: a DB row says argon2id/m=19456 but the env var
+			// sets a *conflicting* bcrypt/m=65536. The env value must win after
+			// the overlay — this is the authoritative end-to-end precedence the
+			// dual read paths must agree on.
+			name: "env overrides conflicting db value",
 			dbParams: map[string]paramRow{
 				string(KeyPasswordAlgorithm):    {value: "argon2id"},
 				string(KeyPasswordArgon2Memory): {value: float64(19456)},
 			},
 			env: map[string]string{
-				"SP_AUTH_PASSWORD_ALGORITHM":     "bcrypt",
-				"SP_AUTH_PASSWORD_ARGON2_MEMORY": "65536",
+				envPasswordAlgorithm:    "bcrypt",
+				envPasswordArgon2Memory: "65536",
 			},
 			wantAlgorithm: "bcrypt",
 			wantMemory:    65536,
+			wantRehash:    false, // zero-value cfg, no rehash row
+		},
+		{
+			// env > default with NO DB row: env alone must override the
+			// (zero-value) default, proving the env-only bootstrap path and the
+			// overlay resolve to the same value rather than fighting each other.
+			name:     "env wins over default with no db row",
+			dbParams: map[string]paramRow{},
+			env: map[string]string{
+				envPasswordAlgorithm:           "bcrypt",
+				"SP_AUTH_PASSWORD_BCRYPT_COST": "14",
+				envPasswordArgon2Memory:        "19456",
+			},
+			wantAlgorithm: "bcrypt",
+			wantMemory:    19456,
+			wantCost:      14,
 			wantRehash:    false, // zero-value cfg, no rehash row
 		},
 		{

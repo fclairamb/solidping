@@ -764,6 +764,23 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 // (e.g. auth.password.argon2.key.length). Reading them here keeps the
 // password-hashing policy env-configurable, mirroring applyRateLimitingEnv.
 // SP_AUTH_PASSWORD_ALGORITHM (single word) is folded in for consistency.
+//
+// SP_AUTH_PASSWORD_* is read in TWO places, deliberately — this is not an
+// accidental double-apply:
+//
+//  1. Here (config.Load), this is the EARLY / env-only bootstrap path. The policy
+//     installed in NewServer (server.go:165) runs before the DB is reachable, so
+//     an env-only deployment with no DB-stored params must still pick up its
+//     hashing profile from env. This path owns nothing but env.
+//  2. systemconfig (Service.Initialize), the AUTHORITATIVE env>DB>default overlay.
+//     It re-reads the same SP_AUTH_PASSWORD_* env vars and the DB-stored
+//     auth.password.* parameters and re-resolves the policy afterwards
+//     (app.reResolvePasswordPolicy). Because env keeps the highest precedence in
+//     BOTH paths, re-applying env here is idempotent: env can only ever set the
+//     same value the overlay would. A DB-stored value (no env) is invisible to
+//     this early path and only takes effect through the overlay — which is exactly
+//     the intended division: env-only deployments work at boot, DB-backed
+//     overrides win after the overlay.
 func applyPasswordHashingEnv(cfg *PasswordConfig) {
 	strEnv := func(name string, dst *string) {
 		if v := os.Getenv(name); v != "" {
