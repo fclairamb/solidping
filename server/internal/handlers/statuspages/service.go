@@ -1105,7 +1105,7 @@ const hourlyBucketCount = 24
 
 // enrichHourly populates each resource's availability with 24 hourly buckets for
 // the 24h period. It fetches stored hourly rows for the last 24 hours and
-// synthesizes the current (in-progress) hour from raw rows — the hourly analogue
+// synthesizes the current (in-progress) hour from raw rows — the hourly analog
 // of the daily synthesizeMissingDailyBuckets + fillTodayFromRaw path — anchored
 // on now.Truncate(time.Hour), exactly like the badges period=24h bucketing.
 func (s *Service) enrichHourly(

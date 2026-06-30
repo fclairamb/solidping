@@ -890,7 +890,7 @@ func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 // TestEnrichHourly_HealthyCheckReads100 exercises the full 24h path through the
 // public view: a healthy check whose only signal for the current hour is raw
 // rows (no stored hourly rollup yet) must render 24 buckets and read 100% for
-// the current hour — synthesised from raw via the shared availability rule.
+// the current hour — synthesized from raw via the shared availability rule.
 func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
 	t.Parallel()
 
@@ -934,7 +934,7 @@ func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
 	r.Equal("24h", avail.Period)
 	r.Len(avail.DailyAvailability, 24, "24h renders 24 hourly buckets")
 
-	// The current (last) hourly bucket is synthesised from raw and reads 100%.
+	// The current (last) hourly bucket is synthesized from raw and reads 100%.
 	last := avail.DailyAvailability[23]
 	r.Equal("up", last.Status, "a healthy current hour must read up, not noData")
 	r.InDelta(100.0, last.AvailabilityPct, 0.001)
