@@ -48,6 +48,7 @@ const (
 	KeyGitLabClientSecret       ParameterKey = "auth.gitlab.client_secret"
 	KeyMicrosoftClientID        ParameterKey = "auth.microsoft.client_id"
 	KeyMicrosoftClientSecret    ParameterKey = "auth.microsoft.client_secret"
+	KeyMicrosoftTenantID        ParameterKey = "auth.microsoft.tenant_id"
 	KeySlackAppID               ParameterKey = "auth.slack.app_id"
 	KeySlackClientID            ParameterKey = "auth.slack.client_id"
 	KeySlackClientSecret        ParameterKey = "auth.slack.client_secret"
@@ -352,6 +353,22 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Microsoft.ClientSecret = v
+				}
+			},
+		},
+		{
+			// Tenant ID is part of the public Microsoft authorize/token URL, not a
+			// credential -> Secret:false so it round-trips through GET /system/parameters
+			// as plain text. Empty means the "common" multi-tenant default, which the
+			// URL builders substitute (handlers/auth/microsoft.go, microsoft_service.go).
+			// Trim surrounding whitespace so a stray space in a pasted GUID can't
+			// silently corrupt the endpoint URL.
+			Key:    KeyMicrosoftTenantID,
+			EnvVar: "SP_MICROSOFT_TENANT_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Microsoft.TenantID = strings.TrimSpace(v)
 				}
 			},
 		},

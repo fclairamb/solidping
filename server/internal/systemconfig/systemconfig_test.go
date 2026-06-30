@@ -303,6 +303,100 @@ func TestInitializeAppliesPasswordParams(t *testing.T) {
 	}
 }
 
+// TestKnownMicrosoftTenantKey pins the canonical auth.microsoft.tenant_id key the
+// backend reads and asserts it is non-secret (it is part of the public authorize
+// URL, not a credential). The dashboard Authentication page
+// (web/dash0/src/routes/orgs/$org/server.auth.tsx) writes this literal key; if
+// either side drifts, saving the tenant from the UI silently stops applying.
+func TestKnownMicrosoftTenantKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("auth.microsoft.tenant_id", string(KeyMicrosoftTenantID))
+
+	known := getKnownParameters()
+	byKey := make(map[ParameterKey]ParameterDefinition, len(known))
+	for _, def := range known {
+		byKey[def.Key] = def
+	}
+
+	def, ok := byKey[KeyMicrosoftTenantID]
+	r.Truef(ok, "expected %q to be a known parameter", KeyMicrosoftTenantID)
+	r.NotNil(def.ApplyFunc)
+	r.Equal("SP_MICROSOFT_TENANT_ID", def.EnvVar)
+	r.Falsef(def.Secret, "%q must not be secret", KeyMicrosoftTenantID)
+}
+
+// TestInitializeAppliesMicrosoftTenant verifies the full DB -> cfg apply path for
+// the Microsoft tenant: a row under auth.microsoft.tenant_id lands on
+// cfg.Microsoft.TenantID on Initialize, env overrides the DB value
+// (env > db > default), surrounding whitespace is trimmed, and an absent key
+// leaves TenantID == "" (which the URL builders treat as the "common" default).
+// t.Setenv below makes this test non-parallel.
+func TestInitializeAppliesMicrosoftTenant(t *testing.T) {
+	const envTenant = "SP_MICROSOFT_TENANT_ID"
+
+	tests := []struct {
+		name       string
+		dbValue    any
+		hasDBValue bool
+		env        map[string]string
+		wantTenant string
+	}{
+		{
+			name:       "db value applies to cfg",
+			dbValue:    "11111111-2222-3333-4444-555555555555",
+			hasDBValue: true,
+			wantTenant: "11111111-2222-3333-4444-555555555555",
+		},
+		{
+			name:       "env overrides db value",
+			dbValue:    "tenant-from-db",
+			hasDBValue: true,
+			env:        map[string]string{envTenant: "tenant-from-env"},
+			wantTenant: "tenant-from-env",
+		},
+		{
+			name:       "surrounding whitespace is trimmed",
+			dbValue:    "  contoso.onmicrosoft.com  ",
+			hasDBValue: true,
+			wantTenant: "contoso.onmicrosoft.com",
+		},
+		{
+			name:       "absent key leaves empty tenant (common default)",
+			hasDBValue: false,
+			wantTenant: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := require.New(t)
+			ctx := context.Background()
+
+			for k, v := range tt.env {
+				t.Setenv(k, v)
+			}
+
+			dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+			r.NoError(err)
+			r.NoError(dbSvc.Initialize(ctx))
+			t.Cleanup(func() { _ = dbSvc.Close() })
+
+			if tt.hasDBValue {
+				r.NoError(dbSvc.SetSystemParameter(ctx, string(KeyMicrosoftTenantID), tt.dbValue, false))
+			}
+
+			cfg := &config.Config{}
+			svc := NewService(dbSvc, cfg)
+			r.NoError(svc.Initialize(ctx))
+
+			r.Equal(tt.wantTenant, cfg.Microsoft.TenantID)
+		})
+	}
+}
+
 // TestInitializeAppliesSlackParams verifies the full DB -> cfg apply path that
 // the dashboard depends on: rows persisted under the auth.slack.* keys must land
 // on cfg.Slack on Initialize, and env vars must override the DB value
