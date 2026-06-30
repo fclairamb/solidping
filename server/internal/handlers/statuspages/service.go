@@ -32,6 +32,9 @@ var (
 	ErrSlugConflict = errors.New("slug already exists")
 	// ErrInvalidSlugFormat is returned when a slug has an invalid format.
 	ErrInvalidSlugFormat = errors.New("invalid slug format")
+	// ErrInvalidHistoryPeriod is returned when historyPeriod is not one of the
+	// supported enum values (24h, 7d, 30d, 90d).
+	ErrInvalidHistoryPeriod = errors.New("invalid history period")
 	// ErrReorderUIDsMismatch is returned when a reorder request's UID list
 	// does not exactly match the section's current resources (missing,
 	// extra, or duplicate UIDs).
@@ -49,6 +52,20 @@ func validateSlug(slug string) error {
 
 	if !slugRegex.MatchString(slug) {
 		return ErrInvalidSlugFormat
+	}
+
+	return nil
+}
+
+// validateHistoryPeriod rejects a non-nil historyPeriod that is not one of the
+// supported enum values. A nil pointer (field omitted) is valid.
+func validateHistoryPeriod(period *string) error {
+	if period == nil {
+		return nil
+	}
+
+	if !models.StatusPagePeriod(*period).Valid() {
+		return ErrInvalidHistoryPeriod
 	}
 
 	return nil
@@ -91,6 +108,7 @@ type StatusPageResponse struct {
 	ShowAvailability bool                         `json:"showAvailability"`
 	ShowResponseTime bool                         `json:"showResponseTime"`
 	HistoryDays      int                          `json:"historyDays"`
+	HistoryPeriod    string                       `json:"historyPeriod"`
 	Language         *string                      `json:"language,omitempty"`
 	Sections         []StatusPageSectionResponse  `json:"sections,omitempty"`
 	RecentUpdates    []StatusUpdatePublicResponse `json:"recentUpdates,omitempty"`
@@ -132,14 +150,25 @@ type ResourceCheckInfo struct {
 
 // ResourceAvailabilityData contains availability and performance data for public display.
 type ResourceAvailabilityData struct {
-	OverallAvailabilityPct *float64                 `json:"overallAvailabilityPct,omitempty"`
-	DailyAvailability      []DailyAvailabilityPoint `json:"dailyAvailability,omitempty"`
-	ResponseTimeData       []ResponseTimePoint      `json:"responseTimeData,omitempty"`
+	OverallAvailabilityPct *float64 `json:"overallAvailabilityPct,omitempty"`
+	// DailyAvailability holds the per-bucket availability points. The JSON key is
+	// kept for back-compat even when BucketUnit is "hour" (hourly buckets); read
+	// BucketUnit/Period to label the axis correctly.
+	DailyAvailability []AvailabilityPoint `json:"dailyAvailability,omitempty"`
+	ResponseTimeData  []ResponseTimePoint `json:"responseTimeData,omitempty"`
+	// Period is the active history period ("24h"|"7d"|"30d"|"90d").
+	Period string `json:"period,omitempty"`
+	// BucketUnit is the granularity of each point: "day" or "hour".
+	BucketUnit string `json:"bucketUnit,omitempty"`
 }
 
-// DailyAvailabilityPoint represents availability data for a single day.
-type DailyAvailabilityPoint struct {
+// AvailabilityPoint represents availability data for a single bucket (a day in
+// daily mode, an hour in 24h mode). Date is the UTC calendar date (kept for
+// back-compat); Time is the bucket start as RFC3339 and is the authoritative
+// anchor for hourly buckets.
+type AvailabilityPoint struct {
 	Date            string  `json:"date"`
+	Time            string  `json:"time,omitempty"`
 	AvailabilityPct float64 `json:"availabilityPct"`
 	Status          string  `json:"status"`
 }
@@ -165,6 +194,7 @@ type CreateStatusPageRequest struct {
 	ShowAvailability *bool   `json:"showAvailability,omitempty"`
 	ShowResponseTime *bool   `json:"showResponseTime,omitempty"`
 	HistoryDays      *int    `json:"historyDays,omitempty"`
+	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
 }
 
@@ -179,6 +209,7 @@ type UpdateStatusPageRequest struct {
 	ShowAvailability *bool   `json:"showAvailability,omitempty"`
 	ShowResponseTime *bool   `json:"showResponseTime,omitempty"`
 	HistoryDays      *int    `json:"historyDays,omitempty"`
+	HistoryPeriod    *string `json:"historyPeriod,omitempty"`
 	Language         *string `json:"language,omitempty"`
 }
 
@@ -258,12 +289,37 @@ func applyCreateFields(page *models.StatusPage, req *CreateStatusPageRequest) {
 		page.ShowResponseTime = *req.ShowResponseTime
 	}
 
-	if req.HistoryDays != nil {
+	// History window: the period enum is the source of truth. Accept the legacy
+	// historyDays too (mapped to the enum) for one release. When the enum is set,
+	// keep history_days roughly in sync for back-compat (24h → 1).
+	if req.HistoryPeriod != nil {
+		page.HistoryPeriod = *req.HistoryPeriod
+		page.HistoryDays = daysForPeriod(models.StatusPagePeriod(*req.HistoryPeriod))
+	} else if req.HistoryDays != nil {
 		page.HistoryDays = *req.HistoryDays
+		page.HistoryPeriod = string(models.PeriodFromDays(*req.HistoryDays))
 	}
 
 	if req.Language != nil {
 		page.Language = req.Language
+	}
+}
+
+// daysForPeriod returns a back-compat history_days count for a period enum.
+// 24h has no day equivalent, so it maps to 1 (the smallest sane value) purely
+// to keep the deprecated column populated; bucketing always uses the enum.
+func daysForPeriod(period models.StatusPagePeriod) int {
+	switch period {
+	case models.StatusPagePeriod24h:
+		return 1
+	case models.StatusPagePeriod7d:
+		return 7
+	case models.StatusPagePeriod30d:
+		return 30
+	case models.StatusPagePeriod90d:
+		return 90
+	default:
+		return 90
 	}
 }
 
@@ -278,6 +334,10 @@ func (s *Service) CreateStatusPage(
 
 	if errSlug := validateSlug(req.Slug); errSlug != nil {
 		return StatusPageResponse{}, errSlug
+	}
+
+	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
+		return StatusPageResponse{}, errPeriod
 	}
 
 	// Check slug conflict
@@ -366,6 +426,10 @@ func (s *Service) UpdateStatusPage(
 		return StatusPageResponse{}, errVal
 	}
 
+	if errPeriod := validateHistoryPeriod(req.HistoryPeriod); errPeriod != nil {
+		return StatusPageResponse{}, errPeriod
+	}
+
 	// Handle default toggle
 	if req.IsDefault != nil && *req.IsDefault && !page.IsDefault {
 		if errClear := s.clearDefaultStatusPage(ctx, org.UID); errClear != nil {
@@ -383,7 +447,19 @@ func (s *Service) UpdateStatusPage(
 		ShowAvailability: req.ShowAvailability,
 		ShowResponseTime: req.ShowResponseTime,
 		HistoryDays:      req.HistoryDays,
+		HistoryPeriod:    req.HistoryPeriod,
 		Language:         req.Language,
+	}
+
+	// The period enum is the source of truth; keep history_days in sync for
+	// back-compat when only the enum is sent. When the legacy historyDays is
+	// sent without an enum, derive the enum so the column stays consistent.
+	if req.HistoryPeriod != nil {
+		days := daysForPeriod(models.StatusPagePeriod(*req.HistoryPeriod))
+		update.HistoryDays = &days
+	} else if req.HistoryDays != nil {
+		derived := string(models.PeriodFromDays(*req.HistoryDays))
+		update.HistoryPeriod = &derived
 	}
 
 	if errUpdate := s.db.UpdateStatusPage(ctx, page.UID, &update); errUpdate != nil {
@@ -873,6 +949,38 @@ func (s *Service) ViewDefaultStatusPage(
 
 // --- Availability enrichment ---
 
+// statusPagePeriodInfo returns the bucket period type, the number of buckets,
+// and the bucket duration for a status-page history period. It mirrors the
+// badges endpoint's uptimeBarPeriodInfo so the two surfaces bucket identically:
+// 24h → (hour, 24, 1h); 7d/30d/90d → (day, N, 24h). An unknown value defaults
+// to 90 daily buckets.
+func statusPagePeriodInfo(period models.StatusPagePeriod) (string, int, time.Duration) {
+	switch period {
+	case models.StatusPagePeriod24h:
+		return models.PeriodTypeHour, 24, time.Hour
+	case models.StatusPagePeriod7d:
+		return models.PeriodTypeDay, 7, 24 * time.Hour
+	case models.StatusPagePeriod30d:
+		return models.PeriodTypeDay, 30, 24 * time.Hour
+	case models.StatusPagePeriod90d:
+		return models.PeriodTypeDay, 90, 24 * time.Hour
+	default:
+		return models.PeriodTypeDay, 90, 24 * time.Hour
+	}
+}
+
+// pagePeriod resolves a page's effective history period. It prefers the
+// history_period enum; for legacy rows whose column is empty or invalid it
+// falls back to mapping history_days.
+func pagePeriod(page *models.StatusPage) models.StatusPagePeriod {
+	p := models.StatusPagePeriod(page.HistoryPeriod)
+	if p.Valid() {
+		return p
+	}
+
+	return models.PeriodFromDays(page.HistoryDays)
+}
+
 //nolint:cyclop,funlen // Availability enrichment has inherent conditional complexity
 func (s *Service) enrichWithAvailability(
 	ctx context.Context, orgUID string, page *models.StatusPage, sections []StatusPageSectionResponse,
@@ -886,6 +994,14 @@ func (s *Service) enrichWithAvailability(
 	}
 
 	if len(checkUIDs) == 0 {
+		return
+	}
+
+	// 24h renders 24 hourly buckets — a separate code path from the daily mode,
+	// mirroring the badges period=24h hourly bucketing.
+	if pagePeriod(page).IsHourly() {
+		s.enrichHourly(ctx, orgUID, page, sections, checkUIDs)
+
 		return
 	}
 
@@ -964,6 +1080,8 @@ func (s *Service) enrichWithAvailability(
 	}
 
 	// Build availability data for each resource
+	period := string(pagePeriod(page))
+
 	for i := range sections {
 		for j := range sections[i].Resources {
 			checkUID := sections[i].Resources[j].CheckUID
@@ -972,6 +1090,8 @@ func (s *Service) enrichWithAvailability(
 			availData := buildAvailabilityData(
 				results, recentResults, page.HistoryDays, page.ShowAvailability, page.ShowResponseTime,
 			)
+			availData.Period = period
+			availData.BucketUnit = models.PeriodTypeDay
 			sections[i].Resources[j].Availability = availData
 		}
 	}
@@ -979,6 +1099,213 @@ func (s *Service) enrichWithAvailability(
 
 // hoursPerDay caps how many hourly rows we ever expect per day per check.
 const hoursPerDay = 24
+
+// hourlyBucketCount is the number of hourly buckets the 24h view renders.
+const hourlyBucketCount = 24
+
+// enrichHourly populates each resource's availability with 24 hourly buckets for
+// the 24h period. It fetches stored hourly rows for the last 24 hours and
+// synthesizes the current (in-progress) hour from raw rows — the hourly analogue
+// of the daily synthesizeMissingDailyBuckets + fillTodayFromRaw path — anchored
+// on now.Truncate(time.Hour), exactly like the badges period=24h bucketing.
+func (s *Service) enrichHourly(
+	ctx context.Context, orgUID string, page *models.StatusPage,
+	sections []StatusPageSectionResponse, checkUIDs []string,
+) {
+	now := time.Now().UTC()
+	// The newest of the 24 buckets is the current, in-progress hour; the oldest is
+	// 23 hours earlier. -(n-1) keeps the current hour inside the window.
+	bucketStart := now.Truncate(time.Hour).Add(-time.Duration(hourlyBucketCount-1) * time.Hour)
+
+	// Stored hourly rollups for the window.
+	hourlyFilter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        checkUIDs,
+		PeriodTypes:      []string{models.PeriodTypeHour},
+		PeriodStartAfter: &bucketStart,
+		Limit:            hourlyBucketCount * len(checkUIDs),
+	}
+
+	hourlyByCheck := make(map[string][]*models.Result)
+
+	if resp, err := s.db.ListResults(ctx, hourlyFilter); err == nil && resp != nil {
+		for _, r := range resp.Results {
+			hourlyByCheck[r.CheckUID] = append(hourlyByCheck[r.CheckUID], r)
+		}
+	}
+
+	// Synthesize the current hour from raw rows: the raw→hour rollup lags
+	// (RetentionRaw), so the in-progress hour has no stored hourly row yet.
+	s.fillCurrentHourFromRaw(ctx, orgUID, hourlyByCheck, checkUIDs, now.Truncate(time.Hour))
+
+	// Recent results for the response-time chart (same as the daily path).
+	recentByCheck := make(map[string][]*models.Result)
+
+	if page.ShowResponseTime {
+		const responseTimeLimit = 100
+
+		recentFilter := &models.ListResultsFilter{
+			OrganizationUID: orgUID,
+			CheckUIDs:       checkUIDs,
+			Limit:           responseTimeLimit * len(checkUIDs),
+		}
+
+		if resp, err := s.db.ListResults(ctx, recentFilter); err == nil && resp != nil {
+			for _, r := range resp.Results {
+				if len(recentByCheck[r.CheckUID]) < responseTimeLimit {
+					recentByCheck[r.CheckUID] = append(recentByCheck[r.CheckUID], r)
+				}
+			}
+		}
+	}
+
+	for i := range sections {
+		for j := range sections[i].Resources {
+			checkUID := sections[i].Resources[j].CheckUID
+			availData := buildHourlyAvailabilityData(
+				hourlyByCheck[checkUID], recentByCheck[checkUID], bucketStart,
+				page.ShowAvailability, page.ShowResponseTime,
+			)
+			availData.Period = string(models.StatusPagePeriod24h)
+			availData.BucketUnit = models.PeriodTypeHour
+			sections[i].Resources[j].Availability = availData
+		}
+	}
+}
+
+// fillCurrentHourFromRaw synthesizes a current-hour hourly row from raw results
+// for any check that lacks a stored row for the in-progress hour. Mirrors
+// fillTodayFromRaw but at hourly granularity.
+func (s *Service) fillCurrentHourFromRaw(
+	ctx context.Context, orgUID string,
+	hourlyByCheck map[string][]*models.Result,
+	checkUIDs []string,
+	hourStart time.Time,
+) {
+	var missing []string
+
+	for _, checkUID := range checkUIDs {
+		hasHour := false
+
+		for _, r := range hourlyByCheck[checkUID] {
+			if r.PeriodStart.UTC().Truncate(time.Hour).Equal(hourStart) {
+				hasHour = true
+
+				break
+			}
+		}
+
+		if !hasHour {
+			missing = append(missing, checkUID)
+		}
+	}
+
+	if len(missing) == 0 {
+		return
+	}
+
+	rawFilter := &models.ListResultsFilter{
+		OrganizationUID:  orgUID,
+		CheckUIDs:        missing,
+		PeriodTypes:      []string{models.PeriodTypeRaw},
+		PeriodStartAfter: &hourStart,
+		Limit:            rawSamplesPerCheck * len(missing),
+	}
+
+	rawResp, err := s.db.ListResults(ctx, rawFilter)
+	if err != nil || rawResp == nil {
+		return
+	}
+
+	rawByCheck := make(map[string][]*models.Result)
+	for _, r := range rawResp.Results {
+		if len(rawByCheck[r.CheckUID]) < rawSamplesPerCheck {
+			rawByCheck[r.CheckUID] = append(rawByCheck[r.CheckUID], r)
+		}
+	}
+
+	for _, checkUID := range missing {
+		synth := aggregateRawToHour(checkUID, rawByCheck[checkUID], hourStart)
+		if synth == nil {
+			continue
+		}
+
+		hourlyByCheck[checkUID] = append(hourlyByCheck[checkUID], synth)
+	}
+}
+
+// aggregateRawToHour derives a synthetic hourly Result from raw rows. It applies
+// the exact same availability rule as aggregateRawToDaily (lifecycle markers
+// excluded from the denominator, up+warning counted as success, via
+// models.RawAvailability), so the synthesized current hour matches the stored
+// hourly rows and the badges period=24h computation. Only periodStart differs
+// (an hour boundary instead of a day boundary).
+func aggregateRawToHour(checkUID string, rawResults []*models.Result, periodStart time.Time) *models.Result {
+	return aggregateRawToDaily(checkUID, rawResults, periodStart)
+}
+
+// buildHourlyAvailabilityData builds the 24 hourly availability points anchored
+// on bucketStart (oldest → newest, newest = current hour). Buckets with no data
+// get status "noData". The overall weighted average matches the daily path.
+func buildHourlyAvailabilityData(
+	hourlyResults, recentResults []*models.Result, bucketStart time.Time,
+	showAvailability, showResponseTime bool,
+) *ResourceAvailabilityData {
+	data := &ResourceAvailabilityData{}
+
+	// Index hourly results by their truncated UTC hour.
+	resultsByHour := make(map[time.Time]*models.Result, len(hourlyResults))
+	for _, r := range hourlyResults {
+		resultsByHour[r.PeriodStart.UTC().Truncate(time.Hour)] = r
+	}
+
+	if showAvailability {
+		points := make([]AvailabilityPoint, 0, hourlyBucketCount)
+
+		var (
+			totalWeightedAvail float64
+			totalChecksSum     int
+		)
+
+		for i := range hourlyBucketCount {
+			bucket := bucketStart.Add(time.Duration(i) * time.Hour)
+
+			point := AvailabilityPoint{
+				Date:   bucket.Format("2006-01-02"),
+				Time:   bucket.Format(time.RFC3339),
+				Status: "noData",
+			}
+
+			if result, ok := resultsByHour[bucket]; ok && result.AvailabilityPct != nil {
+				point.AvailabilityPct = *result.AvailabilityPct
+				point.Status = availabilityToStatus(*result.AvailabilityPct)
+
+				checks := 1
+				if result.TotalChecks != nil {
+					checks = *result.TotalChecks
+				}
+
+				totalWeightedAvail += *result.AvailabilityPct * float64(checks)
+				totalChecksSum += checks
+			}
+
+			points = append(points, point)
+		}
+
+		data.DailyAvailability = points
+
+		if totalChecksSum > 0 {
+			overall := totalWeightedAvail / float64(totalChecksSum)
+			data.OverallAvailabilityPct = &overall
+		}
+	}
+
+	if showResponseTime {
+		data.ResponseTimeData = buildResponseTimeData(recentResults)
+	}
+
+	return data
+}
 
 // synthesizeMissingDailyBuckets fills any UTC day in the history window
 // [todayStart - (historyDays-1), todayStart] that lacks a stored daily row
@@ -1212,7 +1539,7 @@ func buildAvailabilityData(
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
 	if showAvailability {
-		daily := make([]DailyAvailabilityPoint, 0, historyDays)
+		daily := make([]AvailabilityPoint, 0, historyDays)
 
 		var totalWeightedAvail float64
 
@@ -1222,8 +1549,9 @@ func buildAvailabilityData(
 			day := today.AddDate(0, 0, -dayOffset)
 			dateStr := day.Format("2006-01-02")
 
-			point := DailyAvailabilityPoint{
+			point := AvailabilityPoint{
 				Date:   dateStr,
+				Time:   day.Format(time.RFC3339),
 				Status: "noData",
 			}
 
@@ -1469,6 +1797,7 @@ func convertPageToResponse(page *models.StatusPage) StatusPageResponse {
 		ShowAvailability: page.ShowAvailability,
 		ShowResponseTime: page.ShowResponseTime,
 		HistoryDays:      page.HistoryDays,
+		HistoryPeriod:    string(pagePeriod(page)),
 		Language:         page.Language,
 		CreatedAt:        &page.CreatedAt,
 	}

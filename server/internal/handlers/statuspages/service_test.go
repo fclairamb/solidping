@@ -420,7 +420,7 @@ func TestBuildAvailabilityData_UTCBucketing(t *testing.T) {
 	r.Len(out.DailyAvailability, 7)
 
 	yesterdayStr := yesterdayUTC.Format("2006-01-02")
-	var matched *DailyAvailabilityPoint
+	var matched *AvailabilityPoint
 	for i := range out.DailyAvailability {
 		if out.DailyAvailability[i].Date == yesterdayStr {
 			matched = &out.DailyAvailability[i]
@@ -739,3 +739,207 @@ func TestGetCheckInfo_InMaintenanceFlag(t *testing.T) {
 		})
 	}
 }
+
+// --- 24h hourly history period (spec 2026-06-30-03) ---
+
+// TestStatusPagePeriodInfo pins the period→(bucketType, count, duration) mapping,
+// which must match the badges endpoint's uptimeBarPeriodInfo so the two surfaces
+// bucket identically.
+func TestStatusPagePeriodInfo(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	cases := []struct {
+		period   models.StatusPagePeriod
+		wantType string
+		wantN    int
+		wantDur  time.Duration
+	}{
+		{models.StatusPagePeriod24h, models.PeriodTypeHour, 24, time.Hour},
+		{models.StatusPagePeriod7d, models.PeriodTypeDay, 7, 24 * time.Hour},
+		{models.StatusPagePeriod30d, models.PeriodTypeDay, 30, 24 * time.Hour},
+		{models.StatusPagePeriod90d, models.PeriodTypeDay, 90, 24 * time.Hour},
+		{models.StatusPagePeriod("bogus"), models.PeriodTypeDay, 90, 24 * time.Hour},
+	}
+
+	for _, tc := range cases {
+		pt, n, dur := statusPagePeriodInfo(tc.period)
+		r.Equal(tc.wantType, pt, "period %q type", tc.period)
+		r.Equal(tc.wantN, n, "period %q count", tc.period)
+		r.Equal(tc.wantDur, dur, "period %q duration", tc.period)
+	}
+}
+
+// TestPagePeriod_ResolvesEnumThenDays verifies the effective period prefers the
+// enum and falls back to mapping history_days for legacy rows with an empty or
+// invalid history_period.
+func TestPagePeriod_ResolvesEnumThenDays(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal(models.StatusPagePeriod24h, pagePeriod(&models.StatusPage{HistoryPeriod: "24h"}))
+	r.Equal(models.StatusPagePeriod7d, pagePeriod(&models.StatusPage{HistoryPeriod: "7d"}))
+	// Empty enum → fall back to history_days mapping.
+	r.Equal(models.StatusPagePeriod30d, pagePeriod(&models.StatusPage{HistoryPeriod: "", HistoryDays: 30}))
+	r.Equal(models.StatusPagePeriod7d, pagePeriod(&models.StatusPage{HistoryPeriod: "", HistoryDays: 7}))
+	r.Equal(models.StatusPagePeriod90d, pagePeriod(&models.StatusPage{HistoryPeriod: "", HistoryDays: 365}))
+	// Invalid enum → fall back too.
+	r.Equal(models.StatusPagePeriod90d, pagePeriod(&models.StatusPage{HistoryPeriod: "nonsense", HistoryDays: 999}))
+}
+
+// TestValidateHistoryPeriod accepts the four enum values and a nil (omitted)
+// pointer, and rejects anything else with ErrInvalidHistoryPeriod.
+func TestValidateHistoryPeriod(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.NoError(validateHistoryPeriod(nil))
+	for _, ok := range []string{"24h", "7d", "30d", "90d"} {
+		v := ok
+		r.NoError(validateHistoryPeriod(&v), "%q should be valid", ok)
+	}
+	for _, bad := range []string{"1d", "24", "h24", "", "7D"} {
+		v := bad
+		r.ErrorIs(validateHistoryPeriod(&v), ErrInvalidHistoryPeriod, "%q should be invalid", bad)
+	}
+}
+
+// TestAggregateRawToHour_ParityWithDaily is the key regression guard: the hourly
+// current-bucket synthesis must apply the exact same availability rule as the
+// daily synthesis (and therefore the badges period=24h computation). Only the
+// period boundary differs.
+func TestAggregateRawToHour_ParityWithDaily(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	hourStart := time.Date(2026, 5, 11, 14, 0, 0, 0, time.UTC)
+	dayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
+	upStatus := int(models.ResultStatusUp)
+	downStatus := int(models.ResultStatusDown)
+	createdStatus := int(models.ResultStatusCreated)
+	warningStatus := int(models.ResultStatusWarning)
+
+	raw := []*models.Result{
+		{Status: &upStatus, Duration: ptrFloat32(40)},
+		{Status: &warningStatus, Duration: ptrFloat32(70)},
+		{Status: &downStatus, Duration: ptrFloat32(9999)},
+		{Status: &createdStatus}, // lifecycle → excluded
+		{Status: &upStatus, Duration: ptrFloat32(60)},
+	}
+
+	hourly := aggregateRawToHour("check-1", raw, hourStart)
+	daily := aggregateRawToDaily("check-1", raw, dayStart)
+
+	r.NotNil(hourly)
+	r.NotNil(daily)
+	// Same availability rule: up+warning success over non-lifecycle denominator.
+	r.NotNil(hourly.AvailabilityPct)
+	r.NotNil(daily.AvailabilityPct)
+	r.InDelta(*daily.AvailabilityPct, *hourly.AvailabilityPct, 0.0001, "hourly must match daily availability")
+	r.InDelta(75.0, *hourly.AvailabilityPct, 0.01, "3 up/warning of 4 countable = 75%")
+	r.Equal(*daily.TotalChecks, *hourly.TotalChecks)
+	r.Equal(4, *hourly.TotalChecks, "the created lifecycle row is excluded")
+	r.Equal(*daily.SuccessfulChecks, *hourly.SuccessfulChecks)
+	// Only the period boundary differs.
+	r.Equal(hourStart, hourly.PeriodStart)
+	r.Equal(dayStart, daily.PeriodStart)
+}
+
+// TestBuildHourlyAvailabilityData_Builds24Buckets verifies the 24h view renders
+// exactly 24 hourly buckets, oldest→newest, with the newest anchored on the
+// current hour and correct hour boundaries.
+func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
+	bucketStart := currentHour.Add(-23 * time.Hour)
+
+	avail := 100.0
+	stored := []*models.Result{
+		{CheckUID: "c1", PeriodStart: currentHour, AvailabilityPct: &avail, TotalChecks: ptrInt(60)},
+	}
+
+	out := buildHourlyAvailabilityData(stored, nil, bucketStart, true, false)
+	r.NotNil(out)
+	r.Len(out.DailyAvailability, 24, "24h renders 24 hourly buckets")
+
+	// Oldest → newest, exactly one hour apart.
+	for i := range out.DailyAvailability {
+		want := bucketStart.Add(time.Duration(i) * time.Hour)
+		got, err := time.Parse(time.RFC3339, out.DailyAvailability[i].Time)
+		r.NoError(err)
+		r.True(want.Equal(got.UTC()), "bucket %d should be at %s, got %s", i, want, got)
+	}
+
+	// The last bucket is the current hour and carries the stored row.
+	last := out.DailyAvailability[23]
+	gotLast, _ := time.Parse(time.RFC3339, last.Time)
+	r.True(currentHour.Equal(gotLast.UTC()), "newest bucket is the current hour")
+	r.Equal("up", last.Status)
+	r.InDelta(100.0, last.AvailabilityPct, 0.001)
+
+	// Buckets with no stored row read noData (grey), never red.
+	r.Equal("noData", out.DailyAvailability[0].Status)
+}
+
+// TestEnrichHourly_HealthyCheckReads100 exercises the full 24h path through the
+// public view: a healthy check whose only signal for the current hour is raw
+// rows (no stored hourly rollup yet) must render 24 buckets and read 100% for
+// the current hour — synthesised from raw via the shared availability rule.
+func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	// A status page configured for the 24h hourly period.
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name:          "Public",
+		Slug:          testPublicSlug,
+		HistoryPeriod: strPtr("24h"),
+	})
+	r.NoError(err)
+	r.Equal("24h", page.HistoryPeriod)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	// Insert raw 'up' results inside the current hour (no hourly rollup exists yet).
+	now := time.Now().UTC()
+	for i := 0; i < 10; i++ {
+		res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+		res.PeriodStart = now.Add(-time.Duration(i) * time.Minute)
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+	r.Equal("24h", view.HistoryPeriod)
+	r.Len(view.Sections, 1)
+	r.Len(view.Sections[0].Resources, 1)
+
+	avail := view.Sections[0].Resources[0].Availability
+	r.NotNil(avail)
+	r.Equal(models.PeriodTypeHour, avail.BucketUnit, "24h view buckets by hour")
+	r.Equal("24h", avail.Period)
+	r.Len(avail.DailyAvailability, 24, "24h renders 24 hourly buckets")
+
+	// The current (last) hourly bucket is synthesised from raw and reads 100%.
+	last := avail.DailyAvailability[23]
+	r.Equal("up", last.Status, "a healthy current hour must read up, not noData")
+	r.InDelta(100.0, last.AvailabilityPct, 0.001)
+	r.NotNil(avail.OverallAvailabilityPct)
+	r.InDelta(100.0, *avail.OverallAvailabilityPct, 0.001)
+}
+
+func strPtr(s string) *string { return &s }
