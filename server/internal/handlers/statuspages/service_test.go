@@ -10,6 +10,8 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/handlers/badges"
+	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
 const testPublicSlug = "public"
@@ -34,401 +36,41 @@ func ptrFloat64(v float64) *float64 { return &v }
 func ptrFloat32(v float32) *float32 { return &v }
 func ptrInt(v int) *int             { return &v }
 
-// findByDate finds a result with the given UTC date in the slice, or returns nil.
-func findByDate(results []*models.Result, dateStr string) *models.Result {
-	for _, r := range results {
-		if r.PeriodStart.UTC().Format("2006-01-02") == dateStr {
-			return r
-		}
-	}
-
-	return nil
-}
-
-const historyDays = 90
-
-func TestSynthesizeMissingDailyBuckets_ReplacesStoredTodayRow(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	todayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	yesterdayStart := todayStart.AddDate(0, 0, -1)
-	checkUID := "check-1"
-
-	staleAvail := 100.0
-	staleToday := &models.Result{
-		CheckUID:        checkUID,
-		PeriodStart:     todayStart,
-		AvailabilityPct: &staleAvail,
-		TotalChecks:     ptrInt(60),
-	}
-	yesterdayAvail := 95.0
-	yesterday := &models.Result{
-		CheckUID:        checkUID,
-		PeriodStart:     yesterdayStart,
-		AvailabilityPct: &yesterdayAvail,
-	}
-
-	resultsByCheck := map[string][]*models.Result{
-		checkUID: {staleToday, yesterday},
-	}
-
-	hourlyByCheck := map[string][]*models.Result{
-		checkUID: {
-			{
-				CheckUID:        checkUID,
-				PeriodStart:     todayStart,
-				AvailabilityPct: ptrFloat64(100),
-				Duration:        ptrFloat32(50),
-				DurationP95:     ptrFloat32(60),
-			},
-			{
-				CheckUID:        checkUID,
-				PeriodStart:     todayStart.Add(time.Hour),
-				AvailabilityPct: ptrFloat64(50),
-				Duration:        ptrFloat32(70),
-				DurationP95:     ptrFloat32(80),
-			},
-		},
-	}
-
-	synthesizeMissingDailyBuckets(resultsByCheck, hourlyByCheck, []string{checkUID}, todayStart, historyDays)
-
-	results := resultsByCheck[checkUID]
-	r.Len(results, 2, "expected yesterday + synthesized today")
-
-	todayRow := findByDate(results, "2026-05-11")
-	r.NotNil(todayRow, "today row should exist")
-	r.NotSame(staleToday, todayRow, "today row should be the synthesized one")
-	r.NotNil(todayRow.AvailabilityPct)
-	r.InDelta(75.0, *todayRow.AvailabilityPct, 0.01, "synthesized avail should average hourly rows")
-}
-
-func TestSynthesizeMissingDailyBuckets_FillsMissingPastDayFromHourly(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	todayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	dayMinus2 := todayStart.AddDate(0, 0, -2)
-	checkUID := "check-1"
-
-	// No stored daily rows at all (fresh install with no rollups yet).
-	resultsByCheck := map[string][]*models.Result{
-		checkUID: {},
-	}
-
-	// Two hourly rows in the dayMinus2 UTC bucket: 100% and 80% → avg 90%.
-	hourlyByCheck := map[string][]*models.Result{
-		checkUID: {
-			{CheckUID: checkUID, PeriodStart: dayMinus2, AvailabilityPct: ptrFloat64(100)},
-			{CheckUID: checkUID, PeriodStart: dayMinus2.Add(time.Hour), AvailabilityPct: ptrFloat64(80)},
-		},
-	}
-
-	synthesizeMissingDailyBuckets(resultsByCheck, hourlyByCheck, []string{checkUID}, todayStart, historyDays)
-
-	results := resultsByCheck[checkUID]
-	r.Len(results, 1, "exactly one synthetic daily row should be created")
-
-	row := findByDate(results, "2026-05-09")
-	r.NotNil(row, "row for dayMinus2 should exist")
-	r.NotNil(row.AvailabilityPct)
-	r.InDelta(90.0, *row.AvailabilityPct, 0.01)
-	r.True(row.PeriodStart.Equal(dayMinus2), "PeriodStart should be the UTC day midnight")
-}
-
-func TestSynthesizeMissingDailyBuckets_NoHourlyKeepsStored(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	todayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	checkUID := "check-1"
-
-	staleAvail := 100.0
-	storedToday := &models.Result{
-		CheckUID:        checkUID,
-		PeriodStart:     todayStart,
-		AvailabilityPct: &staleAvail,
-	}
-
-	resultsByCheck := map[string][]*models.Result{
-		checkUID: {storedToday},
-	}
-	hourlyByCheck := map[string][]*models.Result{}
-
-	synthesizeMissingDailyBuckets(resultsByCheck, hourlyByCheck, []string{checkUID}, todayStart, historyDays)
-
-	r.Len(resultsByCheck[checkUID], 1)
-	r.Same(storedToday, resultsByCheck[checkUID][0], "stored today row should be preserved when no hourly synth")
-}
-
-func TestSynthesizeMissingDailyBuckets_PastDailyTakesPrecedenceOverHourly(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	todayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	dayMinus3 := todayStart.AddDate(0, 0, -3)
-	checkUID := "check-1"
-
-	storedAvail := 88.0
-	stored := &models.Result{
-		CheckUID:        checkUID,
-		PeriodStart:     dayMinus3,
-		AvailabilityPct: &storedAvail,
-	}
-
-	resultsByCheck := map[string][]*models.Result{
-		checkUID: {stored},
-	}
-	// Hourly data for the same past day — must NOT override the rolled-up daily.
-	hourlyByCheck := map[string][]*models.Result{
-		checkUID: {
-			{CheckUID: checkUID, PeriodStart: dayMinus3, AvailabilityPct: ptrFloat64(50)},
-		},
-	}
-
-	synthesizeMissingDailyBuckets(resultsByCheck, hourlyByCheck, []string{checkUID}, todayStart, historyDays)
-
-	row := findByDate(resultsByCheck[checkUID], "2026-05-08")
-	r.NotNil(row)
-	r.Same(stored, row, "stored daily for past day should win over hourly synth")
-}
-
-func TestAggregateHourlyToDaily_AveragesHourlyAvail(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
-
-	hourly := []*models.Result{
-		{AvailabilityPct: ptrFloat64(100), Duration: ptrFloat32(10), DurationP95: ptrFloat32(20)},
-		{AvailabilityPct: ptrFloat64(80), Duration: ptrFloat32(30), DurationP95: ptrFloat32(40)},
-	}
-
-	synth := aggregateHourlyToDaily("check-1", hourly, periodStart)
-
-	r.NotNil(synth)
-	r.Equal("check-1", synth.CheckUID)
-	r.True(synth.PeriodStart.Equal(periodStart))
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(90.0, *synth.AvailabilityPct, 0.01)
-	r.NotNil(synth.Duration)
-	r.InDelta(float32(20), *synth.Duration, 0.01)
-	r.NotNil(synth.DurationP95)
-	r.InDelta(float32(30), *synth.DurationP95, 0.01)
-	r.NotNil(synth.TotalChecks)
-	r.Equal(2, *synth.TotalChecks)
-}
-
-func TestAggregateHourlyToDaily_ReturnsNilOnEmpty(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 4, 0, 0, 0, 0, time.UTC)
-
-	r.Nil(aggregateHourlyToDaily("check-1", nil, periodStart))
-	r.Nil(aggregateHourlyToDaily("check-1", []*models.Result{}, periodStart))
-	r.Nil(aggregateHourlyToDaily("check-1", []*models.Result{{}}, periodStart), "no avail in any row → nil")
-}
-
-func TestAggregateRawToDaily_DerivesAvailFromStatus(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	upStatus := int(models.ResultStatusUp)
-	downStatus := int(models.ResultStatusDown)
-
-	// 3 up, 1 down → 75% availability.
-	raw := []*models.Result{
-		{Status: &upStatus, Duration: ptrFloat32(40)},
-		{Status: &upStatus, Duration: ptrFloat32(60)},
-		{Status: &upStatus, Duration: ptrFloat32(50)},
-		{Status: &downStatus, Duration: ptrFloat32(9999)},
-	}
-
-	synth := aggregateRawToDaily("check-1", raw, periodStart)
-
-	r.NotNil(synth)
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(75.0, *synth.AvailabilityPct, 0.01)
-	r.NotNil(synth.TotalChecks)
-	r.Equal(4, *synth.TotalChecks)
-	// Duration averages successful rows only: (40+60+50)/3 = 50.
-	r.NotNil(synth.Duration)
-	r.InDelta(float32(50), *synth.Duration, 0.01)
-}
-
-func TestAggregateRawToDaily_AllDownStillReturnsRow(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	downStatus := int(models.ResultStatusDown)
-
-	raw := []*models.Result{
-		{Status: &downStatus},
-		{Status: &downStatus},
-	}
-
-	synth := aggregateRawToDaily("check-1", raw, periodStart)
-	r.NotNil(synth, "an all-down day should still produce a synth (signals an outage, not no-data)")
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(0.0, *synth.AvailabilityPct, 0.01)
-	r.Nil(synth.Duration, "no successful rows → no duration")
-}
-
-func TestAggregateRawToDaily_ReturnsNilOnEmpty(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-
-	r.Nil(aggregateRawToDaily("check-1", nil, periodStart))
-	r.Nil(aggregateRawToDaily("check-1", []*models.Result{}, periodStart))
-	r.Nil(aggregateRawToDaily("check-1", []*models.Result{{Status: nil}}, periodStart),
-		"rows with nil status are ignored — if all are nil, return nil")
-}
-
-// TestAggregateRawToDaily_ExcludesLifecycleRows is the core regression guard for
-// spec 2026-06-30-02: lifecycle rows (created/running) are in-flight or
-// just-scheduled markers, not measurements, and must be excluded from the
-// availability denominator so a healthy check reads 100% — matching the badges
-// endpoint and the stored daily rows written by the aggregation job.
-func TestAggregateRawToDaily_ExcludesLifecycleRows(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	upStatus := int(models.ResultStatusUp)
-	createdStatus := int(models.ResultStatusCreated)
-	runningStatus := int(models.ResultStatusRunning)
-
-	// 18 up + 2 created + 1 running → lifecycle rows excluded → 100% over 18.
-	raw := make([]*models.Result, 0, 21)
-	for i := 0; i < 18; i++ {
-		s := upStatus
-		raw = append(raw, &models.Result{Status: &s, Duration: ptrFloat32(50)})
-	}
-	for i := 0; i < 2; i++ {
-		s := createdStatus
-		raw = append(raw, &models.Result{Status: &s})
-	}
-	raw = append(raw, &models.Result{Status: &runningStatus})
-
-	synth := aggregateRawToDaily("check-1", raw, periodStart)
-
-	r.NotNil(synth)
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(100.0, *synth.AvailabilityPct, 0.001,
-		"a healthy check with only lifecycle rows besides up must read 100%")
-	r.NotNil(synth.TotalChecks)
-	r.Equal(18, *synth.TotalChecks, "lifecycle rows excluded from the denominator")
-	r.NotNil(synth.SuccessfulChecks)
-	r.Equal(18, *synth.SuccessfulChecks)
-}
-
-// TestAggregateRawToDaily_WarningCountsAsUp pins that a warning row counts as up
-// (target reachable, just something to report) — consistent with the aggregation
-// job's Decision A — and that its duration is included in the average.
-func TestAggregateRawToDaily_WarningCountsAsUp(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	upStatus := int(models.ResultStatusUp)
-	warningStatus := int(models.ResultStatusWarning)
-
-	// 2 up + 1 warning → still 100%; duration averages over all three.
-	raw := []*models.Result{
-		{Status: &upStatus, Duration: ptrFloat32(40)},
-		{Status: &warningStatus, Duration: ptrFloat32(70)},
-		{Status: &upStatus, Duration: ptrFloat32(60)},
-	}
-
-	synth := aggregateRawToDaily("check-1", raw, periodStart)
-
-	r.NotNil(synth)
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(100.0, *synth.AvailabilityPct, 0.001, "warning counts as up → 100%")
-	r.NotNil(synth.TotalChecks)
-	r.Equal(3, *synth.TotalChecks)
-	// Duration averages up+warning rows: (40+70+60)/3 ≈ 56.67.
-	r.NotNil(synth.Duration)
-	r.InDelta(float32(56.6667), *synth.Duration, 0.01)
-}
-
-// TestAggregateRawToDaily_GenuineDownReflectsMiss confirms that excluding
-// lifecycle rows does not mask real downtime: a genuine down still lowers the
-// percentage over the countable (non-lifecycle) denominator.
-func TestAggregateRawToDaily_GenuineDownReflectsMiss(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	periodStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	upStatus := int(models.ResultStatusUp)
-	downStatus := int(models.ResultStatusDown)
-	createdStatus := int(models.ResultStatusCreated)
-
-	// 3 up + 1 down + 1 created → created excluded → 3/4 = 75%.
-	raw := []*models.Result{
-		{Status: &upStatus, Duration: ptrFloat32(50)},
-		{Status: &upStatus, Duration: ptrFloat32(50)},
-		{Status: &upStatus, Duration: ptrFloat32(50)},
-		{Status: &downStatus},
-		{Status: &createdStatus},
-	}
-
-	synth := aggregateRawToDaily("check-1", raw, periodStart)
-
-	r.NotNil(synth)
-	r.NotNil(synth.AvailabilityPct)
-	r.InDelta(75.0, *synth.AvailabilityPct, 0.001, "real down still counts against availability")
-	r.NotNil(synth.TotalChecks)
-	r.Equal(4, *synth.TotalChecks, "lifecycle excluded, down included")
-}
-
-// TestBuildAvailabilityData_UTCBucketing pins that daily rows are looked up by
-// their UTC date, not the server's local date. Pre-fix the loop iterated days
-// in time.Local, so for servers west of UTC the most-recent stored daily row
-// missed and rendered as noData. Forcing time.Local to a non-UTC zone for
-// this test would race with other parallel tests, so we instead verify the
-// equivalent invariant: a daily row stamped at midnight UTC must be findable
-// by its UTC date string regardless of how it would render in local time.
+// TestBuildAvailabilityData_UTCBucketing pins that daily buckets are keyed by
+// their UTC-midnight start, not the server's local date. The per-bucket stats
+// map is keyed by UTC day; a stat at yesterday's UTC midnight must render as a
+// real status, not noData, regardless of the server's local zone.
 func TestBuildAvailabilityData_UTCBucketing(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 
-	// A daily row at midnight UTC for "yesterday" UTC.
 	now := time.Now().UTC()
 	todayUTC := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	yesterdayUTC := todayUTC.AddDate(0, 0, -1)
-	yesterdayAvail := 99.95
 
-	daily := []*models.Result{
-		{
-			CheckUID:        "check-1",
-			PeriodStart:     yesterdayUTC,
-			AvailabilityPct: &yesterdayAvail,
-			TotalChecks:     ptrInt(1440),
-		},
+	// 1440 checks, 1439 up → 99.93% (≥99.9 → up).
+	byBucket := map[time.Time]uptimebar.BucketStats{
+		yesterdayUTC: {Up: 1440, Total: 1440},
 	}
 
-	out := buildAvailabilityData(daily, nil, 7, true, false)
+	out := buildAvailabilityData(byBucket, nil, todayUTC, 7, true, false)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 7)
 
 	yesterdayStr := yesterdayUTC.Format("2006-01-02")
+
 	var matched *AvailabilityPoint
+
 	for i := range out.DailyAvailability {
 		if out.DailyAvailability[i].Date == yesterdayStr {
 			matched = &out.DailyAvailability[i]
 		}
 	}
+
 	r.NotNil(matched, "yesterday UTC bucket should be present in the bar")
-	r.Equal("up", matched.Status, "stored daily row should render as up, not noData")
-	r.InDelta(99.95, matched.AvailabilityPct, 0.01)
+	r.Equal("up", matched.Status, "a filled bucket should render as up, not noData")
+	r.InDelta(100.0, matched.AvailabilityPct, 0.01)
 }
 
 // TestCreateResource_AssignsSequentialPositions pins the contract that new
@@ -807,50 +449,9 @@ func TestValidateHistoryPeriod(t *testing.T) {
 	}
 }
 
-// TestAggregateRawToHour_ParityWithDaily is the key regression guard: the hourly
-// current-bucket synthesis must apply the exact same availability rule as the
-// daily synthesis (and therefore the badges period=24h computation). Only the
-// period boundary differs.
-func TestAggregateRawToHour_ParityWithDaily(t *testing.T) {
-	t.Parallel()
-
-	r := require.New(t)
-	hourStart := time.Date(2026, 5, 11, 14, 0, 0, 0, time.UTC)
-	dayStart := time.Date(2026, 5, 11, 0, 0, 0, 0, time.UTC)
-	upStatus := int(models.ResultStatusUp)
-	downStatus := int(models.ResultStatusDown)
-	createdStatus := int(models.ResultStatusCreated)
-	warningStatus := int(models.ResultStatusWarning)
-
-	raw := []*models.Result{
-		{Status: &upStatus, Duration: ptrFloat32(40)},
-		{Status: &warningStatus, Duration: ptrFloat32(70)},
-		{Status: &downStatus, Duration: ptrFloat32(9999)},
-		{Status: &createdStatus}, // lifecycle → excluded
-		{Status: &upStatus, Duration: ptrFloat32(60)},
-	}
-
-	hourly := aggregateRawToHour("check-1", raw, hourStart)
-	daily := aggregateRawToDaily("check-1", raw, dayStart)
-
-	r.NotNil(hourly)
-	r.NotNil(daily)
-	// Same availability rule: up+warning success over non-lifecycle denominator.
-	r.NotNil(hourly.AvailabilityPct)
-	r.NotNil(daily.AvailabilityPct)
-	r.InDelta(*daily.AvailabilityPct, *hourly.AvailabilityPct, 0.0001, "hourly must match daily availability")
-	r.InDelta(75.0, *hourly.AvailabilityPct, 0.01, "3 up/warning of 4 countable = 75%")
-	r.Equal(*daily.TotalChecks, *hourly.TotalChecks)
-	r.Equal(4, *hourly.TotalChecks, "the created lifecycle row is excluded")
-	r.Equal(*daily.SuccessfulChecks, *hourly.SuccessfulChecks)
-	// Only the period boundary differs.
-	r.Equal(hourStart, hourly.PeriodStart)
-	r.Equal(dayStart, daily.PeriodStart)
-}
-
 // TestBuildHourlyAvailabilityData_Builds24Buckets verifies the 24h view renders
 // exactly 24 hourly buckets, oldest→newest, with the newest anchored on the
-// current hour and correct hour boundaries.
+// current hour and correct hour boundaries, from per-bucket stats.
 func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 	t.Parallel()
 
@@ -859,12 +460,11 @@ func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 	currentHour := now.Truncate(time.Hour)
 	bucketStart := currentHour.Add(-23 * time.Hour)
 
-	avail := 100.0
-	stored := []*models.Result{
-		{CheckUID: "c1", PeriodStart: currentHour, AvailabilityPct: &avail, TotalChecks: ptrInt(60)},
+	byBucket := map[time.Time]uptimebar.BucketStats{
+		currentHour: {Up: 60, Total: 60},
 	}
 
-	out := buildHourlyAvailabilityData(stored, nil, bucketStart, true, false)
+	out := buildHourlyAvailabilityData(byBucket, nil, bucketStart, true, false)
 	r.NotNil(out)
 	r.Len(out.DailyAvailability, 24, "24h renders 24 hourly buckets")
 
@@ -876,14 +476,14 @@ func TestBuildHourlyAvailabilityData_Builds24Buckets(t *testing.T) {
 		r.True(want.Equal(got.UTC()), "bucket %d should be at %s, got %s", i, want, got)
 	}
 
-	// The last bucket is the current hour and carries the stored row.
+	// The last bucket is the current hour and carries the stats.
 	last := out.DailyAvailability[23]
 	gotLast, _ := time.Parse(time.RFC3339, last.Time)
 	r.True(currentHour.Equal(gotLast.UTC()), "newest bucket is the current hour")
 	r.Equal("up", last.Status)
 	r.InDelta(100.0, last.AvailabilityPct, 0.001)
 
-	// Buckets with no stored row read noData (grey), never red.
+	// Buckets with no stats read noData (grey), never red.
 	r.Equal("noData", out.DailyAvailability[0].Status)
 }
 
@@ -940,6 +540,197 @@ func TestEnrichHourly_HealthyCheckReads100(t *testing.T) {
 	r.InDelta(100.0, last.AvailabilityPct, 0.001)
 	r.NotNil(avail.OverallAvailabilityPct)
 	r.InDelta(100.0, *avail.OverallAvailabilityPct, 0.001)
+}
+
+// TestEnrichHourly_PreviousHourFilledFromRaw is the direct regression for the
+// "No data where the badge shows data" bug: a check with only raw rows in the
+// PREVIOUS hour (no stored hourly rollup yet — the raw→hour rollup lags) must
+// render that past bucket with its real status, not noData.
+func TestEnrichHourly_PreviousHourFilledFromRaw(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("24h"),
+	})
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	// Raw rows in the PREVIOUS hour only (10 up + 1 down → 90.9% over the prev hour),
+	// plus one up in the current hour. No stored hourly rollups at all.
+	now := time.Now().UTC()
+	prevHour := now.Truncate(time.Hour).Add(-time.Hour)
+	for i := 0; i < 10; i++ {
+		res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+		res.PeriodStart = prevHour.Add(time.Duration(i) * time.Minute)
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+	down := models.NewResult(org.UID, check.UID, models.ResultStatusDown, 0)
+	down.PeriodStart = prevHour.Add(11 * time.Minute)
+	r.NoError(svc.db.CreateResult(ctx, down))
+
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+
+	avail := view.Sections[0].Resources[0].Availability
+	r.NotNil(avail)
+	r.Len(avail.DailyAvailability, 24)
+
+	// The previous hour is the 23rd bucket (index 22): bucketStart is currentHour-23h,
+	// so currentHour-1h is at index 22.
+	prev := avail.DailyAvailability[22]
+	r.NotEqual("noData", prev.Status, "the previous hour has raw data and must NOT read noData")
+	r.InDelta(100.0*10.0/11.0, prev.AvailabilityPct, 0.01, "10 up of 11 countable")
+}
+
+// TestEnrichDaily_RecentDayFilledFromRaw is the daily analog of the bug: a recent
+// past day with only raw rows (before the raw→hour rollup ran) must fill its
+// daily bucket rather than reading noData.
+func TestEnrichDaily_RecentDayFilledFromRaw(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("7d"),
+	})
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	// Raw rows on YESTERDAY (UTC) only — no daily or hourly rollups exist.
+	now := time.Now().UTC()
+	yesterday := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
+	for i := 0; i < 8; i++ {
+		res := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 42)
+		res.PeriodStart = yesterday.Add(time.Duration(i) * time.Hour)
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+
+	avail := view.Sections[0].Resources[0].Availability
+	r.NotNil(avail)
+	r.Equal(models.PeriodTypeDay, avail.BucketUnit)
+	r.Len(avail.DailyAvailability, 7)
+
+	yesterdayStr := yesterday.Format("2006-01-02")
+
+	var matched *AvailabilityPoint
+
+	for i := range avail.DailyAvailability {
+		if avail.DailyAvailability[i].Date == yesterdayStr {
+			matched = &avail.DailyAvailability[i]
+		}
+	}
+
+	r.NotNil(matched, "yesterday bucket present")
+	r.Equal("up", matched.Status, "yesterday has raw-only data and must read up, not noData")
+	r.InDelta(100.0, matched.AvailabilityPct, 0.001)
+}
+
+// TestBadgeStatusPageParity_SameBucketsForSameData is the cross-surface parity
+// guard: the same synthetic results driven through the BADGE bucketing and the
+// STATUS PAGE bucketing yield identical per-bucket availability for the 24h
+// window. Both surfaces delegate to uptimebar.BucketAvailability with the same
+// anchor, so they cannot diverge — this test pins that contract structurally by
+// comparing the badge's public bucketing against the status page's view buckets.
+func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org := setupStatusPagesTest(t)
+
+	page, err := svc.CreateStatusPage(ctx, org.Slug, &CreateStatusPageRequest{
+		Name: "Public", Slug: testPublicSlug, HistoryPeriod: strPtr("24h"),
+	})
+	r.NoError(err)
+
+	section, err := svc.CreateSection(ctx, org.Slug, page.UID, CreateSectionRequest{Name: "Core", Slug: "core"})
+	r.NoError(err)
+
+	check := models.NewCheck(org.UID, "API", "http")
+	r.NoError(svc.db.CreateCheck(ctx, check))
+	_, err = svc.CreateResource(ctx, org.Slug, page.UID, section.UID, CreateResourceRequest{CheckUID: check.UID})
+	r.NoError(err)
+
+	// A mix that exercises the success rule: up, warning (counts as up), down,
+	// created (lifecycle, excluded), spread across the current and previous hour.
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
+	prevHour := currentHour.Add(-time.Hour)
+
+	seed := func(st models.ResultStatus, at time.Time) {
+		res := models.NewResult(org.UID, check.UID, st, 50)
+		res.PeriodStart = at
+		r.NoError(svc.db.CreateResult(ctx, res))
+	}
+
+	seed(models.ResultStatusUp, currentHour.Add(1*time.Minute))
+	seed(models.ResultStatusWarning, currentHour.Add(2*time.Minute))
+	seed(models.ResultStatusDown, currentHour.Add(3*time.Minute))
+	seed(models.ResultStatusCreated, currentHour.Add(4*time.Minute))
+	seed(models.ResultStatusUp, prevHour.Add(1*time.Minute))
+	seed(models.ResultStatusDown, prevHour.Add(2*time.Minute))
+
+	bucketStart := currentHour.Add(-23 * time.Hour)
+
+	// Badge path: GenerateBadge with the uptime-bar component drives the badge's
+	// fetchBucketData → uptimebar.BucketAvailability over the same 24h window.
+	// We read the badge's per-bucket source via its public bucketing seam below.
+	badgeSvc := badges.NewService(svc.db)
+	badgeBuckets, err := badges.BucketAvailabilityForPeriod(ctx, badgeSvc, org.UID, check.UID, "24h")
+	r.NoError(err)
+
+	// Status page path: the public view's hourly availability points.
+	view, err := svc.ViewStatusPage(ctx, org.Slug, page.Slug)
+	r.NoError(err)
+	statusPoints := view.Sections[0].Resources[0].Availability.DailyAvailability
+	r.Len(statusPoints, hourlyBucketCount)
+
+	// Both must agree on every bucket in the window.
+	for i := range hourlyBucketCount {
+		bucket := bucketStart.Add(time.Duration(i) * time.Hour)
+
+		badgePct, badgeHas := badgeBuckets[bucket].AvailabilityPct()
+
+		statusPoint := statusPoints[i]
+		gotTime, perr := time.Parse(time.RFC3339, statusPoint.Time)
+		r.NoError(perr)
+		r.True(bucket.Equal(gotTime.UTC()), "bucket %d time mismatch", i)
+
+		statusHas := statusPoint.Status != "noData"
+		r.Equal(badgeHas, statusHas, "bucket %s presence must match across surfaces", bucket)
+
+		if badgeHas {
+			r.InDelta(badgePct, statusPoint.AvailabilityPct, 0.0001,
+				"bucket %s pct must match across surfaces", bucket)
+		}
+	}
+
+	// Spot-check actual values: current hour = 2 up/warning of 3 = 66.67%,
+	// previous hour = 1 up of 2 = 50%.
+	curPct, _ := badgeBuckets[currentHour].AvailabilityPct()
+	r.InDelta(66.6667, curPct, 0.01)
+	prevPct, _ := badgeBuckets[prevHour].AvailabilityPct()
+	r.InDelta(50.0, prevPct, 0.01)
 }
 
 func strPtr(s string) *string { return &s }
