@@ -54,7 +54,9 @@ func hashUnderPolicy(t *testing.T, p passwords.Policy, password string) string {
 
 // seedLoginUser creates an org + admin member with the supplied stored hash and
 // returns the user.
-func seedLoginUser(ctx context.Context, t *testing.T, dbSvc db.Service, orgSlug, email, storedHash string) *models.User {
+func seedLoginUser(
+	ctx context.Context, t *testing.T, dbSvc db.Service, orgSlug, email, storedHash string,
+) *models.User {
 	t.Helper()
 	r := require.New(t)
 

@@ -54,6 +54,7 @@ func withPolicy(t *testing.T, p Policy) {
 // TestHashRoundTripPerAlgorithm covers Hash -> Verify for each shipped
 // algorithm: the right password verifies, a wrong one fails, and the stored
 // string carries the expected marker. Not parallel: mutates the default policy.
+//
 //nolint:paralleltest // mutates the process-wide default policy via withPolicy
 func TestHashRoundTripPerAlgorithm(t *testing.T) {
 	tests := []struct {
@@ -93,6 +94,7 @@ func TestHashRoundTripPerAlgorithm(t *testing.T) {
 // TestVerifyIsPolicyIndependent proves Verify dispatches on the stored marker,
 // not the active policy: an argon2id hash verifies while bcrypt is the policy,
 // and vice-versa. This is what keeps Verify safe to read concurrently.
+//
 //nolint:paralleltest // mutates the process-wide default policy via withPolicy
 func TestVerifyIsPolicyIndependent(t *testing.T) {
 	r := require.New(t)
@@ -127,6 +129,7 @@ func TestVerifyIsPolicyIndependent(t *testing.T) {
 
 // TestNeedsRehash covers the rehash trigger across algorithm and cost changes.
 // Not parallel: reads/sets the default policy.
+//
 //nolint:paralleltest // mutates the process-wide default policy via withPolicy
 func TestNeedsRehash(t *testing.T) {
 	r := require.New(t)
@@ -190,6 +193,7 @@ func TestNeedsRehash(t *testing.T) {
 // TestBcryptLongAndNulPassword proves the sha256+base64 pre-hash lets bcrypt
 // handle passwords longer than 72 bytes and ones containing a NUL byte (both of
 // which raw x/crypto bcrypt rejects/truncates). Not parallel: sets the policy.
+//
 //nolint:paralleltest // mutates the process-wide default policy via withPolicy
 func TestBcryptLongAndNulPassword(t *testing.T) {
 	withPolicy(t, bcryptPolicy(10))

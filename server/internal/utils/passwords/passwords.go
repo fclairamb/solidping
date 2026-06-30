@@ -71,4 +71,3 @@ func NeedsRehash(hash string) bool {
 		return argon2idNeedsRehash(hash, policy.Argon2)
 	}
 }
-

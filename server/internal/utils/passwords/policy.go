@@ -112,29 +112,29 @@ func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
 // resolveArgon2Params maps config argon2 params onto the policy struct, filling
 // any zero-value field with the legacy default so a partially-specified or
 // zero-value block is still usable.
-func resolveArgon2Params(c config.Argon2Params) Argon2Params {
-	p := Argon2Params{
-		Memory:     c.Memory,
-		Time:       c.Time,
-		Threads:    c.Threads,
-		KeyLength:  c.KeyLength,
-		SaltLength: c.SaltLength,
+func resolveArgon2Params(cfg config.Argon2Params) Argon2Params {
+	params := Argon2Params{
+		Memory:     cfg.Memory,
+		Time:       cfg.Time,
+		Threads:    cfg.Threads,
+		KeyLength:  cfg.KeyLength,
+		SaltLength: cfg.SaltLength,
 	}
-	if p.Memory == 0 {
-		p.Memory = defaultArgon2Params.Memory
+	if params.Memory == 0 {
+		params.Memory = defaultArgon2Params.Memory
 	}
-	if p.Time == 0 {
-		p.Time = defaultArgon2Params.Time
+	if params.Time == 0 {
+		params.Time = defaultArgon2Params.Time
 	}
-	if p.Threads == 0 {
-		p.Threads = defaultArgon2Params.Threads
+	if params.Threads == 0 {
+		params.Threads = defaultArgon2Params.Threads
 	}
-	if p.KeyLength == 0 {
-		p.KeyLength = defaultArgon2Params.KeyLength
+	if params.KeyLength == 0 {
+		params.KeyLength = defaultArgon2Params.KeyLength
 	}
-	if p.SaltLength == 0 {
-		p.SaltLength = defaultArgon2Params.SaltLength
+	if params.SaltLength == 0 {
+		params.SaltLength = defaultArgon2Params.SaltLength
 	}
 
-	return p
+	return params
 }
