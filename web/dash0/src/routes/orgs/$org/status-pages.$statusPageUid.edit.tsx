@@ -69,7 +69,7 @@ function StatusPageEditPage() {
             enabled: data.enabled,
             showAvailability: data.showAvailability,
             showResponseTime: data.showResponseTime,
-            historyDays: data.historyDays,
+            historyPeriod: data.historyPeriod,
           });
           toast.success(t("toast.updated"));
           navigate({

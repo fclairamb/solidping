@@ -28,7 +28,7 @@ function StatusPageNewPage() {
           isDefault: data.isDefault || undefined,
           showAvailability: data.showAvailability,
           showResponseTime: data.showResponseTime,
-          historyDays: data.historyDays,
+          historyPeriod: data.historyPeriod,
         });
         toast.success(t("toast.created"));
         navigate({

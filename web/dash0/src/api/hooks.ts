@@ -1096,6 +1096,12 @@ export function useRevokeToken() {
 }
 
 // Status Page types
+
+// StatusPagePeriod is the configured history window. 24h renders 24 hourly
+// buckets; 7d/30d/90d render N daily buckets. Mirrors the badge uptime-bar
+// vocabulary.
+export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -1107,6 +1113,7 @@ export interface StatusPage {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  historyPeriod: StatusPagePeriod;
   sections?: StatusPageSection[];
   createdAt?: string;
 }
@@ -1143,6 +1150,7 @@ export interface CreateStatusPageRequest {
   showAvailability?: boolean;
   showResponseTime?: boolean;
   historyDays?: number;
+  historyPeriod?: StatusPagePeriod;
 }
 
 export interface UpdateStatusPageRequest {
@@ -1155,6 +1163,7 @@ export interface UpdateStatusPageRequest {
   showAvailability?: boolean;
   showResponseTime?: boolean;
   historyDays?: number;
+  historyPeriod?: StatusPagePeriod;
 }
 
 export interface CreateSectionRequest {
