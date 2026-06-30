@@ -66,6 +66,7 @@ import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.
 import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
+import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgServerActivationRouteImport } from './routes/orgs/$org/server.activation'
@@ -406,6 +407,11 @@ const OrgsOrgServerMailRoute = OrgsOrgServerMailRouteImport.update({
   path: '/mail',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerHashingRoute = OrgsOrgServerHashingRouteImport.update({
+  id: '/hashing',
+  path: '/hashing',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerEmailInboxRoute = OrgsOrgServerEmailInboxRouteImport.update({
   id: '/email-inbox',
   path: '/email-inbox',
@@ -701,6 +707,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -783,6 +790,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -884,6 +892,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -987,6 +996,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -1069,6 +1079,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -1169,6 +1180,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -1622,6 +1634,13 @@ declare module '@tanstack/react-router' {
       path: '/mail'
       fullPath: '/orgs/$org/server/mail'
       preLoaderRoute: typeof OrgsOrgServerMailRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
+    '/orgs/$org/server/hashing': {
+      id: '/orgs/$org/server/hashing'
+      path: '/hashing'
+      fullPath: '/orgs/$org/server/hashing'
+      preLoaderRoute: typeof OrgsOrgServerHashingRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
     '/orgs/$org/server/email-inbox': {
@@ -2173,6 +2192,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerActivationRoute: typeof OrgsOrgServerActivationRoute
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
+  OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
@@ -2184,6 +2204,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerActivationRoute: OrgsOrgServerActivationRoute,
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
+  OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
