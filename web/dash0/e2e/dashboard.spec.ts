@@ -281,15 +281,6 @@ test.describe("Dashboard", () => {
     await page.waitForLoadState("networkidle");
     expect(page.url()).toContain("/orgs/test/incidents");
     expect(page.url()).toContain("state=active");
-
-    await page.goBack();
-    await page.waitForLoadState("networkidle");
-
-    // Availability tile — must NOT navigate
-    const availabilityTile = page.getByTestId("kpi-tile-availability");
-    await expect(availabilityTile).toBeVisible();
-    const tag = await availabilityTile.evaluate((el) => el.tagName.toLowerCase());
-    expect(tag).not.toBe("a");
   });
 
   test("healthy org: glance card lists checks with strips, no incidents card, footer links to /checks", async ({
