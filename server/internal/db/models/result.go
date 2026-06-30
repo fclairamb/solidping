@@ -77,7 +77,8 @@ func (s ResultStatus) CountsAsUp() bool {
 
 // RawAvailability computes (successCount, countableTotal) over raw results, skipping
 // lifecycle markers. Callers derive pct = 100*success/total when total > 0.
-func RawAvailability(results []*Result) (success, total int) {
+func RawAvailability(results []*Result) (int, int) {
+	var success, total int
 	for _, r := range results {
 		if r.Status == nil {
 			continue

@@ -25,7 +25,6 @@ func TestResultStatusIsLifecycleMarker(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.New(t).Equal(tt.want, tt.status.IsLifecycleMarker())
@@ -55,7 +54,6 @@ func TestResultStatusCountsAsUp(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			require.New(t).Equal(tt.want, tt.status.CountsAsUp())
@@ -122,7 +120,6 @@ func TestRawAvailability(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			r := require.New(t)
