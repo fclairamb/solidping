@@ -20,6 +20,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobworker"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -461,4 +462,10 @@ func UserUID(t *testing.T, s *Scenario) string {
 	require.NotEmpty(t, s.UserUID, "scenario user UID must not be empty")
 
 	return s.UserUID
+}
+
+// DBService exposes the scenario server's database service so tests can seed
+// rows (results, incidents) directly into the Postgres-backed store.
+func (s *Scenario) DBService() db.Service {
+	return s.server.DBService()
 }
