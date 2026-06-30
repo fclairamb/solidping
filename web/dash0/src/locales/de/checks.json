@@ -298,7 +298,8 @@
       "incidents": "Vorfälle",
       "longestIncident": "Längster Vorfall",
       "avgIncident": "Durchschn. Vorfall",
-      "none": "keiner"
+      "none": "keiner",
+      "monitored": "{{days}} T überwacht"
     },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",

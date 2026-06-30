@@ -670,6 +670,64 @@ export function useResult(org: string, checkUid: string, resultUid: string) {
   });
 }
 
+/** Confirmed-outage (wall-clock) stats for one period. */
+export interface CheckAvailabilityIncidents {
+  count: number;
+  longestSeconds?: number;
+  averageSeconds?: number;
+  totalDowntimeSeconds?: number;
+}
+
+/**
+ * One period of server-measured availability. `availabilityPct` is `null` (and
+ * `hasData` false) when the window has no countable probes — no data is not
+ * 100%. `downtimeSeconds` is probe-time downtime; the `incidents` block is
+ * confirmed-outage wall-clock time.
+ */
+export interface CheckAvailabilityPeriod {
+  period: string;
+  windowStart: string;
+  windowEnd: string;
+  monitoredSeconds: number;
+  partial: boolean;
+  hasData: boolean;
+  totalChecks: number;
+  successfulChecks: number;
+  availabilityPct: number | null;
+  downtimeSeconds: number;
+  incidents: CheckAvailabilityIncidents;
+}
+
+export interface CheckAvailabilityResponse {
+  data: CheckAvailabilityPeriod[];
+}
+
+/**
+ * Fetches real per-period availability for one check from the server endpoint.
+ * `periods` is a comma-separated token list (e.g. "today,7d,30d,365d"); the
+ * server measures each window (probe-ratio availability + downtime + incident
+ * block) so the client does no availability math.
+ */
+export function useCheckAvailability(
+  org: string,
+  checkUid: string,
+  periods: string,
+  options?: { tz?: string; refetchInterval?: number },
+) {
+  return useQuery<CheckAvailabilityResponse>({
+    queryKey: ["checkAvailability", org, checkUid, periods, options?.tz],
+    queryFn: () => {
+      const params = new URLSearchParams({ periods });
+      if (options?.tz) params.set("tz", options.tz);
+      return apiFetch<CheckAvailabilityResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/availability?${params.toString()}`,
+      );
+    },
+    enabled: !!org && !!checkUid && !!periods,
+    refetchInterval: options?.refetchInterval,
+  });
+}
+
 /** Fetches all result pages by following cursors until exhausted. */
 export function useAllResults(
   org: string,
