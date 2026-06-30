@@ -8,6 +8,7 @@
     "mail": "E-mail",
     "emailInbox": "Boîte de réception",
     "authentication": "Authentification",
+    "hashing": "Hachage des mots de passe",
     "performance": "Performances",
     "slack": "Slack"
   },
@@ -73,6 +74,44 @@
       "signingSecret": "Signing Secret",
       "botToken": "Jeton du bot",
       "redirectUrl": "URL de redirection"
+    }
+  },
+  "hashing": {
+    "title": "Hachage des mots de passe",
+    "description": "Choisissez l'algorithme et le coût utilisés pour hacher les mots de passe locaux. Des réglages plus stricts ralentissent le cassage hors ligne mais consomment plus de CPU à chaque connexion.",
+    "restartNotice": "Les modifications prennent effet après le redémarrage du serveur. Les nouveaux mots de passe utilisent alors le nouveau profil ; les utilisateurs existants sont migrés à leur prochaine connexion si le re-hachage est activé. Les valeurs définies via YAML ou variables d'environnement ne sont pas affichées ici — laissez un champ vide pour hériter de la valeur par défaut du serveur.",
+    "algorithm": "Algorithme",
+    "algorithmHelp": "argon2id est la valeur par défaut moderne recommandée ; bcrypt est proposé pour la compatibilité.",
+    "algorithms": {
+      "argon2id": "argon2id (recommandé)",
+      "bcrypt": "bcrypt"
+    },
+    "presets": {
+      "label": "Profils recommandés",
+      "help": "Les préréglages remplissent les champs argon2id avec un profil aligné sur l'OWASP. Choisissez-en un, puis ajustez si nécessaire.",
+      "high": "64 Mio · t3 · p4",
+      "owasp": "19 Mio · t2 · p1",
+      "low": "9 Mio · t4 · p1"
+    },
+    "argon2": {
+      "memory": "Mémoire (Kio)",
+      "memoryHelp": "Coût mémoire en Kio. Minimum 8192 ; l'OWASP recommande au moins 19456 (19 Mio).",
+      "time": "Itérations (temps)",
+      "timeHelp": "Nombre de passes sur la mémoire. Minimum 1.",
+      "threads": "Parallélisme (threads)",
+      "threadsHelp": "Voies utilisées pendant le hachage. Entre 1 et 255.",
+      "keyLength": "Longueur de clé (octets)",
+      "keyLengthHelp": "Longueur de la clé dérivée en octets. Minimum 16.",
+      "saltLength": "Longueur du sel (octets)",
+      "saltLengthHelp": "Longueur du sel aléatoire en octets. Minimum 8."
+    },
+    "bcrypt": {
+      "cost": "Facteur de coût",
+      "costHelp": "Facteur de travail bcrypt. Entre 10 et 31 ; 12 ou plus est recommandé."
+    },
+    "rehash": {
+      "label": "Re-hacher les mots de passe existants à la prochaine connexion",
+      "help": "Activé, un hachage stocké qui ne correspond plus à cette politique est mis à niveau de façon transparente lors de la prochaine connexion réussie de l'utilisateur. Désactivé, seuls les nouveaux mots de passe utilisent le nouveau profil."
     }
   },
   "performance": {

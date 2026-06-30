@@ -8,6 +8,7 @@
     "mail": "Correo",
     "emailInbox": "Bandeja de entrada",
     "authentication": "Autenticación",
+    "hashing": "Hash de contraseñas",
     "performance": "Rendimiento",
     "slack": "Slack"
   },
@@ -73,6 +74,44 @@
       "signingSecret": "Signing Secret",
       "botToken": "Token del bot",
       "redirectUrl": "URL de redirección"
+    }
+  },
+  "hashing": {
+    "title": "Hash de contraseñas",
+    "description": "Elija el algoritmo y el coste usados para cifrar las contraseñas locales. Ajustes más fuertes ralentizan el descifrado sin conexión pero consumen más CPU por inicio de sesión.",
+    "restartNotice": "Los cambios surten efecto tras reiniciar el servidor. Las contraseñas nuevas usan entonces el nuevo perfil; los usuarios existentes se migran en su próximo inicio de sesión si el re-hash está activado. Los valores configurados mediante YAML o variables de entorno no se muestran aquí — deje un campo vacío para heredar el valor predeterminado del servidor.",
+    "algorithm": "Algoritmo",
+    "algorithmHelp": "argon2id es el valor predeterminado moderno recomendado; bcrypt se ofrece por compatibilidad.",
+    "algorithms": {
+      "argon2id": "argon2id (recomendado)",
+      "bcrypt": "bcrypt"
+    },
+    "presets": {
+      "label": "Perfiles recomendados",
+      "help": "Los preajustes rellenan los campos de argon2id con un perfil alineado con OWASP. Elija uno y ajústelo si es necesario.",
+      "high": "64 MiB · t3 · p4",
+      "owasp": "19 MiB · t2 · p1",
+      "low": "9 MiB · t4 · p1"
+    },
+    "argon2": {
+      "memory": "Memoria (KiB)",
+      "memoryHelp": "Coste de memoria en KiB. Mínimo 8192; OWASP recomienda al menos 19456 (19 MiB).",
+      "time": "Iteraciones (tiempo)",
+      "timeHelp": "Número de pasadas sobre la memoria. Mínimo 1.",
+      "threads": "Paralelismo (hilos)",
+      "threadsHelp": "Carriles usados al calcular el hash. Entre 1 y 255.",
+      "keyLength": "Longitud de clave (bytes)",
+      "keyLengthHelp": "Longitud de la clave derivada en bytes. Mínimo 16.",
+      "saltLength": "Longitud de sal (bytes)",
+      "saltLengthHelp": "Longitud de la sal aleatoria en bytes. Mínimo 8."
+    },
+    "bcrypt": {
+      "cost": "Factor de coste",
+      "costHelp": "Factor de trabajo de bcrypt. Entre 10 y 31; se recomienda 12 o más."
+    },
+    "rehash": {
+      "label": "Volver a cifrar las contraseñas existentes en el próximo inicio de sesión",
+      "help": "Cuando está activado, un hash almacenado que ya no coincide con esta política se actualiza de forma transparente en el próximo inicio de sesión exitoso del usuario. Cuando está desactivado, solo las contraseñas nuevas usan el nuevo perfil."
     }
   },
   "performance": {

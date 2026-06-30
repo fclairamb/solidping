@@ -8,6 +8,7 @@
     "mail": "E-Mail",
     "emailInbox": "E-Mail-Posteingang",
     "authentication": "Authentifizierung",
+    "hashing": "Passwort-Hashing",
     "performance": "Leistung",
     "slack": "Slack"
   },
@@ -73,6 +74,44 @@
       "signingSecret": "Signing Secret",
       "botToken": "Bot-Token",
       "redirectUrl": "Weiterleitungs-URL"
+    }
+  },
+  "hashing": {
+    "title": "Passwort-Hashing",
+    "description": "Wählen Sie Algorithmus und Kosten zum Hashen lokaler Passwörter. Stärkere Einstellungen verlangsamen Offline-Angriffe, kosten aber mehr CPU pro Anmeldung.",
+    "restartNotice": "Änderungen werden nach einem Server-Neustart wirksam. Neue Passwörter verwenden dann das neue Profil; bestehende Benutzer werden bei ihrer nächsten Anmeldung migriert, wenn das erneute Hashen aktiviert ist. Über YAML oder Umgebungsvariablen gesetzte Werte werden hier nicht angezeigt — lassen Sie ein Feld leer, um den Server-Standardwert zu übernehmen.",
+    "algorithm": "Algorithmus",
+    "algorithmHelp": "argon2id ist der empfohlene moderne Standard; bcrypt wird aus Kompatibilitätsgründen angeboten.",
+    "algorithms": {
+      "argon2id": "argon2id (empfohlen)",
+      "bcrypt": "bcrypt"
+    },
+    "presets": {
+      "label": "Empfohlene Profile",
+      "help": "Voreinstellungen füllen die argon2id-Felder mit einem OWASP-konformen Profil. Wählen Sie eines und passen Sie es bei Bedarf an.",
+      "high": "64 MiB · t3 · p4",
+      "owasp": "19 MiB · t2 · p1",
+      "low": "9 MiB · t4 · p1"
+    },
+    "argon2": {
+      "memory": "Speicher (KiB)",
+      "memoryHelp": "Speicherkosten in KiB. Minimum 8192; OWASP empfiehlt mindestens 19456 (19 MiB).",
+      "time": "Iterationen (Zeit)",
+      "timeHelp": "Anzahl der Durchläufe über den Speicher. Minimum 1.",
+      "threads": "Parallelität (Threads)",
+      "threadsHelp": "Beim Hashen verwendete Lanes. Zwischen 1 und 255.",
+      "keyLength": "Schlüssellänge (Bytes)",
+      "keyLengthHelp": "Länge des abgeleiteten Schlüssels in Bytes. Minimum 16.",
+      "saltLength": "Salt-Länge (Bytes)",
+      "saltLengthHelp": "Länge des zufälligen Salts in Bytes. Minimum 8."
+    },
+    "bcrypt": {
+      "cost": "Kostenfaktor",
+      "costHelp": "bcrypt-Arbeitsfaktor. Zwischen 10 und 31; 12 oder höher wird empfohlen."
+    },
+    "rehash": {
+      "label": "Bestehende Passwörter bei der nächsten Anmeldung neu hashen",
+      "help": "Wenn aktiviert, wird ein gespeicherter Hash, der nicht mehr dieser Richtlinie entspricht, bei der nächsten erfolgreichen Passwort-Anmeldung des Benutzers transparent aktualisiert. Wenn deaktiviert, verwenden nur neue Passwörter das neue Profil."
     }
   },
   "performance": {
