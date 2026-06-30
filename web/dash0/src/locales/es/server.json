@@ -73,7 +73,11 @@
       "appId": "App ID",
       "signingSecret": "Signing Secret",
       "botToken": "Token del bot",
-      "redirectUrl": "URL de redirección"
+      "redirectUrl": "URL de redirección",
+      "tenantId": "ID de inquilino"
+    },
+    "fieldHelp": {
+      "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta."
     }
   },
   "hashing": {

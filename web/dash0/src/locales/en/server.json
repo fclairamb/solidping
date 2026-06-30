@@ -73,7 +73,11 @@
       "appId": "App ID",
       "signingSecret": "Signing Secret",
       "botToken": "Bot Token",
-      "redirectUrl": "Redirect URL"
+      "redirectUrl": "Redirect URL",
+      "tenantId": "Tenant ID"
+    },
+    "fieldHelp": {
+      "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types."
     }
   },
   "hashing": {

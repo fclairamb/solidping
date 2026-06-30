@@ -73,7 +73,11 @@
       "appId": "App ID",
       "signingSecret": "Signing Secret",
       "botToken": "Bot-Token",
-      "redirectUrl": "Weiterleitungs-URL"
+      "redirectUrl": "Weiterleitungs-URL",
+      "tenantId": "Mandanten-ID"
+    },
+    "fieldHelp": {
+      "tenantId": "Die ID Ihres Entra-Verzeichnisses (Mandant) oder eine verifizierte Domäne. Leer lassen für \"common\" (mandantenübergreifend). Verwenden Sie \"organizations\" oder \"consumers\", um Kontotypen einzuschränken."
     }
   },
   "hashing": {
