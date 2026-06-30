@@ -472,20 +472,113 @@ func confirmationElapsed(check *models.Check, now time.Time) bool {
 	return !now.Before(check.FirstFailureAt.Add(period))
 }
 
-// recoveryElapsed reports whether the configured RecoveryPeriod has
-// passed since the first success arrived during the active incident.
-// A 0-second period means "resolve immediately on first success".
+// recoveryElapsed reports whether the *effective* RecoveryPeriod has passed
+// since the first success arrived during the active incident. The effective
+// period is flap-aware (see effectiveRecoveryPeriod): a flapping check must
+// stay stable progressively longer before auto-resolving. A 0-second base
+// period means "resolve immediately on first success".
 func recoveryElapsed(check *models.Check, now time.Time) bool {
 	if check.FirstSuccessSinceFailureAt == nil {
 		return false
 	}
-	period := time.Duration(check.RecoveryPeriodSeconds) * time.Second
 
-	return !now.Before(check.FirstSuccessSinceFailureAt.Add(period))
+	return !now.Before(check.FirstSuccessSinceFailureAt.Add(effectiveRecoveryPeriod(check)))
+}
+
+// recoveryHardCeiling bounds the effective recovery period in wall-clock time,
+// mirroring the existing reopen-cooldown clamp (maxCooldown). Even a long
+// backoff or a large multiplier can never push the required stability beyond
+// this.
+const recoveryHardCeiling = 30 * time.Minute
+
+// effectiveRecoveryPeriod returns the stability required before an incident
+// auto-resolves, given how much the check has been flapping:
+//
+//	effective = min( R · F^flapCount , R · MaxRecoveryMultiplier , HARD_CEILING )
+//
+// where R = RecoveryPeriodSeconds and F = FlapBackoffFactor. It short-circuits
+// to a plain R (today's constant behaviour) when the flapping feature is off
+// for this check — F<=1, FlappingWindowSeconds==0, or no flaps accumulated yet
+// — so existing checks never regress.
+func effectiveRecoveryPeriod(check *models.Check) time.Duration {
+	base := time.Duration(check.RecoveryPeriodSeconds) * time.Second
+
+	if check.FlapBackoffFactor <= 1 || check.FlappingWindowSeconds == 0 || check.FlapCount <= 0 {
+		return base
+	}
+
+	// Cap multiplier: required recovery never exceeds R × MaxRecoveryMultiplier.
+	capMult := check.MaxRecoveryMultiplier
+	if capMult < 1 {
+		capMult = 1
+	}
+
+	// Compute F^flapCount in integer space, short-circuiting once it reaches or
+	// exceeds the cap so a large flapCount can't overflow.
+	multiplier := 1
+	for range check.FlapCount {
+		multiplier *= check.FlapBackoffFactor
+		if multiplier >= capMult {
+			multiplier = capMult
+
+			break
+		}
+	}
+
+	effective := base * time.Duration(multiplier)
+	if effective > recoveryHardCeiling {
+		effective = recoveryHardCeiling
+	}
+
+	return effective
+}
+
+// bumpFlap updates the check's rolling flap counter for an outage onset at
+// `now`. If this is the first-ever outage, or the previous outage is older
+// than the flapping window, the counter resets to 0 (this outage starts a
+// fresh window). Otherwise it increments — the outage lands inside the active
+// window and counts as a flap. LastOutageAt is always advanced to `now`.
+//
+// Mutates the in-memory check; the caller persists flap_count / last_outage_at.
+func bumpFlap(check *models.Check, now time.Time) {
+	window := time.Duration(check.FlappingWindowSeconds) * time.Second
+
+	if check.LastOutageAt == nil || window == 0 || now.Sub(*check.LastOutageAt) > window {
+		check.FlapCount = 0
+	} else {
+		check.FlapCount++
+	}
+
+	t := now
+	check.LastOutageAt = &t
+}
+
+// recordFlap bumps the in-memory flap state for an outage onset and persists
+// flap_count / last_outage_at to the check row. Best-effort: a persistence
+// failure is logged but never blocks incident creation/reopen — the in-memory
+// value still drives this result's effective recovery threshold. Called only
+// on the rare incident open/reopen, so the extra write is off the per-result
+// hot path (spec 2026-06-30-07).
+func (s *Service) recordFlap(ctx context.Context, check *models.Check) {
+	bumpFlap(check, s.clock.Now())
+
+	if check.LastOutageAt == nil {
+		return
+	}
+
+	if err := s.db.UpdateCheckFlapState(ctx, check.UID, check.FlapCount, *check.LastOutageAt); err != nil {
+		slog.WarnContext(ctx, "Failed to persist flap state",
+			"checkUID", check.UID, "error", err)
+	}
 }
 
 // createIncident creates a new incident.
 func (s *Service) createIncident(ctx context.Context, check *models.Check, result *models.Result) error {
+	// Record this outage onset against the rolling flapping window before the
+	// incident is created, so the new incident's effective recovery threshold
+	// already reflects the (possibly escalated) flap level.
+	s.recordFlap(ctx, check)
+
 	// Generate title
 	title := s.generateIncidentTitle(check)
 
@@ -594,15 +687,14 @@ func calculateCooldown(check *models.Check) time.Duration {
 	return cooldown
 }
 
-// effectiveRecoveryPeriodSeconds is retained as a thin pass-through so the
-// reopen-event payload can keep emitting a "how long does recovery take"
-// number for downstream notifications. The adaptive-per-relapse multiplier
-// is gone (spec 2026-05-08-02 dropped count-based adaptive recovery); we
-// return the configured period as-is. The MaxAdaptiveIncrease check field
-// stays around for the reopen-cooldown calculation, which is a separate
-// adaptive concern.
+// effectiveRecoveryPeriodSeconds reports the *adaptive* recovery threshold (in
+// seconds) currently in force for this check, so the reopen-event payload's
+// `effective_recovery_threshold` carries the true number downstream
+// notifications should show. With flapping off (or no flaps accumulated) this
+// equals the configured RecoveryPeriodSeconds; with flapping active it reflects
+// the per-flap backoff and cap. See spec 2026-06-30-07.
 func effectiveRecoveryPeriodSeconds(check *models.Check) int {
-	return check.RecoveryPeriodSeconds
+	return int(effectiveRecoveryPeriod(check) / time.Second)
 }
 
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
@@ -642,6 +734,13 @@ func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
 	now := s.clock.Now()
+
+	// A reopen is an outage onset too — and a fast relapse is the strongest
+	// flap signal — so it counts against the flapping window. Bump before
+	// emitting the reopened event so keyEffectiveRecoveryThreshold reflects the
+	// escalated level.
+	s.recordFlap(ctx, check)
+
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1

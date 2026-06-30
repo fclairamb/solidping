@@ -125,6 +125,30 @@ func validateIncidentPeriod(seconds int) error {
 	return nil
 }
 
+// Flapping (adaptive recovery) validation errors — spec 2026-06-30-07.
+var (
+	errFlappingWindowNegative  = errors.New("flappingWindowSeconds must be >= 0 (0 = off)")
+	errFlapBackoffTooSmall     = errors.New("flapBackoffFactor must be >= 1 (1 = off)")
+	errMaxRecoveryMultTooSmall = errors.New("maxRecoveryMultiplier must be >= 1")
+)
+
+// validateFlappingFields range-checks the optional flapping knobs on a
+// create/update request. nil fields are skipped (left at their stored value /
+// default). Out-of-range values surface as VALIDATION_ERROR upstream.
+func validateFlappingFields(windowSeconds, backoffFactor, maxRecoveryMult *int) error {
+	if windowSeconds != nil && *windowSeconds < 0 {
+		return errFlappingWindowNegative
+	}
+	if backoffFactor != nil && *backoffFactor < 1 {
+		return errFlapBackoffTooSmall
+	}
+	if maxRecoveryMult != nil && *maxRecoveryMult < 1 {
+		return errMaxRecoveryMultTooSmall
+	}
+
+	return nil
+}
+
 // validateSlug validates that a slug has a valid format.
 // Valid slugs: start with lowercase letter, followed by 2-49 lowercase letters, digits, or hyphens.
 // Total length: 3-50 characters. Must not look like a UUID.
@@ -503,9 +527,11 @@ type CheckResponse struct {
 	LastStatusChange *LastStatusChangeResponse `json:"lastStatusChange,omitempty"`
 	CreatedAt        *time.Time                `json:"createdAt,omitempty"`
 
-	// Adaptive resolution settings
+	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
+	FlappingWindowSeconds    int  `json:"flappingWindowSeconds"`
+	FlapBackoffFactor        int  `json:"flapBackoffFactor"`
+	MaxRecoveryMultiplier    int  `json:"maxRecoveryMultiplier"`
 
 	// Wall-clock incident-tracking periods (seconds), per spec 2026-05-08-02.
 	// 0 means "open / resolve immediately on first signal".
@@ -753,9 +779,11 @@ type CreateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
-	// Adaptive resolution settings
+	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
+	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
 
 	// EscalationPolicyUID points to the escalation policy that fires when
 	// an incident on this check opens.
@@ -883,9 +911,23 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 	}
 	check.Regions = resolvedRegions
 
-	// Set adaptive resolution settings
+	// Set adaptive resolution / flapping settings.
 	check.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
-	check.MaxAdaptiveIncrease = req.MaxAdaptiveIncrease
+
+	if vErr := validateFlappingFields(
+		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
+	); vErr != nil {
+		return CheckResponse{}, vErr
+	}
+	if req.FlappingWindowSeconds != nil {
+		check.FlappingWindowSeconds = *req.FlappingWindowSeconds
+	}
+	if req.FlapBackoffFactor != nil {
+		check.FlapBackoffFactor = *req.FlapBackoffFactor
+	}
+	if req.MaxRecoveryMultiplier != nil {
+		check.MaxRecoveryMultiplier = *req.MaxRecoveryMultiplier
+	}
 
 	if req.ConfirmationPeriodSeconds != nil {
 		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
@@ -1037,9 +1079,11 @@ type UpdateCheckRequest struct {
 	ConfirmationPeriodSeconds *int `json:"confirmationPeriodSeconds,omitempty"`
 	RecoveryPeriodSeconds     *int `json:"recoveryPeriodSeconds,omitempty"`
 
-	// Adaptive resolution settings
+	// Adaptive resolution / flapping settings.
 	ReopenCooldownMultiplier *int `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease      *int `json:"maxAdaptiveIncrease,omitempty"`
+	FlappingWindowSeconds    *int `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor        *int `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier    *int `json:"maxRecoveryMultiplier,omitempty"`
 }
 
 // UpsertCheckRequest represents a request to create or update a check by slug.
@@ -1157,8 +1201,19 @@ func (s *Service) UpdateCheck(
 	if req.ReopenCooldownMultiplier != nil {
 		update.ReopenCooldownMultiplier = req.ReopenCooldownMultiplier
 	}
-	if req.MaxAdaptiveIncrease != nil {
-		update.MaxAdaptiveIncrease = req.MaxAdaptiveIncrease
+	if vErr := validateFlappingFields(
+		req.FlappingWindowSeconds, req.FlapBackoffFactor, req.MaxRecoveryMultiplier,
+	); vErr != nil {
+		return CheckResponse{}, vErr
+	}
+	if req.FlappingWindowSeconds != nil {
+		update.FlappingWindowSeconds = req.FlappingWindowSeconds
+	}
+	if req.FlapBackoffFactor != nil {
+		update.FlapBackoffFactor = req.FlapBackoffFactor
+	}
+	if req.MaxRecoveryMultiplier != nil {
+		update.MaxRecoveryMultiplier = req.MaxRecoveryMultiplier
 	}
 	if req.ConfirmationPeriodSeconds != nil {
 		if vErr := validateIncidentPeriod(*req.ConfirmationPeriodSeconds); vErr != nil {
@@ -1808,7 +1863,9 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		Status:                    check.Status.String(),
 		CreatedAt:                 &check.CreatedAt,
 		ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
-		MaxAdaptiveIncrease:       check.MaxAdaptiveIncrease,
+		FlappingWindowSeconds:     check.FlappingWindowSeconds,
+		FlapBackoffFactor:         check.FlapBackoffFactor,
+		MaxRecoveryMultiplier:     check.MaxRecoveryMultiplier,
 		ConfirmationPeriodSeconds: check.ConfirmationPeriodSeconds,
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
@@ -1931,7 +1988,9 @@ type ExportCheck struct {
 	EscalationThreshold       int                  `json:"escalationThreshold,omitempty"`
 	RecoveryPeriodSeconds     int                  `json:"recoveryPeriodSeconds,omitempty"`
 	ReopenCooldownMultiplier  *int                 `json:"reopenCooldownMultiplier,omitempty"`
-	MaxAdaptiveIncrease       *int                 `json:"maxAdaptiveIncrease,omitempty"`
+	FlappingWindowSeconds     int                  `json:"flappingWindowSeconds,omitempty"`
+	FlapBackoffFactor         int                  `json:"flapBackoffFactor,omitempty"`
+	MaxRecoveryMultiplier     int                  `json:"maxRecoveryMultiplier,omitempty"`
 	DependsOn                 []ExportedDependency `json:"dependsOn,omitempty"`
 }
 
@@ -2058,7 +2117,9 @@ func (s *Service) ExportChecks(
 			EscalationThreshold:       check.EscalationThreshold,
 			RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 			ReopenCooldownMultiplier:  check.ReopenCooldownMultiplier,
-			MaxAdaptiveIncrease:       check.MaxAdaptiveIncrease,
+			FlappingWindowSeconds:     check.FlappingWindowSeconds,
+			FlapBackoffFactor:         check.FlapBackoffFactor,
+			MaxRecoveryMultiplier:     check.MaxRecoveryMultiplier,
 		}
 
 		if check.Name != nil {
@@ -2583,7 +2644,9 @@ func (s *Service) cloneBuildCheck(
 	clone.EscalationThreshold = source.EscalationThreshold
 	clone.RecoveryPeriodSeconds = source.RecoveryPeriodSeconds
 	clone.ReopenCooldownMultiplier = source.ReopenCooldownMultiplier
-	clone.MaxAdaptiveIncrease = source.MaxAdaptiveIncrease
+	clone.FlappingWindowSeconds = source.FlappingWindowSeconds
+	clone.FlapBackoffFactor = source.FlapBackoffFactor
+	clone.MaxRecoveryMultiplier = source.MaxRecoveryMultiplier
 	clone.EscalationPolicyUID = source.EscalationPolicyUID
 	clone.CheckGroupUID = resolveCloneGroup(source, req)
 

@@ -1357,8 +1357,14 @@ func applyAdaptiveAndIncidentTrackingPg(
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}
-	if update.MaxAdaptiveIncrease != nil {
-		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	if update.FlappingWindowSeconds != nil {
+		query = query.Set("flapping_window_seconds = ?", *update.FlappingWindowSeconds)
+	}
+	if update.FlapBackoffFactor != nil {
+		query = query.Set("flap_backoff_factor = ?", *update.FlapBackoffFactor)
+	}
+	if update.MaxRecoveryMultiplier != nil {
+		query = query.Set("max_recovery_multiplier = ?", *update.MaxRecoveryMultiplier)
 	}
 	if update.ConfirmationPeriodSeconds != nil {
 		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
@@ -2377,6 +2383,24 @@ func (s *Service) UpdateCheckStatusAndClocks(
 	}
 
 	_, err := query.Exec(ctx)
+
+	return err
+}
+
+// UpdateCheckFlapState persists the rolling flap counter and the last-outage
+// timestamp on a check. Written only on the rare incident open/reopen — never
+// on the per-result hot path. See spec 2026-06-30-07.
+func (s *Service) UpdateCheckFlapState(
+	ctx context.Context, checkUID string, flapCount int, lastOutageAt time.Time,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", checkUID).
+		Where("deleted_at IS NULL").
+		Set("flap_count = ?", flapCount).
+		Set("last_outage_at = ?", lastOutageAt).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
 
 	return err
 }

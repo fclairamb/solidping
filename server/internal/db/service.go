@@ -257,6 +257,16 @@ type Service interface {
 		clocks models.IncidentClockUpdate,
 	) error
 
+	// UpdateCheckFlapState persists the rolling flap counter and the
+	// last-outage timestamp on a check. Called only on the rare incident
+	// open/reopen (never on the per-result hot path) — spec 2026-06-30-07.
+	UpdateCheckFlapState(
+		ctx context.Context,
+		checkUID string,
+		flapCount int,
+		lastOutageAt time.Time,
+	) error
+
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
