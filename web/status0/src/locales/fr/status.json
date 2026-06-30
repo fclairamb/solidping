@@ -17,6 +17,7 @@
   "solidpingStatus": "Statut SolidPing",
   "visitStatusPage": "Visitez une page de statut spécifique pour voir l'état des services.",
   "daysAgo": "il y a {{count}} jours",
+  "hoursAgo": "il y a {{count}} h",
   "today": "Aujourd'hui",
   "uptime": "de disponibilité",
   "noData": "Aucune donnée",

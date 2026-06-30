@@ -111,6 +111,7 @@ function ResourceCard({
           dailyAvailability={avail.dailyAvailability}
           overallAvailabilityPct={avail.overallAvailabilityPct}
           historyDays={historyDays}
+          bucketUnit={avail.bucketUnit}
         />
       )}
 

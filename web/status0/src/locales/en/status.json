@@ -17,6 +17,7 @@
   "solidpingStatus": "SolidPing Status",
   "visitStatusPage": "Visit a specific status page to see service health.",
   "daysAgo": "{{count}} days ago",
+  "hoursAgo": "{{count}}h ago",
   "today": "Today",
   "uptime": "uptime",
   "noData": "No data",
