@@ -2332,7 +2332,7 @@ export function CheckForm({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
-                  <Input id="confirmationPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
+                  <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
                   {confirmationPeriodSeconds.trim() !== "" && (
                     <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
@@ -2347,7 +2347,7 @@ export function CheckForm({
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
-                  <Input id="recoveryPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
+                  <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
                   {recoveryPeriodSeconds.trim() !== "" && (
                     <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">

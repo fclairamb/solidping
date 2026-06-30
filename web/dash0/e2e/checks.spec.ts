@@ -69,6 +69,38 @@ test.describe("Checks", () => {
     });
   });
 
+  test("should show a live probe-count estimate under the period inputs", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Open the new-check form (default type is HTTP = an active check).
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Pin the interval to 1 minute so the count is deterministic (120s / 60s = 2).
+    await page.getByTestId("check-period-select").click();
+    await page.getByRole("option", { name: "1 minute" }).click();
+
+    // Confirmation 120 -> "= 2 min" with the approximate probe count for the
+    // active 1-minute interval.
+    await page.getByTestId("confirmation-period-input").fill("120");
+    const confirmationEstimate = page.getByTestId("confirmation-period-estimate");
+    await expect(confirmationEstimate).toContainText("= 2 min");
+    await expect(confirmationEstimate).toContainText("≈ 2 checks");
+
+    // Recovery 0 -> the immediate-resolve copy, no probe count.
+    await page.getByTestId("recovery-period-input").fill("0");
+    const recoveryEstimate = page.getByTestId("recovery-period-estimate");
+    await expect(recoveryEstimate).toContainText("immediately");
+    await expect(recoveryEstimate).not.toContainText("≈");
+  });
+
   test("should load check detail page on direct URL access", async ({
     authenticatedPage,
   }) => {
