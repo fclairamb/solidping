@@ -465,6 +465,43 @@ type ServerConfig struct {
 	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
 	// SP_SERVER_DOCS_HOST), not the auto env loader.
 	DocsHost string `koanf:"docs_host"`
+	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
+	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
+	Scheduling SchedulingConfig `koanf:"scheduling"`
+}
+
+// SchedulingConfig tunes cost-aware, plan-weighted check execution
+// (spec 2026-06-30-09). Every knob defaults to today's behaviour: penalty and
+// credit of 0 (pure FIFO ordering), caps equal to the pool size (no isolation),
+// and the flat 30s execution timeout. Turning a knob on opts into the fairness
+// behaviour without a redeploy.
+type SchedulingConfig struct {
+	// SlowCostThresholdMs classifies a check as "slow" once its cost EWMA
+	// exceeds this many ms. 0 disables slow classification and the slow lane.
+	SlowCostThresholdMs float64 `koanf:"slow_cost_threshold_ms"`
+	// SlowLaneMax caps how many slow checks may execute simultaneously per
+	// worker, guaranteeing poolSize − SlowLaneMax slots stay free for fast
+	// checks. 0 means "no slow cap" (equals pool size).
+	SlowLaneMax int `koanf:"slow_lane_max"`
+	// PaidReserved reserves this many runner slots per worker for paid-tier
+	// jobs, capping free-tier in-flight at poolSize − PaidReserved. 0 disables
+	// the reservation. This is the Q2 hard floor.
+	PaidReserved int `koanf:"paid_reserved"`
+	// PenaltyCapSeconds bounds how far a slow check's effective deadline may be
+	// pushed past its real schedule (anti-starvation). 0 disables the penalty.
+	PenaltyCapSeconds float64 `koanf:"penalty_cap_seconds"`
+	// TierCreditSeconds is the deadline credit per unit of plan_weight (paid
+	// jobs sort earlier under contention). 0 disables the credit.
+	TierCreditSeconds float64 `koanf:"tier_credit_seconds"`
+	// TierCreditMaxSeconds caps total tier credit regardless of weight. 0 = no
+	// separate cap.
+	TierCreditMaxSeconds float64 `koanf:"tier_credit_max_seconds"`
+	// CostTimeoutFactor multiplies cost_ewma_ms to derive the per-check
+	// execution timeout, clamped to [floor, 30s]. 0 keeps the flat 30s timeout.
+	CostTimeoutFactor float64 `koanf:"cost_timeout_factor"`
+	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms. Only used when
+	// CostTimeoutFactor > 0.
+	CostTimeoutFloorMs float64 `koanf:"cost_timeout_floor_ms"`
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -511,7 +548,14 @@ func Load() (*Config, error) {
 			},
 			CheckWorker: CheckWorkerConfig{
 				FetchMaxAhead: 5 * time.Minute,
-				Nb:            3,
+				// Check execution is almost pure network I/O — a goroutine
+				// parked on a slow socket costs ~KB and zero CPU — so a tiny
+				// pool artificially manufactures head-of-line blocking (a
+				// handful of slow checks = 100% occupancy = total stall). The
+				// real bound is now the per-class/per-org admission caps
+				// (scheduling.slow_lane_max / paid_reserved) and DB-flush
+				// throughput, not this goroutine count. See spec 2026-06-30-09.
+				Nb: 25,
 			},
 			RateLimiting: RateLimitConfig{
 				RequestsPerMinute: 300,
@@ -690,6 +734,7 @@ func Load() (*Config, error) {
 	applyWebPushEnv(&cfg.WebPush)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
+	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
 
@@ -862,6 +907,36 @@ func applyServerEnv(cfg *ServerConfig) {
 	} else if v := os.Getenv("SP_DOCS_HOST"); v != "" {
 		cfg.DocsHost = v
 	}
+}
+
+// applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
+// loader cannot bind (it collapses underscores to dots and would miss the
+// snake_case koanf tags like "slow_cost_threshold_ms"). Every knob is opt-in;
+// default 0 reproduces today's pure-FIFO scheduling. See project_koanf_env_quirk.
+func applySchedulingEnv(cfg *SchedulingConfig) {
+	parseFloat := func(env string, dst *float64) {
+		if v := os.Getenv(env); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				*dst = f
+			}
+		}
+	}
+	parseInt := func(env string, dst *int) {
+		if v := os.Getenv(env); v != "" {
+			if n, err := strconv.Atoi(v); err == nil {
+				*dst = n
+			}
+		}
+	}
+
+	parseFloat("SP_SCHEDULING_SLOW_COST_THRESHOLD_MS", &cfg.SlowCostThresholdMs)
+	parseInt("SP_SCHEDULING_SLOW_LANE_MAX", &cfg.SlowLaneMax)
+	parseInt("SP_SCHEDULING_PAID_RESERVED", &cfg.PaidReserved)
+	parseFloat("SP_SCHEDULING_PENALTY_CAP_SECONDS", &cfg.PenaltyCapSeconds)
+	parseFloat("SP_SCHEDULING_TIER_CREDIT_SECONDS", &cfg.TierCreditSeconds)
+	parseFloat("SP_SCHEDULING_TIER_CREDIT_MAX_SECONDS", &cfg.TierCreditMaxSeconds)
+	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FACTOR", &cfg.CostTimeoutFactor)
+	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FLOOR_MS", &cfg.CostTimeoutFloorMs)
 }
 
 // applyProfilerEnv reads the multi-word SP_PROFILER_* knobs koanf's env loader

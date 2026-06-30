@@ -85,7 +85,10 @@ func NewCheckWorker(
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {
-		poolSize = 5
+		// I/O-bound work tolerates far more concurrency than a CPU-bound pool;
+		// the real bound is the per-class/per-org admission caps, not this
+		// count. See spec 2026-06-30-09.
+		poolSize = 25
 	}
 
 	return &CheckWorker{
