@@ -67,14 +67,14 @@ func (b *BucketStats) accumulateRaw(result *models.Result) {
 		return
 	}
 
-	st := models.ResultStatus(*result.Status)
-	if st.IsLifecycleMarker() {
+	status := models.ResultStatus(*result.Status)
+	if status.IsLifecycleMarker() {
 		return
 	}
 
 	b.Total++
 
-	if st.CountsAsUp() {
+	if status.CountsAsUp() {
 		b.Up++
 	}
 

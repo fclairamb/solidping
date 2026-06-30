@@ -204,7 +204,7 @@ func (s *Service) appendRowFragments(
 	ctx context.Context, orgUID, checkUID string, opts BadgeOptions,
 	width int, hasBar, hasGraph bool, rows []string, totalHeight int,
 ) ([]string, int, error) {
-	availMap, durationMap, bucketStart, n, bucketDuration, err := s.fetchBucketData(
+	availMap, durationMap, win, err := s.fetchBucketData(
 		ctx, orgUID, checkUID, opts.Period,
 	)
 	if err != nil {
@@ -212,16 +212,16 @@ func (s *Service) appendRowFragments(
 	}
 
 	if hasBar {
-		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
-		labels := computeUptimeBarLabels(bucketStart, n, bucketDuration)
-		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration, width)
+		segments := buildBarSegments(availMap, win.bucketStart, win.n, win.bucketDuration)
+		labels := computeUptimeBarLabels(win.bucketStart, win.n, win.bucketDuration)
+		barValues := computeUptimeBarValues(availMap, win.bucketStart, win.n, win.bucketDuration, width)
 		yOffset := totalHeight + rowGap
 		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
 	}
 
 	if hasGraph {
-		points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
+		points := buildGraphPoints(durationMap, win.bucketStart, win.n, win.bucketDuration)
 		yOffset := totalHeight + rowGap
 		rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightGraph
@@ -230,11 +230,20 @@ func (s *Service) appendRowFragments(
 	return rows, totalHeight, nil
 }
 
+// barWindow is the time anchor of an uptime-bar render: the n buckets of
+// bucketDuration starting at bucketStart (oldest), the newest being the current,
+// in-progress bucket.
+type barWindow struct {
+	bucketStart    time.Time
+	n              int
+	bucketDuration time.Duration
+}
+
 // bucketStatsForPeriod runs the shared uptimebar bucketing for one check over the
 // uptime-bar window for the given period and returns the per-bucket stats plus
-// the window anchor (bucketStart, n, bucketDuration). This is the single seam the
-// badge buckets from; the status page buckets from the same uptimebar helper, so
-// the two surfaces cannot diverge on which data feeds the bar.
+// the window anchor. This is the single seam the badge buckets from; the status
+// page buckets from the same uptimebar helper, so the two surfaces cannot diverge
+// on which data feeds the bar.
 //
 // The window spans n buckets ending at the current, in-progress bucket, so a
 // freshly-created check shows its data immediately: the current bucket is filled
@@ -242,7 +251,7 @@ func (s *Service) appendRowFragments(
 // (CountsAsUp), matching the rolled-up tier and the aggregation job.
 func (s *Service) bucketStatsForPeriod(
 	ctx context.Context, orgUID, checkUID, period string,
-) (map[time.Time]uptimebar.BucketStats, time.Time, int, time.Duration, error) {
+) (map[time.Time]uptimebar.BucketStats, barWindow, error) {
 	_, n, bucketDuration := uptimeBarPeriodInfo(period)
 
 	now := time.Now().UTC()
@@ -250,31 +259,35 @@ func (s *Service) bucketStatsForPeriod(
 	// the oldest is (n-1) buckets earlier. Using -(n-1) rather than -n keeps the
 	// in-progress bucket inside the rendered window.
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
+	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
 	byCheck, err := uptimebar.BucketAvailability(
 		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
 	)
 	if err != nil {
-		return nil, time.Time{}, 0, 0, err
+		return nil, barWindow{}, err
 	}
 
-	return byCheck[checkUID], bucketStart, n, bucketDuration, nil
+	return byCheck[checkUID], win, nil
 }
 
 // fetchBucketData returns per-bucket availability and average-duration maps for
-// the uptime bar, projected from the shared per-bucket stats.
+// the uptime bar plus the window anchor, projected from the shared per-bucket
+// stats.
 func (s *Service) fetchBucketData(
 	ctx context.Context, orgUID, checkUID, period string,
-) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
-	byBucket, bucketStart, n, bucketDuration, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
+) (map[time.Time]float64, map[time.Time]*float64, barWindow, error) {
+	byBucket, win, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
 	if err != nil {
-		return nil, nil, time.Time{}, 0, 0, err
+		return nil, nil, barWindow{}, err
 	}
 
-	availMap := make(map[time.Time]float64, n)
-	durationMap := make(map[time.Time]*float64, n)
+	availMap := make(map[time.Time]float64, win.n)
+	durationMap := make(map[time.Time]*float64, win.n)
 
-	for bucket, stats := range byBucket {
+	for bucket := range byBucket {
+		stats := byBucket[bucket]
+
 		if pct, ok := stats.AvailabilityPct(); ok {
 			availMap[bucket] = pct
 		}
@@ -285,7 +298,7 @@ func (s *Service) fetchBucketData(
 		}
 	}
 
-	return availMap, durationMap, bucketStart, n, bucketDuration, nil
+	return availMap, durationMap, win, nil
 }
 
 // BucketAvailabilityForPeriod returns the badge's per-bucket availability stats
@@ -296,9 +309,12 @@ func (s *Service) fetchBucketData(
 func BucketAvailabilityForPeriod(
 	ctx context.Context, s *Service, orgUID, checkUID, period string,
 ) (map[time.Time]uptimebar.BucketStats, error) {
-	byBucket, _, _, _, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
+	byBucket, _, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
+	if err != nil {
+		return nil, err
+	}
 
-	return byBucket, err
+	return byBucket, nil
 }
 
 // buildBarSegments resolves the colored segments for the uptime bar row.

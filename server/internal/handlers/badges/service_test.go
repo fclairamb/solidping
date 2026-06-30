@@ -780,7 +780,7 @@ func TestFetchBucketData_MixesRawAndRollup(t *testing.T) {
 	hourRow.DurationAvg = &avgDur
 	r.NoError(svc.dbSvc.CreateResult(ctx, hourRow))
 
-	availMap, durationMap, _, _, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
+	availMap, durationMap, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
 	r.NoError(err)
 
 	r.InDelta(90.0, availMap[currentHour], 0.001)
@@ -813,7 +813,7 @@ func TestFetchBucketData_WarningCountsAsUp(t *testing.T) {
 	insert(models.ResultStatusCreated, 4*time.Minute) // lifecycle → excluded
 	insert(models.ResultStatusRunning, 5*time.Minute) // lifecycle → excluded
 
-	availMap, _, _, _, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
+	availMap, _, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
 	r.NoError(err)
 
 	// 2 up/warning of 3 countable = 66.67%.

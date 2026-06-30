@@ -32,10 +32,6 @@ func setupStatusPagesTest(t *testing.T) (context.Context, *Service, *models.Orga
 	return ctx, NewService(dbService), org
 }
 
-func ptrFloat64(v float64) *float64 { return &v }
-func ptrFloat32(v float32) *float32 { return &v }
-func ptrInt(v int) *int             { return &v }
-
 // TestBuildAvailabilityData_UTCBucketing pins that daily buckets are keyed by
 // their UTC-midnight start, not the server's local date. The per-bucket stats
 // map is keyed by UTC day; a stat at yesterday's UTC midnight must render as a
@@ -716,7 +712,7 @@ func TestBadgeStatusPageParity_SameBucketsForSameData(t *testing.T) {
 		r.NoError(perr)
 		r.True(bucket.Equal(gotTime.UTC()), "bucket %d time mismatch", i)
 
-		statusHas := statusPoint.Status != "noData"
+		statusHas := statusPoint.Status != statusNoData
 		r.Equal(badgeHas, statusHas, "bucket %s presence must match across surfaces", bucket)
 
 		if badgeHas {

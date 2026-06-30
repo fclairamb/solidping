@@ -982,7 +982,6 @@ func pagePeriod(page *models.StatusPage) models.StatusPagePeriod {
 	return models.PeriodFromDays(page.HistoryDays)
 }
 
-//nolint:cyclop,funlen // Availability enrichment has inherent conditional complexity
 func (s *Service) enrichWithAvailability(
 	ctx context.Context, orgUID string, page *models.StatusPage, sections []StatusPageSectionResponse,
 ) {
@@ -1140,7 +1139,7 @@ func buildHourlyAvailabilityData(
 			point := AvailabilityPoint{
 				Date:   bucket.Format("2006-01-02"),
 				Time:   bucket.Format(time.RFC3339),
-				Status: "noData",
+				Status: statusNoData,
 			}
 
 			if stats, ok := byBucket[bucket]; ok {
@@ -1197,7 +1196,7 @@ func buildAvailabilityData(
 			point := AvailabilityPoint{
 				Date:   dateStr,
 				Time:   day.Format(time.RFC3339),
-				Status: "noData",
+				Status: statusNoData,
 			}
 
 			if stats, ok := byBucket[day]; ok {
@@ -1257,6 +1256,10 @@ func buildResponseTimeData(recentResults []*models.Result) []ResponseTimePoint {
 
 	return rtData
 }
+
+// statusNoData is the availability-point status for a bucket that has no rows in
+// the shared raw+hour+day union — the front end renders it gray.
+const statusNoData = "noData"
 
 func availabilityToStatus(pct float64) string {
 	switch {
