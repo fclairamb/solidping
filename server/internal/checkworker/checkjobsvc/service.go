@@ -45,6 +45,22 @@ type Service interface {
 
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
+
+	// ReleaseLeaseWithSchedulingState releases the lease, reschedules, and folds
+	// the post-exec cost signal into the row in the same write: it stores the
+	// updated cost EWMA and the recomputed effective_scheduled_at used for
+	// cost-aware, plan-weighted claim ordering (spec 2026-06-30-09). No extra
+	// query on the hot path — it reuses the single post-exec UPDATE. Callers
+	// without a fresh cost sample (rate-limit deferral, reaper, remote backends)
+	// use ReleaseLease instead.
+	ReleaseLeaseWithSchedulingState(
+		ctx context.Context,
+		jobUID string,
+		workerUID string,
+		nextScheduledAt time.Time,
+		costEWMAMs float64,
+		effectiveScheduledAt time.Time,
+	) error
 }
 
 // serviceImpl implements the Service interface.
@@ -263,7 +279,13 @@ func (s *serviceImpl) selectAvailableJobs(
 				WhereOr("lease_expires_at IS NULL").
 				WhereOr("lease_expires_at < ?", now)
 		}).
-		Order("scheduled_at ASC").
+		// Cost-aware, plan-weighted ordering (spec 2026-06-30-09, D2/Option A):
+		// the gate above still uses the real scheduled_at, but ordering uses
+		// effective_scheduled_at (scheduled_at + cost_penalty − tier_credit) so
+		// under contention cheap/paid checks win the limited slots. With spare
+		// capacity every due check still runs on time. COALESCE keeps pre-006
+		// rows (NULL effective) ordering by their real schedule.
+		OrderExpr("COALESCE(effective_scheduled_at, scheduled_at) ASC").
 		Limit(limit)
 
 	// Region matching: NULL region or prefix matching
@@ -366,22 +388,62 @@ func (s *serviceImpl) updateSingleJobLease(
 
 // ReleaseLease releases the lease and reschedules the job.
 // Resets lease_starts to 0 since the job completed successfully.
+//
+// This variant does not touch cost_ewma_ms; it keeps effective_scheduled_at in
+// step with the new schedule by anchoring it to nextScheduledAt (no cost sample
+// to apply). Used by the rate-limit deferral, the stuck-job reaper, and remote
+// backends that have no fresh duration to fold in.
 func (s *serviceImpl) ReleaseLease(
 	ctx context.Context,
 	jobUID string,
 	workerUID string,
 	nextScheduledAt time.Time,
 ) error {
-	result, err := s.db.NewUpdate().
+	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("lease_worker_uid = NULL").
 		Set("lease_expires_at = NULL").
 		Set("lease_starts = 0"). // Reset since job completed
 		Set("scheduled_at = ?", nextScheduledAt).
+		// Re-anchor the ordering key to the new schedule so a deferred job does
+		// not keep an effective deadline from a stale (earlier) schedule.
+		Set("effective_scheduled_at = ?", nextScheduledAt).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
-		Where("lease_worker_uid = ?", workerUID). // Safety: only release if we own the lease
-		Exec(ctx)
+		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
+
+	return s.execRelease(ctx, update)
+}
+
+// ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec
+// cost signal into the same UPDATE (spec 2026-06-30-09).
+func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
+	ctx context.Context,
+	jobUID string,
+	workerUID string,
+	nextScheduledAt time.Time,
+	costEWMAMs float64,
+	effectiveScheduledAt time.Time,
+) error {
+	update := s.db.NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("lease_worker_uid = NULL").
+		Set("lease_expires_at = NULL").
+		Set("lease_starts = 0"). // Reset since job completed
+		Set("scheduled_at = ?", nextScheduledAt).
+		Set("cost_ewma_ms = ?", costEWMAMs).
+		Set("effective_scheduled_at = ?", effectiveScheduledAt).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", jobUID).
+		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
+
+	return s.execRelease(ctx, update)
+}
+
+// execRelease runs a release UPDATE and maps the no-rows case to
+// ErrJobClaimedByAnother.
+func (s *serviceImpl) execRelease(ctx context.Context, update *bun.UpdateQuery) error {
+	result, err := update.Exec(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to release lease: %w", err)
 	}
