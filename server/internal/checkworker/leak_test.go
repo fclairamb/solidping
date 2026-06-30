@@ -56,7 +56,7 @@ func TestWorkerLifecycleNoGoroutineLeak(t *testing.T) {
 
 	// Let all worker goroutines (heartbeat, pool, fetcher, express) start.
 	time.Sleep(200 * time.Millisecond)
-	require.NotNil(t, runner.worker, "worker should be registered")
+	require.NotNil(t, runner.getWorker(), "worker should be registered")
 
 	cancel()
 

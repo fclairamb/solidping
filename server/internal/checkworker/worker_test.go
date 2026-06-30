@@ -191,7 +191,7 @@ func TestReleaseLease(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	t.Run("BasicRelease", func(t *testing.T) {
 		now := time.Now()
@@ -263,7 +263,7 @@ func TestExpressHandleEvent(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	logger := runner.logger.With("test", "express")
 
@@ -337,7 +337,7 @@ func TestLastForStatus(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	// Create a check
 	check := models.NewCheck(org.UID, "test-check", "http")
@@ -579,7 +579,7 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	// Create a heartbeat check
 	check := models.NewCheck(org.UID, "test-heartbeat", "heartbeat")
@@ -743,7 +743,7 @@ func TestGracefulShutdown(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify worker was registered
-	require.NotNil(t, runner.worker, "worker should be registered")
+	require.NotNil(t, runner.getWorker(), "worker should be registered")
 
 	// Trigger graceful shutdown
 	cancel()
@@ -764,7 +764,7 @@ func TestGracefulShutdown(t *testing.T) {
 	var dbWorker models.Worker
 	err = dbSvc.DB().NewSelect().
 		Model(&dbWorker).
-		Where("uid = ?", runner.worker.UID).
+		Where("uid = ?", runner.getWorker().UID).
 		Scan(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, dbWorker.LastActiveAt, "worker should have last_active_at timestamp")

@@ -20,7 +20,7 @@ func newWorkerChannelCollector(checkWorker *CheckWorker) prometheus.Collector {
 			"solidping_worker_jobs_channel_depth",
 			"Number of jobs currently buffered in the worker's jobsChan (sampled at scrape time)",
 			nil,
-			prometheus.Labels{"worker_uid": checkWorker.worker.UID},
+			prometheus.Labels{"worker_uid": checkWorker.getWorker().UID},
 		),
 	}
 }

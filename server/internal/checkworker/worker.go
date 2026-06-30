@@ -54,7 +54,12 @@ const (
 
 // CheckWorker executes check jobs from the queue.
 type CheckWorker struct {
-	worker      *models.Worker
+	// worker holds the registered worker identity. It is written once by
+	// registerWorker (from Run's goroutine) and then read from many goroutines
+	// (runners, fetcher, heartbeat, the Prometheus channel collector, and tests),
+	// so access goes through atomic.Pointer to avoid a data race. Use
+	// setWorker/getWorker rather than touching the field directly.
+	worker      atomic.Pointer[models.Worker]
 	dbService   db.Service
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
@@ -145,9 +150,10 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to register worker: %w", err)
 	}
 
+	registered := r.getWorker()
 	r.logger.InfoContext(ctx, "Worker registered",
-		"worker_uid", r.worker.UID,
-		"worker_slug", r.worker.Slug,
+		"worker_uid", registered.UID,
+		"worker_slug", registered.Slug,
 		"pool_size", r.poolSize)
 
 	// 1b. Register per-worker Prometheus channel-depth collector
@@ -221,8 +227,20 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		return err
 	}
 
-	r.worker = registeredWorker
+	r.setWorker(registeredWorker)
 	return nil
+}
+
+// setWorker publishes the registered worker identity. Safe to call from any
+// goroutine.
+func (r *CheckWorker) setWorker(worker *models.Worker) {
+	r.worker.Store(worker)
+}
+
+// getWorker returns the registered worker identity, or nil before registration.
+// Safe to call from any goroutine.
+func (r *CheckWorker) getWorker() *models.Worker {
+	return r.worker.Load()
 }
 
 // heartbeatLoop periodically updates the worker's last_active_at.
@@ -243,7 +261,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 
 // updateHeartbeat updates the worker's last_active_at timestamp.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.dbService.UpdateWorkerHeartbeat(ctx, r.worker.UID); err != nil {
+	if err := r.dbService.UpdateWorkerHeartbeat(ctx, r.getWorker().UID); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
@@ -307,10 +325,11 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
+	worker := r.getWorker()
 	jobs, err := r.checkJobSvc.ClaimJobs(
 		ctx,
-		r.worker.UID,
-		r.worker.Region,
+		worker.UID,
+		worker.Region,
 		available,
 		cfg.FetchMaxAhead,
 	)
@@ -396,7 +415,8 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 		return
 	}
 
-	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, r.worker.UID, r.worker.Region, msg.CheckUID)
+	worker := r.getWorker()
+	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",
@@ -719,7 +739,7 @@ func (r *CheckWorker) releaseLeaseWithCost(
 	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
 
 	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
-		ctx, checkJob.UID, r.worker.UID, nextScheduledAt, newCost, effective,
+		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, effective,
 	)
 }
 
@@ -733,6 +753,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 	status := int(checkResult.Status)
 	durationMs := float32(checkResult.Duration.Seconds() * 1000)
 	lastForStatus := true
+	worker := r.getWorker()
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -740,7 +761,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 		CheckUID:        checkJob.CheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Region:          checkJob.Region,
 		Status:          &status,
 		Duration:        &durationMs,
@@ -794,6 +815,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 	status := int(checkerdef.StatusError)
 	durationMs := float32(0)
 	lastForStatus := true
+	worker := r.getWorker()
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -801,7 +823,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		CheckUID:        checkJob.CheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Region:          checkJob.Region,
 		Status:          &status,
 		Duration:        &durationMs,
@@ -843,7 +865,7 @@ func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJo
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 
-	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.worker.UID, nextScheduledAt)
+	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt)
 }
 
 // isPassiveCheckType reports whether a check type is passive — driven by
@@ -997,7 +1019,8 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 
 // createInternalCheck creates or retrieves the internal check for this worker.
 func (r *CheckWorker) createInternalCheck(ctx context.Context) error {
-	slug := "int-checks-" + r.worker.Slug
+	worker := r.getWorker()
+	slug := "int-checks-" + worker.Slug
 
 	// Check if already exists
 	existing, err := r.dbService.GetCheckByUidOrSlug(ctx, r.defaultOrgUID, slug)
@@ -1019,7 +1042,7 @@ func (r *CheckWorker) createInternalCheck(ctx context.Context) error {
 
 	// Create new internal check
 	check := models.NewCheck(r.defaultOrgUID, slug, "checkworker")
-	name := "Check Worker: " + r.worker.Name
+	name := "Check Worker: " + worker.Name
 	check.Name = &name
 	check.Enabled = false // Don't schedule it as a regular check
 	check.Internal = true
@@ -1049,13 +1072,14 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 		return
 	}
 
+	worker := r.getWorker()
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: r.defaultOrgUID,
 		CheckUID:        r.internalCheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Status:          &status,
 		Metrics: models.JSONMap{
 			"job_runs":         reported.TotalChecks,
