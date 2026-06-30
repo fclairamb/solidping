@@ -73,6 +73,9 @@ var (
 	ErrInvalidArgon2Params = errors.New("invalid argon2id parameters")
 	// ErrInvalidBcryptCost is returned when bcrypt cost is outside the accepted [10,31] range.
 	ErrInvalidBcryptCost = errors.New("bcrypt cost must be between 10 and 31")
+	// ErrInvalidPasswordParameter is returned by ValidatePasswordParameter when a
+	// single auth.password.* value is out of range or the wrong type.
+	ErrInvalidPasswordParameter = errors.New("invalid password hashing parameter")
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -87,6 +90,7 @@ const (
 	argon2MemoryOWASPKiB = 19456 // warn below this OWASP floor (KiB)
 	argon2TimeFloor      = 1
 	argon2ThreadsFloor   = 1
+	argon2ThreadsMax     = 255 // uint8 ceiling, matches Argon2Params.Threads
 	argon2KeyLengthFloor = 16
 	argon2SaltLenFloor   = 8
 	bcryptCostMin        = 10
@@ -330,6 +334,12 @@ type PasswordConfig struct {
 	Algorithm string       `koanf:"algorithm"` // "argon2id" (default) | "bcrypt"
 	Argon2    Argon2Params `koanf:"argon2"`
 	Bcrypt    BcryptParams `koanf:"bcrypt"`
+	// RehashOnLogin gates the lazy login-time rehash. When true (default), a
+	// stored hash that no longer matches the active policy is transparently
+	// re-minted on the user's next successful password login. When false, only
+	// new passwords (new users, password changes/resets) use the new profile;
+	// existing hashes are left untouched.
+	RehashOnLogin bool `koanf:"rehash_on_login"`
 }
 
 // Argon2Params are the argon2id cost parameters (memory in KiB).
@@ -540,7 +550,8 @@ func Load() (*Config, error) {
 					KeyLength:  32,
 					SaltLength: 16,
 				},
-				Bcrypt: BcryptParams{Cost: 12},
+				Bcrypt:        BcryptParams{Cost: 12},
+				RehashOnLogin: true,
 			},
 		},
 		Email: EmailConfig{
@@ -786,6 +797,15 @@ func applyPasswordHashingEnv(cfg *PasswordConfig) {
 			*dst = n
 		}
 	}
+	boolEnv := func(name string, dst *bool) {
+		v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+		switch v {
+		case "true", "1", "yes":
+			*dst = true
+		case "false", "0", "no":
+			*dst = false
+		}
+	}
 
 	strEnv("SP_AUTH_PASSWORD_ALGORITHM", &cfg.Algorithm)
 	u32Env("SP_AUTH_PASSWORD_ARGON2_MEMORY", &cfg.Argon2.Memory)
@@ -794,6 +814,7 @@ func applyPasswordHashingEnv(cfg *PasswordConfig) {
 	u32Env("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", &cfg.Argon2.KeyLength)
 	u32Env("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", &cfg.Argon2.SaltLength)
 	intEnv("SP_AUTH_PASSWORD_BCRYPT_COST", &cfg.Bcrypt.Cost)
+	boolEnv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", &cfg.RehashOnLogin)
 }
 
 // applyJobsEnv reads SP_JOBS_* into cfg. koanf's env loader collapses every
@@ -1060,6 +1081,107 @@ func validateArgon2Params(params *Argon2Params) error {
 	if params.Memory < argon2MemoryOWASPKiB {
 		slog.Warn("argon2id memory is below the OWASP floor; offline-crack resistance is reduced",
 			"memoryKiB", params.Memory, "owaspFloorKiB", argon2MemoryOWASPKiB)
+	}
+
+	return nil
+}
+
+// Known auth.password.* parameter keys, exported so the system-parameter write
+// handler can validate them against the same bounds used at config load.
+const (
+	ParamKeyPasswordAlgorithm     = "auth.password.algorithm"
+	ParamKeyPasswordArgon2Memory  = "auth.password.argon2.memory"
+	ParamKeyPasswordArgon2Time    = "auth.password.argon2.time"
+	ParamKeyPasswordArgon2Threads = "auth.password.argon2.threads"
+	ParamKeyPasswordArgon2KeyLen  = "auth.password.argon2.key_length"
+	ParamKeyPasswordArgon2SaltLen = "auth.password.argon2.salt_length"
+	ParamKeyPasswordBcryptCost    = "auth.password.bcrypt.cost"
+	ParamKeyPasswordRehashOnLogin = "auth.password.rehash_on_login"
+)
+
+// IsPasswordParameterKey reports whether key is one of the validated
+// auth.password.* system parameters.
+func IsPasswordParameterKey(key string) bool {
+	switch key {
+	case ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
+		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
+		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin:
+		return true
+	default:
+		return false
+	}
+}
+
+// paramToInt coerces a JSON-decoded system-parameter value (float64 from
+// encoding/json, or native int) to an int. Returns ok=false on any other type.
+func paramToInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed), true
+	case int:
+		return typed, true
+	default:
+		return 0, false
+	}
+}
+
+// ValidatePasswordParameter validates a single auth.password.* value against the
+// exact bounds enforced by Config.Validate, so a value saved through the
+// system-parameter API can never produce a config that aborts the next startup.
+// It is the single source of truth shared by the write handler and config load.
+//
+//nolint:cyclop // straight-line per-key bound checks, not branching complexity
+func ValidatePasswordParameter(key string, value any) error {
+	switch key {
+	case ParamKeyPasswordAlgorithm:
+		algo, ok := value.(string)
+		if !ok || (algo != PasswordAlgorithmArgon2id && algo != PasswordAlgorithmBcrypt) {
+			return fmt.Errorf("%w: %s must be 'argon2id' or 'bcrypt'", ErrInvalidPasswordParameter, key)
+		}
+	case ParamKeyPasswordArgon2Memory:
+		return validatePasswordIntBound(key, value, argon2MemoryFloorKiB)
+	case ParamKeyPasswordArgon2Time:
+		return validatePasswordIntBound(key, value, argon2TimeFloor)
+	case ParamKeyPasswordArgon2Threads:
+		return validatePasswordIntRange(key, value, argon2ThreadsFloor, argon2ThreadsMax)
+	case ParamKeyPasswordArgon2KeyLen:
+		return validatePasswordIntBound(key, value, argon2KeyLengthFloor)
+	case ParamKeyPasswordArgon2SaltLen:
+		return validatePasswordIntBound(key, value, argon2SaltLenFloor)
+	case ParamKeyPasswordBcryptCost:
+		return validatePasswordIntRange(key, value, bcryptCostMin, bcryptCostMax)
+	case ParamKeyPasswordRehashOnLogin:
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("%w: %s must be a boolean", ErrInvalidPasswordParameter, key)
+		}
+	default:
+		return fmt.Errorf("%w: unknown key %s", ErrInvalidPasswordParameter, key)
+	}
+
+	return nil
+}
+
+// validatePasswordIntBound rejects a value below floor (inclusive lower bound only).
+func validatePasswordIntBound(key string, value any, floor int) error {
+	n, ok := paramToInt(value)
+	if !ok {
+		return fmt.Errorf("%w: %s must be a number", ErrInvalidPasswordParameter, key)
+	}
+	if n < floor {
+		return fmt.Errorf("%w: %s must be >= %d, got %d", ErrInvalidPasswordParameter, key, floor, n)
+	}
+
+	return nil
+}
+
+// validatePasswordIntRange rejects a value outside [low, high].
+func validatePasswordIntRange(key string, value any, low, high int) error {
+	n, ok := paramToInt(value)
+	if !ok {
+		return fmt.Errorf("%w: %s must be a number", ErrInvalidPasswordParameter, key)
+	}
+	if n < low || n > high {
+		return fmt.Errorf("%w: %s must be between %d and %d, got %d", ErrInvalidPasswordParameter, key, low, high, n)
 	}
 
 	return nil

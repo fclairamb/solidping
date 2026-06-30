@@ -27,17 +27,19 @@ func authConfigWithAlgorithm(algo string) config.AuthConfig {
 // mutate the package default unless explicitly installed via withPolicy.
 func argon2DefaultPolicy() Policy {
 	return Policy{
-		Algorithm: argon2idID,
-		Argon2:    defaultArgon2Params,
-		Bcrypt:    BcryptParams{Cost: 12},
+		Algorithm:     argon2idID,
+		Argon2:        defaultArgon2Params,
+		Bcrypt:        BcryptParams{Cost: 12},
+		RehashOnLogin: true,
 	}
 }
 
 func bcryptPolicy(cost int) Policy {
 	return Policy{
-		Algorithm: bcryptID,
-		Argon2:    defaultArgon2Params,
-		Bcrypt:    BcryptParams{Cost: cost},
+		Algorithm:     bcryptID,
+		Argon2:        defaultArgon2Params,
+		Bcrypt:        BcryptParams{Cost: cost},
+		RehashOnLogin: true,
 	}
 }
 
@@ -234,6 +236,75 @@ func TestPolicyFromConfigUnknownAlgorithm(t *testing.T) {
 	policy, err := PolicyFromConfig(&argonCfg)
 	r.NoError(err)
 	r.Equal(argon2idID, policy.Algorithm)
+}
+
+// TestShouldRehash covers the rehash gate: it returns true only when the active
+// policy enables rehash-on-login AND the stored hash no longer matches the
+// policy. Not parallel: mutates the process-wide default policy.
+//
+//nolint:paralleltest // mutates the process-wide default policy via withPolicy
+func TestShouldRehash(t *testing.T) {
+	const pw = "should-rehash-pw"
+
+	// A hash minted under a lighter argon2 profile, so it differs from the
+	// default policy and NeedsRehash would be true under it.
+	lighter := argon2DefaultPolicy()
+	lighter.Argon2.Memory = 19456
+	lighter.Argon2.Time = 2
+	lighter.Argon2.Threads = 1
+	withPolicy(t, lighter)
+	staleHash, err := Hash(pw)
+	require.NoError(t, err)
+
+	t.Run("rehash on and hash differs -> true", func(t *testing.T) {
+		withPolicy(t, argon2DefaultPolicy()) // RehashOnLogin: true
+		require.True(t, NeedsRehash(staleHash), "precondition: hash should need rehash")
+		require.True(t, ShouldRehash(staleHash))
+	})
+
+	t.Run("rehash off -> false even when NeedsRehash is true", func(t *testing.T) {
+		p := argon2DefaultPolicy()
+		p.RehashOnLogin = false
+		withPolicy(t, p)
+		require.True(t, NeedsRehash(staleHash), "precondition: hash should need rehash")
+		require.False(t, ShouldRehash(staleHash), "rehash disabled gates the upgrade")
+	})
+
+	t.Run("matching hash -> false", func(t *testing.T) {
+		// Re-mint under the default policy so it matches.
+		withPolicy(t, argon2DefaultPolicy())
+		fresh, hashErr := Hash(pw)
+		require.NoError(t, hashErr)
+		require.False(t, NeedsRehash(fresh), "precondition: fresh hash matches policy")
+		require.False(t, ShouldRehash(fresh))
+	})
+}
+
+// TestPolicyFromConfigRehashOnLogin pins the rehash-on-login resolution: an
+// explicit value is honored, and a zero-value block defaults to true.
+func TestPolicyFromConfigRehashOnLogin(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	// Explicit false is preserved.
+	cfgOff := authConfigWithAlgorithm(argon2idID)
+	cfgOff.Password.RehashOnLogin = false
+	polOff, err := PolicyFromConfig(&cfgOff)
+	r.NoError(err)
+	r.False(polOff.RehashOnLogin, "explicit rehash_on_login=false must be honored")
+
+	// Explicit true is preserved.
+	cfgOn := authConfigWithAlgorithm(argon2idID)
+	cfgOn.Password.RehashOnLogin = true
+	polOn, err := PolicyFromConfig(&cfgOn)
+	r.NoError(err)
+	r.True(polOn.RehashOnLogin)
+
+	// A fully zero-value block defaults to true (preserves legacy behavior).
+	var zero config.AuthConfig
+	polZero, err := PolicyFromConfig(&zero)
+	r.NoError(err)
+	r.True(polZero.RehashOnLogin, "zero-value config must default rehash to true")
 }
 
 // TestPolicyFromConfigZeroValueFallsBackToDefaults pins the behavior the

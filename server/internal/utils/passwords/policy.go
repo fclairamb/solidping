@@ -27,6 +27,9 @@ type Policy struct {
 	Algorithm string
 	Argon2    Argon2Params
 	Bcrypt    BcryptParams
+	// RehashOnLogin gates the lazy login-time rehash (see ShouldRehash). It is
+	// part of the resolved policy so it hot-swaps with the rest of it.
+	RehashOnLogin bool
 }
 
 // defaultBcryptCost is the fallback bcrypt cost when none is configured.
@@ -55,9 +58,10 @@ var defaultArgon2Params = Argon2Params{
 var (
 	policyMu      sync.RWMutex
 	defaultPolicy = Policy{
-		Algorithm: argon2idID,
-		Argon2:    defaultArgon2Params,
-		Bcrypt:    BcryptParams{Cost: defaultBcryptCost},
+		Algorithm:     argon2idID,
+		Argon2:        defaultArgon2Params,
+		Bcrypt:        BcryptParams{Cost: defaultBcryptCost},
+		RehashOnLogin: true,
 	}
 )
 
@@ -93,12 +97,20 @@ func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
 	}
 
 	policy := Policy{
-		Algorithm: algorithm,
-		Argon2:    resolveArgon2Params(pwCfg.Argon2),
-		Bcrypt:    BcryptParams{Cost: pwCfg.Bcrypt.Cost},
+		Algorithm:     algorithm,
+		Argon2:        resolveArgon2Params(pwCfg.Argon2),
+		Bcrypt:        BcryptParams{Cost: pwCfg.Bcrypt.Cost},
+		RehashOnLogin: pwCfg.RehashOnLogin,
 	}
 	if policy.Bcrypt.Cost == 0 {
 		policy.Bcrypt.Cost = defaultBcryptCost
+	}
+	// A zero-value config block (e.g. a Config assembled directly in tests
+	// without going through config.Load) resolves to the documented default,
+	// which keeps rehash-on-login enabled. config.Load itself defaults the
+	// field to true, so this only affects hand-built configs.
+	if isZeroValuePasswordConfig(pwCfg) {
+		policy.RehashOnLogin = true
 	}
 
 	switch policy.Algorithm {
@@ -107,6 +119,21 @@ func PolicyFromConfig(authCfg *config.AuthConfig) (Policy, error) {
 	default:
 		return Policy{}, fmt.Errorf("%w: %q", ErrUnknownAlgorithm, policy.Algorithm)
 	}
+}
+
+// isZeroValuePasswordConfig reports whether the whole password config block is
+// the Go zero value, i.e. it was never populated (not even by config.Load's
+// defaults). Used to decide whether RehashOnLogin should default to true.
+func isZeroValuePasswordConfig(pwCfg config.PasswordConfig) bool {
+	return pwCfg == config.PasswordConfig{}
+}
+
+// ShouldRehash reports whether a stored hash should be re-minted on the user's
+// next successful login. It is the single gate consulted by the login rehash
+// hook: rehash only happens when the active policy has RehashOnLogin enabled AND
+// the stored hash no longer matches the policy (algorithm or cost drifted).
+func ShouldRehash(hash string) bool {
+	return getDefaultPolicy().RehashOnLogin && NeedsRehash(hash)
 }
 
 // resolveArgon2Params maps config argon2 params onto the policy struct, filling

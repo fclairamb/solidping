@@ -472,7 +472,7 @@ func (s *Service) Login(
 // upgrade is simply retried on the next login. Concurrent logins for the same
 // user are safe (both write a valid current-policy hash; last writer wins).
 func (s *Service) maybeRehashPassword(ctx context.Context, user *models.User, password string) {
-	if user.PasswordHash == nil || !passwords.NeedsRehash(*user.PasswordHash) {
+	if user.PasswordHash == nil || !passwords.ShouldRehash(*user.PasswordHash) {
 		return
 	}
 

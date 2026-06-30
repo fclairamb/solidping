@@ -21,7 +21,8 @@ func argon2idDefaultPolicy() passwords.Policy {
 		Argon2: passwords.Argon2Params{
 			Memory: 64 * 1024, Time: 3, Threads: 4, KeyLength: 32, SaltLength: 16,
 		},
-		Bcrypt: passwords.BcryptParams{Cost: 12},
+		Bcrypt:        passwords.BcryptParams{Cost: 12},
+		RehashOnLogin: true,
 	}
 }
 
@@ -120,6 +121,30 @@ func TestRehashOnLogin(t *testing.T) {
 		r.NoError(err)
 		r.NotNil(updated.PasswordHash)
 		r.Equal(stored, *updated.PasswordHash, "matching hash must be left untouched")
+	})
+
+	t.Run("rehash disabled leaves a stale hash untouched", func(t *testing.T) {
+		r := require.New(t)
+		svc, dbSvc, ctx := setupAuthTestService(t)
+
+		// Stored hash is bcrypt (stale) and would normally be upgraded. Mint it
+		// first, THEN install the rehash-disabled argon2id policy — hashUnderPolicy
+		// restores the default policy when it returns, so the rehash-off policy
+		// must be installed afterwards to be the one Login sees.
+		stored := hashUnderPolicy(t, bcryptTestPolicy(10), password)
+		policy := argon2idDefaultPolicy()
+		policy.RehashOnLogin = false
+		usePolicy(t, policy)
+		user := seedLoginUser(ctx, t, dbSvc, "rehash-off", "off@example.com", stored)
+
+		resp, err := svc.Login(ctx, "rehash-off", "off@example.com", password, Context{})
+		r.NoError(err)
+		r.NotEmpty(resp.AccessToken)
+
+		updated, err := dbSvc.GetUser(ctx, user.UID)
+		r.NoError(err)
+		r.NotNil(updated.PasswordHash)
+		r.Equal(stored, *updated.PasswordHash, "rehash-off must leave the stale hash untouched")
 	})
 
 	t.Run("plaintext escape hatch is not rehashed", func(t *testing.T) {
