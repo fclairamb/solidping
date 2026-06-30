@@ -56,9 +56,25 @@ SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH=16 # salt bytes (default 16)
 
 # bcrypt cost (only used when algorithm is "bcrypt")
 SP_AUTH_PASSWORD_BCRYPT_COST=12        # range 10–31 (default 12)
+
+# Re-hash existing passwords on next sign-in (default true)
+SP_AUTH_PASSWORD_REHASH_ON_LOGIN=true
 ```
 
-**Transparent rehash-on-login.** Stored hashes are self-identifying, so changing the algorithm or its cost parameters never invalidates existing passwords — old hashes keep verifying. On a user's next successful login, if their stored hash no longer matches the configured policy it is transparently re-hashed and persisted. There is no forced password reset and no background migration: users who never log in keep their old (still-valid) hash.
+### Editing from the dashboard
+
+Super-admins can change all of the above from **Server Settings → Password
+Hashing** (`/orgs/{org}/server/hashing`) instead of editing YAML or environment
+variables — pick the algorithm, set its cost parameters (recommended-profile
+preset buttons are provided for argon2id), and toggle re-hash on sign-in.
+Changes are validated immediately and **take effect after a server restart**,
+matching every other credential setting. A field left blank inherits the server
+default. Values configured via YAML/env are not shown in the form (only stored
+overrides appear). An out-of-range value is rejected at save, and a malformed
+stored value can never prevent startup — the policy re-resolve at boot is
+non-fatal and keeps the prior policy.
+
+**Transparent rehash-on-login.** Stored hashes are self-identifying, so changing the algorithm or its cost parameters never invalidates existing passwords — old hashes keep verifying. On a user's next successful login, if their stored hash no longer matches the configured policy it is transparently re-hashed and persisted. There is no forced password reset and no background migration: users who never log in keep their old (still-valid) hash. This upgrade is gated by `SP_AUTH_PASSWORD_REHASH_ON_LOGIN` (default `true`); set it to `false` to leave existing hashes untouched so only new passwords (new users, password changes/resets) use the new profile.
 
 **Recommended profiles:**
 
