@@ -350,7 +350,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
             availabilityPct={availabilityPct}
           />
 
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Link
               to="/orgs/$org/checks"
               params={{ org }}
@@ -409,14 +409,6 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
                 className="transition hover:-translate-y-0.5 hover:bg-accent/40 hover:shadow-card-hover"
               />
             </Link>
-            <div data-testid="kpi-tile-availability">
-              <KpiTile
-                label={t("kpi.availability")}
-                value={availabilityPct === null ? "—" : `${availabilityPct.toFixed(2)}%`}
-                icon={<CheckCircle className="h-4 w-4 text-muted-foreground" />}
-                sub={availabilityPct === null ? t("kpi.availabilityNoData") : undefined}
-              />
-            </div>
           </div>
 
           {incidentsCount > 0 ? (
