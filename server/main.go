@@ -69,6 +69,7 @@ func main() {
 				},
 				Action: encryptCredentials,
 			},
+			devCommand(),
 		},
 	}
 
