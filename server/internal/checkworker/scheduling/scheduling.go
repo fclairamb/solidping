@@ -19,6 +19,17 @@ import "time"
 // The cost-aware timeout never exceeds it.
 const DefaultExecutionTimeout = 30 * time.Second
 
+// CostOffsetWeight is the multiplier applied to cost_ewma_ms in the
+// deprioritization offset:
+//
+//	effective = scheduled_at + delay_ewma_ms + cost_ewma_ms × CostOffsetWeight − tier_credit
+//
+// Cost is weighted heavier than delay because an expensive check occupies a
+// worker slot for its whole duration, while a delayed-but-fast check only
+// testifies to past contention — being slow costs the pool more than having
+// been late.
+const CostOffsetWeight = 2
+
 // Params bundles every tunable knob the scheduling math reads. It is built once
 // from config and passed by value (it is tiny and immutable per call).
 //
@@ -27,7 +38,8 @@ const DefaultExecutionTimeout = 30 * time.Second
 type Params struct {
 	// SlowThresholdMs is the dead-band on the deprioritization offset: a job's
 	// effective deadline is pushed past its real scheduled_at only once its
-	// combined cost+delay EWMA reaches this many milliseconds. Below it the offset
+	// weighted cost×CostOffsetWeight+delay EWMA sum reaches this many
+	// milliseconds. Below it the offset
 	// is 0 (effective == scheduled_at), so small per-run variance never reorders
 	// fast checks. 0 disables the dead-band (any positive offset applies).
 	SlowThresholdMs float64
@@ -75,8 +87,9 @@ func (p Params) TierCredit(planWeight int) time.Duration {
 //
 //	effective = scheduled_at + deprioritize_offset(cost, delay) − tier_credit(weight)
 //
-// The deprioritization offset is the job's combined cost+delay EWMA (a slower or
-// chronically-delayed check sorts later), but only once that sum crosses
+// The deprioritization offset is the job's delay EWMA plus its cost EWMA
+// weighted by CostOffsetWeight (a slower or chronically-delayed check sorts
+// later), but only once that sum crosses
 // SlowThresholdMs — below the threshold the offset is 0, so fast checks keep
 // their real-schedule (FIFO) order and small per-run variance never reorders
 // them. A paid job sorts earlier via the tier credit. The claim SELECT still
@@ -92,13 +105,13 @@ func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs, delayEWM
 }
 
 // deprioritizeOffset is how far past scheduled_at a job is pushed for being
-// expensive and/or chronically delayed: the sum of its cost and delay EWMAs —
-// but only once that sum reaches SlowThresholdMs. Below the threshold it returns
-// 0 (effective stays at scheduled_at), so trivial cost/delay never reorders fast
-// checks. A non-positive threshold disables the dead-band (any positive sum
-// applies).
+// expensive and/or chronically delayed: its delay EWMA plus its cost EWMA
+// weighted by CostOffsetWeight — but only once that sum reaches SlowThresholdMs.
+// Below the threshold it returns 0 (effective stays at scheduled_at), so trivial
+// cost/delay never reorders fast checks. A non-positive threshold disables the
+// dead-band (any positive sum applies).
 func (p Params) deprioritizeOffset(costEWMAMs, delayEWMAMs float64) time.Duration {
-	total := costEWMAMs + delayEWMAMs
+	total := costEWMAMs*CostOffsetWeight + delayEWMAMs
 	if total < p.SlowThresholdMs {
 		return 0
 	}

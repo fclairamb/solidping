@@ -186,31 +186,31 @@ func TestCostDelayOffsetApplied(t *testing.T) {
 	var p scheduling.Params // SlowThresholdMs 0 → no dead-band
 	base := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 
-	require.Equal(t, base.Add(1500*time.Millisecond),
+	require.Equal(t, base.Add(2500*time.Millisecond),
 		p.EffectiveScheduledAt(base, 1000, 500, 0),
-		"effective = scheduled + cost_ewma + delay_ewma when no tier credit applies")
+		"effective = scheduled + cost_ewma×2 + delay_ewma when no tier credit applies")
 }
 
-// TestSlowThreshold verifies the configurable dead-band: the combined cost+delay
-// EWMA must reach SlowThresholdMs before effective_scheduled_at is pushed past
-// the real scheduled_at.
+// TestSlowThreshold verifies the configurable dead-band: the weighted
+// cost×2+delay EWMA sum must reach SlowThresholdMs before
+// effective_scheduled_at is pushed past the real scheduled_at.
 func TestSlowThreshold(t *testing.T) {
 	t.Parallel()
 
 	base := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 	p := scheduling.Params{SlowThresholdMs: 2000}
 
-	// Combined cost+delay below the threshold → no change (pure FIFO).
-	require.Equal(t, base, p.EffectiveScheduledAt(base, 800, 900, 0),
+	// Weighted cost×2+delay below the threshold → no change (pure FIFO).
+	require.Equal(t, base, p.EffectiveScheduledAt(base, 500, 900, 0),
 		"below the threshold, effective stays at scheduled_at")
 
-	// At/over the threshold → the full cost+delay offset applies.
-	require.Equal(t, base.Add(2100*time.Millisecond),
+	// At/over the threshold → the full weighted offset applies.
+	require.Equal(t, base.Add(3600*time.Millisecond),
 		p.EffectiveScheduledAt(base, 1500, 600, 0),
-		"once cost+delay reaches the threshold, the full offset applies")
+		"once cost×2+delay reaches the threshold, the full offset applies")
 
 	// A non-positive threshold disables the dead-band (any positive offset applies).
 	noBand := scheduling.Params{SlowThresholdMs: 0}
-	require.Equal(t, base.Add(50*time.Millisecond), noBand.EffectiveScheduledAt(base, 30, 20, 0),
+	require.Equal(t, base.Add(80*time.Millisecond), noBand.EffectiveScheduledAt(base, 30, 20, 0),
 		"threshold 0 applies even a tiny offset")
 }

@@ -345,6 +345,35 @@ func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
 		"the job with the earlier effective_scheduled_at must be claimed first")
 }
 
+// TestClaimAdmitsHeavilyPenalizedEffective verifies that a due job whose
+// cost/delay penalty pushes effective_scheduled_at more than 10× maxAhead into
+// the future is still claimable: the effective gate is widened by
+// effectiveWindowFactor (12), so a huge delay EWMA deprioritizes a job under
+// contention but never strands it once it is due.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimAdmitsHeavilyPenalizedEffective(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	now := time.Now()
+	maxAhead := 5 * time.Minute
+
+	// The job is due, but its combined cost+delay EWMA has pushed its
+	// effective deadline 11× maxAhead into the future (> 10× of penalty).
+	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+	setEffective(t, ctx, dbSvc, job.UID, now.Add(11*maxAhead))
+
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, maxAhead)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1, "a due job with a >10×maxAhead effective penalty must still be claimable")
+	assert.Equal(t, job.UID, jobs[0].UID)
+}
+
 //nolint:paralleltest // Test shares database state
 func TestClaimJobsForCheck(t *testing.T) {
 	dbSvc, ctx := setupTestDB(t)

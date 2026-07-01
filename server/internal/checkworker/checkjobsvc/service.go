@@ -18,6 +18,16 @@ import (
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
 var ErrJobClaimedByAnother = errors.New("job may have been claimed by another worker")
 
+// effectiveWindowFactor widens the effective_scheduled_at claim gate relative to
+// the real maxAhead window: effective <= now + maxAhead*effectiveWindowFactor.
+// The gate must tolerate the cost/delay deprioritization offset on top of a
+// scheduled_at that can itself sit up to maxAhead in the future, so the offset
+// headroom is (factor−1)×maxAhead. Factor 12 lets a due job carry a combined
+// cost+delay EWMA of more than 10× maxAhead (e.g. >50min of chronic delay with
+// the default 5min window) and still be claimed on schedule instead of stalling
+// until its scheduled_at has receded far enough into the past.
+const effectiveWindowFactor = 12
+
 // Service provides check job queue operations.
 type Service interface {
 	// ClaimJobs atomically claims up to limit check jobs for the given worker.
@@ -284,8 +294,11 @@ func (s *serviceImpl) selectAvailableJobs(
 		// becomes claimable — and sorts — by its effective time. scheduled_at is
 		// used only by the Go runner to sleep until the real fire time, so a job
 		// claimed within the maxAhead window still fires on schedule. Populated on
-		// every row (NewCheckJob + migration 006 backfill + every release).
-		Where("effective_scheduled_at <= ?", now.Add(maxAhead)).
+		// every row (NewCheckJob + migration 006 backfill + every release). The
+		// effective gate is widened by effectiveWindowFactor so a large cost/delay
+		// EWMA (more than 10× maxAhead) never makes a due job unclaimable.
+		Where("effective_scheduled_at <= ?", now.Add(maxAhead*effectiveWindowFactor)).
+		Where("scheduled_at <= ?", now.Add(maxAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				WhereOr("lease_expires_at IS NULL").
