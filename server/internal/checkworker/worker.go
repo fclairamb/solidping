@@ -135,6 +135,8 @@ func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
 		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
 		CostTimeoutFactor:   cfg.CostTimeoutFactor,
 		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
+		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
+		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
 	}
 }
 
@@ -327,6 +329,7 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		ctx,
 		worker.UID,
 		worker.Region,
+		available,
 		available,
 		cfg.FetchMaxAhead,
 	)
@@ -709,10 +712,13 @@ func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 }
 
 // releaseLeaseWithCost releases the lease for an actively-probed check, folding
-// the new cost and delay EWMAs and the recomputed effective_scheduled_at into
-// the same write. The effective deadline is computed from the cost EWMA only
-// (spec 2026-07-01-02): the delay EWMA is persisted as telemetry but never
-// steers the claim order. execStart is when the outbound probe actually began.
+// the new cost and delay EWMAs, the recomputed effective_scheduled_at, and the
+// hysteresis-classified lane into the same write. The effective deadline and
+// the lane are computed from the cost EWMA only (specs 2026-07-01-02 /
+// 2026-07-01-03): the delay EWMA is persisted as telemetry but never steers
+// the claim order nor the lane — delay is a victim signal, and classifying on
+// it would send starved fast checks into the slow lane. execStart is when the
+// outbound probe actually began.
 func (r *CheckWorker) releaseLeaseWithCost(
 	ctx context.Context,
 	checkJob *models.CheckJob,
@@ -723,9 +729,10 @@ func (r *CheckWorker) releaseLeaseWithCost(
 	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
 	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
 	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
+	newLane := scheduling.ClassifyLane(checkJob.Lane, newCost, r.schedParams)
 
 	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
-		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective,
+		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective, newLane,
 	)
 }
 

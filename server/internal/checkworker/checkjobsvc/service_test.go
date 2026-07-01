@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
@@ -114,7 +115,7 @@ func TestClaimJobs(t *testing.T) {
 		_ = createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-5*time.Second), nil)
 
 		// Claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 2, "should claim 2 jobs")
 
@@ -154,7 +155,7 @@ func TestClaimJobs(t *testing.T) {
 		}
 
 		// Claim with limit of 3
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 3, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 3, 3, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Len(t, jobs, 3, "should respect limit")
 	})
@@ -164,7 +165,7 @@ func TestClaimJobs(t *testing.T) {
 		now := time.Now()
 
 		// First, claim and clear any existing unclaimed jobs to avoid interference
-		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 5*time.Minute)
+		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
 		require.NoError(t, err)
 		// Mark them all as released with far future schedule so they don't interfere
 		for _, existingJob := range existingJobs {
@@ -185,7 +186,7 @@ func TestClaimJobs(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should not claim jobs with active lease")
 	})
@@ -209,7 +210,7 @@ func TestClaimJobs(t *testing.T) {
 		require.NoError(t, err)
 
 		// Try to claim jobs
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 1, "should claim job with expired lease")
 
@@ -229,7 +230,7 @@ func TestClaimJobs(t *testing.T) {
 
 		// Worker with EU region should claim global and EU jobs
 		euWorker := createTestWorker(t, ctx, dbSvc, &euRegion)
-		jobs, err := svc.ClaimJobs(ctx, euWorker.UID, &euRegion, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, euWorker.UID, &euRegion, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Len(t, jobs, 2, "EU worker should claim global and EU jobs")
 
@@ -245,7 +246,7 @@ func TestClaimJobs(t *testing.T) {
 		now := time.Now()
 
 		// First, claim and clear any existing jobs to avoid interference
-		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 10*time.Minute)
+		existingJobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 10*time.Minute)
 		require.NoError(t, err)
 		// Mark them all as released with far future schedule so they don't interfere
 		for _, existingJob := range existingJobs {
@@ -256,7 +257,7 @@ func TestClaimJobs(t *testing.T) {
 		_ = createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Minute), nil)
 
 		// Try to claim with 5 minute max_ahead - should not claim the far future job
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should not claim jobs beyond max_ahead")
 
@@ -264,7 +265,7 @@ func TestClaimJobs(t *testing.T) {
 		nearJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 
 		// Should claim the near job
-		jobs, err = svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err = svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.Len(t, jobs, 1, "should claim job that is due")
 		assert.Equal(t, nearJob.UID, jobs[0].UID)
@@ -273,7 +274,7 @@ func TestClaimJobs(t *testing.T) {
 	t.Run("NoJobsAvailable", func(t *testing.T) {
 		// Claim when no jobs exist
 		newWorker := createTestWorker(t, ctx, dbSvc, nil)
-		jobs, err := svc.ClaimJobs(ctx, newWorker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, newWorker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		assert.Empty(t, jobs, "should return empty slice when no jobs available")
 	})
@@ -285,7 +286,7 @@ func TestClaimJobs(t *testing.T) {
 		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 		createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-9*time.Second), nil)
 
-		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 5*time.Minute)
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
 		require.NoError(t, err)
 		require.GreaterOrEqual(t, len(jobs), 2)
 
@@ -338,7 +339,7 @@ func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
 	setEffective(t, ctx, dbSvc, fastPaid.UID, now.Add(-10*time.Second))
 
 	// Claim a single slot under contention: the earlier effective deadline wins.
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 5*time.Minute)
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
 	require.NoError(t, err)
 	require.Len(t, jobs, 1, "should claim exactly one job under the limit")
 	assert.Equal(t, fastPaid.UID, jobs[0].UID,
@@ -370,10 +371,182 @@ func TestClaimAdmitsDueJobRegardlessOfEffective(t *testing.T) {
 	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
 	setEffective(t, ctx, dbSvc, job.UID, now.Add(95*time.Minute))
 
-	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, maxAhead)
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, maxAhead)
 	require.NoError(t, err)
 	require.Len(t, jobs, 1, "a due job must be claimable immediately regardless of any stored effective value")
 	assert.Equal(t, job.UID, jobs[0].UID)
+}
+
+// setLane stamps a job's lane so the per-lane claim SELECTs can be exercised
+// at the DB level (production classifies lanes in the post-exec release).
+//
+//nolint:revive // Test helper function, context parameter order is acceptable
+func setLane(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, lane int16) {
+	t.Helper()
+
+	_, err := svc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("lane = ?", lane).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+	require.NoError(t, err, "failed to set lane")
+}
+
+// TestClaimJobsLaneReservation exercises the per-lane reservation claim (spec
+// 2026-07-01-03 D3/D6): fast jobs may fill every slot, slow jobs are capped by
+// slowLimit and by the capacity left after the fast claim, and an idle fast
+// stream lets slow borrow the full budget.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimJobsLaneReservation(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+
+	countByLane := func(jobs []*models.CheckJob) (fast, slow int) {
+		for _, j := range jobs {
+			if j.Lane == scheduling.LaneSlow {
+				slow++
+			} else {
+				fast++
+			}
+		}
+
+		return fast, slow
+	}
+
+	t.Run("SlowCappedByBudgetFastFillsRest", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// 4 due slow jobs, 3 due fast jobs; capacity 4, slow budget 1.
+		for i := 0; i < 4; i++ {
+			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+		}
+		for i := 0; i < 3; i++ {
+			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+		}
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 1, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 4, "claim must fill the whole capacity")
+
+		fast, slow := countByLane(jobs)
+		assert.Equal(t, 3, fast, "every due fast job must be claimed")
+		assert.Equal(t, 1, slow, "slow claims must not exceed the slow budget")
+
+		// Drain for the next subtest.
+		for _, j := range jobs {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+		remaining, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		require.NoError(t, err)
+		for _, j := range remaining {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+	})
+
+	t.Run("ZeroSlowBudgetClaimsNoSlow", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		slowJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+		setLane(t, ctx, dbSvc, slowJob.UID, scheduling.LaneSlow)
+		fastJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 0, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 1, "only the fast job is claimable with a zero slow budget")
+		assert.Equal(t, fastJob.UID, jobs[0].UID)
+
+		// Drain.
+		require.NoError(t, svc.ReleaseLease(ctx, jobs[0].UID, worker.UID, now.Add(2*time.Hour)))
+		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		require.NoError(t, err)
+		for _, j := range rest {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+	})
+
+	t.Run("IdleFastLaneLetsSlowBorrow", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// No fast work due: slow may borrow up to the budget.
+		for i := 0; i < 5; i++ {
+			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+		}
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 3, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 3, "with no fast work, slow claims exactly the budget")
+		_, slow := countByLane(jobs)
+		assert.Equal(t, 3, slow)
+
+		// Drain.
+		for _, j := range jobs {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		require.NoError(t, err)
+		for _, j := range rest {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+	})
+
+	t.Run("SlowBoundedByRemainingCapacity", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// 3 fast + 3 slow due, capacity 4, generous slow budget 4: the fast
+		// claim eats 3 slots, so slow gets min(4, 4−3) = 1.
+		for i := 0; i < 3; i++ {
+			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+		}
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 4, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 4)
+		fast, slow := countByLane(jobs)
+		assert.Equal(t, 3, fast)
+		assert.Equal(t, 1, slow, "slow is bounded by the capacity left after the fast claim")
+	})
+}
+
+// TestClaimOrdersByEffectiveWithinLane verifies D1: WFQ ordering by
+// effective_scheduled_at still applies within each lane after the split.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimOrdersByEffectiveWithinLane(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	now := time.Now()
+
+	// Two due slow jobs with distinct effective deadlines.
+	slowLate := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+	setLane(t, ctx, dbSvc, slowLate.UID, scheduling.LaneSlow)
+	setEffective(t, ctx, dbSvc, slowLate.UID, now.Add(30*time.Second))
+	slowEarly := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+	setLane(t, ctx, dbSvc, slowEarly.UID, scheduling.LaneSlow)
+	setEffective(t, ctx, dbSvc, slowEarly.UID, now.Add(-10*time.Second))
+
+	// One slow slot: the earlier effective deadline wins within the lane.
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 1, 1, 5*time.Minute)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1)
+	assert.Equal(t, slowEarly.UID, jobs[0].UID,
+		"within the slow lane, the earlier effective_scheduled_at must be claimed first")
 }
 
 //nolint:paralleltest // Test shares database state
@@ -584,7 +757,7 @@ func TestReleaseLease(t *testing.T) {
 		nextScheduled := now.Add(1 * time.Minute)
 		effective := now.Add(80 * time.Second) // penalized past the schedule
 		require.NoError(t, svc.ReleaseLeaseWithSchedulingState(
-			ctx, job.UID, worker.UID, nextScheduled, 1234.5, 678.0, effective,
+			ctx, job.UID, worker.UID, nextScheduled, 1234.5, 678.0, effective, scheduling.LaneSlow,
 		))
 
 		var dbJob models.CheckJob
@@ -596,5 +769,32 @@ func TestReleaseLease(t *testing.T) {
 			"effective_scheduled_at must be persisted from the cost-folding release")
 		assert.WithinDuration(t, nextScheduled, *dbJob.ScheduledAt, 1*time.Second)
 		assert.Nil(t, dbJob.LeaseWorkerUID, "lease must be released")
+		assert.Equal(t, scheduling.LaneSlow, dbJob.Lane,
+			"the classified lane must be persisted by the post-exec release")
+	})
+
+	t.Run("PlainReleaseLeavesLaneUnchanged", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+		setLane(t, ctx, dbSvc, job.UID, scheduling.LaneSlow)
+
+		leaseExpiry := now.Add(60 * time.Second)
+		_, err := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lease_worker_uid = ?", worker.UID).
+			Set("lease_expires_at = ?", leaseExpiry).
+			Where("uid = ?", job.UID).
+			Exec(ctx)
+		require.NoError(t, err)
+
+		// The no-sample release (deferral / reaper / remote) must not touch the
+		// lane: there is no fresh cost signal to reclassify from.
+		require.NoError(t, svc.ReleaseLease(ctx, job.UID, worker.UID, now.Add(time.Minute)))
+
+		var dbJob models.CheckJob
+		require.NoError(t, dbSvc.DB().NewSelect().Model(&dbJob).Where("uid = ?", job.UID).Scan(ctx))
+		assert.Equal(t, scheduling.LaneSlow, dbJob.Lane,
+			"ReleaseLease (no cost sample) must leave the lane unchanged")
 	})
 }
