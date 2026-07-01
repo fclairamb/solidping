@@ -38,18 +38,18 @@ func newWorkerChannelCollector(checkWorker *CheckWorker) prometheus.Collector {
 	}
 }
 
-func (c *workerChannelCollector) Describe(ch chan<- *prometheus.Desc) {
-	ch <- c.depthDesc
-	ch <- c.busySlowDesc
+func (c *workerChannelCollector) Describe(descs chan<- *prometheus.Desc) {
+	descs <- c.depthDesc
+	descs <- c.busySlowDesc
 }
 
-func (c *workerChannelCollector) Collect(ch chan<- prometheus.Metric) {
-	ch <- prometheus.MustNewConstMetric(
+func (c *workerChannelCollector) Collect(metrics chan<- prometheus.Metric) {
+	metrics <- prometheus.MustNewConstMetric(
 		c.depthDesc,
 		prometheus.GaugeValue,
 		float64(len(c.worker.jobsChan)),
 	)
-	ch <- prometheus.MustNewConstMetric(
+	metrics <- prometheus.MustNewConstMetric(
 		c.busySlowDesc,
 		prometheus.GaugeValue,
 		float64(c.worker.busySlow.Load()),

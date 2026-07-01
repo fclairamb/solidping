@@ -121,15 +121,15 @@ type Params struct {
 // exact inversion of the goal. A zero-cost fresh job classifies fast. With
 // LaneSlowThresholdMs <= 0 the classifier is off and prevLane is returned
 // unchanged.
-func ClassifyLane(prevLane int16, costEWMAMs float64, p Params) int16 {
-	if p.LaneSlowThresholdMs <= 0 {
+func ClassifyLane(prevLane int16, costEWMAMs float64, params Params) int16 {
+	if params.LaneSlowThresholdMs <= 0 {
 		return prevLane
 	}
 
 	switch {
-	case costEWMAMs >= p.LaneSlowThresholdMs:
+	case costEWMAMs >= params.LaneSlowThresholdMs:
 		return LaneSlow
-	case costEWMAMs < p.LaneFastThresholdMs:
+	case costEWMAMs < params.LaneFastThresholdMs:
 		return LaneFast
 	default:
 		// Inside the hysteresis dead-band: hold the current lane.

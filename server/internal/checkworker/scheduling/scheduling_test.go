@@ -259,11 +259,15 @@ func TestClassifyLane(t *testing.T) {
 		{"timeout-pinned cost stays slow", scheduling.LaneSlow, 30000, p, scheduling.LaneSlow},
 		{
 			"classifier off holds fast",
-			scheduling.LaneFast, 30000, scheduling.Params{}, scheduling.LaneFast,
+			scheduling.LaneFast, 30000,
+			scheduling.Params{},
+			scheduling.LaneFast,
 		},
 		{
 			"classifier off holds slow",
-			scheduling.LaneSlow, 0, scheduling.Params{}, scheduling.LaneSlow,
+			scheduling.LaneSlow, 0,
+			scheduling.Params{},
+			scheduling.LaneSlow,
 		},
 	}
 

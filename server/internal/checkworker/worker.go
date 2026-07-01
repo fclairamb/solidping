@@ -154,9 +154,10 @@ func NewCheckWorker(
 	}
 }
 
-// laneLimits computes the per-lane claim limits for one fetch (spec
-// 2026-07-01-03 D3). Fast jobs may occupy any free slot (fastLimit = free);
-// slow jobs may only occupy slots above the reserved fast floor:
+// laneLimits computes the per-lane claim limits (fast, slow) for one fetch
+// (spec 2026-07-01-03 D3). Fast jobs may occupy any free slot (the fast limit
+// is the full free capacity); slow jobs may only occupy slots above the
+// reserved fast floor:
 //
 //	slowBudget = max(0, (poolSize − fastReserved) − busySlow)
 //
@@ -165,10 +166,8 @@ func NewCheckWorker(
 // fastReserved; a fast burst never finds fewer than fastReserved slots
 // occupied by nothing slower than another fast check. Per-worker enforcement
 // is fleet-correct: every worker independently guarantees its own floor.
-func laneLimits(free, poolSize, fastReserved, busySlow int) (fastLimit, slowLimit int) {
-	fastLimit = free
-
-	slowLimit = (poolSize - fastReserved) - busySlow
+func laneLimits(free, poolSize, fastReserved, busySlow int) (int, int) {
+	slowLimit := (poolSize - fastReserved) - busySlow
 	if slowLimit < 0 {
 		slowLimit = 0
 	}
@@ -176,7 +175,7 @@ func laneLimits(free, poolSize, fastReserved, busySlow int) (fastLimit, slowLimi
 		slowLimit = free
 	}
 
-	return fastLimit, slowLimit
+	return free, slowLimit
 }
 
 // schedulingParamsFromConfig converts the koanf SchedulingConfig (seconds / ms

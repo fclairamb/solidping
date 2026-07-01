@@ -377,16 +377,17 @@ func TestClaimAdmitsDueJobRegardlessOfEffective(t *testing.T) {
 	assert.Equal(t, job.UID, jobs[0].UID)
 }
 
-// setLane stamps a job's lane so the per-lane claim SELECTs can be exercised
-// at the DB level (production classifies lanes in the post-exec release).
+// markSlow stamps a job into the slow lane so the per-lane claim SELECTs can
+// be exercised at the DB level (production classifies lanes in the post-exec
+// release; new jobs are lane-fast by default).
 //
 //nolint:revive // Test helper function, context parameter order is acceptable
-func setLane(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, lane int16) {
+func markSlow(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string) {
 	t.Helper()
 
 	_, err := svc.DB().NewUpdate().
 		Model((*models.CheckJob)(nil)).
-		Set("lane = ?", lane).
+		Set("lane = ?", scheduling.LaneSlow).
 		Where("uid = ?", jobUID).
 		Exec(ctx)
 	require.NoError(t, err, "failed to set lane")
@@ -405,7 +406,9 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 	svc := checkjobsvc.NewService(dbSvc.DB())
 	org := createTestOrg(t, ctx, dbSvc)
 
-	countByLane := func(jobs []*models.CheckJob) (fast, slow int) {
+	// countByLane returns (fast, slow) claim counts.
+	countByLane := func(jobs []*models.CheckJob) (int, int) {
+		fast, slow := 0, 0
 		for _, j := range jobs {
 			if j.Lane == scheduling.LaneSlow {
 				slow++
@@ -424,7 +427,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		// 4 due slow jobs, 3 due fast jobs; capacity 4, slow budget 1.
 		for i := 0; i < 4; i++ {
 			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
-			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+			markSlow(t, ctx, dbSvc, j.UID)
 		}
 		for i := 0; i < 3; i++ {
 			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
@@ -454,7 +457,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		now := time.Now()
 
 		slowJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
-		setLane(t, ctx, dbSvc, slowJob.UID, scheduling.LaneSlow)
+		markSlow(t, ctx, dbSvc, slowJob.UID)
 		fastJob := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 
 		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 0, 5*time.Minute)
@@ -478,7 +481,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		// No fast work due: slow may borrow up to the budget.
 		for i := 0; i < 5; i++ {
 			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
-			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+			markSlow(t, ctx, dbSvc, j.UID)
 		}
 
 		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 3, 5*time.Minute)
@@ -507,7 +510,7 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		for i := 0; i < 3; i++ {
 			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
-			setLane(t, ctx, dbSvc, j.UID, scheduling.LaneSlow)
+			markSlow(t, ctx, dbSvc, j.UID)
 		}
 
 		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 4, 5*time.Minute)
@@ -535,10 +538,10 @@ func TestClaimOrdersByEffectiveWithinLane(t *testing.T) {
 
 	// Two due slow jobs with distinct effective deadlines.
 	slowLate := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
-	setLane(t, ctx, dbSvc, slowLate.UID, scheduling.LaneSlow)
+	markSlow(t, ctx, dbSvc, slowLate.UID)
 	setEffective(t, ctx, dbSvc, slowLate.UID, now.Add(30*time.Second))
 	slowEarly := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
-	setLane(t, ctx, dbSvc, slowEarly.UID, scheduling.LaneSlow)
+	markSlow(t, ctx, dbSvc, slowEarly.UID)
 	setEffective(t, ctx, dbSvc, slowEarly.UID, now.Add(-10*time.Second))
 
 	// One slow slot: the earlier effective deadline wins within the lane.
@@ -777,7 +780,7 @@ func TestReleaseLease(t *testing.T) {
 		worker := createTestWorker(t, ctx, dbSvc, nil)
 		now := time.Now()
 		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
-		setLane(t, ctx, dbSvc, job.UID, scheduling.LaneSlow)
+		markSlow(t, ctx, dbSvc, job.UID)
 
 		leaseExpiry := now.Add(60 * time.Second)
 		_, err := dbSvc.DB().NewUpdate().

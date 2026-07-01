@@ -1103,26 +1103,8 @@ func ComputeBugReportEnabled(gh *AppGitHubConfig) bool {
 
 // Validate checks that the configuration is valid and returns an error if not.
 func (c *Config) Validate() error {
-	// Validate database type
-	validTypes := []string{
-		DatabaseTypePostgres,
-		DatabaseTypePostgresEmbedded,
-		DatabaseTypeSQLite,
-		DatabaseTypeSQLiteMemory,
-	}
-
-	if !slices.Contains(validTypes, c.Database.Type) {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidDatabaseType, c.Database.Type)
-	}
-
-	// Validate postgres requires URL
-	if c.Database.Type == DatabaseTypePostgres && c.Database.URL == "" {
-		return ErrDatabaseURLRequired
-	}
-
-	// Validate sqlite requires directory (unless memory mode or test mode)
-	if c.Database.Type == DatabaseTypeSQLite && c.Database.Dir == "" {
-		return ErrDatabaseDirRequired
+	if err := validateDatabaseConfig(&c.Database); err != nil {
+		return err
 	}
 
 	// Validate node role
@@ -1182,6 +1164,33 @@ func validateLaneThresholds(cfg *SchedulingConfig) error {
 	if cfg.LaneSlowThresholdMs > 0 && cfg.LaneFastThresholdMs >= cfg.LaneSlowThresholdMs {
 		return fmt.Errorf("%w: fast=%v slow=%v",
 			ErrInvalidLaneThresholds, cfg.LaneFastThresholdMs, cfg.LaneSlowThresholdMs)
+	}
+
+	return nil
+}
+
+// validateDatabaseConfig checks the database type and its type-specific
+// requirements (postgres needs a URL, on-disk sqlite needs a directory).
+func validateDatabaseConfig(cfg *DatabaseConfig) error {
+	validTypes := []string{
+		DatabaseTypePostgres,
+		DatabaseTypePostgresEmbedded,
+		DatabaseTypeSQLite,
+		DatabaseTypeSQLiteMemory,
+	}
+
+	if !slices.Contains(validTypes, cfg.Type) {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidDatabaseType, cfg.Type)
+	}
+
+	// Postgres requires a URL.
+	if cfg.Type == DatabaseTypePostgres && cfg.URL == "" {
+		return ErrDatabaseURLRequired
+	}
+
+	// On-disk SQLite requires a directory (memory mode does not).
+	if cfg.Type == DatabaseTypeSQLite && cfg.Dir == "" {
+		return ErrDatabaseDirRequired
 	}
 
 	return nil

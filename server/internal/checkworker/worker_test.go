@@ -846,7 +846,7 @@ func TestNewCheckWorkerClampsFastLaneReserved(t *testing.T) {
 // the first slow result) rather than wall-clock-based to stay robust on slow
 // machines.
 //
-//nolint:paralleltest,cyclop // Uses shared database state and a live worker; sequential phases
+//nolint:paralleltest // Uses shared database state and a live worker; sequential phases
 func TestFastLaneFloorInvariant(t *testing.T) {
 	const (
 		poolSize    = 4
@@ -887,7 +887,8 @@ func TestFastLaneFloorInvariant(t *testing.T) {
 
 	// createSleepJob creates an enabled sleep check and stamps its job with the
 	// wanted lane + a matching cost EWMA, due 1s ago (no pre-exec sleep).
-	createSleepJob := func(slug string, sleepMs int, lane int16, costEWMAMs float64) (checkUID string) {
+	// Returns the check UID.
+	createSleepJob := func(slug string, sleepMs int, lane int16, costEWMAMs float64) string {
 		check := models.NewCheck(org.UID, slug, string(checkerdef.CheckTypeSleep))
 		check.Config = models.JSONMap{"sleep_ms": sleepMs}
 		require.NoError(t, svc.CreateCheck(ctx, check))

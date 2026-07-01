@@ -313,8 +313,6 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 // in one lane. The lane filter matches the partial-index predicates of
 // migration 009 (idx_check_jobs_claim_fast / _slow), so each lane's ordered
 // scan stays index-backed.
-//
-//nolint:revive // argument count mirrors the claim query's dimensions; a struct would obscure the call sites
 func (s *serviceImpl) selectAvailableJobs(
 	ctx context.Context,
 	tx bun.Tx,
