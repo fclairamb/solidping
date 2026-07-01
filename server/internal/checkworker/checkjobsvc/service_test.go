@@ -345,14 +345,16 @@ func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
 		"the job with the earlier effective_scheduled_at must be claimed first")
 }
 
-// TestClaimAdmitsHeavilyPenalizedEffective verifies that a due job whose
-// cost/delay penalty pushes effective_scheduled_at more than 10× maxAhead into
-// the future is still claimable: the effective gate is widened by
-// effectiveWindowFactor (12), so a huge delay EWMA deprioritizes a job under
-// contention but never strands it once it is due.
+// TestClaimAdmitsDueJobRegardlessOfEffective verifies the restored D2/Option A
+// gate (spec 2026-07-01-02 D3): eligibility is decided by the real
+// scheduled_at alone, so a due job is claimable IMMEDIATELY no matter what its
+// stored effective_scheduled_at says — including a polluted pre-migration row
+// carrying a delay-era offset far beyond the claim window (~95 min was
+// observed live). effective_scheduled_at only orders the due set; it can never
+// strand a job.
 //
 //nolint:paralleltest // Test shares database state
-func TestClaimAdmitsHeavilyPenalizedEffective(t *testing.T) {
+func TestClaimAdmitsDueJobRegardlessOfEffective(t *testing.T) {
 	dbSvc, ctx := setupTestDB(t)
 	defer func() { _ = dbSvc.Close() }()
 
@@ -363,14 +365,14 @@ func TestClaimAdmitsHeavilyPenalizedEffective(t *testing.T) {
 	now := time.Now()
 	maxAhead := 5 * time.Minute
 
-	// The job is due, but its combined cost+delay EWMA has pushed its
-	// effective deadline 11× maxAhead into the future (> 10× of penalty).
+	// The job is due now, but a pre-migration delay-era offset left its
+	// effective deadline ~95 minutes in the future — 19× the claim window.
 	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
-	setEffective(t, ctx, dbSvc, job.UID, now.Add(11*maxAhead))
+	setEffective(t, ctx, dbSvc, job.UID, now.Add(95*time.Minute))
 
 	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, maxAhead)
 	require.NoError(t, err)
-	require.Len(t, jobs, 1, "a due job with a >10×maxAhead effective penalty must still be claimable")
+	require.Len(t, jobs, 1, "a due job must be claimable immediately regardless of any stored effective value")
 	assert.Equal(t, job.UID, jobs[0].UID)
 }
 
