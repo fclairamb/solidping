@@ -46,7 +46,7 @@ type Service interface {
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	// It folds in no fresh cost/delay sample (the probe was skipped, or ran on a
 	// backend that does not measure cost), so it re-anchors effective_scheduled_at
-	// to the new schedule; the cost/delay offset is reapplied on the next
+	// to the new schedule; the cost offset is reapplied on the next
 	// post-exec write via ReleaseLeaseWithSchedulingState.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 
@@ -416,7 +416,7 @@ func (s *serviceImpl) ReleaseLease(
 		Set("scheduled_at = ?", nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a deferred job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
-		// cost/delay offset is reapplied on the next post-exec write.
+		// cost offset is reapplied on the next post-exec write.
 		Set("effective_scheduled_at = ?", nextScheduledAt).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
