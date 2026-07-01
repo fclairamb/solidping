@@ -346,19 +346,19 @@ func TestMigrationEffectiveReanchor(t *testing.T) {
 	scheduled := "2026-07-01 12:00:00+00:00"
 	seedJob := func(slug, effective string) string {
 		checkUID := uuid.New().String()
-		_, err := svc.db.NewRaw(
+		_, insErr := svc.db.NewRaw(
 			"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
 			checkUID, orgUID, slug, "http", "1m0s",
 		).Exec(ctx)
-		r.NoError(err)
+		r.NoError(insErr)
 
 		jobUID := uuid.New().String()
-		_, err = svc.db.NewRaw(
+		_, insErr = svc.db.NewRaw(
 			"INSERT INTO check_jobs (uid, organization_uid, check_uid, period, scheduled_at, effective_scheduled_at) "+
 				"VALUES (?, ?, ?, ?, ?, ?)",
 			jobUID, orgUID, checkUID, "1m0s", scheduled, effective,
 		).Exec(ctx)
-		r.NoError(err)
+		r.NoError(insErr)
 
 		return jobUID
 	}
