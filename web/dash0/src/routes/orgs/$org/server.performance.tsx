@@ -25,7 +25,7 @@ function PerformanceSettingsPage() {
   const { data: params, isLoading } = useSystemParameters();
   const setParam = useSetSystemParameter();
 
-  const [checkWorkers, setCheckWorkers] = useState("3");
+  const [checkWorkers, setCheckWorkers] = useState("25");
   const [jobWorkers, setJobWorkers] = useState("2");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -33,8 +33,8 @@ function PerformanceSettingsPage() {
   useEffect(() => {
     if (params) {
       const get = (key: string) => params.find((p) => p.key === key)?.value;
-      const cw = get("check_workers");
-      const jw = get("job_workers");
+      const cw = get("server.check_workers");
+      const jw = get("server.job_workers");
       if (cw != null) setCheckWorkers(String(cw));
       if (jw != null) setJobWorkers(String(jw));
     }
@@ -48,11 +48,11 @@ function PerformanceSettingsPage() {
     try {
       await Promise.all([
         setParam.mutateAsync({
-          key: "check_workers",
+          key: "server.check_workers",
           value: parseInt(checkWorkers, 10),
         }),
         setParam.mutateAsync({
-          key: "job_workers",
+          key: "server.job_workers",
           value: parseInt(jobWorkers, 10),
         }),
       ]);

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useCheckAvailability } from "@/api/hooks";
 import type { CheckAvailabilityPeriod } from "@/api/hooks";
-import { mapAvailabilityRow } from "@/lib/availability-rows";
+import { mapAvailabilityRow, selectAvailabilityRows } from "@/lib/availability-rows";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,28 +14,25 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-export type AvailabilityChartPeriod = "day" | "week" | "month";
-
 interface AvailabilityTableProps {
   org: string;
   checkUid: string;
   refetchInterval?: number;
-  onPeriodSelect?: (period: AvailabilityChartPeriod) => void;
 }
 
-// The period tokens we ask the server for, in display order, with their label
-// key and the chart period each row drills into. The server measures each
-// window; the client does no availability math.
+// The period tokens we ask the server for, in display order (shortest window
+// first), with their label key. The server measures each window; the client
+// does no availability math.
 const PERIOD_ROWS: {
   token: string;
-  labelKey: "today" | "last7" | "last30" | "last365";
+  labelKey: "last1h" | "last24h" | "last30" | "last90" | "last365";
   shortLabel: string;
-  graph: AvailabilityChartPeriod | null;
 }[] = [
-  { token: "today", labelKey: "today", shortLabel: "1d", graph: "day" },
-  { token: "7d", labelKey: "last7", shortLabel: "7d", graph: "week" },
-  { token: "30d", labelKey: "last30", shortLabel: "30d", graph: "month" },
-  { token: "365d", labelKey: "last365", shortLabel: "1y", graph: null },
+  { token: "1h", labelKey: "last1h", shortLabel: "1h" },
+  { token: "24h", labelKey: "last24h", shortLabel: "24h" },
+  { token: "30d", labelKey: "last30", shortLabel: "30d" },
+  { token: "90d", labelKey: "last90", shortLabel: "90d" },
+  { token: "365d", labelKey: "last365", shortLabel: "1y" },
 ];
 
 const PERIODS_PARAM = PERIOD_ROWS.map((p) => p.token).join(",");
@@ -44,7 +41,6 @@ export function AvailabilityTable({
   org,
   checkUid,
   refetchInterval,
-  onPeriodSelect,
 }: AvailabilityTableProps) {
   const { t } = useTranslation("checks");
 
@@ -93,24 +89,27 @@ export function AvailabilityTable({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {PERIOD_ROWS.map((row) => {
+            {selectAvailabilityRows(
+              PERIOD_ROWS.map((row) => byToken.get(row.token)),
+            ).map(({ index, collapsed }) => {
+              const row = PERIOD_ROWS[index];
               const view = mapAvailabilityRow(byToken.get(row.token));
-              const clickable = row.graph != null && onPeriodSelect != null;
+              // A collapsed row stands for the whole monitored history (all the
+              // longer windows measure the same span), so it gets its own label
+              // and the short form shows the actual days of data, not "1y".
+              const label = collapsed
+                ? t("detail.availability.sinceCreation")
+                : t(`detail.availability.${row.labelKey}`);
+              const shortLabel = collapsed
+                ? `${view.monitoredDays ?? 1}d`
+                : row.shortLabel;
 
               return (
-                <TableRow
-                  key={row.token}
-                  className={clickable ? "cursor-pointer hover:bg-muted/50" : undefined}
-                  onClick={
-                    clickable ? () => onPeriodSelect!(row.graph!) : undefined
-                  }
-                >
+                <TableRow key={row.token}>
                   <TableCell className="font-medium">
-                    <span className="sm:hidden">{row.shortLabel}</span>
-                    <span className="hidden sm:inline">
-                      {t(`detail.availability.${row.labelKey}`)}
-                    </span>
-                    {view.monitoredDays != null && (
+                    <span className="sm:hidden">{shortLabel}</span>
+                    <span className="hidden sm:inline">{label}</span>
+                    {collapsed && view.monitoredDays != null && (
                       <span className="block text-xs text-muted-foreground">
                         {t("detail.availability.monitored", { days: view.monitoredDays })}
                       </span>

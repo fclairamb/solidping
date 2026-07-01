@@ -5,6 +5,7 @@ import {
   formatAvailabilityPct,
   formatDurationSeconds,
   mapAvailabilityRow,
+  selectAvailabilityRows,
 } from "@/lib/availability-rows";
 
 // A fully-populated server period; tests override the fields they care about.
@@ -100,5 +101,64 @@ describe("mapAvailabilityRow", () => {
       period({ partial: true, monitoredSeconds: 3_600 }),
     );
     expect(young.monitoredDays).toBe(1);
+  });
+});
+
+describe("selectAvailabilityRows", () => {
+  it("keeps all rows distinct for a mature check (none partial)", () => {
+    const rows = selectAvailabilityRows([
+      period({ partial: false }),
+      period({ partial: false }),
+      period({ partial: false }),
+      period({ partial: false }),
+    ]);
+    expect(rows).toEqual([
+      { index: 0, collapsed: false },
+      { index: 1, collapsed: false },
+      { index: 2, collapsed: false },
+      { index: 3, collapsed: false },
+    ]);
+  });
+
+  it("collapses every period into one row for a brand-new check (all partial)", () => {
+    // A check younger than every window: all four periods measure the same
+    // span, so only the first survives, as the collapsed catch-all.
+    const rows = selectAvailabilityRows([
+      period({ partial: true }),
+      period({ partial: true }),
+      period({ partial: true }),
+      period({ partial: true }),
+    ]);
+    expect(rows).toEqual([{ index: 0, collapsed: true }]);
+  });
+
+  it("keeps the distinct windows then collapses the partial tail", () => {
+    // ~10-day-old check: today and 7d are real distinct windows; 30d and 365d
+    // both clamp to the 10-day life, so they collapse into one row at index 2.
+    const rows = selectAvailabilityRows([
+      period({ partial: false }),
+      period({ partial: false }),
+      period({ partial: true }),
+      period({ partial: true }),
+    ]);
+    expect(rows).toEqual([
+      { index: 0, collapsed: false },
+      { index: 1, collapsed: false },
+      { index: 2, collapsed: true },
+    ]);
+  });
+
+  it("treats a missing period as non-partial no-data and keeps it", () => {
+    const rows = selectAvailabilityRows([
+      period({ partial: false }),
+      undefined,
+      period({ partial: true }),
+      period({ partial: true }),
+    ]);
+    expect(rows).toEqual([
+      { index: 0, collapsed: false },
+      { index: 1, collapsed: false },
+      { index: 2, collapsed: true },
+    ]);
   });
 });

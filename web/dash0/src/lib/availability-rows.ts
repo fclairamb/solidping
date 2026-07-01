@@ -41,6 +41,50 @@ export function formatDurationSeconds(totalSeconds: number): string {
   return `${seconds}s`;
 }
 
+/** One rendered availability row: which requested period it maps to, and
+ * whether it is the collapsed catch-all standing for the whole monitored
+ * history (see {@link selectAvailabilityRows}). */
+export interface AvailabilityRowSelection {
+  index: number;
+  collapsed: boolean;
+}
+
+/**
+ * Decide which requested periods to actually render, given the server periods
+ * in display order (shortest window first).
+ *
+ * Every period whose window starts before the check existed (`partial`) is
+ * measured over exactly the same span — the check's whole life `[createdAt,
+ * now]` — so they carry byte-identical availability, downtime and incident
+ * numbers. Rendering all of them is the "copy-paste rows" problem a young check
+ * exhibits (Today = Last 7 days = Last 30 days = Last 365 days).
+ *
+ * So we keep every non-partial period (genuinely distinct windows) in order,
+ * then collapse the partial tail into a single catch-all row (`collapsed: true`)
+ * that stands for the whole monitored history, and drop the rest. `partial` is
+ * monotonic once the windows are ordered shortest-first (window starts only move
+ * further into the past, and `createdAt` is fixed), so the kept partial period
+ * is always the first one and everything after it is redundant. A period missing
+ * from the response (`undefined`) counts as non-partial no-data and is kept in
+ * place so it still renders its dashes.
+ */
+export function selectAvailabilityRows(
+  periods: readonly (CheckAvailabilityPeriod | undefined)[],
+): AvailabilityRowSelection[] {
+  const rows: AvailabilityRowSelection[] = [];
+
+  for (let index = 0; index < periods.length; index++) {
+    if (periods[index]?.partial) {
+      rows.push({ index, collapsed: true });
+      break;
+    }
+
+    rows.push({ index, collapsed: false });
+  }
+
+  return rows;
+}
+
 export function mapAvailabilityRow(
   period: CheckAvailabilityPeriod | undefined,
 ): AvailabilityRowView {

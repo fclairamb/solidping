@@ -279,7 +279,6 @@ function CheckDetailPage() {
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
 
   const {
     data: check,
@@ -671,47 +670,29 @@ function CheckDetailPage() {
       />
 
       {/* Response time chart */}
-      <div ref={chartRef}>
-        <ResponseTimeChart
-          org={org}
-          checkUid={checkUid}
-          periodMs={periodMs}
-          initialPeriod={graphPeriod}
-          initialFullRange={graphFull}
-          onSettingsChange={(period, full) =>
-            navigate({
-              to: ".",
-              search: {
-                graphPeriod: period !== "day" ? period : undefined,
-                graphFull: full ? true : undefined,
-              },
-              replace: true,
-            })
-          }
-        />
-      </div>
+      <ResponseTimeChart
+        org={org}
+        checkUid={checkUid}
+        periodMs={periodMs}
+        initialPeriod={graphPeriod}
+        initialFullRange={graphFull}
+        onSettingsChange={(period, full) =>
+          navigate({
+            to: ".",
+            search: {
+              graphPeriod: period !== "day" ? period : undefined,
+              graphFull: full ? true : undefined,
+            },
+            replace: true,
+          })
+        }
+      />
 
       {/* Availability table */}
       <AvailabilityTable
         org={org}
         checkUid={checkUid}
         refetchInterval={refetchInterval}
-        onPeriodSelect={(period) => {
-          navigate({
-            to: ".",
-            search: {
-              graphPeriod: period === "day" ? undefined : period,
-              graphFull: undefined,
-            },
-            replace: true,
-          });
-          requestAnimationFrame(() => {
-            chartRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          });
-        }}
       />
 
       <div className="grid gap-6 md:grid-cols-2">
