@@ -710,8 +710,9 @@ func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 
 // releaseLeaseWithCost releases the lease for an actively-probed check, folding
 // the new cost and delay EWMAs and the recomputed effective_scheduled_at into
-// the same write. execStart is when the outbound probe actually began; the
-// scheduling delay is how far past the job's effective_scheduled_at that was.
+// the same write. The effective deadline is computed from the cost EWMA only
+// (spec 2026-07-01-02): the delay EWMA is persisted as telemetry but never
+// steers the claim order. execStart is when the outbound probe actually began.
 func (r *CheckWorker) releaseLeaseWithCost(
 	ctx context.Context,
 	checkJob *models.CheckJob,
@@ -721,7 +722,7 @@ func (r *CheckWorker) releaseLeaseWithCost(
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
 	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
-	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, newDelay, checkJob.PlanWeight)
+	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
 
 	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
 		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective,
@@ -729,15 +730,18 @@ func (r *CheckWorker) releaseLeaseWithCost(
 }
 
 // delaySampleMs is the scheduling-delay sample (ms) folded into the delay EWMA:
-// how far past the job's effective_scheduled_at the probe actually started,
-// floored at 0. The runner sleeps until scheduled_at, so under spare capacity the
-// probe starts on time and this is 0; it only goes positive when contention
-// pushes the start past the (cost/delay-padded) effective deadline. Falls back to
-// scheduled_at when the row has no effective_scheduled_at yet (freshly created).
+// how far past the job's real scheduled_at the probe actually started, floored
+// at 0 — true start lateness vs the schedule the user configured (spec
+// 2026-07-01-02 D4). The runner sleeps until scheduled_at, so under spare
+// capacity the probe starts on time and this is 0; it only goes positive when
+// contention pushes the start past the schedule. Pure telemetry: it feeds the
+// cost-distribution endpoint and the lane-split go/no-go, never the claim
+// order, so there is no feedback loop. Falls back to effective_scheduled_at
+// when the row has no scheduled_at (should not happen in practice).
 func (r *CheckWorker) delaySampleMs(checkJob *models.CheckJob, execStart time.Time) float64 {
-	ref := checkJob.EffectiveScheduledAt
+	ref := checkJob.ScheduledAt
 	if ref == nil {
-		ref = checkJob.ScheduledAt
+		ref = checkJob.EffectiveScheduledAt
 	}
 	if ref == nil {
 		return 0

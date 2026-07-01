@@ -142,6 +142,64 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 	})
 }
 
+// TestDelaySampleMs verifies the telemetry semantics of the delay sample
+// (spec 2026-07-01-02 D4): lateness is measured against the job's real
+// scheduled_at — the schedule the user configured — not the cost-padded
+// effective_scheduled_at, and is floored at 0 (a probe that starts on time or
+// is claimed ahead yields 0).
+func TestDelaySampleMs(t *testing.T) {
+	t.Parallel()
+
+	w := &CheckWorker{} // delaySampleMs reads no receiver state
+	now := time.Now()
+
+	t.Run("OnTimeStartYieldsZero", func(t *testing.T) {
+		t.Parallel()
+
+		scheduledAt := now
+		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &scheduledAt}
+		require.Zero(t, w.delaySampleMs(job, now), "a probe starting exactly on schedule has 0 delay")
+	})
+
+	t.Run("EarlyStartFlooredAtZero", func(t *testing.T) {
+		t.Parallel()
+
+		scheduledAt := now.Add(10 * time.Second)
+		job := &models.CheckJob{ScheduledAt: &scheduledAt}
+		require.Zero(t, w.delaySampleMs(job, now), "a probe starting before schedule is floored at 0")
+	})
+
+	t.Run("MeasuresAgainstScheduledAtNotEffective", func(t *testing.T) {
+		t.Parallel()
+
+		// The effective deadline is padded 20s past the schedule; the probe
+		// starts 5s after the real schedule. True lateness is 5s — the padded
+		// deadline must not absorb it (that under-reporting was the delay-EWMA
+		// feedback loop this spec removes).
+		scheduledAt := now.Add(-5 * time.Second)
+		effective := now.Add(15 * time.Second)
+		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &effective}
+		require.InDelta(t, 5000.0, w.delaySampleMs(job, now), 1.0,
+			"delay must be measured against scheduled_at, not effective_scheduled_at")
+	})
+
+	t.Run("NilScheduledAtFallsBackToEffective", func(t *testing.T) {
+		t.Parallel()
+
+		effective := now.Add(-3 * time.Second)
+		job := &models.CheckJob{ScheduledAt: nil, EffectiveScheduledAt: &effective}
+		require.InDelta(t, 3000.0, w.delaySampleMs(job, now), 1.0,
+			"without a scheduled_at, the effective deadline is the fallback reference")
+	})
+
+	t.Run("NoReferenceYieldsZero", func(t *testing.T) {
+		t.Parallel()
+
+		job := &models.CheckJob{}
+		require.Zero(t, w.delaySampleMs(job, now))
+	})
+}
+
 func TestFormatISO8601Duration(t *testing.T) {
 	t.Parallel()
 
