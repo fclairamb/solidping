@@ -222,6 +222,102 @@ func TestCostOffsetApplied(t *testing.T) {
 		"effective = scheduled + cost_ewma×2 when no tier credit applies")
 }
 
+// laneParams returns the default lane hysteresis band (promote at 2000ms,
+// demote below 1000ms) used across the ClassifyLane tests.
+func laneParams() scheduling.Params {
+	return scheduling.Params{
+		LaneSlowThresholdMs: 2000,
+		LaneFastThresholdMs: 1000,
+	}
+}
+
+// TestClassifyLane covers the hysteresis classifier (spec 2026-07-01-03 D2):
+// promote at cost >= slow threshold, demote below the fast threshold, hold in
+// the dead-band, and stay inert when the classifier is disabled.
+func TestClassifyLane(t *testing.T) {
+	t.Parallel()
+
+	p := laneParams()
+
+	tests := []struct {
+		name     string
+		prevLane int16
+		cost     float64
+		params   scheduling.Params
+		want     int16
+	}{
+		{"zero-cost fresh job stays fast", scheduling.LaneFast, 0, p, scheduling.LaneFast},
+		{"cheap job stays fast", scheduling.LaneFast, 42, p, scheduling.LaneFast},
+		{"fast job promotes at the slow threshold", scheduling.LaneFast, 2000, p, scheduling.LaneSlow},
+		{"fast job promotes above the slow threshold", scheduling.LaneFast, 10000, p, scheduling.LaneSlow},
+		{"fast job holds inside the band", scheduling.LaneFast, 1500, p, scheduling.LaneFast},
+		{"fast job holds at the demote edge", scheduling.LaneFast, 1000, p, scheduling.LaneFast},
+		{"slow job holds inside the band", scheduling.LaneSlow, 1500, p, scheduling.LaneSlow},
+		{"slow job holds just below the promote edge", scheduling.LaneSlow, 1999, p, scheduling.LaneSlow},
+		{"slow job demotes below the fast threshold", scheduling.LaneSlow, 999, p, scheduling.LaneFast},
+		{"slow job stays slow at the promote edge", scheduling.LaneSlow, 2000, p, scheduling.LaneSlow},
+		{"timeout-pinned cost stays slow", scheduling.LaneSlow, 30000, p, scheduling.LaneSlow},
+		{
+			"classifier off holds fast",
+			scheduling.LaneFast, 30000,
+			scheduling.Params{},
+			scheduling.LaneFast,
+		},
+		{
+			"classifier off holds slow",
+			scheduling.LaneSlow, 0,
+			scheduling.Params{},
+			scheduling.LaneSlow,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, tt.want, scheduling.ClassifyLane(tt.prevLane, tt.cost, tt.params))
+		})
+	}
+}
+
+// TestClassifyLaneHysteresisNoFlap is the flap test from the spec: a job
+// oscillating between 900ms and 2100ms cost flips lanes only when it crosses a
+// band edge, and a job hovering at 1500ms (inside the band) never changes lane
+// no matter how many runs it makes — the dead-band is what stops threshold
+// hoverers from churning the partial claim indexes on every release.
+func TestClassifyLaneHysteresisNoFlap(t *testing.T) {
+	t.Parallel()
+
+	p := laneParams()
+
+	// 900 ↔ 2100 crosses both edges: each half-cycle flips exactly once.
+	lane := scheduling.LaneFast
+	for i := 0; i < 5; i++ {
+		lane = scheduling.ClassifyLane(lane, 2100, p)
+		require.Equal(t, scheduling.LaneSlow, lane, "2100ms crosses the promote edge")
+		lane = scheduling.ClassifyLane(lane, 900, p)
+		require.Equal(t, scheduling.LaneFast, lane, "900ms crosses the demote edge")
+	}
+
+	// Hovering at 1500ms (inside the band) holds whatever lane the job had —
+	// from either side.
+	fast := scheduling.LaneFast
+	slow := scheduling.LaneSlow
+	for i := 0; i < 10; i++ {
+		fast = scheduling.ClassifyLane(fast, 1500, p)
+		slow = scheduling.ClassifyLane(slow, 1500, p)
+	}
+	require.Equal(t, scheduling.LaneFast, fast, "a fast job hovering at 1500ms holds its lane")
+	require.Equal(t, scheduling.LaneSlow, slow, "a slow job hovering at 1500ms holds its lane")
+
+	// Oscillating strictly inside the band never flips at all.
+	lane = scheduling.LaneSlow
+	for i := 0; i < 10; i++ {
+		lane = scheduling.ClassifyLane(lane, 1100, p)
+		lane = scheduling.ClassifyLane(lane, 1900, p)
+	}
+	require.Equal(t, scheduling.LaneSlow, lane, "in-band oscillation must never flip the lane")
+}
+
 // TestSlowThreshold verifies the configurable dead-band: the weighted cost
 // EWMA (cost×2) must reach SlowThresholdMs before effective_scheduled_at is
 // pushed past the real scheduled_at.

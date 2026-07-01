@@ -50,7 +50,11 @@ func (b *DirectBackend) Heartbeat(
 	return b.dbService.UpdateWorkerHeartbeat(ctx, workerUID)
 }
 
-// ClaimJobs claims up to limit jobs for the given worker.
+// ClaimJobs claims up to limit jobs for the given worker. The remote-claim
+// protocol carries a single limit, so no slow-lane reservation applies here:
+// the lane split's fast-first ordering still holds (fast jobs are selected
+// before slow ones), but slow jobs may fill the whole limit. Per-worker floor
+// enforcement (spec 2026-07-01-03 D3) is the in-process pool fetcher's job.
 func (b *DirectBackend) ClaimJobs(
 	ctx context.Context,
 	workerUID string,
@@ -59,7 +63,7 @@ func (b *DirectBackend) ClaimJobs(
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, error) {
 	return b.checkJobSvc.ClaimJobs(
-		ctx, workerUID, region, limit, maxAhead,
+		ctx, workerUID, region, limit, limit, maxAhead,
 	)
 }
 

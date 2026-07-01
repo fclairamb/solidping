@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"io/fs"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -279,13 +280,15 @@ func TestMigrationCheckJobSchedulingColumns(t *testing.T) {
 		assert.Contains(t, colNames, expected, "%s column must exist after migration 006", expected)
 	}
 
-	// The ordering index must exist.
-	var idxCount int
-	r.NoError(svc.db.NewRaw(
-		"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?",
-		"idx_check_jobs_effective_scheduled_at",
-	).Scan(ctx, &idxCount))
-	assert.Equal(t, 1, idxCount, "the effective_scheduled_at ordering index must exist")
+	// The per-lane ordering indexes must exist (migration 009 replaced the
+	// full effective_scheduled_at index with two lane-partial ones).
+	for _, idx := range []string{"idx_check_jobs_claim_fast", "idx_check_jobs_claim_slow"} {
+		var idxCount int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", idx,
+		).Scan(ctx, &idxCount))
+		assert.Equal(t, 1, idxCount, "the %s ordering index must exist", idx)
+	}
 
 	// A check_job materialized without explicit scheduling values defaults to
 	// the off-by-default zeros (pure-FIFO equivalent).
@@ -391,6 +394,113 @@ func TestMigrationEffectiveReanchor(t *testing.T) {
 		"an already-anchored row must be unchanged")
 	assert.Equal(t, "2026-07-01 11:59:45", effectiveOf(credited),
 		"a tier-credited row (effective < scheduled_at) must NOT be rewritten")
+}
+
+// TestMigrationCheckJobLane verifies migration 009 (spec 2026-07-01-03): the
+// lane column exists with default 0 (fast), the two lane-partial claim indexes
+// replace the full effective_scheduled_at index, and the backfill statement
+// classifies rows with cost_ewma_ms >= 2000 as slow while leaving cheap rows
+// fast.
+func TestMigrationCheckJobLane(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	// Column exists.
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('check_jobs')").Scan(ctx, &columns))
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+	r.Contains(colNames, "lane", "lane column must exist after migration 009")
+
+	// Partial indexes exist; the superseded full index is gone.
+	idxCount := func(name string) int {
+		var n int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name,
+		).Scan(ctx, &n))
+
+		return n
+	}
+	assert.Equal(t, 1, idxCount("idx_check_jobs_claim_fast"), "fast-lane partial index must exist")
+	assert.Equal(t, 1, idxCount("idx_check_jobs_claim_slow"), "slow-lane partial index must exist")
+	assert.Equal(t, 0, idxCount("idx_check_jobs_effective_scheduled_at"),
+		"the full effective_scheduled_at index must be dropped by migration 009")
+
+	// Seed jobs on both sides of the backfill threshold, then re-run the
+	// migration's backfill UPDATE (extracted from the embedded file so the test
+	// exercises the exact shipped statement — the DDL itself cannot be re-run).
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "lane-org", "Lane Org",
+	).Exec(ctx)
+	r.NoError(err)
+
+	seedJob := func(slug string, costEWMAMs float64) string {
+		checkUID := uuid.New().String()
+		_, insErr := svc.db.NewRaw(
+			"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
+			checkUID, orgUID, slug, "http", "1m0s",
+		).Exec(ctx)
+		r.NoError(insErr)
+
+		jobUID := uuid.New().String()
+		_, insErr = svc.db.NewRaw(
+			"INSERT INTO check_jobs (uid, organization_uid, check_uid, period, cost_ewma_ms) VALUES (?, ?, ?, ?, ?)",
+			jobUID, orgUID, checkUID, "1m0s", costEWMAMs,
+		).Exec(ctx)
+		r.NoError(insErr)
+
+		return jobUID
+	}
+
+	slowJob := seedJob("lane-slow", 10000) // browser-class cost
+	edgeJob := seedJob("lane-edge", 2000)  // exactly at the threshold → slow
+	fastJob := seedJob("lane-fast", 42)    // http-class cost
+
+	laneOf := func(jobUID string) int {
+		var lane int
+		r.NoError(svc.db.NewRaw(
+			"SELECT lane FROM check_jobs WHERE uid = ?", jobUID,
+		).Scan(ctx, &lane))
+
+		return lane
+	}
+
+	// New rows default to fast regardless of cost (classification happens in
+	// the post-exec release, the backfill only heals pre-migration rows).
+	assert.Equal(t, 0, laneOf(slowJob), "lane defaults to 0 (fast) on insert")
+
+	// Extract and re-run the backfill statement from the embedded migration.
+	sqlBytes, err := fs.ReadFile(migrationsFS, "migrations/009_check_job_lane.up.sql")
+	r.NoError(err)
+	var backfill string
+	for _, stmt := range strings.Split(string(sqlBytes), ";") {
+		if strings.Contains(stmt, "update check_jobs set lane = 1") {
+			backfill = stmt
+
+			break
+		}
+	}
+	r.NotEmpty(backfill, "backfill statement must be present in migration 009")
+	_, err = svc.db.ExecContext(ctx, backfill)
+	r.NoError(err, "backfill statement must apply cleanly to a populated DB")
+
+	assert.Equal(t, 1, laneOf(slowJob), "a 10s-cost job must be backfilled into the slow lane")
+	assert.Equal(t, 1, laneOf(edgeJob), "a job exactly at the 2000ms threshold is slow (promote is >=)")
+	assert.Equal(t, 0, laneOf(fastJob), "a cheap job stays in the fast lane")
 }
 
 // TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated

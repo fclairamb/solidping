@@ -181,8 +181,13 @@ type ClaimJobsResponse struct {
 func (s *Service) ClaimJobs(
 	ctx context.Context, req *ClaimJobsRequest,
 ) (*ClaimJobsResponse, error) {
+	// The remote-claim API carries a single limit, so no slow-lane
+	// reservation applies on this path (slowLimit = limit): fast-lane jobs
+	// are still selected first, but slow jobs may fill the whole limit.
+	// Per-worker floor enforcement (spec 2026-07-01-03 D3) belongs to the
+	// in-process pool fetcher, which knows its pool size and busySlow count.
 	jobs, err := s.checkJobSvc.ClaimJobs(
-		ctx, req.WorkerUID, req.Region, req.Limit, req.MaxAhead,
+		ctx, req.WorkerUID, req.Region, req.Limit, req.Limit, req.MaxAhead,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to claim jobs: %w", err)

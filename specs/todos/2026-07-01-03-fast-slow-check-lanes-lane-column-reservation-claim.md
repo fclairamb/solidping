@@ -216,3 +216,54 @@ make bench-checks           # partial vs composite index; claim path must not re
 | Backfill misclassifies at migration time | Threshold matches the default config; one run reclassifies via hysteresis anyway. |
 
 **Status**: Todo | **Created**: 2026-07-01 | **Depends on**: `2026-07-01-02` | **Extends**: `2026-07-01-01` (Phase 4 — gate answered GO) & `2026-06-30-09`
+
+## Implementation Plan
+
+1. **Migration 009** — `server/internal/db/{postgres,sqlite}/migrations/009_check_job_lane.{up,down}.sql`:
+   `lane smallint not null default 0`, backfill `lane = 1 where cost_ewma_ms >= 2000`, partial
+   indexes `idx_check_jobs_claim_fast` (`where lane = 0`) / `idx_check_jobs_claim_slow`
+   (`where lane = 1`) on `effective_scheduled_at`, drop `idx_check_jobs_effective_scheduled_at`.
+   Down: drop partial indexes + lane, recreate the full index. Extend
+   `sqlite/migrations_test.go` (lane column + default, new indexes present, old index gone,
+   backfill statement classifies `cost >= 2000` → 1) and fix
+   `TestMigrationCheckJobSchedulingColumns` which asserts the dropped index. The
+   partial-vs-composite `make bench-checks` comparison runs at QA time; the winner + numbers are
+   documented in the migration comment before merge (D5).
+2. **Model** — `Lane int16 bun:"lane,notnull,default:0"` on `db/models/check_job.go`;
+   `NewCheckJob` keeps the zero value (fast).
+3. **Scheduling math** — `scheduling.go`: `LaneFast`/`LaneSlow` consts,
+   `ClassifyLane(prevLane int16, costEWMAMs float64, p Params) int16` with hysteresis
+   (promote at `cost ≥ LaneSlowThresholdMs`, demote below `LaneFastThresholdMs`, hold in the
+   band; `LaneSlowThresholdMs ≤ 0` = classifier off → hold). Params gains both thresholds.
+   Table-driven tests: promote/demote/hold, zero-cost fresh job stays fast, 900↔2100 flap test,
+   1500 holds lane, classifier-off.
+4. **Config** — `SchedulingConfig` gains `lane_slow_threshold_ms` (default 2000),
+   `lane_fast_threshold_ms` (default 1000), `fast_lane_reserved` (default 5);
+   `applySchedulingEnv` reads the `SP_SCHEDULING_*` forms (koanf multi-word quirk);
+   `Config.Validate()` rejects inverted/negative thresholds (`fast < slow`). Clamping of `F`
+   to `[0, P−1]` + startup warning lives in `NewCheckWorker` (it knows `P`). Tests for env
+   reader + validation + clamp.
+5. **checkjobsvc** — `ClaimJobs(ctx, workerUID, region, fastLimit, slowLimit int, maxAhead)`:
+   one transaction, two `SELECT`s (fast first, `lane = 0` limit `fastLimit`; then `lane = 1`
+   limit `min(fastLimit − claimedFast, slowLimit)`), sharing `updateJobsWithLease` +
+   `attachChecks`. `ReleaseLeaseWithSchedulingState` gains `lane int16` and persists it.
+   `ClaimJobsForCheck` (express) unchanged. Adapt the two lane-agnostic callers
+   (`backend/direct.go`, `handlers/workers/service.go`) to pass `slowLimit = limit`
+   (no reservation on the remote-claim path). Tests: fast-first, slow bounded by `slowLimit`,
+   slow bounded by remaining capacity, per-lane `effective_scheduled_at` ordering, lane
+   persisted on release.
+6. **Worker** — `busySlow atomic.Int32` (incremented in the fetcher right after a successful
+   claim, keyed off the claimed row's lane — closes the fetch-race window; decremented by the
+   runner when the job finishes); pure helper `laneLimits(free, poolSize, reserved, busySlow)`
+   implementing `slowBudget = max(0, (P−F) − busySlow)`; `fetchAndDistributeJobs` uses it;
+   `releaseLeaseWithCost` computes `newLane = ClassifyLane(...)`; replace the stale
+   "admission caps" comment in `NewCheckWorker`. Floor-invariant test with `checksleep`:
+   `P=4, F=1`, saturate with slow sleep jobs, then add due fast jobs → fast complete while ≥3
+   slow in flight (fast results land before the first slow result), sampled `busySlow` never
+   exceeds `P−F` and reaches exactly `P−F` (borrowing). ms-scale sleeps.
+7. **Metrics** — `solidping_check_lane_claims_total{lane}` counter (`RecordLaneClaims`),
+   recorded per claim batch in the fetcher; `solidping_worker_busy_slow` gauge added to
+   `newWorkerChannelCollector`.
+8. **QA** — `make build-backend lint-back test`, `make migrate` (dev DB), `make bench-checks`
+   partial-vs-composite comparison + no-regression run; document the D5 decision in the
+   migration comment.

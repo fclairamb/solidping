@@ -75,6 +75,19 @@ type CheckWorker struct {
 	jobsChan         chan *models.CheckJob // Fetcher → Runners
 	completionChan   chan struct{}         // Runners → Fetcher (wake-up signal)
 
+	// Fast/slow lane reservation (spec 2026-07-01-03 D3/D4): slow-lane jobs in
+	// flight never exceed poolSize − fastLaneReserved on this worker, so a
+	// burst of slow probes can never occupy the whole pool and starve due fast
+	// checks. busySlow counts in-flight slow-lane jobs: incremented by the
+	// fetcher right after a successful claim (accounting at claim time — not
+	// at runner start — closes the window where a re-fetch could read a stale
+	// count and over-claim slow) and decremented by the runner when the job
+	// finishes. The express path bypasses both the pool and this accounting (a
+	// freshly created check is lane-fast by definition; its goroutine is
+	// additive).
+	busySlow         atomic.Int32
+	fastLaneReserved int // reserved fast-only slots, clamped to [0, poolSize−1]
+
 	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
 	// the pure math config that deprioritizes slow checks (and credits paid
 	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
@@ -98,9 +111,28 @@ func NewCheckWorker(
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {
 		// I/O-bound work tolerates far more concurrency than a CPU-bound pool;
-		// the real bound is the per-class/per-org admission caps, not this
-		// count. See spec 2026-06-30-09.
+		// a goroutine parked on a slow socket costs ~KB and zero CPU. Slow
+		// checks are deprioritized in fetch order (spec 2026-06-30-09) and
+		// capacity-capped by the fast-lane reservation below (spec
+		// 2026-07-01-03), not by this count.
 		poolSize = 25
+	}
+
+	// Clamp the fast-lane floor to [0, poolSize−1] (spec 2026-07-01-03 D3): a
+	// floor at or above the pool size would leave the slow lane zero slots
+	// forever, silently killing every slow check.
+	fastLaneReserved := cfg.Server.Scheduling.FastLaneReserved
+	switch {
+	case fastLaneReserved < 0:
+		logger.Warn("scheduling.fast_lane_reserved is negative; clamping to 0 (no reservation)",
+			"configured", cfg.Server.Scheduling.FastLaneReserved)
+		fastLaneReserved = 0
+	case fastLaneReserved >= poolSize:
+		logger.Warn("scheduling.fast_lane_reserved >= pool size would starve the slow lane; clamping to pool−1",
+			"configured", cfg.Server.Scheduling.FastLaneReserved,
+			"pool_size", poolSize,
+			"clamped", poolSize-1)
+		fastLaneReserved = poolSize - 1
 	}
 
 	schedParams := schedulingParamsFromConfig(cfg.Server.Scheduling)
@@ -114,11 +146,36 @@ func NewCheckWorker(
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture
-		poolSize:       poolSize,
-		jobsChan:       make(chan *models.CheckJob),
-		completionChan: make(chan struct{}, 1),
-		schedParams:    schedParams,
+		poolSize:         poolSize,
+		fastLaneReserved: fastLaneReserved,
+		jobsChan:         make(chan *models.CheckJob),
+		completionChan:   make(chan struct{}, 1),
+		schedParams:      schedParams,
 	}
+}
+
+// laneLimits computes the per-lane claim limits (fast, slow) for one fetch
+// (spec 2026-07-01-03 D3). Fast jobs may occupy any free slot (the fast limit
+// is the full free capacity); slow jobs may only occupy slots above the
+// reserved fast floor:
+//
+//	slowBudget = max(0, (poolSize − fastReserved) − busySlow)
+//
+// clamped to the free slots. An idle slow lane donates everything to fast
+// (trivially); an idle fast stream lets slow borrow up to poolSize −
+// fastReserved; a fast burst never finds fewer than fastReserved slots
+// occupied by nothing slower than another fast check. Per-worker enforcement
+// is fleet-correct: every worker independently guarantees its own floor.
+func laneLimits(free, poolSize, fastReserved, busySlow int) (int, int) {
+	slowLimit := (poolSize - fastReserved) - busySlow
+	if slowLimit < 0 {
+		slowLimit = 0
+	}
+	if slowLimit > free {
+		slowLimit = free
+	}
+
+	return free, slowLimit
 }
 
 // schedulingParamsFromConfig converts the koanf SchedulingConfig (seconds / ms
@@ -135,6 +192,8 @@ func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
 		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
 		CostTimeoutFactor:   cfg.CostTimeoutFactor,
 		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
+		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
+		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
 	}
 }
 
@@ -320,6 +379,12 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		return nil
 	}
 
+	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
+	// slot; slow is bounded by the budget left under the fast floor.
+	fastLimit, slowLimit := laneLimits(
+		available, r.poolSize, r.fastLaneReserved, int(r.busySlow.Load()),
+	)
+
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
 	worker := r.getWorker()
@@ -327,7 +392,8 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		ctx,
 		worker.UID,
 		worker.Region,
-		available,
+		fastLimit,
+		slowLimit,
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
@@ -347,6 +413,21 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		}
 		return err
 	}
+
+	// Account in-flight slow jobs at claim time (D4): the count must be
+	// visible before any subsequent fetch computes its slow budget, and a
+	// runner-side increment would leave a window between channel handoff and
+	// runner start where a re-fetch could over-claim slow. The runner
+	// decrements when the job finishes.
+	slowClaimed := 0
+	for _, job := range jobs {
+		if job.Lane == scheduling.LaneSlow {
+			r.busySlow.Add(1)
+			slowClaimed++
+		}
+	}
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
 
 	// Distribute jobs to runners
 	for _, job := range jobs {
@@ -470,6 +551,12 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 			logger.ErrorContext(ctx, "Error executing job",
 				"error", err,
 				"check_uid", job.CheckUID)
+		}
+
+		// A finished slow-lane job frees its reserved-budget slot (the
+		// matching increment happened in the fetcher at claim time).
+		if job.Lane == scheduling.LaneSlow {
+			r.busySlow.Add(-1)
 		}
 
 		// Signal completion to wake fetcher (non-blocking)
@@ -709,10 +796,13 @@ func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 }
 
 // releaseLeaseWithCost releases the lease for an actively-probed check, folding
-// the new cost and delay EWMAs and the recomputed effective_scheduled_at into
-// the same write. The effective deadline is computed from the cost EWMA only
-// (spec 2026-07-01-02): the delay EWMA is persisted as telemetry but never
-// steers the claim order. execStart is when the outbound probe actually began.
+// the new cost and delay EWMAs, the recomputed effective_scheduled_at, and the
+// hysteresis-classified lane into the same write. The effective deadline and
+// the lane are computed from the cost EWMA only (specs 2026-07-01-02 /
+// 2026-07-01-03): the delay EWMA is persisted as telemetry but never steers
+// the claim order nor the lane — delay is a victim signal, and classifying on
+// it would send starved fast checks into the slow lane. execStart is when the
+// outbound probe actually began.
 func (r *CheckWorker) releaseLeaseWithCost(
 	ctx context.Context,
 	checkJob *models.CheckJob,
@@ -723,9 +813,10 @@ func (r *CheckWorker) releaseLeaseWithCost(
 	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
 	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
 	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
+	newLane := scheduling.ClassifyLane(checkJob.Lane, newCost, r.schedParams)
 
 	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
-		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective,
+		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective, newLane,
 	)
 }
 

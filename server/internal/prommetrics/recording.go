@@ -102,6 +102,16 @@ func RecordClaimJobsOutcome(outcome string) {
 	ClaimJobsResult.WithLabelValues(outcome).Inc()
 }
 
+// RecordLaneClaims adds n claimed jobs to the per-lane claim counter.
+// lane ∈ {LaneLabelFast, LaneLabelSlow}. A zero n is a no-op so callers can
+// pass raw per-batch counts without pre-filtering.
+func RecordLaneClaims(lane string, n int) {
+	if n <= 0 {
+		return
+	}
+	CheckLaneClaims.WithLabelValues(lane).Add(float64(n))
+}
+
 // RecordJobProcessed increments the processed-jobs counter for the given
 // job type and terminal outcome ("success" | "retried" | "failed").
 func RecordJobProcessed(jobType, outcome string) {

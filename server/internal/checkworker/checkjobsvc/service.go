@@ -11,6 +11,7 @@ import (
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect/pgdialect"
 
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
@@ -20,14 +21,22 @@ var ErrJobClaimedByAnother = errors.New("job may have been claimed by another wo
 
 // Service provides check job queue operations.
 type Service interface {
-	// ClaimJobs atomically claims up to limit check jobs for the given worker.
+	// ClaimJobs atomically claims due check jobs for the given worker with
+	// per-lane reservation (spec 2026-07-01-03 D3/D6). fastLimit is the total
+	// claim capacity (normally the worker's free runner slots) — fast-lane
+	// jobs may use all of it. slowLimit is the slow lane's reservation budget:
+	// slow-lane jobs are additionally capped at min(slowLimit, fastLimit −
+	// claimed fast), so a worker passing slowLimit = (poolSize −
+	// fastLaneReserved) − busySlow guarantees slow jobs can never occupy the
+	// reserved fast floor. Both SELECTs (fast first) run in one transaction.
 	// Lease duration is calculated per job as scheduled_at + period + 30s.
 	// Returns claimed jobs or nil if none available.
 	ClaimJobs(
 		ctx context.Context,
 		workerUID string,
 		region *string,
-		limit int,
+		fastLimit int,
+		slowLimit int,
 		maxAhead time.Duration,
 	) ([]*models.CheckJob, error)
 
@@ -52,11 +61,13 @@ type Service interface {
 
 	// ReleaseLeaseWithSchedulingState releases the lease, reschedules, and folds
 	// the post-exec cost and delay signals into the row in the same write: it
-	// stores the updated cost and delay EWMAs and the recomputed
+	// stores the updated cost and delay EWMAs, the recomputed
 	// effective_scheduled_at used for cost-aware, plan-weighted claim ordering
-	// (spec 2026-06-30-09). No extra query on the hot path — it reuses the single
+	// (spec 2026-06-30-09), and the hysteresis-classified lane (spec
+	// 2026-07-01-03). No extra query on the hot path — it reuses the single
 	// post-exec UPDATE. Callers without a fresh sample (rate-limit deferral,
-	// reaper, remote backends) use ReleaseLease instead.
+	// reaper, remote backends) use ReleaseLease instead, which leaves the lane
+	// unchanged.
 	ReleaseLeaseWithSchedulingState(
 		ctx context.Context,
 		jobUID string,
@@ -65,6 +76,7 @@ type Service interface {
 		costEWMAMs float64,
 		delayEWMAMs float64,
 		effectiveScheduledAt time.Time,
+		lane int16,
 	) error
 }
 
@@ -78,15 +90,21 @@ func NewService(db *bun.DB) Service {
 	return &serviceImpl{db: db}
 }
 
-// ClaimJobs atomically claims check jobs using lease mechanism.
-// Lease duration is calculated per job as scheduled_at + period + 30s.
-// Uses SELECT FOR UPDATE SKIP LOCKED on PostgreSQL for efficient row-level locking.
-// Uses optimistic locking on SQLite.
+// ClaimJobs atomically claims check jobs using lease mechanism, one
+// lane-filtered SELECT per lane inside a single transaction (spec
+// 2026-07-01-03 D3/D6): fast first up to fastLimit (the total capacity), then
+// slow up to min(slowLimit, fastLimit − claimed fast). Each SELECT is
+// LIMIT-bounded and backed by its lane's partial index. Lease duration is
+// calculated per job as scheduled_at + period + 30s. Uses SELECT FOR UPDATE
+// SKIP LOCKED on PostgreSQL for efficient row-level locking; optimistic
+// locking on SQLite. SKIP LOCKED racing can only under-claim a lane, never
+// breach the caller's slow cap.
 func (s *serviceImpl) ClaimJobs(
 	ctx context.Context,
 	workerUID string,
 	region *string,
-	limit int,
+	fastLimit int,
+	slowLimit int,
 	maxAhead time.Duration,
 ) ([]*models.CheckJob, error) {
 	var jobs []*models.CheckJob
@@ -97,9 +115,34 @@ func (s *serviceImpl) ClaimJobs(
 	_, isPostgres := s.db.Dialect().(*pgdialect.Dialect)
 
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
-		// Build and execute selection query
-		if err := s.selectAvailableJobs(ctx, tx, &jobs, region, limit, maxAhead, now, isPostgres); err != nil {
-			return err
+		jobs = nil
+
+		// Fast lane first: fast jobs may occupy any free slot.
+		if fastLimit > 0 {
+			var fastJobs []*models.CheckJob
+			if err := s.selectAvailableJobs(
+				ctx, tx, &fastJobs, region, scheduling.LaneFast, fastLimit, maxAhead, now, isPostgres,
+			); err != nil {
+				return err
+			}
+			jobs = fastJobs
+		}
+
+		// Slow lane: bounded by the reservation budget AND by the capacity
+		// left after the fast claim, so the total never exceeds fastLimit and
+		// the caller's floor invariant (slow in flight <= P − F) holds.
+		slowN := fastLimit - len(jobs)
+		if slowN > slowLimit {
+			slowN = slowLimit
+		}
+		if slowN > 0 {
+			var slowJobs []*models.CheckJob
+			if err := s.selectAvailableJobs(
+				ctx, tx, &slowJobs, region, scheduling.LaneSlow, slowN, maxAhead, now, isPostgres,
+			); err != nil {
+				return err
+			}
+			jobs = append(jobs, slowJobs...)
 		}
 
 		if len(jobs) == 0 {
@@ -121,6 +164,7 @@ func (s *serviceImpl) ClaimJobs(
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, nil // No jobs available
 		}
+
 		return nil, err
 	}
 
@@ -265,12 +309,16 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 	return nil
 }
 
-// selectAvailableJobs builds and executes the query to select available jobs.
+// selectAvailableJobs builds and executes the query to select available jobs
+// in one lane. The lane filter matches the partial-index predicates of
+// migration 009 (idx_check_jobs_claim_fast / _slow), so each lane's ordered
+// scan stays index-backed.
 func (s *serviceImpl) selectAvailableJobs(
 	ctx context.Context,
 	tx bun.Tx,
 	jobs *[]*models.CheckJob,
 	region *string,
+	lane int16,
 	limit int,
 	maxAhead time.Duration,
 	now time.Time,
@@ -287,7 +335,10 @@ func (s *serviceImpl) selectAvailableJobs(
 		// can never strand a job. The offset is clamped to MaxDeprioritizeOffset
 		// (60s ≪ maxAhead), so no second gate on the effective time is needed.
 		// scheduled_at is also what the Go runner sleeps until, so a job claimed
-		// within the maxAhead window still fires on schedule.
+		// within the maxAhead window still fires on schedule. WFQ ordering
+		// applies within the lane; the lane split itself is hard isolation
+		// layered on top (spec 2026-07-01-03 D1).
+		Where("lane = ?", lane).
 		Where("scheduled_at <= ?", now.Add(maxAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
@@ -426,7 +477,8 @@ func (s *serviceImpl) ReleaseLease(
 }
 
 // ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec
-// cost and delay signals into the same UPDATE (spec 2026-06-30-09).
+// cost and delay signals — plus the hysteresis-classified lane (spec
+// 2026-07-01-03 D2) — into the same UPDATE (spec 2026-06-30-09).
 func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	ctx context.Context,
 	jobUID string,
@@ -435,6 +487,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	costEWMAMs float64,
 	delayEWMAMs float64,
 	effectiveScheduledAt time.Time,
+	lane int16,
 ) error {
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).
@@ -445,6 +498,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 		Set("cost_ewma_ms = ?", costEWMAMs).
 		Set("delay_ewma_ms = ?", delayEWMAMs).
 		Set("effective_scheduled_at = ?", effectiveScheduledAt).
+		Set("lane = ?", lane).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
 		Where("lease_worker_uid = ?", workerUID) // Safety: only release if we own the lease
