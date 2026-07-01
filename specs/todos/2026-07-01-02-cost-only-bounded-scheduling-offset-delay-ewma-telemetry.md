@@ -199,3 +199,52 @@ make bench-checks         # claim path: no regression from the gate change
 | Migration on stale/pre-consolidation dev DBs | Verify per [[project_migration_consolidation_stale_db]]; the UPDATE is idempotent. |
 
 **Status**: Todo | **Created**: 2026-07-01 | **Extends**: `2026-06-30-09` | **Informed by**: `2026-07-01-01` Phase-3 measurement | **Blocks**: `2026-07-01-03`
+
+## Implementation Plan
+
+Baseline: the batch's uncommitted `effectiveWindowFactor = 12` / double-gate /
+`TestClaimAdmitsHeavilyPenalizedEffective` changes are committed first as a
+pre-spec state commit, then reworked by the steps below.
+
+1. **Scheduling math (D1 + D2)** — `scheduling/scheduling.go`:
+   - `EffectiveScheduledAt(scheduledAt, costEWMAMs, planWeight)` — drop the
+     `delayEWMAMs` parameter; `deprioritizeOffset(costEWMAMs)` computes
+     `cost × CostOffsetWeight` with the `SlowThresholdMs` dead-band unchanged.
+   - Add `MaxDeprioritizeOffset = 2 * DefaultExecutionTimeout` (60 s) and clamp
+     the offset to it in `deprioritizeOffset`.
+   - Update package + function docs: delay is telemetry-only, offset is
+     structurally bounded.
+   - `scheduling_test.go`: adjust all `EffectiveScheduledAt` call sites; rework
+     the delayed-job ordering assertions (delay no longer reorders); add a
+     clamp-invariant test with absurd cost (e.g. `10⁹`) asserting
+     offset ≤ `MaxDeprioritizeOffset`; verify delay input has no effect on
+     ordering; keep dead-band and tier-credit tests.
+
+2. **Worker (D1 + D4)** — `worker.go`:
+   - `releaseLeaseWithCost`: compute `effective` from cost only (updated
+     signature); still folds both EWMAs into the release write.
+   - `delaySampleMs`: measure `execStart − scheduled_at` (floored at 0);
+     keep the nil fallback shape (use `EffectiveScheduledAt` only when
+     `ScheduledAt` is nil).
+   - Add/adjust worker tests for the new delay reference.
+
+3. **Claim gate (D3)** — `checkjobsvc/service.go`:
+   - `selectAvailableJobs`: gate on `scheduled_at <= now + maxAhead` only;
+     delete `effectiveWindowFactor` and the `effective_scheduled_at` gate;
+     keep `ORDER BY effective_scheduled_at ASC`.
+   - `service_test.go`: rework `TestClaimAdmitsHeavilyPenalizedEffective` into
+     "a due job is claimable immediately regardless of any stored effective
+     value" (simulating a polluted pre-migration row); keep the WFQ ordering
+     test.
+
+4. **Migration 008 (D5)** — `008_effective_reanchor.{up,down}.sql`, postgres +
+   sqlite: up heals `effective_scheduled_at > scheduled_at` rows back to
+   `scheduled_at`; down is a documented no-op.
+
+5. **OpenAPI (D4)** — `openapi.yaml`: give `delayEwmaMs` on the
+   cost-distribution response its own description: EWMA of probe start lateness
+   vs the user-configured `scheduled_at`, telemetry-only (does not steer claim
+   ordering).
+
+6. **QA** — `make build-backend lint-back test`, `make migrate` (008 applies),
+   `make bench-checks` (claim path regression check).
