@@ -76,6 +76,13 @@ var (
 	// ErrInvalidPasswordParameter is returned by ValidatePasswordParameter when a
 	// single auth.password.* value is out of range or the wrong type.
 	ErrInvalidPasswordParameter = errors.New("invalid password hashing parameter")
+	// ErrInvalidLaneThresholds is returned when the lane hysteresis band is
+	// inverted or degenerate: lane_fast_threshold_ms must be strictly below
+	// lane_slow_threshold_ms (and neither may be negative) so the dead-band
+	// exists and a check cannot satisfy both edges at once.
+	ErrInvalidLaneThresholds = errors.New(
+		"scheduling lane thresholds must satisfy 0 <= lane_fast_threshold_ms < lane_slow_threshold_ms",
+	)
 )
 
 // Supported password-hashing algorithm identifiers.
@@ -495,6 +502,25 @@ type SchedulingConfig struct {
 	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms. Only used when
 	// CostTimeoutFactor > 0.
 	CostTimeoutFloorMs float64 `koanf:"cost_timeout_floor_ms"`
+
+	// LaneSlowThresholdMs is the promote edge of the fast/slow lane hysteresis
+	// band (spec 2026-07-01-03): a check whose cost EWMA reaches this many ms
+	// is classified into the slow lane on its next post-exec write. Default
+	// 2000 (see Load); 0 disables lane classification (jobs hold their stored
+	// lane).
+	LaneSlowThresholdMs float64 `koanf:"lane_slow_threshold_ms"`
+	// LaneFastThresholdMs is the demote edge of the band: a slow-lane check
+	// whose cost EWMA drops below this many ms returns to the fast lane.
+	// Must be strictly below LaneSlowThresholdMs (validated); the dead-band
+	// stops threshold hoverers from flipping lanes every run. Default 1000.
+	LaneFastThresholdMs float64 `koanf:"lane_fast_threshold_ms"`
+	// FastLaneReserved is the number of runner slots reserved for fast-lane
+	// checks on each worker: slow jobs in flight never exceed pool_size −
+	// FastLaneReserved, while fast jobs may use any free slot (slow borrows
+	// idle fast capacity, never the reverse). Clamped to [0, pool_size−1]
+	// with a startup warning when out of range. Default 5; 0 disables the
+	// reservation (slow may fill the pool, pre-lane behavior).
+	FastLaneReserved int `koanf:"fast_lane_reserved"`
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -558,6 +584,14 @@ func Load() (*Config, error) {
 				// reorders fast checks. Tier weighting and the cost-aware timeout
 				// stay opt-in (0).
 				SlowThresholdMs: 2000,
+				// Fast/slow lane hysteresis band + reservation (spec
+				// 2026-07-01-03): promote to the slow lane at a 2s cost EWMA,
+				// demote back below 1s, and keep 5 of the pool's runner slots
+				// off-limits to slow jobs. The migration-009 backfill uses the
+				// same 2000ms promote threshold.
+				LaneSlowThresholdMs: 2000,
+				LaneFastThresholdMs: 1000,
+				FastLaneReserved:    5,
 			},
 			RateLimiting: RateLimitConfig{
 				RequestsPerMinute: 300,
@@ -931,6 +965,13 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 	parseFloat("SP_SCHEDULING_TIER_CREDIT_MAX_SECONDS", &cfg.TierCreditMaxSeconds)
 	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FACTOR", &cfg.CostTimeoutFactor)
 	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FLOOR_MS", &cfg.CostTimeoutFloorMs)
+	parseFloat("SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS", &cfg.LaneSlowThresholdMs)
+	parseFloat("SP_SCHEDULING_LANE_FAST_THRESHOLD_MS", &cfg.LaneFastThresholdMs)
+	if v := os.Getenv("SP_SCHEDULING_FAST_LANE_RESERVED"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.FastLaneReserved = n
+		}
+	}
 }
 
 // applyProfilerEnv reads the multi-word SP_PROFILER_* knobs koanf's env loader
@@ -1115,6 +1156,32 @@ func (c *Config) Validate() error {
 
 	if err := validatePasswordConfig(&c.Auth.Password); err != nil {
 		return err
+	}
+
+	if err := validateLaneThresholds(&c.Server.Scheduling); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLaneThresholds fails fast on an inverted or degenerate lane
+// hysteresis band (spec 2026-07-01-03): with the classifier enabled
+// (lane_slow_threshold_ms > 0), the demote edge must sit strictly below the
+// promote edge — fast >= slow would make every classified check satisfy the
+// promote rule and never the demote one (or vice versa), silently pinning the
+// fleet into one lane. Negative thresholds are rejected outright. A slow
+// threshold of 0 disables classification, in which case the fast threshold is
+// ignored. FastLaneReserved is not validated here: its bound depends on the
+// worker pool size, so the worker clamps it (with a warning) at startup.
+func validateLaneThresholds(cfg *SchedulingConfig) error {
+	if cfg.LaneSlowThresholdMs < 0 || cfg.LaneFastThresholdMs < 0 {
+		return fmt.Errorf("%w: fast=%v slow=%v",
+			ErrInvalidLaneThresholds, cfg.LaneFastThresholdMs, cfg.LaneSlowThresholdMs)
+	}
+	if cfg.LaneSlowThresholdMs > 0 && cfg.LaneFastThresholdMs >= cfg.LaneSlowThresholdMs {
+		return fmt.Errorf("%w: fast=%v slow=%v",
+			ErrInvalidLaneThresholds, cfg.LaneFastThresholdMs, cfg.LaneSlowThresholdMs)
 	}
 
 	return nil

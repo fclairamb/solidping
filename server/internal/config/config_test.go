@@ -357,6 +357,69 @@ func TestApplyRuntimeEnv(t *testing.T) {
 	r.Equal(60, cfg.GCPercent)
 }
 
+// TestApplySchedulingLaneEnv confirms the SP_SCHEDULING_LANE_* / _FAST_LANE_*
+// knobs land on the snake_case-tagged SchedulingConfig fields despite koanf's
+// env underscore→dot collapse (spec 2026-07-01-03). Uses t.Setenv, which is
+// incompatible with t.Parallel.
+func TestApplySchedulingLaneEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS", "3000")
+	t.Setenv("SP_SCHEDULING_LANE_FAST_THRESHOLD_MS", "1500")
+	t.Setenv("SP_SCHEDULING_FAST_LANE_RESERVED", "7")
+
+	cfg := SchedulingConfig{
+		LaneSlowThresholdMs: 2000,
+		LaneFastThresholdMs: 1000,
+		FastLaneReserved:    5,
+	}
+	applySchedulingEnv(&cfg)
+
+	r.InEpsilon(3000.0, cfg.LaneSlowThresholdMs, 1e-9)
+	r.InEpsilon(1500.0, cfg.LaneFastThresholdMs, 1e-9)
+	r.Equal(7, cfg.FastLaneReserved)
+}
+
+// TestValidateLaneThresholds covers the fast<slow lane-band validation (spec
+// 2026-07-01-03): inverted or degenerate bands are startup errors, disabled
+// classification (slow=0) is accepted, negatives are rejected.
+func TestValidateLaneThresholds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fast    float64
+		slow    float64
+		wantErr bool
+	}{
+		{"defaults are valid", 1000, 2000, false},
+		{"classifier disabled ignores fast", 5000, 0, false},
+		{"zero band edges with classifier off", 0, 0, false},
+		{"fast may be 0 with classifier on", 0, 2000, false},
+		{"inverted thresholds rejected", 3000, 2000, true},
+		{"equal thresholds rejected (no dead-band)", 2000, 2000, true},
+		{"negative fast rejected", -1, 2000, true},
+		{"negative slow rejected", 1000, -5, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := SchedulingConfig{
+				LaneFastThresholdMs: tt.fast,
+				LaneSlowThresholdMs: tt.slow,
+			}
+			err := validateLaneThresholds(&cfg)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrInvalidLaneThresholds)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
 // TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
 // pool knobs land on the snake_case-tagged DatabaseConfig fields. Uses t.Setenv,
 // which is incompatible with t.Parallel.
