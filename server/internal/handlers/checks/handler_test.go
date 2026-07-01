@@ -150,6 +150,176 @@ func TestCreateCheckFlappingFieldsRoundTrip(t *testing.T) {
 	r.InDelta(float64(5), fetched["maxRecoveryMultiplier"], 0.0001)
 }
 
+// postCheck marshals body and POSTs it to the org's checks collection.
+func postCheck(t *testing.T, router *bunrouter.Router, orgSlug string, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	r := require.New(t)
+
+	payload, err := json.Marshal(body)
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/api/v1/orgs/"+orgSlug+"/checks", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	return rec
+}
+
+// TestCheckPeriodBoundsOnCreate covers the server-side per-type period floors
+// (spec 2026-07-01-04 D1/D2) end to end at the HTTP layer: heavy types get
+// their registry MinPeriod, everything else the global 10s floor, and the
+// sleep / internal exemptions hold.
+func TestCheckPeriodBoundsOnCreate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		body        map[string]any
+		wantStatus  int
+		wantMessage string // substring of the VALIDATION_ERROR title
+	}{
+		{
+			name: "browser at 10s is rejected naming the 60s floor",
+			body: map[string]any{
+				"type": "browser", "period": "00:00:10",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for browser checks must be at least 60s",
+		},
+		{
+			name: "browser at 60s is created",
+			body: map[string]any{
+				"type": "browser", "period": "00:01:00",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "js at 10s is rejected naming the 30s floor",
+			body: map[string]any{
+				"type": "js", "period": "00:00:10",
+				"config": map[string]any{"script": "sp.ok()"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for js checks must be at least 30s",
+		},
+		{
+			name: "plain http at 5s hits the global 10s floor",
+			body: map[string]any{
+				"type": "http", "period": "PT5S",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for http checks must be at least 10s",
+		},
+		{
+			name: "plain http at 10s is created",
+			body: map[string]any{
+				"type": "http", "period": "00:00:10",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "sleep at 10s is exempt",
+			body: map[string]any{
+				"type": "sleep", "period": "00:00:10",
+				"config": map[string]any{"sleep_ms": 200},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "internal browser at 10s is exempt",
+			body: map[string]any{
+				"type": "browser", "period": "00:00:10", "internal": true,
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "absent period falls back to the default and passes",
+			body: map[string]any{
+				"type":   "browser",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			router, orgSlug := newCheckHandlerRouter(t)
+
+			rec := postCheck(t, router, orgSlug, tt.body)
+			r.Equal(tt.wantStatus, rec.Code, rec.Body.String())
+
+			if tt.wantMessage == "" {
+				return
+			}
+
+			var errBody map[string]any
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &errBody))
+			r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+			r.Contains(errBody["title"], tt.wantMessage)
+		})
+	}
+}
+
+// TestCheckPeriodBoundsOnPatch pins that PATCH re-validates the period against
+// the stored type: shrinking below the floor is a 400, a legal value succeeds,
+// and a period-less PATCH leaves a grandfathered value untouched.
+func TestCheckPeriodBoundsOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	rec := postCheck(t, router, orgSlug, map[string]any{
+		"type": "browser", "period": "00:05:00",
+		"config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	patch := func(body map[string]any) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(body)
+		r.NoError(err)
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodPatch, "/api/v1/orgs/"+orgSlug+"/checks/"+uid, bytes.NewBuffer(payload))
+		req.Header.Set("Content-Type", "application/json")
+		patchRec := httptest.NewRecorder()
+		router.ServeHTTP(patchRec, req)
+
+		return patchRec
+	}
+
+	// Shrinking below the browser floor is rejected with the bound in the message.
+	patchRec := patch(map[string]any{"period": "00:00:10"})
+	r.Equal(http.StatusBadRequest, patchRec.Code, patchRec.Body.String())
+
+	var errBody map[string]any
+	r.NoError(json.Unmarshal(patchRec.Body.Bytes(), &errBody))
+	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+	r.Contains(errBody["title"], "period for browser checks must be at least 60s")
+
+	// A legal period is accepted.
+	patchRec = patch(map[string]any{"period": "00:02:00"})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+
+	// A PATCH without a period never re-validates (grandfathering: the limit
+	// bites only on a write to the period).
+	patchRec = patch(map[string]any{"name": "renamed"})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+}
+
 // TestCreateCheckFlappingValidationRejectsBadFactor pins that an out-of-range
 // flapBackoffFactor (< 1) is a 400 VALIDATION_ERROR, not a 500.
 func TestCreateCheckFlappingValidationRejectsBadFactor(t *testing.T) {

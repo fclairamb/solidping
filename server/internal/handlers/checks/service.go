@@ -125,6 +125,76 @@ func validateIncidentPeriod(seconds int) error {
 	return nil
 }
 
+// periodBoundError reports a check period outside its type's allowed bounds
+// (spec 2026-07-01-04 D1). It is a distinct error type (not a sentinel)
+// because the message embeds the per-type bound ("period for browser checks
+// must be at least 60s") and must surface verbatim as a 400 VALIDATION_ERROR.
+type periodBoundError struct {
+	CheckType string
+	Bound     time.Duration
+	TooLong   bool
+}
+
+func (e *periodBoundError) Error() string {
+	direction := "at least"
+	if e.TooLong {
+		direction = "at most"
+	}
+
+	return fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+}
+
+// formatPeriodBound renders a period bound compactly, the way users write
+// periods: whole hours as "6h", whole minutes at or above ten minutes as
+// "15m", and everything else in seconds ("60s", "30s", "10s") so the common
+// floors read exactly as the spec states them.
+func formatPeriodBound(d time.Duration) string {
+	switch {
+	case d >= time.Hour && d%time.Hour == 0:
+		return fmt.Sprintf("%dh", d/time.Hour)
+	case d >= 10*time.Minute && d%time.Minute == 0:
+		return fmt.Sprintf("%dm", d/time.Minute)
+	default:
+		return fmt.Sprintf("%ds", d/time.Second)
+	}
+}
+
+// validatePeriodForType enforces the server-side period bounds for a check
+// type (spec 2026-07-01-04 D1): min = the type's MinPeriod (else the global
+// 10s floor), max = the type's MaxPeriod (else none). A zero period means
+// "not provided" (the default applies) and always passes. Internal checks
+// (worker self-stats etc.) and the synthetic `sleep` type are exempt — sleep
+// is the load-harness dial (spec 2026-07-01-01) and must stay free to express
+// pathological mixes. Existing rows are grandfathered: this runs only on
+// create/update writes, never via migration.
+func validatePeriodForType(checkType string, period time.Duration, internal bool) error {
+	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
+		return nil
+	}
+
+	minPeriod := checkerdef.GlobalMinPeriod
+
+	var maxPeriod time.Duration
+
+	if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)); meta != nil {
+		if meta.MinPeriod > 0 {
+			minPeriod = meta.MinPeriod
+		}
+
+		maxPeriod = meta.MaxPeriod
+	}
+
+	if period < minPeriod {
+		return &periodBoundError{CheckType: checkType, Bound: minPeriod}
+	}
+
+	if maxPeriod > 0 && period > maxPeriod {
+		return &periodBoundError{CheckType: checkType, Bound: maxPeriod, TooLong: true}
+	}
+
+	return nil
+}
+
 // Flapping (adaptive recovery) validation errors — spec 2026-06-30-07.
 var (
 	errFlappingWindowNegative  = errors.New("flappingWindowSeconds must be >= 0 (0 = off)")
@@ -825,6 +895,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		period = time.Duration(duration)
 	}
 
+	// Enforce per-type period bounds (spec 2026-07-01-04 D1). Internal
+	// checks and the synthetic sleep type are exempt; an absent period
+	// falls back to the default and needs no validation.
+	if periodErr := validatePeriodForType(req.Type, period, isInternal); periodErr != nil {
+		return CheckResponse{}, periodErr
+	}
+
 	// Track if slug was user-provided
 	userProvidedSlug := req.Slug != ""
 
@@ -1188,6 +1265,17 @@ func (s *Service) UpdateCheck(
 		var duration timeutils.Duration
 		if errScan := duration.Scan(*req.Period); errScan != nil {
 			return CheckResponse{}, errScan
+		}
+		// Enforce per-type period bounds on the new value (spec
+		// 2026-07-01-04 D1) — existing rows are grandfathered until the
+		// next write to the period. The effective internal flag accounts
+		// for the same PATCH toggling it; the type cannot change on PATCH.
+		internal := check.Internal
+		if req.Internal != nil {
+			internal = *req.Internal
+		}
+		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), internal); periodErr != nil {
+			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration
 	}
