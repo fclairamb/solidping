@@ -420,11 +420,15 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 	// runner-side increment would leave a window between channel handoff and
 	// runner start where a re-fetch could over-claim slow. The runner
 	// decrements when the job finishes.
+	slowClaimed := 0
 	for _, job := range jobs {
 		if job.Lane == scheduling.LaneSlow {
 			r.busySlow.Add(1)
+			slowClaimed++
 		}
 	}
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
 
 	// Distribute jobs to runners
 	for _, job := range jobs {

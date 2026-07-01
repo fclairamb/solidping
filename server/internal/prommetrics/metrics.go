@@ -19,6 +19,15 @@ const (
 	labelRoute        = "route"
 	labelOutcome      = "outcome"
 	labelJobType      = "job_type"
+	labelLane         = "lane"
+)
+
+// Lane label values for CheckLaneClaims (spec 2026-07-01-03).
+const (
+	// LaneLabelFast is the lane label for fast-lane (lane 0) claims.
+	LaneLabelFast = "fast"
+	// LaneLabelSlow is the lane label for slow-lane (lane 1) claims.
+	LaneLabelSlow = "slow"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
@@ -217,6 +226,20 @@ var (
 		[]string{labelOutcome},
 	)
 
+	// CheckLaneClaims counts claimed check jobs by lane (fast | slow), the
+	// per-lane companion to ClaimJobsResult (spec 2026-07-01-03 D6). A slow
+	// lane pinned at zero while slow work is due means the reservation budget
+	// is saturated (busySlow == pool − fast_lane_reserved) — the intended,
+	// contained failure mode where slow checks degrade to best-effort while
+	// fast checks stay on time.
+	CheckLaneClaims = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_check_lane_claims_total",
+			Help: "Check jobs claimed by the pool fetcher, by lane (fast, slow)",
+		},
+		[]string{labelLane},
+	)
+
 	// JobsProcessed counts background-jobs processed by the job worker,
 	// labeled by job_type and terminal outcome (success | retried | failed).
 	// job_type is bounded by the jobdef enum; never use job_uid, org, or error
@@ -297,7 +320,7 @@ var (
 		HTTPRateLimited,
 		HTTPRequestDuration, HTTPRequestsTotal,
 		DBQueryDuration, DBBusyRetries,
-		CheckStageDuration, ClaimJobsResult,
+		CheckStageDuration, ClaimJobsResult, CheckLaneClaims,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
 		JobsReaped, JobsLeaseLost,
 	}
