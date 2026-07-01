@@ -177,6 +177,11 @@ const (
 	// self-reported health (stratum, leap indicator, root distance), with
 	// optional clock-offset and max-stratum thresholds.
 	CheckTypeNTP CheckType = "ntp"
+	// CheckTypeSleep is a synthetic/testing check that sleeps for a configured
+	// duration. It performs no network I/O and exists as a deterministic load
+	// generator for the scheduler. It is NOT a customer-facing check type and
+	// must not be counted in the customer "N check types" tally.
+	CheckTypeSleep CheckType = "sleep"
 )
 
 // Common output and config map keys used across checker implementations.
@@ -273,6 +278,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
 	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
 	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
+	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
@@ -364,5 +370,6 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeSIP,
 		CheckTypeKubernetes,
 		CheckTypeNTP,
+		CheckTypeSleep,
 	}
 }

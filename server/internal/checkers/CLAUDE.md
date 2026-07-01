@@ -20,6 +20,16 @@ Each protocol has its own package (e.g., `checkhttp`, `checkicmp`, `checktcp`):
 - **`GetChecker(checkType)`**: Returns checker implementation for a type
 - **`ParseConfig(checkType)`**: Returns appropriate config struct for a type
 
+## Synthetic checkers
+
+- **`checksleep` (`sleep`)** — a synthetic/testing check that sleeps for a
+  configured `sleep_ms` (optional `jitter_ms`, forced `status`). It performs no
+  network I/O; its cost equals `sleep_ms`, so it is a deterministic load
+  generator for the scheduler (cost/delay EWMA, cost-aware timeout). It is
+  registered like any other type (so `activation_test.go` sees its meta), but it
+  is **not a customer-facing feature** and must **not** be counted in the
+  customer "N check types" tally shown in product surfaces/marketing.
+
 ## Adding New Checkers
 
 1. Create `check{protocol}/` package

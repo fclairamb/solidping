@@ -33,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksip"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksleep"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -140,6 +141,8 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkkubernetes.KubernetesChecker{}, true
 	case checkerdef.CheckTypeNTP:
 		return &checkntp.NTPChecker{}, true
+	case checkerdef.CheckTypeSleep:
+		return &checksleep.SleepChecker{}, true
 	default:
 		return nil, false
 	}
@@ -227,6 +230,8 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkkubernetes.KubernetesConfig{}, true
 	case checkerdef.CheckTypeNTP:
 		return &checkntp.NTPConfig{}, true
+	case checkerdef.CheckTypeSleep:
+		return &checksleep.SleepConfig{}, true
 	default:
 		return nil, false
 	}
