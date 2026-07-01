@@ -46,7 +46,7 @@ type Service interface {
 	// ReleaseLease releases the lease and reschedules the job for next execution.
 	// It folds in no fresh cost/delay sample (the probe was skipped, or ran on a
 	// backend that does not measure cost), so it re-anchors effective_scheduled_at
-	// to the new schedule; the cost/delay offset is reapplied on the next
+	// to the new schedule; the cost offset is reapplied on the next
 	// post-exec write via ReleaseLeaseWithSchedulingState.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 
@@ -278,14 +278,17 @@ func (s *serviceImpl) selectAvailableJobs(
 ) error {
 	query := tx.NewSelect().
 		Model(jobs).
-		// Cost-aware, plan-weighted claim (spec 2026-06-30-09, D2/Option A): both
-		// the eligibility gate and the ordering key are effective_scheduled_at
-		// (scheduled_at + cost/delay offset − tier_credit), so a deprioritized job
-		// becomes claimable — and sorts — by its effective time. scheduled_at is
-		// used only by the Go runner to sleep until the real fire time, so a job
-		// claimed within the maxAhead window still fires on schedule. Populated on
-		// every row (NewCheckJob + migration 006 backfill + every release).
-		Where("effective_scheduled_at <= ?", now.Add(maxAhead)).
+		// Cost-aware, plan-weighted claim (spec 2026-06-30-09 D2/Option A, gate
+		// restored by spec 2026-07-01-02 D3): the eligibility gate is the real
+		// scheduled_at — a due job is claimable immediately, no matter what its
+		// stored effective_scheduled_at says — while the ordering key is
+		// effective_scheduled_at (scheduled_at + bounded cost offset −
+		// tier_credit), so deprioritization decides who wins a contended slot but
+		// can never strand a job. The offset is clamped to MaxDeprioritizeOffset
+		// (60s ≪ maxAhead), so no second gate on the effective time is needed.
+		// scheduled_at is also what the Go runner sleeps until, so a job claimed
+		// within the maxAhead window still fires on schedule.
+		Where("scheduled_at <= ?", now.Add(maxAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				WhereOr("lease_expires_at IS NULL").
@@ -413,7 +416,7 @@ func (s *serviceImpl) ReleaseLease(
 		Set("scheduled_at = ?", nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a deferred job does
 		// not keep an effective deadline from a stale (earlier) schedule. The
-		// cost/delay offset is reapplied on the next post-exec write.
+		// cost offset is reapplied on the next post-exec write.
 		Set("effective_scheduled_at = ?", nextScheduledAt).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).

@@ -36,20 +36,23 @@ type CheckJob struct {
 	// Timeouts pin it to the ceiling. Drives slow-lane classification and the
 	// cost-aware execution timeout. 0 until the job's first run.
 	CostEWMAMs float64 `bun:"cost_ewma_ms,notnull,default:0"`
-	// DelayEWMAMs is an EWMA of how late the job actually started relative to its
-	// effective_scheduled_at (probe start − effective_scheduled_at, floored at 0),
-	// updated in the post-exec write. Added to effective_scheduled_at alongside
-	// cost_ewma_ms so a chronically-delayed job sorts later and the backlog eases.
-	// 0 until the job's first run. Added by migration 007.
+	// DelayEWMAMs is an EWMA of how late the job actually started relative to
+	// its real scheduled_at (probe start − scheduled_at, floored at 0), updated
+	// in the post-exec write. Pure telemetry (spec 2026-07-01-02): it feeds the
+	// cost-distribution endpoint and the lane-split go/no-go but never the claim
+	// order — delay is a victim signal, and folding it into the offset punished
+	// starved checks and spiraled unboundedly under overload. 0 until the job's
+	// first run. Added by migration 007.
 	DelayEWMAMs float64 `bun:"delay_ewma_ms,notnull,default:0"`
 	// PlanWeight is the denormalized plan tier copied from org_entitlements
 	// (0 = free; higher = more protected). Reserved capacity + deadline credit
 	// for paid orgs. Refreshed on entitlement change and reconcile.
 	PlanWeight int `bun:"plan_weight,notnull,default:0"`
-	// EffectiveScheduledAt is scheduled_at + cost_ewma + delay_ewma − tier_credit.
-	// The claim SELECT gates on scheduled_at but orders by this column, so
+	// EffectiveScheduledAt is scheduled_at + cost_ewma×CostOffsetWeight −
+	// tier_credit, with the offset clamped to MaxDeprioritizeOffset (60s). The
+	// claim SELECT gates on scheduled_at but orders by this column, so
 	// de-prioritization only bites under contention (D2/Option A). Backfilled to
-	// scheduled_at by migration 006.
+	// scheduled_at by migration 006; delay-era offsets healed by migration 008.
 	EffectiveScheduledAt *time.Time `bun:"effective_scheduled_at"`
 
 	// Check is the check this job executes, populated at claim time by

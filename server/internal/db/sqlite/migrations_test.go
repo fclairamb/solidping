@@ -319,6 +319,80 @@ func TestMigrationCheckJobSchedulingColumns(t *testing.T) {
 	assert.Equal(t, 0, got.PlanWeight, "plan_weight defaults to 0 (free)")
 }
 
+// TestMigrationEffectiveReanchor verifies migration 008's heal statement (spec
+// 2026-07-01-02 D5): it rewrites effective_scheduled_at back to scheduled_at
+// ONLY for rows where effective > scheduled_at (delay-era polluted offsets),
+// leaving anchored rows and tier-credited rows (effective < scheduled_at)
+// untouched. The embedded SQL is executed against a populated DB, which also
+// proves the statement is idempotent (it already ran once during Initialize).
+func TestMigrationEffectiveReanchor(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "heal-org", "Heal Org",
+	).Exec(ctx)
+	r.NoError(err)
+
+	scheduled := "2026-07-01 12:00:00+00:00"
+	seedJob := func(slug, effective string) string {
+		checkUID := uuid.New().String()
+		_, insErr := svc.db.NewRaw(
+			"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
+			checkUID, orgUID, slug, "http", "1m0s",
+		).Exec(ctx)
+		r.NoError(insErr)
+
+		jobUID := uuid.New().String()
+		_, insErr = svc.db.NewRaw(
+			"INSERT INTO check_jobs (uid, organization_uid, check_uid, period, scheduled_at, effective_scheduled_at) "+
+				"VALUES (?, ?, ?, ?, ?, ?)",
+			jobUID, orgUID, checkUID, "1m0s", scheduled, effective,
+		).Exec(ctx)
+		r.NoError(insErr)
+
+		return jobUID
+	}
+
+	// Delay-era pollution: effective ~95 min past scheduled_at (observed live).
+	polluted := seedJob("heal-polluted", "2026-07-01 13:35:00+00:00")
+	// Healthy anchor: effective == scheduled_at.
+	anchored := seedJob("heal-anchored", scheduled)
+	// Tier-credited paid job: effective BEFORE scheduled_at — must be preserved.
+	credited := seedJob("heal-credited", "2026-07-01 11:59:45+00:00")
+
+	// Re-run the embedded 008 up statement against the populated DB.
+	sqlBytes, err := fs.ReadFile(migrationsFS, "migrations/008_effective_reanchor.up.sql")
+	r.NoError(err)
+	_, err = svc.db.ExecContext(ctx, string(sqlBytes))
+	r.NoError(err, "migration 008 must apply cleanly to a populated DB")
+
+	effectiveOf := func(jobUID string) string {
+		var v string
+		r.NoError(svc.db.NewRaw(
+			"SELECT datetime(effective_scheduled_at) FROM check_jobs WHERE uid = ?", jobUID,
+		).Scan(ctx, &v))
+
+		return v
+	}
+
+	assert.Equal(t, "2026-07-01 12:00:00", effectiveOf(polluted),
+		"a polluted row (effective > scheduled_at) must be re-anchored to scheduled_at")
+	assert.Equal(t, "2026-07-01 12:00:00", effectiveOf(anchored),
+		"an already-anchored row must be unchanged")
+	assert.Equal(t, "2026-07-01 11:59:45", effectiveOf(credited),
+		"a tier-credited row (effective < scheduled_at) must NOT be rewritten")
+}
+
 // TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated
 // v0.1.0 migration the integration-related tables use their final names
 // (integrations / check_channels / integration_uid) and the old names are absent.

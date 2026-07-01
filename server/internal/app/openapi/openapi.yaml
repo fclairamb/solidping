@@ -1720,9 +1720,23 @@ components:
           type: integer
           description: Count with cost_ewma_ms > thresholdMs.
         costEwmaMs:
-          $ref: "#/components/schemas/CostDistributionPercentiles"
+          allOf:
+            - $ref: "#/components/schemas/CostDistributionPercentiles"
+          description: >-
+            Distribution of cost_ewma_ms — per-job EWMA of execution duration
+            (ms), timeouts pinned to the execution ceiling. This is the only
+            signal that steers claim ordering (deprioritization offset =
+            cost × 2, clamped to 60s).
         delayEwmaMs:
-          $ref: "#/components/schemas/CostDistributionPercentiles"
+          allOf:
+            - $ref: "#/components/schemas/CostDistributionPercentiles"
+          description: >-
+            Distribution of delay_ewma_ms — per-job EWMA of probe start
+            lateness versus the user-configured scheduled_at (probe start −
+            scheduled_at, floored at 0, in ms). Pure telemetry: it measures
+            head-of-line blocking under contention but does not steer claim
+            ordering (the deprioritization offset is cost-only). A probe that
+            starts on time contributes 0.
 
     CostDistributionResponse:
       type: object

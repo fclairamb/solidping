@@ -345,6 +345,37 @@ func TestClaimOrdersByEffectiveScheduledAt(t *testing.T) {
 		"the job with the earlier effective_scheduled_at must be claimed first")
 }
 
+// TestClaimAdmitsDueJobRegardlessOfEffective verifies the restored D2/Option A
+// gate (spec 2026-07-01-02 D3): eligibility is decided by the real
+// scheduled_at alone, so a due job is claimable IMMEDIATELY no matter what its
+// stored effective_scheduled_at says — including a polluted pre-migration row
+// carrying a delay-era offset far beyond the claim window (~95 min was
+// observed live). effective_scheduled_at only orders the due set; it can never
+// strand a job.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimAdmitsDueJobRegardlessOfEffective(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	now := time.Now()
+	maxAhead := 5 * time.Minute
+
+	// The job is due now, but a pre-migration delay-era offset left its
+	// effective deadline ~95 minutes in the future — 19× the claim window.
+	job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-1*time.Second), nil)
+	setEffective(t, ctx, dbSvc, job.UID, now.Add(95*time.Minute))
+
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, maxAhead)
+	require.NoError(t, err)
+	require.Len(t, jobs, 1, "a due job must be claimable immediately regardless of any stored effective value")
+	assert.Equal(t, job.UID, jobs[0].UID)
+}
+
 //nolint:paralleltest // Test shares database state
 func TestClaimJobsForCheck(t *testing.T) {
 	dbSvc, ctx := setupTestDB(t)
