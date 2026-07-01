@@ -41,7 +41,9 @@ type Distribution struct {
 	SlowJobs int `json:"slowJobs"`
 	// CostEWMAMs is the distribution of cost_ewma_ms.
 	CostEWMAMs Percentiles `json:"costEwmaMs"`
-	// DelayEWMAMs is the distribution of delay_ewma_ms.
+	// DelayEWMAMs is the distribution of delay_ewma_ms — probe start lateness
+	// vs the user-configured scheduled_at, floored at 0. Pure telemetry (spec
+	// 2026-07-01-02): it never steers claim ordering.
 	DelayEWMAMs Percentiles `json:"delayEwmaMs"`
 }
 
