@@ -721,10 +721,13 @@ func (s *Service) tryReopenIncident(
 		return false, nil
 	}
 
-	// Guard: don't reopen if check was modified after incident was resolved
-	if incident.ResolvedAt != nil && check.UpdatedAt.After(*incident.ResolvedAt) {
-		return false, nil
-	}
+	// We intentionally do not gate reopening on check.UpdatedAt vs ResolvedAt.
+	// UpdatedAt is bumped by every result write (status, streak and the incident
+	// clocks all persist through UpdateCheckStatusAndClocks), so it churns on each
+	// probe and is always after ResolvedAt — using it here blocked every
+	// legitimate fast relapse. Suppressing a reopen after a genuine config change
+	// would need a dedicated config-modified timestamp, which does not exist yet;
+	// within the short reopen cooldown the reattach is the right behavior.
 
 	return true, s.reopenIncident(ctx, check, result, incident)
 }
