@@ -47,6 +47,21 @@ const CostOffsetWeight = 2
 // MaxDeprioritizeOffset overdue sorts ahead of any on-time job.
 const MaxDeprioritizeOffset = CostOffsetWeight * DefaultExecutionTimeout // 60s = weight × execution ceiling
 
+// Check lanes (spec 2026-07-01-03): every check_jobs row carries a lane
+// smallint. Fast jobs may occupy any free runner slot; slow jobs are capped at
+// pool_size − fast_lane_reserved in flight per worker, so a burst of slow
+// probes can never occupy the whole pool and starve due fast checks. The lane
+// is a smallint (not a bool) so a third class can be added without another
+// migration.
+const (
+	// LaneFast is the default lane: checks whose cost EWMA sits below the
+	// hysteresis band. New jobs start here (first run is FIFO).
+	LaneFast int16 = 0
+	// LaneSlow is the capacity-capped lane for expensive checks (cost EWMA at
+	// or above LaneSlowThresholdMs).
+	LaneSlow int16 = 1
+)
+
 // Params bundles every tunable knob the scheduling math reads. It is built once
 // from config and passed by value (it is tiny and immutable per call).
 //
@@ -81,6 +96,45 @@ type Params struct {
 	// never-run check is never given an unreasonably short ceiling. Only
 	// consulted when CostTimeoutFactor > 0.
 	CostTimeoutFloor time.Duration
+
+	// LaneSlowThresholdMs is the promote edge of the lane hysteresis band: a
+	// job whose cost EWMA reaches this many ms is classified LaneSlow on its
+	// next post-exec write. <= 0 disables lane classification entirely
+	// (ClassifyLane holds the current lane), so the zero-value Params keeps
+	// every job wherever the DB says it is.
+	LaneSlowThresholdMs float64
+
+	// LaneFastThresholdMs is the demote edge of the band: a job whose cost
+	// EWMA drops below this many ms returns to LaneFast. Must be strictly
+	// below LaneSlowThresholdMs (validated at config load); the [fast, slow)
+	// dead-band stops a check hovering at one threshold from flipping lanes
+	// every run and churning the partial claim indexes.
+	LaneFastThresholdMs float64
+}
+
+// ClassifyLane returns the lane a job belongs to after folding in its latest
+// cost EWMA, with hysteresis (spec 2026-07-01-03 D2): promote to LaneSlow at
+// costEWMAMs >= LaneSlowThresholdMs, demote to LaneFast below
+// LaneFastThresholdMs, and hold prevLane inside the band. The classifier is
+// deliberately cost-only — delay is a victim signal (spec 2026-07-01-02);
+// classifying on it would send starved fast checks into the slow lane, the
+// exact inversion of the goal. A zero-cost fresh job classifies fast. With
+// LaneSlowThresholdMs <= 0 the classifier is off and prevLane is returned
+// unchanged.
+func ClassifyLane(prevLane int16, costEWMAMs float64, p Params) int16 {
+	if p.LaneSlowThresholdMs <= 0 {
+		return prevLane
+	}
+
+	switch {
+	case costEWMAMs >= p.LaneSlowThresholdMs:
+		return LaneSlow
+	case costEWMAMs < p.LaneFastThresholdMs:
+		return LaneFast
+	default:
+		// Inside the hysteresis dead-band: hold the current lane.
+		return prevLane
+	}
 }
 
 // TierCredit returns how far before scheduled_at a paid job's effective deadline
