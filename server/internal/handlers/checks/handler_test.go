@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bunrouter"
@@ -17,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // TestCreateCheckHandlerReturns402OverCap verifies the HTTP layer translates a
@@ -318,6 +320,99 @@ func TestCheckPeriodBoundsOnPatch(t *testing.T) {
 	// bites only on a write to the period).
 	patchRec = patch(map[string]any{"name": "renamed"})
 	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+}
+
+// TestCheckDetailSchedulingBlock covers the read-only scheduling telemetry
+// (spec 2026-07-01-04 D3): absent before the first run (no cost signal), max
+// across the per-region jobs once present, dutyCyclePct = round(100 × cost /
+// period), and never present on list responses.
+func TestCheckDetailSchedulingBlock(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("sched-h", "Scheduling Handler Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+	handler := checks.NewHandler(svc, &config.Config{})
+
+	router := bunrouter.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	group.POST("", handler.CreateCheck)
+	group.GET("", handler.ListChecks)
+	group.GET("/:checkUid", handler.GetCheck)
+
+	rec := postCheck(t, router, org.Slug, map[string]any{
+		"type": "http", "period": "00:00:10",
+		"config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	getDetail := func() map[string]any {
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks/"+uid, http.NoBody)
+		getRec := httptest.NewRecorder()
+		router.ServeHTTP(getRec, req)
+		r.Equal(http.StatusOK, getRec.Code, getRec.Body.String())
+
+		var body map[string]any
+		r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
+
+		return body
+	}
+
+	// Before the first run there is no cost signal → the block is absent.
+	r.NotContains(getDetail(), "scheduling", "scheduling must be omitted until the first run")
+
+	// Seed two per-region jobs with diverging EWMAs; detail reports the max.
+	regionEU, regionUS := "eu", "us"
+	jobEU := models.NewCheckJob(org.UID, uid, timeutils.Duration(10*time.Second))
+	jobEU.Region = &regionEU
+	jobEU.CostEWMAMs = 2000
+	jobEU.DelayEWMAMs = 13432
+	r.NoError(dbSvc.CreateCheckJob(ctx, jobEU))
+
+	jobUS := models.NewCheckJob(org.UID, uid, timeutils.Duration(10*time.Second))
+	jobUS.Region = &regionUS
+	jobUS.CostEWMAMs = 10036
+	jobUS.DelayEWMAMs = 500
+	r.NoError(dbSvc.CreateCheckJob(ctx, jobUS))
+
+	detail := getDetail()
+	sched, ok := detail["scheduling"].(map[string]any)
+	r.True(ok, "scheduling block expected on the detail response: %v", detail)
+	r.InDelta(float64(10036), sched["costEwmaMs"], 0.0001, "max cost across regions")
+	r.InDelta(float64(13432), sched["delayEwmaMs"], 0.0001, "max delay across regions")
+	// 10036ms cost on a 10000ms period → round(100.36) = 100.
+	r.InDelta(float64(100), sched["dutyCyclePct"], 0.0001)
+
+	// List responses stay lean: no scheduling key on any item.
+	listReq := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks", http.NoBody)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	r.Equal(http.StatusOK, listRec.Code, listRec.Body.String())
+
+	var list struct {
+		Data []map[string]any `json:"data"`
+	}
+	r.NoError(json.Unmarshal(listRec.Body.Bytes(), &list))
+	r.NotEmpty(list.Data)
+	for _, item := range list.Data {
+		r.NotContains(item, "scheduling", "list responses must not carry the scheduling block")
+	}
 }
 
 // TestCreateCheckFlappingValidationRejectsBadFactor pins that an out-of-range

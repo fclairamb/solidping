@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -612,6 +613,27 @@ type CheckResponse struct {
 	// an incident on this check opens. Empty/nil = no policy on the check
 	// (the group's policy may still apply at run time).
 	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
+
+	// Scheduling is the read-only scheduling telemetry block (spec
+	// 2026-07-01-04 D3). Detail responses only (GET by uid/slug) — list
+	// responses never carry it — and omitted until the check's first run
+	// produces a cost signal.
+	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// CheckSchedulingResponse surfaces the scheduler's per-check telemetry on the
+// detail response (spec 2026-07-01-04 D3), derived from the check's
+// per-region check_jobs rows (max across regions).
+type CheckSchedulingResponse struct {
+	// CostEwmaMs is the smoothed execution cost in milliseconds.
+	CostEwmaMs float64 `json:"costEwmaMs"`
+	// DelayEwmaMs is the smoothed start lateness in milliseconds (pure
+	// telemetry; never steers the claim order).
+	DelayEwmaMs float64 `json:"delayEwmaMs"`
+	// DutyCyclePct is round(100 × cost_ewma_ms / period_ms): the share of a
+	// runner slot this check permanently occupies. 100 means the check takes
+	// as long to run as its period — a full-time slot hog.
+	DutyCyclePct int `json:"dutyCyclePct"`
 }
 
 // CheckStatus represents the current status of a check.
@@ -1091,6 +1113,13 @@ func (s *Service) GetCheck(
 
 	// Convert to response
 	response := s.convertCheckToResponse(check)
+
+	// Attach the read-only scheduling telemetry (spec 2026-07-01-04 D3).
+	// Detail-only by design: a single indexed lookup by check_uid here, no
+	// join fan-out on list responses.
+	if schedErr := s.attachSchedulingInfo(ctx, check, &response); schedErr != nil {
+		return CheckResponse{}, schedErr
+	}
 
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
@@ -1972,6 +2001,43 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 	}
+}
+
+// attachSchedulingInfo populates response.Scheduling from the check's
+// per-region check_jobs rows (spec 2026-07-01-04 D3): the cost/delay EWMAs
+// are the max across regions (the worst region is the one occupying a slot),
+// and dutyCyclePct = round(100 × cost_ewma_ms / period_ms). The block stays
+// absent until the first run produces a cost signal (cost_ewma_ms == 0).
+func (s *Service) attachSchedulingInfo(ctx context.Context, check *models.Check, response *CheckResponse) error {
+	jobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+	if err != nil {
+		return fmt.Errorf("failed to get check jobs: %w", err)
+	}
+
+	var costMs, delayMs float64
+
+	for _, job := range jobs {
+		costMs = math.Max(costMs, job.CostEWMAMs)
+		delayMs = math.Max(delayMs, job.DelayEWMAMs)
+	}
+
+	// No cost signal yet (never ran) → the block is omitted.
+	if costMs <= 0 {
+		return nil
+	}
+
+	dutyCyclePct := 0
+	if periodMs := time.Duration(check.Period).Milliseconds(); periodMs > 0 {
+		dutyCyclePct = int(math.Round(100 * costMs / float64(periodMs)))
+	}
+
+	response.Scheduling = &CheckSchedulingResponse{
+		CostEwmaMs:   costMs,
+		DelayEwmaMs:  delayMs,
+		DutyCyclePct: dutyCyclePct,
+	}
+
+	return nil
 }
 
 // convertResultToLastResultResponse converts a Result model to LastResultResponse.
