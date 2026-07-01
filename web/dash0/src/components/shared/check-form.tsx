@@ -53,7 +53,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "sleep";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -64,7 +64,7 @@ const defaultPeriodSeconds: Record<string, number> = {
 const globalDefaultPeriodSeconds = 60;
 const globalMinPeriodSeconds = 5;
 
-const checkTypes: { value: CheckType; label: string; description: string }[] = [
+const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
   { value: "tcp", label: "TCP", description: "Check TCP port connectivity" },
   { value: "icmp", label: "ICMP", description: "Ping hosts using ICMP" },
@@ -101,6 +101,7 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
   { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
+  { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -525,6 +526,15 @@ export function CheckForm({
   const [ntpMaxStratum, setNtpMaxStratum] = useState(
     getConfigField(initialData?.config, "max_stratum"),
   );
+  // sleep state — synthetic/testing checker, no network I/O. sleepStatus
+  // mirrors the snmpOperator/sipMode pattern: state defaults to the backend's
+  // implicit default ("up") and is only added to the submitted config when it
+  // differs, rather than round-tripping an empty string through a Select.
+  const [sleepMs, setSleepMs] = useState(getConfigField(initialData?.config, "sleep_ms"));
+  const [jitterMs, setJitterMs] = useState(getConfigField(initialData?.config, "jitter_ms"));
+  const [sleepStatus, setSleepStatus] = useState(
+    getConfigField(initialData?.config, "status") || "up",
+  );
   // secretHeaders: array of {key, value} rows for the HTTP secret headers form section
   const [secretHeaders, setSecretHeaders] = useState<{ key: string; value: string }[]>(() => {
     const raw = initialData?.config?.secretHeaders;
@@ -646,6 +656,9 @@ export function CheckForm({
     setSipTransport(getConfigField(cfg, "transport") || "udp");
     setSipMode(getConfigField(cfg, "mode") || "options");
     setSipExpectStatus(getConfigField(cfg, "expect_status"));
+    setSleepMs(getConfigField(cfg, "sleep_ms"));
+    setJitterMs(getConfigField(cfg, "jitter_ms"));
+    setSleepStatus(getConfigField(cfg, "status") || "up");
   }
 
   const currentConfig = useMemo(() => {
@@ -847,6 +860,11 @@ export function CheckForm({
         }
         if (sipMode === "options" && sipExpectStatus) cfg.expect_status = sipExpectStatus;
         break;
+      case "sleep":
+        if (sleepMs) cfg.sleep_ms = parseInt(sleepMs, 10);
+        if (jitterMs) cfg.jitter_ms = parseInt(jitterMs, 10);
+        if (sleepStatus && sleepStatus !== "up") cfg.status = sleepStatus;
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
@@ -859,7 +877,8 @@ export function CheckForm({
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
     sipTransport, sipMode, sipExpectStatus,
-    ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum]);
+    ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum,
+    sleepMs, jitterMs, sleepStatus]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -1106,6 +1125,12 @@ export function CheckForm({
         } else if (sipExpectStatus) {
           config.expect_status = sipExpectStatus;
         }
+        break;
+      case "sleep":
+        if (!sleepMs) { setError("Sleep duration is required"); return; }
+        config.sleep_ms = parseInt(sleepMs, 10);
+        if (jitterMs) config.jitter_ms = parseInt(jitterMs, 10);
+        if (sleepStatus && sleepStatus !== "up") config.status = sleepStatus;
         break;
       case "heartbeat":
       case "email":
@@ -2046,6 +2071,44 @@ export function CheckForm({
             )}
           </>
         );
+      case "sleep":
+        return (
+          <>
+            <Alert>
+              <AlertDescription className="text-xs">
+                Synthetic checker — sleeps for the configured duration and performs no network I/O. Useful for testing scheduler/load behavior, not a real availability probe.
+              </AlertDescription>
+            </Alert>
+            <div className="flex gap-4">
+              <div className="space-y-2 w-40">
+                <Label htmlFor="sleepMs">Sleep duration (ms)</Label>
+                <Input id="sleepMs" type="number" min={1} placeholder="500" value={sleepMs} onChange={(e) => setSleepMs(e.target.value)}
+                  className={cn(getFieldError(fieldErrors, "sleep_ms") && "border-destructive")} data-testid="check-sleep-ms-input" />
+                {getFieldError(fieldErrors, "sleep_ms") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "sleep_ms")}</p>)}
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="jitterMs">Jitter (ms, optional)</Label>
+                <Input id="jitterMs" type="number" min={0} placeholder="0" value={jitterMs} onChange={(e) => setJitterMs(e.target.value)}
+                  className={cn(getFieldError(fieldErrors, "jitter_ms") && "border-destructive")} data-testid="check-jitter-ms-input" />
+                {getFieldError(fieldErrors, "jitter_ms") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "jitter_ms")}</p>)}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">± random variation applied to the sleep duration. Must be less than the sleep duration itself.</p>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="sleepStatus">Forced status (optional)</Label>
+              <Select value={sleepStatus} onValueChange={setSleepStatus}>
+                <SelectTrigger id="sleepStatus" data-testid="check-sleep-status-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="up">Up (default)</SelectItem>
+                  <SelectItem value="down">Down</SelectItem>
+                  <SelectItem value="timeout">Timeout</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+              {getFieldError(fieldErrors, "status") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "status")}</p>)}
+            </div>
+          </>
+        );
       case "heartbeat":
         return (
           <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>
@@ -2152,7 +2215,12 @@ export function CheckForm({
                             >
                               <Check className={cn("mt-0.5 h-4 w-4 shrink-0", type === ct.value ? "opacity-100" : "opacity-0")} />
                               <div>
-                                <div className="font-medium">{ct.label}</div>
+                                <div className="font-medium flex items-center gap-1.5">
+                                  {ct.label}
+                                  {ct.synthetic && (
+                                    <Badge variant="secondary" className="text-[10px] px-1 py-0 font-normal">synthetic</Badge>
+                                  )}
+                                </div>
                                 <div className="text-xs text-muted-foreground">{ct.description}</div>
                               </div>
                             </button>

@@ -186,7 +186,9 @@
     "sip": "SIP",
     "sipDescription": "Erreichbarkeit und Registrierung eines SIP-Servers prüfen",
     "ntp": "NTP",
-    "ntpDescription": "NTP-Zeitserver überwachen"
+    "ntpDescription": "NTP-Zeitserver überwachen",
+    "sleep": "Sleep",
+    "sleepDescription": "Für eine feste Dauer warten (synthetisch/Test, ohne Netzwerk-I/O)"
   },
   "dnsbl": {
     "target": "Ziel-IP oder Hostname",

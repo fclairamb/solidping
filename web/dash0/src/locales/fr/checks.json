@@ -188,7 +188,9 @@
     "sip": "SIP",
     "sipDescription": "Vérifier la joignabilité et l'enregistrement d'un serveur SIP",
     "ntp": "NTP",
-    "ntpDescription": "Surveiller les serveurs de temps NTP"
+    "ntpDescription": "Surveiller les serveurs de temps NTP",
+    "sleep": "Sleep",
+    "sleepDescription": "Attendre une durée fixe (synthétique/test, sans I/O réseau)"
   },
   "freebox": {
     "discover": "Découvrir depuis Freebox",
