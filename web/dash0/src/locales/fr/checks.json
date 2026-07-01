@@ -352,6 +352,10 @@
     },
     "checkDetails": "Détails du contrôle",
     "pendingFirstRun": "Première exécution en cours…",
+    "dutyCycle": {
+      "title": "Ce contrôle occupe un créneau de supervision {{duty}} % du temps",
+      "description": "Chaque exécution prend environ {{cost}} pour une période de {{period}} : ce contrôle occupe donc un exécuteur {{duty}} % du temps. Augmentez sa période pour libérer de la capacité de supervision."
+    },
     "configuration": "Configuration",
     "configurationDescription": "Paramètres et options du contrôle",
     "results": "Résultats",

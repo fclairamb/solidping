@@ -62,7 +62,9 @@ const defaultPeriodSeconds: Record<string, number> = {
   dns: 300,
 };
 const globalDefaultPeriodSeconds = 60;
-const globalMinPeriodSeconds = 5;
+// Server-enforced global floor (spec 2026-07-01-04): heavy types carry their
+// own minPeriodSeconds via the check-types API (browser 60s, js 30s).
+const globalMinPeriodSeconds = 10;
 
 const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },

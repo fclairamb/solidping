@@ -67,6 +67,19 @@ export interface Check {
   maxRecoveryMultiplier?: number;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
+  /**
+   * Read-only scheduling telemetry (max across the check's per-region
+   * scheduler jobs). Detail responses only — never present on lists — and
+   * omitted until the check's first run produces a cost signal.
+   */
+  scheduling?: {
+    /** Smoothed execution cost in milliseconds (EWMA). */
+    costEwmaMs: number;
+    /** Smoothed start lateness in milliseconds (EWMA, telemetry). */
+    delayEwmaMs: number;
+    /** round(100 × cost / period): share of a runner slot this check occupies. */
+    dutyCyclePct: number;
+  };
 }
 
 export interface RegionDefinition {
