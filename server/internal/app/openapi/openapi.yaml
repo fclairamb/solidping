@@ -64,6 +64,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
 
+  /api/mgmt/scheduling/cost-distribution:
+    get:
+      tags: [Management]
+      summary: Scheduler cost/delay distribution
+      description: >
+        Returns an aggregate, low-cardinality distribution of the scheduler's
+        per-job cost_ewma_ms and delay_ewma_ms across all check_jobs, plus
+        fast/slow job counts at a candidate threshold. Read-only and
+        super-admin guarded. Used to decide whether fast/slow scheduling lanes
+        are warranted.
+      operationId: getCostDistribution
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: thresholdMs
+          in: query
+          required: false
+          description: Candidate fast/slow boundary in milliseconds (default 1000).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Cost/delay distribution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostDistributionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   # System Parameters APIs (Super Admin Only)
   /api/v1/system/parameters:
     get:
@@ -1653,6 +1686,49 @@ components:
           type: string
         runMode:
           type: string
+
+    CostDistributionPercentiles:
+      type: object
+      description: p50/p90/p99/max summary of a metric (milliseconds).
+      properties:
+        p50:
+          type: number
+          format: double
+        p90:
+          type: number
+          format: double
+        p99:
+          type: number
+          format: double
+        max:
+          type: number
+          format: double
+
+    CostDistribution:
+      type: object
+      properties:
+        totalJobs:
+          type: integer
+          description: Number of check_jobs rows considered.
+        thresholdMs:
+          type: integer
+          description: Candidate fast/slow boundary used for the counts (ms).
+        fastJobs:
+          type: integer
+          description: Count with cost_ewma_ms <= thresholdMs.
+        slowJobs:
+          type: integer
+          description: Count with cost_ewma_ms > thresholdMs.
+        costEwmaMs:
+          $ref: "#/components/schemas/CostDistributionPercentiles"
+        delayEwmaMs:
+          $ref: "#/components/schemas/CostDistributionPercentiles"
+
+    CostDistributionResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CostDistribution"
 
     HealthResponse:
       type: object

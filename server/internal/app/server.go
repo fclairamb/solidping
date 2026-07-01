@@ -1069,6 +1069,11 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		Use(authMiddleware.RequireAuth).
 		Use(authMiddleware.RequireSuperAdmin)
 	mgmtAdmin.GET("/memory", s.getMemory)
+	// Scheduler cost/delay distribution (super-admin, read-only): aggregate
+	// percentiles of cost_ewma_ms / delay_ewma_ms across check_jobs plus
+	// fast/slow counts at a candidate threshold. Low-cardinality analysis for
+	// the fast/slow-lane go/no-go decision (spec 2026-07-01-01).
+	mgmtAdmin.GET("/scheduling/cost-distribution", s.getCostDistribution)
 
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {
