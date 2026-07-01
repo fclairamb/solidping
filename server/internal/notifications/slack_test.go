@@ -803,6 +803,12 @@ func (m *mockDBService) UpdateCheckStatusAndClocks(
 	panic("not implemented")
 }
 
+func (m *mockDBService) UpdateCheckFlapState(
+	_ context.Context, _ string, _ int, _ time.Time,
+) error {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateSeverity(_ context.Context, _ *models.Severity) error {
 	panic("not implemented")
 }

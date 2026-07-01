@@ -13,79 +13,11 @@ import (
 // ordering/weighting tests. Knobs are chosen so the math is easy to reason about.
 func defaultParams() scheduling.Params {
 	return scheduling.Params{
-		SlowCostThresholdMs: 1000, // > 1s of cost EWMA = slow
-		PenaltyCap:          20 * time.Second,
 		TierCreditPerWeight: 5 * time.Second,
 		TierCreditMax:       15 * time.Second,
 		CostTimeoutFactor:   3,
 		CostTimeoutFloor:    2 * time.Second,
 	}
-}
-
-func TestIsSlow(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name       string
-		threshold  float64
-		costEWMAMs float64
-		want       bool
-	}{
-		{"disabled threshold never slow", 0, 999999, false},
-		{"below threshold is fast", 1000, 500, false},
-		{"at threshold is fast (strict >)", 1000, 1000, false},
-		{"above threshold is slow", 1000, 1001, true},
-		{"well above threshold is slow", 1000, 30000, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			p := scheduling.Params{SlowCostThresholdMs: tt.threshold}
-			require.Equal(t, tt.want, p.IsSlow(tt.costEWMAMs))
-		})
-	}
-}
-
-func TestCostPenalty(t *testing.T) {
-	t.Parallel()
-
-	p := defaultParams()
-
-	tests := []struct {
-		name       string
-		costEWMAMs float64
-		wantZero   bool
-		atCap      bool
-	}{
-		{"fast job no penalty", 200, true, false},
-		{"slow job gets a penalty", 1500, false, false},
-		{"very slow job is capped", 1_000_000, false, true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			got := p.CostPenalty(tt.costEWMAMs)
-			if tt.wantZero {
-				require.Zero(t, got)
-
-				return
-			}
-			require.Positive(t, got)
-			require.LessOrEqual(t, got, p.PenaltyCap, "penalty must never exceed the cap (anti-starvation)")
-			if tt.atCap {
-				require.Equal(t, p.PenaltyCap, got, "an extreme cost must clamp exactly to the cap")
-			}
-		})
-	}
-
-	// Disabled penalty (cap 0) is always zero, even for slow jobs.
-	t.Run("disabled penalty cap", func(t *testing.T) {
-		t.Parallel()
-		disabled := scheduling.Params{SlowCostThresholdMs: 1000, PenaltyCap: 0}
-		require.Zero(t, disabled.CostPenalty(50000))
-	})
 }
 
 func TestTierCredit(t *testing.T) {
@@ -104,39 +36,42 @@ func TestTierCredit(t *testing.T) {
 }
 
 // TestEffectiveOrdering is the heart of the spec: under contention, fast and
-// paid jobs must sort ahead of slow and free jobs, while the absolute anchor
-// guarantees no permanent starvation.
+// paid jobs must sort ahead of slow, delayed, and free jobs, while the absolute
+// anchor guarantees no permanent starvation.
 func TestEffectiveOrdering(t *testing.T) {
 	t.Parallel()
 
 	p := defaultParams()
 	base := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 
-	// All four jobs are due at the same real scheduled_at.
-	fastFree := p.EffectiveScheduledAt(base, 200, 0)
-	slowFree := p.EffectiveScheduledAt(base, 30000, 0)
-	fastPaid := p.EffectiveScheduledAt(base, 200, 2)
-	slowPaid := p.EffectiveScheduledAt(base, 30000, 2)
+	// All jobs are due at the same real scheduled_at; vary cost / delay / tier.
+	fastFree := p.EffectiveScheduledAt(base, 200, 0, 0)
+	slowFree := p.EffectiveScheduledAt(base, 30000, 0, 0)
+	fastPaid := p.EffectiveScheduledAt(base, 200, 0, 2)
+	slowPaid := p.EffectiveScheduledAt(base, 30000, 0, 2)
+	delayedFree := p.EffectiveScheduledAt(base, 200, 30000, 0)
 
-	// Requirement 1: a slow check is de-prioritized relative to a fast one
-	// (same tier) — it sorts LATER (larger effective deadline).
+	// A slow check is de-prioritized relative to a fast one (same tier) — it
+	// sorts LATER (larger effective deadline).
 	require.True(t, fastFree.Before(slowFree),
 		"fast free check must sort before slow free check")
 
-	// Requirement 2: paid is impacted less than free — at equal cost, the paid
-	// job sorts earlier (smaller effective deadline).
+	// A chronically-delayed check is likewise de-prioritized.
+	require.True(t, fastFree.Before(delayedFree),
+		"a delayed check must sort after an on-time check")
+
+	// Paid is impacted less than free — at equal cost, the paid job sorts
+	// earlier (smaller effective deadline).
 	require.True(t, fastPaid.Before(fastFree),
 		"fast paid check must sort before fast free check")
 	require.True(t, slowPaid.Before(slowFree),
 		"slow paid check must sort before slow free check at equal cost")
-
-	// A slow paid check still beats a slow free check (the credit protects it).
-	require.True(t, slowPaid.Before(slowFree))
 }
 
-// TestAntiStarvation: a permanently-slow free check that keeps getting skipped
-// has its real scheduled_at recede into the past; because the penalty is capped,
-// its effective deadline eventually sorts ahead of a fresh fast job.
+// TestAntiStarvation: a permanently-skipped check has its real scheduled_at
+// recede into the past; because the cost+delay offset is bounded, its effective
+// deadline eventually sorts ahead of fresh work. No cap knob is needed — the
+// absolute scheduled_at anchor is the guarantee.
 func TestAntiStarvation(t *testing.T) {
 	t.Parallel()
 
@@ -144,15 +79,15 @@ func TestAntiStarvation(t *testing.T) {
 	now := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
 
 	// Fresh fast job due right now.
-	freshFast := p.EffectiveScheduledAt(now, 200, 0)
+	freshFast := p.EffectiveScheduledAt(now, 200, 0, 0)
 
-	// Slow job that was due well in the past (skipped for a long time) — far
-	// enough that even the maxed-out penalty cannot keep it behind the fresh job.
-	overdueBy := p.PenaltyCap + time.Minute
-	starvedSlow := p.EffectiveScheduledAt(now.Add(-overdueBy), 1_000_000, 0)
+	// Expensive, chronically-delayed job that was due well in the past (skipped
+	// for a long time) — far enough that its bounded cost+delay offset cannot
+	// keep it behind the fresh job.
+	starved := p.EffectiveScheduledAt(now.Add(-2*time.Minute), 30000, 30000, 0)
 
-	require.True(t, starvedSlow.Before(freshFast),
-		"a long-overdue slow check must eventually outrank fresh work (capped penalty)")
+	require.True(t, starved.Before(freshFast),
+		"a long-overdue check must eventually outrank fresh work (anchored to scheduled_at)")
 }
 
 func TestExecutionTimeout(t *testing.T) {
@@ -204,41 +139,78 @@ func TestExecutionTimeout(t *testing.T) {
 	}
 }
 
-func TestUpdateCostEWMA(t *testing.T) {
+func TestUpdateEWMA(t *testing.T) {
 	t.Parallel()
 
 	// First sample seeds the average directly.
-	require.InDelta(t, 500.0, scheduling.UpdateCostEWMA(0, 500), 0.001)
+	require.InDelta(t, 500.0, scheduling.UpdateEWMA(0, 500), 0.001)
 
 	// Subsequent samples blend toward the new value.
-	got := scheduling.UpdateCostEWMA(1000, 2000)
+	got := scheduling.UpdateEWMA(1000, 2000)
 	require.InDelta(t, scheduling.EWMAAlpha*2000+(1-scheduling.EWMAAlpha)*1000, got, 0.001)
 	require.Greater(t, got, 1000.0, "a higher sample pulls the EWMA up")
 	require.Less(t, got, 2000.0, "EWMA lags the new sample")
 
 	// Negative samples are floored to 0.
-	require.InDelta(t, 0.0, scheduling.UpdateCostEWMA(0, -5), 0.001)
+	require.InDelta(t, 0.0, scheduling.UpdateEWMA(0, -5), 0.001)
 
-	// A sustained high cost converges upward over a few runs.
-	cost := 200.0
+	// A sustained high value converges upward over a few runs.
+	v := 200.0
 	for i := 0; i < 20; i++ {
-		cost = scheduling.UpdateCostEWMA(cost, 30000)
+		v = scheduling.UpdateEWMA(v, 30000)
 	}
-	require.Greater(t, cost, 1000.0, "sustained 30s cost must eventually classify as slow")
+	require.Greater(t, v, 20000.0, "sustained 30s samples converge toward 30s")
 }
 
-// TestZeroParamsAreInert verifies the off-by-default contract: the zero-value
-// Params reproduces today's behavior exactly.
+// TestZeroParamsAreInert verifies the no-data baseline: with zero Params and no
+// cost/delay history, effective == scheduled_at (pure FIFO), and the cost-aware
+// timeout falls back to the flat 30s ceiling.
 func TestZeroParamsAreInert(t *testing.T) {
 	t.Parallel()
 
 	var p scheduling.Params
 	base := time.Now()
 
-	require.False(t, p.IsSlow(1_000_000))
-	require.Zero(t, p.CostPenalty(1_000_000))
 	require.Zero(t, p.TierCredit(99))
-	require.Equal(t, base, p.EffectiveScheduledAt(base, 1_000_000, 99),
-		"with zero params, effective == scheduled_at (pure FIFO)")
+	require.Equal(t, base, p.EffectiveScheduledAt(base, 0, 0, 99),
+		"with zero params and no cost/delay history, effective == scheduled_at (pure FIFO)")
 	require.Equal(t, scheduling.DefaultExecutionTimeout, p.ExecutionTimeout(200))
+}
+
+// TestCostDelayOffsetApplied verifies that with the dead-band disabled (zero
+// threshold) the cost/delay offset is applied directly: a job with accumulated
+// cost/delay sorts later than its real schedule.
+func TestCostDelayOffsetApplied(t *testing.T) {
+	t.Parallel()
+
+	var p scheduling.Params // SlowThresholdMs 0 → no dead-band
+	base := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+
+	require.Equal(t, base.Add(1500*time.Millisecond),
+		p.EffectiveScheduledAt(base, 1000, 500, 0),
+		"effective = scheduled + cost_ewma + delay_ewma when no tier credit applies")
+}
+
+// TestSlowThreshold verifies the configurable dead-band: the combined cost+delay
+// EWMA must reach SlowThresholdMs before effective_scheduled_at is pushed past
+// the real scheduled_at.
+func TestSlowThreshold(t *testing.T) {
+	t.Parallel()
+
+	base := time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC)
+	p := scheduling.Params{SlowThresholdMs: 2000}
+
+	// Combined cost+delay below the threshold → no change (pure FIFO).
+	require.Equal(t, base, p.EffectiveScheduledAt(base, 800, 900, 0),
+		"below the threshold, effective stays at scheduled_at")
+
+	// At/over the threshold → the full cost+delay offset applies.
+	require.Equal(t, base.Add(2100*time.Millisecond),
+		p.EffectiveScheduledAt(base, 1500, 600, 0),
+		"once cost+delay reaches the threshold, the full offset applies")
+
+	// A non-positive threshold disables the dead-band (any positive offset applies).
+	noBand := scheduling.Params{SlowThresholdMs: 0}
+	require.Equal(t, base.Add(50*time.Millisecond), noBand.EffectiveScheduledAt(base, 30, 20, 0),
+		"threshold 0 applies even a tiny offset")
 }

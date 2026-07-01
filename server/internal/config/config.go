@@ -471,25 +471,18 @@ type ServerConfig struct {
 }
 
 // SchedulingConfig tunes cost-aware, plan-weighted check execution
-// (spec 2026-06-30-09). Every knob defaults to today's behavior: penalty and
-// credit of 0 (pure FIFO ordering), caps equal to the pool size (no isolation),
-// and the flat 30s execution timeout. Turning a knob on opts into the fairness
-// behavior without a redeploy.
+// (spec 2026-06-30-09). The knobs only reorder fetch order (by adjusting a
+// job's effective scheduled_at) and bound the per-check execution timeout —
+// they never shed or defer a claimed job. The cost/delay deprioritization is
+// driven by per-job EWMAs (0 until first run, so fresh jobs are pure FIFO); the
+// tier credit and cost-aware timeout below are gated by their knobs (0 = off).
 type SchedulingConfig struct {
-	// SlowCostThresholdMs classifies a check as "slow" once its cost EWMA
-	// exceeds this many ms. 0 disables slow classification and the slow lane.
-	SlowCostThresholdMs float64 `koanf:"slow_cost_threshold_ms"`
-	// SlowLaneMax caps how many slow checks may execute simultaneously per
-	// worker, guaranteeing poolSize − SlowLaneMax slots stay free for fast
-	// checks. 0 means "no slow cap" (equals pool size).
-	SlowLaneMax int `koanf:"slow_lane_max"`
-	// PaidReserved reserves this many runner slots per worker for paid-tier
-	// jobs, capping free-tier in-flight at poolSize − PaidReserved. 0 disables
-	// the reservation. This is the Q2 hard floor.
-	PaidReserved int `koanf:"paid_reserved"`
-	// PenaltyCapSeconds bounds how far a slow check's effective deadline may be
-	// pushed past its real schedule (anti-starvation). 0 disables the penalty.
-	PenaltyCapSeconds float64 `koanf:"penalty_cap_seconds"`
+	// SlowThresholdMs is the dead-band on the deprioritization offset: a check's
+	// effective_scheduled_at is only pushed past its real scheduled_at once its
+	// combined cost+delay EWMA reaches this many ms. Below it the offset is 0
+	// (effective == scheduled_at), so small per-run variance never reorders fast
+	// checks. Default 2000 (see Load); 0 disables the dead-band (any offset applies).
+	SlowThresholdMs float64 `koanf:"slow_threshold_ms"`
 	// TierCreditSeconds is the deadline credit per unit of plan_weight (paid
 	// jobs sort earlier under contention). 0 disables the credit.
 	TierCreditSeconds float64 `koanf:"tier_credit_seconds"`
@@ -552,10 +545,19 @@ func Load() (*Config, error) {
 				// parked on a slow socket costs ~KB and zero CPU — so a tiny
 				// pool artificially manufactures head-of-line blocking (a
 				// handful of slow checks = 100% occupancy = total stall). The
-				// real bound is now the per-class/per-org admission caps
-				// (scheduling.slow_lane_max / paid_reserved) and DB-flush
-				// throughput, not this goroutine count. See spec 2026-06-30-09.
+				// real bound is now DB-flush throughput, not this goroutine
+				// count. Slow checks are deprioritized (not capped), so they
+				// fall back in fetch order without being shed. See spec
+				// 2026-06-30-09.
 				Nb: 25,
+			},
+			Scheduling: SchedulingConfig{
+				// Deprioritize a check only once its combined cost+delay EWMA
+				// reaches this many ms; below it, effective_scheduled_at stays at
+				// the real scheduled_at (pure FIFO) so small per-run variance never
+				// reorders fast checks. Tier weighting and the cost-aware timeout
+				// stay opt-in (0).
+				SlowThresholdMs: 2000,
 			},
 			RateLimiting: RateLimitConfig{
 				RequestsPerMinute: 300,
@@ -911,8 +913,10 @@ func applyServerEnv(cfg *ServerConfig) {
 
 // applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
 // loader cannot bind (it collapses underscores to dots and would miss the
-// snake_case koanf tags like "slow_cost_threshold_ms"). Every knob is opt-in;
-// default 0 reproduces today's pure-FIFO scheduling. See project_koanf_env_quirk.
+// snake_case koanf tags like "slow_cost_threshold_ms"). These override the
+// defaults set in Load — cost deprioritization and the slow lane are on by
+// default; tier weighting and the cost-aware timeout remain opt-in at 0. See
+// project_koanf_env_quirk.
 func applySchedulingEnv(cfg *SchedulingConfig) {
 	parseFloat := func(env string, dst *float64) {
 		if v := os.Getenv(env); v != "" {
@@ -921,18 +925,8 @@ func applySchedulingEnv(cfg *SchedulingConfig) {
 			}
 		}
 	}
-	parseInt := func(env string, dst *int) {
-		if v := os.Getenv(env); v != "" {
-			if n, err := strconv.Atoi(v); err == nil {
-				*dst = n
-			}
-		}
-	}
 
-	parseFloat("SP_SCHEDULING_SLOW_COST_THRESHOLD_MS", &cfg.SlowCostThresholdMs)
-	parseInt("SP_SCHEDULING_SLOW_LANE_MAX", &cfg.SlowLaneMax)
-	parseInt("SP_SCHEDULING_PAID_RESERVED", &cfg.PaidReserved)
-	parseFloat("SP_SCHEDULING_PENALTY_CAP_SECONDS", &cfg.PenaltyCapSeconds)
+	parseFloat("SP_SCHEDULING_SLOW_THRESHOLD_MS", &cfg.SlowThresholdMs)
 	parseFloat("SP_SCHEDULING_TIER_CREDIT_SECONDS", &cfg.TierCreditSeconds)
 	parseFloat("SP_SCHEDULING_TIER_CREDIT_MAX_SECONDS", &cfg.TierCreditMaxSeconds)
 	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FACTOR", &cfg.CostTimeoutFactor)

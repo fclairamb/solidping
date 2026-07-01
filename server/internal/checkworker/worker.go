@@ -75,12 +75,11 @@ type CheckWorker struct {
 	jobsChan         chan *models.CheckJob // Fetcher → Runners
 	completionChan   chan struct{}         // Runners → Fetcher (wake-up signal)
 
-	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09).
-	// schedParams is the pure math config; admission tracks per-class /
-	// per-tier in-flight occupancy so a slow-check or free-tier stampede cannot
-	// starve fast/paid checks of runner slots.
+	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
+	// the pure math config that deprioritizes slow checks (and credits paid
+	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
+	// reorders fetch order — it never sheds or defers a claimed job.
 	schedParams scheduling.Params
-	admission   *admissionController
 
 	// Self-stats reporting fields
 	internalCheckUID string // UID of the internal check for this worker
@@ -119,7 +118,6 @@ func NewCheckWorker(
 		jobsChan:       make(chan *models.CheckJob),
 		completionChan: make(chan struct{}, 1),
 		schedParams:    schedParams,
-		admission:      newAdmissionController(poolSize, cfg.Server.Scheduling),
 	}
 }
 
@@ -132,8 +130,7 @@ func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
 	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
 
 	return scheduling.Params{
-		SlowCostThresholdMs: cfg.SlowCostThresholdMs,
-		PenaltyCap:          secs(cfg.PenaltyCapSeconds),
+		SlowThresholdMs:     cfg.SlowThresholdMs,
 		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
 		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
 		CostTimeoutFactor:   cfg.CostTimeoutFactor,
@@ -593,22 +590,6 @@ func (r *CheckWorker) executeJob(
 		}
 	}
 
-	// Cost-aware, plan-weighted admission (spec 2026-06-30-09). Classify the
-	// job from its denormalized cost/weight and try to reserve a runner slot of
-	// the right class. A denied job (slow lane full, or a free job when only
-	// paid-reserved slots remain) is rescheduled and reclaimed later rather than
-	// occupying a slot a fast/paid check needs. With the default (zero) config
-	// every job is admitted, reproducing today's single-pool behavior.
-	isSlow, isPaid := r.admission.classify(r.schedParams, checkJob.CostEWMAMs, checkJob.PlanWeight)
-	if reason := r.admission.tryAdmit(isSlow, isPaid); reason != admitOK {
-		prommetrics.ChecksAdmissionDeferred.WithLabelValues(reason).Inc()
-		logger.InfoContext(ctx, "Check deferred by admission cap; rescheduling",
-			"check_uid", checkJob.CheckUID, "slow", isSlow, "paid", isPaid, "reason", reason)
-
-		return r.releaseLease(ctx, checkJob)
-	}
-	defer r.admission.release(isSlow, isPaid)
-
 	// 4. Execute check with a cost-aware timeout.
 	// Use background context so the check can complete even during shutdown —
 	// only the timeout should cancel the check, not the runner shutdown. The
@@ -701,7 +682,7 @@ func (r *CheckWorker) executeJob(
 	// query on the hot path): update the EWMA and recompute the effective
 	// deadline used for cost-aware claim ordering. Timeouts are pinned to the
 	// ceiling so a chronic offender's cost reflects its worst-case occupancy.
-	releaseErr := r.releaseLeaseWithCost(releaseCtx, checkJob, *result)
+	releaseErr := r.releaseLeaseWithCost(releaseCtx, checkJob, *result, execStart)
 	prommetrics.RecordCheckStage("release_lease", time.Since(releaseStart).Seconds())
 	if releaseErr != nil {
 		return fmt.Errorf("failed to release lease: %w", releaseErr)
@@ -728,19 +709,46 @@ func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
 }
 
 // releaseLeaseWithCost releases the lease for an actively-probed check, folding
-// the new cost EWMA and recomputed effective_scheduled_at into the same write.
+// the new cost and delay EWMAs and the recomputed effective_scheduled_at into
+// the same write. execStart is when the outbound probe actually began; the
+// scheduling delay is how far past the job's effective_scheduled_at that was.
 func (r *CheckWorker) releaseLeaseWithCost(
 	ctx context.Context,
 	checkJob *models.CheckJob,
 	result checkerdef.Result,
+	execStart time.Time,
 ) error {
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
-	newCost := scheduling.UpdateCostEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
-	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
+	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
+	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
+	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, newDelay, checkJob.PlanWeight)
 
 	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
-		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, effective,
+		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective,
 	)
+}
+
+// delaySampleMs is the scheduling-delay sample (ms) folded into the delay EWMA:
+// how far past the job's effective_scheduled_at the probe actually started,
+// floored at 0. The runner sleeps until scheduled_at, so under spare capacity the
+// probe starts on time and this is 0; it only goes positive when contention
+// pushes the start past the (cost/delay-padded) effective deadline. Falls back to
+// scheduled_at when the row has no effective_scheduled_at yet (freshly created).
+func (r *CheckWorker) delaySampleMs(checkJob *models.CheckJob, execStart time.Time) float64 {
+	ref := checkJob.EffectiveScheduledAt
+	if ref == nil {
+		ref = checkJob.ScheduledAt
+	}
+	if ref == nil {
+		return 0
+	}
+
+	lateness := execStart.Sub(*ref)
+	if lateness < 0 {
+		return 0
+	}
+
+	return float64(lateness.Milliseconds())
 }
 
 // saveResult saves a check result to the database and processes incidents.

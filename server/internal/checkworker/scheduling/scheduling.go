@@ -3,13 +3,14 @@
 //
 // It deliberately knows nothing about the database, the worker pool, or
 // goroutines — it is a set of small deterministic functions over a job's cost
-// signal (cost_ewma_ms), its plan tier (plan_weight), and a Params struct
-// populated from config. The worker and the claim path call into it; the unit
-// tests exercise the ordering/weighting/classification/timeout math directly.
+// and delay signals (cost_ewma_ms, delay_ewma_ms), its plan tier (plan_weight),
+// and a Params struct populated from config. The worker and the claim path call
+// into it; the unit tests exercise the ordering/weighting/timeout math directly.
 //
-// Off-by-default: with the zero-value Params (all knobs 0) every function
-// reproduces today's behavior — no penalty, no credit, never slow, the flat
-// 30s timeout — so the feature is inert until config turns it on.
+// Inert until there is data: the cost and delay EWMAs are 0 until a job's first
+// run, so a fresh job's effective deadline equals its real scheduled_at (pure
+// FIFO). The tier credit and cost-aware timeout are additionally gated by their
+// Params knobs (0 = off), so the zero-value Params reproduces today's behavior.
 package scheduling
 
 import "time"
@@ -24,17 +25,12 @@ const DefaultExecutionTimeout = 30 * time.Second
 // Durations are time.Duration; thresholds that the DB stores in milliseconds are
 // kept as float64 ms to match cost_ewma_ms.
 type Params struct {
-	// SlowCostThresholdMs classifies a job as "slow" when its cost EWMA exceeds
-	// this many milliseconds. 0 disables slow classification entirely (no job is
-	// ever slow), which also disables the slow-lane cap.
-	SlowCostThresholdMs float64
-
-	// PenaltyCap bounds how far a slow job's effective deadline may be pushed
-	// past its real scheduled_at. The cap is what makes anti-starvation work:
-	// effective stays anchored to the absolute scheduled_at, so a repeatedly
-	// skipped job's scheduled_at recedes into the past and eventually sorts
-	// ahead of fresh work. 0 disables the cost penalty.
-	PenaltyCap time.Duration
+	// SlowThresholdMs is the dead-band on the deprioritization offset: a job's
+	// effective deadline is pushed past its real scheduled_at only once its
+	// combined cost+delay EWMA reaches this many milliseconds. Below it the offset
+	// is 0 (effective == scheduled_at), so small per-run variance never reorders
+	// fast checks. 0 disables the dead-band (any positive offset applies).
+	SlowThresholdMs float64
 
 	// TierCreditPerWeight is the deadline credit granted per unit of plan_weight
 	// (paid jobs sort earlier under contention). The total credit is capped at
@@ -58,44 +54,6 @@ type Params struct {
 	CostTimeoutFloor time.Duration
 }
 
-// IsSlow reports whether a job with the given cost EWMA is classified as slow.
-// A non-positive threshold disables classification (nothing is slow).
-func (p Params) IsSlow(costEWMAMs float64) bool {
-	if p.SlowCostThresholdMs <= 0 {
-		return false
-	}
-
-	return costEWMAMs > p.SlowCostThresholdMs
-}
-
-// CostPenalty returns how far past scheduled_at a job's effective deadline is
-// pushed for being expensive. Only slow jobs incur a penalty; it scales with how
-// far the cost exceeds the threshold and is hard-capped at PenaltyCap.
-//
-// Returning the cap (rather than something unbounded) is what guarantees
-// anti-starvation: the effective deadline can never drift more than PenaltyCap
-// past the real schedule, so the absolute scheduled_at anchor always wins
-// eventually.
-func (p Params) CostPenalty(costEWMAMs float64) time.Duration {
-	if p.PenaltyCap <= 0 || !p.IsSlow(costEWMAMs) {
-		return 0
-	}
-
-	// Scale linearly with the overshoot past the threshold, expressed in
-	// multiples of the threshold, then clamp to the cap. A job at exactly 2×
-	// the threshold gets ~1× the cap's worth of penalty before clamping.
-	overshoot := (costEWMAMs - p.SlowCostThresholdMs) / p.SlowCostThresholdMs
-	penalty := time.Duration(overshoot * float64(p.PenaltyCap))
-	if penalty > p.PenaltyCap {
-		penalty = p.PenaltyCap
-	}
-	if penalty < 0 {
-		penalty = 0
-	}
-
-	return penalty
-}
-
 // TierCredit returns how far before scheduled_at a paid job's effective deadline
 // is pulled, as a function of its plan weight. Free jobs (weight <= 0) get no
 // credit. The result is capped at TierCreditMax (when set) so a very high weight
@@ -113,17 +71,50 @@ func (p Params) TierCredit(planWeight int) time.Duration {
 	return credit
 }
 
-// EffectiveScheduledAt computes the WFQ ordering key:
+// EffectiveScheduledAt computes the WFQ claim ORDER BY key:
 //
-//	effective = scheduled_at + cost_penalty(cost) − tier_credit(weight)
+//	effective = scheduled_at + deprioritize_offset(cost, delay) − tier_credit(weight)
 //
-// The claim SELECT still gates on the real scheduled_at and only orders by this
-// value, so with spare capacity every check runs on time; the penalty/credit
-// only decide who wins a slot when the due-batch exceeds capacity (Option A).
-func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs float64, planWeight int) time.Time {
+// The deprioritization offset is the job's combined cost+delay EWMA (a slower or
+// chronically-delayed check sorts later), but only once that sum crosses
+// SlowThresholdMs — below the threshold the offset is 0, so fast checks keep
+// their real-schedule (FIFO) order and small per-run variance never reorders
+// them. A paid job sorts earlier via the tier credit. The claim SELECT still
+// gates on the real scheduled_at and only orders by this value, so with spare
+// capacity every check runs on time; the offset only decides who wins a slot
+// when the due-batch exceeds capacity (Option A). The absolute scheduled_at
+// anchor is the anti-starvation guarantee: a skipped job's scheduled_at recedes
+// into the past, so its bounded offset eventually sorts it ahead of fresh work.
+func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs, delayEWMAMs float64, planWeight int) time.Time {
 	return scheduledAt.
-		Add(p.CostPenalty(costEWMAMs)).
+		Add(p.deprioritizeOffset(costEWMAMs, delayEWMAMs)).
 		Add(-p.TierCredit(planWeight))
+}
+
+// deprioritizeOffset is how far past scheduled_at a job is pushed for being
+// expensive and/or chronically delayed: the sum of its cost and delay EWMAs —
+// but only once that sum reaches SlowThresholdMs. Below the threshold it returns
+// 0 (effective stays at scheduled_at), so trivial cost/delay never reorders fast
+// checks. A non-positive threshold disables the dead-band (any positive sum
+// applies).
+func (p Params) deprioritizeOffset(costEWMAMs, delayEWMAMs float64) time.Duration {
+	total := costEWMAMs + delayEWMAMs
+	if total < p.SlowThresholdMs {
+		return 0
+	}
+
+	return msToDuration(total)
+}
+
+// msToDuration converts a non-negative millisecond scalar to a Duration,
+// flooring negatives to 0 so a stray negative can never pull a job's effective
+// deadline earlier than its real schedule.
+func msToDuration(ms float64) time.Duration {
+	if ms <= 0 {
+		return 0
+	}
+
+	return time.Duration(ms * float64(time.Millisecond))
 }
 
 // ExecutionTimeout returns the per-check execution ceiling. With the cost-aware
@@ -152,16 +143,16 @@ func (p Params) ExecutionTimeout(costEWMAMs float64) time.Duration {
 	return want
 }
 
-// EWMAAlpha is the smoothing factor for the cost EWMA: cost = α·sample +
-// (1−α)·prev. A modest α keeps a single slow blip from immediately flipping a
-// job into the slow lane while still tracking sustained cost within a handful of
-// runs.
+// EWMAAlpha is the smoothing factor for the cost and delay EWMAs: value =
+// α·sample + (1−α)·prev. A modest α keeps a single blip from dominating while
+// still tracking a sustained change within a handful of runs.
 const EWMAAlpha = 0.3
 
-// UpdateCostEWMA folds a new duration sample into the running EWMA. The first
-// sample (prev == 0) seeds the average directly so a job's cost converges from
-// its very first run rather than starting biased toward 0.
-func UpdateCostEWMA(prev, sampleMs float64) float64 {
+// UpdateEWMA folds a new millisecond sample into a running EWMA (used for both
+// the cost and the delay signals). The first sample (prev <= 0) seeds the
+// average directly so the value converges from its very first run rather than
+// starting biased toward 0. Negative samples are floored to 0.
+func UpdateEWMA(prev, sampleMs float64) float64 {
 	if sampleMs < 0 {
 		sampleMs = 0
 	}

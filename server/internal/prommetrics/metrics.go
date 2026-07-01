@@ -19,7 +19,6 @@ const (
 	labelRoute        = "route"
 	labelOutcome      = "outcome"
 	labelJobType      = "job_type"
-	labelClass        = "class"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
@@ -135,21 +134,6 @@ var (
 			Help: "Total check executions skipped due to MaxChecksPerMinute entitlement",
 		},
 		[]string{labelOrganization},
-	)
-
-	// ChecksAdmissionDeferred counts check executions a worker deferred because a
-	// per-class/per-tier admission cap was full (spec 2026-06-30-09). The class
-	// label is "slow_lane" (slow-lane cap full) or "paid_reserved" (a free-tier
-	// job blocked from a paid-reserved slot). Deferred jobs are rescheduled for
-	// next period and reclaimed later — no result row is written. Sustained
-	// non-zero values mean the pool is under contention and the isolation caps
-	// are actively shedding load.
-	ChecksAdmissionDeferred = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Name: "solidping_checks_admission_deferred_total",
-			Help: "Total check executions deferred by a per-class/per-tier admission cap (slow_lane, paid_reserved)",
-		},
-		[]string{labelClass},
 	)
 
 	// HTTPRateLimited counts requests intercepted by the per-IP HTTP rate or
@@ -310,7 +294,6 @@ var (
 		WorkersActive, WorkerFreeRunners, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
-		ChecksAdmissionDeferred,
 		HTTPRateLimited,
 		HTTPRequestDuration, HTTPRequestsTotal,
 		DBQueryDuration, DBBusyRetries,

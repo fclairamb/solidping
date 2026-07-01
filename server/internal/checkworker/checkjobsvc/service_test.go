@@ -76,10 +76,14 @@ func createTestCheckJob(
 		Scan(ctx)
 	require.NoError(t, err, "failed to retrieve check job")
 
-	// Update the job with test-specific values
+	// Update the job with test-specific values. Keep effective_scheduled_at in
+	// step with scheduled_at (a fresh job carries no cost/delay offset), mirroring
+	// production where every release writes both — the claim gate/order key is
+	// effective_scheduled_at, not scheduled_at.
 	_, err = svc.DB().NewUpdate().
 		Model((*models.CheckJob)(nil)).
 		Set("scheduled_at = ?", scheduledAt).
+		Set("effective_scheduled_at = ?", scheduledAt).
 		Set("region = ?", region).
 		Where("uid = ?", job.UID).
 		Exec(ctx)
@@ -87,6 +91,7 @@ func createTestCheckJob(
 
 	// Refresh the job to get updated values
 	job.ScheduledAt = &scheduledAt
+	job.EffectiveScheduledAt = &scheduledAt
 	job.Region = region
 
 	return job
@@ -548,12 +553,13 @@ func TestReleaseLease(t *testing.T) {
 		nextScheduled := now.Add(1 * time.Minute)
 		effective := now.Add(80 * time.Second) // penalized past the schedule
 		require.NoError(t, svc.ReleaseLeaseWithSchedulingState(
-			ctx, job.UID, worker.UID, nextScheduled, 1234.5, effective,
+			ctx, job.UID, worker.UID, nextScheduled, 1234.5, 678.0, effective,
 		))
 
 		var dbJob models.CheckJob
 		require.NoError(t, dbSvc.DB().NewSelect().Model(&dbJob).Where("uid = ?", job.UID).Scan(ctx))
 		assert.InDelta(t, 1234.5, dbJob.CostEWMAMs, 0.001, "cost EWMA must be persisted")
+		assert.InDelta(t, 678.0, dbJob.DelayEWMAMs, 0.001, "delay EWMA must be persisted")
 		require.NotNil(t, dbJob.EffectiveScheduledAt)
 		assert.WithinDuration(t, effective, *dbJob.EffectiveScheduledAt, 1*time.Second,
 			"effective_scheduled_at must be persisted from the cost-folding release")

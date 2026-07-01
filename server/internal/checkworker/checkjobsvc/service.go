@@ -44,21 +44,26 @@ type Service interface {
 	) ([]*models.CheckJob, error)
 
 	// ReleaseLease releases the lease and reschedules the job for next execution.
+	// It folds in no fresh cost/delay sample (the probe was skipped, or ran on a
+	// backend that does not measure cost), so it re-anchors effective_scheduled_at
+	// to the new schedule; the cost/delay offset is reapplied on the next
+	// post-exec write via ReleaseLeaseWithSchedulingState.
 	ReleaseLease(ctx context.Context, jobUID string, workerUID string, nextScheduledAt time.Time) error
 
 	// ReleaseLeaseWithSchedulingState releases the lease, reschedules, and folds
-	// the post-exec cost signal into the row in the same write: it stores the
-	// updated cost EWMA and the recomputed effective_scheduled_at used for
-	// cost-aware, plan-weighted claim ordering (spec 2026-06-30-09). No extra
-	// query on the hot path — it reuses the single post-exec UPDATE. Callers
-	// without a fresh cost sample (rate-limit deferral, reaper, remote backends)
-	// use ReleaseLease instead.
+	// the post-exec cost and delay signals into the row in the same write: it
+	// stores the updated cost and delay EWMAs and the recomputed
+	// effective_scheduled_at used for cost-aware, plan-weighted claim ordering
+	// (spec 2026-06-30-09). No extra query on the hot path — it reuses the single
+	// post-exec UPDATE. Callers without a fresh sample (rate-limit deferral,
+	// reaper, remote backends) use ReleaseLease instead.
 	ReleaseLeaseWithSchedulingState(
 		ctx context.Context,
 		jobUID string,
 		workerUID string,
 		nextScheduledAt time.Time,
 		costEWMAMs float64,
+		delayEWMAMs float64,
 		effectiveScheduledAt time.Time,
 	) error
 }
@@ -273,19 +278,20 @@ func (s *serviceImpl) selectAvailableJobs(
 ) error {
 	query := tx.NewSelect().
 		Model(jobs).
-		Where("scheduled_at <= ?", now.Add(maxAhead)).
+		// Cost-aware, plan-weighted claim (spec 2026-06-30-09, D2/Option A): both
+		// the eligibility gate and the ordering key are effective_scheduled_at
+		// (scheduled_at + cost/delay offset − tier_credit), so a deprioritized job
+		// becomes claimable — and sorts — by its effective time. scheduled_at is
+		// used only by the Go runner to sleep until the real fire time, so a job
+		// claimed within the maxAhead window still fires on schedule. Populated on
+		// every row (NewCheckJob + migration 006 backfill + every release).
+		Where("effective_scheduled_at <= ?", now.Add(maxAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				WhereOr("lease_expires_at IS NULL").
 				WhereOr("lease_expires_at < ?", now)
 		}).
-		// Cost-aware, plan-weighted ordering (spec 2026-06-30-09, D2/Option A):
-		// the gate above still uses the real scheduled_at, but ordering uses
-		// effective_scheduled_at (scheduled_at + cost_penalty − tier_credit) so
-		// under contention cheap/paid checks win the limited slots. With spare
-		// capacity every due check still runs on time. COALESCE keeps pre-006
-		// rows (NULL effective) ordering by their real schedule.
-		OrderExpr("COALESCE(effective_scheduled_at, scheduled_at) ASC").
+		OrderExpr("effective_scheduled_at ASC").
 		Limit(limit)
 
 	// Region matching: NULL region or prefix matching
@@ -406,7 +412,8 @@ func (s *serviceImpl) ReleaseLease(
 		Set("lease_starts = 0"). // Reset since job completed
 		Set("scheduled_at = ?", nextScheduledAt).
 		// Re-anchor the ordering key to the new schedule so a deferred job does
-		// not keep an effective deadline from a stale (earlier) schedule.
+		// not keep an effective deadline from a stale (earlier) schedule. The
+		// cost/delay offset is reapplied on the next post-exec write.
 		Set("effective_scheduled_at = ?", nextScheduledAt).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
@@ -416,13 +423,14 @@ func (s *serviceImpl) ReleaseLease(
 }
 
 // ReleaseLeaseWithSchedulingState releases the lease and folds the post-exec
-// cost signal into the same UPDATE (spec 2026-06-30-09).
+// cost and delay signals into the same UPDATE (spec 2026-06-30-09).
 func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	ctx context.Context,
 	jobUID string,
 	workerUID string,
 	nextScheduledAt time.Time,
 	costEWMAMs float64,
+	delayEWMAMs float64,
 	effectiveScheduledAt time.Time,
 ) error {
 	update := s.db.NewUpdate().
@@ -432,6 +440,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 		Set("lease_starts = 0"). // Reset since job completed
 		Set("scheduled_at = ?", nextScheduledAt).
 		Set("cost_ewma_ms = ?", costEWMAMs).
+		Set("delay_ewma_ms = ?", delayEWMAMs).
 		Set("effective_scheduled_at = ?", effectiveScheduledAt).
 		Set("updated_at = ?", time.Now()).
 		Where("uid = ?", jobUID).
