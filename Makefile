@@ -198,7 +198,7 @@ bench-checks-sqlite: build build-loadgen ## Run loadgen against a SQLite-backed 
 		SP_DB_TYPE=sqlite \
 		SP_DB_DATA_DIR=$(BENCH_DATA)/sqlite \
 		SP_DB_RESET=true \
-		SP_SERVER_LISTEN_ADDR=127.0.0.1:$(BENCH_PORT) \
+		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
 		./$(APP_NAME) serve > $(BENCH_OUT)/server-sqlite.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
 	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
@@ -219,7 +219,7 @@ bench-checks-postgres: build build-loadgen ## Run loadgen against a PostgreSQL-b
 		SP_DB_EMBEDDED_DIR=$(BENCH_DATA)/pg \
 		SP_DB_PORT=$(BENCH_PG_PORT) \
 		SP_DB_RESET=true \
-		SP_SERVER_LISTEN_ADDR=127.0.0.1:$(BENCH_PORT) \
+		SP_SERVER_LISTEN=127.0.0.1:$(BENCH_PORT) \
 		LOG_LEVEL=warn \
 		./$(APP_NAME) serve > $(BENCH_OUT)/server-postgres.log 2>&1 & echo $$! > $(BENCH_OUT)/server.pid; \
 	trap "kill `cat $(BENCH_OUT)/server.pid` 2>/dev/null || true; rm -f $(BENCH_OUT)/server.pid" EXIT; \
