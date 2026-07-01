@@ -32,7 +32,12 @@ create index if not exists idx_check_jobs_claim_slow
 -- claim SELECT now filters on lane.
 drop index if exists idx_check_jobs_effective_scheduled_at;
 
--- D5 bench (2026-07-02, make bench-checks BENCH_DURATION=1m, 200 checks @10s):
--- partial vs composite claim p95 was equivalent within run-to-run noise on
--- both backends (see spec 2026-07-01-03 for the recorded numbers); the
--- partial shape is kept per the tie-breaker above.
+-- D5 bench (2026-07-02, make bench-checks, 200 checks @ 10s, fetch-stage =
+-- ClaimJobs wall clock): partial vs composite (lane, effective_scheduled_at)
+-- is equivalent within run-to-run noise — 1m runs measured fetch p50/p95 of
+-- 3.5/33.4ms then 1.8/8.3ms (partial, two runs) vs 3.1/10.0ms (composite) on
+-- SQLite, and 4.8/41.0ms then 0.98/21.5ms (partial) vs 1.3/9.7ms (composite)
+-- on embedded PG; the inter-run spread exceeds the inter-shape delta. The
+-- partial shape is kept per the tie-breaker above. No regression vs the
+-- pre-lane baseline (2m runs): SQLite fetch p50/p95 3.2/10.0ms vs 3.9/33.7ms
+-- before, PG 0.96/8.8ms vs 1.3/9.0ms before.
