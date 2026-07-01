@@ -90,11 +90,11 @@ func (c *SleepChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		return nil, err
 	}
 
-	d := sleepDuration(cfg)
+	sleepFor := sleepDuration(cfg)
 
 	start := time.Now()
 
-	timer := time.NewTimer(d)
+	timer := time.NewTimer(sleepFor)
 	defer timer.Stop()
 
 	select {
@@ -107,7 +107,7 @@ func (c *SleepChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 		return &checkerdef.Result{
 			Status:   checkerdef.StatusTimeout,
 			Duration: time.Since(start),
-			Metrics:  map[string]any{"sleep_ms": d.Milliseconds()},
+			Metrics:  map[string]any{configKeySleepMs: sleepFor.Milliseconds()},
 			Output: map[string]any{
 				checkerdef.OutputKeyError: "sleep interrupted by context (cost-aware timeout)",
 			},
@@ -119,7 +119,7 @@ func (c *SleepChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 	return &checkerdef.Result{
 		Status:   forcedStatus(cfg.Status),
 		Duration: slept,
-		Metrics:  map[string]any{"sleep_ms": d.Milliseconds()},
+		Metrics:  map[string]any{configKeySleepMs: sleepFor.Milliseconds()},
 		Output:   map[string]any{"status": cfg.statusLabel()},
 	}, nil
 }
@@ -127,18 +127,19 @@ func (c *SleepChecker) Execute(ctx context.Context, config checkerdef.Config) (*
 // sleepDuration computes the target sleep, applying a uniform ± jitter when
 // configured. The result is clamped to be non-negative.
 func sleepDuration(cfg *SleepConfig) time.Duration {
-	ms := cfg.SleepMs
+	totalMs := cfg.SleepMs
 
 	if cfg.JitterMs > 0 {
-		// Uniform jitter in [-JitterMs, +JitterMs].
-		ms += rand.IntN(2*cfg.JitterMs+1) - cfg.JitterMs //nolint:gosec // non-crypto jitter is fine
+		// Uniform jitter in [-JitterMs, +JitterMs]. math/rand/v2 is fine here —
+		// jitter is non-cryptographic.
+		totalMs += rand.IntN(2*cfg.JitterMs+1) - cfg.JitterMs
 	}
 
-	if ms < 0 {
-		ms = 0
+	if totalMs < 0 {
+		totalMs = 0
 	}
 
-	return time.Duration(ms) * time.Millisecond
+	return time.Duration(totalMs) * time.Millisecond
 }
 
 // forcedStatus maps the configured status string to a checkerdef.Status,

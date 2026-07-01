@@ -8,9 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/uptrace/bunrouter"
-
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -35,7 +34,7 @@ func seedCostJob(
 func TestGetCostDistribution_Handler(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 	r := require.New(t)
 
 	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
@@ -52,15 +51,26 @@ func TestGetCostDistribution_Handler(t *testing.T) {
 
 	srv := &Server{dbService: dbSvc}
 
+	// newReq builds a bunrouter request for the endpoint with the given raw
+	// query string, threading the test context.
+	newReq := func(rawQuery string) bunrouter.Request {
+		url := "/api/mgmt/scheduling/cost-distribution"
+		if rawQuery != "" {
+			url += "?" + rawQuery
+		}
+
+		req := httptest.NewRequestWithContext(ctx, http.MethodGet, url, http.NoBody)
+
+		return bunrouter.NewRequest(req)
+	}
+
 	t.Run("default threshold", func(t *testing.T) {
 		t.Parallel()
 		rr := require.New(t)
 
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet,
-			"/api/mgmt/scheduling/cost-distribution", http.NoBody)
 		w := httptest.NewRecorder()
 
-		rr.NoError(srv.getCostDistribution(w, bunrouter.NewRequest(req)))
+		rr.NoError(srv.getCostDistribution(w, newReq("")))
 		rr.Equal(http.StatusOK, w.Code)
 		rr.Equal("application/json", w.Header().Get("Content-Type"))
 
@@ -78,11 +88,9 @@ func TestGetCostDistribution_Handler(t *testing.T) {
 		t.Parallel()
 		rr := require.New(t)
 
-		req := httptest.NewRequestWithContext(ctx, http.MethodGet,
-			"/api/mgmt/scheduling/cost-distribution?thresholdMs=500", http.NoBody)
 		w := httptest.NewRecorder()
 
-		rr.NoError(srv.getCostDistribution(w, bunrouter.NewRequest(req)))
+		rr.NoError(srv.getCostDistribution(w, newReq("thresholdMs=500")))
 		rr.Equal(http.StatusOK, w.Code)
 
 		var resp costDistributionResponse

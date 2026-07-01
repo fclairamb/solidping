@@ -4,6 +4,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 )
 
+// configKeySleepMs is the JSON/config key for the sleep duration.
+const configKeySleepMs = "sleep_ms"
+
 // SleepConfig holds the configuration for the synthetic sleep check.
 //
 // The sleep check performs no network I/O. It simply sleeps for a configured
@@ -27,10 +30,10 @@ type SleepConfig struct {
 
 // FromMap populates the configuration from a map.
 func (c *SleepConfig) FromMap(configMap map[string]any) error {
-	if v, ok := readIntKey(configMap, "sleep_ms"); ok {
+	if v, ok := readIntKey(configMap, configKeySleepMs); ok {
 		c.SleepMs = v
-	} else if configMap["sleep_ms"] != nil {
-		return checkerdef.NewConfigError("sleep_ms", "must be a number")
+	} else if configMap[configKeySleepMs] != nil {
+		return checkerdef.NewConfigError(configKeySleepMs, "must be a number")
 	}
 
 	if v, ok := readIntKey(configMap, "jitter_ms"); ok {
@@ -51,7 +54,7 @@ func (c *SleepConfig) FromMap(configMap map[string]any) error {
 // GetConfig returns the configuration as a map.
 func (c *SleepConfig) GetConfig() map[string]any {
 	cfg := map[string]any{
-		"sleep_ms": c.SleepMs,
+		configKeySleepMs: c.SleepMs,
 	}
 
 	if c.JitterMs != 0 {

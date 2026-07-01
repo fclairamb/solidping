@@ -84,13 +84,13 @@ func Compute(ctx context.Context, db *bun.DB, isPostgres bool, thresholdMs int) 
 }
 
 // counts returns the total job count and the count at or below the threshold.
-func counts(ctx context.Context, db *bun.DB, thresholdMs int) (total, fast int, err error) {
+func counts(ctx context.Context, db *bun.DB, thresholdMs int) (int, int, error) {
 	var row struct {
 		Total int `bun:"total"`
 		Fast  int `bun:"fast"`
 	}
 
-	err = db.NewSelect().
+	err := db.NewSelect().
 		TableExpr("check_jobs").
 		ColumnExpr("count(*) AS total").
 		ColumnExpr("count(*) FILTER (WHERE cost_ewma_ms <= ?) AS fast", thresholdMs).
@@ -201,23 +201,23 @@ func percentilesOf(values []float64) Percentiles {
 
 // percentileCont computes the continuous percentile with linear interpolation,
 // matching PostgreSQL's percentile_cont. `sorted` must be ascending and
-// non-empty.
-func percentileCont(sorted []float64, p float64) float64 {
-	n := len(sorted)
-	if n == 1 {
+// non-empty. `quantile` is in [0,1].
+func percentileCont(sorted []float64, quantile float64) float64 {
+	count := len(sorted)
+	if count == 1 {
 		return sorted[0]
 	}
 
-	// PostgreSQL: rn = p * (n - 1); interpolate between floor and ceil.
-	rank := p * float64(n-1)
-	lo := int(math.Floor(rank))
-	hi := int(math.Ceil(rank))
+	// PostgreSQL: rank = quantile * (count - 1); interpolate floor↔ceil.
+	rank := quantile * float64(count-1)
+	lower := int(math.Floor(rank))
+	upper := int(math.Ceil(rank))
 
-	if lo == hi {
-		return sorted[lo]
+	if lower == upper {
+		return sorted[lower]
 	}
 
-	frac := rank - float64(lo)
+	frac := rank - float64(lower)
 
-	return sorted[lo] + frac*(sorted[hi]-sorted[lo])
+	return sorted[lower] + frac*(sorted[upper]-sorted[lower])
 }

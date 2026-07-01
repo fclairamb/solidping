@@ -197,17 +197,17 @@ func seedFromCost(costEWMAMs float64) int {
 		return DefaultSleepMs
 	}
 
-	ms := int(math.Round(costEWMAMs))
+	sleepMs := int(math.Round(costEWMAMs))
 
-	if ms < 1 {
-		ms = 1
+	if sleepMs < 1 {
+		sleepMs = 1
 	}
 
-	if ms > maxSleepMs {
-		ms = maxSleepMs
+	if sleepMs > maxSleepMs {
+		sleepMs = maxSleepMs
 	}
 
-	return ms
+	return sleepMs
 }
 
 func ptr[T any](v T) *T { return &v }
