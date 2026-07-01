@@ -1,16 +1,24 @@
 // Package scheduling holds the pure, side-effect-free math for cost-aware,
-// plan-weighted check scheduling (spec 2026-06-30-09).
+// plan-weighted check scheduling (spec 2026-06-30-09, cost-only offset per
+// spec 2026-07-01-02).
 //
 // It deliberately knows nothing about the database, the worker pool, or
 // goroutines — it is a set of small deterministic functions over a job's cost
-// and delay signals (cost_ewma_ms, delay_ewma_ms), its plan tier (plan_weight),
-// and a Params struct populated from config. The worker and the claim path call
-// into it; the unit tests exercise the ordering/weighting/timeout math directly.
+// signal (cost_ewma_ms), its plan tier (plan_weight), and a Params struct
+// populated from config. The worker and the claim path call into it; the unit
+// tests exercise the ordering/weighting/timeout math directly.
 //
-// Inert until there is data: the cost and delay EWMAs are 0 until a job's first
-// run, so a fresh job's effective deadline equals its real scheduled_at (pure
-// FIFO). The tier credit and cost-aware timeout are additionally gated by their
-// Params knobs (0 = off), so the zero-value Params reproduces today's behavior.
+// The delay EWMA (delay_ewma_ms) is pure telemetry: it is still folded via
+// UpdateEWMA on every release and reported by the cost-distribution endpoint,
+// but it never steers the claim order. Cost is an offender signal (an
+// expensive check occupies a runner slot); delay is a victim signal (the check
+// started late because the pool was busy) — deprioritizing on delay punished
+// starved checks and spiraled unboundedly under sustained overload.
+//
+// Inert until there is data: the cost EWMA is 0 until a job's first run, so a
+// fresh job's effective deadline equals its real scheduled_at (pure FIFO). The
+// tier credit and cost-aware timeout are additionally gated by their Params
+// knobs (0 = off), so the zero-value Params reproduces today's behavior.
 package scheduling
 
 import "time"
@@ -22,13 +30,22 @@ const DefaultExecutionTimeout = 30 * time.Second
 // CostOffsetWeight is the multiplier applied to cost_ewma_ms in the
 // deprioritization offset:
 //
-//	effective = scheduled_at + delay_ewma_ms + cost_ewma_ms × CostOffsetWeight − tier_credit
+//	effective = scheduled_at + cost_ewma_ms × CostOffsetWeight − tier_credit
 //
-// Cost is weighted heavier than delay because an expensive check occupies a
-// worker slot for its whole duration, while a delayed-but-fast check only
-// testifies to past contention — being slow costs the pool more than having
-// been late.
+// An expensive check occupies a worker slot for its whole duration, so it is
+// pushed back proportionally harder than its raw cost to give fast checks
+// first pick of a contended slot.
 const CostOffsetWeight = 2
+
+// MaxDeprioritizeOffset is the hard ceiling on the deprioritization offset.
+// It is structural — cost_ewma_ms is pinned to DefaultExecutionTimeout on
+// timeout, so cost × CostOffsetWeight can never exceed it — but the explicit
+// clamp guarantees no future term added to the offset can reintroduce the
+// unbounded-offset stranding pathology (delay-era offsets grew to ~95 min,
+// far past the 5-min claim window; spec 2026-07-01-02). Being bounded well
+// under the claim window is also the anti-starvation guarantee: a job
+// MaxDeprioritizeOffset overdue sorts ahead of any on-time job.
+const MaxDeprioritizeOffset = CostOffsetWeight * DefaultExecutionTimeout // 60s = weight × execution ceiling
 
 // Params bundles every tunable knob the scheduling math reads. It is built once
 // from config and passed by value (it is tiny and immutable per call).
@@ -38,10 +55,10 @@ const CostOffsetWeight = 2
 type Params struct {
 	// SlowThresholdMs is the dead-band on the deprioritization offset: a job's
 	// effective deadline is pushed past its real scheduled_at only once its
-	// weighted cost×CostOffsetWeight+delay EWMA sum reaches this many
-	// milliseconds. Below it the offset
-	// is 0 (effective == scheduled_at), so small per-run variance never reorders
-	// fast checks. 0 disables the dead-band (any positive offset applies).
+	// weighted cost EWMA (cost_ewma_ms × CostOffsetWeight) reaches this many
+	// milliseconds. Below it the offset is 0 (effective == scheduled_at), so
+	// small per-run variance never reorders fast checks. 0 disables the
+	// dead-band (any positive offset applies).
 	SlowThresholdMs float64
 
 	// TierCreditPerWeight is the deadline credit granted per unit of plan_weight
@@ -85,38 +102,46 @@ func (p Params) TierCredit(planWeight int) time.Duration {
 
 // EffectiveScheduledAt computes the WFQ claim ORDER BY key:
 //
-//	effective = scheduled_at + deprioritize_offset(cost, delay) − tier_credit(weight)
+//	effective = scheduled_at + deprioritize_offset(cost) − tier_credit(weight)
 //
-// The deprioritization offset is the job's delay EWMA plus its cost EWMA
-// weighted by CostOffsetWeight (a slower or chronically-delayed check sorts
-// later), but only once that sum crosses
-// SlowThresholdMs — below the threshold the offset is 0, so fast checks keep
-// their real-schedule (FIFO) order and small per-run variance never reorders
-// them. A paid job sorts earlier via the tier credit. The claim SELECT still
-// gates on the real scheduled_at and only orders by this value, so with spare
-// capacity every check runs on time; the offset only decides who wins a slot
-// when the due-batch exceeds capacity (Option A). The absolute scheduled_at
-// anchor is the anti-starvation guarantee: a skipped job's scheduled_at recedes
-// into the past, so its bounded offset eventually sorts it ahead of fresh work.
-func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs, delayEWMAMs float64, planWeight int) time.Time {
+// The deprioritization offset is the job's cost EWMA weighted by
+// CostOffsetWeight (a slower check sorts later), but only once that value
+// crosses SlowThresholdMs — below the threshold the offset is 0, so fast
+// checks keep their real-schedule (FIFO) order and small per-run variance
+// never reorders them. The offset is a pure offender penalty: the delay EWMA
+// is deliberately absent (telemetry-only), because penalizing on delay pushed
+// already-starved checks further back and spiraled unboundedly under overload
+// (spec 2026-07-01-02). A paid job sorts earlier via the tier credit. The
+// claim SELECT gates on the real scheduled_at and only orders by this value,
+// so with spare capacity every check runs on time; the offset only decides who
+// wins a slot when the due-batch exceeds capacity (Option A). Anti-starvation:
+// the offset is clamped to MaxDeprioritizeOffset (60s), so a skipped job's
+// receding scheduled_at sorts it ahead of any on-time job within a minute.
+func (p Params) EffectiveScheduledAt(scheduledAt time.Time, costEWMAMs float64, planWeight int) time.Time {
 	return scheduledAt.
-		Add(p.deprioritizeOffset(costEWMAMs, delayEWMAMs)).
+		Add(p.deprioritizeOffset(costEWMAMs)).
 		Add(-p.TierCredit(planWeight))
 }
 
 // deprioritizeOffset is how far past scheduled_at a job is pushed for being
-// expensive and/or chronically delayed: its delay EWMA plus its cost EWMA
-// weighted by CostOffsetWeight — but only once that sum reaches SlowThresholdMs.
-// Below the threshold it returns 0 (effective stays at scheduled_at), so trivial
-// cost/delay never reorders fast checks. A non-positive threshold disables the
-// dead-band (any positive sum applies).
-func (p Params) deprioritizeOffset(costEWMAMs, delayEWMAMs float64) time.Duration {
-	total := costEWMAMs*CostOffsetWeight + delayEWMAMs
+// expensive: its cost EWMA weighted by CostOffsetWeight — but only once that
+// value reaches SlowThresholdMs. Below the threshold it returns 0 (effective
+// stays at scheduled_at), so trivial cost never reorders fast checks. A
+// non-positive threshold disables the dead-band (any positive offset applies).
+// The result is clamped to MaxDeprioritizeOffset so the offset stays
+// structurally bounded no matter what the inputs are.
+func (p Params) deprioritizeOffset(costEWMAMs float64) time.Duration {
+	total := costEWMAMs * CostOffsetWeight
 	if total < p.SlowThresholdMs {
 		return 0
 	}
 
-	return msToDuration(total)
+	offset := msToDuration(total)
+	if offset > MaxDeprioritizeOffset {
+		return MaxDeprioritizeOffset
+	}
+
+	return offset
 }
 
 // msToDuration converts a non-negative millisecond scalar to a Duration,
