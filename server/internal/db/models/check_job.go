@@ -54,6 +54,13 @@ type CheckJob struct {
 	// de-prioritization only bites under contention (D2/Option A). Backfilled to
 	// scheduled_at by migration 006; delay-era offsets healed by migration 008.
 	EffectiveScheduledAt *time.Time `bun:"effective_scheduled_at"`
+	// Lane is the scheduling class (spec 2026-07-01-03): 0 = fast, 1 = slow
+	// (scheduling.LaneFast / LaneSlow). Classified from the cost EWMA with
+	// hysteresis in the post-exec write; new rows start fast (first run is
+	// FIFO; one execution reclassifies). The claim runs two lane-filtered
+	// SELECTs so slow jobs can never occupy more than pool_size −
+	// fast_lane_reserved slots on a worker. Added by migration 009.
+	Lane int16 `bun:"lane,notnull,default:0"`
 
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
@@ -76,7 +83,10 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 		// Anchor the WFQ ordering key to scheduled_at on creation; the
 		// post-exec write refines it once a cost signal exists.
 		EffectiveScheduledAt: &now,
-		UpdatedAt:            now,
+		// New jobs start in the fast lane (Lane zero value = 0): the first run
+		// is FIFO and the post-exec write reclassifies from the measured cost.
+		Lane:      0,
+		UpdatedAt: now,
 	}
 }
 
