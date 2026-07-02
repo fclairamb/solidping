@@ -82,6 +82,27 @@ test.describe("Check detail duty-cycle warning", () => {
     const box = await warning.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.width).toBeLessThanOrEqual(375);
+
+    // All four locales render a translated warning (language detector reads
+    // localStorage first; a distinctive fragment pins each translation).
+    const localizedFragments: Record<string, string> = {
+      fr: "créneau de supervision",
+      de: "Monitoring-Slot",
+      es: "slot de monitorización",
+      en: "monitoring slot",
+    };
+    for (const [lng, fragment] of Object.entries(localizedFragments)) {
+      await page.evaluate(
+        (language) => localStorage.setItem("solidping_language", language),
+        lng,
+      );
+      await page.reload();
+      await page.waitForLoadState("networkidle");
+      const localized = page.getByTestId("duty-cycle-warning");
+      await expect(localized).toBeVisible({ timeout: 10000 });
+      await expect(localized).toContainText(fragment);
+      await expect(localized).toContainText("100");
+    }
   });
 
   test("hides the warning for a fast check and for a never-run check", async ({
