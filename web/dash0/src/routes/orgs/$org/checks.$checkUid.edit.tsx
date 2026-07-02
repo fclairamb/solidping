@@ -23,7 +23,20 @@ function CheckEditPage() {
   const { t } = useTranslation("checks");
   const navigate = useNavigate();
   const { org, checkUid } = Route.useParams();
-  const { data: check, isLoading, error, refetch } = useCheck(org, checkUid);
+  // refetchOnMount "always": the form below seeds its field state ONCE from
+  // initialData, so it must never seed from a stale cache entry (e.g.
+  // re-opening the editor right after a save, when react-query returns the
+  // pre-save snapshot synchronously). Force a fetch on mount and hold the
+  // skeleton until it lands (isFetchedAfterMount); once the form is up,
+  // later background refetches never unmount it mid-edit because
+  // isFetchedAfterMount stays true for the life of the component.
+  const {
+    data: check,
+    isLoading,
+    isFetchedAfterMount,
+    error,
+    refetch,
+  } = useCheck(org, checkUid, { refetchOnMount: "always" });
   const updateCheck = useUpdateCheck(org, checkUid);
   const setConnections = useSetCheckConnections(org, checkUid);
   const createDep = useCreateCheckDependency(org, checkUid);
@@ -32,7 +45,9 @@ function CheckEditPage() {
   const { data: checkGroups } = useCheckGroups(org);
   const { data: regionsData } = useRegions(org);
 
-  if (isLoading) {
+  const waitingForFreshData = !error && !isFetchedAfterMount;
+
+  if (isLoading || waitingForFreshData) {
     return (
       <div className="space-y-6 max-w-2xl">
         <div className="flex items-center gap-4">

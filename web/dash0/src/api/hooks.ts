@@ -279,7 +279,16 @@ export function useInfiniteChecks(
 export function useCheck(
   org: string,
   uid: string,
-  options?: { with?: string; refetchInterval?: number }
+  options?: {
+    with?: string;
+    refetchInterval?: number;
+    /**
+     * Pass "always" when the consumer seeds local state from the response
+     * once (e.g. an edit form): combined with `isFetchedAfterMount`, it
+     * guarantees the seed comes from fresh data, not a stale cache entry.
+     */
+    refetchOnMount?: boolean | "always";
+  }
 ) {
   return useQuery({
     queryKey: ["check", org, uid, { with: options?.with }],
@@ -292,6 +301,7 @@ export function useCheck(
     },
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
+    refetchOnMount: options?.refetchOnMount,
   });
 }
 
