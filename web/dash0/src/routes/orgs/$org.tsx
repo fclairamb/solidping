@@ -59,6 +59,7 @@ import {
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
+import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { useTranslation } from "react-i18next";
 
 /** Parses the `?from=` search param used by the notification detail route. */
@@ -854,6 +855,7 @@ function OrgLayout() {
   }
 
   return (
+    <LiveEventsProvider org={org}>
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
@@ -883,5 +885,6 @@ function OrgLayout() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </LiveEventsProvider>
   );
 }

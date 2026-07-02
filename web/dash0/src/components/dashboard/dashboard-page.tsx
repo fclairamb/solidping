@@ -25,6 +25,7 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
+import { stretchWhileLive, useLiveStatus } from "@/contexts/LiveEventsContext";
 import {
   Card,
   CardContent,
@@ -201,6 +202,9 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t: tNav } = useTranslation("nav");
   const { organizations } = useAuth();
   const orgName = organizations.find((o) => o.slug === org)?.name || org;
+  // While the live hint stream is connected, cache invalidations drive
+  // freshness and the intervals below become a lazy safety net.
+  const { isLive } = useLiveStatus();
 
   const checksQuery = useChecks(org, {
     with: "last_result,last_status_change",
@@ -211,7 +215,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     size: 5,
     with: "check",
     hideSuppressed: true,
-    refetchInterval: INCIDENT_POLL_MS,
+    refetchInterval: stretchWhileLive(INCIDENT_POLL_MS, isLive),
   });
   const since24h = useMemo(
     () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
@@ -221,7 +225,7 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     periodType: "day",
     periodStartAfter: since24h,
     size: 1000,
-    refetchInterval: RESULT_POLL_MS,
+    refetchInterval: stretchWhileLive(RESULT_POLL_MS, isLive),
   });
   // One aggregated hourly query feeds every glance-card uptime strip — grouped
   // client-side by checkUid, so the card costs a single HTTP call regardless of
@@ -230,16 +234,17 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     periodType: "hour",
     periodStartAfter: since24h,
     size: 1000,
-    refetchInterval: RESULT_POLL_MS,
+    refetchInterval: stretchWhileLive(RESULT_POLL_MS, isLive),
   });
   const eventsQuery = useEvents(org, {
     size: 8,
-    refetchInterval: EVENT_POLL_MS,
+    refetchInterval: stretchWhileLive(EVENT_POLL_MS, isLive),
   });
 
   // Manual polling for checks: useChecks doesn't expose refetchInterval. Use
-  // a tick + refetch().
-  const checkTick = useTick(CHECK_POLL_MS);
+  // a tick + refetch(). Live hints invalidate the cache directly, so the
+  // tick stretches to the safety net while connected.
+  const checkTick = useTick(stretchWhileLive(CHECK_POLL_MS, isLive));
   useEffect(() => {
     if (checkTick) checksQuery.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
