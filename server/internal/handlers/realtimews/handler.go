@@ -162,6 +162,12 @@ func (h *Handler) writeLoop(ctx context.Context, conn *websocket.Conn, sub *real
 		case <-ctx.Done():
 			return
 		case <-ping.C:
+			// A dead peer fails to pong within the deadline: coder/websocket
+			// closes the connection itself on any Read/Write/Ping error
+			// (including context expiry), so there is no live socket left to
+			// carry an explicit close code by the time Ping returns — the
+			// explicit Close here is a best-effort formality for the rare
+			// case the connection is still writable.
 			pingCtx, cancel := context.WithTimeout(ctx, h.pingInterval/2+5*time.Second) //nolint:mnd // generous pong deadline
 			err := conn.Ping(pingCtx)
 			cancel()

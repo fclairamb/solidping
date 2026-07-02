@@ -62,6 +62,24 @@ func (rec *hintRecorder) kindsFor(orgUID string) map[string]bool {
 	return out
 }
 
+// checkUidsFor returns the union of all hinted check uids for the org.
+func (rec *hintRecorder) checkUidsFor(orgUID string) map[string]bool {
+	rec.mu.Lock()
+	defer rec.mu.Unlock()
+
+	out := make(map[string]bool)
+	for _, h := range rec.hints {
+		if h.Org != orgUID {
+			continue
+		}
+		for _, uid := range h.CheckUids {
+			out[uid] = true
+		}
+	}
+
+	return out
+}
+
 // hintSetup is an in-memory SQLite world with a real realtime publisher wired
 // into the incidents service, capturing every hint that reaches the bus.
 type hintSetup struct {
@@ -130,6 +148,24 @@ func TestProcessCheckResult_PublishesHintsOnIncidentOpen(t *testing.T) {
 	}, 2*time.Second, 10*time.Millisecond,
 		"incident open must hint results+checks+incidents+events, got %v",
 		setup.rec.kindsFor(setup.org.UID))
+}
+
+// TestProcessCheckResult_HintsCarryTheCheckUid proves the v2 attribution
+// contract: every hint published from the incident-open path (results,
+// checks, incidents, events) carries this check's uid, so a `check`-scoped
+// WebSocket subscriber can be routed to without watching the whole org.
+func TestProcessCheckResult_HintsCarryTheCheckUid(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	setup := newHintSetup(t)
+	setup.submit(t, models.ResultStatusDown)
+
+	r.Eventually(func() bool {
+		return setup.rec.checkUidsFor(setup.org.UID)[setup.check.UID]
+	}, 2*time.Second, 10*time.Millisecond,
+		"every hint on the incident-open path must carry the check uid, got %v",
+		setup.rec.checkUidsFor(setup.org.UID))
 }
 
 // TestProcessCheckResult_SteadyStateOnlyHintsResults keeps the check up: no

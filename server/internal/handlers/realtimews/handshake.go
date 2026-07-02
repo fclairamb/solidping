@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/coder/websocket"
 
@@ -69,28 +70,51 @@ func extractPreAuthToken(req *http.Request) string {
 // awaitAuthMessage waits up to h.authGrace for the first client message. Only
 // `auth` is accepted before authentication; anything else — including a
 // subscribe sent too early — closes with 4401.
+//
+// conn.Read closes the connection itself on ANY error, including a context
+// deadline (see the Conn doc comment in coder/websocket) — with the
+// library's own default status, not ours. So the grace window cannot be a
+// context passed straight into Read: that would race our intended 4401
+// against the library's own close. Instead the read runs on the request
+// context (no deadline of its own) in a goroutine, and a separate timer
+// decides whether we ever waited long enough to give up and close 4401
+// ourselves first.
 func (h *Handler) awaitAuthMessage(
 	ctx context.Context, conn *websocket.Conn, orgSlug string,
 ) (*auth.Claims, *models.Organization, websocket.StatusCode, string) {
-	graceCtx, cancel := context.WithTimeout(ctx, h.authGrace)
-	defer cancel()
+	type readResult struct {
+		data []byte
+		err  error
+	}
 
-	_, data, err := conn.Read(graceCtx)
-	if err != nil {
+	resultCh := make(chan readResult, 1)
+	go func() {
+		_, data, err := conn.Read(ctx)
+		resultCh <- readResult{data: data, err: err}
+	}()
+
+	select {
+	case <-time.After(h.authGrace):
 		return nil, nil, CloseAuthFailed, "no auth message within the grace window"
-	}
+	case <-ctx.Done():
+		return nil, nil, CloseAuthFailed, "connection ended before authentication"
+	case res := <-resultCh:
+		if res.err != nil {
+			return nil, nil, CloseAuthFailed, "connection ended before authentication"
+		}
 
-	var msg clientMessage
-	if jsonErr := json.Unmarshal(data, &msg); jsonErr != nil || msg.Type != msgTypeAuth || msg.Token == "" {
-		return nil, nil, CloseAuthFailed, "first message must be auth"
-	}
+		var msg clientMessage
+		if jsonErr := json.Unmarshal(res.data, &msg); jsonErr != nil || msg.Type != msgTypeAuth || msg.Token == "" {
+			return nil, nil, CloseAuthFailed, "first message must be auth"
+		}
 
-	claims, org, code, reason := h.authenticate(ctx, msg.Token, orgSlug)
-	if claims == nil {
-		return nil, nil, code, reason
-	}
+		claims, org, code, reason := h.authenticate(ctx, msg.Token, orgSlug)
+		if claims == nil {
+			return nil, nil, code, reason
+		}
 
-	return claims, org, 0, ""
+		return claims, org, 0, ""
+	}
 }
 
 // authenticate validates the token and checks org membership, mirroring
