@@ -7,13 +7,16 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jmap"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // Errors for system parameter operations.
@@ -482,4 +485,110 @@ func (s *Service) loadEmailInboxConfig(ctx context.Context) (*jmap.Config, error
 	}
 
 	return cfg, nil
+}
+
+// LaneLoadStats aggregates one lane's offered load for a worker.
+type LaneLoadStats struct {
+	// Jobs is the number of enabled check jobs in this lane the worker is
+	// eligible to claim (region match).
+	Jobs int `json:"jobs"`
+	// CostEwmaSumMs is the sum of the jobs' cost EWMAs: the total wall-clock
+	// milliseconds one full pass over the lane costs this worker.
+	CostEwmaSumMs float64 `json:"costEwmaSumMs"`
+	// DelayEwmaSumMs is the sum of the jobs' delay EWMAs — accumulated
+	// start-lateness telemetry. A growing sum means the lane runs behind.
+	DelayEwmaSumMs float64 `json:"delayEwmaSumMs"`
+	// DutySumPct is the sum of per-job duty cycles (100 × cost EWMA / period):
+	// how many runner slots this lane's steady-state demand occupies,
+	// expressed in percent (100 ≈ one full-time slot). Comparing it against
+	// the worker's pool capacity answers "is this worker overloaded?".
+	DutySumPct float64 `json:"dutySumPct"`
+}
+
+// WorkerLaneLoad is the per-worker lane-load report.
+type WorkerLaneLoad struct {
+	WorkerUID    string        `json:"workerUid"`
+	Name         string        `json:"name"`
+	Region       *string       `json:"region,omitempty"`
+	LastActiveAt *time.Time    `json:"lastActiveAt,omitempty"`
+	Fast         LaneLoadStats `json:"fast"`
+	Slow         LaneLoadStats `json:"slow"`
+}
+
+// LaneLoad computes, server-side, each worker's offered check load per lane:
+// job counts, summed cost and delay EWMAs, and the summed duty cycle. "Offered"
+// means every enabled job the worker is eligible to claim (job region unset, or
+// a prefix of the worker's region) — workers sharing a region therefore see the
+// same jobs, which is the honest capacity view for "is this worker overloaded".
+func (s *Service) LaneLoad(ctx context.Context) ([]WorkerLaneLoad, error) {
+	var workers []*models.Worker
+	if err := s.db.DB().NewSelect().
+		Model(&workers).
+		Where("deleted_at IS NULL").
+		Order("last_active_at DESC").
+		Scan(ctx); err != nil {
+		return nil, fmt.Errorf("list workers: %w", err)
+	}
+
+	// One bounded scan over the enabled jobs (one row per check × region);
+	// aggregation happens in Go so the duty division and the region prefix
+	// match stay dialect-neutral.
+	var jobs []struct {
+		Lane        uint8              `bun:"lane"`
+		Region      *string            `bun:"region"`
+		Period      timeutils.Duration `bun:"period"`
+		CostEwmaMs  float64            `bun:"cost_ewma_ms"`
+		DelayEwmaMs float64            `bun:"delay_ewma_ms"`
+	}
+	if err := s.db.DB().NewSelect().
+		TableExpr("check_jobs AS cj").
+		ColumnExpr("cj.lane, cj.region, cj.period, cj.cost_ewma_ms, cj.delay_ewma_ms").
+		Join("JOIN checks AS c ON c.uid = cj.check_uid").
+		Where("c.enabled = ?", true).
+		Where("c.deleted_at IS NULL").
+		Scan(ctx, &jobs); err != nil {
+		return nil, fmt.Errorf("list check jobs: %w", err)
+	}
+
+	report := make([]WorkerLaneLoad, 0, len(workers))
+
+	for _, worker := range workers {
+		row := WorkerLaneLoad{
+			WorkerUID:    worker.UID,
+			Name:         worker.Name,
+			Region:       worker.Region,
+			LastActiveAt: worker.LastActiveAt,
+		}
+
+		workerRegion := ""
+		if worker.Region != nil {
+			workerRegion = *worker.Region
+		}
+
+		for i := range jobs {
+			job := &jobs[i]
+			// Mirror the claim's region gate: NULL region, or the job region
+			// is a prefix of the worker's ("eu" jobs match an "eu-fr" worker).
+			if job.Region != nil && !strings.HasPrefix(workerRegion, *job.Region) {
+				continue
+			}
+
+			stats := &row.Fast
+			if job.Lane == scheduling.LaneSlow {
+				stats = &row.Slow
+			}
+
+			stats.Jobs++
+			stats.CostEwmaSumMs += job.CostEwmaMs
+			stats.DelayEwmaSumMs += job.DelayEwmaMs
+
+			if periodMs := float64(time.Duration(job.Period).Milliseconds()); periodMs > 0 {
+				stats.DutySumPct += 100 * job.CostEwmaMs / periodMs
+			}
+		}
+
+		report = append(report, row)
+	}
+
+	return report, nil
 }

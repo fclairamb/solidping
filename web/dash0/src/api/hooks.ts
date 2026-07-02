@@ -2200,6 +2200,37 @@ export function useSystemParameters() {
   });
 }
 
+// Per-worker check-lane load report (super-admin): job counts, summed
+// cost/delay EWMAs, and summed duty cycle per lane, computed server-side.
+export interface LaneLoadStats {
+  jobs: number;
+  costEwmaSumMs: number;
+  delayEwmaSumMs: number;
+  dutySumPct: number;
+}
+
+export interface WorkerLaneLoad {
+  workerUid: string;
+  name: string;
+  region?: string;
+  lastActiveAt?: string;
+  fast: LaneLoadStats;
+  slow: LaneLoadStats;
+}
+
+export function useSchedulingLaneLoad() {
+  return useQuery({
+    queryKey: ["system-scheduling-lane-load"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: WorkerLaneLoad[] }>(
+        "/api/v1/system/scheduling/lane-load"
+      );
+      return response.data || [];
+    },
+    refetchInterval: 30000,
+  });
+}
+
 export function useSetSystemParameter() {
   const queryClient = useQueryClient();
   return useMutation({

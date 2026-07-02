@@ -8,8 +8,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 func TestToResponse_MasksSecrets(t *testing.T) {
@@ -179,4 +181,90 @@ func (m *MockDBService) DeleteSystemParameter(_ context.Context, key string) err
 	delete(m.params, key)
 
 	return nil
+}
+
+// TestLaneLoad verifies the per-worker lane-load aggregation: sums of cost and
+// delay EWMAs and the duty-cycle sum per lane, with the claim's region
+// eligibility applied (NULL-region jobs count for every worker; region-scoped
+// jobs count only for workers whose region has the job region as a prefix).
+func TestLaneLoad(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	ctx := context.Background()
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("lane-load", "Lane Load Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	euRegion := "eu"
+	seedJob := func(slug string, lane uint8, region *string, periodSec int, costMs, delayMs float64, enabled bool) {
+		check := models.NewCheck(org.UID, slug, "http")
+		check.Name = &slug
+		check.Enabled = enabled
+		r.NoError(dbSvc.CreateCheck(ctx, check))
+
+		// CreateCheck auto-materializes the check_jobs row; shape that row
+		// instead of inserting a second one.
+		_, updateErr := dbSvc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lane = ?", lane).
+			Set("region = ?", region).
+			Set("period = ?", timeutils.Duration(time.Duration(periodSec)*time.Second)).
+			Set("cost_ewma_ms = ?", costMs).
+			Set("delay_ewma_ms = ?", delayMs).
+			Where("check_uid = ?", check.UID).
+			Exec(ctx)
+		r.NoError(updateErr)
+	}
+
+	// Global fast job: 100ms cost over 10s → duty 1%.
+	seedJob("fast-global", scheduling.LaneFast, nil, 10, 100, 50, true)
+	// Global slow job: 10s cost over 10s → duty 100%.
+	seedJob("slow-global", scheduling.LaneSlow, nil, 10, 10000, 140000, true)
+	// EU-scoped slow job: only the EU worker sees it. 3s over 60s → duty 5%.
+	seedJob("slow-eu", scheduling.LaneSlow, &euRegion, 60, 3000, 1000, true)
+	// Disabled check: never counted.
+	seedJob("slow-disabled", scheduling.LaneSlow, nil, 10, 9999, 9999, false)
+
+	defaultWorker := models.NewWorker("w-default", "Default Worker")
+	defaultRegion := "default"
+	defaultWorker.Region = &defaultRegion
+	_, err = dbSvc.DB().NewInsert().Model(defaultWorker).Exec(ctx)
+	r.NoError(err)
+
+	euWorker := models.NewWorker("w-eu", "EU Worker")
+	euFr := "eu-fr-paris"
+	euWorker.Region = &euFr
+	_, err = dbSvc.DB().NewInsert().Model(euWorker).Exec(ctx)
+	r.NoError(err)
+
+	svc := NewService(dbSvc)
+	report, err := svc.LaneLoad(ctx)
+	r.NoError(err)
+	r.Len(report, 2)
+
+	byUID := map[string]WorkerLaneLoad{}
+	for _, row := range report {
+		byUID[row.WorkerUID] = row
+	}
+
+	def := byUID[defaultWorker.UID]
+	r.Equal(1, def.Fast.Jobs)
+	r.InDelta(100, def.Fast.CostEwmaSumMs, 0.001)
+	r.InDelta(50, def.Fast.DelayEwmaSumMs, 0.001)
+	r.InDelta(1, def.Fast.DutySumPct, 0.001)
+	r.Equal(1, def.Slow.Jobs, "the eu-scoped job must not count for the default worker")
+	r.InDelta(10000, def.Slow.CostEwmaSumMs, 0.001)
+	r.InDelta(140000, def.Slow.DelayEwmaSumMs, 0.001)
+	r.InDelta(100, def.Slow.DutySumPct, 0.001)
+
+	eu := byUID[euWorker.UID]
+	r.Equal(2, eu.Slow.Jobs, "eu worker sees the global and the eu-scoped slow jobs")
+	r.InDelta(13000, eu.Slow.CostEwmaSumMs, 0.001)
+	r.InDelta(141000, eu.Slow.DelayEwmaSumMs, 0.001)
+	r.InDelta(105, eu.Slow.DutySumPct, 0.001)
 }

@@ -127,7 +127,22 @@
     "jobRunners": "Job Runners",
     "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs.",
     "fastLaneReserved": "Fast-lane reserved slots",
-    "fastLaneReservedHelp": "Check runner slots reserved for fast checks: slow checks (cost \u2265 2s) can never occupy more than Check Runners minus this many slots. Takes effect after restart."
+    "fastLaneReservedHelp": "Check runner slots reserved for fast checks: slow checks (cost ≥ 2s) can never occupy more than Check Runners minus this many slots. Takes effect after restart.",
+    "checkRunnersGroup": "Check runners",
+    "checkRunnersGroupHelp": "The pool that executes checks. The fast-lane reservation is carved out of this same pool.",
+    "jobRunnersGroup": "Background jobs",
+    "fastLaneReservedTooHigh": "Must be smaller than the total check runners.",
+    "laneLoadTitle": "Current load",
+    "laneLoadDescription": "Server-computed offered load per worker and lane. Duty is the sum of per-check duty cycles: 100% ≈ one permanently occupied runner slot; a lane whose duty exceeds its slot capacity is running behind.",
+    "laneLoadEmpty": "No workers registered yet.",
+    "laneFast": "Fast lane",
+    "laneSlow": "Slow lane",
+    "laneCol": "Lane",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ cost",
+    "delaySumCol": "Σ delay",
+    "dutyCol": "Duty",
+    "overloaded": "Overloaded"
   },
   "emailInbox": {
     "title": "Email Inbox",

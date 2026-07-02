@@ -127,7 +127,22 @@
     "jobRunners": "Workers de tareas",
     "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano.",
     "fastLaneReserved": "Plazas reservadas del carril rápido",
-    "fastLaneReservedHelp": "Plazas de runners reservadas para checks rápidos: los checks lentos (coste \u2265 2 s) nunca pueden ocupar más que Check Runners menos este número. Surte efecto tras reiniciar."
+    "fastLaneReservedHelp": "Plazas de runners reservadas para checks rápidos: los checks lentos (coste ≥ 2 s) nunca pueden ocupar más que Check Runners menos este número. Surte efecto tras reiniciar.",
+    "checkRunnersGroup": "Runners de checks",
+    "checkRunnersGroupHelp": "El pool que ejecuta los checks. La reserva del carril rápido se toma de este mismo pool.",
+    "jobRunnersGroup": "Tareas en segundo plano",
+    "fastLaneReservedTooHigh": "Debe ser menor que el total de runners de checks.",
+    "laneLoadTitle": "Carga actual",
+    "laneLoadDescription": "Carga ofrecida por worker y carril, calculada en el servidor. El duty es la suma de los ciclos de ocupación por check: 100 % ≈ un slot de runner ocupado permanentemente; un carril cuyo duty supera su capacidad va con retraso.",
+    "laneLoadEmpty": "Aún no hay workers registrados.",
+    "laneFast": "Carril rápido",
+    "laneSlow": "Carril lento",
+    "laneCol": "Carril",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ coste",
+    "delaySumCol": "Σ retraso",
+    "dutyCol": "Duty",
+    "overloaded": "Sobrecargado"
   },
   "emailInbox": {
     "title": "Bandeja de entrada",

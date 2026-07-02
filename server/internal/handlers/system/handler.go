@@ -286,3 +286,16 @@ func (h *Handler) handleEmailInboxError(writer http.ResponseWriter, err error) e
 			base.ErrorCodeEmailInboxTestFailed, err.Error())
 	}
 }
+
+// LaneLoad handles GET /api/v1/system/scheduling/lane-load. Super-admin only.
+// Returns each worker's offered check load per lane (job counts, summed
+// cost/delay EWMAs, summed duty cycle) so overload is visible server-side
+// instead of being re-derived client-side from raw rows.
+func (h *Handler) LaneLoad(writer http.ResponseWriter, req bunrouter.Request) error {
+	report, err := h.svc.LaneLoad(req.Context())
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": report})
+}

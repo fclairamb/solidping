@@ -383,3 +383,54 @@ test.describe("Server Admin — non-super-admin guard", () => {
     await expect(page.getByTestId("hashing-algorithm")).toHaveCount(0);
   });
 });
+
+test.describe("Server Performance", () => {
+  test("check-runner settings are grouped and the fast-lane floor is validated against the pool size", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/server/performance");
+    await page.waitForLoadState("networkidle");
+
+    // The check-runner pool and its fast-lane floor render as one group,
+    // background jobs as another.
+    await expect(
+      page.getByRole("heading", { name: /check runners/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /background jobs/i }),
+    ).toBeVisible();
+
+    const pool = page.locator("#checkWorkers");
+    const floor = page.getByTestId("fast-lane-reserved-input");
+    await expect(pool).toBeVisible();
+
+    // A floor >= pool size is rejected client-side: inline error + save
+    // disabled (the backend would silently clamp it otherwise).
+    await pool.fill("10");
+    await floor.fill("10");
+    await expect(page.getByTestId("fast-lane-reserved-error")).toBeVisible();
+    await expect(page.getByRole("button", { name: /save/i })).toBeDisabled();
+
+    // Back inside the bound, the error clears and save re-arms.
+    await floor.fill("4");
+    await expect(page.getByTestId("fast-lane-reserved-error")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /save/i })).toBeEnabled();
+  });
+
+  test("current-load card reports fast and slow lanes per worker", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    await page.goto("orgs/test/server/performance");
+    await page.waitForLoadState("networkidle");
+
+    // The lane-load report renders one table per worker with a fast and a
+    // slow row (the test server registers its own worker at startup).
+    await expect(
+      page.getByRole("heading", { name: /current load/i }),
+    ).toBeVisible();
+    await expect(page.getByTestId("lane-load-fast").first()).toBeVisible();
+    await expect(page.getByTestId("lane-load-slow").first()).toBeVisible();
+  });
+});

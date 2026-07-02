@@ -885,6 +885,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
+	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (service token preferred for SaaS billing service; admin user

@@ -127,7 +127,22 @@
     "jobRunners": "Workers de tâches",
     "jobRunnersHelp": "Nombre de goroutines concurrentes pour traiter les tâches en arrière-plan.",
     "fastLaneReserved": "Emplacements réservés à la voie rapide",
-    "fastLaneReservedHelp": "Emplacements de runners réservés aux checks rapides : les checks lents (coût \u2265 2 s) ne peuvent jamais occuper plus que Check Runners moins ce nombre. Prend effet après redémarrage."
+    "fastLaneReservedHelp": "Emplacements de runners réservés aux checks rapides : les checks lents (coût ≥ 2 s) ne peuvent jamais occuper plus que Check Runners moins ce nombre. Prend effet après redémarrage.",
+    "checkRunnersGroup": "Runners de checks",
+    "checkRunnersGroupHelp": "Le pool qui exécute les checks. La réservation de la voie rapide est prise sur ce même pool.",
+    "jobRunnersGroup": "Tâches en arrière-plan",
+    "fastLaneReservedTooHigh": "Doit être inférieur au nombre total de runners de checks.",
+    "laneLoadTitle": "Charge actuelle",
+    "laneLoadDescription": "Charge offerte par worker et par voie, calculée côté serveur. Le duty est la somme des cycles d'occupation par check : 100 % ≈ un slot de runner occupé en permanence ; une voie dont le duty dépasse sa capacité prend du retard.",
+    "laneLoadEmpty": "Aucun worker enregistré pour le moment.",
+    "laneFast": "Voie rapide",
+    "laneSlow": "Voie lente",
+    "laneCol": "Voie",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ coût",
+    "delaySumCol": "Σ délai",
+    "dutyCol": "Duty",
+    "overloaded": "Surchargé"
   },
   "emailInbox": {
     "title": "Boîte de réception e-mail",

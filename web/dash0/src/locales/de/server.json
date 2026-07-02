@@ -127,7 +127,22 @@
     "jobRunners": "Auftrags-Worker",
     "jobRunnersHelp": "Anzahl gleichzeitiger Goroutinen zur Verarbeitung von Hintergrundaufträgen.",
     "fastLaneReserved": "Reservierte Fast-Lane-Slots",
-    "fastLaneReservedHelp": "Für schnelle Checks reservierte Runner-Slots: langsame Checks (Kosten \u2265 2 s) können nie mehr als Check Runners minus diese Anzahl belegen. Wird nach einem Neustart wirksam."
+    "fastLaneReservedHelp": "Für schnelle Checks reservierte Runner-Slots: langsame Checks (Kosten ≥ 2 s) können nie mehr als Check Runners minus diese Anzahl belegen. Wird nach einem Neustart wirksam.",
+    "checkRunnersGroup": "Check-Runner",
+    "checkRunnersGroupHelp": "Der Pool, der Checks ausführt. Die Fast-Lane-Reservierung wird aus demselben Pool entnommen.",
+    "jobRunnersGroup": "Hintergrundaufgaben",
+    "fastLaneReservedTooHigh": "Muss kleiner sein als die Gesamtzahl der Check-Runner.",
+    "laneLoadTitle": "Aktuelle Last",
+    "laneLoadDescription": "Serverseitig berechnete angebotene Last pro Worker und Lane. Duty ist die Summe der Auslastungszyklen pro Check: 100 % ≈ ein dauerhaft belegter Runner-Slot; eine Lane, deren Duty ihre Slot-Kapazität übersteigt, gerät in Rückstand.",
+    "laneLoadEmpty": "Noch keine Worker registriert.",
+    "laneFast": "Fast Lane",
+    "laneSlow": "Slow Lane",
+    "laneCol": "Lane",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ Kosten",
+    "delaySumCol": "Σ Verzögerung",
+    "dutyCol": "Duty",
+    "overloaded": "Überlastet"
   },
   "emailInbox": {
     "title": "E-Mail-Posteingang",

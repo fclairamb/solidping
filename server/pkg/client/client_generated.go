@@ -1083,6 +1083,26 @@ type JobResponse struct {
 	Data *Job `json:"data,omitempty"`
 }
 
+// LaneLoadResponse defines model for LaneLoadResponse.
+type LaneLoadResponse struct {
+	Data []WorkerLaneLoad `json:"data"`
+}
+
+// LaneLoadStats One lane's offered load for a worker.
+type LaneLoadStats struct {
+	// CostEwmaSumMs Sum of the jobs' cost EWMAs (ms) — wall-clock cost of one full pass.
+	CostEwmaSumMs float32 `json:"costEwmaSumMs"`
+
+	// DelayEwmaSumMs Sum of the jobs' start-lateness EWMAs (ms) — grows when the lane runs behind.
+	DelayEwmaSumMs float32 `json:"delayEwmaSumMs"`
+
+	// DutySumPct Sum of per-job duty cycles (100 × cost EWMA / period). 100 ≈ one permanently occupied runner slot; compare against the worker's pool capacity to judge overload.
+	DutySumPct float32 `json:"dutySumPct"`
+
+	// Jobs Enabled check jobs in this lane the worker is eligible to claim.
+	Jobs int `json:"jobs"`
+}
+
 // LastResult defines model for LastResult.
 type LastResult struct {
 	// Metrics Performance metrics (e.g., response time, DNS time)
@@ -1442,6 +1462,19 @@ type VersionResponse struct {
 	GitTime *string `json:"gitTime,omitempty"`
 	RunMode *string `json:"runMode,omitempty"`
 	Version *string `json:"version,omitempty"`
+}
+
+// WorkerLaneLoad defines model for WorkerLaneLoad.
+type WorkerLaneLoad struct {
+	// Fast One lane's offered load for a worker.
+	Fast         LaneLoadStats `json:"fast"`
+	LastActiveAt *time.Time    `json:"lastActiveAt,omitempty"`
+	Name         string        `json:"name"`
+	Region       *string       `json:"region,omitempty"`
+
+	// Slow One lane's offered load for a worker.
+	Slow      LaneLoadStats `json:"slow"`
+	WorkerUid string        `json:"workerUid"`
 }
 
 // CheckUidPath defines model for CheckUidPath.
@@ -1962,6 +1995,9 @@ type ClientInterface interface {
 	SetSystemParameterWithBody(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetSchedulingLaneLoad request
+	GetSchedulingLaneLoad(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetHealth(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -2770,6 +2806,18 @@ func (c *Client) SetSystemParameterWithBody(ctx context.Context, key string, con
 
 func (c *Client) SetSystemParameter(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewSetSystemParameterRequest(c.Server, key, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetSchedulingLaneLoad(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetSchedulingLaneLoadRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -5548,6 +5596,33 @@ func NewSetSystemParameterRequestWithBody(server string, key string, contentType
 	return req, nil
 }
 
+// NewGetSchedulingLaneLoadRequest generates requests for GetSchedulingLaneLoad
+func NewGetSchedulingLaneLoadRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/system/scheduling/lane-load")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest(http.MethodGet, queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -5778,6 +5853,9 @@ type ClientWithResponsesInterface interface {
 	SetSystemParameterWithBodyWithResponse(ctx context.Context, key string, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetSystemParameterResult, error)
 
 	SetSystemParameterWithResponse(ctx context.Context, key string, body SetSystemParameterJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSystemParameterResult, error)
+
+	// GetSchedulingLaneLoadWithResponse request
+	GetSchedulingLaneLoadWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSchedulingLaneLoadResult, error)
 }
 
 type GetHealthResult struct {
@@ -7427,6 +7505,38 @@ func (r SetSystemParameterResult) ContentType() string {
 	return ""
 }
 
+type GetSchedulingLaneLoadResult struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *LaneLoadResponse
+	JSON401      *Unauthorized
+	JSON403      *Forbidden
+}
+
+// Status returns HTTPResponse.Status
+func (r GetSchedulingLaneLoadResult) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetSchedulingLaneLoadResult) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+// ContentType is a convenience method to retrieve the Content-Type value from the HTTP response headers
+func (r GetSchedulingLaneLoadResult) ContentType() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Header.Get("Content-Type")
+	}
+	return ""
+}
+
 // GetHealthWithResponse request returning *GetHealthResult
 func (c *ClientWithResponses) GetHealthWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHealthResult, error) {
 	rsp, err := c.GetHealth(ctx, reqEditors...)
@@ -8021,6 +8131,15 @@ func (c *ClientWithResponses) SetSystemParameterWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseSetSystemParameterResult(rsp)
+}
+
+// GetSchedulingLaneLoadWithResponse request returning *GetSchedulingLaneLoadResult
+func (c *ClientWithResponses) GetSchedulingLaneLoadWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetSchedulingLaneLoadResult, error) {
+	rsp, err := c.GetSchedulingLaneLoad(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetSchedulingLaneLoadResult(rsp)
 }
 
 // ParseGetHealthResult parses an HTTP response from a GetHealthWithResponse call
@@ -9840,6 +9959,46 @@ func ParseSetSystemParameterResult(rsp *http.Response) (*SetSystemParameterResul
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest SystemParameter
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 401:
+		var dest Unauthorized
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON401 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 403:
+		var dest Forbidden
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON403 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetSchedulingLaneLoadResult parses an HTTP response from a GetSchedulingLaneLoadWithResponse call
+func ParseGetSchedulingLaneLoadResult(rsp *http.Response) (*GetSchedulingLaneLoadResult, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetSchedulingLaneLoadResult{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest LaneLoadResponse
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
