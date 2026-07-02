@@ -166,7 +166,7 @@ func (n *PgEventNotifier) Listen(eventType string) <-chan string {
 		n.listeners[eventType] = []chan string{}
 	}
 
-	ch := make(chan string, 1) // Buffered to avoid blocking
+	ch := make(chan string, ListenerBuffer) // buffered: see ListenerBuffer
 	n.listeners[eventType] = append(n.listeners[eventType], ch)
 	return ch
 }

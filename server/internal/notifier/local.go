@@ -66,7 +66,7 @@ func (n *LocalEventNotifier) Listen(eventType string) <-chan string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	ch := make(chan string, 1) // Buffered to avoid blocking
+	ch := make(chan string, ListenerBuffer) // buffered: see ListenerBuffer
 	n.listeners[eventType] = append(n.listeners[eventType], ch)
 	return ch
 }

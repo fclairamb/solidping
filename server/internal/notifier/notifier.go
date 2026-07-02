@@ -23,6 +23,17 @@ type EventNotifier interface {
 	Close() error
 }
 
+// ListenerBuffer is the per-listener channel capacity handed out by Listen.
+// Delivery is best-effort (Notify never blocks: a full channel drops the
+// payload), so this buffer bounds how bursty publishing may get before a slow
+// consumer starts losing events. A capacity of 1 was enough for the
+// job.created wakeup (dropped wakeups coalesce by design), but org-scoped
+// realtime hints arrive in multi-org bursts where each dropped payload is a
+// DIFFERENT org's update — observed as CI-only realtime test failures when
+// the -race scheduler let two back-to-back hints outrun the draining
+// goroutine.
+const ListenerBuffer = 16
+
 // ListenerCounter is implemented by notifiers that can report how many listener
 // channels are currently registered. Both LocalEventNotifier and
 // PgEventNotifier satisfy it; the memory surface uses a type assertion so the

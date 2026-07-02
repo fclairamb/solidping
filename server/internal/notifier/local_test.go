@@ -2,8 +2,11 @@ package notifier
 
 import (
 	"context"
+	"strconv"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestLocalEventNotifier_Notify(t *testing.T) {
@@ -279,5 +282,36 @@ func TestLocalEventNotifier_ConcurrentNotifications(t *testing.T) {
 		// Success
 	case <-time.After(100 * time.Millisecond):
 		t.Fatal("Expected notification but none received")
+	}
+}
+
+// TestLocalEventNotifier_BurstWithinBufferIsLossless pins the ListenerBuffer
+// guarantee: a burst of up to ListenerBuffer notifications sent while the
+// consumer is NOT draining must all be delivered once it starts. This is the
+// regression test for the CI-only realtime failures where two back-to-back
+// org hints outran the draining goroutine and the second was dropped by the
+// old 1-slot buffer.
+func TestLocalEventNotifier_BurstWithinBufferIsLossless(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	n := NewLocalEventNotifier()
+	defer func() { _ = n.Close() }()
+
+	ch := n.Listen("burst")
+
+	// Publish a full buffer's worth before the consumer reads anything.
+	for i := 0; i < ListenerBuffer; i++ {
+		r.NoError(n.Notify(context.Background(), "burst", strconv.Itoa(i)))
+	}
+
+	// Every payload must be buffered, in order, with nothing dropped.
+	for i := 0; i < ListenerBuffer; i++ {
+		select {
+		case got := <-ch:
+			r.Equal(strconv.Itoa(i), got)
+		case <-time.After(time.Second):
+			r.FailNowf("dropped payload", "payload %d never arrived", i)
+		}
 	}
 }
