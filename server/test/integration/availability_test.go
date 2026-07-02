@@ -3,7 +3,9 @@ package integration
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"net/url"
 	"testing"
 	"time"
 
@@ -174,6 +176,25 @@ func newAvailUID(n int) string {
 	return base + string(rune('0'+(n/10))) + string(rune('0'+(n%10)))
 }
 
+// midDayTZ returns an IANA fixed-offset timezone in which the wall clock is
+// currently around mid-day, so "today" started ~11-12 hours ago in that zone.
+// The availability fixtures place raw rows and an incident 1-5 hours in the
+// past and expect them inside "today" — resolved against UTC that breaks for
+// any suite run within ~5h after UTC midnight. Note the Etc/GMT sign
+// convention is inverted (Etc/GMT+5 means UTC−5).
+func midDayTZ(now time.Time) string {
+	offset := 12 - now.UTC().Hour()
+
+	switch {
+	case offset == 0:
+		return "UTC"
+	case offset > 0:
+		return fmt.Sprintf("Etc/GMT-%d", offset)
+	default:
+		return fmt.Sprintf("Etc/GMT+%d", -offset)
+	}
+}
+
 func getAvailability(
 	t *testing.T, ts *TestServer, token, checkIdent, periods string,
 ) (int, *availabilityResponse) {
@@ -181,7 +202,8 @@ func getAvailability(
 
 	r := require.New(t)
 
-	path := "/api/v1/orgs/" + TestOrgSlug + "/checks/" + checkIdent + "/availability?periods=" + periods
+	path := "/api/v1/orgs/" + TestOrgSlug + "/checks/" + checkIdent + "/availability?periods=" + periods +
+		"&tz=" + url.QueryEscape(midDayTZ(time.Now()))
 	status, body := rawRequest(t, ts, http.MethodGet, path, token, "", nil)
 
 	if status != http.StatusOK {

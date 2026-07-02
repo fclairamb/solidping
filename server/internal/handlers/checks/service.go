@@ -149,14 +149,14 @@ func (e *periodBoundError) Error() string {
 // periods: whole hours as "6h", whole minutes at or above ten minutes as
 // "15m", and everything else in seconds ("60s", "30s", "10s") so the common
 // floors read exactly as the spec states them.
-func formatPeriodBound(d time.Duration) string {
+func formatPeriodBound(bound time.Duration) string {
 	switch {
-	case d >= time.Hour && d%time.Hour == 0:
-		return fmt.Sprintf("%dh", d/time.Hour)
-	case d >= 10*time.Minute && d%time.Minute == 0:
-		return fmt.Sprintf("%dm", d/time.Minute)
+	case bound >= time.Hour && bound%time.Hour == 0:
+		return fmt.Sprintf("%dh", bound/time.Hour)
+	case bound >= 10*time.Minute && bound%time.Minute == 0:
+		return fmt.Sprintf("%dm", bound/time.Minute)
 	default:
-		return fmt.Sprintf("%ds", d/time.Second)
+		return fmt.Sprintf("%ds", bound/time.Second)
 	}
 }
 
