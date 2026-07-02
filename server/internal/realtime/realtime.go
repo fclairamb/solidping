@@ -46,6 +46,8 @@ const (
 const CollapseCheckUids = 64
 
 // checkUidsWildcard is the sentinel list meaning "every check of the org".
+//
+//nolint:gochecknoglobals // immutable sentinel value, not a mutable config knob
 var checkUidsWildcard = []string{"*"}
 
 // Hint is the JSON payload published on the bus: org uid, the dirty kinds,

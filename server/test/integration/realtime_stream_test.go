@@ -52,10 +52,13 @@ func wsURL(ts *TestServer, org string) string {
 func dialRealtimeWithToken(ctx context.Context, t *testing.T, ts *TestServer, org, token string) *websocket.Conn {
 	t.Helper()
 
-	conn, _, err := websocket.Dial(ctx, wsURL(ts, org), &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, wsURL(ts, org), &websocket.DialOptions{
 		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
 	})
 	require.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	return conn
@@ -191,8 +194,11 @@ func TestRealtimeWS_UnauthenticatedTimesOutWithAuthFailed(t *testing.T) {
 		cfg.Realtime.AuthGrace = 300 * time.Millisecond
 	})
 
-	conn, _, err := websocket.Dial(ctx, wsURL(ts, TestOrgSlug), nil)
+	conn, resp, err := websocket.Dial(ctx, wsURL(ts, TestOrgSlug), nil)
 	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

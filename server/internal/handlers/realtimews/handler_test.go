@@ -81,7 +81,8 @@ func newWSFixture(t *testing.T, opts wsFixtureOpts) *wsFixture {
 	}
 
 	bus := notifier.NewLocalEventNotifier()
-	hub := realtime.NewHubWithSubscriptionCap(bus, cfg.Realtime.MaxConnections, cfg.Realtime.MaxSubscriptionsPerConnection, nil)
+	hub := realtime.NewHubWithSubscriptionCap(
+		bus, cfg.Realtime.MaxConnections, cfg.Realtime.MaxSubscriptionsPerConnection, nil)
 	pub := realtime.NewPublisher(ctx, bus, cfg.Realtime.FlushInterval, nil)
 
 	handler := realtimews.NewHandler(hub, authService, dbSvc, cfg)
@@ -155,8 +156,11 @@ func (fx *wsFixture) dial(t *testing.T) *websocket.Conn {
 	t.Helper()
 	r := require.New(t)
 
-	conn, _, err := websocket.Dial(t.Context(), fx.wsURL, nil)
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, nil)
 	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	return conn
@@ -168,10 +172,13 @@ func (fx *wsFixture) dialPreAuth(t *testing.T, token string) *websocket.Conn {
 	t.Helper()
 	r := require.New(t)
 
-	conn, _, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
 		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
 	})
 	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
 	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	return conn
@@ -573,29 +580,33 @@ func TestServe_TokenExpiryCloses4401(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 
-	// Short access-token expiry so it fires during the test.
 	fx := newWSFixture(t, wsFixtureOpts{})
 	fx.seedOrgAndUser(t)
 
 	// authService config's AccessTokenExpiry is 1h in the fixture; instead of
-	// waiting, build a token directly with a short expiry via a second
-	// auth service sharing the same JWT secret and db. Long enough that the
-	// dial+hello handshake completes before expiry (otherwise ValidateToken
-	// itself would reject it as already-expired at connect time), short
-	// enough that the mid-connection expiry timer fires during the test.
+	// waiting an hour, build a token directly with a short expiry via a
+	// second auth service sharing the same JWT secret and db. To avoid a
+	// race against connection setup under load (a slow dial/hello round-trip
+	// could otherwise let the token expire before the handler even validates
+	// it — a real flake observed under `go test ./...` parallelism), the
+	// token is minted with a generous 5s window and via the browser `auth`
+	// message path (not pre-auth), so validation happens immediately after
+	// the socket opens rather than after the full TCP+TLS dial.
+	const tokenTTL = 5 * time.Second
 	shortCfg := config.AuthConfig{
 		JWTSecret:          "test-jwt-secret",
-		AccessTokenExpiry:  800 * time.Millisecond,
+		AccessTokenExpiry:  tokenTTL,
 		RefreshTokenExpiry: time.Hour,
 	}
 	shortAuthService := auth.NewService(fx.dbSvc, shortCfg, nil, nil, nil)
 	resp, err := shortAuthService.Login(t.Context(), "test", "member@example.com", "pw", auth.Context{})
 	r.NoError(err)
 
-	conn := fx.dialPreAuth(t, resp.AccessToken)
+	conn := fx.dial(t)
+	writeJSON(t, conn, map[string]string{"type": "auth", "token": resp.AccessToken})
 	_ = readJSON[helloFrame](t, conn)
 
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), tokenTTL+10*time.Second)
 	defer cancel()
 	_, _, readErr := conn.Read(ctx)
 	r.Error(readErr)

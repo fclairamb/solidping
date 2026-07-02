@@ -230,6 +230,8 @@ func (h *Hub) run(events <-chan string, reconnects <-chan struct{}) {
 // watches it. Not every kind has a collection consumer (there is none today
 // that doesn't), but the mapping is explicit so a future kind must be a
 // deliberate addition here.
+//
+//nolint:gochecknoglobals // constant lookup map, not mutated after init
 var collectionEntityForKind = map[Kind]Entity{
 	KindResults:   EntityChecks, // results feed the "checks" collection (dashboard rollups)
 	KindChecks:    EntityChecks,
@@ -240,6 +242,8 @@ var collectionEntityForKind = map[Kind]Entity{
 
 // checkAttributableKinds are the kinds that also apply to a specific check
 // and therefore route to `check`-scoped subscribers via Hint.CheckUids.
+//
+//nolint:gochecknoglobals // constant lookup set, not mutated after init
 var checkAttributableKinds = map[Kind]struct{}{
 	KindResults:   {},
 	KindChecks:    {},
@@ -424,16 +428,16 @@ func (s *Subscriber) offerHint(kinds []Kind, wildcard bool, checkUIDs map[string
 	}
 
 	offered := false
-	for _, k := range kinds {
-		if entity, ok := collectionEntityForKind[k]; ok {
+	for _, kind := range kinds {
+		if entity, ok := collectionEntityForKind[kind]; ok {
 			scope := Scope{Entity: entity}
 			if _, subscribed := s.subscriptions[scope]; subscribed {
-				s.addDirty(scope, k)
+				s.addDirty(scope, kind)
 				offered = true
 			}
 		}
 
-		if _, attributable := checkAttributableKinds[k]; !attributable {
+		if _, attributable := checkAttributableKinds[kind]; !attributable {
 			continue
 		}
 
@@ -442,13 +446,13 @@ func (s *Subscriber) offerHint(kinds []Kind, wildcard bool, checkUIDs map[string
 				continue
 			}
 			if wildcard {
-				s.addDirty(scope, k)
+				s.addDirty(scope, kind)
 				offered = true
 
 				continue
 			}
 			if _, matches := checkUIDs[scope.UID]; matches {
-				s.addDirty(scope, k)
+				s.addDirty(scope, kind)
 				offered = true
 			}
 		}

@@ -33,8 +33,11 @@ func waitSignal(t *testing.T, sub *Subscriber) {
 }
 
 // publishHint is a small test helper that encodes and sends a hint directly
-// on the bus, bypassing the Publisher's coalescing.
-func publishHint(t *testing.T, bus notifier.EventNotifier, orgUID string, kinds []Kind, checkUids ...string) {
+// on the bus, bypassing the Publisher's coalescing. Every call site in this
+// file targets "org-a" — org isolation itself is covered separately by
+// TestHub_OtherOrgSubscriberNeverMatches, which publishes for "org-a" too and
+// asserts an "org-b" subscriber never sees it.
+func publishHint(t *testing.T, bus notifier.EventNotifier, kinds []Kind, checkUids ...string) {
 	t.Helper()
 	r := require.New(t)
 
@@ -43,7 +46,7 @@ func publishHint(t *testing.T, bus notifier.EventNotifier, orgUID string, kinds 
 		checkUIDSet[uid] = struct{}{}
 	}
 
-	payload, err := EncodeHint(orgUID, kindSet(kinds), checkUIDSet)
+	payload, err := EncodeHint("org-a", kindSet(kinds), checkUIDSet)
 	r.NoError(err)
 	r.NoError(bus.Notify(context.Background(), ChannelOrgEvents, payload))
 }
@@ -59,7 +62,7 @@ func TestHub_DefaultSilent_ZeroScopesReceiveNothing(t *testing.T) {
 	sub, err := hub.Subscribe("org-a")
 	r.NoError(err)
 
-	publishHint(t, bus, "org-a", []Kind{KindChecks, KindResults, KindIncidents}, "check-1")
+	publishHint(t, bus, []Kind{KindChecks, KindResults, KindIncidents}, "check-1")
 
 	select {
 	case <-sub.Signal():
@@ -82,14 +85,14 @@ func TestHub_CollectionSubscriberReceivesMatchingKindOnly(t *testing.T) {
 
 	// A results-only hint (checks collection concern) must not reach the
 	// incidents-only subscriber.
-	publishHint(t, bus, "org-a", []Kind{KindResults}, "check-1")
+	publishHint(t, bus, []Kind{KindResults}, "check-1")
 	select {
 	case <-sub.Signal():
 		t.Fatal("incidents subscriber must not receive a results-only hint")
 	case <-time.After(100 * time.Millisecond):
 	}
 
-	publishHint(t, bus, "org-a", []Kind{KindIncidents, KindEvents}, "check-1")
+	publishHint(t, bus, []Kind{KindIncidents, KindEvents}, "check-1")
 	waitSignal(t, sub)
 	updates, resync, closed := sub.Take()
 	r.False(resync)
@@ -110,7 +113,7 @@ func TestHub_PerCheckIsolation(t *testing.T) {
 	r.NoError(sub.AddScope(Scope{Entity: EntityCheck, UID: "check-x"}))
 
 	// Activity on a different check of the same org must produce no frame.
-	publishHint(t, bus, "org-a", []Kind{KindResults}, "check-y")
+	publishHint(t, bus, []Kind{KindResults}, "check-y")
 	select {
 	case <-sub.Signal():
 		t.Fatal("subscriber for check-x must not receive a hint about check-y")
@@ -118,7 +121,7 @@ func TestHub_PerCheckIsolation(t *testing.T) {
 	}
 
 	// Activity on the subscribed check delivers.
-	publishHint(t, bus, "org-a", []Kind{KindResults}, "check-x")
+	publishHint(t, bus, []Kind{KindResults}, "check-x")
 	waitSignal(t, sub)
 	updates, _, _ := sub.Take()
 	r.Equal([]ScopedUpdate{{Scope: Scope{Entity: EntityCheck, UID: "check-x"}, Kinds: []Kind{KindResults}}}, updates)
@@ -139,7 +142,7 @@ func TestHub_OtherOrgSubscriberNeverMatches(t *testing.T) {
 	r.NoError(err)
 	r.NoError(subB.AddScope(Scope{Entity: EntityChecks}))
 
-	publishHint(t, bus, "org-a", []Kind{KindChecks}, "check-1")
+	publishHint(t, bus, []Kind{KindChecks}, "check-1")
 
 	waitSignal(t, subA)
 	updates, _, _ := subA.Take()
@@ -198,7 +201,7 @@ func TestHub_SlowSubscriberCoalescesIntoDirtySet(t *testing.T) {
 	r.NoError(sub.AddScope(Scope{Entity: EntityIncidents}))
 
 	send := func(kinds ...Kind) {
-		publishHint(t, bus, "org-a", kinds)
+		publishHint(t, bus, kinds)
 	}
 
 	send(KindResults)

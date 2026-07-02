@@ -46,6 +46,10 @@ const (
 	msgLabelUnknown     = "unknown"
 )
 
+// pingPongGrace pads the ping deadline beyond half the ping interval so a
+// momentarily slow (not dead) peer isn't flagged as unresponsive.
+const pingPongGrace = 5 * time.Second
+
 // Handler upgrades and serves the realtime WebSocket for authenticated org
 // members. Unlike v1 (registered behind RequireAuth/RequireOrgAccess), this
 // route is registered unconditionally and performs its own auth in-handler,
@@ -168,7 +172,7 @@ func (h *Handler) writeLoop(ctx context.Context, conn *websocket.Conn, sub *real
 			// carry an explicit close code by the time Ping returns — the
 			// explicit Close here is a best-effort formality for the rare
 			// case the connection is still writable.
-			pingCtx, cancel := context.WithTimeout(ctx, h.pingInterval/2+5*time.Second) //nolint:mnd // generous pong deadline
+			pingCtx, cancel := context.WithTimeout(ctx, h.pingInterval/2+pingPongGrace)
 			err := conn.Ping(pingCtx)
 			cancel()
 			if err != nil {
@@ -188,8 +192,8 @@ func (h *Handler) writeLoop(ctx context.Context, conn *websocket.Conn, sub *real
 					return
 				}
 			}
-			for _, u := range updates {
-				if err := writeJSON(ctx, conn, newUpdate(u)); err != nil {
+			for i := range updates {
+				if err := writeJSON(ctx, conn, newUpdate(updates[i])); err != nil {
 					return
 				}
 			}
