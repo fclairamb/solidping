@@ -45,6 +45,15 @@ type TestServer struct {
 func NewTestServer(t *testing.T) *TestServer {
 	t.Helper()
 
+	return NewTestServerWithConfig(t, nil)
+}
+
+// NewTestServerWithConfig creates a test server, letting the caller mutate
+// the default configuration before startup (e.g. enable the realtime hint
+// stream, which is off in the zero-value config used by tests).
+func NewTestServerWithConfig(t *testing.T, mutate func(*config.Config)) *TestServer {
+	t.Helper()
+
 	ctx := t.Context()
 
 	const refreshTokenExpiryHours = 24
@@ -61,6 +70,9 @@ func NewTestServer(t *testing.T) *TestServer {
 			AccessTokenExpiry:  1 * time.Hour,
 			RefreshTokenExpiry: refreshTokenExpiryHours * time.Hour,
 		},
+	}
+	if mutate != nil {
+		mutate(cfg)
 	}
 
 	server, err := app.NewServer(ctx, cfg)

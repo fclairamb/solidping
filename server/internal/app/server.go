@@ -831,12 +831,12 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
 
-	// Realtime hint stream (SSE). Registered only when enabled — a disabled
-	// feature 404s (same convention as SP_PROMETHEUS_ENABLED) and the
-	// dashboard silently keeps polling. RequireOrgAccess enforces membership
-	// (403 for non-members) and puts the org on the context. The path is
-	// excluded from the request timeout and rate limits (middleware.isExcluded)
-	// — the hub's max_connections guard bounds it instead.
+	// Realtime hint stream (SSE). A disabled feature 404s (SP_REALTIME_ENABLED
+	// convention) and the dashboard silently keeps polling. RequireOrgAccess
+	// enforces membership (403 for non-members) and puts the org on the
+	// context. The path is excluded from the request timeout and rate limits
+	// (middleware.isExcluded) — the hub's max_connections guard bounds it
+	// instead.
 	if s.config.Realtime.Enabled {
 		s.realtimeHub = realtime.NewHub(
 			s.services.EventNotifier, s.config.Realtime.MaxConnections, slog.Default())
@@ -844,6 +844,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		api.NewGroup("/orgs/:org/events/stream").
 			Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess).
 			GET("", streamHandler.Stream)
+	} else {
+		// Explicit 404 stub: the SPA catch-all (GET /*path) would otherwise
+		// answer 200 with index.html, and the client needs the 404 to detect
+		// "feature disabled" and fall back to plain polling permanently.
+		hb := base.NewHandlerBase(s.config)
+		api.GET("/orgs/:org/events/stream", func(writer http.ResponseWriter, _ bunrouter.Request) error {
+			return hb.WriteError(
+				writer, http.StatusNotFound, base.ErrorCodeNotFound, "Realtime updates are disabled")
+		})
 	}
 
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
