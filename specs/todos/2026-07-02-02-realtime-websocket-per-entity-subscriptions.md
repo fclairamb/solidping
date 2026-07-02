@@ -94,7 +94,7 @@ would leave them dark and would never learn about newly created checks.
 | `{"type":"update","entity":"check","uid":"...","kinds":["results"]}` | The subscribed check changed. `kinds` ⊂ {results, checks, incidents} narrows which query roots to invalidate; the client treats a missing/empty `kinds` as "all". |
 | `{"type":"update","entity":"checks"}` (etc.) | The subscribed collection changed. |
 | `{"type":"resync"}` | Bus transport gap (notifier reconnected): invalidate **all currently subscribed scopes** once. |
-| `{"type":"error","code":"...","title":"...","entity":...,"uid":...}` | Per-message failure; echoes the offending scope. Reuses REST error codes: `NOT_FOUND` (check not in this org), `VALIDATION_ERROR` (malformed), `CONFLICT` (duplicate subscribe — idempotent ack instead is also acceptable, pick one and test it), `CONCURRENCY_LIMITED` (subscription cap). Errors do not close the socket. |
+| `{"type":"error","code":"...","title":"...","entity":...,"uid":...}` | Per-message failure; echoes the offending scope. Reuses REST error codes: `NOT_FOUND` (check not in this org), `VALIDATION_ERROR` (malformed), `CONCURRENCY_LIMITED` (subscription cap). A duplicate subscribe is **not** an error — it is idempotent and returns the normal `subscribed` ack (the registry replays scopes after reconnect, so duplicates are routine). Errors do not close the socket. |
 
 ### Close codes
 
