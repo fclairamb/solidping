@@ -394,9 +394,10 @@ func markSlow(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID str
 }
 
 // TestClaimJobsLaneReservation exercises the per-lane reservation claim (spec
-// 2026-07-01-03 D3/D6): fast jobs may fill every slot, slow jobs are capped by
-// slowLimit and by the capacity left after the fast claim, and an idle fast
-// stream lets slow borrow the full budget.
+// 2026-07-01-03 D3/D6): the slow lane claims its budgeted share first (capped
+// by slowLimit and the free capacity), fast fills every remaining slot, and an
+// idle fast stream lets slow borrow the full budget. Slow-first is the
+// anti-starvation property — see SaturatedFastLaneCannotStarveSlow.
 //
 //nolint:paralleltest // Test shares database state
 func TestClaimJobsLaneReservation(t *testing.T) {
@@ -501,12 +502,13 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		}
 	})
 
-	t.Run("SlowBoundedByRemainingCapacity", func(t *testing.T) { //nolint:paralleltest // shares DB
+	t.Run("FastBoundedByRemainingCapacity", func(t *testing.T) { //nolint:paralleltest // shares DB
 		worker := createTestWorker(t, ctx, dbSvc, nil)
 		now := time.Now()
 
-		// 3 fast + 3 slow due, capacity 4, generous slow budget 4: the fast
-		// claim eats 3 slots, so slow gets min(4, 4−3) = 1.
+		// 3 fast + 3 slow due, capacity 4, generous slow budget 4: slow takes
+		// its share first (all 3 due), fast fills the one remaining slot. The
+		// total never exceeds the capacity.
 		for i := 0; i < 3; i++ {
 			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
 			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
@@ -517,8 +519,45 @@ func TestClaimJobsLaneReservation(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, jobs, 4)
 		fast, slow := countByLane(jobs)
-		assert.Equal(t, 3, fast)
-		assert.Equal(t, 1, slow, "slow is bounded by the capacity left after the fast claim")
+		assert.Equal(t, 1, fast, "fast fills the capacity slow left over")
+		assert.Equal(t, 3, slow)
+
+		// Drain for the next subtest.
+		for _, j := range jobs {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+		rest, err := svc.ClaimJobs(ctx, worker.UID, nil, 100, 100, 5*time.Minute)
+		require.NoError(t, err)
+		for _, j := range rest {
+			require.NoError(t, svc.ReleaseLease(ctx, j.UID, worker.UID, now.Add(2*time.Hour)))
+		}
+	})
+
+	t.Run("SaturatedFastLaneCannotStarveSlow", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// Regression for the live starvation (2026-07-02, dev instance): more
+		// eligible fast jobs than free capacity — the permanent state of any
+		// fleet whose fast periods fit inside the claim-ahead window. The old
+		// fast-first claim filled every slot with fast work and computed the
+		// slow allowance from the leftovers (always zero), so the slow lane
+		// never claimed a single job. Slow must get its budgeted share.
+		for i := 0; i < 6; i++ {
+			createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+		}
+		for i := 0; i < 3; i++ {
+			j := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-10*time.Second), nil)
+			markSlow(t, ctx, dbSvc, j.UID)
+		}
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 4, 2, 5*time.Minute)
+		require.NoError(t, err)
+		require.Len(t, jobs, 4, "claim must still fill the whole capacity")
+
+		fast, slow := countByLane(jobs)
+		assert.Equal(t, 2, slow, "slow claims its full budget even under fast saturation")
+		assert.Equal(t, 2, fast, "fast fills the remainder")
 	})
 }
 

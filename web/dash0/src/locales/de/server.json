@@ -125,7 +125,9 @@
     "checkRunners": "Prüfungs-Worker",
     "checkRunnersHelp": "Anzahl gleichzeitiger Goroutinen zum Ausführen der Prüfungen.",
     "jobRunners": "Auftrags-Worker",
-    "jobRunnersHelp": "Anzahl gleichzeitiger Goroutinen zur Verarbeitung von Hintergrundaufträgen."
+    "jobRunnersHelp": "Anzahl gleichzeitiger Goroutinen zur Verarbeitung von Hintergrundaufträgen.",
+    "fastLaneReserved": "Reservierte Fast-Lane-Slots",
+    "fastLaneReservedHelp": "Für schnelle Checks reservierte Runner-Slots: langsame Checks (Kosten \u2265 2 s) können nie mehr als Check Runners minus diese Anzahl belegen. Wird nach einem Neustart wirksam."
   },
   "emailInbox": {
     "title": "E-Mail-Posteingang",

@@ -125,7 +125,9 @@
     "checkRunners": "Workers de comprobación",
     "checkRunnersHelp": "Número de goroutinas concurrentes para ejecutar las comprobaciones.",
     "jobRunners": "Workers de tareas",
-    "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano."
+    "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano.",
+    "fastLaneReserved": "Plazas reservadas del carril rápido",
+    "fastLaneReservedHelp": "Plazas de runners reservadas para checks rápidos: los checks lentos (coste \u2265 2 s) nunca pueden ocupar más que Check Runners menos este número. Surte efecto tras reiniciar."
   },
   "emailInbox": {
     "title": "Bandeja de entrada",

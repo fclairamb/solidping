@@ -81,6 +81,13 @@ const (
 	KeyPasswordArgon2SaltLen ParameterKey = "auth.password.argon2.salt_length"
 	KeyPasswordBcryptCost    ParameterKey = "auth.password.bcrypt.cost"
 	KeyPasswordRehashOnLogin ParameterKey = "auth.password.rehash_on_login"
+
+	// KeySchedulingFastLaneReserved is the fast-lane floor of the check
+	// scheduler's lane reservation (spec 2026-07-01-03 D3): slow-lane checks
+	// may never occupy more than pool_size − this many runner slots, so a
+	// burst of slow probes cannot starve due fast checks. Applied at startup
+	// like the worker pool sizes (the worker clamps it to [0, pool_size−1]).
+	KeySchedulingFastLaneReserved ParameterKey = "scheduling.fast_lane_reserved"
 )
 
 // ParameterDefinition defines a system parameter with its env var mapping.
@@ -127,6 +134,21 @@ func getKnownParameters() []ParameterDefinition {
 					cfg.Server.CheckWorker.Nb = int(v)
 				} else if v, ok := value.(int); ok {
 					cfg.Server.CheckWorker.Nb = v
+				}
+			},
+		},
+		{
+			Key:    KeySchedulingFastLaneReserved,
+			EnvVar: "SP_SCHEDULING_FAST_LANE_RESERVED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Numeric parameters arrive as float64 from encoding/json.
+				// 0 is a valid value (no reserved fast floor); negatives are
+				// left to the worker's [0, pool_size−1] clamp.
+				if v, ok := value.(float64); ok {
+					cfg.Server.Scheduling.FastLaneReserved = int(v)
+				} else if v, ok := value.(int); ok {
+					cfg.Server.Scheduling.FastLaneReserved = v
 				}
 			},
 		},

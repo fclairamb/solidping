@@ -181,6 +181,43 @@ func TestKnownPasswordKeys(t *testing.T) {
 	}
 }
 
+// TestKnownSchedulingFastLaneReservedKey pins the scheduling.fast_lane_reserved
+// parameter key that the dashboard Performance settings page
+// (web/dash0/src/routes/orgs/$org/server.performance.tsx) writes, and verifies
+// the JSON-float64 coercion onto cfg.Server.Scheduling.FastLaneReserved. If
+// either side drifts, saving from the UI silently stops applying.
+func TestKnownSchedulingFastLaneReservedKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("scheduling.fast_lane_reserved", string(KeySchedulingFastLaneReserved))
+
+	var def ParameterDefinition
+
+	found := false
+
+	for _, d := range getKnownParameters() {
+		if d.Key == KeySchedulingFastLaneReserved {
+			def, found = d, true
+
+			break
+		}
+	}
+
+	r.True(found, "scheduling.fast_lane_reserved must be a known parameter")
+	r.NotNil(def.ApplyFunc)
+	r.False(def.Secret)
+	r.Equal("SP_SCHEDULING_FAST_LANE_RESERVED", def.EnvVar,
+		"must match the env var applySchedulingEnv reads so precedence stays consistent")
+
+	cfg := &config.Config{}
+	def.ApplyFunc(cfg, float64(8)) // JSON-decoded numbers arrive as float64
+	r.Equal(8, cfg.Server.Scheduling.FastLaneReserved)
+	def.ApplyFunc(cfg, 3)
+	r.Equal(3, cfg.Server.Scheduling.FastLaneReserved)
+}
+
 // TestInitializeAppliesPasswordParams verifies the full DB -> cfg apply path for
 // the password-hashing policy: rows persisted under auth.password.* must land on
 // cfg.Auth.Password on Initialize, with numeric coercion (float64 -> uint32/int),

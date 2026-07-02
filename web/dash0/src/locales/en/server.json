@@ -125,7 +125,9 @@
     "checkRunners": "Check Runners",
     "checkRunnersHelp": "Number of concurrent goroutines for running health checks.",
     "jobRunners": "Job Runners",
-    "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs."
+    "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs.",
+    "fastLaneReserved": "Fast-lane reserved slots",
+    "fastLaneReservedHelp": "Check runner slots reserved for fast checks: slow checks (cost \u2265 2s) can never occupy more than Check Runners minus this many slots. Takes effect after restart."
   },
   "emailInbox": {
     "title": "Email Inbox",

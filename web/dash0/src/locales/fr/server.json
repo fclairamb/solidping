@@ -125,7 +125,9 @@
     "checkRunners": "Workers de vérification",
     "checkRunnersHelp": "Nombre de goroutines concurrentes pour exécuter les vérifications.",
     "jobRunners": "Workers de tâches",
-    "jobRunnersHelp": "Nombre de goroutines concurrentes pour traiter les tâches en arrière-plan."
+    "jobRunnersHelp": "Nombre de goroutines concurrentes pour traiter les tâches en arrière-plan.",
+    "fastLaneReserved": "Emplacements réservés à la voie rapide",
+    "fastLaneReservedHelp": "Emplacements de runners réservés aux checks rapides : les checks lents (coût \u2265 2 s) ne peuvent jamais occuper plus que Check Runners moins ce nombre. Prend effet après redémarrage."
   },
   "emailInbox": {
     "title": "Boîte de réception e-mail",

@@ -23,12 +23,15 @@ var ErrJobClaimedByAnother = errors.New("job may have been claimed by another wo
 type Service interface {
 	// ClaimJobs atomically claims due check jobs for the given worker with
 	// per-lane reservation (spec 2026-07-01-03 D3/D6). fastLimit is the total
-	// claim capacity (normally the worker's free runner slots) — fast-lane
-	// jobs may use all of it. slowLimit is the slow lane's reservation budget:
-	// slow-lane jobs are additionally capped at min(slowLimit, fastLimit −
-	// claimed fast), so a worker passing slowLimit = (poolSize −
-	// fastLaneReserved) − busySlow guarantees slow jobs can never occupy the
-	// reserved fast floor. Both SELECTs (fast first) run in one transaction.
+	// claim capacity (normally the worker's free runner slots). slowLimit is
+	// the slow lane's reservation budget: a worker passing slowLimit =
+	// (poolSize − fastLaneReserved) − busySlow guarantees slow jobs can never
+	// occupy the reserved fast floor. The slow lane claims its budgeted share
+	// FIRST (capped at min(slowLimit, fastLimit)); fast then fills every
+	// remaining slot. Slow-first is load-bearing: fast claim-ahead keeps the
+	// fast lane permanently eligible on fleets whose periods fit inside
+	// maxAhead, so a leftovers-only slow allowance would be zero forever and
+	// starve the slow lane outright. Both SELECTs run in one transaction.
 	// Lease duration is calculated per job as scheduled_at + period + 30s.
 	// Returns claimed jobs or nil if none available.
 	ClaimJobs(
@@ -117,23 +120,19 @@ func (s *serviceImpl) ClaimJobs(
 	err := s.db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
 		jobs = nil
 
-		// Fast lane first: fast jobs may occupy any free slot.
-		if fastLimit > 0 {
-			var fastJobs []*models.CheckJob
-			if err := s.selectAvailableJobs(
-				ctx, tx, &fastJobs, region, scheduling.LaneFast, fastLimit, maxAhead, now, isPostgres,
-			); err != nil {
-				return err
-			}
-			jobs = fastJobs
-		}
-
-		// Slow lane: bounded by the reservation budget AND by the capacity
-		// left after the fast claim, so the total never exceeds fastLimit and
-		// the caller's floor invariant (slow in flight <= P − F) holds.
-		slowN := fastLimit - len(jobs)
-		if slowN > slowLimit {
-			slowN = slowLimit
+		// Slow lane FIRST, capped by its reservation budget and the free
+		// capacity. Order matters: with FetchMaxAhead-style claim-ahead, a
+		// fleet whose fast periods fit inside the window keeps the fast lane
+		// permanently eligible, so a fast-first claim fills every free slot
+		// and a leftovers-only slow allowance computes to zero forever —
+		// total slow-lane starvation (observed live: zero slow claims while
+		// 41 slow jobs sat 11h overdue). Claiming slow up to its budget first
+		// cannot starve fast: slowLimit is already bounded by
+		// (poolSize − fastReserved) − busySlow, so the reserved fast floor is
+		// untouchable regardless of claim order.
+		slowN := slowLimit
+		if slowN > fastLimit {
+			slowN = fastLimit
 		}
 		if slowN > 0 {
 			var slowJobs []*models.CheckJob
@@ -142,7 +141,20 @@ func (s *serviceImpl) ClaimJobs(
 			); err != nil {
 				return err
 			}
-			jobs = append(jobs, slowJobs...)
+			jobs = slowJobs
+		}
+
+		// Fast lane fills every remaining free slot (all of them when the
+		// slow lane is idle — the reservation stays work-conserving).
+		fastN := fastLimit - len(jobs)
+		if fastN > 0 {
+			var fastJobs []*models.CheckJob
+			if err := s.selectAvailableJobs(
+				ctx, tx, &fastJobs, region, scheduling.LaneFast, fastN, maxAhead, now, isPostgres,
+			); err != nil {
+				return err
+			}
+			jobs = append(jobs, fastJobs...)
 		}
 
 		if len(jobs) == 0 {

@@ -27,6 +27,7 @@ function PerformanceSettingsPage() {
 
   const [checkWorkers, setCheckWorkers] = useState("25");
   const [jobWorkers, setJobWorkers] = useState("2");
+  const [fastLaneReserved, setFastLaneReserved] = useState("5");
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
 
@@ -35,8 +36,10 @@ function PerformanceSettingsPage() {
       const get = (key: string) => params.find((p) => p.key === key)?.value;
       const cw = get("server.check_workers");
       const jw = get("server.job_workers");
+      const fl = get("scheduling.fast_lane_reserved");
       if (cw != null) setCheckWorkers(String(cw));
       if (jw != null) setJobWorkers(String(jw));
+      if (fl != null) setFastLaneReserved(String(fl));
     }
   }, [params]);
 
@@ -54,6 +57,10 @@ function PerformanceSettingsPage() {
         setParam.mutateAsync({
           key: "server.job_workers",
           value: parseInt(jobWorkers, 10),
+        }),
+        setParam.mutateAsync({
+          key: "scheduling.fast_lane_reserved",
+          value: parseInt(fastLaneReserved, 10),
         }),
       ]);
       setSaved(true);
@@ -125,6 +132,24 @@ function PerformanceSettingsPage() {
               />
               <p className="text-xs text-muted-foreground">
                 {t("server:performance.jobRunnersHelp")}
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="fastLaneReserved">
+                {t("server:performance.fastLaneReserved")}
+              </Label>
+              <Input
+                id="fastLaneReserved"
+                type="number"
+                min="0"
+                max="99"
+                value={fastLaneReserved}
+                onChange={(e) => setFastLaneReserved(e.target.value)}
+                disabled={setParam.isPending}
+                data-testid="fast-lane-reserved-input"
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("server:performance.fastLaneReservedHelp")}
               </p>
             </div>
           </div>
