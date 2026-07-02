@@ -39,7 +39,7 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 }
 
 // Flush forwards to the underlying writer when it supports flushing, so
-// streaming handlers (SSE) keep working through the metrics wrapper.
+// streaming handlers keep working through the metrics wrapper.
 func (sr *statusRecorder) Flush() {
 	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
 		f.Flush()

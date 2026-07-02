@@ -1848,9 +1848,10 @@ func (s *Server) Start(ctx context.Context) error {
 			return err
 		}
 
-		// Close the realtime hub first: it terminates every held-open SSE
-		// stream so srv.Shutdown (which waits for active connections) can
-		// drain instead of hanging until the shutdown timeout.
+		// Close the realtime hub first: it terminates every held-open
+		// realtime WebSocket connection so srv.Shutdown (which waits for
+		// active connections) can drain instead of hanging until the
+		// shutdown timeout.
 		if s.realtimeHub != nil {
 			s.realtimeHub.Close()
 		}
@@ -2002,8 +2003,8 @@ func (s *Server) Close(ctx context.Context) error {
 	}
 
 	// Stop the realtime fan-out before the notifier it rides on: the hub
-	// releases any remaining SSE subscribers and the publisher flushes its
-	// pending hints while the bus is still up.
+	// releases any remaining WebSocket subscribers and the publisher flushes
+	// its pending hints while the bus is still up.
 	if s.realtimeHub != nil {
 		s.realtimeHub.Close()
 	}

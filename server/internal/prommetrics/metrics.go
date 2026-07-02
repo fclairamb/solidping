@@ -312,8 +312,8 @@ var (
 		[]string{labelJobType},
 	)
 
-	// RealtimeConnections tracks currently open realtime hint streams (SSE).
-	// Global gauge — no per-org label so cardinality stays bounded.
+	// RealtimeConnections tracks currently open realtime hint WebSocket
+	// connections. Global gauge — no per-org label so cardinality stays bounded.
 	RealtimeConnections = prometheus.NewGauge(
 		prometheus.GaugeOpts{
 			Name: "solidping_realtime_connections",
