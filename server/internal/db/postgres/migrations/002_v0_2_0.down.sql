@@ -45,5 +45,4 @@ create unique index idx_discovered_hosts_org_ip_source_active on discovered_host
 create index idx_discovered_hosts_org_job on discovered_hosts (organization_uid, job_uid) where deleted_at is null;
 
 drop table if exists oauth_refresh_tokens;
-drop table if exists oauth_auth_codes;
 drop table if exists oauth_clients;

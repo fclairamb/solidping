@@ -116,7 +116,7 @@ func (s *MicrosoftOAuthService) ValidateOAuthState(ctx context.Context, statePar
 	}
 
 	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, microsoftOAuthStatePrefix+stateParam)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, microsoftOAuthStatePrefix+stateParam)
 
 	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {

@@ -55,35 +55,9 @@ func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	_, err = svc.GetOAuthClientByClientID(ctx, "does-not-exist")
 	r.Error(err, "missing client must error")
 
-	// --- Authorization code: single-use compare-and-set ---
-	code := &models.OAuthAuthCode{
-		UID:                 uuid.New().String(),
-		Code:                "code-" + uuid.New().String(),
-		ClientID:            client.ClientID,
-		UserUID:             user.UID,
-		OrganizationUID:     org.UID,
-		RedirectURI:         "http://127.0.0.1:1234/callback",
-		Scope:               "mcp",
-		Resource:            "https://example.com/api/v1/mcp",
-		CodeChallenge:       "challenge",
-		CodeChallengeMethod: "S256",
-		ExpiresAt:           now.Add(time.Minute),
-		CreatedAt:           now,
-	}
-	r.NoError(svc.CreateOAuthAuthCode(ctx, code))
-
-	gotCode, err := svc.GetOAuthAuthCode(ctx, code.Code)
-	r.NoError(err)
-	r.Equal(code.Resource, gotCode.Resource)
-	r.Nil(gotCode.ConsumedAt, "fresh code is not consumed")
-
-	won, err := svc.ConsumeOAuthAuthCode(ctx, code.Code, now)
-	r.NoError(err)
-	r.True(won, "first consume wins")
-
-	wonAgain, err := svc.ConsumeOAuthAuthCode(ctx, code.Code, now)
-	r.NoError(err)
-	r.False(wonAgain, "replay of a consumed code loses the race (single-use)")
+	// Authorization codes are not a dedicated table — see the state_entries
+	// "Delete" compare-and-set coverage in service_test.go, and the
+	// oauth-package-level ExchangeAuthCode tests, for that behavior.
 
 	// --- Refresh token: rotation + user-wide revocation ---
 	refresh := &models.OAuthRefreshToken{

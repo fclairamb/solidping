@@ -3,8 +3,12 @@
 -- 002-009 with the net final schema changes. Do NOT run this file on a
 -- database that already has 002-009 applied individually.
 
--- MCP OAuth 2.1 authorization server (spec 2026-06-20-03): registered clients,
--- single-use authorization codes, and rotating refresh grants.
+-- MCP OAuth 2.1 authorization server (spec 2026-06-20-03): registered clients
+-- and rotating refresh grants. Authorization codes are NOT a dedicated table —
+-- they're single-use, 60s-lived records in the generic state_entries store
+-- (org-scoped, keyed "oauth_auth_code:<random>"; the org uid travels as a
+-- prefix on the opaque code string itself, since the token endpoint that
+-- redeems it has no other org context). See server/internal/oauth/service.go.
 
 create table oauth_clients (
   uid           text primary key,
@@ -20,25 +24,6 @@ create table oauth_clients (
 );
 
 create unique index oauth_clients_client_id_idx on oauth_clients (client_id);
-
-create table oauth_auth_codes (
-  uid                   text primary key,
-  code                  text not null,
-  client_id             text not null,
-  user_uid              text not null references users(uid) on delete cascade,
-  organization_uid      text not null references organizations(uid) on delete cascade,
-  redirect_uri          text not null,
-  scope                 text not null,
-  resource              text not null,
-  code_challenge        text not null,
-  code_challenge_method text not null,
-  expires_at            text not null,
-  consumed_at           text,
-  created_at            text not null default (datetime('now'))
-);
-
-create unique index oauth_auth_codes_code_idx on oauth_auth_codes (code);
-create index oauth_auth_codes_expires_idx on oauth_auth_codes (expires_at);
 
 create table oauth_refresh_tokens (
   uid              text primary key,

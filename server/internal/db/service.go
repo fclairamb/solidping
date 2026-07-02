@@ -101,12 +101,12 @@ type Service interface {
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
 	DeleteUserToken(ctx context.Context, uid string) error
 
-	// OAuth (MCP authorization server) operations
+	// OAuth (MCP authorization server) operations. Authorization codes are not
+	// a dedicated table — they're issued/redeemed through the generic
+	// State Storage operations below (state_entries), keyed by
+	// oauth.authCodeKeyPrefix + a random suffix, scoped to the granting org.
 	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
-	CreateOAuthAuthCode(ctx context.Context, code *models.OAuthAuthCode) error
-	GetOAuthAuthCode(ctx context.Context, code string) (*models.OAuthAuthCode, error)
-	ConsumeOAuthAuthCode(ctx context.Context, code string, now time.Time) (bool, error)
 	CreateOAuthRefreshToken(ctx context.Context, token *models.OAuthRefreshToken) error
 	GetOAuthRefreshToken(ctx context.Context, token string) (*models.OAuthRefreshToken, error)
 	RevokeOAuthRefreshToken(ctx context.Context, token string, now time.Time) (bool, error)
@@ -310,8 +310,12 @@ type Service interface {
 	// SetStateEntry creates or updates a state entry. TTL is optional (nil = never expires).
 	// orgUID can be nil for global entries.
 	SetStateEntry(ctx context.Context, orgUID *string, key string, value *models.JSONMap, ttl *time.Duration) error
-	// DeleteStateEntry soft-deletes a state entry.
-	DeleteStateEntry(ctx context.Context, orgUID *string, key string) error
+	// DeleteStateEntry soft-deletes a state entry, returning whether a live
+	// (not already deleted, not expired-out) row existed to delete. This is an
+	// atomic compare-and-set: callers relying on single-use semantics (e.g. the
+	// OAuth authorization-code consume step) use the returned bool to detect a
+	// replay racing a concurrent redemption.
+	DeleteStateEntry(ctx context.Context, orgUID *string, key string) (bool, error)
 	// ListStateEntries returns all entries matching the key prefix (using SQL LIKE).
 	ListStateEntries(ctx context.Context, orgUID *string, keyPrefix string) ([]*models.StateEntry, error)
 	// GetOrCreateStateEntry returns existing entry or creates new one.

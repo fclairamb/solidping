@@ -76,8 +76,8 @@ func (m *mockDBService) SetStateEntryIfNotExists(
 	return false, nil
 }
 
-func (m *mockDBService) DeleteStateEntry(_ context.Context, _ *string, _ string) error {
-	return nil
+func (m *mockDBService) DeleteStateEntry(_ context.Context, _ *string, _ string) (bool, error) {
+	return true, nil
 }
 
 func (m *mockDBService) ListStateEntries(_ context.Context, _ *string, _ string) ([]*models.StateEntry, error) {
@@ -642,18 +642,6 @@ func (m *mockDBService) CreateOAuthClient(_ context.Context, _ *models.OAuthClie
 }
 
 func (m *mockDBService) GetOAuthClientByClientID(_ context.Context, _ string) (*models.OAuthClient, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) CreateOAuthAuthCode(_ context.Context, _ *models.OAuthAuthCode) error {
-	panic("not implemented")
-}
-
-func (m *mockDBService) GetOAuthAuthCode(_ context.Context, _ string) (*models.OAuthAuthCode, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) ConsumeOAuthAuthCode(_ context.Context, _ string, _ time.Time) (bool, error) {
 	panic("not implemented")
 }
 

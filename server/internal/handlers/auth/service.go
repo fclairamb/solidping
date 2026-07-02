@@ -1818,7 +1818,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 
 	if existing != nil {
 		// Delete the state entry
-		_ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+		_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
 
 		return nil, ErrEmailAlreadyTaken
 	}
@@ -1836,7 +1836,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	}
 
 	// Delete the state entry
-	_ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, matchedEntry.Key)
 
 	// Auto-join matching orgs
 	s.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
@@ -2167,11 +2167,11 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	// Best-effort cleanup. We log but never fail the reset on these:
 	// the password is already rotated and the entry is single-use, so
 	// stale state is the worst outcome and it ages out at the TTL.
-	if err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, entry.Key); err != nil {
 		slog.ErrorContext(ctx, "Failed to delete password reset entry", "error", err)
 	}
 
-	if err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
+	if _, err := s.db.DeleteStateEntry(ctx, nil, passwordResetCountKeyPrefix+user.UID); err != nil {
 		slog.DebugContext(ctx, "Failed to delete password reset counter", "error", err)
 	}
 
@@ -2465,7 +2465,9 @@ func (s *Service) RevokeInvitation(ctx context.Context, orgSlug, invitationUID s
 
 	for _, entry := range entries {
 		if entry.UID == invitationUID {
-			return s.db.DeleteStateEntry(ctx, &org.UID, entry.Key)
+			_, err := s.db.DeleteStateEntry(ctx, &org.UID, entry.Key)
+
+			return err
 		}
 	}
 
@@ -2575,7 +2577,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	_, err = s.db.GetMemberByUserAndOrg(ctx, user.UID, matchedOrg.UID)
 	if err == nil {
 		// Already a member, just clean up and login
-		_ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
 	} else {
 		// Create membership
 		role := models.MemberRole(inviteRole)
@@ -2591,7 +2593,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 		}
 
 		// Delete the invitation
-		_ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
+		_, _ = s.db.DeleteStateEntry(ctx, &matchedOrg.UID, stateKey)
 	}
 
 	// Auto-join matching orgs for new users

@@ -126,7 +126,7 @@ func (s *GitHubOAuthService) ValidateOAuthState(ctx context.Context, stateParam 
 	}
 
 	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, gitHubOAuthStatePrefix+stateParam)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, gitHubOAuthStatePrefix+stateParam)
 
 	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {

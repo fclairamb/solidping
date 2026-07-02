@@ -1352,12 +1352,20 @@ func testStateEntries(ctx context.Context, t *testing.T, svc db.Service) {
 		err := svc.SetStateEntry(ctx, orgUID, key, value, nil)
 		r.NoError(err)
 
-		err = svc.DeleteStateEntry(ctx, orgUID, key)
+		consumed, err := svc.DeleteStateEntry(ctx, orgUID, key)
 		r.NoError(err)
+		r.True(consumed, "a live entry was deleted")
 
 		retrieved, err := svc.GetStateEntry(ctx, orgUID, key)
 		r.NoError(err)
 		r.Nil(retrieved, "Entry should be nil after deletion")
+
+		// The atomic compare-and-set guard callers like OAuth auth-code
+		// consumption rely on: a repeat delete of an already-gone entry
+		// reports it didn't win, rather than silently no-op succeeding.
+		consumedAgain, err := svc.DeleteStateEntry(ctx, orgUID, key)
+		r.NoError(err)
+		r.False(consumedAgain, "deleting an already-deleted entry reports no live row")
 	})
 
 	t.Run("List", func(t *testing.T) {

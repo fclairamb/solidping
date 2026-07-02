@@ -97,7 +97,9 @@ func (s *service) Set(
 
 // Delete soft-deletes a state entry.
 func (s *service) Delete(ctx context.Context, orgUID *string, key string) error {
-	return s.db.DeleteStateEntry(ctx, orgUID, s.prefixKey(key))
+	_, err := s.db.DeleteStateEntry(ctx, orgUID, s.prefixKey(key))
+
+	return err
 }
 
 // List returns all entries matching the key pattern.

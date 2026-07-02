@@ -2549,8 +2549,10 @@ func (s *Service) SetStateEntry(
 	return nil
 }
 
-// DeleteStateEntry soft-deletes a state entry.
-func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key string) error {
+// DeleteStateEntry soft-deletes a state entry, returning whether a live row
+// existed to delete (compare-and-set on deleted_at IS NULL): false means the
+// entry was already deleted (or never existed) — a replay of a prior consume.
+func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key string) (bool, error) {
 	query := s.db.NewUpdate().
 		Model((*models.StateEntry)(nil)).
 		Set("deleted_at = ?", time.Now()).
@@ -2563,12 +2565,17 @@ func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key stri
 		query = query.Where("organization_uid IS NULL")
 	}
 
-	_, err := query.Exec(ctx)
+	res, err := query.Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete state entry: %w", err)
+		return false, fmt.Errorf("failed to delete state entry: %w", err)
 	}
 
-	return nil
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read delete state entry result: %w", err)
+	}
+
+	return affected > 0, nil
 }
 
 // ListStateEntries returns all entries matching the key prefix.

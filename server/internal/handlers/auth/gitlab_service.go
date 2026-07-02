@@ -125,7 +125,7 @@ func (s *GitLabOAuthService) ValidateOAuthState(ctx context.Context, stateParam 
 	}
 
 	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, gitLabOAuthStatePrefix+stateParam)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, gitLabOAuthStatePrefix+stateParam)
 
 	stateJSON, ok := (*entry.Value)[keyState].(string)
 	if !ok {

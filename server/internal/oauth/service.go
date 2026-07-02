@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,18 @@ const (
 	// tokenEntropyBytes is the size of the random secret backing codes, refresh
 	// tokens, and generated client IDs/secrets before base64url encoding.
 	tokenEntropyBytes = 32
+
+	// authCodeKeyPrefix namespaces authorization codes within the generic
+	// state_entries store (shared with password resets, invites, OAuth sign-in
+	// state, etc.) so their random suffixes never collide with another
+	// consumer's keys.
+	authCodeKeyPrefix = "oauth_auth_code:"
+
+	// authCodeSep separates the embedded organization uid from the random
+	// suffix in an issued code. Neither a UUID (hyphens only) nor a
+	// base64url token (RFC 4648 §5 alphabet: A-Za-z0-9-_) ever contains a
+	// dot, so splitting on the first one is unambiguous.
+	authCodeSep = "."
 )
 
 // Sentinel errors returned by the service for the token/authorize flows. The
@@ -112,35 +125,62 @@ type AuthCodeGrant struct {
 }
 
 // IssueAuthCode mints a single-use, short-lived authorization code bound to the
-// grant. The returned code is the opaque value handed back to the client via the
-// redirect.
+// grant, persisted in the generic state_entries store rather than a dedicated
+// table. The returned code is the opaque value handed back to the client via
+// the redirect; it embeds the organization uid as a prefix (authCodeSep
+// separated) because the token endpoint that redeems it receives no org
+// context of its own — the prefix is how redemption resolves the org-scoped
+// lookup. The rest of the grant (client, redirect, PKCE, scope, resource,
+// user) travels in the entry's JSON value.
 func (s *Service) IssueAuthCode(ctx context.Context, grant *AuthCodeGrant) (string, error) {
-	code, err := randomToken()
+	random, err := randomToken()
 	if err != nil {
 		return "", err
 	}
 
-	now := s.clock.Now()
-	row := &models.OAuthAuthCode{
-		UID:                 uuid.New().String(),
-		Code:                code,
-		ClientID:            grant.ClientID,
-		UserUID:             grant.UserUID,
-		OrganizationUID:     grant.OrgUID,
-		RedirectURI:         grant.RedirectURI,
-		Scope:               grant.Scope,
-		Resource:            grant.Resource,
-		CodeChallenge:       grant.CodeChallenge,
-		CodeChallengeMethod: grant.CodeChallengeMethod,
-		ExpiresAt:           now.Add(authCodeTTL),
-		CreatedAt:           now,
+	code := grant.OrgUID + authCodeSep + random
+
+	value := models.JSONMap{
+		"client_id":             grant.ClientID,
+		"user_uid":              grant.UserUID,
+		"redirect_uri":          grant.RedirectURI,
+		"scope":                 grant.Scope,
+		"resource":              grant.Resource,
+		"code_challenge":        grant.CodeChallenge,
+		"code_challenge_method": grant.CodeChallengeMethod,
+		"expires_at":            s.clock.Now().Add(authCodeTTL).Format(time.RFC3339Nano),
 	}
 
-	if err := s.db.CreateOAuthAuthCode(ctx, row); err != nil {
+	ttl := authCodeTTL
+	orgUID := grant.OrgUID
+	if err := s.db.SetStateEntry(ctx, &orgUID, authCodeKeyPrefix+random, &value, &ttl); err != nil {
 		return "", fmt.Errorf("persist auth code: %w", err)
 	}
 
 	return code, nil
+}
+
+// splitAuthCode extracts the org uid and random suffix embedded in a code
+// issued by IssueAuthCode. The final bool is false for anything that isn't in
+// that shape (never a valid grant, so the caller rejects it the same as any
+// other invalid code).
+func splitAuthCode(code string) (string, string, bool) {
+	orgUID, random, found := strings.Cut(code, authCodeSep)
+	if !found || orgUID == "" || random == "" {
+		return "", "", false
+	}
+
+	return orgUID, random, true
+}
+
+// stringFromValue reads a string field out of a state-entry JSON value,
+// returning "" if the key is absent or not a string.
+func stringFromValue(v models.JSONMap, key string) string {
+	if s, ok := v[key].(string); ok {
+		return s
+	}
+
+	return ""
 }
 
 // TokenResult is the successful output of a token-endpoint exchange.
@@ -153,52 +193,70 @@ type TokenResult struct {
 
 // ExchangeAuthCode redeems an authorization code for an access + refresh token.
 // It enforces, in order: the code exists, is unexpired, and is consumed exactly
-// once (atomic compare-and-set); the redirect_uri and client_id match the
-// binding; and the PKCE code_verifier matches the stored S256 challenge. Any
-// failure returns errInvalidGrant / errPKCEFailed without minting a token.
+// once (atomic compare-and-set against the underlying state_entries row); the
+// redirect_uri and client_id match the binding; and the PKCE code_verifier
+// matches the stored S256 challenge. Any failure returns errInvalidGrant /
+// errPKCEFailed without minting a token.
 func (s *Service) ExchangeAuthCode(
 	ctx context.Context, code, clientID, redirectURI, codeVerifier string,
 ) (*TokenResult, error) {
-	row, err := s.db.GetOAuthAuthCode(ctx, code)
+	orgUID, random, ok := splitAuthCode(code)
+	if !ok {
+		return nil, errInvalidGrant
+	}
+
+	key := authCodeKeyPrefix + random
+
+	entry, err := s.db.GetStateEntry(ctx, &orgUID, key)
 	if err != nil {
+		return nil, fmt.Errorf("get auth code: %w", err)
+	}
+
+	if entry == nil || entry.Value == nil {
 		return nil, errInvalidGrant
 	}
 
-	now := s.clock.Now()
-	if now.After(row.ExpiresAt) {
+	value := *entry.Value
+
+	// Expiry is re-checked here (rather than trusted to state_entries' own
+	// expires_at filter, which stamps real wall-clock time on insert) against
+	// the service's own clock, so tests can fake time the same way the
+	// dedicated-table implementation did.
+	expiresAt, parseErr := time.Parse(time.RFC3339Nano, stringFromValue(value, "expires_at"))
+	if parseErr != nil || s.clock.Now().After(expiresAt) {
 		return nil, errInvalidGrant
 	}
 
-	if row.ClientID != clientID || row.RedirectURI != redirectURI {
+	if stringFromValue(value, "client_id") != clientID || stringFromValue(value, "redirect_uri") != redirectURI {
 		return nil, errInvalidGrant
 	}
 
-	if !VerifyPKCE(codeVerifier, row.CodeChallenge) {
+	if !VerifyPKCE(codeVerifier, stringFromValue(value, "code_challenge")) {
 		return nil, errPKCEFailed
 	}
 
-	// Atomic single-use guard: a replay updates zero rows and is rejected.
-	won, err := s.db.ConsumeOAuthAuthCode(ctx, code, now)
+	// Atomic single-use guard: a replay finds no live row to delete.
+	consumed, err := s.db.DeleteStateEntry(ctx, &orgUID, key)
 	if err != nil {
 		return nil, fmt.Errorf("consume auth code: %w", err)
 	}
 
-	if !won {
+	if !consumed {
 		return nil, errInvalidGrant
 	}
 
-	orgSlug, err := s.orgSlug(ctx, row.OrganizationUID)
+	orgSlug, err := s.orgSlug(ctx, orgUID)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.mintTokens(ctx, &mintInput{
-		clientID: row.ClientID,
-		userUID:  row.UserUID,
-		orgUID:   row.OrganizationUID,
+		clientID: clientID,
+		userUID:  stringFromValue(value, "user_uid"),
+		orgUID:   orgUID,
 		orgSlug:  orgSlug,
-		scope:    row.Scope,
-		resource: row.Resource,
+		scope:    stringFromValue(value, "scope"),
+		resource: stringFromValue(value, "resource"),
 	})
 }
 

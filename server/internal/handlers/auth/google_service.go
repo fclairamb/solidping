@@ -120,7 +120,7 @@ func (s *GoogleOAuthService) ValidateOAuthState(ctx context.Context, stateParam 
 	}
 
 	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, googleOAuthStatePrefix+stateParam)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, googleOAuthStatePrefix+stateParam)
 
 	stateJSON, ok := (*entry.Value)["state"].(string)
 	if !ok {
