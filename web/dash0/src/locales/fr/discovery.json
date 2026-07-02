@@ -6,6 +6,7 @@
   "noScansDescription": "Lancez un scan pour découvrir les hôtes sur votre réseau.",
   "scanStarted": "Scan de découverte lancé",
   "scanFailed": "Échec du lancement du scan",
+  "scanAlreadyRunning": "Un scan de découverte est déjà en cours pour cette organisation. Arrêtez-le ou attendez qu'il se termine.",
   "scanStatus": {
     "pending": "En attente",
     "running": "En cours",

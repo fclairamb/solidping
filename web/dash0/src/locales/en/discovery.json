@@ -6,6 +6,7 @@
   "noScansDescription": "Start a scan to discover hosts on your network.",
   "scanStarted": "Discovery scan started",
   "scanFailed": "Failed to start scan",
+  "scanAlreadyRunning": "A discovery scan is already running for this organization. Stop it or wait for it to finish.",
   "scanStatus": {
     "pending": "Pending",
     "running": "Running",

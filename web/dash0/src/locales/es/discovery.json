@@ -6,6 +6,7 @@
   "noScansDescription": "Inicie un escaneo para descubrir hosts en su red.",
   "scanStarted": "Escaneo de descubrimiento iniciado",
   "scanFailed": "Error al iniciar el escaneo",
+  "scanAlreadyRunning": "Ya hay un escaneo de descubrimiento en curso para esta organización. Deténgalo o espere a que termine.",
   "scanStatus": {
     "pending": "Pendiente",
     "running": "Ejecutando",

@@ -1,4 +1,48 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
+// fall back to the CI default.
+const API_BASE = process.env.E2E_BASE_URL
+  ? new URL(process.env.E2E_BASE_URL).origin
+  : "http://localhost:4000";
+
+// The backend serializes discovery scans per org (409 DISCOVERY_ALREADY_RUNNING
+// while any plan or chunk job is live), so a test that starts a scan must wait
+// for the previous tests' scans to drain first — the scans LIST only shows plan
+// jobs, so poll the jobs API where chunk children are visible too. Stopping a
+// scan now cancels its running chunks (worker cancellation watcher), so this
+// settles in seconds.
+async function waitForScanQuiescence(page: Page) {
+  const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { org: "test", email: "test@test.com", password: "test" },
+  });
+  const { accessToken, organization } = await login.json();
+
+  await expect
+    .poll(
+      async () => {
+        const r = await page.request.get(
+          `${API_BASE}/api/v1/orgs/${organization.uid}/jobs`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        const jobs = ((await r.json()).data ?? []) as Array<{
+          type: string;
+          status: string;
+        }>;
+        return jobs.filter(
+          (j) =>
+            (j.type === "network_discovery" ||
+              j.type === "network_discovery_plan") &&
+            (j.status === "pending" || j.status === "running"),
+        ).length;
+      },
+      {
+        timeout: 30000,
+        message: "waiting for prior discovery scans to drain",
+      },
+    )
+    .toBe(0);
+}
 
 test.describe("Network Discovery", () => {
   test.beforeEach(async ({ page }) => {
@@ -91,6 +135,7 @@ test.describe("Network Discovery", () => {
     page.on("pageerror", (err) => pageErrors.push(err));
 
     // Create a scan through the form; on success it navigates to the detail page.
+    await waitForScanQuiescence(page);
     await page.goto("/dash0/orgs/test/discovery/new");
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
@@ -139,6 +184,7 @@ test.describe("Network Discovery", () => {
   // accepted (no DISCOVERY_RANGE_TOO_LARGE), creates a plan scan, and the detail
   // page renders the chunk-progress indicator.
   test("large range fans out into chunks and can be stopped mid-scan", async ({ page }) => {
+    await waitForScanQuiescence(page);
     await page.goto("/dash0/orgs/test/discovery/new");
     // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
     await page.fill("textarea", "10.10.0.0/18");
@@ -365,6 +411,10 @@ test.describe("Network Discovery", () => {
     page,
   }) => {
     // Seed a row by creating a scan (navigates to the detail page on success).
+    // The backend serializes scans per org, so drain earlier tests' scans
+    // first — this test used to flake with 409 DISCOVERY_ALREADY_RUNNING while
+    // the stopped /18 fan-out's chunks were still draining.
+    await waitForScanQuiescence(page);
     await page.goto("/dash0/orgs/test/discovery/new");
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();

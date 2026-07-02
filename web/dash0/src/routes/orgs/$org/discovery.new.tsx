@@ -4,6 +4,8 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApiError } from "@/api/client";
+
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -225,8 +227,14 @@ function NewScanPage() {
         to: "/orgs/$org/discovery/$jobUid",
         params: { org, jobUid: jobUid ?? "" },
       });
-    } catch {
-      toast.error(t("scanFailed"));
+    } catch (err) {
+      // The one rejection a user can act on gets its own message: another
+      // scan is still running for the org (409 from the serialization guard).
+      if (err instanceof ApiError && err.code === "DISCOVERY_ALREADY_RUNNING") {
+        toast.error(t("scanAlreadyRunning"));
+      } else {
+        toast.error(t("scanFailed"));
+      }
     }
   };
 
