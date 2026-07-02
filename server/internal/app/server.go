@@ -70,6 +70,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/realtimestream"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
@@ -94,6 +95,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -147,6 +149,7 @@ type Server struct {
 	jmapManager           *jmap.Manager
 	slackSocketSupervisor *slack.SlackSocketSupervisor
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -245,6 +248,13 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		return nil, fmt.Errorf("failed to create event notifier: %w", err)
 	}
 	svcList.EventNotifier = eventNotifier
+
+	// Realtime hint publisher: write paths (results, incidents, jobs) publish
+	// org-scoped dirty hints through it onto the notifier bus. Left nil when
+	// the feature is disabled — every publish site is nil-safe.
+	if cfg.Realtime.Enabled {
+		svcList.Realtime = realtime.NewPublisher(eventNotifier, cfg.Realtime.FlushInterval, slog.Default())
+	}
 
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
 	// call, so no external wakeup channel is needed here.
@@ -820,6 +830,21 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	eventsHandler := events.NewHandler(eventsService, s.config)
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
+
+	// Realtime hint stream (SSE). Registered only when enabled — a disabled
+	// feature 404s (same convention as SP_PROMETHEUS_ENABLED) and the
+	// dashboard silently keeps polling. RequireOrgAccess enforces membership
+	// (403 for non-members) and puts the org on the context. The path is
+	// excluded from the request timeout and rate limits (middleware.isExcluded)
+	// — the hub's max_connections guard bounds it instead.
+	if s.config.Realtime.Enabled {
+		s.realtimeHub = realtime.NewHub(
+			s.services.EventNotifier, s.config.Realtime.MaxConnections, slog.Default())
+		streamHandler := realtimestream.NewHandler(s.realtimeHub, s.config.Realtime.PingInterval, s.config)
+		api.NewGroup("/orgs/:org/events/stream").
+			Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess).
+			GET("", streamHandler.Stream)
+	}
 
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
 	filesService := files.NewService(s.dbService, s.config)
@@ -1821,6 +1846,13 @@ func (s *Server) Start(ctx context.Context) error {
 			return err
 		}
 
+		// Close the realtime hub first: it terminates every held-open SSE
+		// stream so srv.Shutdown (which waits for active connections) can
+		// drain instead of hanging until the shutdown timeout.
+		if s.realtimeHub != nil {
+			s.realtimeHub.Close()
+		}
+
 		// Shutdown HTTP server first to stop accepting new requests
 		// Using fresh context for shutdown timeout after main ctx is canceled
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
@@ -1965,6 +1997,16 @@ func (s *Server) Close(ctx context.Context) error {
 			slog.ErrorContext(ctx, "Error shutting down profiler", "error", err)
 			closeErr = err
 		}
+	}
+
+	// Stop the realtime fan-out before the notifier it rides on: the hub
+	// releases any remaining SSE subscribers and the publisher flushes its
+	// pending hints while the bus is still up.
+	if s.realtimeHub != nil {
+		s.realtimeHub.Close()
+	}
+	if s.services != nil {
+		s.services.Realtime.Close() // nil-safe
 	}
 
 	// Close notifier first (stops listening for notifications)

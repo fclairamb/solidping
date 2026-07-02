@@ -38,6 +38,20 @@ func (sr *statusRecorder) Write(b []byte) (int, error) {
 	return sr.ResponseWriter.Write(b)
 }
 
+// Flush forwards to the underlying writer when it supports flushing, so
+// streaming handlers (SSE) keep working through the metrics wrapper.
+func (sr *statusRecorder) Flush() {
+	if f, ok := sr.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+// Unwrap exposes the underlying writer for http.ResponseController, which
+// walks Unwrap chains to find Flush/deadline support.
+func (sr *statusRecorder) Unwrap() http.ResponseWriter {
+	return sr.ResponseWriter
+}
+
 // HTTPMetrics is a bunrouter middleware that records per-route HTTP
 // duration and request-count metrics. Routes are taken from the matched
 // pattern via bunrouter.Request.Route() so cardinality stays bounded

@@ -8,6 +8,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 	"github.com/fclairamb/solidping/server/internal/webpush"
 )
@@ -19,6 +20,10 @@ type Registry struct {
 	EventNotifier  notifier.EventNotifier
 	EmailSender    email.Sender
 	EmailFormatter email.Formatter
+	// Realtime publishes org-scoped live hint events onto the notifier bus.
+	// Nil when SP_REALTIME_ENABLED=false — all Publisher methods are
+	// nil-receiver safe, so callers publish unconditionally.
+	Realtime *realtime.Publisher
 	// Credentials encrypts/decrypts secret JSON keys at rest. Always
 	// non-nil; .Enabled() reports whether a master key is configured.
 	Credentials credentials.Service
