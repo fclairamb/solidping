@@ -2,11 +2,13 @@
 package jobs
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
 	"github.com/uptrace/bunrouter"
 
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
@@ -54,19 +56,37 @@ func (h *Handler) CreateJob(writer http.ResponseWriter, req bunrouter.Request) e
 	})
 }
 
-// GetJob retrieves a job by UID.
+// GetJob retrieves a job by UID, scoped to the URL's organization.
 // GET /api/v1/orgs/:org/jobs/:uid.
 func (h *Handler) GetJob(writer http.ResponseWriter, req bunrouter.Request) error {
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
+	}
+
 	uid := req.Param("uid")
 
-	job, err := h.jobSvc.GetJob(req.Context(), uid)
-	if err != nil {
+	job, ok := h.jobInOrg(req.Context(), org.UID, uid)
+	if !ok {
 		return h.writeError(writer, http.StatusNotFound, "NOT_FOUND", "Job not found: "+uid)
 	}
 
 	return h.writeJSON(writer, http.StatusOK, map[string]interface{}{
 		responseKeyData: job,
 	})
+}
+
+// jobInOrg fetches a job and verifies it belongs to the given organization.
+// Global jobs (nil OrganizationUID — reaper, startup, …) are not exposed on
+// org-scoped routes. A job that exists but belongs to another org reports
+// not-found rather than forbidden, so probing UIDs across orgs leaks nothing.
+func (h *Handler) jobInOrg(ctx context.Context, orgUID, uid string) (*models.Job, bool) {
+	job, err := h.jobSvc.GetJob(ctx, uid)
+	if err != nil || job.OrganizationUID == nil || *job.OrganizationUID != orgUID {
+		return nil, false
+	}
+
+	return job, true
 }
 
 // ListJobs lists jobs with optional filtering.
@@ -96,10 +116,22 @@ func (h *Handler) ListJobs(writer http.ResponseWriter, req bunrouter.Request) er
 	})
 }
 
-// CancelJob cancels a pending job.
+// CancelJob cancels a pending job, scoped to the URL's organization. The
+// ownership check runs BEFORE the cancel so a member of one org can never
+// cancel another org's job by UID (org ownership is immutable, so
+// check-then-cancel cannot race).
 // DELETE /api/v1/orgs/:org/jobs/:uid.
 func (h *Handler) CancelJob(writer http.ResponseWriter, req bunrouter.Request) error {
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
+	}
+
 	uid := req.Param("uid")
+
+	if _, ok := h.jobInOrg(req.Context(), org.UID, uid); !ok {
+		return h.writeError(writer, http.StatusNotFound, "NOT_FOUND", "Job not found: "+uid)
+	}
 
 	if err := h.jobSvc.CancelJob(req.Context(), uid); err != nil {
 		return h.writeError(writer, http.StatusNotFound, "NOT_FOUND", "Job not found: "+uid)
