@@ -167,3 +167,103 @@ Config & metrics:
 - [ ] Endpoint added to `server/internal/app/openapi/openapi.yaml` and
       `wiki/api-specification.md`; docs site page covers live updates and the
       PgBouncer caveat.
+
+## Implementation Plan
+
+1. **Notifier reconnect surface** (`server/internal/notifier/`)
+   - Add `ReconnectNotifier` interface (`ReconnectEvents() <-chan struct{}`) in
+     `notifier.go`; implement on `PgEventNotifier`: the `pq.Listener` callback
+     fans `ListenerEventReconnected` out to registered channels (non-blocking,
+     buffered 1 so bursts coalesce). `Close` closes them.
+     `LocalEventNotifier` intentionally does not implement it (no transport).
+
+2. **`server/internal/realtime/` — hints, publisher/coalescer, hub**
+   - `realtime.go`: channel name `org.events`, kind constants (`results`,
+     `checks`, `incidents`, `events`, `jobs`), `Hint{Org, Kinds}` JSON codec.
+   - `publisher.go`: `*Publisher` (nil-safe methods so unwired callers no-op).
+     Leading-edge per-org coalescer: first hint publishes immediately via
+     `notifier.Notify`; hints within the flush window merge into a per-org
+     dirty kind-set flushed by a ticker (default 1s). `PublishImmediate`
+     bypasses the window (merging any pending kinds). `Close` stops the loop.
+   - `hub.go`: per-process subscriber registry keyed by org uid. Calls
+     `notifier.Listen("org.events")` exactly once; dispatch loop merges kinds
+     into each matching subscriber's dirty set (bounded, no queue) and signals
+     via a 1-buffered channel. If the notifier implements `ReconnectNotifier`,
+     a reconnect marks every local subscriber for `resync`. Max-connections
+     guard; `Close` terminates all streams (wired into server shutdown).
+   - Unit tests: coalescer burst (first immediate, ≤1/sec/instance), hub
+     dispatch/coalesce/resync/unsubscribe over `LocalEventNotifier`.
+
+3. **Config + metrics**
+   - `config.RealtimeConfig` (`realtime.*` / `SP_REALTIME_*`): `enabled`
+     (default true), `flush_interval` (1s), `ping_interval` (25s),
+     `max_connections` (default 1000). `applyRealtimeEnv` covers the
+     multi-word env keys (koanf underscore quirk).
+   - `prommetrics`: `solidping_realtime_connections` gauge;
+     `solidping_realtime_hints_published_total`,
+     `..._delivered_total`, `..._coalesced_total` counters (global, no org
+     labels).
+
+4. **SSE endpoint** — `server/internal/handlers/realtime/handler.go`
+   - `GET /api/v1/orgs/:org/events/stream` behind `RequireAuth` +
+     `RequireOrgAccess` (403 for non-members). Emits `hello` (protocol
+     version), then `hint` / `resync` events; comment ping every
+     `ping_interval`. Closes at access-token expiry (claims `exp`). Route not
+     registered when `realtime.enabled=false` → 404 (same convention as
+     `SP_PROMETHEUS_ENABLED`).
+   - `middleware.isExcluded` gains a `/api/v1/orgs/*/events/stream` match so
+     the long-lived stream bypasses the request timeout and per-IP
+     rate/concurrency limits (it has its own max-connections guard).
+   - `middleware/metrics.go` `statusRecorder` gets `Flush`/`Unwrap` so SSE can
+     flush through the metrics wrapper.
+   - Server wiring: publisher + hub built right after the event notifier in
+     `NewServer`; hub closed on shutdown before `srv.Shutdown` so streams
+     drain; registry exposes the publisher (`services.Realtime`).
+
+5. **Publish sites**
+   - `incidents.Service` gains a `*realtime.Publisher` (constructor param,
+     nil-safe): `results` coalesced at the top of `ProcessCheckResult` (runs
+     after every result persist across heartbeat/worker/remote-worker/
+     emailcheck/direct paths — a superset of the spec table); `checks`
+     immediate when the visible status changes; `events` + `incidents`
+     immediate alongside every incident event write (emitEvent + ack/snooze
+     paths).
+   - Constructor threading: `server.go` (x2), `heartbeat.NewService`,
+     `emailcheck.NewHandler`, `checkworker` (via services registry),
+     `mcp.NewHandler`.
+   - `jobsvc` gains the publisher: `jobs` coalesced on job create / status
+     write / cancel / retry, when the job is org-scoped.
+   - Service-level tests capture hints via `LocalEventNotifier.Listen`.
+
+6. **Multi-replica integration test** (`server/test/integration/`)
+   - Testcontainers Postgres: two `PgEventNotifier` instances on one DB; a hub
+     on notifier A receives a hint published through notifier B. Same
+     scenario green on `LocalEventNotifier` (single-process SQLite path).
+
+7. **Client (dash0)**
+   - `src/lib/live-events.ts`: fetch+ReadableStream SSE reader (Bearer header,
+     no dependency), exported line-parser for unit tests; jittered capped
+     reconnect backoff; 404/403 → permanent fallback (feature disabled).
+   - `src/contexts/LiveEventsContext.tsx` + `useLiveOrgEvents`: mounted once in
+     the org layout; maps hint kinds → TanStack Query keys (`checks`→checks/
+     check/infinite; `results`→results/allResults/checkAvailability;
+     `incidents`; `events`; `jobs`→jobsStats/backgroundJobs/checkSchedule/…)
+     with ~300ms debounce; connect/resync → one full org-scoped invalidation;
+     exposes `isLive`.
+   - Poll stretching: while live, dashboard/check-detail/jobs hooks stretch
+     `refetchInterval` to a ≥5 min safety net; the 1.5s first-result and 2.5s
+     active-jobs fast polls are skipped when live. Disconnected or disabled →
+     exactly today's intervals.
+   - Unit tests (vitest): SSE parser; kind→key mapping.
+
+8. **E2E (Playwright)** — `web/dash0/e2e/live-updates.spec.ts`
+   - Heartbeat check via API; dashboard open; send failing heartbeat; check
+     status/incident visible within ~2s without reload. Second scenario: check
+     detail page shows first real result live.
+
+9. **Docs**
+   - `openapi.yaml` + `wiki/api-specification.md`: stream endpoint.
+   - Docs site: `web/docs/docs/features/live-updates.md` (behavior, config
+     keys, PgBouncer session-mode caveat); wiki note for the PgBouncer
+     constraint.
+   - `make bench-checks` sanity run to confirm no result-write regression.
