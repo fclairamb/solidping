@@ -184,6 +184,26 @@ func (fx *wsFixture) dialPreAuth(t *testing.T, token string) *websocket.Conn {
 	return conn
 }
 
+// dialWithCookie opens a connection carrying an access_token cookie — the
+// shape a browser sends automatically (the login/refresh endpoints set this
+// cookie for the unrelated OAuth-consent flow), as opposed to an explicit
+// Authorization header a CLI client sets deliberately.
+func (fx *wsFixture) dialWithCookie(t *testing.T, cookieToken string) *websocket.Conn {
+	t.Helper()
+	r := require.New(t)
+
+	conn, resp, err := websocket.Dial(t.Context(), fx.wsURL, &websocket.DialOptions{
+		HTTPHeader: http.Header{"Cookie": []string{"access_token=" + cookieToken}},
+	})
+	r.NoError(err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	return conn
+}
+
 func readJSON[T any](t *testing.T, conn *websocket.Conn) T {
 	t.Helper()
 	r := require.New(t)
@@ -382,6 +402,46 @@ func TestServe_InvalidPreAuthTokenClosesImmediately(t *testing.T) {
 	_, _, err := conn.Read(ctx)
 	r.Error(err)
 	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(err))
+}
+
+// TestServe_StaleCookieFallsThroughToAuthMessage covers the browser bug: the
+// login/refresh endpoints set an access_token cookie for the unrelated
+// OAuth-consent flow, and browsers attach it to every same-origin request
+// automatically — including this upgrade. A stale/mismatched cookie (e.g.
+// left over from an earlier login than the token the page currently holds)
+// must not permanently kill the socket the way an explicit-but-invalid
+// Authorization header does; the client's fresh in-band `auth` message gets
+// a chance instead.
+func TestServe_StaleCookieFallsThroughToAuthMessage(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{authGrace: 2 * time.Second})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn := fx.dialWithCookie(t, "stale-invalid-cookie-token")
+	writeJSON(t, conn, map[string]string{"type": "auth", "token": token})
+
+	hello := readJSON[helloFrame](t, conn)
+	r.Equal("hello", hello.Type)
+}
+
+// TestServe_ValidCookieAuthenticatesImmediately covers the CLI/websocat use
+// case the cookie path exists for: a cookie that DOES validate authenticates
+// at upgrade time, same as a valid Authorization header, without waiting for
+// an auth message.
+func TestServe_ValidCookieAuthenticatesImmediately(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	fx := newWSFixture(t, wsFixtureOpts{})
+	fx.seedOrgAndUser(t)
+	token := fx.token(t)
+
+	conn := fx.dialWithCookie(t, token)
+	hello := readJSON[helloFrame](t, conn)
+	r.Equal("hello", hello.Type)
 }
 
 func TestServe_ForeignOrgClosesForbidden(t *testing.T) {

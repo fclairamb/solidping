@@ -22,8 +22,8 @@ const cookieAuthToken = "access_token"
 const bearerTokenParts = 2
 
 // handshake authenticates the connection, either immediately from the
-// upgrade request's Authorization header / access_token cookie (CLI, tests,
-// curl/websocat — anything that can set headers), or by waiting up to
+// upgrade request's Authorization header (CLI, tests, curl/websocat —
+// anything that can set headers) or access_token cookie, or by waiting up to
 // authGrace for a client `{"type":"auth","token":"..."}` message (browsers,
 // which cannot set headers on a WebSocket upgrade).
 //
@@ -33,29 +33,39 @@ const bearerTokenParts = 2
 func (h *Handler) handshake(
 	ctx context.Context, req *http.Request, conn *websocket.Conn, orgSlug string,
 ) (*auth.Claims, *models.Organization, websocket.StatusCode, string) {
-	if token := extractPreAuthToken(req); token != "" {
+	if token := extractHeaderToken(req); token != "" {
 		claims, org, code, reason := h.authenticate(ctx, token, orgSlug)
 		if claims != nil {
 			return claims, org, 0, ""
 		}
-		// A present-but-invalid header/cookie token fails fast rather than
-		// falling through to the grace window — an explicit credential that
-		// doesn't validate is not "try again via message".
+		// An Authorization header is a credential the caller deliberately
+		// set (a browser cannot) — a present-but-invalid one fails fast
+		// rather than falling through to the grace window.
 		return nil, nil, code, reason
+	}
+
+	// The access_token cookie is set by the login/refresh endpoints for an
+	// unrelated server-rendered flow (OAuth consent) — browsers attach it
+	// to EVERY same-origin request automatically, including this upgrade,
+	// so its presence is incidental rather than a deliberate credential
+	// choice. Unlike the header, a stale/mismatched cookie (e.g. left over
+	// from an earlier login than the token the page currently holds) must
+	// not permanently fail the socket: fall through and give the client's
+	// fresh in-band `auth` message a chance.
+	if token := extractCookieToken(req); token != "" {
+		if claims, org, _, _ := h.authenticate(ctx, token, orgSlug); claims != nil {
+			return claims, org, 0, ""
+		}
 	}
 
 	return h.awaitAuthMessage(ctx, conn, orgSlug)
 }
 
-// extractPreAuthToken mirrors middleware.extractToken: Authorization header
-// first, then the access_token cookie.
-func extractPreAuthToken(req *http.Request) string {
+// extractHeaderToken mirrors middleware.extractToken's Authorization header
+// handling.
+func extractHeaderToken(req *http.Request) string {
 	authHeader := req.Header.Get("Authorization")
 	if authHeader == "" {
-		if cookie, err := req.Cookie(cookieAuthToken); err == nil {
-			return cookie.Value
-		}
-
 		return ""
 	}
 
@@ -65,6 +75,16 @@ func extractPreAuthToken(req *http.Request) string {
 	}
 
 	return parts[1]
+}
+
+// extractCookieToken mirrors middleware.extractToken's access_token cookie
+// fallback.
+func extractCookieToken(req *http.Request) string {
+	if cookie, err := req.Cookie(cookieAuthToken); err == nil {
+		return cookie.Value
+	}
+
+	return ""
 }
 
 // awaitAuthMessage waits up to h.authGrace for the first client message. Only
