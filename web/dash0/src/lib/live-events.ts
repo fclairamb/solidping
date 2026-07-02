@@ -7,7 +7,7 @@
 // so the consumer invalidates the matching query caches and refetches over
 // the normal REST API.
 
-import { getToken } from "@/api/client";
+import { getToken, msSinceLastApiActivity } from "@/api/client";
 
 export interface LiveEventsCallbacks {
   /** Stream established (hello received is not required — headers suffice). */
@@ -108,6 +108,33 @@ function sleep(ms: number, signal: AbortSignal): Promise<void> {
   });
 }
 
+/** API traffic must be quiet this long before the stream opens. Slightly
+ * above the 500ms window load-completion heuristics (Playwright
+ * `networkidle`) need, so they latch before our permanent connection
+ * appears. */
+const API_QUIET_MS = 700;
+/** Never delay the stream longer than this, even on a page that polls
+ * continuously. */
+const API_QUIET_MAX_WAIT_MS = 5_000;
+/** Poll cadence while waiting for the quiet gap. */
+const API_QUIET_POLL_MS = 250;
+
+/**
+ * Waits until the page's REST traffic has been quiet for a moment (capped).
+ * The long-lived stream connection then never competes with first-paint
+ * fetches and never prevents load-completion heuristics from settling.
+ */
+async function waitForApiQuiet(signal: AbortSignal): Promise<void> {
+  const start = Date.now();
+  while (
+    !signal.aborted &&
+    msSinceLastApiActivity() < API_QUIET_MS &&
+    Date.now() - start < API_QUIET_MAX_WAIT_MS
+  ) {
+    await sleep(API_QUIET_POLL_MS, signal);
+  }
+}
+
 /**
  * Opens the live event stream for an org and keeps it open: reconnects with
  * jittered capped backoff on drops, re-reading the (possibly refreshed)
@@ -135,6 +162,9 @@ export function connectLiveEvents(
 
       let connected = false;
       try {
+        await waitForApiQuiet(signal);
+        if (signal.aborted) break;
+
         const response = await fetch(`/api/v1/orgs/${org}/events/stream`, {
           headers: {
             Authorization: `Bearer ${token}`,
