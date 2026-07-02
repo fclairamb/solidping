@@ -76,7 +76,7 @@ type Service interface {
 		costEWMAMs float64,
 		delayEWMAMs float64,
 		effectiveScheduledAt time.Time,
-		lane int16,
+		lane uint8,
 	) error
 }
 
@@ -318,7 +318,7 @@ func (s *serviceImpl) selectAvailableJobs(
 	tx bun.Tx,
 	jobs *[]*models.CheckJob,
 	region *string,
-	lane int16,
+	lane uint8,
 	limit int,
 	maxAhead time.Duration,
 	now time.Time,
@@ -487,7 +487,7 @@ func (s *serviceImpl) ReleaseLeaseWithSchedulingState(
 	costEWMAMs float64,
 	delayEWMAMs float64,
 	effectiveScheduledAt time.Time,
-	lane int16,
+	lane uint8,
 ) error {
 	update := s.db.NewUpdate().
 		Model((*models.CheckJob)(nil)).

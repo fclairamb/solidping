@@ -257,10 +257,10 @@ func TestClassifyLane(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		prevLane int16
+		prevLane uint8
 		cost     float64
 		params   scheduling.Params
-		want     int16
+		want     uint8
 	}{
 		{"zero-cost fresh job stays fast", scheduling.LaneFast, 0, p, scheduling.LaneFast},
 		{"cheap job stays fast", scheduling.LaneFast, 42, p, scheduling.LaneFast},

@@ -56,10 +56,10 @@ const MaxDeprioritizeOffset = CostOffsetWeight * DefaultExecutionTimeout // 60s 
 const (
 	// LaneFast is the default lane: checks whose cost EWMA sits below the
 	// hysteresis band. New jobs start here (first run is FIFO).
-	LaneFast int16 = 0
+	LaneFast uint8 = 0
 	// LaneSlow is the capacity-capped lane for expensive checks (cost EWMA at
 	// or above LaneSlowThresholdMs).
-	LaneSlow int16 = 1
+	LaneSlow uint8 = 1
 )
 
 // Params bundles every tunable knob the scheduling math reads. It is built once
@@ -121,7 +121,7 @@ type Params struct {
 // exact inversion of the goal. A zero-cost fresh job classifies fast. With
 // LaneSlowThresholdMs <= 0 the classifier is off and prevLane is returned
 // unchanged.
-func ClassifyLane(prevLane int16, costEWMAMs float64, params Params) int16 {
+func ClassifyLane(prevLane uint8, costEWMAMs float64, params Params) uint8 {
 	if params.LaneSlowThresholdMs <= 0 {
 		return prevLane
 	}

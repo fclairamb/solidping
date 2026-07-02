@@ -60,7 +60,7 @@ type CheckJob struct {
 	// FIFO; one execution reclassifies). The claim runs two lane-filtered
 	// SELECTs so slow jobs can never occupy more than pool_size −
 	// fast_lane_reserved slots on a worker. Added by migration 009.
-	Lane int16 `bun:"lane,notnull,default:0"`
+	Lane uint8 `bun:"lane,notnull,default:0"`
 
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a

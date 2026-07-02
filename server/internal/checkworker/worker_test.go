@@ -888,7 +888,7 @@ func TestFastLaneFloorInvariant(t *testing.T) {
 	// createSleepJob creates an enabled sleep check and stamps its job with the
 	// wanted lane + a matching cost EWMA, due 1s ago (no pre-exec sleep).
 	// Returns the check UID.
-	createSleepJob := func(slug string, sleepMs int, lane int16, costEWMAMs float64) string {
+	createSleepJob := func(slug string, sleepMs int, lane uint8, costEWMAMs float64) string {
 		check := models.NewCheck(org.UID, slug, string(checkerdef.CheckTypeSleep))
 		check.Config = models.JSONMap{"sleep_ms": sleepMs}
 		require.NoError(t, svc.CreateCheck(ctx, check))
