@@ -49,6 +49,25 @@ test.describe("Header refresh button responsiveness", () => {
   }) => {
     const page = authenticatedPage;
 
+    // The refresh button only renders on the list view — an org with zero
+    // connections shows the empty state instead, which has no refresh button.
+    // Seed one webhook connection through the API so the list is on screen.
+    // (Relative request URLs resolve against the configured baseURL origin.)
+    const login = await page.request.post("/api/v1/auth/login", {
+      data: { org: "test", email: "test@test.com", password: "test" },
+    });
+    const { accessToken } = await login.json();
+    const created = await page.request.post("/api/v1/orgs/test/integrations", {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      data: {
+        type: "webhook",
+        name: `E2E Refresh Seed ${Date.now()}`,
+        settings: { url: "https://example.com/webhook" },
+      },
+    });
+    expect(created.ok()).toBeTruthy();
+    const connection = await created.json();
+
     await page.goto("orgs/test/integrations");
     await page.waitForLoadState("networkidle");
 
@@ -70,5 +89,11 @@ test.describe("Header refresh button responsiveness", () => {
     await expect(refresh.getByText("Refresh")).toBeHidden();
     // Still labelled for screen readers when icon-only.
     await expect(refresh).toHaveAccessibleName("Refresh");
+
+    // Clean up the seeded connection so later specs that assert on an empty
+    // integrations org are unaffected.
+    await page.request.delete(`/api/v1/orgs/test/integrations/${connection.uid}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
   });
 });

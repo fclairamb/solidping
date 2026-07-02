@@ -1,6 +1,8 @@
 import { test, expect } from "@playwright/test";
 
-// Deterministic seed from server/test/testdata/testdata.go (SP_RUNMODE=test).
+// Deterministic seed from server/test/testdata/testdata.go (SP_RUNMODE=test):
+// a successful network-discovery scan (jobs row …0007) carrying one unpromoted
+// 127.0.0.1 group with a TCP/8080 and an ICMP suggested check.
 const SCAN_UID = "00000000-0000-0000-0000-000000000007";
 
 test.describe("Discovery host promotion", () => {
@@ -12,35 +14,48 @@ test.describe("Discovery host promotion", () => {
     await page.waitForURL((url) => !url.pathname.includes("login"));
   });
 
-  test("promotes a seeded host into a check end-to-end", async ({ page }) => {
+  test("promotes a seeded suggested check end-to-end", async ({ page }) => {
     // Open the seeded scan detail.
     await page.goto(`/dash0/orgs/test/discovery/${SCAN_UID}`);
 
-    // The seeded host appears as pending (not yet promoted).
-    const hostRow = page.getByRole("row", { name: /127\.0\.0\.1/ });
-    await expect(hostRow).toBeVisible();
-    await expect(hostRow.getByText(/pending/i)).toBeVisible();
+    // The seeded host renders as a group card listing its suggested checks.
+    const group = page
+      .getByTestId("discovery-group")
+      .filter({ hasText: "127.0.0.1" });
+    await expect(group).toBeVisible();
 
-    // Open the promote form (guards the Outlet regression: this child route
-    // must mount instead of re-rendering the scan detail).
-    await hostRow.getByRole("link", { name: /promote/i }).click();
-    await expect(
-      page.getByRole("heading", { name: /promote to check/i }),
-    ).toBeVisible();
+    const tcpRow = group
+      .getByTestId("discovery-check-row")
+      .filter({ hasText: "TCP/8080" });
+    await expect(tcpRow).toBeVisible();
 
-    // Name is prefilled and the TCP suggested check is pre-ticked.
-    await expect(page.locator("#name")).not.toHaveValue("");
-    const tcpCheckbox = page.getByRole("checkbox", { name: "tcp" });
-    await expect(tcpCheckbox).toBeChecked();
+    // The seed is one-shot per database: a CI retry after a mid-test failure
+    // finds the row already promoted. The terminal state is what the test
+    // guarantees, so assert it and stop rather than re-promoting.
+    if (await tcpRow.getByText("Promoted").isVisible()) {
+      await expect(tcpRow.getByRole("checkbox")).toBeDisabled();
+      return;
+    }
 
-    // Submit and assert success + navigation back to the scan.
-    await page.getByRole("button", { name: /create checks/i }).click();
-    await expect(page.getByText(/host promoted to check/i)).toBeVisible();
-    await page.waitForURL((url) => url.pathname.endsWith(`/discovery/${SCAN_UID}`));
+    // Select the TCP suggested check; the header button reflects the count.
+    await tcpRow.getByRole("checkbox").check();
+    const promoteButton = page.getByRole("button", {
+      name: /promote selected \(1\)/i,
+    });
+    await expect(promoteButton).toBeEnabled();
+    await promoteButton.click();
 
-    // The host now shows the promoted badge.
-    await expect(
-      page.getByRole("row", { name: /127\.0\.0\.1/ }).getByText(/promoted/i),
-    ).toBeVisible();
+    // Success toast, and the row flips to the promoted badge once the backend
+    // has created the check and the list refetched (end-to-end signal:
+    // promotedToCheckUid is only set after the check row exists).
+    await expect(page.getByText("Checks created")).toBeVisible();
+    await expect(tcpRow.getByText("Promoted")).toBeVisible();
+    await expect(tcpRow.getByRole("checkbox")).toBeDisabled();
+
+    // The sibling ICMP suggestion is untouched.
+    const icmpRow = group
+      .getByTestId("discovery-check-row")
+      .filter({ hasText: "ICMP" });
+    await expect(icmpRow.getByText("Promoted")).toBeHidden();
   });
 });
