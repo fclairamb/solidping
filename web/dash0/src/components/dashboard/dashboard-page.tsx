@@ -25,7 +25,11 @@ import {
   type OrgResult,
 } from "@/api/hooks";
 import { useAuth } from "@/contexts/AuthContext";
-import { stretchWhileLive, useLiveStatus } from "@/contexts/LiveEventsContext";
+import {
+  stretchWhileLive,
+  useLiveSubscription,
+  useScopeLive,
+} from "@/contexts/LiveEventsContext";
 import {
   Card,
   CardContent,
@@ -202,9 +206,16 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
   const { t: tNav } = useTranslation("nav");
   const { organizations } = useAuth();
   const orgName = organizations.find((o) => o.slug === org)?.name || org;
-  // While the live hint stream is connected, cache invalidations drive
-  // freshness and the intervals below become a lazy safety net.
-  const { isLive } = useLiveStatus();
+  // Collection subscriptions: the dashboard shows org-wide check membership,
+  // status/results (via the `checks` scope), incidents, and the activity
+  // feed. Each scope's own subscribed ack gates its poll stretch — a
+  // rejected/unacked scope keeps polling at its base rate.
+  useLiveSubscription({ entity: "checks" });
+  useLiveSubscription({ entity: "incidents" });
+  useLiveSubscription({ entity: "events" });
+  const checksLive = useScopeLive({ entity: "checks" });
+  const incidentsLive = useScopeLive({ entity: "incidents" });
+  const eventsLive = useScopeLive({ entity: "events" });
 
   const checksQuery = useChecks(org, {
     with: "last_result,last_status_change",
@@ -215,17 +226,19 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     size: 5,
     with: "check",
     hideSuppressed: true,
-    refetchInterval: stretchWhileLive(INCIDENT_POLL_MS, isLive),
+    refetchInterval: stretchWhileLive(INCIDENT_POLL_MS, incidentsLive),
   });
   const since24h = useMemo(
     () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
     [],
   );
+  // Results ride the `checks` collection scope: v2 hints results/status
+  // transitions to `checks` subscribers alongside membership changes.
   const resultsQuery = useResults(org, {
     periodType: "day",
     periodStartAfter: since24h,
     size: 1000,
-    refetchInterval: stretchWhileLive(RESULT_POLL_MS, isLive),
+    refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
   });
   // One aggregated hourly query feeds every glance-card uptime strip — grouped
   // client-side by checkUid, so the card costs a single HTTP call regardless of
@@ -234,17 +247,17 @@ export function OrgDashboardPage({ org }: OrgDashboardPageProps) {
     periodType: "hour",
     periodStartAfter: since24h,
     size: 1000,
-    refetchInterval: stretchWhileLive(RESULT_POLL_MS, isLive),
+    refetchInterval: stretchWhileLive(RESULT_POLL_MS, checksLive),
   });
   const eventsQuery = useEvents(org, {
     size: 8,
-    refetchInterval: stretchWhileLive(EVENT_POLL_MS, isLive),
+    refetchInterval: stretchWhileLive(EVENT_POLL_MS, eventsLive),
   });
 
   // Manual polling for checks: useChecks doesn't expose refetchInterval. Use
   // a tick + refetch(). Live hints invalidate the cache directly, so the
   // tick stretches to the safety net while connected.
-  const checkTick = useTick(stretchWhileLive(CHECK_POLL_MS, isLive));
+  const checkTick = useTick(stretchWhileLive(CHECK_POLL_MS, checksLive));
   useEffect(() => {
     if (checkTick) checksQuery.refetch();
     // eslint-disable-next-line react-hooks/exhaustive-deps

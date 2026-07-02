@@ -28,7 +28,11 @@ import {
   useRegions,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
-import { stretchWhileLive, useLiveStatus } from "@/contexts/LiveEventsContext";
+import {
+  stretchWhileLive,
+  useLiveSubscription,
+  useScopeLive,
+} from "@/contexts/LiveEventsContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -296,14 +300,20 @@ function CheckDetailPage() {
     [check?.period]
   );
 
+  // Watch this check (status/results) and the org's incidents collection —
+  // an open/resolved incident for this check must reflect live too.
+  useLiveSubscription({ entity: "check", uid: checkUid });
+  useLiveSubscription({ entity: "incidents" });
+  const checkLive = useScopeLive({ entity: "check", uid: checkUid });
+
   // While the very first result is still the "created" placeholder, poll
   // fast enough that a freshly-created check shows its first real status
   // without making the user wait for a full check period. Cap the fast
   // phase so a stuck worker can't trigger runaway polling at 1.5 s.
-  // When the live hint stream is connected the first result arrives as a
-  // hint-driven invalidation, so the hot poll is skipped entirely and the
-  // regular interval stretches to the lazy safety net.
-  const { isLive } = useLiveStatus();
+  // When this check's live subscription is acked, the first result arrives
+  // as a hint-driven invalidation, so the hot poll is skipped entirely and
+  // the regular interval stretches to the lazy safety net.
+  const isLive = checkLive;
   const fastPollMs = 1500;
   const fastPollWindowMs = 30_000;
   const isPendingFirstRun = check?.lastResult?.status === "created";

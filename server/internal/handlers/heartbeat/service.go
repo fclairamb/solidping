@@ -160,7 +160,7 @@ func (s *Service) ReceiveHeartbeat(ctx context.Context, orgSlug, identifier, tok
 	if checkerStatus == checkerdef.StatusRunning {
 		// Live hint: the result is persisted even though incident processing
 		// is skipped — ProcessCheckResult publishes for every other status.
-		s.rt.Publish(ctx, org.UID, realtime.KindResults)
+		s.rt.Publish(ctx, org.UID, check.UID, realtime.KindResults)
 
 		return nil
 	}

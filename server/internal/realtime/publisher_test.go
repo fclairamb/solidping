@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -67,7 +68,7 @@ func TestPublisher_FirstHintIsImmediate(t *testing.T) {
 	defer pub.Close()
 
 	start := time.Now()
-	pub.Publish(context.Background(), "org-1", KindResults)
+	pub.Publish(context.Background(), "org-1", "check-1", KindResults)
 
 	r.Eventually(func() bool { return capture.count() == 1 }, time.Second, time.Millisecond,
 		"leading-edge hint must publish immediately, not wait for the flush ticker")
@@ -77,6 +78,7 @@ func TestPublisher_FirstHintIsImmediate(t *testing.T) {
 	r.NoError(err)
 	r.Equal("org-1", hint.Org)
 	r.Equal([]string{"results"}, hint.Kinds)
+	r.Equal([]string{"check-1"}, hint.CheckUids)
 }
 
 // TestPublisher_BurstCoalesces drives a continuous burst of hints for one org
@@ -96,7 +98,7 @@ func TestPublisher_BurstCoalesces(t *testing.T) {
 
 	start := time.Now()
 	for time.Since(start) < burstDuration {
-		pub.Publish(context.Background(), "org-burst", KindResults, KindJobs)
+		pub.Publish(context.Background(), "org-burst", "check-a", KindResults, KindJobs)
 		time.Sleep(time.Millisecond)
 	}
 	pub.Close() // flushes the trailing dirty set
@@ -119,6 +121,7 @@ func TestPublisher_BurstCoalesces(t *testing.T) {
 		r.NoError(err)
 		r.Equal("org-burst", hint.Org)
 		r.Equal([]string{"jobs", "results"}, hint.Kinds)
+		r.Equal([]string{"check-a"}, hint.CheckUids)
 	}
 }
 
@@ -133,17 +136,18 @@ func TestPublisher_PublishImmediateBypassesWindowAndMergesPending(t *testing.T) 
 	defer pub.Close()
 
 	ctx := context.Background()
-	pub.Publish(ctx, "org-imm", KindResults) // leading edge, published
-	pub.Publish(ctx, "org-imm", KindJobs)    // coalesced into pending
-	pub.PublishImmediate(ctx, "org-imm", KindIncidents, KindEvents, KindChecks)
+	pub.Publish(ctx, "org-imm", "check-1", KindResults) // leading edge, published
+	pub.Publish(ctx, "org-imm", "check-2", KindJobs)    // coalesced into pending
+	pub.PublishImmediate(ctx, "org-imm", "check-3", KindIncidents, KindEvents, KindChecks)
 
 	r.Eventually(func() bool { return capture.count() == 2 }, time.Second, time.Millisecond)
 
 	second, err := DecodeHint(capture.snapshot()[1])
 	r.NoError(err)
 	r.Equal("org-imm", second.Org)
-	// Pending "jobs" folded into the immediate publish.
+	// Pending "jobs"/check-2 folded into the immediate publish.
 	r.Equal([]string{"checks", "events", "incidents", "jobs"}, second.Kinds)
+	r.Equal([]string{"check-2", "check-3"}, second.CheckUids)
 }
 
 func TestPublisher_OrgsAreIndependent(t *testing.T) {
@@ -157,8 +161,8 @@ func TestPublisher_OrgsAreIndependent(t *testing.T) {
 	defer pub.Close()
 
 	ctx := context.Background()
-	pub.Publish(ctx, "org-a", KindResults)
-	pub.Publish(ctx, "org-b", KindResults)
+	pub.Publish(ctx, "org-a", "check-1", KindResults)
+	pub.Publish(ctx, "org-b", "check-2", KindResults)
 
 	r.Eventually(func() bool { return capture.count() == 2 }, time.Second, time.Millisecond,
 		"each org gets its own leading edge")
@@ -168,12 +172,64 @@ func TestPublisher_NilAndEmptyAreSafe(t *testing.T) {
 	t.Parallel()
 
 	var pub *Publisher
-	pub.Publish(context.Background(), "org", KindResults)
-	pub.PublishImmediate(context.Background(), "org", KindResults)
+	pub.Publish(context.Background(), "org", "check", KindResults)
+	pub.PublishImmediate(context.Background(), "org", "check", KindResults)
 	pub.Close()
 
 	wired := NewPublisher(t.Context(), notifier.NewLocalEventNotifier(), time.Second, nil)
 	defer wired.Close()
-	wired.Publish(context.Background(), "", KindResults)
-	wired.Publish(context.Background(), "org")
+	wired.Publish(context.Background(), "", "check", KindResults)
+	wired.Publish(context.Background(), "org", "check")
+}
+
+// TestPublisher_OrgLevelKindsCarryNoCheckUids proves events/jobs (checkUID
+// "") never populate CheckUids, even when merged with check-attributable
+// kinds in the same window.
+func TestPublisher_OrgLevelKindsCarryNoCheckUids(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	bus := notifier.NewLocalEventNotifier()
+	capture := newHintCapture(t, bus)
+
+	pub := NewPublisher(t.Context(), bus, time.Minute, nil)
+	defer pub.Close()
+
+	pub.Publish(context.Background(), "org-1", "", KindJobs)
+
+	r.Eventually(func() bool { return capture.count() == 1 }, time.Second, time.Millisecond)
+
+	hint, err := DecodeHint(capture.snapshot()[0])
+	r.NoError(err)
+	r.Equal([]string{"jobs"}, hint.Kinds)
+	r.Empty(hint.CheckUids)
+}
+
+// TestPublisher_StormCollapsesCheckUidsToWildcard proves that once a flush
+// window accumulates more than CollapseCheckUids distinct check uids for an
+// org, the published hint carries the ["*"] wildcard instead of the full
+// list — bounding the NOTIFY payload regardless of outage size.
+func TestPublisher_StormCollapsesCheckUidsToWildcard(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	bus := notifier.NewLocalEventNotifier()
+	capture := newHintCapture(t, bus)
+
+	pub := NewPublisher(t.Context(), bus, time.Minute, nil) // never ticks; stays in one pending window
+	defer pub.Close()
+
+	ctx := context.Background()
+	pub.Publish(ctx, "org-storm", "check-0", KindResults) // leading edge, consumes uid 0
+	for i := 1; i <= CollapseCheckUids+10; i++ {
+		pub.Publish(ctx, "org-storm", fmt.Sprintf("check-%d", i), KindResults)
+	}
+	pub.PublishImmediate(ctx, "org-storm", "check-final", KindResults)
+
+	r.Eventually(func() bool { return capture.count() == 2 }, time.Second, time.Millisecond)
+
+	final, err := DecodeHint(capture.snapshot()[1])
+	r.NoError(err)
+	r.Equal([]string{"*"}, final.CheckUids, "storm collapse must replace the check-uid list with the wildcard")
+	r.True(IsWildcardCheckUids(final.CheckUids))
 }

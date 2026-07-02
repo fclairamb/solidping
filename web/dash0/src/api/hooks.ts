@@ -7,7 +7,8 @@ import {
 import { apiFetch } from "./client";
 import {
   stretchWhileLive,
-  useLiveStatus,
+  useLiveSubscription,
+  useScopeLive,
 } from "@/contexts/LiveEventsContext";
 
 // Types
@@ -3797,7 +3798,8 @@ interface JobsScope {
 // useJobsStats fetches the activity overview and drives adaptive refresh.
 export function useJobsStats(org: string, opts?: JobsScope) {
   const allOrgs = opts?.allOrgs ?? false;
-  const { isLive } = useLiveStatus();
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["jobsStats", org, { allOrgs }],
     queryFn: () =>
@@ -3827,7 +3829,8 @@ interface BackgroundJobsOptions extends JobsScope {
 // useBackgroundJobs lists background jobs (admin/super-admin).
 export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
   const allOrgs = opts?.allOrgs ?? false;
-  const { isLive } = useLiveStatus();
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["backgroundJobs", org, opts],
     queryFn: () => {
@@ -3859,7 +3862,8 @@ interface CheckScheduleOptions extends JobsScope {
 // useCheckSchedule lists check-schedule rows (admin/super-admin).
 export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
   const allOrgs = opts?.allOrgs ?? false;
-  const { isLive } = useLiveStatus();
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["checkSchedule", org, opts],
     queryFn: () => {

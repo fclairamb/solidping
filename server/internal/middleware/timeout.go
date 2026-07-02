@@ -18,9 +18,9 @@ import (
 //
 // A maxDuration of 0 disables the middleware: the handler runs unconditionally.
 // Paths in excludedPrefixes (workers, heartbeat, /api/mgmt/, /metrics) and the
-// realtime hint stream (/api/v1/orgs/:org/events/stream) bypass the timeout —
-// long-running worker endpoints, Prometheus scrapes and held-open SSE streams
-// must not be capped.
+// realtime hint WebSocket (/api/v1/orgs/:org/events/ws) bypass the timeout —
+// long-running worker endpoints, Prometheus scrapes and held-open WebSocket
+// connections must not be capped.
 func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 		return func(writer http.ResponseWriter, req bunrouter.Request) error {

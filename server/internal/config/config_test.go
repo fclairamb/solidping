@@ -346,17 +346,25 @@ func TestApplyRealtimeEnv(t *testing.T) {
 	t.Setenv("SP_REALTIME_FLUSH_INTERVAL", "2s")
 	t.Setenv("SP_REALTIME_PING_INTERVAL", "40s")
 	t.Setenv("SP_REALTIME_MAX_CONNECTIONS", "42")
+	t.Setenv("SP_REALTIME_AUTH_GRACE", "9s")
+	t.Setenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION", "77")
 
-	cfg := RealtimeConfig{Enabled: true, FlushInterval: time.Second, PingInterval: 25 * time.Second, MaxConnections: 1000}
+	cfg := RealtimeConfig{
+		Enabled: true, FlushInterval: time.Second, PingInterval: 25 * time.Second, MaxConnections: 1000,
+		AuthGrace: 5 * time.Second, MaxSubscriptionsPerConnection: 512,
+	}
 	applyRealtimeEnv(&cfg)
 
 	r.Equal(2*time.Second, cfg.FlushInterval)
 	r.Equal(40*time.Second, cfg.PingInterval)
 	r.Equal(42, cfg.MaxConnections)
+	r.Equal(9*time.Second, cfg.AuthGrace)
+	r.Equal(77, cfg.MaxSubscriptionsPerConnection)
 }
 
 // TestRealtimeDefaults confirms the realtime feature defaults to enabled with
-// the documented flush/ping windows and connection cap.
+// the documented flush/ping windows, connection cap, auth grace, and
+// per-connection subscription cap.
 func TestRealtimeDefaults(t *testing.T) { //nolint:paralleltest // Load reads process env
 	r := require.New(t)
 
@@ -367,6 +375,8 @@ func TestRealtimeDefaults(t *testing.T) { //nolint:paralleltest // Load reads pr
 	r.Equal(time.Second, cfg.Realtime.FlushInterval)
 	r.Equal(25*time.Second, cfg.Realtime.PingInterval)
 	r.Equal(1000, cfg.Realtime.MaxConnections)
+	r.Equal(5*time.Second, cfg.Realtime.AuthGrace)
+	r.Equal(512, cfg.Realtime.MaxSubscriptionsPerConnection)
 }
 
 // TestApplyRuntimeEnv confirms the SP_RUNTIME_* memory-guardrail knobs land on

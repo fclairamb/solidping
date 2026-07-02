@@ -547,30 +547,34 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
-### GET /api/v1/orgs/:org/events/stream
-Live update hint stream (Server-Sent Events). Auth: required (org membership
-enforced — non-members get 403).
+### GET /api/v1/orgs/:org/events/ws
+Live update hint WebSocket (v2 — per-entity subscriptions; superseded the v1
+SSE stream endpoint). Not modelable in OpenAPI (WebSocket); full protocol —
+handshake, message table, close codes — documented in prose at
+`web/docs/docs/features/live-updates.md`. Summary:
 
-Holds the response open as `text/event-stream` and pushes org-scoped, data-free
-hints when resources change. Events:
-- `hello` — first event, `{"protocol":1}`
-- `hint` — `{"kinds":["results","checks","incidents","events","jobs"]}`;
-  clients invalidate the matching caches and refetch over the normal REST API
-- `resync` — the server may have missed changes (LISTEN/NOTIFY reconnect);
-  refetch everything once
-- `: ping` comment lines every ~25s keep the connection alive
-
-Notes:
-- Delivery is best-effort by design; the client keeps a lazy fallback poll.
-- High-volume kinds (`results`, `jobs`) are coalesced to ≤1 hint/org/sec per
-  API instance; status/incident transitions are immediate.
-- The server closes the stream at access-token expiry; reconnect with a fresh
-  token.
-- `SP_REALTIME_ENABLED=false` → 404 (clients keep polling). Config knobs:
-  `SP_REALTIME_FLUSH_INTERVAL` (1s), `SP_REALTIME_PING_INTERVAL` (25s),
-  `SP_REALTIME_MAX_CONNECTIONS` (1000 per instance).
-- Ops: the PostgreSQL LISTEN session requires a session-mode connection —
-  PgBouncer transaction pooling is unsupported for the realtime listener.
+- Registered **outside** the standard auth middleware (browsers can't send
+  headers at WS-upgrade time): the route always accepts the upgrade, then
+  authenticates in-handler via a pre-auth `Authorization` header/cookie, or a
+  first `{"type":"auth","token":"..."}` message within
+  `SP_REALTIME_AUTH_GRACE` (5s default). Non-members close `4403`; a
+  disabled/invalid auth closes `4401`; `SP_REALTIME_ENABLED=false` closes
+  `4404`.
+- **Default-silent**: a connection receives nothing until it sends
+  `{"type":"subscribe","entity":...}` — `check` (+ `uid`) for one check, or
+  `checks`/`incidents`/`events`/`jobs` for the matching org-wide collection.
+  Server replies `subscribed` (idempotent on duplicates), then `update`
+  frames (`{"entity":...,"uid":...,"kinds":[...]}`) as matching hints arrive,
+  plus a `resync` after any bus transport gap.
+- Same delivery philosophy as v1: best-effort, hint-only (no data over the
+  socket), coalesced high-volume kinds (≤1/org/sec/instance; a burst over 64
+  distinct check uids in one window collapses to a wildcard), immediate
+  status/incident transitions, lazy client fallback poll, PgBouncer
+  session-mode requirement for LISTEN.
+- Config knobs: `SP_REALTIME_FLUSH_INTERVAL` (1s), `SP_REALTIME_PING_INTERVAL`
+  (25s), `SP_REALTIME_MAX_CONNECTIONS` (1000/instance),
+  `SP_REALTIME_AUTH_GRACE` (5s), `SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION`
+  (512/connection).
 
 ---
 

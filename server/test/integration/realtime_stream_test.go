@@ -1,26 +1,31 @@
 package integration
 
 import (
-	"bufio"
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/coder/websocket"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 )
 
-// enableRealtime turns the live hint stream on (the zero-value test config
-// leaves it disabled) with a short flush window for fast tests.
+// enableRealtime turns the live hint WebSocket on with a short flush window
+// and auth grace for fast tests, plus a small subscription cap for the
+// dedicated cap test.
 func enableRealtime(cfg *config.Config) {
 	cfg.Realtime = config.RealtimeConfig{
-		Enabled:       true,
-		FlushInterval: 50 * time.Millisecond,
-		PingInterval:  25 * time.Second,
+		Enabled:                       true,
+		FlushInterval:                 50 * time.Millisecond,
+		PingInterval:                  25 * time.Second,
+		AuthGrace:                     2 * time.Second,
+		MaxSubscriptionsPerConnection: 512,
 	}
 }
 
@@ -36,27 +41,72 @@ func streamLoginToken(ctx context.Context, t *testing.T, ts *TestServer) string 
 	return *resp.AccessToken
 }
 
-// openStream issues the stream GET and returns the raw response (caller
-// closes the body).
-func openStream(ctx context.Context, t *testing.T, ts *TestServer, org, token string) *http.Response {
-	t.Helper()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		ts.HTTPServer.URL+"/api/v1/orgs/"+org+"/events/stream", nil)
-	require.NoError(t, err)
-	req.Header.Set("Authorization", "Bearer "+token)
-
-	resp, err := ts.HTTPServer.Client().Do(req)
-	require.NoError(t, err)
-
-	return resp
+// wsURL converts the test server's http(s) base URL into a ws(s) URL for the
+// given org's realtime endpoint.
+func wsURL(ts *TestServer, org string) string {
+	return "ws" + strings.TrimPrefix(ts.HTTPServer.URL, "http") + "/api/v1/orgs/" + org + "/events/ws"
 }
 
-// TestRealtimeStream_EndToEndHeartbeatHint exercises the full slice: an
-// authenticated org member holds the SSE stream open while a heartbeat
-// result is ingested; the stream delivers `hello` then a hint carrying (at
-// least) `results`.
-func TestRealtimeStream_EndToEndHeartbeatHint(t *testing.T) {
+// dialRealtimeWithToken opens a pre-authenticated connection (Authorization
+// header set at upgrade time — the CLI/test/websocat path).
+func dialRealtimeWithToken(ctx context.Context, t *testing.T, ts *TestServer, org, token string) *websocket.Conn {
+	t.Helper()
+
+	conn, resp, err := websocket.Dial(ctx, wsURL(ts, org), &websocket.DialOptions{
+		HTTPHeader: http.Header{"Authorization": []string{"Bearer " + token}},
+	})
+	require.NoError(t, err)
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+
+	return conn
+}
+
+type wsHello struct {
+	Type     string `json:"type"`
+	Protocol int    `json:"protocol"`
+}
+
+type wsSubscribed struct {
+	Type   string `json:"type"`
+	Entity string `json:"entity"`
+	UID    string `json:"uid,omitempty"`
+}
+
+type wsUpdate struct {
+	Type   string   `json:"type"`
+	Entity string   `json:"entity"`
+	UID    string   `json:"uid,omitempty"`
+	Kinds  []string `json:"kinds,omitempty"`
+}
+
+func readWSJSON[T any](ctx context.Context, t *testing.T, conn *websocket.Conn) T {
+	t.Helper()
+
+	_, data, err := conn.Read(ctx)
+	require.NoError(t, err)
+
+	var v T
+	require.NoError(t, json.Unmarshal(data, &v))
+
+	return v
+}
+
+func writeWSJSON(ctx context.Context, t *testing.T, conn *websocket.Conn, v any) {
+	t.Helper()
+
+	data, err := json.Marshal(v)
+	require.NoError(t, err)
+	require.NoError(t, conn.Write(ctx, websocket.MessageText, data))
+}
+
+// TestRealtimeWS_EndToEndHeartbeatHint exercises the full slice through the
+// real router/middleware chain: an authenticated org member subscribes to
+// the org's `checks` collection while a heartbeat result is ingested; the
+// socket delivers `hello`, `subscribed`, then an `update` carrying `results`.
+func TestRealtimeWS_EndToEndHeartbeatHint(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
@@ -73,17 +123,16 @@ func TestRealtimeStream_EndToEndHeartbeatHint(t *testing.T) {
 	streamCtx, cancelStream := context.WithTimeout(ctx, 15*time.Second)
 	defer cancelStream()
 
-	resp := openStream(streamCtx, t, ts, TestOrgSlug, token)
-	defer func() { _ = resp.Body.Close() }()
-	r.Equal(http.StatusOK, resp.StatusCode)
-	r.Equal("text/event-stream", resp.Header.Get("Content-Type"))
+	conn := dialRealtimeWithToken(streamCtx, t, ts, TestOrgSlug, token)
 
-	scanner := bufio.NewScanner(resp.Body)
+	hello := readWSJSON[wsHello](streamCtx, t, conn)
+	r.Equal("hello", hello.Type)
+	r.Equal(realtimews.ProtocolVersion, hello.Protocol)
 
-	// hello arrives first.
-	event, data := readSSEEvent(t, scanner)
-	r.Equal("hello", event)
-	r.Contains(data, `"protocol":1`)
+	writeWSJSON(streamCtx, t, conn, map[string]string{"type": "subscribe", "entity": "checks"})
+	sub := readWSJSON[wsSubscribed](streamCtx, t, conn)
+	r.Equal("subscribed", sub.Type)
+	r.Equal("checks", sub.Entity)
 
 	// Ingest a heartbeat result through the public endpoint.
 	hbReq, err := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -94,20 +143,28 @@ func TestRealtimeStream_EndToEndHeartbeatHint(t *testing.T) {
 	_ = hbResp.Body.Close()
 	r.Equal(http.StatusOK, hbResp.StatusCode)
 
-	// The stream delivers a hint (possibly several, coalesced) that includes
-	// the results kind.
+	// The socket delivers an update (possibly several, coalesced) that
+	// includes the results kind on the checks collection scope.
 	for {
-		event, data = readSSEEvent(t, scanner)
-		if event == "hint" && strings.Contains(data, `"results"`) {
-			break
+		upd := readWSJSON[wsUpdate](streamCtx, t, conn)
+		if upd.Type == "update" && upd.Entity == "checks" {
+			found := false
+			for _, k := range upd.Kinds {
+				if k == "results" {
+					found = true
+				}
+			}
+			if found {
+				break
+			}
 		}
 	}
 }
 
-// TestRealtimeStream_ForbiddenForOtherOrgToken pins the membership gate: an
-// access token scoped to org A gets 403 (per frontend-errors conventions) on
-// org B's stream, before any SSE handshake.
-func TestRealtimeStream_ForbiddenForOtherOrgToken(t *testing.T) {
+// TestRealtimeWS_ForbiddenForOtherOrgToken pins the membership gate: an
+// access token scoped to org A gets a 4403 close on org B's socket, before
+// any subscription is possible.
+func TestRealtimeWS_ForbiddenForOtherOrgToken(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
@@ -115,34 +172,47 @@ func TestRealtimeStream_ForbiddenForOtherOrgToken(t *testing.T) {
 	ts := NewTestServerWithConfig(t, enableRealtime)
 	token := streamLoginToken(ctx, t, ts) // scoped to TestOrgSlug
 
-	resp := openStream(ctx, t, ts, TestOrg2Slug, token)
-	defer func() { _ = resp.Body.Close() }()
+	conn := dialRealtimeWithToken(ctx, t, ts, TestOrg2Slug, token)
 
-	r.Equal(http.StatusForbidden, resp.StatusCode)
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, _, err := conn.Read(readCtx)
+	r.Error(err)
+	r.Equal(realtimews.CloseForbidden, websocket.CloseStatus(err))
 }
 
-// TestRealtimeStream_UnauthenticatedRejected pins the auth gate.
-func TestRealtimeStream_UnauthenticatedRejected(t *testing.T) {
+// TestRealtimeWS_UnauthenticatedTimesOutWithAuthFailed pins the auth gate:
+// no Authorization header and no `auth` message within the grace window
+// closes 4401.
+func TestRealtimeWS_UnauthenticatedTimesOutWithAuthFailed(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
 
-	ts := NewTestServerWithConfig(t, enableRealtime)
+	ts := NewTestServerWithConfig(t, func(cfg *config.Config) {
+		enableRealtime(cfg)
+		cfg.Realtime.AuthGrace = 300 * time.Millisecond
+	})
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
-		ts.HTTPServer.URL+"/api/v1/orgs/"+TestOrgSlug+"/events/stream", nil)
+	conn, resp, err := websocket.Dial(ctx, wsURL(ts, TestOrgSlug), nil)
 	r.NoError(err)
-	resp, err := ts.HTTPServer.Client().Do(req)
-	r.NoError(err)
-	defer func() { _ = resp.Body.Close() }()
+	if resp != nil && resp.Body != nil {
+		t.Cleanup(func() { _ = resp.Body.Close() })
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
 
-	r.Equal(http.StatusUnauthorized, resp.StatusCode)
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, _, readErr := conn.Read(readCtx)
+	r.Error(readErr)
+	r.Equal(realtimews.CloseAuthFailed, websocket.CloseStatus(readErr))
 }
 
-// TestRealtimeStream_DisabledReturns404 pins the SP_REALTIME_ENABLED=false
-// convention: the route is not registered, so the endpoint 404s and the
+// TestRealtimeWS_DisabledClosesImmediately4404 pins the SP_REALTIME_ENABLED=false
+// convention: the route is still registered (browsers can't see a rejected
+// upgrade), but the socket is accepted and immediately closed 4404 so the
 // dashboard silently keeps polling.
-func TestRealtimeStream_DisabledReturns404(t *testing.T) {
+func TestRealtimeWS_DisabledClosesImmediately4404(t *testing.T) {
 	t.Parallel()
 	r := require.New(t)
 	ctx := t.Context()
@@ -150,27 +220,11 @@ func TestRealtimeStream_DisabledReturns404(t *testing.T) {
 	ts := NewTestServer(t) // zero-value config: realtime disabled
 	token := streamLoginToken(ctx, t, ts)
 
-	resp := openStream(ctx, t, ts, TestOrgSlug, token)
-	defer func() { _ = resp.Body.Close() }()
+	conn := dialRealtimeWithToken(ctx, t, ts, TestOrgSlug, token)
 
-	r.Equal(http.StatusNotFound, resp.StatusCode)
-}
-
-// readSSEEvent scans until one complete SSE event frame has been read.
-func readSSEEvent(t *testing.T, scanner *bufio.Scanner) (string, string) {
-	t.Helper()
-
-	var event string
-	for scanner.Scan() {
-		line := scanner.Text()
-		switch {
-		case strings.HasPrefix(line, "event: "):
-			event = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			return event, strings.TrimPrefix(line, "data: ")
-		}
-	}
-	t.Fatalf("stream ended before an event arrived: %v", scanner.Err())
-
-	return "", ""
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	_, _, err := conn.Read(readCtx)
+	r.Error(err)
+	r.Equal(realtimews.CloseDisabled, websocket.CloseStatus(err))
 }

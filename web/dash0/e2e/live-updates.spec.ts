@@ -1,6 +1,7 @@
+import type { WebSocket } from "@playwright/test";
 import { test, expect, type Page } from "./fixtures";
 
-// Live dashboard updates via org-scoped hint events (SSE).
+// Live dashboard updates via org-scoped hint events (WebSocket v2).
 //
 // These tests drive a heartbeat check through the public heartbeat endpoint
 // and assert the dashboard reflects the change without any reload, within a
@@ -69,6 +70,30 @@ async function deleteCheck(
   });
 }
 
+/** Waits for the realtime v2 socket to open and reach the `subscribed`
+ * state for at least one scope — the client-side signal that live updates
+ * are flowing, equivalent to v1's "stream connected" 200 response wait. */
+async function waitForLiveSubscribed(page: Page): Promise<WebSocket> {
+  const ws = await page.waitForEvent("websocket", {
+    predicate: (socket) => socket.url().includes("/events/ws"),
+    timeout: 15000,
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("timed out waiting for a subscribed ack")),
+      15000,
+    );
+    ws.on("framereceived", (frame) => {
+      const text = typeof frame.payload === "string" ? frame.payload : "";
+      if (text.includes('"type":"subscribed"')) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+  return ws;
+}
+
 test.describe("Live dashboard updates", () => {
   test("an incident opened by a failing heartbeat appears on the dashboard within ~2s", async ({
     authenticatedPage,
@@ -84,19 +109,16 @@ test.describe("Live dashboard updates", () => {
     try {
       await sendHeartbeat(page, check, "up");
 
-      // Load the dashboard and wait for the live stream to be established.
-      const streamConnected = page.waitForResponse(
-        (resp) =>
-          resp.url().includes("/events/stream") && resp.status() === 200,
-        { timeout: 15000 },
-      );
+      // Load the dashboard and wait for at least one scope to be
+      // subscribed-and-acked before driving the test scenario.
+      const subscribedPromise = waitForLiveSubscribed(page);
       await page.goto("orgs/test");
-      await streamConnected;
+      await subscribedPromise;
       await expect(page.getByTestId("kpi-tile-incidents")).toBeVisible();
 
       // Fail the check: with a zero confirmation window the incident opens
       // on this heartbeat. The dashboard must show it live — well under the
-      // 30s incident poll (stretched to minutes while the stream is live).
+      // 30s incident poll (stretched to minutes while the scope is live).
       await sendHeartbeat(page, check, "down");
 
       await expect(
@@ -126,18 +148,14 @@ test.describe("Live dashboard updates", () => {
 
     try {
       // Open the detail page before any result exists.
-      const streamConnected = page.waitForResponse(
-        (resp) =>
-          resp.url().includes("/events/stream") && resp.status() === 200,
-        { timeout: 15000 },
-      );
+      const subscribedPromise = waitForLiveSubscribed(page);
       await page.goto(`orgs/test/checks/${check.uid}`);
-      await streamConnected;
+      await subscribedPromise;
       await expect(page.getByTestId("check-detail-header")).toBeVisible();
 
-      // While live, the 1.5s first-result hot poll is disabled: count the
-      // check-detail refetches over an idle window. A 1.5s poll would fire
-      // at least twice; the live path fires none.
+      // While the check scope is live, the 1.5s first-result hot poll is
+      // disabled: count the check-detail refetches over an idle window. A
+      // 1.5s poll would fire at least twice; the live path fires none.
       let detailFetches = 0;
       const onRequest = (req: { url: () => string; method: () => string }) => {
         if (
@@ -152,7 +170,7 @@ test.describe("Live dashboard updates", () => {
       const idleFetches = detailFetches;
       expect(
         idleFetches,
-        "no 1.5s hot poll may run while the live stream is connected",
+        "no 1.5s hot poll may run while the check's live subscription is acked",
       ).toBeLessThan(2);
 
       // First real result: must appear live, driven by the hint. The summary
@@ -162,6 +180,71 @@ test.describe("Live dashboard updates", () => {
         timeout: 4000,
       });
       page.off("request", onRequest);
+    } finally {
+      await deleteCheck(page, token, check.uid);
+    }
+  });
+
+  test("reconnect after a server-initiated close (4401-style) replays subscriptions and stays live", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+    const check = await createHeartbeatCheck(
+      page,
+      token,
+      `E2E Live Reconnect ${Date.now()}`,
+    );
+
+    try {
+      await sendHeartbeat(page, check, "up");
+
+      // Route the realtime socket through a pass-through proxy so the test
+      // can force-close the *first* connection the same way an expired
+      // access token would server-side (close 4401), without touching real
+      // token expiry timing. connectToServer() keeps the real backend doing
+      // the actual auth/subscribe/hint work; this proxy only intercepts
+      // frames to detect the first `subscribed` ack and then kill that one
+      // connection — every subsequent connection (the reconnect) passes
+      // through untouched.
+      let connections = 0;
+      let firstConnectionClosed = false;
+      await page.routeWebSocket(/\/events\/ws/, (clientWS) => {
+        const connectionIndex = connections++;
+        const serverWS = clientWS.connectToServer();
+
+        serverWS.onMessage((message) => {
+          clientWS.send(message); // manual forward (onMessage disables auto-forward)
+          const text = typeof message === "string" ? message : "";
+          if (connectionIndex === 0 && text.includes('"type":"subscribed"')) {
+            firstConnectionClosed = true;
+            void clientWS.close({ code: 4401, reason: "e2e forced reconnect" });
+          }
+        });
+        clientWS.onMessage((message) => serverWS.send(message)); // manual forward the other direction
+      });
+
+      const firstSubscribed = waitForLiveSubscribed(page);
+      await page.goto("orgs/test");
+      await firstSubscribed;
+      await expect(page.getByTestId("kpi-tile-incidents")).toBeVisible();
+
+      // A fresh socket must open, authenticate, and resubscribe — same
+      // scopes, replayed automatically by the registry after reconnect.
+      const secondSubscribed = waitForLiveSubscribed(page);
+      await expect
+        .poll(() => firstConnectionClosed, { timeout: 5000 })
+        .toBe(true);
+      await secondSubscribed;
+      expect(connections).toBeGreaterThanOrEqual(2);
+
+      // Live updates keep working after the reconnect: no manual reload
+      // needed, the replayed `checks`/`incidents` subscriptions still route
+      // hints to the dashboard.
+      await sendHeartbeat(page, check, "down");
+      await expect(
+        page.getByTestId("active-incidents").getByText(check.name),
+      ).toBeVisible({ timeout: 4000 });
     } finally {
       await deleteCheck(page, token, check.uid);
     }

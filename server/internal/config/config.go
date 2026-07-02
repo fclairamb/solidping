@@ -146,22 +146,32 @@ type PrometheusConfig struct {
 	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
 }
 
-// RealtimeConfig controls the org-scoped live hint stream
-// (GET /api/v1/orgs/:org/events/stream). When disabled the endpoint is not
-// registered (404, same convention as SP_PROMETHEUS_ENABLED) and the
-// dashboard silently keeps polling.
+// RealtimeConfig controls the org-scoped live hint WebSocket
+// (GET /api/v1/orgs/:org/events/ws). When disabled the endpoint still
+// upgrades but immediately closes with 4404 (same "feature disabled"
+// convention as SP_PROMETHEUS_ENABLED's 404) and the dashboard silently keeps
+// polling.
 type RealtimeConfig struct {
-	// Enabled gates the SSE stream endpoint and the hint publisher/hub.
+	// Enabled gates the WebSocket endpoint and the hint publisher/hub.
 	Enabled bool `koanf:"enabled"`
 	// FlushInterval is the hint coalescing window per org per instance
 	// (SP_REALTIME_FLUSH_INTERVAL, default 1s).
 	FlushInterval time.Duration `koanf:"flush_interval"`
-	// PingInterval is the SSE comment keep-alive period
+	// PingInterval is the transport-level ping keep-alive period
 	// (SP_REALTIME_PING_INTERVAL, default 25s).
 	PingInterval time.Duration `koanf:"ping_interval"`
-	// MaxConnections caps concurrent hint streams per instance
+	// MaxConnections caps concurrent hint connections per instance
 	// (SP_REALTIME_MAX_CONNECTIONS, default 1000; 0 = unlimited).
 	MaxConnections int `koanf:"max_connections"`
+	// AuthGrace is how long an unauthenticated connection has to send an
+	// `auth` message before the server closes it with 4401
+	// (SP_REALTIME_AUTH_GRACE, default 5s). Only applies to connections that
+	// didn't pre-authenticate via header/cookie at upgrade time.
+	AuthGrace time.Duration `koanf:"auth_grace"`
+	// MaxSubscriptionsPerConnection caps how many scopes a single connection
+	// may subscribe to (SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION, default
+	// 512; 0 = unlimited).
+	MaxSubscriptionsPerConnection int `koanf:"max_subscriptions_per_connection"`
 }
 
 // CheckersConfig controls which check types are enabled at the server level.
@@ -709,10 +719,12 @@ func Load() (*Config, error) {
 			Path:    "/metrics",
 		},
 		Realtime: RealtimeConfig{
-			Enabled:        true,
-			FlushInterval:  time.Second,
-			PingInterval:   25 * time.Second,
-			MaxConnections: 1000,
+			Enabled:                       true,
+			FlushInterval:                 time.Second,
+			PingInterval:                  25 * time.Second,
+			MaxConnections:                1000,
+			AuthGrace:                     5 * time.Second,
+			MaxSubscriptionsPerConnection: 512,
 		},
 		Encryption: EncryptionConfig{
 			AutoMigrate: true,
@@ -988,6 +1000,16 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 	if v := os.Getenv("SP_REALTIME_MAX_CONNECTIONS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MaxConnections = n
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_AUTH_GRACE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.AuthGrace = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxSubscriptionsPerConnection = n
 		}
 	}
 }

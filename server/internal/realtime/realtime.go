@@ -39,23 +39,89 @@ const (
 	KindJobs Kind = "jobs"
 )
 
-// Hint is the JSON payload published on the bus: org uid plus the dirty kinds.
-// Far below the 8KB NOTIFY payload limit by construction.
+// CollapseCheckUids is the storm-collapse threshold: when a flush window
+// accumulates more distinct check uids for an org than this, the publisher
+// replaces the list with ["*"] rather than let the payload grow toward the
+// 8KB NOTIFY limit. Subscribers treat ["*"] as "every check of this org".
+const CollapseCheckUids = 64
+
+// checkUidsWildcard is the sentinel list meaning "every check of the org".
+//
+//nolint:gochecknoglobals // immutable sentinel value, not a mutable config knob
+var checkUidsWildcard = []string{"*"}
+
+// Hint is the JSON payload published on the bus: org uid, the dirty kinds,
+// and the check uids the check-attributable kinds (results, checks,
+// incidents) apply to. events/jobs are org-level and never contribute to
+// CheckUids. Far below the 8KB NOTIFY payload limit by construction — see
+// CollapseCheckUids for the storm-collapse guarantee.
 type Hint struct {
-	Org   string   `json:"org"`
-	Kinds []string `json:"kinds"`
+	Org       string   `json:"org"`
+	Kinds     []string `json:"kinds"`
+	CheckUids []string `json:"checkUids,omitempty"`
 }
 
-// EncodeHint serializes a hint for the notifier bus. Kinds are sorted so
-// payloads are deterministic (stable tests, readable logs).
-func EncodeHint(orgUID string, kinds map[Kind]struct{}) (string, error) {
+// EncodeHint serializes a hint for the notifier bus. Kinds and check uids are
+// sorted so payloads are deterministic (stable tests, readable logs). A
+// checkUids set larger than CollapseCheckUids collapses to the ["*"]
+// wildcard.
+func EncodeHint(orgUID string, kinds map[Kind]struct{}, checkUids map[string]struct{}) (string, error) {
 	names := make([]string, 0, len(kinds))
 	for k := range kinds {
 		names = append(names, string(k))
 	}
 	sort.Strings(names)
 
-	data, err := json.Marshal(Hint{Org: orgUID, Kinds: names})
+	data, err := json.Marshal(Hint{Org: orgUID, Kinds: names, CheckUids: collapseCheckUids(checkUids)})
+	if err != nil {
+		return "", fmt.Errorf("encoding hint: %w", err)
+	}
+
+	return string(data), nil
+}
+
+// collapseCheckUids sorts a check-uid set into a deterministic slice, or
+// collapses it to the ["*"] wildcard once it exceeds CollapseCheckUids. A nil
+// or empty set returns nil (org-level-only hint, e.g. events/jobs).
+func collapseCheckUids(checkUids map[string]struct{}) []string {
+	if len(checkUids) == 0 {
+		return nil
+	}
+	if len(checkUids) > CollapseCheckUids {
+		return checkUidsWildcard
+	}
+
+	uids := make([]string, 0, len(checkUids))
+	for uid := range checkUids {
+		uids = append(uids, uid)
+	}
+	sort.Strings(uids)
+
+	return uids
+}
+
+// IsWildcardCheckUids reports whether a hint's CheckUids is the ["*"] storm-
+// collapse sentinel meaning "every check of this org".
+func IsWildcardCheckUids(checkUids []string) bool {
+	return len(checkUids) == 1 && checkUids[0] == "*"
+}
+
+// encodePendingHint serializes a publisher's pending per-org state, honoring
+// an already-collapsed check-uid set (the wildcard, once tripped, must stay
+// the wildcard even though the underlying set was cleared to bound memory).
+func encodePendingHint(orgUID string, pending *pendingOrg) (string, error) {
+	names := make([]string, 0, len(pending.kinds))
+	for k := range pending.kinds {
+		names = append(names, string(k))
+	}
+	sort.Strings(names)
+
+	checkUids := checkUidsWildcard
+	if !pending.collapsed {
+		checkUids = collapseCheckUids(pending.checkUids)
+	}
+
+	data, err := json.Marshal(Hint{Org: orgUID, Kinds: names, CheckUids: checkUids})
 	if err != nil {
 		return "", fmt.Errorf("encoding hint: %w", err)
 	}

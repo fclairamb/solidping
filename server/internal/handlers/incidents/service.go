@@ -151,7 +151,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	// Live hint: a result has been persisted for this org (this runs after
 	// every save path — executor, remote worker, heartbeat, email check).
 	// Coalesced: the publisher bounds bus traffic to ~1 hint/org/sec.
-	s.rt.Publish(ctx, check.OrganizationUID, realtime.KindResults)
+	s.rt.Publish(ctx, check.OrganizationUID, check.UID, realtime.KindResults)
 
 	if result.Status == nil {
 		return nil // Skip results without status
@@ -219,7 +219,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return fmt.Errorf("failed to update check status and clocks: %w", err)
 	}
 
-	s.publishStatusHint(ctx, check.OrganizationUID, statusChanged)
+	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, statusChanged)
 
 	// Update local check object for incident logic
 	check.Status = newStatus
@@ -241,11 +241,11 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 // publishStatusHint emits the immediate `checks` live hint when the visible
 // check status flipped — dashboards must show a transition within ~2s, so it
 // bypasses the coalescing window. No-op when the status is unchanged.
-func (s *Service) publishStatusHint(ctx context.Context, orgUID string, statusChanged bool) {
+func (s *Service) publishStatusHint(ctx context.Context, orgUID, checkUID string, statusChanged bool) {
 	if !statusChanged {
 		return
 	}
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindChecks)
+	s.rt.PublishImmediate(ctx, orgUID, checkUID, realtime.KindChecks)
 }
 
 // deriveIncidentClocks computes the FirstFailureAt and
@@ -1261,7 +1261,7 @@ func (s *Service) emitEvent(
 
 	// Live hint: incident lifecycle and its timeline event are visible state —
 	// immediate so an opening incident reaches watching dashboards instantly.
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	// Queue notifications for incident lifecycle events
 	switch eventType {
@@ -1977,7 +1977,7 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 		// Don't fail the acknowledgment for event creation errors
 	}
 
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
@@ -2083,7 +2083,7 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	return incident, nil
 }
@@ -2177,7 +2177,7 @@ func (s *Service) snoozeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	s.cancelPendingNotifications(ctx, incident.UID, &until)
 
@@ -2270,7 +2270,7 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
-	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	return incident, nil
 }
