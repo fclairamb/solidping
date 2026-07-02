@@ -28,6 +28,7 @@ import {
   useRegions,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
+import { stretchWhileLive, useLiveStatus } from "@/contexts/LiveEventsContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -299,6 +300,10 @@ function CheckDetailPage() {
   // fast enough that a freshly-created check shows its first real status
   // without making the user wait for a full check period. Cap the fast
   // phase so a stuck worker can't trigger runaway polling at 1.5 s.
+  // When the live hint stream is connected the first result arrives as a
+  // hint-driven invalidation, so the hot poll is skipped entirely and the
+  // regular interval stretches to the lazy safety net.
+  const { isLive } = useLiveStatus();
   const fastPollMs = 1500;
   const fastPollWindowMs = 30_000;
   const isPendingFirstRun = check?.lastResult?.status === "created";
@@ -308,8 +313,11 @@ function CheckDetailPage() {
     return () => clearTimeout(id);
   }, []);
 
-  const refetchInterval =
-    isPendingFirstRun && withinFastWindow ? fastPollMs : periodMs;
+  const refetchInterval = isLive
+    ? stretchWhileLive(periodMs ?? 0, isLive)
+    : isPendingFirstRun && withinFastWindow
+      ? fastPollMs
+      : periodMs;
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {

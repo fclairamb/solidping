@@ -311,6 +311,43 @@ var (
 		[]string{labelJobType},
 	)
 
+	// RealtimeConnections tracks currently open realtime hint streams (SSE).
+	// Global gauge — no per-org label so cardinality stays bounded.
+	RealtimeConnections = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_realtime_connections",
+			Help: "Currently open realtime hint stream connections",
+		},
+	)
+
+	// RealtimeHintsPublished counts org hint events published to the notifier
+	// bus (after coalescing).
+	RealtimeHintsPublished = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_published_total",
+			Help: "Total org hint events published to the notifier bus",
+		},
+	)
+
+	// RealtimeHintsCoalesced counts hint publications absorbed by the
+	// leading-edge coalescer (merged into a pending per-org dirty set instead
+	// of producing an immediate bus publish).
+	RealtimeHintsCoalesced = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_coalesced_total",
+			Help: "Total hint publications merged by the coalescer instead of published immediately",
+		},
+	)
+
+	// RealtimeHintsDelivered counts hint deliveries to local stream
+	// subscribers (one increment per subscriber that received a hint).
+	RealtimeHintsDelivered = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_delivered_total",
+			Help: "Total hint events delivered to local realtime stream subscribers",
+		},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -323,6 +360,8 @@ var (
 		CheckStageDuration, ClaimJobsResult, CheckLaneClaims,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
 		JobsReaped, JobsLeaseLost,
+		RealtimeConnections, RealtimeHintsPublished,
+		RealtimeHintsCoalesced, RealtimeHintsDelivered,
 	}
 )
 

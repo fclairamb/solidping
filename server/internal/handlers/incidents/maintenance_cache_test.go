@@ -54,8 +54,8 @@ func TestMaintenanceWindowTTLCache(t *testing.T) {
 	start := time.Date(2026, 6, 5, 12, 0, 0, 0, time.UTC)
 	fakeClock := clock.NewFake(start)
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(counting, jobs, fakeClock)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(counting, jobs, fakeClock, nil)
 
 	org := models.NewOrganization("mw-cache-test", "MW Cache Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
@@ -143,8 +143,8 @@ func TestMonthlyMonthEndSuppression(t *testing.T) {
 	// Drive it through the real suppression path with a fake clock at Feb 28 22:30:
 	// a failing check inside the window must NOT open an incident.
 	fakeClock := clock.NewFake(time.Date(2026, 2, 28, 22, 30, 0, 0, time.UTC))
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, fakeClock)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, fakeClock, nil)
 
 	org := models.NewOrganization("mw-monthly-test", "MW Monthly Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

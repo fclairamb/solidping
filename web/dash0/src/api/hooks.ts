@@ -5,6 +5,10 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import {
+  stretchWhileLive,
+  useLiveStatus,
+} from "@/contexts/LiveEventsContext";
 
 // Types
 export interface CheckGroup {
@@ -3776,8 +3780,14 @@ function jobsStatsAreActive(stats?: JobsStats): boolean {
   );
 }
 
-function jobsAdaptiveInterval(active: boolean): number {
-  return active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS;
+// jobsAdaptiveInterval picks the poll cadence. While the live hint stream is
+// connected, `jobs` hints drive freshness and the interval stretches to the
+// lazy safety net — the 2.5s active poll only runs when not live.
+function jobsAdaptiveInterval(active: boolean, isLive = false): number {
+  return stretchWhileLive(
+    active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS,
+    isLive,
+  );
 }
 
 interface JobsScope {
@@ -3787,6 +3797,7 @@ interface JobsScope {
 // useJobsStats fetches the activity overview and drives adaptive refresh.
 export function useJobsStats(org: string, opts?: JobsScope) {
   const allOrgs = opts?.allOrgs ?? false;
+  const { isLive } = useLiveStatus();
   return useQuery({
     queryKey: ["jobsStats", org, { allOrgs }],
     queryFn: () =>
@@ -3797,7 +3808,10 @@ export function useJobsStats(org: string, opts?: JobsScope) {
       ).then((r) => r.data),
     enabled: !!org,
     refetchInterval: (query) =>
-      jobsAdaptiveInterval(jobsStatsAreActive(query.state.data as JobsStats | undefined)),
+      jobsAdaptiveInterval(
+        jobsStatsAreActive(query.state.data as JobsStats | undefined),
+        isLive,
+      ),
     refetchIntervalInBackground: false,
   });
 }
@@ -3813,6 +3827,7 @@ interface BackgroundJobsOptions extends JobsScope {
 // useBackgroundJobs lists background jobs (admin/super-admin).
 export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
   const allOrgs = opts?.allOrgs ?? false;
+  const { isLive } = useLiveStatus();
   return useQuery({
     queryKey: ["backgroundJobs", org, opts],
     queryFn: () => {
@@ -3830,7 +3845,7 @@ export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
       ).then((r) => r.data ?? []);
     },
     enabled: !!org,
-    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false, isLive),
     refetchIntervalInBackground: false,
   });
 }
@@ -3844,6 +3859,7 @@ interface CheckScheduleOptions extends JobsScope {
 // useCheckSchedule lists check-schedule rows (admin/super-admin).
 export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
   const allOrgs = opts?.allOrgs ?? false;
+  const { isLive } = useLiveStatus();
   return useQuery({
     queryKey: ["checkSchedule", org, opts],
     queryFn: () => {
@@ -3859,7 +3875,7 @@ export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
       ).then((r) => r.data ?? []);
     },
     enabled: !!org,
-    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false, isLive),
     refetchIntervalInBackground: false,
   });
 }

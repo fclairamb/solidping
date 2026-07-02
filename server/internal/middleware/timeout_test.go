@@ -211,6 +211,7 @@ func TestRequestTimeout_ExcludedPaths(t *testing.T) {
 		"/metrics",
 		"/api/v1/workers/heartbeat",
 		"/api/v1/heartbeat/org/identifier",
+		"/api/v1/orgs/default/events/stream",
 	} {
 		w := httptest.NewRecorder()
 		_ = handler(w, newBunRequest("30.0.0.4", path))

@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -67,13 +68,16 @@ func parseHeartbeatStatus(status string) (checkerdef.Status, bool) {
 type Service struct {
 	db          db.Service
 	incidentSvc *incidents.Service
+	rt          *realtime.Publisher
 }
 
-// NewService creates a new heartbeat service.
-func NewService(dbService db.Service, jobSvc jobsvc.Service) *Service {
+// NewService creates a new heartbeat service. rt may be nil (realtime
+// disabled) — hint publishing is a nil-safe no-op then.
+func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publisher) *Service {
 	return &Service{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}),
+		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}, rt),
+		rt:          rt,
 	}
 }
 
@@ -154,6 +158,10 @@ func (s *Service) ReceiveHeartbeat(ctx context.Context, orgSlug, identifier, tok
 
 	// Skip incident processing for non-terminal statuses
 	if checkerStatus == checkerdef.StatusRunning {
+		// Live hint: the result is persisted even though incident processing
+		// is skipped — ProcessCheckResult publishes for every other status.
+		s.rt.Publish(ctx, org.UID, realtime.KindResults)
+
 		return nil
 	}
 

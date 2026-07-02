@@ -31,6 +31,20 @@ type ListenerCounter interface {
 	ListenerCount() int
 }
 
+// ReconnectNotifier is implemented by notifiers whose underlying transport can
+// drop and re-establish its subscription (PgEventNotifier's pq.Listener).
+// Consumers subscribe to reconnect events to trigger a resync after a
+// potential notification gap: anything NOTIFYed while the session was down is
+// lost, so hint consumers must assume they missed events. LocalEventNotifier
+// intentionally does not implement it — in-process channels cannot gap.
+type ReconnectNotifier interface {
+	// ReconnectEvents returns a channel that receives a signal each time the
+	// transport reconnects after a drop. The channel is buffered (size 1) and
+	// signals are delivered non-blocking, so a burst of reconnects coalesces
+	// into one pending signal. The channel is closed when the notifier closes.
+	ReconnectEvents() <-chan struct{}
+}
+
 // ListenerCount returns n's registered listener-channel count, or 0 if n does
 // not implement ListenerCounter.
 func ListenerCount(n EventNotifier) int {

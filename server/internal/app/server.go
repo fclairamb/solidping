@@ -70,6 +70,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/realtimestream"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
@@ -94,6 +95,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
@@ -147,6 +149,7 @@ type Server struct {
 	jmapManager           *jmap.Manager
 	slackSocketSupervisor *slack.SlackSocketSupervisor
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -246,9 +249,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EventNotifier = eventNotifier
 
+	// Realtime hint publisher: write paths (results, incidents, jobs) publish
+	// org-scoped dirty hints through it onto the notifier bus. Left nil when
+	// the feature is disabled — every publish site is nil-safe.
+	if cfg.Realtime.Enabled {
+		svcList.Realtime = realtime.NewPublisher(ctx, eventNotifier, cfg.Realtime.FlushInterval, slog.Default())
+	}
+
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
 	// call, so no external wakeup channel is needed here.
-	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
+	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
@@ -534,7 +544,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// MCP endpoint (auth via PAT token, org derived from token)
 	s.mcpHandler = mcp.NewHandler(
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
-		s.services.Credentials, s.services.Entitlements,
+		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
@@ -695,7 +705,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
-	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
+	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -704,7 +714,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -731,7 +741,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
 
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -821,6 +831,30 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
 
+	// Realtime hint stream (SSE). A disabled feature 404s (SP_REALTIME_ENABLED
+	// convention) and the dashboard silently keeps polling. RequireOrgAccess
+	// enforces membership (403 for non-members) and puts the org on the
+	// context. The path is excluded from the request timeout and rate limits
+	// (middleware.isExcluded) — the hub's max_connections guard bounds it
+	// instead.
+	if s.config.Realtime.Enabled {
+		s.realtimeHub = realtime.NewHub(
+			s.services.EventNotifier, s.config.Realtime.MaxConnections, slog.Default())
+		streamHandler := realtimestream.NewHandler(s.realtimeHub, s.config.Realtime.PingInterval, s.config)
+		api.NewGroup("/orgs/:org/events/stream").
+			Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess).
+			GET("", streamHandler.Stream)
+	} else {
+		// Explicit 404 stub: the SPA catch-all (GET /*path) would otherwise
+		// answer 200 with index.html, and the client needs the 404 to detect
+		// "feature disabled" and fall back to plain polling permanently.
+		hb := base.NewHandlerBase(s.config)
+		api.GET("/orgs/:org/events/stream", func(writer http.ResponseWriter, _ bunrouter.Request) error {
+			return hb.WriteError(
+				writer, http.StatusNotFound, base.ErrorCodeNotFound, "Realtime updates are disabled")
+		})
+	}
+
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
 	filesService := files.NewService(s.dbService, s.config)
 	filesHandler := files.NewHandler(filesService, s.config)
@@ -856,7 +890,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, slog.Default()))
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, s.services.Realtime, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -1821,6 +1855,13 @@ func (s *Server) Start(ctx context.Context) error {
 			return err
 		}
 
+		// Close the realtime hub first: it terminates every held-open SSE
+		// stream so srv.Shutdown (which waits for active connections) can
+		// drain instead of hanging until the shutdown timeout.
+		if s.realtimeHub != nil {
+			s.realtimeHub.Close()
+		}
+
 		// Shutdown HTTP server first to stop accepting new requests
 		// Using fresh context for shutdown timeout after main ctx is canceled
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
@@ -1965,6 +2006,18 @@ func (s *Server) Close(ctx context.Context) error {
 			slog.ErrorContext(ctx, "Error shutting down profiler", "error", err)
 			closeErr = err
 		}
+	}
+
+	// Stop the realtime fan-out before the notifier it rides on: the hub
+	// releases any remaining SSE subscribers and the publisher flushes its
+	// pending hints while the bus is still up.
+	if s.realtimeHub != nil {
+		s.realtimeHub.Close()
+	}
+	if s.services != nil {
+		// nil-safe; the shutdown flush deliberately runs on a background
+		// context (the caller's ctx is already canceled at this point).
+		s.services.Realtime.Close() //nolint:contextcheck // background flush by design
 	}
 
 	// Close notifier first (stops listening for notifications)

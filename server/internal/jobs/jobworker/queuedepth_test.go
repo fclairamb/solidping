@@ -46,7 +46,7 @@ func TestQueueDepthSamplerSample(t *testing.T) {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	// 2 pending, 3 running live; plus excluded: success, soft-deleted pending.
 	seedJobRow(ctx, r, dbSvc, models.JobStatusPending, false)
@@ -79,7 +79,7 @@ func TestQueueDepthSamplerZeroFill(t *testing.T) {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	sampler := NewQueueDepthSampler(svc)
 
 	// First sample: one pending job present.
@@ -112,7 +112,7 @@ func TestQueueDepthSamplerRunStops(t *testing.T) {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	sampler := NewQueueDepthSampler(svc)
 
 	runCtx, cancel := context.WithCancel(ctx)

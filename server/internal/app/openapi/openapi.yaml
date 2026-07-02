@@ -1090,6 +1090,55 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/events/stream:
+    get:
+      tags: [Events]
+      summary: Live update hint stream (Server-Sent Events)
+      description: |
+        Holds the response open as a `text/event-stream` and pushes org-scoped
+        **hint** events whenever data changes. Hints carry no data — only which
+        resource kinds changed (`results`, `checks`, `incidents`, `events`,
+        `jobs`); clients refetch the matching REST endpoints. Delivery is
+        best-effort by design: a missed hint is corrected by the next hint, a
+        slow fallback poll, or a `resync`.
+
+        Emitted events:
+        - `hello` — first event, `{"protocol":1}`.
+        - `hint` — `{"kinds":["results","checks",...]}`.
+        - `resync` — the server may have missed changes (bus reconnect);
+          refetch everything once.
+        - comment lines (`: ping`) every ~25s keep the connection alive.
+
+        The server closes the stream when the access token expires; reconnect
+        with a fresh token. High-volume kinds are coalesced server-side to at
+        most ~1 hint/org/sec per instance. Returns 404 when the feature is
+        disabled (`SP_REALTIME_ENABLED=false`) — clients should treat that as
+        "keep polling".
+      operationId: streamOrgEvents
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Server-Sent Events stream of live update hints
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                example: |
+                  event: hello
+                  data: {"protocol":1}
+
+                  event: hint
+                  data: {"kinds":["checks","incidents"]}
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Member APIs
   /api/v1/orgs/{org}/members:
     get:
