@@ -55,9 +55,23 @@ Bus wiring:
 
 - Single channel `org.events`, JSON payload `{"org":"<uid>","kinds":["results",...]}`
   (far under the 8KB NOTIFY limit).
-- Each API replica LISTENs once on a **dedicated connection** (not from the bun
-  pool), with a reconnect loop; when LISTEN is re-established after a drop, the
-  hub broadcasts `resync` to all local connections.
+- **One shared LISTEN connection per API replica process — never per client.**
+  The hub calls `notifier.Listen("org.events")` exactly once on the
+  process-wide `PgEventNotifier`, whose single `pq.Listener` already
+  multiplexes channels (`job.created` today) over one session reserved for
+  LISTEN, with built-in reconnection (`server/internal/notifier/postgres.go`).
+  Client streams never touch PostgreSQL: per-tab cost is one HTTP connection
+  plus a goroutine, and PG cost stays O(replicas) — zero new connections.
+  Per-client LISTEN is ruled out three ways: it burns `max_connections`,
+  notification delivery is bound to the session that issued LISTEN (pooled bun
+  connections can't do it), and `EventNotifier.Listen` has no unsubscribe, so
+  per-client subscriptions would leak a channel per closed tab.
+- Reconnect: `pq.Listener` auto-reconnects on its own, but
+  `ListenerEventReconnected` is currently only logged — extend the notifier to
+  surface reconnect events so the hub can broadcast `resync` to all local
+  connections after a gap. The notifier's drop-on-full fan-out
+  (`listenLoop`) is acceptable as-is: a dropped hint is recovered by the next
+  flush, the fallback poll, or resync.
 
 Publish sites (after the write succeeds):
 
