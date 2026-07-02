@@ -197,6 +197,39 @@ describe("LiveRegistry scope-accurate invalidation", () => {
     expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
   });
 
+  it("a 'results' kind update on a check scope also invalidates that check's own detail query", () => {
+    // realtime.KindChecks is published only on an actual status transition;
+    // a plain result write (the common, steady-state case) publishes only
+    // kind "results" — so the check's own detail query (which embeds
+    // lastResult/lastStatusChange) must be invalidated on "results" too, or
+    // "last checked" goes stale for a whole lazy-poll interval on every
+    // check that isn't currently transitioning status.
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "check", uid: "uid-1" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "check", uid: "uid-1" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    conn.update({ entity: "check", uid: "uid-1" }, ["results"]);
+    const stale = staleKeys(client);
+    expect(stale).toContain(JSON.stringify(["check", ORG, "uid-1", {}]));
+    expect(stale).not.toContain(JSON.stringify(["check", ORG, "uid-2", {}]));
+  });
+
+  it("a 'results' kind update on the checks collection scope also invalidates the checks list", () => {
+    const { client, conn, registry } = setup();
+    registry.addScope({ entity: "checks" });
+    registry.start();
+    conn.open();
+    conn.subscribed({ entity: "checks" });
+    client.getQueryCache().getAll().forEach((q) => client.resetQueries({ queryKey: q.queryKey }));
+
+    conn.update({ entity: "checks" }, ["results"]);
+    const stale = staleKeys(client);
+    expect(stale).toContain(JSON.stringify(["checks", ORG, { limit: 1000 }]));
+  });
+
   it("empty kinds on update means 'all' for that scope's roots", () => {
     const { client, conn, registry } = setup();
     registry.addScope({ entity: "incidents" });

@@ -81,11 +81,27 @@ function resultsRoot(root: string): QueryRoot {
 const DEFAULT_QUERY_ROOTS: Record<LiveEntity, Partial<Record<string, QueryRoot[]>>> = {
   checks: {
     checks: [orgRoot("checks")],
-    results: [resultsRoot("results"), resultsRoot("allResults"), orgRoot("checkAvailability")],
+    // A plain result write (no status transition) publishes kind "results"
+    // only — never "checks" (see realtime.KindChecks: published separately,
+    // only on an actual status transition). The checks list embeds
+    // lastResult/lastStatusChange (`with=last_result,last_status_change`),
+    // so it must also be invalidated here or "last checked" goes stale for
+    // up to the lazy poll interval on every steady-state (no-transition) run.
+    results: [
+      orgRoot("checks"),
+      resultsRoot("results"),
+      resultsRoot("allResults"),
+      orgRoot("checkAvailability"),
+    ],
   },
   check: {
     checks: [checkDetailRoot("check")],
-    results: [resultsRoot("results"), resultsRoot("allResults"), checkDetailRoot("checkAvailability")],
+    results: [
+      checkDetailRoot("check"),
+      resultsRoot("results"),
+      resultsRoot("allResults"),
+      checkDetailRoot("checkAvailability"),
+    ],
     incidents: [checkDetailRoot("check")],
   },
   incidents: {
