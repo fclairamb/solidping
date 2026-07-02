@@ -36,7 +36,7 @@ func newStreamFixture(t *testing.T, orgUID string, claims *auth.Claims) *streamF
 
 	bus := notifier.NewLocalEventNotifier()
 	hub := realtime.NewHub(bus, 0, nil)
-	pub := realtime.NewPublisher(bus, time.Second, nil)
+	pub := realtime.NewPublisher(t.Context(), bus, time.Second, nil)
 	handler := realtimestream.NewHandler(hub, 50*time.Millisecond, &config.Config{})
 
 	router := bunrouter.New()

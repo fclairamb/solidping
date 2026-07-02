@@ -21,6 +21,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/incidents"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -55,14 +56,15 @@ type Handler struct {
 }
 
 // NewHandler builds a handler wired to the db service and incident pipeline.
-func NewHandler(dbService db.Service, jobSvc jobsvc.Service, logger *slog.Logger) *Handler {
+// rt may be nil (realtime disabled) — hint publishing is a nil-safe no-op then.
+func NewHandler(dbService db.Service, jobSvc jobsvc.Service, rtPub *realtime.Publisher, logger *slog.Logger) *Handler {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
 	return &Handler{
 		db:          dbService,
-		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}),
+		incidentSvc: incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
 		logger:      logger,
 	}
 }

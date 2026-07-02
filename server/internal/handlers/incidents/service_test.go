@@ -214,8 +214,8 @@ func newFlapSetup(t *testing.T) *flapSetup {
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
 	clk := clock.NewFake(time.Date(2026, 6, 30, 12, 0, 0, 0, time.UTC))
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, clk)
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, clk, nil)
 
 	org := models.NewOrganization("flap-test", "Flap Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

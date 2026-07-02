@@ -15,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 )
 
 const (
@@ -135,11 +136,24 @@ type serviceImpl struct {
 	db       *bun.DB
 	dbSvc    db.Service
 	notifier notifier.EventNotifier
+	// rt publishes coalesced org-scoped `jobs` dashboard hints on job
+	// lifecycle changes. Nil-safe: nil when realtime is disabled.
+	rt *realtime.Publisher
 }
 
-// NewService creates a new job service.
-func NewService(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier) Service {
-	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n}
+// NewService creates a new job service. rt may be nil (realtime disabled):
+// hint publishing through it is a nil-safe no-op.
+func NewService(bunDB *bun.DB, dbSvc db.Service, n notifier.EventNotifier, rt *realtime.Publisher) Service {
+	return &serviceImpl{db: bunDB, dbSvc: dbSvc, notifier: n, rt: rt}
+}
+
+// publishJobsHint emits a coalesced `jobs` dashboard hint for org-scoped jobs.
+// System jobs (nil org) have no dashboard to notify per org and are skipped.
+func (s *serviceImpl) publishJobsHint(ctx context.Context, orgUID *string) {
+	if orgUID == nil || *orgUID == "" {
+		return
+	}
+	s.rt.Publish(ctx, *orgUID, realtime.KindJobs)
 }
 
 // CreateJob creates a new job and notifies waiting runners.
@@ -169,6 +183,8 @@ func (s *serviceImpl) CreateJob(
 	}
 
 	if found {
+		s.publishJobsHint(ctx, existing.OrganizationUID)
+
 		return existing, nil
 	}
 
@@ -272,6 +288,8 @@ func (s *serviceImpl) createNewJob(
 	if time.Until(job.ScheduledAt) <= 15*time.Minute {
 		_ = s.notifier.Notify(ctx, eventTypeJobCreated, "{}")
 	}
+
+	s.publishJobsHint(ctx, job.OrganizationUID)
 
 	return job, nil
 }
@@ -470,6 +488,14 @@ func (s *serviceImpl) CancelJob(ctx context.Context, uid string) error {
 		return ErrJobNotPending
 	}
 
+	// Live hint: fetch the org of the canceled job (cheap, cancel is a rare
+	// operator action) so watching dashboards drop it from the pending list.
+	var canceled models.Job
+	if err := s.db.NewSelect().Model(&canceled).Column("organization_uid").
+		Where("uid = ?", uid).Scan(ctx); err == nil {
+		s.publishJobsHint(ctx, canceled.OrganizationUID)
+	}
+
 	return nil
 }
 
@@ -568,6 +594,9 @@ func (s *serviceImpl) claimNextJob(ctx context.Context) (*models.Job, error) {
 		return nil, err
 	}
 
+	// Live hint: the job flipped pending -> running.
+	s.publishJobsHint(ctx, job.OrganizationUID)
+
 	return &job, nil
 }
 
@@ -651,6 +680,7 @@ func (s *serviceImpl) writeJobStatus(
 	if rows > 0 {
 		job.Status = status
 		job.UpdatedAt = now
+		s.publishJobsHint(ctx, job.OrganizationUID)
 	}
 
 	return rows, nil
@@ -690,6 +720,8 @@ func (s *serviceImpl) createRetryClone(ctx context.Context, job *models.Job) (*m
 	if _, err := s.db.NewInsert().Model(retryJob).Exec(ctx); err != nil {
 		return nil, fmt.Errorf("failed to create retry job: %w", err)
 	}
+
+	s.publishJobsHint(ctx, retryJob.OrganizationUID)
 
 	return retryJob, nil
 }
@@ -842,6 +874,7 @@ func (s *serviceImpl) claimStuckJob(
 
 	job.Status = status
 	job.UpdatedAt = now
+	s.publishJobsHint(ctx, job.OrganizationUID)
 
 	return true, nil
 }

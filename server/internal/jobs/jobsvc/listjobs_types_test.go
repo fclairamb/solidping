@@ -29,7 +29,7 @@ func TestListJobsTypesFilter(t *testing.T) {
 	org := models.NewOrganization("jobs", "Jobs Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	mkJob := func(jobType jobdef.JobType) {
 		job := models.NewJob(&org.UID, string(jobType))

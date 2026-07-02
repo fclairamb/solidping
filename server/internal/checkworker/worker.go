@@ -142,7 +142,7 @@ func NewCheckWorker(
 		config:      cfg,
 		services:    svc,
 		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}),
+		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture

@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -85,6 +86,12 @@ type Service struct {
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
 
+	// rt publishes org-scoped live dashboard hints: `results` (coalesced) on
+	// every processed result, `checks` (immediate) on a visible status
+	// transition, `incidents`+`events` (immediate) alongside event writes.
+	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
+	rt *realtime.Publisher
+
 	// mwCache caches per-check maintenance-window definitions with a TTL.
 	// Strong-reference map (not internal/utils/cache, whose weak.Pointer
 	// values would be GC'd almost immediately here). Keyed by checkUID.
@@ -92,12 +99,14 @@ type Service struct {
 	mwCacheMu sync.RWMutex
 }
 
-// NewService creates a new incident service.
-func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock) *Service {
+// NewService creates a new incident service. rt may be nil (realtime
+// disabled): every publish through it is a nil-safe no-op.
+func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, rt *realtime.Publisher) *Service {
 	return &Service{
 		db:      dbService,
 		jobsSvc: jobsSvc,
 		clock:   clk,
+		rt:      rt,
 		mwCache: make(map[string]mwCacheEntry),
 	}
 }
@@ -139,6 +148,11 @@ func (s *Service) isCheckInActiveMaintenance(ctx context.Context, checkUID strin
 // ProcessCheckResult processes a check result and manages incidents.
 // This is the main entry point called after each check execution.
 func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
+	// Live hint: a result has been persisted for this org (this runs after
+	// every save path — executor, remote worker, heartbeat, email check).
+	// Coalesced: the publisher bounds bus traffic to ~1 hint/org/sec.
+	s.rt.Publish(ctx, check.OrganizationUID, realtime.KindResults)
+
 	if result.Status == nil {
 		return nil // Skip results without status
 	}
@@ -186,6 +200,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
 		check, isSuccess, isFailure, isWarning, activeIncident, now,
 	)
+	statusChanged := check.Status != newStatus
 
 	// Warning is clock-neutral: it never arms or clears the confirmation /
 	// recovery clocks, so a pre-incident failure streak or an open incident's
@@ -204,6 +219,8 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return fmt.Errorf("failed to update check status and clocks: %w", err)
 	}
 
+	s.publishStatusHint(ctx, check.OrganizationUID, statusChanged)
+
 	// Update local check object for incident logic
 	check.Status = newStatus
 	check.StatusStreak = newStreak
@@ -219,6 +236,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
+}
+
+// publishStatusHint emits the immediate `checks` live hint when the visible
+// check status flipped — dashboards must show a transition within ~2s, so it
+// bypasses the coalescing window. No-op when the status is unchanged.
+func (s *Service) publishStatusHint(ctx context.Context, orgUID string, statusChanged bool) {
+	if !statusChanged {
+		return
+	}
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindChecks)
 }
 
 // deriveIncidentClocks computes the FirstFailureAt and
@@ -1232,6 +1259,10 @@ func (s *Service) emitEvent(
 		return err
 	}
 
+	// Live hint: incident lifecycle and its timeline event are visible state —
+	// immediate so an opening incident reaches watching dashboards instantly.
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+
 	// Queue notifications for incident lifecycle events
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
@@ -1946,6 +1977,8 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 		// Don't fail the acknowledgment for event creation errors
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	slog.InfoContext(ctx, "Incident acknowledged",
@@ -2050,6 +2083,8 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+
 	return incident, nil
 }
 
@@ -2142,6 +2177,8 @@ func (s *Service) snoozeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
+
 	s.cancelPendingNotifications(ctx, incident.UID, &until)
 
 	return incident, nil
@@ -2232,6 +2269,8 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 		slog.WarnContext(ctx, "Failed to create unsnooze event",
 			"incident_uid", incident.UID, "error", err)
 	}
+
+	s.rt.PublishImmediate(ctx, orgUID, realtime.KindIncidents, realtime.KindEvents)
 
 	return incident, nil
 }

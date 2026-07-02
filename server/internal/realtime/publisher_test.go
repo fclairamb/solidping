@@ -63,7 +63,7 @@ func TestPublisher_FirstHintIsImmediate(t *testing.T) {
 	bus := notifier.NewLocalEventNotifier()
 	capture := newHintCapture(t, bus)
 
-	pub := NewPublisher(bus, time.Second, nil)
+	pub := NewPublisher(t.Context(), bus, time.Second, nil)
 	defer pub.Close()
 
 	start := time.Now()
@@ -92,7 +92,7 @@ func TestPublisher_BurstCoalesces(t *testing.T) {
 	bus := notifier.NewLocalEventNotifier()
 	capture := newHintCapture(t, bus)
 
-	pub := NewPublisher(bus, flushInterval, nil)
+	pub := NewPublisher(t.Context(), bus, flushInterval, nil)
 
 	start := time.Now()
 	for time.Since(start) < burstDuration {
@@ -129,7 +129,7 @@ func TestPublisher_PublishImmediateBypassesWindowAndMergesPending(t *testing.T) 
 	bus := notifier.NewLocalEventNotifier()
 	capture := newHintCapture(t, bus)
 
-	pub := NewPublisher(bus, time.Minute, nil) // window long enough to never tick
+	pub := NewPublisher(t.Context(), bus, time.Minute, nil) // window long enough to never tick
 	defer pub.Close()
 
 	ctx := context.Background()
@@ -153,7 +153,7 @@ func TestPublisher_OrgsAreIndependent(t *testing.T) {
 	bus := notifier.NewLocalEventNotifier()
 	capture := newHintCapture(t, bus)
 
-	pub := NewPublisher(bus, time.Minute, nil)
+	pub := NewPublisher(t.Context(), bus, time.Minute, nil)
 	defer pub.Close()
 
 	ctx := context.Background()
@@ -172,7 +172,7 @@ func TestPublisher_NilAndEmptyAreSafe(t *testing.T) {
 	pub.PublishImmediate(context.Background(), "org", KindResults)
 	pub.Close()
 
-	wired := NewPublisher(notifier.NewLocalEventNotifier(), time.Second, nil)
+	wired := NewPublisher(t.Context(), notifier.NewLocalEventNotifier(), time.Second, nil)
 	defer wired.Close()
 	wired.Publish(context.Background(), "", KindResults)
 	wired.Publish(context.Background(), "org")

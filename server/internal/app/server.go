@@ -253,12 +253,12 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// org-scoped dirty hints through it onto the notifier bus. Left nil when
 	// the feature is disabled — every publish site is nil-safe.
 	if cfg.Realtime.Enabled {
-		svcList.Realtime = realtime.NewPublisher(eventNotifier, cfg.Realtime.FlushInterval, slog.Default())
+		svcList.Realtime = realtime.NewPublisher(ctx, eventNotifier, cfg.Realtime.FlushInterval, slog.Default())
 	}
 
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
 	// call, so no external wakeup channel is needed here.
-	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
+	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
@@ -544,7 +544,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// MCP endpoint (auth via PAT token, org derived from token)
 	s.mcpHandler = mcp.NewHandler(
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
-		s.services.Credentials, s.services.Entitlements,
+		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
@@ -705,7 +705,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
-	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
+	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -714,7 +714,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -741,7 +741,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
 
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -881,7 +881,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, slog.Default()))
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, s.services.Realtime, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -2006,7 +2006,9 @@ func (s *Server) Close(ctx context.Context) error {
 		s.realtimeHub.Close()
 	}
 	if s.services != nil {
-		s.services.Realtime.Close() // nil-safe
+		// nil-safe; the shutdown flush deliberately runs on a background
+		// context (the caller's ctx is already canceled at this point).
+		s.services.Realtime.Close() //nolint:contextcheck // background flush by design
 	}
 
 	// Close notifier first (stops listening for notifications)

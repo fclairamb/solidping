@@ -38,8 +38,8 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{}, nil)
 
 	org := models.NewOrganization("resolve-test", "Resolve Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

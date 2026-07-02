@@ -33,7 +33,7 @@ func newReaperTestContext(t *testing.T, stuckTimeout time.Duration) (*jobdef.Job
 	require.NoError(t, dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	jctx := &jobdef.JobContext{
 		Services:  &services.Registry{Jobs: jobSvc},

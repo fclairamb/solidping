@@ -42,7 +42,7 @@ func newPlanFixture(t *testing.T) *planFixture {
 	org := models.NewOrganization("plan-disc", "Plan Discovery Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
 
-	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	plan := models.NewJob(&org.UID, string(jobdef.JobTypeNetworkDiscoveryPlan))
 	r.NoError(dbSvc.CreateJob(ctx, plan))

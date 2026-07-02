@@ -205,7 +205,7 @@ func TestHub_EndToEndThroughPublisher(t *testing.T) {
 	bus := notifier.NewLocalEventNotifier()
 	hub := NewHub(bus, 0, nil)
 	defer hub.Close()
-	pub := NewPublisher(bus, time.Second, nil)
+	pub := NewPublisher(t.Context(), bus, time.Second, nil)
 	defer pub.Close()
 
 	sub, err := hub.Subscribe("org-e2e")

@@ -46,7 +46,7 @@ func newJobsFixture(t *testing.T) *jobsFixture {
 	orgB := models.NewOrganization("org-b", "Org B")
 	r.NoError(dbSvc.CreateOrganization(ctx, orgB))
 
-	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	jobSvc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	router := bunrouter.New()
 	jobs.NewHandler(jobSvc).RegisterRoutes(router.NewGroup("/api/v1"))

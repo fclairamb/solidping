@@ -38,8 +38,12 @@ type Publisher struct {
 }
 
 // NewPublisher creates a publisher on the given bus and starts its flush loop.
-// A non-positive flushInterval falls back to DefaultFlushInterval.
-func NewPublisher(bus notifier.EventNotifier, flushInterval time.Duration, logger *slog.Logger) *Publisher {
+// ctx is the process lifetime context used by background flushes (Notify is a
+// DB exec on Postgres). A non-positive flushInterval falls back to
+// DefaultFlushInterval.
+func NewPublisher(
+	ctx context.Context, bus notifier.EventNotifier, flushInterval time.Duration, logger *slog.Logger,
+) *Publisher {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -57,7 +61,7 @@ func NewPublisher(bus notifier.EventNotifier, flushInterval time.Duration, logge
 	}
 
 	pub.wg.Add(1)
-	go pub.flushLoop()
+	go pub.flushLoop(ctx)
 
 	return pub
 }
@@ -121,7 +125,9 @@ func (p *Publisher) PublishImmediate(ctx context.Context, orgUID string, kinds .
 	p.publish(ctx, orgUID, merged)
 }
 
-// Close stops the flush loop after emitting any still-pending hints.
+// Close stops the flush loop after emitting any still-pending hints. The
+// final flush runs on a fresh background context: Close is called during
+// shutdown when the caller's context is typically already canceled.
 func (p *Publisher) Close() {
 	if p == nil {
 		return
@@ -129,12 +135,12 @@ func (p *Publisher) Close() {
 	p.closeOnce.Do(func() {
 		close(p.done)
 		p.wg.Wait()
-		p.flush()
+		p.flush(context.Background())
 	})
 }
 
 // flushLoop emits pending dirty sets every flush interval.
-func (p *Publisher) flushLoop() {
+func (p *Publisher) flushLoop(ctx context.Context) {
 	defer p.wg.Done()
 
 	ticker := time.NewTicker(p.flushInterval)
@@ -143,7 +149,7 @@ func (p *Publisher) flushLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			p.flush()
+			p.flush(ctx)
 		case <-p.done:
 			return
 		}
@@ -152,7 +158,7 @@ func (p *Publisher) flushLoop() {
 
 // flush publishes every pending per-org dirty set and prunes stale
 // last-publish entries so the map stays bounded by recently-active orgs.
-func (p *Publisher) flush() {
+func (p *Publisher) flush(ctx context.Context) {
 	p.mu.Lock()
 	batch := p.pending
 	p.pending = make(map[string]map[Kind]struct{})
@@ -173,7 +179,7 @@ func (p *Publisher) flush() {
 	p.mu.Unlock()
 
 	for orgUID, kinds := range batch {
-		p.publish(context.Background(), orgUID, kinds)
+		p.publish(ctx, orgUID, kinds)
 	}
 }
 
