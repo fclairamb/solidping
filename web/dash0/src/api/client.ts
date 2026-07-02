@@ -1,7 +1,7 @@
 const TOKEN_KEY = "solidping_session_token";
 
 // Timestamp of the most recent apiFetch activity (request start or
-// completion). The live-events stream waits for a quiet gap before opening
+// completion). The live-socket connection waits for a quiet gap before opening
 // its long-lived connection so it never competes with first-paint data
 // fetching — and so load-completion heuristics (e.g. Playwright's
 // `networkidle`, which needs 500ms with zero in-flight requests) can latch
