@@ -1,8 +1,12 @@
 package middleware_test
 
 import (
+	"bytes"
+	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -107,6 +111,72 @@ func TestRequestTimeout_HandlerHeaderWriteAfterTimeoutDoesNotRace(t *testing.T) 
 		[]int{http.StatusGatewayTimeout, http.StatusTooManyRequests},
 		w.Code,
 	)
+}
+
+// Regression: a handler that commits its response BEFORE the deadline and is
+// still writing when the deadline fires must be allowed to finish. A previous
+// version returned from the middleware at the deadline regardless — net/http
+// then recycled the connection's write buffers under the in-flight write,
+// which SIGSEGV'd the whole server (bufio.Writer nil dereference, observed in
+// CI E2E as every subsequent request getting ERR_CONNECTION_REFUSED).
+func TestRequestTimeout_CommittedResponseStreamsToCompletion(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	var handlerDone atomic.Bool
+	streaming := func(w http.ResponseWriter, _ bunrouter.Request) error {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("part-1;"))
+		time.Sleep(60 * time.Millisecond) // 20ms deadline fires mid-stream
+		_, _ = w.Write([]byte("part-2"))
+		handlerDone.Store(true)
+		return nil
+	}
+	handler := middleware.RequestTimeout(20 * time.Millisecond)(streaming)
+
+	w := httptest.NewRecorder()
+	_ = handler(w, newBunRequest("30.0.0.7", "/api/v1/orgs/default/checks"))
+
+	r.True(handlerDone.Load(),
+		"middleware must not return while the handler is still streaming a committed response")
+	r.Equal(http.StatusOK, w.Code, "a committed 200 must never be replaced by a 504")
+	r.Equal("part-1;part-2", w.Body.String(), "the full body must reach the wire")
+}
+
+// Same regression, proven at the connection level: with the pre-fix middleware
+// this test does not merely fail — the late write hits the recycled bufio
+// writer of a real net/http connection and the unrecovered panic kills the
+// test process, exactly how the server died in CI.
+func TestRequestTimeout_RealServerLateStreamDoesNotCrash(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	const lateChunk = 64 * 1024
+
+	router := bunrouter.New()
+	router.GET("/api/v1/orgs/:org/checks",
+		middleware.RequestTimeout(30*time.Millisecond)(func(w http.ResponseWriter, _ bunrouter.Request) error {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("head;"))
+			time.Sleep(90 * time.Millisecond) // outlive the deadline mid-response
+			_, _ = w.Write(bytes.Repeat([]byte("x"), lateChunk))
+			return nil
+		}))
+
+	srv := httptest.NewServer(router)
+	defer srv.Close()
+
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodGet, srv.URL+"/api/v1/orgs/default/checks", nil)
+	r.NoError(err)
+	resp, err := srv.Client().Do(req)
+	r.NoError(err)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	r.NoError(err)
+	r.Equal(http.StatusOK, resp.StatusCode)
+	r.Len(body, len("head;")+lateChunk, "client must receive the complete streamed body")
 }
 
 func TestRequestTimeout_Disabled(t *testing.T) {
