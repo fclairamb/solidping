@@ -756,14 +756,27 @@ func (s *Service) UpdateUserToken(ctx context.Context, uid string, update models
 	return err
 }
 
-func (s *Service) DeleteUserToken(ctx context.Context, uid string) error {
-	_, err := s.db.NewUpdate().
+// DeleteUserToken soft-deletes a token, returning whether a live row existed
+// to delete (compare-and-set on deleted_at IS NULL): false means the token
+// was already deleted — for rotating OAuth refresh grants that is a replay
+// racing a concurrent redemption.
+func (s *Service) DeleteUserToken(ctx context.Context, uid string) (bool, error) {
+	res, err := s.db.NewUpdate().
 		Model((*models.UserToken)(nil)).
 		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
 		Set("deleted_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read delete user token result: %w", err)
+	}
+
+	return affected > 0, nil
 }
 
 // UserPasskey operations

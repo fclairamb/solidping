@@ -2,12 +2,15 @@
 -- Replaces incremental migrations 002-009 with the net final schema changes.
 -- Do NOT run this file on a database that already has 002-009 applied individually.
 
--- MCP OAuth 2.1 authorization server (spec 2026-06-20-03): registered clients
--- and rotating refresh grants. Authorization codes are NOT a dedicated table —
--- they're single-use, 60s-lived records in the generic state_entries store
--- (org-scoped, keyed "oauth_auth_code:<random>"; the org uid travels as a
--- prefix on the opaque code string itself, since the token endpoint that
--- redeems it has no other org context). See server/internal/oauth/service.go.
+-- MCP OAuth 2.1 authorization server (spec 2026-06-20-03). Only the client
+-- registry gets a dedicated table. Authorization codes are single-use,
+-- 60s-lived records in the generic state_entries store (org-scoped, keyed
+-- "oauth_auth_code:<random>"; the org uid travels as a prefix on the opaque
+-- code string itself, since the token endpoint that redeems it has no other
+-- org context). Rotating refresh grants are user_tokens rows with the new
+-- type 'oauth_refresh' (widened below); the grant's client_id/scope/resource
+-- ride in the properties JSON and revocation is the row's soft delete.
+-- See server/internal/oauth/service.go.
 
 create table oauth_clients (
   uid           uuid primary key default gen_random_uuid(),
@@ -28,24 +31,15 @@ comment on table oauth_clients is 'OAuth 2.1 clients registered for the MCP reso
 comment on column oauth_clients.secret_hash is 'Hashed client secret for confidential clients; NULL for public (native/loopback) clients.';
 comment on column oauth_clients.is_public is 'True for public clients (PKCE + loopback redirects, no secret).';
 
-create table oauth_refresh_tokens (
-  uid              uuid primary key default gen_random_uuid(),
-  token            text not null,
-  client_id        text not null,
-  user_uid         uuid not null references users(uid) on delete cascade,
-  organization_uid uuid not null references organizations(uid) on delete cascade,
-  scope            text not null,
-  resource         text not null,
-  expires_at       timestamptz not null,
-  revoked_at       timestamptz,
-  created_at       timestamptz not null default now()
-);
+-- Widen the frozen v0.1.0 user_tokens type check to admit OAuth refresh
+-- grants as a third token type. Each type is validated at its own redemption
+-- endpoint (PAT auth, session refresh, OAuth token exchange), so the types
+-- can never be exchanged for one another.
+alter table user_tokens drop constraint user_tokens_type_check;
+alter table user_tokens add constraint user_tokens_type_check
+  check (type in ('pat', 'refresh', 'oauth_refresh'));
 
-create unique index oauth_refresh_tokens_token_idx on oauth_refresh_tokens (token);
-create index oauth_refresh_tokens_user_idx on oauth_refresh_tokens (user_uid) where revoked_at is null;
-
-comment on table oauth_refresh_tokens is 'Rotating OAuth refresh grants for the MCP resource; revoked on rotation, logout, or PAT revoke.';
-comment on column oauth_refresh_tokens.revoked_at is 'Set when the token is rotated out or revoked; a non-NULL value rejects further use.';
+comment on column user_tokens.type is 'Token type: pat (Personal Access Token), refresh (JWT session refresh token), or oauth_refresh (rotating OAuth 2.1 refresh grant for the MCP resource; client_id/scope/resource in properties).';
 
 -- Discovery rework: check-centric grouped model (spec 2026-06-21-00). Discovery
 -- is no longer host-centric. The stored unit is a *suggested check*; rows are

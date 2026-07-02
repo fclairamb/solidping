@@ -3,12 +3,15 @@
 -- 002-009 with the net final schema changes. Do NOT run this file on a
 -- database that already has 002-009 applied individually.
 
--- MCP OAuth 2.1 authorization server (spec 2026-06-20-03): registered clients
--- and rotating refresh grants. Authorization codes are NOT a dedicated table —
--- they're single-use, 60s-lived records in the generic state_entries store
--- (org-scoped, keyed "oauth_auth_code:<random>"; the org uid travels as a
--- prefix on the opaque code string itself, since the token endpoint that
--- redeems it has no other org context). See server/internal/oauth/service.go.
+-- MCP OAuth 2.1 authorization server (spec 2026-06-20-03). Only the client
+-- registry gets a dedicated table. Authorization codes are single-use,
+-- 60s-lived records in the generic state_entries store (org-scoped, keyed
+-- "oauth_auth_code:<random>"; the org uid travels as a prefix on the opaque
+-- code string itself, since the token endpoint that redeems it has no other
+-- org context). Rotating refresh grants are user_tokens rows with the new
+-- type 'oauth_refresh' (widened below); the grant's client_id/scope/resource
+-- ride in the properties JSON and revocation is the row's soft delete.
+-- See server/internal/oauth/service.go.
 
 create table oauth_clients (
   uid           text primary key,
@@ -25,21 +28,40 @@ create table oauth_clients (
 
 create unique index oauth_clients_client_id_idx on oauth_clients (client_id);
 
-create table oauth_refresh_tokens (
-  uid              text primary key,
-  token            text not null,
-  client_id        text not null,
-  user_uid         text not null references users(uid) on delete cascade,
-  organization_uid text not null references organizations(uid) on delete cascade,
-  scope            text not null,
-  resource         text not null,
-  expires_at       text not null,
-  revoked_at       text,
-  created_at       text not null default (datetime('now'))
+-- Widen the frozen v0.1.0 user_tokens type check to admit OAuth refresh
+-- grants as a third token type. SQLite cannot alter check constraints, so
+-- the table is rebuilt (fresh installs carry no rows; the copy is for the
+-- general upgrade path). Each type is validated at its own redemption
+-- endpoint, so the types can never be exchanged for one another.
+create table user_tokens_new (
+  uid               text primary key,
+  user_uid          text not null references users(uid) on delete cascade, -- Token owner
+  organization_uid  text references organizations(uid) on delete cascade, -- Organization scope for PAT tokens. NULL for global refresh tokens
+  token             text not null, -- Hashed token value
+  type              text not null check (type in ('pat', 'refresh', 'oauth_refresh')), -- Token type: pat, session refresh, or rotating OAuth refresh grant (client_id/scope/resource in properties)
+  properties        text, -- Token metadata (e.g., name, scopes, IP restrictions)
+  expires_at        text, -- Expiration timestamp. NULL means never expires
+  last_active_at    text, -- Last time this token was used for authentication
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text
 );
 
-create unique index oauth_refresh_tokens_token_idx on oauth_refresh_tokens (token);
-create index oauth_refresh_tokens_user_idx on oauth_refresh_tokens (user_uid) where revoked_at is null;
+insert into user_tokens_new (
+  uid, user_uid, organization_uid, token, type, properties,
+  expires_at, last_active_at, created_at, updated_at, deleted_at
+)
+select
+  uid, user_uid, organization_uid, token, type, properties,
+  expires_at, last_active_at, created_at, updated_at, deleted_at
+from user_tokens;
+
+drop table user_tokens;
+alter table user_tokens_new rename to user_tokens;
+
+create unique index user_tokens_token_idx on user_tokens (token) where deleted_at is null;
+create index user_tokens_user_uid_idx on user_tokens (user_uid) where deleted_at is null;
+create index user_tokens_expires_at_idx on user_tokens (expires_at) where deleted_at is null and expires_at is not null;
 
 -- Discovery rework: check-centric grouped model (spec 2026-06-21-00). Clean
 -- break: discovered_hosts is dropped (results are regenerable by re-scan).

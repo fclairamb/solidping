@@ -262,27 +262,38 @@ func (s *Service) ExchangeAuthCode(
 
 // ExchangeRefreshToken rotates a refresh grant: it validates the presented token
 // is active and unexpired, atomically revokes it, and issues a fresh access +
-// refresh pair. Because revocation is an atomic compare-and-set, a concurrent or
-// replayed use of the same refresh token loses the race and is rejected — the
-// rotation invalidates the prior token.
+// refresh pair. Grants are user_tokens rows (type oauth_refresh, revocation =
+// soft delete); because the revoking soft-delete is an atomic compare-and-set,
+// a concurrent or replayed use of the same refresh token loses the race and is
+// rejected — the rotation invalidates the prior token.
 func (s *Service) ExchangeRefreshToken(
 	ctx context.Context, refreshToken, clientID string,
 ) (*TokenResult, error) {
-	row, err := s.db.GetOAuthRefreshToken(ctx, refreshToken)
+	// Revoked grants are soft-deleted, so a lookup miss covers "never existed"
+	// and "already rotated/revoked" alike.
+	row, err := s.db.GetUserTokenByToken(ctx, refreshToken)
 	if err != nil {
 		return nil, errInvalidGrant
 	}
 
-	now := s.clock.Now()
-	if row.RevokedAt != nil || now.After(row.ExpiresAt) {
+	// Only OAuth refresh grants are redeemable here — a PAT or session
+	// refresh token presented at the OAuth token endpoint must never mint
+	// OAuth credentials (each token type is bound to its own endpoint).
+	if row.Type != models.TokenTypeOAuthRefresh {
 		return nil, errInvalidGrant
 	}
 
-	if clientID != "" && row.ClientID != clientID {
+	if row.ExpiresAt == nil || s.clock.Now().After(*row.ExpiresAt) {
 		return nil, errInvalidGrant
 	}
 
-	won, err := s.db.RevokeOAuthRefreshToken(ctx, refreshToken, now)
+	grantClientID := stringFromValue(row.Properties, "client_id")
+	if clientID != "" && grantClientID != clientID {
+		return nil, errInvalidGrant
+	}
+
+	// Atomic rotation guard: a concurrent redemption finds no live row.
+	won, err := s.db.DeleteUserToken(ctx, row.UID)
 	if err != nil {
 		return nil, fmt.Errorf("rotate refresh token: %w", err)
 	}
@@ -292,18 +303,23 @@ func (s *Service) ExchangeRefreshToken(
 		return nil, errInvalidGrant
 	}
 
-	orgSlug, err := s.orgSlug(ctx, row.OrganizationUID)
+	if row.OrganizationUID == nil {
+		// OAuth grants are always org-scoped; a NULL org is not a valid grant.
+		return nil, errInvalidGrant
+	}
+
+	orgSlug, err := s.orgSlug(ctx, *row.OrganizationUID)
 	if err != nil {
 		return nil, err
 	}
 
 	return s.mintTokens(ctx, &mintInput{
-		clientID: row.ClientID,
+		clientID: grantClientID,
 		userUID:  row.UserUID,
-		orgUID:   row.OrganizationUID,
+		orgUID:   *row.OrganizationUID,
 		orgSlug:  orgSlug,
-		scope:    row.Scope,
-		resource: row.Resource,
+		scope:    stringFromValue(row.Properties, "scope"),
+		resource: stringFromValue(row.Properties, "resource"),
 	})
 }
 
@@ -318,7 +334,8 @@ type mintInput struct {
 }
 
 // mintTokens issues an audience-bound JWT access token (via the auth service's
-// signing key) and a persisted rotating refresh token.
+// signing key) and a persisted rotating refresh grant (a user_tokens row of
+// type oauth_refresh; the client/scope/resource bindings ride in properties).
 func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResult, error) {
 	scopes := ParseScopes(input.scope)
 
@@ -334,20 +351,18 @@ func (s *Service) mintTokens(ctx context.Context, input *mintInput) (*TokenResul
 		return nil, err
 	}
 
-	now := s.clock.Now()
-	refreshRow := &models.OAuthRefreshToken{
-		UID:             uuid.New().String(),
-		Token:           refreshValue,
-		ClientID:        input.clientID,
-		UserUID:         input.userUID,
-		OrganizationUID: input.orgUID,
-		Scope:           input.scope,
-		Resource:        input.resource,
-		ExpiresAt:       now.Add(refreshTokenTTL),
-		CreatedAt:       now,
+	refreshRow := models.NewUserToken(
+		input.userUID, &input.orgUID, refreshValue, models.TokenTypeOAuthRefresh,
+	)
+	expiresAt := s.clock.Now().Add(refreshTokenTTL)
+	refreshRow.ExpiresAt = &expiresAt
+	refreshRow.Properties = models.JSONMap{
+		"client_id": input.clientID,
+		"scope":     input.scope,
+		"resource":  input.resource,
 	}
 
-	if err := s.db.CreateOAuthRefreshToken(ctx, refreshRow); err != nil {
+	if err := s.db.CreateUserToken(ctx, refreshRow); err != nil {
 		return nil, fmt.Errorf("persist refresh token: %w", err)
 	}
 

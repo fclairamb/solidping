@@ -807,7 +807,9 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 		return err
 	}
 
-	return s.db.DeleteUserToken(ctx, token.UID)
+	_, err = s.db.DeleteUserToken(ctx, token.UID)
+
+	return err
 }
 
 // LogoutUser invalidates all refresh tokens for a user across all orgs.
@@ -832,7 +834,7 @@ func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutRespon
 	deleted := 0
 
 	for _, token := range tokens {
-		if deleteErr := s.db.DeleteUserToken(ctx, token.UID); deleteErr != nil {
+		if _, deleteErr := s.db.DeleteUserToken(ctx, token.UID); deleteErr != nil {
 			slog.ErrorContext(ctx, "Failed to delete refresh token", "error", deleteErr, "tokenUID", token.UID)
 
 			continue
@@ -843,9 +845,7 @@ func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutRespon
 
 	// Tear down any OAuth-issued MCP refresh grants for this user too, so a
 	// full logout also invalidates connectors authorized via the OAuth flow.
-	if revokeErr := s.db.RevokeOAuthRefreshTokensForUser(ctx, userUID, time.Now()); revokeErr != nil {
-		slog.ErrorContext(ctx, "Failed to revoke OAuth refresh tokens on logout", "error", revokeErr, "userUID", userUID)
-	}
+	s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
 
 	return &LogoutResponse{
 		Success:       true,
@@ -1367,12 +1367,12 @@ func (s *Service) RevokeToken(ctx context.Context, userUID, tokenUID string) err
 
 		// A PAT revoke should also tear down OAuth-issued MCP refresh grants for
 		// the user, matching the spec's "revocation on logout/PAT-revoke".
-		if revokeErr := s.db.RevokeOAuthRefreshTokensForUser(ctx, userUID, time.Now()); revokeErr != nil {
-			slog.ErrorContext(ctx, "Failed to revoke OAuth refresh tokens on PAT revoke", "error", revokeErr, "userUID", userUID)
-		}
+		s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeOAuthRefresh)
 	}
 
-	return s.db.DeleteUserToken(ctx, tokenUID)
+	_, err = s.db.DeleteUserToken(ctx, tokenUID)
+
+	return err
 }
 
 // SwitchOrg switches the user's current organization context.
@@ -2192,23 +2192,30 @@ func (s *Service) ResetPassword(ctx context.Context, req ResetPasswordRequest) (
 	}, nil
 }
 
-// revokeRefreshTokensForUser deletes every refresh token attached to the
-// user. PATs are deliberately untouched. Errors are logged, never fatal —
+// revokeRefreshTokensForUser deletes every session refresh token attached to
+// the user. PATs are deliberately untouched. Errors are logged, never fatal —
 // stateless access tokens (JWTs) can't be revoked synchronously anyway,
 // so the goal here is best-effort hygiene, not a security boundary.
 func (s *Service) revokeRefreshTokensForUser(ctx context.Context, userUID string) {
-	tokens, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	s.revokeUserTokensOfType(ctx, userUID, models.TokenTypeRefresh)
+}
+
+// revokeUserTokensOfType best-effort soft-deletes every live token of one
+// type for a user. Used for session refresh tokens (password reset) and
+// OAuth refresh grants (logout, PAT revoke). Errors are logged, never fatal.
+func (s *Service) revokeUserTokensOfType(ctx context.Context, userUID string, tokenType models.TokenType) {
+	tokens, err := s.db.ListUserTokensByType(ctx, userUID, tokenType)
 	if err != nil {
-		slog.ErrorContext(ctx, "Failed to list refresh tokens for revocation",
-			"error", err, "userUID", userUID)
+		slog.ErrorContext(ctx, "Failed to list tokens for revocation",
+			"error", err, "userUID", userUID, "type", tokenType)
 
 		return
 	}
 
 	for _, token := range tokens {
-		if delErr := s.db.DeleteUserToken(ctx, token.UID); delErr != nil {
-			slog.ErrorContext(ctx, "Failed to delete refresh token",
-				"error", delErr, "tokenUID", token.UID)
+		if _, delErr := s.db.DeleteUserToken(ctx, token.UID); delErr != nil {
+			slog.ErrorContext(ctx, "Failed to delete token",
+				"error", delErr, "tokenUID", token.UID, "type", tokenType)
 		}
 	}
 }

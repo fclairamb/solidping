@@ -633,7 +633,7 @@ func (m *mockDBService) UpdateUserToken(_ context.Context, _ string, _ models.Us
 	panic("not implemented")
 }
 
-func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) error {
+func (m *mockDBService) DeleteUserToken(_ context.Context, _ string) (bool, error) {
 	panic("not implemented")
 }
 
@@ -642,22 +642,6 @@ func (m *mockDBService) CreateOAuthClient(_ context.Context, _ *models.OAuthClie
 }
 
 func (m *mockDBService) GetOAuthClientByClientID(_ context.Context, _ string) (*models.OAuthClient, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) CreateOAuthRefreshToken(_ context.Context, _ *models.OAuthRefreshToken) error {
-	panic("not implemented")
-}
-
-func (m *mockDBService) GetOAuthRefreshToken(_ context.Context, _ string) (*models.OAuthRefreshToken, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) RevokeOAuthRefreshToken(_ context.Context, _ string, _ time.Time) (bool, error) {
-	panic("not implemented")
-}
-
-func (m *mockDBService) RevokeOAuthRefreshTokensForUser(_ context.Context, _ string, _ time.Time) error {
 	panic("not implemented")
 }
 

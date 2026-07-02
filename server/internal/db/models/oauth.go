@@ -40,33 +40,7 @@ func NewOAuthClient(clientID string) *OAuthClient {
 	}
 }
 
-// OAuthRefreshToken is a rotating refresh grant issued by the token endpoint.
-// On each refresh the prior row is marked RevokedAt and a fresh one is issued,
-// so a stolen-and-reused refresh token is detectable. Tokens are also revoked
-// on logout / PAT-revoke.
-type OAuthRefreshToken struct {
-	bun.BaseModel `bun:"table:oauth_refresh_tokens,alias:oauth_refresh_token"`
-
-	UID             string     `bun:"uid,pk,type:varchar(36)"`
-	Token           string     `bun:"token,notnull"`
-	ClientID        string     `bun:"client_id,notnull"`
-	UserUID         string     `bun:"user_uid,notnull"`
-	OrganizationUID string     `bun:"organization_uid,notnull"`
-	Scope           string     `bun:"scope,notnull"`
-	Resource        string     `bun:"resource,notnull"`
-	ExpiresAt       time.Time  `bun:"expires_at,notnull"`
-	RevokedAt       *time.Time `bun:"revoked_at"`
-	CreatedAt       time.Time  `bun:"created_at,notnull,default:current_timestamp"`
-}
-
-// NewOAuthRefreshToken builds a new refresh-token row with a generated UID.
-func NewOAuthRefreshToken(token, clientID, userUID, orgUID string) *OAuthRefreshToken {
-	return &OAuthRefreshToken{
-		UID:             uuid.New().String(),
-		Token:           token,
-		ClientID:        clientID,
-		UserUID:         userUID,
-		OrganizationUID: orgUID,
-		CreatedAt:       time.Now(),
-	}
-}
+// OAuth refresh grants are not a dedicated model: they are UserToken rows
+// with Type == TokenTypeOAuthRefresh (client_id/scope/resource in
+// Properties). Authorization codes are state_entries records. Only the
+// client registry above needs its own table.

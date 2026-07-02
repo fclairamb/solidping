@@ -99,18 +99,21 @@ type Service interface {
 	ListUserTokens(ctx context.Context, userUID string) ([]*models.UserToken, error)
 	ListUserTokensByType(ctx context.Context, userUID string, tokenType models.TokenType) ([]*models.UserToken, error)
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
-	DeleteUserToken(ctx context.Context, uid string) error
+	// DeleteUserToken soft-deletes a token, returning whether a live row
+	// existed to delete (compare-and-set on deleted_at IS NULL). Callers
+	// relying on single-use rotation semantics (the OAuth refresh-grant
+	// exchange) use the bool to detect a replay racing a concurrent
+	// redemption; plain revocation callers may ignore it.
+	DeleteUserToken(ctx context.Context, uid string) (bool, error)
 
-	// OAuth (MCP authorization server) operations. Authorization codes are not
-	// a dedicated table — they're issued/redeemed through the generic
-	// State Storage operations below (state_entries), keyed by
-	// oauth.authCodeKeyPrefix + a random suffix, scoped to the granting org.
+	// OAuth (MCP authorization server) operations. Only the client registry
+	// has dedicated storage: authorization codes are issued/redeemed through
+	// the generic State Storage operations below (state_entries, keyed by
+	// oauth.authCodeKeyPrefix + a random suffix, scoped to the granting org),
+	// and refresh grants are UserToken rows with type oauth_refresh managed
+	// via the UserToken operations above.
 	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
-	CreateOAuthRefreshToken(ctx context.Context, token *models.OAuthRefreshToken) error
-	GetOAuthRefreshToken(ctx context.Context, token string) (*models.OAuthRefreshToken, error)
-	RevokeOAuthRefreshToken(ctx context.Context, token string, now time.Time) (bool, error)
-	RevokeOAuthRefreshTokensForUser(ctx context.Context, userUID string, now time.Time) error
 
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error

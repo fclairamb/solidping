@@ -44,5 +44,14 @@ create unique index idx_discovered_hosts_org_ip_source_active on discovered_host
   where deleted_at is null and promoted_to_check_uid is null;
 create index idx_discovered_hosts_org_job on discovered_hosts (organization_uid, job_uid) where deleted_at is null;
 
-drop table if exists oauth_refresh_tokens;
+-- Purge OAuth refresh grants before narrowing the type check back to the
+-- v0.1.0 vocabulary (their loss is fine: downs are parity-only).
+delete from user_tokens where type = 'oauth_refresh';
+
+alter table user_tokens drop constraint user_tokens_type_check;
+alter table user_tokens add constraint user_tokens_type_check
+  check (type in ('pat', 'refresh'));
+
+comment on column user_tokens.type is 'Token type: pat (Personal Access Token) or refresh (JWT refresh token).';
+
 drop table if exists oauth_clients;

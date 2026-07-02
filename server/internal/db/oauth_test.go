@@ -13,9 +13,14 @@ import (
 )
 
 // testOAuthRepos is the cross-engine (Postgres + SQLite) parity guard for the
-// MCP OAuth tables: client persistence, single-use authorization codes, and
-// rotating refresh tokens (spec 2026-06-20-03). It runs under the shared
-// testService harness so both dialects exercise the same assertions.
+// MCP OAuth storage (spec 2026-06-20-03): client persistence, and refresh
+// grants as user_tokens rows of type oauth_refresh — including that the
+// widened type check admits the new type on both engines and that the
+// soft-delete compare-and-set backs the rotation replay guard. It runs under
+// the shared testService harness so both dialects exercise the same
+// assertions. (Authorization codes are state_entries records — see the
+// "Delete" compare-and-set coverage in service_test.go and the oauth
+// package's ExchangeAuthCode tests.)
 func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	t.Helper()
 
@@ -55,49 +60,34 @@ func testOAuthRepos(ctx context.Context, t *testing.T, svc db.Service) {
 	_, err = svc.GetOAuthClientByClientID(ctx, "does-not-exist")
 	r.Error(err, "missing client must error")
 
-	// Authorization codes are not a dedicated table — see the state_entries
-	// "Delete" compare-and-set coverage in service_test.go, and the
-	// oauth-package-level ExchangeAuthCode tests, for that behavior.
-
-	// --- Refresh token: rotation + user-wide revocation ---
-	refresh := &models.OAuthRefreshToken{
-		UID:             uuid.New().String(),
-		Token:           "refresh-" + uuid.New().String(),
-		ClientID:        client.ClientID,
-		UserUID:         user.UID,
-		OrganizationUID: org.UID,
-		Scope:           "mcp",
-		Resource:        "https://example.com/api/v1/mcp",
-		ExpiresAt:       now.Add(time.Hour),
-		CreatedAt:       now,
+	// --- Refresh grant: the widened type check + rotation compare-and-set ---
+	refresh := models.NewUserToken(
+		user.UID, &org.UID, "refresh-"+uuid.New().String(), models.TokenTypeOAuthRefresh,
+	)
+	expiry := now.Add(time.Hour)
+	refresh.ExpiresAt = &expiry
+	refresh.Properties = models.JSONMap{
+		"client_id": client.ClientID,
+		"scope":     "mcp",
+		"resource":  "https://example.com/api/v1/mcp",
 	}
-	r.NoError(svc.CreateOAuthRefreshToken(ctx, refresh))
+	r.NoError(svc.CreateUserToken(ctx, refresh),
+		"the widened user_tokens type check must admit oauth_refresh")
 
-	revoked, err := svc.RevokeOAuthRefreshToken(ctx, refresh.Token, now)
+	got, err := svc.GetUserTokenByToken(ctx, refresh.Token)
+	r.NoError(err)
+	r.Equal(models.TokenTypeOAuthRefresh, got.Type)
+	r.Equal(client.ClientID, got.Properties["client_id"], "grant bindings round-trip through properties")
+	r.Equal("mcp", got.Properties["scope"])
+
+	revoked, err := svc.DeleteUserToken(ctx, refresh.UID)
 	r.NoError(err)
 	r.True(revoked, "first revoke wins")
 
-	revokedAgain, err := svc.RevokeOAuthRefreshToken(ctx, refresh.Token, now)
+	revokedAgain, err := svc.DeleteUserToken(ctx, refresh.UID)
 	r.NoError(err)
-	r.False(revokedAgain, "rotating an already-revoked token loses the race")
+	r.False(revokedAgain, "rotating an already-revoked grant loses the race")
 
-	// A second active token, then a user-wide revoke (logout / PAT revoke).
-	refresh2 := &models.OAuthRefreshToken{
-		UID:             uuid.New().String(),
-		Token:           "refresh2-" + uuid.New().String(),
-		ClientID:        client.ClientID,
-		UserUID:         user.UID,
-		OrganizationUID: org.UID,
-		Scope:           "mcp",
-		Resource:        "https://example.com/api/v1/mcp",
-		ExpiresAt:       now.Add(time.Hour),
-		CreatedAt:       now,
-	}
-	r.NoError(svc.CreateOAuthRefreshToken(ctx, refresh2))
-
-	r.NoError(svc.RevokeOAuthRefreshTokensForUser(ctx, user.UID, now))
-
-	got2, err := svc.GetOAuthRefreshToken(ctx, refresh2.Token)
-	r.NoError(err)
-	r.NotNil(got2.RevokedAt, "user-wide revoke marks the active token revoked")
+	_, err = svc.GetUserTokenByToken(ctx, refresh.Token)
+	r.Error(err, "a revoked (soft-deleted) grant is no longer resolvable by token value")
 }

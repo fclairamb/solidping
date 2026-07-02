@@ -42,5 +42,38 @@ create unique index idx_discovered_hosts_org_ip_source_active on discovered_host
   where deleted_at is null and promoted_to_check_uid is null;
 create index idx_discovered_hosts_org_job on discovered_hosts (organization_uid, job_uid) where deleted_at is null;
 
-drop table if exists oauth_refresh_tokens;
+-- Rebuild user_tokens with the v0.1.0 type vocabulary (SQLite cannot alter
+-- check constraints). OAuth refresh grants are dropped by the copy filter;
+-- their loss is fine: downs are parity-only.
+create table user_tokens_old (
+  uid               text primary key,
+  user_uid          text not null references users(uid) on delete cascade, -- Token owner
+  organization_uid  text references organizations(uid) on delete cascade, -- Organization scope for PAT tokens. NULL for global refresh tokens
+  token             text not null, -- Hashed token value
+  type              text not null check (type in ('pat', 'refresh')), -- Token type: pat or refresh
+  properties        text, -- Token metadata (e.g., name, scopes, IP restrictions)
+  expires_at        text, -- Expiration timestamp. NULL means never expires
+  last_active_at    text, -- Last time this token was used for authentication
+  created_at        text not null default (datetime('now')),
+  updated_at        text not null default (datetime('now')),
+  deleted_at        text
+);
+
+insert into user_tokens_old (
+  uid, user_uid, organization_uid, token, type, properties,
+  expires_at, last_active_at, created_at, updated_at, deleted_at
+)
+select
+  uid, user_uid, organization_uid, token, type, properties,
+  expires_at, last_active_at, created_at, updated_at, deleted_at
+from user_tokens
+where type in ('pat', 'refresh');
+
+drop table user_tokens;
+alter table user_tokens_old rename to user_tokens;
+
+create unique index user_tokens_token_idx on user_tokens (token) where deleted_at is null;
+create index user_tokens_user_uid_idx on user_tokens (user_uid) where deleted_at is null;
+create index user_tokens_expires_at_idx on user_tokens (expires_at) where deleted_at is null and expires_at is not null;
+
 drop table if exists oauth_clients;
