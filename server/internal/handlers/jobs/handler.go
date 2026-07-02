@@ -8,6 +8,7 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 const responseKeyData = "data"
@@ -27,7 +28,12 @@ func NewHandler(jobSvc jobsvc.Service) *Handler {
 // CreateJob creates a new job.
 // POST /api/v1/orgs/:org/jobs.
 func (h *Handler) CreateJob(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
+	}
+
+	orgUID := org.UID
 
 	var body struct {
 		Type   string          `json:"type"`
@@ -66,7 +72,14 @@ func (h *Handler) GetJob(writer http.ResponseWriter, req bunrouter.Request) erro
 // ListJobs lists jobs with optional filtering.
 // GET /api/v1/orgs/:org/jobs.
 func (h *Handler) ListJobs(writer http.ResponseWriter, req bunrouter.Request) error {
-	orgUID := req.Param("org")
+	// The :org URL segment is a SLUG that the org middleware has already
+	// resolved; filtering on the raw param (as this once did) matches no rows.
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.writeError(writer, http.StatusNotFound, "ORGANIZATION_NOT_FOUND", "organization not found")
+	}
+
+	orgUID := org.UID
 
 	opts := jobsvc.ListJobsOptions{
 		Type:   req.URL.Query().Get("type"),
