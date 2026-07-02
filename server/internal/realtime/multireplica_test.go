@@ -15,8 +15,9 @@ import (
 	"github.com/fclairamb/solidping/server/internal/realtime"
 )
 
-// drainHint waits for the subscriber's wake-up and returns its drained kinds.
-func drainHint(t *testing.T, sub *realtime.Subscriber) []realtime.Kind {
+// drainHint waits for the subscriber's wake-up and returns its drained
+// scoped updates.
+func drainHint(t *testing.T, sub *realtime.Subscriber) []realtime.ScopedUpdate {
 	t.Helper()
 
 	select {
@@ -25,10 +26,10 @@ func drainHint(t *testing.T, sub *realtime.Subscriber) []realtime.Kind {
 		t.Fatal("timed out waiting for a cross-replica hint")
 	}
 
-	kinds, _, closed := sub.Take()
+	updates, _, closed := sub.Take()
 	require.False(t, closed)
 
-	return kinds
+	return updates
 }
 
 // TestMultiReplica_PostgresHintCrossesInstances proves the distributed
@@ -71,21 +72,29 @@ func TestMultiReplica_PostgresHintCrossesInstances(t *testing.T) { //nolint:para
 
 	sub, err := hub.Subscribe("org-x")
 	r.NoError(err)
+	r.NoError(sub.AddScope(realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"}))
 	other, err := hub.Subscribe("org-other")
 	r.NoError(err)
+	r.NoError(other.AddScope(realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"}))
 
 	// Give the LISTEN a moment to be established before the first NOTIFY.
 	time.Sleep(500 * time.Millisecond)
 
 	pub := realtime.NewPublisher(ctx, notifierB, time.Second, logger)
 	t.Cleanup(pub.Close)
-	pub.PublishImmediate(context.Background(), "org-x", realtime.KindChecks, realtime.KindIncidents)
+	pub.PublishImmediate(context.Background(), "org-x", "check-x1", realtime.KindChecks, realtime.KindIncidents)
 
-	kinds := drainHint(t, sub)
-	r.Equal([]realtime.Kind{realtime.KindChecks, realtime.KindIncidents}, kinds,
-		"hint published on replica B must reach the subscriber held by replica A")
+	updates := drainHint(t, sub)
+	r.Equal([]realtime.ScopedUpdate{
+		{
+			Scope: realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"},
+			Kinds: []realtime.Kind{realtime.KindChecks, realtime.KindIncidents},
+		},
+	}, updates, "hint published on replica B must reach the subscriber held by replica A")
 
-	// Org isolation across the bus: the other org saw nothing.
+	// Org isolation across the bus: the other org saw nothing, even though it
+	// is watching the same check uid string (uids are org-scoped by hub
+	// registration, not by value).
 	select {
 	case <-other.Signal():
 		t.Fatal("hint for org-x must not reach an org-other subscriber")
@@ -108,15 +117,22 @@ func TestMultiReplica_LocalNotifierSameScenario(t *testing.T) {
 
 	sub, err := hub.Subscribe("org-x")
 	r.NoError(err)
+	r.NoError(sub.AddScope(realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"}))
 	other, err := hub.Subscribe("org-other")
 	r.NoError(err)
+	r.NoError(other.AddScope(realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"}))
 
 	pub := realtime.NewPublisher(t.Context(), bus, time.Second, nil)
 	t.Cleanup(pub.Close)
-	pub.PublishImmediate(context.Background(), "org-x", realtime.KindChecks, realtime.KindIncidents)
+	pub.PublishImmediate(context.Background(), "org-x", "check-x1", realtime.KindChecks, realtime.KindIncidents)
 
-	kinds := drainHint(t, sub)
-	r.Equal([]realtime.Kind{realtime.KindChecks, realtime.KindIncidents}, kinds)
+	updates := drainHint(t, sub)
+	r.Equal([]realtime.ScopedUpdate{
+		{
+			Scope: realtime.Scope{Entity: realtime.EntityCheck, UID: "check-x1"},
+			Kinds: []realtime.Kind{realtime.KindChecks, realtime.KindIncidents},
+		},
+	}, updates)
 
 	select {
 	case <-other.Signal():

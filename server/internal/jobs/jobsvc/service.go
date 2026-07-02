@@ -153,7 +153,7 @@ func (s *serviceImpl) publishJobsHint(ctx context.Context, orgUID *string) {
 	if orgUID == nil || *orgUID == "" {
 		return
 	}
-	s.rt.Publish(ctx, *orgUID, realtime.KindJobs)
+	s.rt.Publish(ctx, *orgUID, "", realtime.KindJobs)
 }
 
 // CreateJob creates a new job and notifies waiting runners.
