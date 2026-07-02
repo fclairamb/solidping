@@ -223,7 +223,12 @@ function GroupCard({
   onDismissCheck: (check: DiscoveredCheck) => void;
 }) {
   const { t } = useTranslation("discovery");
-  const allSelected = group.checks.every((c) => selected[c.uid]);
+  // "Select all" only governs promotable rows: promoted checks can never be
+  // (re-)selected, so counting them would leave the header checkbox stuck
+  // unchecked forever once any check in the group has been promoted.
+  const promotable = group.checks.filter((c) => !c.promotedToCheckUid);
+  const allSelected =
+    promotable.length > 0 && promotable.every((c) => selected[c.uid]);
 
   return (
     <Card data-testid="discovery-group">
@@ -232,6 +237,7 @@ function GroupCard({
           <div className="flex items-center gap-2">
             <Checkbox
               checked={allSelected}
+              disabled={promotable.length === 0}
               onCheckedChange={(v) => onToggleGroup(group, !!v)}
               aria-label={t("selectAllInGroup")}
             />
