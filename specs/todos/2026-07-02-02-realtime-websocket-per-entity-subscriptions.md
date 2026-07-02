@@ -304,3 +304,161 @@ or a dedicated `/api` `ws: true` flag — verify HMR websockets are unaffected.
       (publisher signature change only).
 - [ ] Docs and `wiki/api-specification.md` describe the v2 protocol; lint,
       backend tests, dash0 unit tests, and E2E green.
+
+## Implementation Plan
+
+Order chosen so every commit leaves `main`/the batch branch buildable: bus
+payload → hub → new WS handler alongside the old SSE handler → route swap →
+config/metrics → frontend client → frontend registry/hook → wire consumers →
+Vite → remove SSE → docs → tests/QA pass.
+
+1. **Bus payload v2** (`realtime/realtime.go`): add `CheckUids []string` to
+   `Hint`; `EncodeHint`/`DecodeHint` gain a check-uid set param; add
+   `CollapseCheckUids = 64` and the `["*"]` collapse rule as a small pure
+   helper (`collapseCheckUids`) unit-testable in isolation. Update existing
+   hub/publisher callers in this same package.
+
+2. **Publisher check attribution** (`realtime/publisher.go`): change
+   `Publish`/`PublishImmediate` signature to
+   `(ctx, orgUID, checkUID string, kinds ...Kind)`; pending state becomes
+   `{kinds, checkUids, collapsed}` per org. Thread `checkUID` (or `""`) through
+   every call site: `incidents/service.go` (`ProcessCheckResult` →
+   `check.UID`; `publishStatusHint` → `check.UID`; `emitEvent` and the 4
+   ack/snooze/unsnooze sites → `incident.CheckUID`), `heartbeat/service.go`
+   (`org.UID` result path → the heartbeat's check uid), `jobsvc/service.go`
+   (`checkUID=""`, org-level). Update `publisher_test.go` call sites and add
+   the storm-collapse test (>64 uids → `["*"]`).
+
+3. **Hub v2 dispatch** (`realtime/hub.go`): `Subscriber` gains
+   `subscriptions map[scopeKey]struct{}` + `dirty map[scopeKey]map[Kind]struct{}`;
+   `scopeKey{entity, uid}`. Add `AddScope`/`RemoveScope` (enforce
+   `maxSubscriptions`, return a sentinel error for the cap). `Take()` returns
+   `[]ScopedUpdate` (scope + sorted kinds) plus resync/closed. `dispatch()`
+   routes a decoded hint to: (a) subscribers on the matching collection scope
+   (`checks`/`incidents`/`events`/`jobs`) when the hint carries that kind, (b)
+   `check`-scoped subscribers whose uid is in `checkUids` or when
+   `checkUids == ["*"]`. Zero-scope subscribers get nothing. Rewrite
+   `hub_test.go` for scope-based dispatch (keep the org-isolation,
+   slow-subscriber, resync, close, max-conns-guard shapes) and add: per-check
+   isolation, default-silent (zero scopes → no dispatch), storm-collapse
+   reaching both a collection and a per-check subscriber, subscription-cap
+   error. Extend `multireplica_test.go` for v2 hints (`checkUids`) on both
+   `PgEventNotifier` and `LocalEventNotifier`.
+
+4. **Config** (`config/config.go`): add `AuthGrace time.Duration` and
+   `MaxSubscriptionsPerConnection int` to `RealtimeConfig`; defaults `5s` /
+   `512`; extend `applyRealtimeEnv` for `SP_REALTIME_AUTH_GRACE` /
+   `SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION` (multi-word env quirk).
+
+5. **Metrics** (`prommetrics/metrics.go`): add `RealtimeSubscriptions` (gauge)
+   and `RealtimeMessagesReceived` (counter, label `type`); register in
+   `allCollectors`.
+
+6. **New handler package** `handlers/realtimews/`: `handler.go` with
+   `NewHandler(hub, authService, dbService, cfg)`; `Serve(w, req)` — accept
+   the upgrade unconditionally (even disabled/unauthenticated) via
+   `websocket.Accept`, since browsers only see close codes, not HTTP status;
+   then:
+   - pre-auth check (header/cookie via the same token-extraction helper as
+     `middleware.RequireAuth`, exported or duplicated locally to avoid an
+     import cycle) → validate token + org access inline using
+     `authService.ValidateToken` + `dbService.GetOrganizationBySlug` +
+     membership check (mirrors `RequireOrgAccess`); on success send `hello`
+     and proceed to the read loop already authenticated;
+   - else start a grace-window timer (`cfg.Realtime.AuthGrace`) and read
+     messages: first non-`auth` message before auth → close `4401`; `auth`
+     message → validate token, same org-access check → `hello` or close
+     `4401`/`4403`; grace timeout → close `4401`.
+   - post-auth read loop: `subscribe`/`unsubscribe` messages validated
+     per-scope (`check`+uid → `dbService.GetCheck(ctx, org.UID, uid)`,
+     `NOT_FOUND` on miss, cache positive lookups in a per-connection
+     `map[string]struct{}`; collections need no lookup) → `hub.Subscribe`
+     scope add (cap → `error CONCURRENCY_LIMITED`, socket stays open) →
+     `subscribed` ack (duplicate = idempotent ack, not an error); malformed
+     JSON / unknown type → `error VALIDATION_ERROR`, socket stays open.
+   - write loop: goroutine draining `sub.Signal()` → `sub.Take()` → one
+     `update` frame per scope in the drained batch (`resync` frame first if
+     set).
+   - ping ticker (`SP_REALTIME_PING_INTERVAL`) using `conn.Ping`; a failed
+     pong within the library's internal timeout surfaces as a `Ping` error →
+     close `1012`/abort. Token-expiry timer carried over from
+     `realtimestream/handler.go:137` (`tokenExpiryTimer`, adapted to the
+     locally-validated claims) → close `4401` at expiry.
+   - `SP_REALTIME_ENABLED=false` stub path: accept + immediately close
+     `4404` (registered unconditionally per the spec, mirroring today's JSON
+     404 stub intent but as a close code since it's a WS route now).
+   Write `handler_test.go` using a real `httptest.Server` + `coder/websocket`
+   client dials (mirrors the old SSE fixture shape) covering every acceptance
+   criterion: default-silent, per-check isolation (integration level),
+   handshake edge cases (no-auth timeout, subscribe-before-auth, foreign-org
+   uid, subscription cap), token-expiry close+reconnect, disabled-flag close
+   code.
+
+7. **Route registration** (`app/server.go`): replace the
+   `realtimestream`-backed `/events/stream` block with
+   `/orgs/:org/events/ws` registered **outside** `RequireAuth`/
+   `RequireOrgAccess` (in-handler auth), still carrying the timeout/
+   ratelimit/metrics middleware exclusions — extend `isExcluded`'s suffix
+   constant/logic in `middleware/ratelimit.go` and `middleware/timeout.go`
+   from `/events/stream` to `/events/ws` (keep it a single shared constant).
+   Remove the old `realtimestream` import, handler construction, and the
+   JSON-404 stub branch (the new handler self-handles the disabled case).
+
+8. **Remove `handlers/realtimestream/`**: delete the package (handler.go +
+   handler_test.go) once the new handler covers its test surface.
+
+9. **Frontend: `lib/live-socket.ts`** (new, replaces `live-events.ts`):
+   WebSocket client — `connectLiveSocket(org, callbacks)` returning a
+   disposer + `send()`. Keep `backoffDelay`, `waitForApiQuiet`, token re-read
+   per attempt (now sent as the first `auth` frame, not a header). Parse
+   `hello`/`subscribed`/`update`/`resync`/`error` frames; unknown types
+   ignored. Close code 4403/4404 → `onDisabled`; else → `onDisconnected` +
+   reconnect. Export a small message-encoder for subscribe/unsubscribe so the
+   registry doesn't hand-roll JSON. Delete `live-events.ts` +
+   `live-events.test.ts`, write `live-socket.test.ts` covering backoff,
+   frame parsing, and the auth-first-message contract.
+
+10. **Frontend: `contexts/LiveEventsContext.tsx` registry rewrite**: keep
+    `LiveEventsProvider`, `HINT_KIND_QUERY_ROOTS`-equivalent per-scope root
+    mapping, `LIVE_LAZY_POLL_MS`. Add refcounted scope registry
+    (`Map<scopeKey, {count, queryRoots, live}>`); `useLiveSubscription(scope,
+    queryRoots?)` hook subscribes on mount (0→1 refcount sends `subscribe`),
+    unsubscribes on unmount (1→0 sends `unsubscribe`); replays all active
+    scopes after reconnect (`onOpen`) and invalidates them (scope-accurate,
+    replacing `invalidateAllForOrg`); `onResync` still invalidates every
+    subscribed scope. `useLiveStatus()` keeps today's global "socket open"
+    signature for coarse consumers (ping ticker state); add
+    `useScopeLive(scope)` returning true only between that scope's
+    `subscribed` ack and disconnect, for per-scope poll-stretch gating.
+    Rewrite `LiveEventsContext.test.ts` for the registry (refcounting,
+    replay-on-reconnect, poll-stretch gated on ack).
+
+11. **Wire consumers**: `dashboard-page.tsx` calls
+    `useLiveSubscription({entity:"checks"})`,
+    `useLiveSubscription({entity:"incidents"})`,
+    `useLiveSubscription({entity:"events"})` and gates its `stretchWhileLive`
+    calls on the matching `useScopeLive`. `checks.$checkUid.index.tsx` calls
+    `useLiveSubscription({entity:"check", uid: checkUid})` +
+    `useLiveSubscription({entity:"incidents"})`. Jobs pages/hooks
+    (`api/hooks.ts` jobs section) call `useLiveSubscription({entity:"jobs"})`
+    once at the page level and gate `jobsAdaptiveInterval` on
+    `useScopeLive({entity:"jobs"})` instead of the global `useLiveStatus`.
+
+12. **Vite** (`vite.config.ts`): add `ws: true` to the `/api` proxy entry;
+    manually verify (via `make dev`) that Vite's own HMR websocket (separate
+    port/path) still connects.
+
+13. **Docs**: rewrite `web/docs/docs/features/live-updates.md` (message
+    table, close codes, `websocat` example). Update
+    `wiki/api-specification.md` stream entry → WS entry. Remove
+    `/events/stream` from `openapi.yaml`, add a short prose note pointing at
+    the wiki (OpenAPI 3 can't model WS).
+
+14. **E2E**: rewrite `web/dash0/e2e/live-updates.spec.ts` — wait for the
+    `subscribed` ack (or the WS upgrade response) instead of the old
+    `/events/stream` 200 response; same two scenarios (incident opens live on
+    dashboard, first result appears live on detail page without the hot
+    poll).
+
+15. **Sweep + QA**: `rg "events/stream"` (expect zero outside
+    `specs/done`), `make bench-checks`, full QA matrix (step D of the runbook).
