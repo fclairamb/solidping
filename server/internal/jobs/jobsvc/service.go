@@ -61,6 +61,12 @@ type Service interface {
 	// CancelJob cancels a pending job (soft delete)
 	CancelJob(ctx context.Context, uid string) error
 
+	// IsJobDeleted reports whether the job row has been soft-deleted
+	// (canceled). The worker's cancellation watcher polls this while a job
+	// runs so a mid-run cancellation (e.g. a stopped discovery scan) aborts
+	// the runner instead of letting it hold its slot to completion.
+	IsJobDeleted(ctx context.Context, uid string) (bool, error)
+
 	// CancelPendingForIncident soft-deletes all pending jobs whose config
 	// references the given incident UID under the "incidentUid" key. Returns
 	// the number of jobs canceled. Used by ack / snooze / resolve to stop
@@ -423,6 +429,20 @@ func (s *serviceImpl) CancelPendingForIncident(
 	}
 
 	return rows, nil
+}
+
+// IsJobDeleted reports whether the job row has been soft-deleted (canceled).
+func (s *serviceImpl) IsJobDeleted(ctx context.Context, uid string) (bool, error) {
+	count, err := s.db.NewSelect().
+		TableExpr("jobs").
+		Where("uid = ?", uid).
+		Where("deleted_at IS NOT NULL").
+		Count(ctx)
+	if err != nil {
+		return false, fmt.Errorf("failed to check job deletion: %w", err)
+	}
+
+	return count > 0, nil
 }
 
 // CancelJob cancels a pending job (soft delete).

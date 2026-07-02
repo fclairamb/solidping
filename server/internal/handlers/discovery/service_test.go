@@ -524,7 +524,14 @@ func TestStartScanIgnoresStaleRunningChild(t *testing.T) {
 	r.NotNil(job)
 }
 
-func TestCancelScanDropsPendingChildren(t *testing.T) {
+// TestCancelScanDropsLiveChildren: cancel soft-deletes pending AND running
+// children. Deleting a running child is what un-blocks the already-running
+// guard immediately (a stopped scan previously kept the org blocked from
+// starting a new scan for the remaining chunk duration — ~1min measured — the
+// root cause of the flaky scan-start E2E) and what the worker's cancellation
+// watcher keys on to abort the chunk. A new scan must be accepted right after
+// the cancel, with no waiting.
+func TestCancelScanDropsLiveChildren(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
@@ -538,17 +545,26 @@ func TestCancelScanDropsPendingChildren(t *testing.T) {
 	pending := f.newChildJob(t, plan.UID, models.JobStatusPending)
 	running := f.newChildJob(t, plan.UID, models.JobStatusRunning)
 
+	// The live children block a new scan before the cancel…
+	_, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	r.ErrorIs(err, discovery.ErrAlreadyRunning)
+
 	r.NoError(f.svc.CancelScan(ctx, f.org.UID, plan.UID))
 
 	var pendingJob models.Job
-	err := f.dbSvc.DB().NewSelect().Model(&pendingJob).Where("uid = ?", pending.UID).Scan(ctx)
+	err = f.dbSvc.DB().NewSelect().Model(&pendingJob).Where("uid = ?", pending.UID).Scan(ctx)
 	r.NoError(err)
-	r.NotNil(pendingJob.DeletedAt)
+	r.NotNil(pendingJob.DeletedAt, "pending child must be soft-deleted")
 
 	var runningJob models.Job
 	err = f.dbSvc.DB().NewSelect().Model(&runningJob).Where("uid = ?", running.UID).Scan(ctx)
 	r.NoError(err)
-	r.Nil(runningJob.DeletedAt)
+	r.NotNil(runningJob.DeletedAt, "running child must be soft-deleted so the guard clears and the watcher aborts it")
+
+	// …and immediately after the cancel a new scan is accepted.
+	job, err := f.svc.StartScan(ctx, f.org.UID, "lan", json.RawMessage(`{"cidrs":["192.168.1.0/24"]}`))
+	r.NoError(err, "a new scan must start immediately after cancel")
+	r.NotNil(job)
 }
 
 func TestCancelScanUnknownScan(t *testing.T) {

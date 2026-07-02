@@ -406,10 +406,17 @@ func toInt(v any) int {
 	}
 }
 
-// CancelScan stops a fan-out scan: it cancels the plan job if still pending, then
-// cancels every pending child network_discovery job (soft delete). Running
-// children are bounded (~minutes) and finish naturally; the net effect is that no
-// new chunks start. Returns ErrScanNotFound if no such plan exists for the org.
+// CancelScan stops a fan-out scan: it cancels the plan job if still pending,
+// then soft-deletes every live (pending or running) child network_discovery
+// job. Soft-deleting a running child does two things at once: the
+// already-running guard stops counting it immediately (a new scan can start
+// right away instead of waiting out the chunk, measured at ~1min for a /20 of
+// unroutable addresses), and the job worker's cancellation watcher notices the
+// deletion within its poll interval and cancels the chunk's context so the
+// runner slot frees promptly. A plan still mid-chunking can enqueue a child in
+// the small window between this sweep and its own watcher-driven cancellation;
+// that residual chunk is bounded and finishes naturally. Returns
+// ErrScanNotFound if no such plan exists for the org.
 func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error {
 	plan, err := s.jobSvc.GetJob(ctx, planUID)
 	if err != nil || plan.OrganizationUID == nil || *plan.OrganizationUID != orgUID {
@@ -423,8 +430,10 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 		return fmt.Errorf("cancel plan job: %w", cancelErr)
 	}
 
-	// Soft-delete every pending child in one statement (CancelJob is per-UID and
-	// pending-only; a bulk update matches its semantics for the child set).
+	// Soft-delete every live child in one statement. Pending children never
+	// start; running children are aborted by the worker's cancellation
+	// watcher (and stop counting against the already-running guard the moment
+	// this commits).
 	now := time.Now()
 	parentExpr := s.parentJobUIDExpr()
 
@@ -434,12 +443,12 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 		Set("updated_at = ?", now).
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
 		Where("organization_uid = ?", orgUID).
-		Where("status = ?", models.JobStatusPending).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Where("deleted_at IS NULL").
 		Where(parentExpr+" = ?", planUID).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("cancel pending child jobs: %w", err)
+		return fmt.Errorf("cancel live child jobs: %w", err)
 	}
 
 	return nil

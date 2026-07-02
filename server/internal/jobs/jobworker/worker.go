@@ -46,7 +46,16 @@ type JobWorker struct {
 	workerSlug       string // Slug identifier for this worker
 	internalCheckUID string // UID of the internal check for this worker
 	defaultOrgUID    string // UID of the default organization
+
+	// cancelWatchInterval is how often a running job's row is re-checked for
+	// soft-deletion; cancellation latency is bounded by one interval. Zero
+	// falls back to defaultCancelWatchInterval (tests shrink it).
+	cancelWatchInterval time.Duration
 }
+
+// defaultCancelWatchInterval bounds how long a canceled (soft-deleted) job
+// keeps running before its context is canceled.
+const defaultCancelWatchInterval = 2 * time.Second
 
 // NewJobWorker creates a new job worker.
 func NewJobWorker(
@@ -188,11 +197,25 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 	// Use a detached context so that canceling the polling context (worker
 	// shutdown) does not abort a job that is already mid-execution. The job
 	// was claimed; it should run to completion so status is recorded cleanly.
-	jobExecCtx := context.WithoutCancel(ctx)
+	// One escape hatch: a cancellation watcher polls the job row and cancels
+	// the exec context when the row is soft-deleted mid-run (e.g. the user
+	// stopped a discovery scan), so ctx-aware runners abort promptly instead
+	// of holding their runner slot to completion.
+	jobExecCtx, cancelExec := context.WithCancel(context.WithoutCancel(ctx))
+	defer cancelExec()
+
+	canceled := w.watchJobCancellation(jobExecCtx, job.UID, cancelExec)
 	jobErr := w.executeWithRecovery(jobExecCtx, jobRun, jctx)
 
 	// 7. Record stats
 	duration := time.Since(startTime)
+
+	if canceled.Load() {
+		w.finishCanceled(ctx, logger, job, jobErr, duration, delay)
+
+		return nil
+	}
+
 	w.stats.AddMetric(jobErr == nil, duration, delay)
 
 	// 8. Handle result (success, retry, or fail). The outcome returned matches
@@ -204,11 +227,77 @@ func (w *JobWorker) processNext(ctx context.Context, logger *slog.Logger) error 
 	return resultErr
 }
 
+// finishCanceled records a mid-run cancellation. Cancellation is terminal:
+// no status is written (the row is soft-deleted, and a retry clone would
+// resurrect canceled work); the slot time is recorded under its own outcome so
+// canceled runs stay visible in metrics.
+func (w *JobWorker) finishCanceled(
+	ctx context.Context, logger *slog.Logger, job *models.Job, jobErr error, duration, delay time.Duration,
+) {
+	logger.InfoContext(ctx, "Job canceled mid-run (row soft-deleted)",
+		"job_uid", job.UID, "job_type", job.Type, "run_error", jobErr)
+	w.stats.AddMetric(false, duration, delay)
+	w.recordJobMetrics(job.Type, outcomeCanceled, duration, delay)
+}
+
+// watchJobCancellation polls the job row while the job runs and cancels the
+// exec context when the row is soft-deleted. The returned flag reports whether
+// cancellation was triggered by row deletion (as opposed to the normal
+// end-of-run cancel the caller performs). The watcher exits when execCtx ends,
+// whichever side canceled it.
+func (w *JobWorker) watchJobCancellation(
+	execCtx context.Context, jobUID string, cancelExec context.CancelFunc,
+) *atomic.Bool {
+	interval := w.cancelWatchInterval
+	if interval <= 0 {
+		interval = defaultCancelWatchInterval
+	}
+
+	var canceled atomic.Bool
+
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-execCtx.Done():
+				return
+			case <-ticker.C:
+				// Bounded by one interval, inherited from execCtx: while this
+				// branch runs execCtx is live, and if the job finishes
+				// mid-check the aborted lookup is irrelevant anyway.
+				checkCtx, cancelCheck := context.WithTimeout(execCtx, interval)
+				deleted, err := w.jobSvc.IsJobDeleted(checkCtx, jobUID)
+				cancelCheck()
+
+				if err != nil {
+					// Transient lookup failure: keep the job running rather
+					// than killing work on a DB hiccup.
+					continue
+				}
+
+				if deleted {
+					canceled.Store(true)
+					cancelExec()
+
+					return
+				}
+			}
+		}
+	}()
+
+	return &canceled
+}
+
 // Job outcome label values for Prometheus, matching the terminal job status.
+// outcomeCanceled is the exception: a canceled job's row is soft-deleted, so
+// no terminal status is written at all.
 const (
-	outcomeSuccess = "success"
-	outcomeRetried = "retried"
-	outcomeFailed  = "failed"
+	outcomeSuccess  = "success"
+	outcomeRetried  = "retried"
+	outcomeFailed   = "failed"
+	outcomeCanceled = "canceled"
 )
 
 // recordJobMetrics records the processed counter, duration histogram, and

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -28,6 +29,7 @@ type fakeJobSvc struct {
 	lastStatus models.JobStatus
 	retryErr   error
 	leaseLost  bool
+	jobDeleted atomic.Bool // flips the cancellation watcher's row check
 }
 
 func (f *fakeJobSvc) GetJobWait(_ context.Context) (*models.Job, error) {
@@ -86,6 +88,10 @@ func (f *fakeJobSvc) ListJobs(
 
 func (f *fakeJobSvc) CancelJob(_ context.Context, _ string) error {
 	return errNotImplemented
+}
+
+func (f *fakeJobSvc) IsJobDeleted(_ context.Context, _ string) (bool, error) {
+	return f.jobDeleted.Load(), nil
 }
 
 func (f *fakeJobSvc) CancelPendingForIncident(
@@ -263,6 +269,51 @@ func TestProcessNextRecordsUnknownTypeFailure(t *testing.T) {
 		prommetrics.JobDuration.WithLabelValues(jobType, outcomeFailed)))
 	r.Equal(uint64(1), histogramSampleCount(r,
 		prommetrics.JobSchedulingDelay.WithLabelValues(jobType)))
+}
+
+// TestProcessNextCanceledMidRun is the regression test for mid-run job
+// cancellation: when a job's row is soft-deleted while the job is running, the
+// cancellation watcher must cancel the job's context (aborting a ctx-aware
+// runner long before it finishes), write NO terminal status (the row is
+// deleted), create NO retry clone (cancellation is terminal, even though
+// context.Canceled comes back as the run error), and record the "canceled"
+// outcome. Before the watcher existed, a canceled discovery chunk kept its
+// runner slot for its full duration and the already-running guard blocked new
+// scans the whole time.
+func TestProcessNextCanceledMidRun(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const jobType = "sleep" // registered, ctx-aware runner
+
+	before := testutil.ToFloat64(prommetrics.JobsProcessed.WithLabelValues(jobType, outcomeCanceled))
+
+	// A 30s sleep: if cancellation does not propagate, the test times out
+	// loudly instead of passing by luck.
+	job := models.NewJob(nil, jobType)
+	job.Config = models.JSONMap{"seconds": 30}
+
+	svc := &fakeJobSvc{waitJob: job}
+	w := newTestWorker(svc)
+	w.cancelWatchInterval = 10 * time.Millisecond
+
+	// Soft-delete the row shortly after the job starts.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		svc.jobDeleted.Store(true)
+	}()
+
+	start := time.Now()
+	err := w.processNext(context.Background(), w.logger)
+	elapsed := time.Since(start)
+
+	r.NoError(err, "a canceled job is not a processing error")
+	r.Less(elapsed, 5*time.Second, "cancellation must abort the 30s sleep promptly")
+	r.Empty(svc.lastStatus, "no terminal status may be written for a canceled job")
+
+	after := testutil.ToFloat64(prommetrics.JobsProcessed.WithLabelValues(jobType, outcomeCanceled))
+	r.InDelta(before+1, after, 0.001)
 }
 
 // histogramSampleCount returns the sample count of a single histogram observer
