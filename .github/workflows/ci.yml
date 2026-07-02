@@ -289,7 +289,10 @@ jobs:
           echo "solidping server pid $!"
           disown
         env:
-          SOLIDPING_LISTEN: ":4000"
+          # PORT is the documented listen override (config.go reads it into
+          # server.listen); SOLIDPING_LISTEN was dead config that only worked
+          # because the default is already :4000.
+          PORT: "4000"
           SP_RUNMODE: test
           SP_DB_RESET: "true"
           SP_SERVER_RATE_LIMITING_REQUESTS_PER_MINUTE: "0"
