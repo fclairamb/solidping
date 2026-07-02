@@ -212,10 +212,13 @@ func msToDuration(ms float64) time.Duration {
 // ExecutionTimeout returns the per-check execution ceiling. With the cost-aware
 // timeout enabled (CostTimeoutFactor > 0) it is clamp(factor × cost,
 // floor, 30s); otherwise the flat DefaultExecutionTimeout. A job with no cost
-// signal yet (cost 0) falls back to the floor (or 30s if no floor is set), so a
-// brand-new check is never starved of time.
+// signal yet (cost 0, never ran) gets the full DefaultExecutionTimeout — NOT
+// the floor (spec 2026-07-01-04 D4): giving a first run only the floor would
+// time out a legitimately slow check (e.g. a fresh browser probe), pin its
+// cost EWMA to the ceiling, and poison the signal before it ever measured
+// honestly.
 func (p Params) ExecutionTimeout(costEWMAMs float64) time.Duration {
-	if p.CostTimeoutFactor <= 0 {
+	if p.CostTimeoutFactor <= 0 || costEWMAMs <= 0 {
 		return DefaultExecutionTimeout
 	}
 

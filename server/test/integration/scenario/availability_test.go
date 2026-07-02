@@ -3,7 +3,9 @@ package scenario
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	neturl "net/url"
 	"testing"
 	"time"
 
@@ -165,6 +167,25 @@ func pgAgg(
 	}
 }
 
+// pgMidDayTZ returns an IANA fixed-offset timezone in which the wall clock is
+// currently around mid-day, so "today" started ~11-12 hours ago in that zone.
+// The fixture places raw rows and an incident 1-5 hours in the past and
+// expects them inside "today" — resolved against UTC that breaks for any
+// suite run within ~5h after UTC midnight. Note the Etc/GMT sign convention
+// is inverted (Etc/GMT+5 means UTC−5).
+func pgMidDayTZ(now time.Time) string {
+	offset := 12 - now.UTC().Hour()
+
+	switch {
+	case offset == 0:
+		return "UTC"
+	case offset > 0:
+		return fmt.Sprintf("Etc/GMT-%d", offset)
+	default:
+		return fmt.Sprintf("Etc/GMT+%d", -offset)
+	}
+}
+
 func getPgAvailability(
 	ctx context.Context, t *testing.T, s *Scenario, checkIdent, periods string,
 ) []availabilityPeriod {
@@ -173,7 +194,7 @@ func getPgAvailability(
 	r := require.New(t)
 
 	url := s.BaseURL + "/api/v1/orgs/" + s.OrgSlug + "/checks/" + checkIdent +
-		"/availability?periods=" + periods
+		"/availability?periods=" + periods + "&tz=" + neturl.QueryEscape(pgMidDayTZ(time.Now()))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	r.NoError(err)

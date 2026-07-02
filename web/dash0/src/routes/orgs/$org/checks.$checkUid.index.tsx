@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   Check as CheckIcon,
@@ -27,6 +28,7 @@ import {
   useRegions,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -662,6 +664,26 @@ function CheckDetailPage() {
           </AlertDialog>
         </div>
       </div>
+
+      {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
+          cost eats >= 50% of a runner slot — nudge toward a longer period. */}
+      {check.scheduling && check.scheduling.dutyCyclePct >= 50 && (
+        <Alert variant="warning" data-testid="duty-cycle-warning">
+          <AlertTriangle />
+          <AlertTitle>
+            {t("checks:detail.dutyCycle.title", {
+              duty: check.scheduling.dutyCyclePct,
+            })}
+          </AlertTitle>
+          <AlertDescription>
+            {t("checks:detail.dutyCycle.description", {
+              cost: formatDuration(check.scheduling.costEwmaMs),
+              period: periodMs ? formatDuration(periodMs) : (check.period ?? ""),
+              duty: check.scheduling.dutyCyclePct,
+            })}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Summary cards */}
       <CheckSummaryCards

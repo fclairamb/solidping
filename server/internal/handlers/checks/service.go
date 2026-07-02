@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -120,6 +121,76 @@ var errIncidentPeriodOutOfRange = errors.New("must be between 0 and 86400 second
 func validateIncidentPeriod(seconds int) error {
 	if seconds < 0 || seconds > 86400 {
 		return errIncidentPeriodOutOfRange
+	}
+
+	return nil
+}
+
+// periodBoundError reports a check period outside its type's allowed bounds
+// (spec 2026-07-01-04 D1). It is a distinct error type (not a sentinel)
+// because the message embeds the per-type bound ("period for browser checks
+// must be at least 60s") and must surface verbatim as a 400 VALIDATION_ERROR.
+type periodBoundError struct {
+	CheckType string
+	Bound     time.Duration
+	TooLong   bool
+}
+
+func (e *periodBoundError) Error() string {
+	direction := "at least"
+	if e.TooLong {
+		direction = "at most"
+	}
+
+	return fmt.Sprintf("period for %s checks must be %s %s", e.CheckType, direction, formatPeriodBound(e.Bound))
+}
+
+// formatPeriodBound renders a period bound compactly, the way users write
+// periods: whole hours as "6h", whole minutes at or above ten minutes as
+// "15m", and everything else in seconds ("60s", "30s", "10s") so the common
+// floors read exactly as the spec states them.
+func formatPeriodBound(bound time.Duration) string {
+	switch {
+	case bound >= time.Hour && bound%time.Hour == 0:
+		return fmt.Sprintf("%dh", bound/time.Hour)
+	case bound >= 10*time.Minute && bound%time.Minute == 0:
+		return fmt.Sprintf("%dm", bound/time.Minute)
+	default:
+		return fmt.Sprintf("%ds", bound/time.Second)
+	}
+}
+
+// validatePeriodForType enforces the server-side period bounds for a check
+// type (spec 2026-07-01-04 D1): min = the type's MinPeriod (else the global
+// 10s floor), max = the type's MaxPeriod (else none). A zero period means
+// "not provided" (the default applies) and always passes. Internal checks
+// (worker self-stats etc.) and the synthetic `sleep` type are exempt — sleep
+// is the load-harness dial (spec 2026-07-01-01) and must stay free to express
+// pathological mixes. Existing rows are grandfathered: this runs only on
+// create/update writes, never via migration.
+func validatePeriodForType(checkType string, period time.Duration, internal bool) error {
+	if period == 0 || internal || checkerdef.CheckType(checkType) == checkerdef.CheckTypeSleep {
+		return nil
+	}
+
+	minPeriod := checkerdef.GlobalMinPeriod
+
+	var maxPeriod time.Duration
+
+	if meta := checkerdef.GetCheckTypeMeta(checkerdef.CheckType(checkType)); meta != nil {
+		if meta.MinPeriod > 0 {
+			minPeriod = meta.MinPeriod
+		}
+
+		maxPeriod = meta.MaxPeriod
+	}
+
+	if period < minPeriod {
+		return &periodBoundError{CheckType: checkType, Bound: minPeriod}
+	}
+
+	if maxPeriod > 0 && period > maxPeriod {
+		return &periodBoundError{CheckType: checkType, Bound: maxPeriod, TooLong: true}
 	}
 
 	return nil
@@ -542,6 +613,27 @@ type CheckResponse struct {
 	// an incident on this check opens. Empty/nil = no policy on the check
 	// (the group's policy may still apply at run time).
 	EscalationPolicyUID *string `json:"escalationPolicyUid,omitempty"`
+
+	// Scheduling is the read-only scheduling telemetry block (spec
+	// 2026-07-01-04 D3). Detail responses only (GET by uid/slug) — list
+	// responses never carry it — and omitted until the check's first run
+	// produces a cost signal.
+	Scheduling *CheckSchedulingResponse `json:"scheduling,omitempty"`
+}
+
+// CheckSchedulingResponse surfaces the scheduler's per-check telemetry on the
+// detail response (spec 2026-07-01-04 D3), derived from the check's
+// per-region check_jobs rows (max across regions).
+type CheckSchedulingResponse struct {
+	// CostEwmaMs is the smoothed execution cost in milliseconds.
+	CostEwmaMs float64 `json:"costEwmaMs"`
+	// DelayEwmaMs is the smoothed start lateness in milliseconds (pure
+	// telemetry; never steers the claim order).
+	DelayEwmaMs float64 `json:"delayEwmaMs"`
+	// DutyCyclePct is round(100 × cost_ewma_ms / period_ms): the share of a
+	// runner slot this check permanently occupies. 100 means the check takes
+	// as long to run as its period — a full-time slot hog.
+	DutyCyclePct int `json:"dutyCyclePct"`
 }
 
 // CheckStatus represents the current status of a check.
@@ -825,6 +917,13 @@ func (s *Service) CreateCheck(ctx context.Context, orgSlug string, req CreateChe
 		period = time.Duration(duration)
 	}
 
+	// Enforce per-type period bounds (spec 2026-07-01-04 D1). Internal
+	// checks and the synthetic sleep type are exempt; an absent period
+	// falls back to the default and needs no validation.
+	if periodErr := validatePeriodForType(req.Type, period, isInternal); periodErr != nil {
+		return CheckResponse{}, periodErr
+	}
+
 	// Track if slug was user-provided
 	userProvidedSlug := req.Slug != ""
 
@@ -1015,6 +1114,13 @@ func (s *Service) GetCheck(
 	// Convert to response
 	response := s.convertCheckToResponse(check)
 
+	// Attach the read-only scheduling telemetry (spec 2026-07-01-04 D3).
+	// Detail-only by design: a single indexed lookup by check_uid here, no
+	// join fan-out on list responses.
+	if schedErr := s.attachSchedulingInfo(ctx, check, &response); schedErr != nil {
+		return CheckResponse{}, schedErr
+	}
+
 	// Fetch and attach labels
 	labels, err := s.db.GetLabelsForCheck(ctx, check.UID)
 	if err != nil {
@@ -1188,6 +1294,17 @@ func (s *Service) UpdateCheck(
 		var duration timeutils.Duration
 		if errScan := duration.Scan(*req.Period); errScan != nil {
 			return CheckResponse{}, errScan
+		}
+		// Enforce per-type period bounds on the new value (spec
+		// 2026-07-01-04 D1) — existing rows are grandfathered until the
+		// next write to the period. The effective internal flag accounts
+		// for the same PATCH toggling it; the type cannot change on PATCH.
+		internal := check.Internal
+		if req.Internal != nil {
+			internal = *req.Internal
+		}
+		if periodErr := validatePeriodForType(check.Type, time.Duration(duration), internal); periodErr != nil {
+			return CheckResponse{}, periodErr
 		}
 		update.Period = &duration
 	}
@@ -1884,6 +2001,43 @@ func (s *Service) convertCheckToResponse(check *models.Check) CheckResponse {
 		RecoveryPeriodSeconds:     check.RecoveryPeriodSeconds,
 		EscalationPolicyUID:       check.EscalationPolicyUID,
 	}
+}
+
+// attachSchedulingInfo populates response.Scheduling from the check's
+// per-region check_jobs rows (spec 2026-07-01-04 D3): the cost/delay EWMAs
+// are the max across regions (the worst region is the one occupying a slot),
+// and dutyCyclePct = round(100 × cost_ewma_ms / period_ms). The block stays
+// absent until the first run produces a cost signal (cost_ewma_ms == 0).
+func (s *Service) attachSchedulingInfo(ctx context.Context, check *models.Check, response *CheckResponse) error {
+	jobs, err := s.db.ListCheckJobsByCheckUID(ctx, check.UID)
+	if err != nil {
+		return fmt.Errorf("failed to get check jobs: %w", err)
+	}
+
+	var costMs, delayMs float64
+
+	for _, job := range jobs {
+		costMs = math.Max(costMs, job.CostEWMAMs)
+		delayMs = math.Max(delayMs, job.DelayEWMAMs)
+	}
+
+	// No cost signal yet (never ran) → the block is omitted.
+	if costMs <= 0 {
+		return nil
+	}
+
+	dutyCyclePct := 0
+	if periodMs := time.Duration(check.Period).Milliseconds(); periodMs > 0 {
+		dutyCyclePct = int(math.Round(100 * costMs / float64(periodMs)))
+	}
+
+	response.Scheduling = &CheckSchedulingResponse{
+		CostEwmaMs:   costMs,
+		DelayEwmaMs:  delayMs,
+		DutyCyclePct: dutyCyclePct,
+	}
+
+	return nil
 }
 
 // convertResultToLastResultResponse converts a Result model to LastResultResponse.

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
@@ -195,4 +196,97 @@ func TestSanitizeSlug(t *testing.T) {
 			r.LessOrEqual(len(result), 50, "sanitized slug %q exceeds 50 chars", result)
 		})
 	}
+}
+
+// TestValidatePeriodForType covers the per-type period bounds (spec
+// 2026-07-01-04 D1): registry MinPeriod for heavy types, the global 10s floor
+// for types without one, and the internal / sleep / absent-period exemptions.
+func TestValidatePeriodForType(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		checkType string
+		period    time.Duration
+		internal  bool
+		wantErr   string // empty = accepted
+	}{
+		{
+			name: "browser below its 60s floor", checkType: "browser", period: 10 * time.Second,
+			wantErr: "period for browser checks must be at least 60s",
+		},
+		{name: "browser at its 60s floor", checkType: "browser", period: time.Minute},
+		{
+			name: "js below its 30s floor", checkType: "js", period: 10 * time.Second,
+			wantErr: "period for js checks must be at least 30s",
+		},
+		{name: "js at its 30s floor", checkType: "js", period: 30 * time.Second},
+		{
+			name: "http below the global 10s floor", checkType: "http", period: 5 * time.Second,
+			wantErr: "period for http checks must be at least 10s",
+		},
+		{name: "http at the global 10s floor", checkType: "http", period: 10 * time.Second},
+		{
+			name: "ssl below its 1h floor", checkType: "ssl", period: 10 * time.Minute,
+			wantErr: "period for ssl checks must be at least 1h",
+		},
+		{
+			name: "dnsbl below its 15m floor", checkType: "dnsbl", period: time.Minute,
+			wantErr: "period for dnsbl checks must be at least 15m",
+		},
+		{name: "sleep is exempt", checkType: "sleep", period: time.Second},
+		{name: "internal checks are exempt", checkType: "browser", period: time.Second, internal: true},
+		{name: "absent period (0) passes — default applies", checkType: "browser", period: 0},
+		{
+			name: "unknown type falls back to the global floor", checkType: "no-such-type", period: 5 * time.Second,
+			wantErr: "period for no-such-type checks must be at least 10s",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			err := validatePeriodForType(tt.checkType, tt.period, tt.internal)
+			if tt.wantErr == "" {
+				r.NoError(err)
+				return
+			}
+			r.Error(err)
+			r.Equal(tt.wantErr, err.Error())
+
+			var periodErr *periodBoundError
+			r.ErrorAs(err, &periodErr, "period bound violations must be periodBoundError for the 400 mapping")
+			r.True(isCheckFieldValidationError(err), "must surface as a 400 VALIDATION_ERROR")
+		})
+	}
+}
+
+// TestPeriodBoundErrorMaxMessage pins the "at most" direction of the message
+// (no registry type declares a MaxPeriod today, so the branch is exercised
+// directly).
+func TestPeriodBoundErrorMaxMessage(t *testing.T) {
+	t.Parallel()
+
+	err := &periodBoundError{CheckType: "http", Bound: 6 * time.Hour, TooLong: true}
+	require.Equal(t, "period for http checks must be at most 6h", err.Error())
+}
+
+// TestFormatPeriodBound pins the compact rendering: whole hours as "6h",
+// whole minutes >= 10m as "15m", everything else in seconds so the common
+// floors read exactly as the spec states them ("60s", "30s", "10s").
+func TestFormatPeriodBound(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	r.Equal("10s", formatPeriodBound(10*time.Second))
+	r.Equal("30s", formatPeriodBound(30*time.Second))
+	r.Equal("60s", formatPeriodBound(time.Minute))
+	r.Equal("300s", formatPeriodBound(5*time.Minute))
+	r.Equal("15m", formatPeriodBound(15*time.Minute))
+	r.Equal("90s", formatPeriodBound(90*time.Second))
+	r.Equal("1h", formatPeriodBound(time.Hour))
+	r.Equal("6h", formatPeriodBound(6*time.Hour))
+	r.Equal("90m", formatPeriodBound(90*time.Minute))
 }

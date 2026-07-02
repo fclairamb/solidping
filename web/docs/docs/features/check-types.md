@@ -661,6 +661,8 @@ Passive monitoring that expects incoming pings at regular intervals. Instead of 
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
 
+Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals).
+
 **Use cases:**
 - Complex multi-step API workflows
 - Custom business logic validation
@@ -670,6 +672,10 @@ Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs 
 ### Browser
 
 Headless browser-based monitoring using a real browser engine.
+
+Minimum period: `60s` (default `5m`) — a headless-browser run costs several
+seconds, so faster periods would occupy a monitoring slot continuously. See
+[Check Intervals](#check-intervals).
 
 **Use cases:**
 - Single-page application monitoring
@@ -697,12 +703,32 @@ All check types support these common options:
 
 Supported interval formats:
 
-- Seconds: `5s`, `30s`, `60s`
+- Seconds: `10s`, `30s`, `60s`
 - Minutes: `1m`, `5m`, `15m`
 - Hours: `1h`, `6h`, `24h`
 
-Minimum interval: `5s`
-Recommended minimum: `30s` for production
+### Minimum intervals
+
+The API enforces a minimum period per check type — both in the dashboard and
+on direct API calls (`400 VALIDATION_ERROR` naming the floor):
+
+| Check type | Minimum period | Default period |
+|------------|----------------|----------------|
+| `browser` | `60s` | `5m` |
+| `js` | `30s` | `1m` |
+| `ssl` | `1h` | `6h` |
+| `domain` | `6h` | `24h` |
+| `dnsbl` | `15m` | `1h` |
+| All other types | `10s` | `1m` |
+
+Heavy check types (headless browser, custom scripts) carry higher floors
+because each run can occupy a monitoring slot for several seconds — a fast
+period would keep a runner busy full-time. Existing checks are grandfathered:
+a period created before a floor was raised keeps working, and the limit
+applies on the next edit. The check detail page shows a warning when a check
+occupies 50% or more of a runner slot (its *duty cycle*).
+
+Recommended minimum: `30s` for production.
 
 ## Best Practices
 

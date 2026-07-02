@@ -307,6 +307,10 @@
     },
     "checkDetails": "Detalles de la comprobación",
     "pendingFirstRun": "Primera ejecución en curso…",
+    "dutyCycle": {
+      "title": "Esta comprobación ocupa un slot de monitorización el {{duty}} % del tiempo",
+      "description": "Cada ejecución tarda unos {{cost}} con un período de {{period}}, por lo que esta comprobación mantiene ocupado un ejecutor el {{duty}} % del tiempo. Aumenta su período para liberar capacidad de monitorización."
+    },
     "configuration": "Configuración",
     "configurationDescription": "Ajustes y parámetros de la comprobación",
     "results": "Resultados",

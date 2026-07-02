@@ -620,14 +620,17 @@ func (h *Handler) handleUpdateError(writer http.ResponseWriter, err error) error
 }
 
 // isCheckFieldValidationError reports whether err is one of the request-field
-// validation failures (incident periods or flapping knobs) that should surface
-// as a 400 VALIDATION_ERROR rather than a 500. These are returned (possibly
-// wrapped) by CreateCheck / UpdateCheck.
+// validation failures (incident periods, flapping knobs, or per-type period
+// bounds) that should surface as a 400 VALIDATION_ERROR rather than a 500.
+// These are returned (possibly wrapped) by CreateCheck / UpdateCheck.
 func isCheckFieldValidationError(err error) bool {
+	var periodErr *periodBoundError
+
 	return errors.Is(err, errIncidentPeriodOutOfRange) ||
 		errors.Is(err, errFlappingWindowNegative) ||
 		errors.Is(err, errFlapBackoffTooSmall) ||
-		errors.Is(err, errMaxRecoveryMultTooSmall)
+		errors.Is(err, errMaxRecoveryMultTooSmall) ||
+		errors.As(err, &periodErr)
 }
 
 // handleUpsertError handles errors from UpsertCheck.
@@ -643,6 +646,9 @@ func (h *Handler) handleUpsertError(writer http.ResponseWriter, err error) error
 				Message: "Unsupported check type",
 			},
 		})
+	case isCheckFieldValidationError(err):
+		return h.WriteErrorErr(
+			writer, http.StatusBadRequest, base.ErrorCodeValidationError, err.Error(), err)
 	default:
 		return h.WriteInternalError(writer, err)
 	}

@@ -307,6 +307,10 @@
     },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
+    "dutyCycle": {
+      "title": "Diese Prüfung belegt {{duty}} % der Zeit einen Monitoring-Slot",
+      "description": "Jede Ausführung dauert etwa {{cost}} bei einem Intervall von {{period}} — diese Prüfung hält also {{duty}} % der Zeit einen Runner belegt. Erhöhen Sie das Intervall, um Monitoring-Kapazität freizugeben."
+    },
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
     "results": "Ergebnisse",

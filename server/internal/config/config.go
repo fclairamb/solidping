@@ -497,10 +497,13 @@ type SchedulingConfig struct {
 	// separate cap.
 	TierCreditMaxSeconds float64 `koanf:"tier_credit_max_seconds"`
 	// CostTimeoutFactor multiplies cost_ewma_ms to derive the per-check
-	// execution timeout, clamped to [floor, 30s]. 0 keeps the flat 30s timeout.
+	// execution timeout, clamped to [floor, 30s]. Default 3 (see Load; on by
+	// default per spec 2026-07-01-04 D4). 0 disables (flat 30s timeout). A job
+	// that never ran (cost 0) always keeps the full 30s regardless of the floor.
 	CostTimeoutFactor float64 `koanf:"cost_timeout_factor"`
-	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms. Only used when
-	// CostTimeoutFactor > 0.
+	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms, so a fast
+	// check is never given an unreasonably short ceiling. Default 5000 (see
+	// Load). Only used when CostTimeoutFactor > 0.
 	CostTimeoutFloorMs float64 `koanf:"cost_timeout_floor_ms"`
 
 	// LaneSlowThresholdMs is the promote edge of the fast/slow lane hysteresis
@@ -581,9 +584,16 @@ func Load() (*Config, error) {
 				// Deprioritize a check only once its combined cost+delay EWMA
 				// reaches this many ms; below it, effective_scheduled_at stays at
 				// the real scheduled_at (pure FIFO) so small per-run variance never
-				// reorders fast checks. Tier weighting and the cost-aware timeout
-				// stay opt-in (0).
+				// reorders fast checks. Tier weighting stays opt-in (0).
 				SlowThresholdMs: 2000,
+				// Cost-aware timeout is ON by default (spec 2026-07-01-04 D4):
+				// timeout = clamp(3 × cost_ewma, 5s, 30s). A 200ms check's
+				// worst-case slot occupancy drops 30s → 5s while measured slow
+				// checks keep the full ceiling. A never-run job (cost 0) gets
+				// the full 30s, not the floor, so first runs measure honestly.
+				// Set cost_timeout_factor to 0 to disable.
+				CostTimeoutFactor:  3,
+				CostTimeoutFloorMs: 5000,
 				// Fast/slow lane hysteresis band + reservation (spec
 				// 2026-07-01-03): promote to the slow lane at a 2s cost EWMA,
 				// demote back below 1s, and keep 5 of the pool's runner slots

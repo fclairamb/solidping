@@ -113,10 +113,10 @@ func checksListAction(ctx context.Context, cmd *cli.Command) error {
 
 	// Set internal filter
 	if cmd.Bool("all") {
-		internalParam := "all"
+		internalParam := client.ListChecksParamsInternalAll
 		params.Internal = &internalParam
 	} else if cmd.Bool("internal") {
-		internalParam := "true"
+		internalParam := client.ListChecksParamsInternalTrue
 		params.Internal = &internalParam
 	}
 

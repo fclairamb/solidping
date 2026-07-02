@@ -352,6 +352,10 @@
     },
     "checkDetails": "Check Details",
     "pendingFirstRun": "Pending first run…",
+    "dutyCycle": {
+      "title": "This check occupies a monitoring slot {{duty}}% of the time",
+      "description": "Each run takes about {{cost}} with a period of {{period}}, so this check keeps a runner busy {{duty}}% of the time. Increase its period to free monitoring capacity."
+    },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
     "results": "Results",

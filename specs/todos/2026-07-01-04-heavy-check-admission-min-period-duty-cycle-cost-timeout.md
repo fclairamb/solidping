@@ -167,3 +167,68 @@ make test-dash                              # Playwright E2E [[feedback_browser_
 | dash0 lint debt blocks CI | No-new-errors scope [[project_dash0_eslint_debt]]. |
 
 **Status**: Todo | **Created**: 2026-07-01 | **Complements**: `2026-07-01-02`, `2026-07-01-03` (demand side of the same measurement) | **Independent**: can ship in any order relative to them
+
+## Implementation Plan
+
+D2's "open decision" values are adopted as recommended (automated batch run,
+nobody to ask): browser MinPeriod 60 s / DefaultPeriod 5 min, js MinPeriod
+30 s / DefaultPeriod 1 min, global floor 10 s.
+
+Re-verification of the "Current state" table against the tree (specs -02/-03
+landed since): `ExecutionTimeout` now lives at `scheduling/scheduling.go:217`,
+period parse/store at `handlers/checks/service.go:818/898` (create) and
+`:1187` (PATCH), config knobs at `config.go:499-504`. PATCH (`UpdateCheckRequest`)
+has **no `type` field** — type changes are not allowed there, so the "re-validate
+when only type changes" clause is moot; upsert-by-slug routes through
+CreateCheck/UpdateCheck and inherits validation.
+
+1. **D2 — registry metadata** (`checkerdef/types.go`): `browser` gets
+   `MinPeriod: 1m, DefaultPeriod: 5m`; `js` gets `MinPeriod: 30s,
+   DefaultPeriod: 1m`; new exported `GlobalMinPeriod = 10s` constant
+   (fallback floor when a type declares no MinPeriod). checktypes API and
+   `activation_test.go` pick these up with no new plumbing.
+2. **D1 — server-side period validation** (`handlers/checks/service.go` +
+   `_test`): shared `validatePeriodForType(checkType, period)` resolving
+   min = `meta.MinPeriod` else `GlobalMinPeriod`, max = `meta.MaxPeriod` else
+   none; sentinel `errPeriodOutOfRange` so the message ("period for browser
+   checks must be at least 60s") surfaces as 400 `VALIDATION_ERROR` via
+   `isCheckFieldValidationError` (also added to `handleUpsertError`, which
+   previously 500'd on field-validation errors). Wired into CreateCheck
+   (after period parse) and UpdateCheck (when `req.Period != nil`).
+   Exemptions: internal checks (request flag on create; effective
+   stored/patched flag on update) and the `sleep` type. Period absent →
+   defaults apply, nothing to validate. No migration (grandfathering).
+   Unit tests per type/bound/exemption.
+3. **D4 — cost-aware timeout default-on** (`scheduling/scheduling.go` +
+   `_test`, `config/config.go`): `ExecutionTimeout` returns
+   `DefaultExecutionTimeout` when `cost == 0` (never ran) instead of the
+   floor — cold-start fix with test (spec values: factor 3 / floor 5 s ⇒
+   cost 0 → 30 s, 200 → 5 s, 4000 → 12 s, 20000 → 30 s). Config defaults:
+   `cost_timeout_factor = 3`, `cost_timeout_floor_ms = 5000` (+ doc
+   comments; 0 still disables).
+4. **D3 — `scheduling` block on the check detail response**
+   (`handlers/checks/service.go`, `openapi.yaml`, generated client):
+   `CheckResponse.Scheduling *CheckSchedulingResponse` (`costEwmaMs`,
+   `delayEwmaMs`, `dutyCyclePct`) populated only in `GetCheck` (detail by
+   uid/slug) from `ListCheckJobsByCheckUID` — max across regions, omitted
+   while `cost_ewma_ms == 0`; `dutyCyclePct = round(100 × cost / period_ms)`.
+   List responses untouched (no join fan-out). openapi.yaml documents the
+   block + the 400 VALIDATION_ERROR on create/patch; regenerate the Go
+   client via `go generate ./pkg/client/` (no `make generate` target exists).
+5. **dash0** (`hooks.ts`, `checks.$checkUid.index.tsx`, `check-form.tsx`,
+   locales ×4): `scheduling` added to the `Check` interface; warning `Alert`
+   (design-reference primitive, `variant="warning"`) on the check detail page
+   when `dutyCyclePct >= 50`, translated in en/fr/de/es `checks.json`,
+   mobile-friendly (block-level alert, no fixed widths). `check-form.tsx`
+   fallback `globalMinPeriodSeconds` bumped 5 → 10 to match the server floor
+   (per-type mins already flow from `minPeriodSeconds`). E2E
+   (`web/dash0/e2e/duty-cycle-warning.spec.ts`): high-duty check shows the
+   alert, fast check hides it (scheduling block injected via route
+   interception for determinism).
+6. **Docs** (`web/docs/docs/features/check-types.md`): "Check Intervals"
+   section documents the global 10 s floor and the per-type minimums
+   (browser 60 s, js 30 s, ssl 1 h, domain 6 h, dnsbl 15 m), replacing the
+   stale "Minimum interval: 5s" line.
+7. **QA**: `make build-backend lint-back test`, regenerate client,
+   `make build-dash0` + `bun run lint` (no NEW errors), `make build-docs`,
+   E2E authored (run if a test-mode server is available).

@@ -147,10 +147,10 @@ func TestExecutionTimeout(t *testing.T) {
 			want:       2 * time.Second,
 		},
 		{
-			name:       "no cost signal yet uses the floor, not zero",
+			name:       "no cost signal yet gets the full default ceiling, not the floor",
 			params:     scheduling.Params{CostTimeoutFactor: 3, CostTimeoutFloor: 2 * time.Second},
 			costEWMAMs: 0,
-			want:       2 * time.Second,
+			want:       scheduling.DefaultExecutionTimeout,
 		},
 		{
 			name:       "chronic offender is clamped to the 30s ceiling",
@@ -166,6 +166,22 @@ func TestExecutionTimeout(t *testing.T) {
 			require.Equal(t, tt.want, tt.params.ExecutionTimeout(tt.costEWMAMs))
 		})
 	}
+}
+
+// TestExecutionTimeoutDefaultOnValues pins the spec 2026-07-01-04 D4
+// verification table for the new production defaults (factor 3, floor 5s):
+// a never-run job keeps the full 30s (cold-start fix), a fast check's
+// worst-case slot occupancy drops to the 5s floor, a mid-cost check gets
+// 3× its measured cost, and a slow check keeps the full ceiling.
+func TestExecutionTimeoutDefaultOnValues(t *testing.T) {
+	t.Parallel()
+
+	p := scheduling.Params{CostTimeoutFactor: 3, CostTimeoutFloor: 5 * time.Second}
+
+	require.Equal(t, 30*time.Second, p.ExecutionTimeout(0), "cost 0 (never ran) → full default ceiling")
+	require.Equal(t, 5*time.Second, p.ExecutionTimeout(200), "cost 200ms → 600ms, clamped up to the 5s floor")
+	require.Equal(t, 12*time.Second, p.ExecutionTimeout(4000), "cost 4s → 3×4s = 12s")
+	require.Equal(t, 30*time.Second, p.ExecutionTimeout(20000), "cost 20s → 60s, clamped to the 30s ceiling")
 }
 
 func TestUpdateEWMA(t *testing.T) {

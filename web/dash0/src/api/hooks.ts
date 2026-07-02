@@ -67,6 +67,19 @@ export interface Check {
   maxRecoveryMultiplier?: number;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
+  /**
+   * Read-only scheduling telemetry (max across the check's per-region
+   * scheduler jobs). Detail responses only — never present on lists — and
+   * omitted until the check's first run produces a cost signal.
+   */
+  scheduling?: {
+    /** Smoothed execution cost in milliseconds (EWMA). */
+    costEwmaMs: number;
+    /** Smoothed start lateness in milliseconds (EWMA, telemetry). */
+    delayEwmaMs: number;
+    /** round(100 × cost / period): share of a runner slot this check occupies. */
+    dutyCyclePct: number;
+  };
 }
 
 export interface RegionDefinition {
@@ -266,7 +279,16 @@ export function useInfiniteChecks(
 export function useCheck(
   org: string,
   uid: string,
-  options?: { with?: string; refetchInterval?: number }
+  options?: {
+    with?: string;
+    refetchInterval?: number;
+    /**
+     * Pass "always" when the consumer seeds local state from the response
+     * once (e.g. an edit form): combined with `isFetchedAfterMount`, it
+     * guarantees the seed comes from fresh data, not a stale cache entry.
+     */
+    refetchOnMount?: boolean | "always";
+  }
 ) {
   return useQuery({
     queryKey: ["check", org, uid, { with: options?.with }],
@@ -279,6 +301,7 @@ export function useCheck(
     },
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
+    refetchOnMount: options?.refetchOnMount,
   });
 }
 
