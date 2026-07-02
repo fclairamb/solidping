@@ -37,7 +37,7 @@ func detectCgroupMemoryLimitOS() (int64, bool) {
 // readCgroupLimit parses a single-value cgroup memory-limit file, treating the
 // v2 "max" sentinel and v1's near-MaxInt64 sentinel as "no limit".
 func readCgroupLimit(path string) (int64, bool) {
-	data, err := os.ReadFile(path) //nolint:gosec // fixed, well-known cgroup path
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return 0, false
 	}
