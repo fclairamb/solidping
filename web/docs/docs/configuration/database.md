@@ -54,6 +54,15 @@ SP_DB_URL=postgresql://user:password@db.example.com:5432/solidping?sslmode=requi
 SP_DB_URL=postgresql://user:password@pgbouncer:6432/solidping?sslmode=disable
 ```
 
+:::caution PgBouncer and LISTEN/NOTIFY
+SolidPing keeps one PostgreSQL `LISTEN` session per API instance for
+[live dashboard updates](../features/live-updates.md) and job wake-ups.
+`LISTEN` binds notification delivery to the database session, so **PgBouncer
+in transaction-pooling mode is not supported** — use session pooling or point
+SolidPing at PostgreSQL directly. With transaction pooling, live updates and
+instant job pickup degrade to polling.
+:::
+
 ### PostgreSQL Setup
 
 Create the database and user:
