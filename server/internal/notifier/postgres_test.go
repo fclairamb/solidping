@@ -272,6 +272,55 @@ func TestPgEventNotifier(t *testing.T) {
 	})
 }
 
+// TestPgEventNotifier_ReconnectEvents exercises the reconnect fan-out surface
+// without a live listener: registration, coalescing of bursts into a single
+// pending signal, and channel closure on Close.
+func TestPgEventNotifier_ReconnectEvents(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	n := &PgEventNotifier{
+		listeners: make(map[string][]chan string),
+		done:      make(chan struct{}),
+		logger:    slog.Default(),
+	}
+
+	ch1 := n.ReconnectEvents()
+	ch2 := n.ReconnectEvents()
+	r.NotNil(ch1)
+	r.NotNil(ch2)
+
+	// A burst of reconnects coalesces into exactly one pending signal per channel.
+	n.signalReconnect()
+	n.signalReconnect()
+	n.signalReconnect()
+
+	for _, ch := range []<-chan struct{}{ch1, ch2} {
+		select {
+		case _, ok := <-ch:
+			r.True(ok, "expected a pending reconnect signal")
+		default:
+			r.Fail("expected a pending reconnect signal")
+		}
+		select {
+		case <-ch:
+			r.Fail("reconnect burst must coalesce into a single signal")
+		default:
+		}
+	}
+
+	r.NoError(n.Close())
+
+	// Channels are closed after Close.
+	_, ok := <-ch1
+	r.False(ok, "reconnect channel should be closed after Close")
+	_, ok = <-ch2
+	r.False(ok, "reconnect channel should be closed after Close")
+
+	// Signaling after Close must not panic (channels are dropped).
+	n.signalReconnect()
+}
+
 //nolint:paralleltest // Test uses different database types
 func TestPgEventNotifier_factory(t *testing.T) {
 	if testing.Short() {
