@@ -136,13 +136,14 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 	}
 }
 
-// realtimeStreamSuffix matches the long-lived org hint stream
-// (/api/v1/orgs/:org/events/stream). The stream must bypass both the request
-// timeout (a held-open SSE response would be killed at MaxRequestDuration and
+// realtimeStreamSuffix matches the long-lived org hint WebSocket
+// (/api/v1/orgs/:org/events/ws). The connection must bypass both the request
+// timeout (a held-open WS response would be killed at MaxRequestDuration and
 // pin the timeout middleware goroutine) and the per-IP rate/concurrency
 // limits (each open tab would permanently occupy a concurrency slot). The
-// endpoint carries its own guard: realtime.max_connections.
-const realtimeStreamSuffix = "/events/stream"
+// endpoint carries its own guards: realtime.max_connections and
+// realtime.max_subscriptions_per_connection.
+const realtimeStreamSuffix = "/events/ws"
 
 func isExcluded(path string) bool {
 	if !strings.HasPrefix(path, limitedPrefix) {

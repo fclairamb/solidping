@@ -70,7 +70,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
-	"github.com/fclairamb/solidping/server/internal/handlers/realtimestream"
+	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
@@ -831,29 +831,22 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
 
-	// Realtime hint stream (SSE). A disabled feature 404s (SP_REALTIME_ENABLED
-	// convention) and the dashboard silently keeps polling. RequireOrgAccess
-	// enforces membership (403 for non-members) and puts the org on the
-	// context. The path is excluded from the request timeout and rate limits
-	// (middleware.isExcluded) — the hub's max_connections guard bounds it
-	// instead.
-	if s.config.Realtime.Enabled {
-		s.realtimeHub = realtime.NewHub(
-			s.services.EventNotifier, s.config.Realtime.MaxConnections, slog.Default())
-		streamHandler := realtimestream.NewHandler(s.realtimeHub, s.config.Realtime.PingInterval, s.config)
-		api.NewGroup("/orgs/:org/events/stream").
-			Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess).
-			GET("", streamHandler.Stream)
-	} else {
-		// Explicit 404 stub: the SPA catch-all (GET /*path) would otherwise
-		// answer 200 with index.html, and the client needs the 404 to detect
-		// "feature disabled" and fall back to plain polling permanently.
-		hb := base.NewHandlerBase(s.config)
-		api.GET("/orgs/:org/events/stream", func(writer http.ResponseWriter, _ bunrouter.Request) error {
-			return hb.WriteError(
-				writer, http.StatusNotFound, base.ErrorCodeNotFound, "Realtime updates are disabled")
-		})
-	}
+	// Realtime hint WebSocket. The hub/handler are always constructed and the
+	// route is always registered — even when SP_REALTIME_ENABLED=false — so a
+	// disabled feature still accepts the upgrade and immediately closes with
+	// 4404 (browsers cannot see HTTP status at upgrade time, only close
+	// codes; see handlers/realtimews). Registered OUTSIDE
+	// RequireAuth/RequireOrgAccess: browsers cannot present credentials at
+	// WebSocket-upgrade time, so the handler performs the exact same
+	// validation in-band and closes 4401/4403 otherwise. The path is
+	// excluded from the request timeout and rate limits
+	// (middleware.isExcluded) — the hub's max_connections and
+	// max_subscriptions_per_connection guards bound it instead.
+	s.realtimeHub = realtime.NewHubWithSubscriptionCap(
+		s.services.EventNotifier, s.config.Realtime.MaxConnections,
+		s.config.Realtime.MaxSubscriptionsPerConnection, slog.Default())
+	wsHandler := realtimews.NewHandler(s.realtimeHub, s.authService, s.dbService, s.config)
+	api.GET("/orgs/:org/events/ws", wsHandler.Serve)
 
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
 	filesService := files.NewService(s.dbService, s.config)

@@ -20,6 +20,7 @@ const (
 	labelOutcome      = "outcome"
 	labelJobType      = "job_type"
 	labelLane         = "lane"
+	labelMessageType  = "type"
 )
 
 // Lane label values for CheckLaneClaims (spec 2026-07-01-03).
@@ -348,6 +349,27 @@ var (
 		},
 	)
 
+	// RealtimeSubscriptions tracks currently active per-connection scope
+	// subscriptions (sum across every open connection). Global gauge — no
+	// per-org label so cardinality stays bounded.
+	RealtimeSubscriptions = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_realtime_subscriptions",
+			Help: "Currently active realtime scope subscriptions across all connections",
+		},
+	)
+
+	// RealtimeMessagesReceived counts client->server WebSocket messages
+	// processed by the realtime handler, labeled by message type (auth,
+	// subscribe, unsubscribe, and unknown/malformed).
+	RealtimeMessagesReceived = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_messages_received_total",
+			Help: "Total client->server realtime WebSocket messages processed, by type",
+		},
+		[]string{labelMessageType},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -362,6 +384,7 @@ var (
 		JobsReaped, JobsLeaseLost,
 		RealtimeConnections, RealtimeHintsPublished,
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
+		RealtimeSubscriptions, RealtimeMessagesReceived,
 	}
 )
 
