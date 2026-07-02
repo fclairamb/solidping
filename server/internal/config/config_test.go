@@ -337,6 +337,38 @@ func TestApplyProfilerEnv(t *testing.T) {
 	r.Equal(7, cfg.MutexFraction)
 }
 
+// TestApplyRealtimeEnv confirms the multi-word SP_REALTIME_* knobs land on the
+// snake_case-tagged RealtimeConfig fields despite koanf's env underscore→dot
+// collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyRealtimeEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_REALTIME_FLUSH_INTERVAL", "2s")
+	t.Setenv("SP_REALTIME_PING_INTERVAL", "40s")
+	t.Setenv("SP_REALTIME_MAX_CONNECTIONS", "42")
+
+	cfg := RealtimeConfig{Enabled: true, FlushInterval: time.Second, PingInterval: 25 * time.Second, MaxConnections: 1000}
+	applyRealtimeEnv(&cfg)
+
+	r.Equal(2*time.Second, cfg.FlushInterval)
+	r.Equal(40*time.Second, cfg.PingInterval)
+	r.Equal(42, cfg.MaxConnections)
+}
+
+// TestRealtimeDefaults confirms the realtime feature defaults to enabled with
+// the documented flush/ping windows and connection cap.
+func TestRealtimeDefaults(t *testing.T) { //nolint:paralleltest // Load reads process env
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.True(cfg.Realtime.Enabled)
+	r.Equal(time.Second, cfg.Realtime.FlushInterval)
+	r.Equal(25*time.Second, cfg.Realtime.PingInterval)
+	r.Equal(1000, cfg.Realtime.MaxConnections)
+}
+
 // TestApplyRuntimeEnv confirms the SP_RUNTIME_* memory-guardrail knobs land on
 // the snake_case-tagged RuntimeConfig fields despite koanf's env underscore→dot
 // collapse. Uses t.Setenv, which is incompatible with t.Parallel.

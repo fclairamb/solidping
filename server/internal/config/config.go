@@ -146,6 +146,24 @@ type PrometheusConfig struct {
 	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
 }
 
+// RealtimeConfig controls the org-scoped live hint stream
+// (GET /api/v1/orgs/:org/events/stream). When disabled the endpoint is not
+// registered (404, same convention as SP_PROMETHEUS_ENABLED) and the
+// dashboard silently keeps polling.
+type RealtimeConfig struct {
+	// Enabled gates the SSE stream endpoint and the hint publisher/hub.
+	Enabled bool `koanf:"enabled"`
+	// FlushInterval is the hint coalescing window per org per instance
+	// (SP_REALTIME_FLUSH_INTERVAL, default 1s).
+	FlushInterval time.Duration `koanf:"flush_interval"`
+	// PingInterval is the SSE comment keep-alive period
+	// (SP_REALTIME_PING_INTERVAL, default 25s).
+	PingInterval time.Duration `koanf:"ping_interval"`
+	// MaxConnections caps concurrent hint streams per instance
+	// (SP_REALTIME_MAX_CONNECTIONS, default 1000; 0 = unlimited).
+	MaxConnections int `koanf:"max_connections"`
+}
+
 // CheckersConfig controls which check types are enabled at the server level.
 type CheckersConfig struct {
 	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
@@ -189,6 +207,7 @@ type Config struct {
 	OTel        OTelConfig           `koanf:"otel"`
 	Sentry      SentryConfig         `koanf:"sentry"`
 	Prometheus  PrometheusConfig     `koanf:"prometheus"`
+	Realtime    RealtimeConfig       `koanf:"realtime"`
 	Checkers    CheckersConfig       `koanf:"checkers"`
 	Aggregation AggregationConfig    `koanf:"aggregation"`
 	Jobs        JobsConfig           `koanf:"jobs"`
@@ -689,6 +708,12 @@ func Load() (*Config, error) {
 			Enabled: true,
 			Path:    "/metrics",
 		},
+		Realtime: RealtimeConfig{
+			Enabled:        true,
+			FlushInterval:  time.Second,
+			PingInterval:   25 * time.Second,
+			MaxConnections: 1000,
+		},
 		Encryption: EncryptionConfig{
 			AutoMigrate: true,
 		},
@@ -783,6 +808,7 @@ func Load() (*Config, error) {
 	applySchedulingEnv(&cfg.Server.Scheduling)
 	applyProfilerEnv(&cfg.Profiler)
 	applyRuntimeEnv(&cfg.Runtime)
+	applyRealtimeEnv(&cfg.Realtime)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -939,6 +965,29 @@ func applyJobsEnv(cfg *JobsConfig) {
 	if v := os.Getenv("SP_JOBS_REAPER_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ReaperInterval = d
+		}
+	}
+}
+
+// applyRealtimeEnv reads the multi-word SP_REALTIME_* knobs koanf's env
+// loader cannot bind (it collapses underscores to dots, so
+// SP_REALTIME_FLUSH_INTERVAL would map to realtime.flush.interval and miss
+// the snake_case koanf tag "flush_interval"). SP_REALTIME_ENABLED is a single
+// word and binds through koanf directly. See project_koanf_env_quirk.
+func applyRealtimeEnv(cfg *RealtimeConfig) {
+	if v := os.Getenv("SP_REALTIME_FLUSH_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.FlushInterval = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_PING_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.PingInterval = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_MAX_CONNECTIONS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxConnections = n
 		}
 	}
 }
