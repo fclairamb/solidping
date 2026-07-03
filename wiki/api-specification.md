@@ -547,6 +547,35 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100). Also accepts `?size=` as a deprecated alias.
 
+### GET /api/v1/orgs/:org/events/ws
+Live update hint WebSocket (v2 — per-entity subscriptions; superseded the v1
+SSE stream endpoint). Not modelable in OpenAPI (WebSocket); full protocol —
+handshake, message table, close codes — documented in prose at
+`web/docs/docs/features/live-updates.md`. Summary:
+
+- Registered **outside** the standard auth middleware (browsers can't send
+  headers at WS-upgrade time): the route always accepts the upgrade, then
+  authenticates in-handler via a pre-auth `Authorization` header/cookie, or a
+  first `{"type":"auth","token":"..."}` message within
+  `SP_REALTIME_AUTH_GRACE` (5s default). Non-members close `4403`; a
+  disabled/invalid auth closes `4401`; `SP_REALTIME_ENABLED=false` closes
+  `4404`.
+- **Default-silent**: a connection receives nothing until it sends
+  `{"type":"subscribe","entity":...}` — `check` (+ `uid`) for one check, or
+  `checks`/`incidents`/`events`/`jobs` for the matching org-wide collection.
+  Server replies `subscribed` (idempotent on duplicates), then `update`
+  frames (`{"entity":...,"uid":...,"kinds":[...]}`) as matching hints arrive,
+  plus a `resync` after any bus transport gap.
+- Same delivery philosophy as v1: best-effort, hint-only (no data over the
+  socket), coalesced high-volume kinds (≤1/org/sec/instance; a burst over 64
+  distinct check uids in one window collapses to a wildcard), immediate
+  status/incident transitions, lazy client fallback poll, PgBouncer
+  session-mode requirement for LISTEN.
+- Config knobs: `SP_REALTIME_FLUSH_INTERVAL` (1s), `SP_REALTIME_PING_INTERVAL`
+  (25s), `SP_REALTIME_MAX_CONNECTIONS` (1000/instance),
+  `SP_REALTIME_AUTH_GRACE` (5s), `SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION`
+  (512/connection).
+
 ---
 
 ## Regions

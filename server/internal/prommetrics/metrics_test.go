@@ -1,13 +1,49 @@
 package prommetrics_test
 
 import (
+	"runtime"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
 )
+
+// TestRegisterToleratesPreexistingRuntimeCollectors reproduces the production
+// wiring, where Register is handed prometheus.DefaultRegisterer — a registry on
+// which client_golang's init() has already registered a basic Go and Process
+// collector. Register must drop those before installing the richer
+// all-runtime-metrics collectors; otherwise MustRegister panics on the
+// descriptors they share (e.g. go_sched_gomaxprocs_threads). TestMetrics below
+// uses a pristine registry and therefore cannot catch this regression.
+func TestRegisterToleratesPreexistingRuntimeCollectors(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	reg := prometheus.NewRegistry()
+
+	// Mirror client_golang's default-registry init() so the collision the
+	// server hit at startup is present here too.
+	reg.MustRegister(collectors.NewGoCollector())
+	reg.MustRegister(collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+
+	r.NotPanics(func() {
+		prommetrics.Register(reg)
+	})
+
+	families, err := reg.Gather()
+	r.NoError(err)
+
+	count := 0
+	for _, f := range families {
+		if f.GetName() == "go_sched_gomaxprocs_threads" {
+			count++
+		}
+	}
+	r.Equal(1, count, "go_sched_gomaxprocs_threads must be registered exactly once")
+}
 
 // TestMetrics tests all metric registration and recording in a single test
 // because the metrics are package-level globals that share state.
@@ -37,6 +73,16 @@ func TestMetrics(t *testing.T) {
 
 	r.True(names["solidping_check_executions_total"], "missing solidping_check_executions_total")
 	r.True(names["solidping_check_duration_seconds"], "missing solidping_check_duration_seconds")
+
+	// Runtime + process collectors (A1) must be registered by Register so both
+	// the API server and worker expose heap/RSS/goroutine series on /metrics.
+	r.True(names["go_memstats_heap_inuse_bytes"], "missing go_memstats_heap_inuse_bytes (Go collector)")
+	r.True(names["go_goroutines"], "missing go_goroutines (Go collector)")
+	// process_* depends on the OS; assert on platforms where it is supported
+	// (the process collector silently emits nothing on unsupported OSes).
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		r.True(names["process_resident_memory_bytes"], "missing process_resident_memory_bytes (process collector)")
+	}
 
 	// Record scheduling delay
 	prommetrics.RecordSchedulingDelay("eu-west-1", 2.5)

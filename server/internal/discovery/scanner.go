@@ -266,7 +266,7 @@ func probeHost(
 		Hostname:        hostname,
 		ICMPReachable:   icmpReachable,
 		OpenPorts:       openPorts,
-		SuggestedChecks: SuggestChecks(ipStr, icmpReachable, openPorts),
+		SuggestedChecks: SuggestChecks(ipStr, hostname, icmpReachable, openPorts),
 	}
 }
 

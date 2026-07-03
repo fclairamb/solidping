@@ -61,6 +61,7 @@ function ResourceCard({
   const { t } = useTranslation();
   const name = resource.publicName || resource.check?.name || t("unknown");
   const status = resource.check?.status ?? "unknown";
+  const inMaintenance = resource.check?.inMaintenance ?? false;
   const avail = resource.availability;
 
   return (
@@ -89,9 +90,18 @@ function ResourceCard({
               {avail.overallAvailabilityPct.toFixed(3)}%
             </span>
           )}
-          <Badge variant={getStatusBadgeVariant(status)}>
-            {t(getStatusLabelKey(status))}
-          </Badge>
+          {inMaintenance ? (
+            <Badge
+              variant="warning"
+              data-testid="resource-maintenance-badge"
+            >
+              {t("scheduledMaintenance")}
+            </Badge>
+          ) : (
+            <Badge variant={getStatusBadgeVariant(status)}>
+              {t(getStatusLabelKey(status))}
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -101,6 +111,7 @@ function ResourceCard({
           dailyAvailability={avail.dailyAvailability}
           overallAvailabilityPct={avail.overallAvailabilityPct}
           historyDays={historyDays}
+          bucketUnit={avail.bucketUnit}
         />
       )}
 

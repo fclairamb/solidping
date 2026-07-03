@@ -67,8 +67,8 @@ func newNotificationAuditSetup(t *testing.T) *notificationAuditSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{}, nil)
 
 	org := models.NewOrganization("audit-test", "Audit Test Org")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
@@ -306,7 +306,7 @@ func TestAuditEscalationUserSend(t *testing.T) {
 	mockSender := &mockEmailSender{}
 	svcList := &services.Registry{
 		EmailSender: mockSender,
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier(), nil),
 	}
 
 	// Build a fake job row for the context.
@@ -438,7 +438,7 @@ func TestAuditEmptyScheduleSkipped(t *testing.T) {
 
 	svcList := &services.Registry{
 		EmailSender: &mockEmailSender{},
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier(), nil),
 	}
 
 	fakeJob := models.NewJob(&s.org.UID, string(jobdef.JobTypeEscalationStep))
@@ -514,7 +514,7 @@ func TestAuditNoAdminsSkipped(t *testing.T) {
 
 	svcList := &services.Registry{
 		EmailSender: &mockEmailSender{},
-		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier()),
+		Jobs:        jobsvc.NewService(s.dbSvc.DB(), s.dbSvc, notifier.NewLocalEventNotifier(), nil),
 	}
 
 	fakeJob := models.NewJob(&s.org.UID, string(jobdef.JobTypeEscalationStep))

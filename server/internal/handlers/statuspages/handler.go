@@ -17,10 +17,12 @@ const slugValidationMsg = "Slug must start with a lowercase letter, be 3-40 char
 	"and contain only lowercase letters, digits, or hyphens. UUIDs are not allowed."
 
 const (
-	fieldSlug      = "slug"
-	fieldBody      = "body"
-	respKeyData    = "data"
-	msgInvalidJSON = "Invalid JSON format"
+	fieldSlug          = "slug"
+	fieldBody          = "body"
+	fieldHistoryPeriod = "historyPeriod"
+	respKeyData        = "data"
+	msgInvalidJSON     = "Invalid JSON format"
+	historyPeriodMsg   = "History period must be one of: 24h, 7d, 30d, 90d"
 )
 
 // Handler provides HTTP handlers for status page management endpoints.
@@ -425,6 +427,10 @@ func (h *Handler) handleCreatePageError(writer http.ResponseWriter, err error) e
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
 		})
+	case errors.Is(err, ErrInvalidHistoryPeriod):
+		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
+			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
+		})
 	default:
 		return h.WriteInternalError(writer, err)
 	}
@@ -445,6 +451,10 @@ func (h *Handler) handleUpdatePageError(writer http.ResponseWriter, err error) e
 	case errors.Is(err, ErrInvalidSlugFormat):
 		return h.WriteValidationError(writer, "Invalid slug format", []base.ValidationErrorField{
 			{Name: fieldSlug, Message: slugValidationMsg},
+		})
+	case errors.Is(err, ErrInvalidHistoryPeriod):
+		return h.WriteValidationError(writer, "Invalid history period", []base.ValidationErrorField{
+			{Name: fieldHistoryPeriod, Message: historyPeriodMsg},
 		})
 	default:
 		return h.WriteInternalError(writer, err)

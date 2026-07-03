@@ -71,6 +71,9 @@ type Service interface {
 	EncryptForOrg(ctx context.Context, orgUID string, plaintext map[string]any) (string, error)
 	DecryptForOrg(ctx context.Context, orgUID string, envelope string) (map[string]any, error)
 	EnsureOrgKey(ctx context.Context, orgUID string) error
+	// DEKCacheLen reports how many per-org DEKs are cached in memory; surfaced
+	// as a Prometheus gauge and in the memory snapshot for leak analysis.
+	DEKCacheLen() int
 }
 
 // service implements Service.
@@ -123,6 +126,19 @@ func DecodeMasterKey(encoded string) ([]byte, error) {
 
 func (s *service) Enabled() bool {
 	return s.kek != nil
+}
+
+// DEKCacheLen returns the number of per-org DEKs currently cached. The cache is
+// an unbounded sync.Map that grows O(orgs) for the process lifetime and is never
+// evicted, so this count is the memory-analysis signal for the DEK-cache
+// hypothesis. O(n) range over the map; only called at metrics scrape time.
+func (s *service) DEKCacheLen() int {
+	count := 0
+	s.dekCache.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 // EnsureOrgKey loads (or generates and persists) the per-org DEK. Cached on

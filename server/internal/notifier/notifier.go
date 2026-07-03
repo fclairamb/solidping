@@ -23,6 +23,48 @@ type EventNotifier interface {
 	Close() error
 }
 
+// ListenerBuffer is the per-listener channel capacity handed out by Listen.
+// Delivery is best-effort (Notify never blocks: a full channel drops the
+// payload), so this buffer bounds how bursty publishing may get before a slow
+// consumer starts losing events. A capacity of 1 was enough for the
+// job.created wakeup (dropped wakeups coalesce by design), but org-scoped
+// realtime hints arrive in multi-org bursts where each dropped payload is a
+// DIFFERENT org's update — observed as CI-only realtime test failures when
+// the -race scheduler let two back-to-back hints outrun the draining
+// goroutine.
+const ListenerBuffer = 16
+
+// ListenerCounter is implemented by notifiers that can report how many listener
+// channels are currently registered. Both LocalEventNotifier and
+// PgEventNotifier satisfy it; the memory surface uses a type assertion so the
+// EventNotifier interface itself stays minimal.
+type ListenerCounter interface {
+	ListenerCount() int
+}
+
+// ReconnectNotifier is implemented by notifiers whose underlying transport can
+// drop and re-establish its subscription (PgEventNotifier's pq.Listener).
+// Consumers subscribe to reconnect events to trigger a resync after a
+// potential notification gap: anything NOTIFYed while the session was down is
+// lost, so hint consumers must assume they missed events. LocalEventNotifier
+// intentionally does not implement it — in-process channels cannot gap.
+type ReconnectNotifier interface {
+	// ReconnectEvents returns a channel that receives a signal each time the
+	// transport reconnects after a drop. The channel is buffered (size 1) and
+	// signals are delivered non-blocking, so a burst of reconnects coalesces
+	// into one pending signal. The channel is closed when the notifier closes.
+	ReconnectEvents() <-chan struct{}
+}
+
+// ListenerCount returns n's registered listener-channel count, or 0 if n does
+// not implement ListenerCounter.
+func ListenerCount(n EventNotifier) int {
+	if lc, ok := n.(ListenerCounter); ok {
+		return lc.ListenerCount()
+	}
+	return 0
+}
+
 // New creates an EventNotifier appropriate for the database type.
 // For PostgreSQL, it uses NOTIFY/LISTEN for optimal performance.
 // For SQLite and other databases, it uses in-memory channels.

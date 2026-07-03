@@ -50,6 +50,7 @@ const ALL_TYPES: ConnectionType[] = [
   "pushover",
   "freebox",
   "webpush",
+  "kubernetes",
 ];
 
 function NewIntegrationPage() {

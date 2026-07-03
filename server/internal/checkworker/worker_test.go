@@ -2,6 +2,8 @@ package checkworker
 
 import (
 	"context"
+	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,6 +15,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
@@ -142,6 +145,64 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 	})
 }
 
+// TestDelaySampleMs verifies the telemetry semantics of the delay sample
+// (spec 2026-07-01-02 D4): lateness is measured against the job's real
+// scheduled_at — the schedule the user configured — not the cost-padded
+// effective_scheduled_at, and is floored at 0 (a probe that starts on time or
+// is claimed ahead yields 0).
+func TestDelaySampleMs(t *testing.T) {
+	t.Parallel()
+
+	w := &CheckWorker{} // delaySampleMs reads no receiver state
+	now := time.Now()
+
+	t.Run("OnTimeStartYieldsZero", func(t *testing.T) {
+		t.Parallel()
+
+		scheduledAt := now
+		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &scheduledAt}
+		require.Zero(t, w.delaySampleMs(job, now), "a probe starting exactly on schedule has 0 delay")
+	})
+
+	t.Run("EarlyStartFlooredAtZero", func(t *testing.T) {
+		t.Parallel()
+
+		scheduledAt := now.Add(10 * time.Second)
+		job := &models.CheckJob{ScheduledAt: &scheduledAt}
+		require.Zero(t, w.delaySampleMs(job, now), "a probe starting before schedule is floored at 0")
+	})
+
+	t.Run("MeasuresAgainstScheduledAtNotEffective", func(t *testing.T) {
+		t.Parallel()
+
+		// The effective deadline is padded 20s past the schedule; the probe
+		// starts 5s after the real schedule. True lateness is 5s — the padded
+		// deadline must not absorb it (that under-reporting was the delay-EWMA
+		// feedback loop this spec removes).
+		scheduledAt := now.Add(-5 * time.Second)
+		effective := now.Add(15 * time.Second)
+		job := &models.CheckJob{ScheduledAt: &scheduledAt, EffectiveScheduledAt: &effective}
+		require.InDelta(t, 5000.0, w.delaySampleMs(job, now), 1.0,
+			"delay must be measured against scheduled_at, not effective_scheduled_at")
+	})
+
+	t.Run("NilScheduledAtFallsBackToEffective", func(t *testing.T) {
+		t.Parallel()
+
+		effective := now.Add(-3 * time.Second)
+		job := &models.CheckJob{ScheduledAt: nil, EffectiveScheduledAt: &effective}
+		require.InDelta(t, 3000.0, w.delaySampleMs(job, now), 1.0,
+			"without a scheduled_at, the effective deadline is the fallback reference")
+	})
+
+	t.Run("NoReferenceYieldsZero", func(t *testing.T) {
+		t.Parallel()
+
+		job := &models.CheckJob{}
+		require.Zero(t, w.delaySampleMs(job, now))
+	})
+}
+
 func TestFormatISO8601Duration(t *testing.T) {
 	t.Parallel()
 
@@ -191,7 +252,7 @@ func TestReleaseLease(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	t.Run("BasicRelease", func(t *testing.T) {
 		now := time.Now()
@@ -263,7 +324,7 @@ func TestExpressHandleEvent(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	logger := runner.logger.With("test", "express")
 
@@ -337,7 +398,7 @@ func TestLastForStatus(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	// Create a check
 	check := models.NewCheck(org.UID, "test-check", "http")
@@ -579,7 +640,7 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 	worker := models.NewWorker("test-worker", "Test Worker")
 	_, err = dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
 	require.NoError(t, err)
-	runner.worker = worker
+	runner.setWorker(worker)
 
 	// Create a heartbeat check
 	check := models.NewCheck(org.UID, "test-heartbeat", "heartbeat")
@@ -720,6 +781,251 @@ func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 	})
 }
 
+// TestLaneLimits covers the per-fetch reservation formula (spec 2026-07-01-03
+// D3): slowBudget = max(0, (P − F) − busySlow), clamped to the free slots;
+// fast always gets the full free capacity.
+func TestLaneLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name                       string
+		free, pool, reserved, busy int
+		wantFast, wantSlow         int
+	}{
+		{"idle pool, default floor", 4, 4, 1, 0, 4, 3},
+		{"slow at the cap claims no more slow", 1, 4, 1, 3, 1, 0},
+		{"partially busy slow", 2, 4, 1, 2, 2, 1},
+		{"no reservation (F=0) lets slow fill the pool", 4, 4, 0, 0, 4, 4},
+		{"slow budget clamped to free slots", 1, 25, 5, 0, 1, 1},
+		{"busy beyond budget floors at zero", 2, 4, 1, 5, 2, 0},
+		{"floor at pool−1 leaves one slow slot", 4, 4, 3, 0, 4, 1},
+		{"no free slots", 0, 4, 1, 1, 0, 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			fast, slow := laneLimits(tt.free, tt.pool, tt.reserved, tt.busy)
+			require.Equal(t, tt.wantFast, fast, "fastLimit")
+			require.Equal(t, tt.wantSlow, slow, "slowLimit")
+		})
+	}
+}
+
+// TestNewCheckWorkerClampsFastLaneReserved verifies the startup clamp (spec
+// 2026-07-01-03 risk log): a floor at or above the pool size is pulled back to
+// pool−1 so the slow lane is never silently killed; a negative floor becomes 0.
+func TestNewCheckWorkerClampsFastLaneReserved(t *testing.T) {
+	t.Parallel()
+
+	newWorkerWith := func(poolSize, reserved int) *CheckWorker {
+		cfg := &config.Config{
+			Server: config.ServerConfig{
+				CheckWorker: config.CheckWorkerConfig{Nb: poolSize, FetchMaxAhead: 5 * time.Minute},
+				Scheduling:  config.SchedulingConfig{FastLaneReserved: reserved},
+			},
+		}
+
+		return NewCheckWorker(nil, cfg, services.NewRegistry(), nil)
+	}
+
+	require.Equal(t, 3, newWorkerWith(4, 10).fastLaneReserved, "F >= P clamps to P−1")
+	require.Equal(t, 3, newWorkerWith(4, 4).fastLaneReserved, "F == P clamps to P−1")
+	require.Equal(t, 0, newWorkerWith(4, -2).fastLaneReserved, "negative F clamps to 0")
+	require.Equal(t, 2, newWorkerWith(4, 2).fastLaneReserved, "in-range F is kept")
+	require.Equal(t, 5, newWorkerWith(0, 5).fastLaneReserved, "default pool (25) keeps the default floor")
+}
+
+// TestFastLaneFloorInvariant is the core lane test (spec 2026-07-01-03): with
+// pool P=4 and fast floor F=1, a saturating stream of slow sleep jobs may
+// occupy at most P−F=3 runners (borrowing reaches exactly 3 while no fast work
+// is due), and fast jobs added afterwards are claimed and complete while all 3
+// slow probes are still in flight — the reserved slot is what serves them.
+// Sleeps are ms-scale; assertions are ordering-based (fast results land before
+// the first slow result) rather than wall-clock-based to stay robust on slow
+// machines.
+//
+//nolint:paralleltest // Uses shared database state and a live worker; sequential phases
+func TestFastLaneFloorInvariant(t *testing.T) {
+	const (
+		poolSize    = 4
+		fastFloor   = 1
+		slowSleepMs = 1200
+		fastSleepMs = 20
+	)
+
+	ctx := context.Background()
+
+	svc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	defer func() { _ = svc.Close() }()
+	require.NoError(t, svc.Initialize(ctx))
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{
+			CheckWorker: config.CheckWorkerConfig{Nb: poolSize, FetchMaxAhead: 5 * time.Minute},
+			Scheduling: config.SchedulingConfig{
+				FastLaneReserved:    fastFloor,
+				LaneSlowThresholdMs: 2000,
+				LaneFastThresholdMs: 1000,
+			},
+		},
+	}
+
+	svcList := services.NewRegistry()
+	checkJobSvc := checkjobsvc.NewService(svc.DB())
+	svcList.CheckJobs = checkJobSvc
+	eventNotifier := notifier.NewLocalEventNotifier()
+	t.Cleanup(func() { _ = eventNotifier.Close() })
+	svcList.EventNotifier = eventNotifier
+
+	runner := NewCheckWorker(svc, cfg, svcList, checkJobSvc)
+
+	org := models.NewOrganization("lane-org", "")
+	require.NoError(t, svc.CreateOrganization(ctx, org))
+
+	// createSleepJob creates an enabled sleep check and stamps its job with the
+	// wanted lane + a matching cost EWMA, due 1s ago (no pre-exec sleep).
+	// Returns the check UID.
+	createSleepJob := func(slug string, sleepMs int, lane uint8, costEWMAMs float64) string {
+		check := models.NewCheck(org.UID, slug, string(checkerdef.CheckTypeSleep))
+		check.Config = models.JSONMap{"sleep_ms": sleepMs}
+		require.NoError(t, svc.CreateCheck(ctx, check))
+
+		due := time.Now().Add(-time.Second)
+		res, upErr := svc.DB().NewUpdate().
+			Model((*models.CheckJob)(nil)).
+			Set("lane = ?", lane).
+			Set("cost_ewma_ms = ?", costEWMAMs).
+			Set("scheduled_at = ?", due).
+			Set("effective_scheduled_at = ?", due).
+			Where("check_uid = ?", check.UID).
+			Exec(ctx)
+		require.NoError(t, upErr)
+		n, upErr := res.RowsAffected()
+		require.NoError(t, upErr)
+		require.EqualValues(t, 1, n, "sleep check must have exactly one job")
+
+		return check.UID
+	}
+
+	// realResultCount counts non-"created" results for a check.
+	realResultCount := func(checkUID string) int {
+		var n int
+		require.NoError(t, svc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", checkUID).
+			Where("status != ?", int(models.ResultStatusCreated)).
+			Scan(ctx, &n))
+
+		return n
+	}
+
+	// waitFor polls cond, re-nudging the fetcher via a payload-less
+	// check.created event each round (the 1-buffered notifier channel may have
+	// dropped an earlier nudge).
+	waitFor := func(timeout time.Duration, msg string, cond func() bool) {
+		t.Helper()
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			if cond() {
+				return
+			}
+			_ = eventNotifier.Notify(ctx, "check.created", "{}")
+			time.Sleep(5 * time.Millisecond)
+		}
+		t.Fatalf("timed out: %s", msg)
+	}
+
+	// Sample busySlow continuously: the floor invariant must hold at every
+	// instant, not just at the poll points.
+	var maxBusySlow atomic.Int32
+	samplerCtx, samplerCancel := context.WithCancel(ctx)
+	samplerDone := make(chan struct{})
+	go func() {
+		defer close(samplerDone)
+		ticker := time.NewTicker(2 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-samplerCtx.Done():
+				return
+			case <-ticker.C:
+				if b := runner.busySlow.Load(); b > maxBusySlow.Load() {
+					maxBusySlow.Store(b)
+				}
+			}
+		}
+	}()
+
+	runCtx, cancel := context.WithCancel(ctx)
+	runDone := make(chan error, 1)
+	go func() { runDone <- runner.Run(runCtx) }()
+
+	waitFor(3*time.Second, "worker registration", func() bool { return runner.getWorker() != nil })
+	waitFor(3*time.Second, "runner pool idle", func() bool {
+		return runner.availableRunners.Load() == poolSize
+	})
+
+	// Phase 1 — saturate with slow work only: borrowing must reach exactly
+	// P−F in-flight slow probes (an idle fast stream donates its slots), and
+	// never more.
+	slowUIDs := make([]string, 0, 6)
+	for i := 0; i < 6; i++ {
+		slowUIDs = append(slowUIDs, createSleepJob(
+			fmt.Sprintf("lane-slow-%d", i), slowSleepMs, scheduling.LaneSlow, 3000,
+		))
+	}
+
+	waitFor(5*time.Second, "slow lane saturation (busySlow == P−F)", func() bool {
+		return runner.busySlow.Load() == poolSize-fastFloor
+	})
+
+	// Phase 2 — with all 3 slow slots occupied, add due fast jobs: the
+	// reserved slot must serve them while the slow probes are still asleep.
+	fastUIDs := []string{
+		createSleepJob("lane-fast-0", fastSleepMs, scheduling.LaneFast, 0),
+		createSleepJob("lane-fast-1", fastSleepMs, scheduling.LaneFast, 0),
+	}
+
+	waitFor(5*time.Second, "fast checks complete on the reserved slot", func() bool {
+		for _, uid := range fastUIDs {
+			if realResultCount(uid) == 0 {
+				return false
+			}
+		}
+
+		return true
+	})
+
+	// The fast results must have landed while the slow probes were still in
+	// flight: none of the slow checks may have a real result yet, and the
+	// slow lane must still be at its cap.
+	for _, uid := range slowUIDs {
+		require.Zero(t, realResultCount(uid),
+			"fast checks must complete before any slow probe finishes — the reserved slot served them")
+	}
+	require.EqualValues(t, poolSize-fastFloor, runner.busySlow.Load(),
+		"all P−F slow probes are still in flight when the fast results land")
+
+	// Shutdown; let in-flight sleeps drain.
+	cancel()
+	select {
+	case <-runDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("worker did not shut down")
+	}
+	samplerCancel()
+	<-samplerDone
+
+	require.LessOrEqual(t, maxBusySlow.Load(), int32(poolSize-fastFloor),
+		"in-flight slow probes must never exceed P − F")
+	require.EqualValues(t, poolSize-fastFloor, maxBusySlow.Load(),
+		"borrowing must reach exactly P − F while no fast work is due")
+}
+
 //nolint:paralleltest // Test uses shared database state
 func TestGracefulShutdown(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
@@ -743,7 +1049,7 @@ func TestGracefulShutdown(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 
 	// Verify worker was registered
-	require.NotNil(t, runner.worker, "worker should be registered")
+	require.NotNil(t, runner.getWorker(), "worker should be registered")
 
 	// Trigger graceful shutdown
 	cancel()
@@ -764,7 +1070,7 @@ func TestGracefulShutdown(t *testing.T) {
 	var dbWorker models.Worker
 	err = dbSvc.DB().NewSelect().
 		Model(&dbWorker).
-		Where("uid = ?", runner.worker.UID).
+		Where("uid = ?", runner.getWorker().UID).
 		Scan(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, dbWorker.LastActiveAt, "worker should have last_active_at timestamp")

@@ -20,7 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import type { StatusPage } from "@/api/hooks";
+import type { StatusPage, StatusPagePeriod } from "@/api/hooks";
 
 interface StatusPageFormData {
   name: string;
@@ -31,7 +31,7 @@ interface StatusPageFormData {
   enabled: boolean;
   showAvailability: boolean;
   showResponseTime: boolean;
-  historyDays: number;
+  historyPeriod: StatusPagePeriod;
 }
 
 export function StatusPageForm({
@@ -58,7 +58,9 @@ export function StatusPageForm({
   const [enabled, setEnabled] = useState(initialData?.enabled ?? true);
   const [showAvailability, setShowAvailability] = useState(initialData?.showAvailability ?? true);
   const [showResponseTime, setShowResponseTime] = useState(initialData?.showResponseTime ?? true);
-  const [historyDays, setHistoryDays] = useState(initialData?.historyDays ?? 90);
+  const [historyPeriod, setHistoryPeriod] = useState<StatusPagePeriod>(
+    initialData?.historyPeriod ?? "90d"
+  );
 
   useEffect(() => {
     if (!slugManuallyEdited && mode === "create") {
@@ -68,7 +70,7 @@ export function StatusPageForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit({ name, slug, description, visibility, isDefault, enabled, showAvailability, showResponseTime, historyDays });
+    await onSubmit({ name, slug, description, visibility, isDefault, enabled, showAvailability, showResponseTime, historyPeriod });
   };
 
   return (
@@ -199,18 +201,19 @@ export function StatusPageForm({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="historyDays">History Period</Label>
+            <Label htmlFor="historyPeriod">History Period</Label>
             <Select
-              value={String(historyDays)}
-              onValueChange={(v) => setHistoryDays(Number(v))}
+              value={historyPeriod}
+              onValueChange={(v) => setHistoryPeriod(v as StatusPagePeriod)}
             >
-              <SelectTrigger>
+              <SelectTrigger id="historyPeriod">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="7">7 days</SelectItem>
-                <SelectItem value="30">30 days</SelectItem>
-                <SelectItem value="90">90 days</SelectItem>
+                <SelectItem value="24h">24 hours</SelectItem>
+                <SelectItem value="7d">7 days</SelectItem>
+                <SelectItem value="30d">30 days</SelectItem>
+                <SelectItem value="90d">90 days</SelectItem>
               </SelectContent>
             </Select>
           </div>

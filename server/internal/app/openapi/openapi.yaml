@@ -31,6 +31,8 @@ tags:
     description: Organization member management
   - name: Jobs
     description: Background job management
+  - name: Discovery
+    description: Network discovery scans and suggested checks
   - name: System
     description: System-wide configuration (super admin only)
 
@@ -61,6 +63,67 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthResponse"
+
+  /api/mgmt/scheduling/cost-distribution:
+    get:
+      tags: [Management]
+      summary: Scheduler cost/delay distribution
+      description: >
+        Returns an aggregate, low-cardinality distribution of the scheduler's
+        per-job cost_ewma_ms and delay_ewma_ms across all check_jobs, plus
+        fast/slow job counts at a candidate threshold. Read-only and
+        super-admin guarded. Used to decide whether fast/slow scheduling lanes
+        are warranted.
+      operationId: getCostDistribution
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: thresholdMs
+          in: query
+          required: false
+          description: Candidate fast/slow boundary in milliseconds (default 1000).
+          schema:
+            type: integer
+            minimum: 1
+      responses:
+        "200":
+          description: Cost/delay distribution
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CostDistributionResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/v1/system/scheduling/lane-load:
+    get:
+      tags: [System]
+      summary: Per-worker check-lane load statistics
+      description: >
+        Computes, server-side, each worker's offered check load per scheduling
+        lane (fast / slow): eligible job counts, summed cost and delay EWMAs,
+        and the summed duty cycle (100 × cost EWMA / period, i.e. how many
+        runner slots the lane's steady-state demand occupies). "Offered" means
+        every enabled job the worker is eligible to claim — jobs without a
+        region count for every worker, region-scoped jobs count for workers
+        whose region has the job's region as a prefix — so workers sharing a
+        region report the same load. Super-admin only.
+      operationId: getSchedulingLaneLoad
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Per-worker lane load report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LaneLoadResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
 
   # System Parameters APIs (Super Admin Only)
   /api/v1/system/parameters:
@@ -408,6 +471,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Check"
+        "400":
+          description: >-
+            Validation error (code VALIDATION_ERROR) — e.g. a period below the
+            check type's minimum. Heavy types enforce a per-type floor (browser
+            60s, js 30s); every other type has a global 10s floor. Internal
+            checks and the synthetic `sleep` type are exempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "422":
           $ref: "#/components/responses/ValidationError"
 
@@ -490,6 +563,16 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Check"
+        "400":
+          description: >-
+            Validation error (code VALIDATION_ERROR) — e.g. shrinking the
+            period below the check type's minimum (browser 60s, js 30s,
+            global 10s floor). Existing values are grandfathered; the bound
+            bites on the next write to the period.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "404":
           $ref: "#/components/responses/NotFound"
     delete:
@@ -790,6 +873,68 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{check}/availability:
+    get:
+      tags: [Results]
+      summary: Per-period availability statistics for a single check
+      description: >
+        Returns real, server-measured availability for each requested period
+        (replacing the old client-side estimate). availabilityPct and
+        downtimeSeconds are probe-ratio (the share of probes that succeeded);
+        the incidents block reports confirmed-outage wall-clock time. A period
+        with no data has availabilityPct=null and hasData=false (no data is not
+        100%).
+      operationId: getCheckAvailability
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID (UUID) or slug
+          schema:
+            type: string
+        - name: periods
+          in: query
+          required: true
+          description: >
+            Comma-separated period tokens. Each is a trailing duration
+            (suffixes h/d/w/y, e.g. 24h, 7d, 30d, 90d, 365d, 1y) or a calendar
+            token (today, mtd, ytd) resolved against tz. Unknown tokens are
+            rejected (VALIDATION_ERROR); at most 12 periods, none exceeding the
+            day-tier retention horizon (~12 months).
+          schema:
+            type: string
+          example: "today,7d,30d,365d"
+        - name: tz
+          in: query
+          required: false
+          description: >
+            IANA time zone used to resolve the calendar tokens (today/mtd/ytd).
+            Trailing durations are tz-independent. Defaults to UTC.
+          schema:
+            type: string
+            default: UTC
+          example: "Europe/Paris"
+      responses:
+        "200":
+          description: Per-period availability statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckAvailabilityResponse"
+        "400":
+          description: Invalid period or timezone parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Incident APIs
   /api/v1/orgs/{org}/incidents:
     get:
@@ -944,6 +1089,13 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFound"
+
+  # NOTE: GET /api/v1/orgs/{org}/events/ws (the live update hint WebSocket,
+  # v2) is intentionally NOT documented here — OpenAPI 3 cannot model a
+  # WebSocket endpoint. Full protocol documentation (handshake, message
+  # table, close codes, a websocat example) lives in prose at
+  # web/docs/docs/features/live-updates.md, with a pointer from
+  # wiki/api-specification.md.
 
   # Member APIs
   /api/v1/orgs/{org}/members:
@@ -1155,6 +1307,292 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/discovery/types:
+    get:
+      tags: [Discovery]
+      summary: List registered discovery types
+      description: Returns the discovery types (lan, freebox, …) available to drive a scan, so a client can build its type picker without hard-coding the set.
+      operationId: listDiscoveryTypes
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: Registered discovery types
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveryType"
+
+  /api/v1/orgs/{org}/discovery/scans:
+    get:
+      tags: [Discovery]
+      summary: List discovery scans
+      operationId: listDiscoveryScans
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      responses:
+        "200":
+          description: List of scans (one entry per user-initiated scan; fan-out child chunks are omitted)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveryScan"
+    post:
+      tags: [Discovery]
+      summary: Start a discovery scan
+      description: |
+        Admin only. The generic body is `{type, parameters}`; the discovery-type
+        registry validates the parameters and resolves the job to enqueue. For LAN,
+        parameters are `{cidrs, ports?, concurrency?, timeout?}`; for Freebox,
+        `{channelUid}`; for Container, `{hosts, timeout?}` where each host is a
+        Docker-compatible endpoint (`unix://` or `tcp://`); for Kubernetes,
+        `{clusterUid, namespaces?, timeout?}` where `clusterUid` references a
+        stored Kubernetes cluster connection (empty `namespaces` scans every
+        visible namespace).
+      operationId: startDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartDiscoveryScanRequest"
+      responses:
+        "201":
+          description: Scan started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DiscoveryScan"
+                  progress:
+                    $ref: "#/components/schemas/DiscoveryScanProgress"
+        "400":
+          description: Unknown discovery type (DISCOVERY_UNKNOWN_TYPE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: The referenced Kubernetes cluster connection was not found (KUBERNETES_CLUSTER_NOT_FOUND)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: A scan of this type is already running (DISCOVERY_ALREADY_RUNNING), or a Freebox channel is not paired (FREEBOX_NOT_GRANTED)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Invalid parameters (DISCOVERY_INVALID_PARAMETERS) or range too large (DISCOVERY_RANGE_TOO_LARGE)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/discovery/scans/{jobUid}:
+    get:
+      tags: [Discovery]
+      summary: Get a discovery scan with progress
+      description: Returns the scan job plus a uniform progress block for every scan type (chunked scans roll up their children; non-chunked scans report totalChunks=1).
+      operationId: getDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ScanJobUidPath"
+      responses:
+        "200":
+          description: Scan with progress
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    $ref: "#/components/schemas/DiscoveryScan"
+                  progress:
+                    $ref: "#/components/schemas/DiscoveryScanProgress"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/scans/{jobUid}/cancel:
+    post:
+      tags: [Discovery]
+      summary: Cancel a discovery scan
+      description: Admin only. Cancels the scan and drops every pending fan-out child chunk. Children already running finish naturally.
+      operationId: cancelDiscoveryScan
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - $ref: "#/components/parameters/ScanJobUidPath"
+      responses:
+        "204":
+          description: Scan cancelled
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/checks:
+    get:
+      tags: [Discovery]
+      summary: List discovered (suggested) checks
+      description: Returns suggested checks for the org, ordered by group then slug so clients can render them grouped by groupKey.
+      operationId: listDiscoveredChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: jobUid
+          in: query
+          description: Filter to one scan's checks
+          schema:
+            type: string
+        - name: group
+          in: query
+          description: Narrow to one group (groupKey)
+          schema:
+            type: string
+        - name: source
+          in: query
+          description: Comma-separated discovery sources (e.g. "lan,freebox")
+          schema:
+            type: string
+        - name: promoted
+          in: query
+          description: Filter by promotion state
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: Discovered checks
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiscoveredCheck"
+    delete:
+      tags: [Discovery]
+      summary: Dismiss a whole group of discovered checks
+      description: Admin only. Soft-deletes every check in the given group (optionally scoped to one scan).
+      operationId: dismissDiscoveredGroup
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: group
+          in: query
+          required: true
+          description: The group (groupKey) to dismiss
+          schema:
+            type: string
+        - name: jobUid
+          in: query
+          description: Restrict the dismissal to one scan
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Group dismissed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{org}/discovery/checks/promote:
+    post:
+      tags: [Discovery]
+      summary: Promote discovered checks into real checks
+      description: |
+        Admin only. Creates one real check per referenced discovered-check row
+        (config/name/slug already on the row; `overrides` may adjust name/period).
+        Created checks are labelled `auto-discovery: true` and `discovery-job: <jobUid>`.
+      operationId: promoteDiscoveredChecks
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PromoteChecksRequest"
+      responses:
+        "201":
+          description: Checks created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Check"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: A referenced check was already promoted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/orgs/{org}/discovery/checks/{uid}:
+    delete:
+      tags: [Discovery]
+      summary: Dismiss a single discovered check
+      operationId: dismissDiscoveredCheck
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: uid
+          in: path
+          required: true
+          description: Discovered check UID
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Check dismissed
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1214,6 +1652,15 @@ components:
         type: string
         format: uuid
       description: Job UID
+
+    ScanJobUidPath:
+      name: jobUid
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Discovery scan job UID
 
   responses:
     NotFound:
@@ -1303,6 +1750,63 @@ components:
           type: string
         runMode:
           type: string
+
+    CostDistributionPercentiles:
+      type: object
+      description: p50/p90/p99/max summary of a metric (milliseconds).
+      properties:
+        p50:
+          type: number
+          format: double
+        p90:
+          type: number
+          format: double
+        p99:
+          type: number
+          format: double
+        max:
+          type: number
+          format: double
+
+    CostDistribution:
+      type: object
+      properties:
+        totalJobs:
+          type: integer
+          description: Number of check_jobs rows considered.
+        thresholdMs:
+          type: integer
+          description: Candidate fast/slow boundary used for the counts (ms).
+        fastJobs:
+          type: integer
+          description: Count with cost_ewma_ms <= thresholdMs.
+        slowJobs:
+          type: integer
+          description: Count with cost_ewma_ms > thresholdMs.
+        costEwmaMs:
+          allOf:
+            - $ref: "#/components/schemas/CostDistributionPercentiles"
+          description: >-
+            Distribution of cost_ewma_ms — per-job EWMA of execution duration
+            (ms), timeouts pinned to the execution ceiling. This is the only
+            signal that steers claim ordering (deprioritization offset =
+            cost × 2, clamped to 60s).
+        delayEwmaMs:
+          allOf:
+            - $ref: "#/components/schemas/CostDistributionPercentiles"
+          description: >-
+            Distribution of delay_ewma_ms — per-job EWMA of probe start
+            lateness versus the user-configured scheduled_at (probe start −
+            scheduled_at, floored at 0, in ms). Pure telemetry: it measures
+            head-of-line blocking under contention but does not steer claim
+            ordering (the deprioritization offset is cost-only). A probe that
+            starts on time contributes 0.
+
+    CostDistributionResponse:
+      type: object
+      properties:
+        data:
+          $ref: "#/components/schemas/CostDistribution"
 
     HealthResponse:
       type: object
@@ -1542,12 +2046,60 @@ components:
               type: string
               enum: [INITIAL, UP, DOWN, TIMEOUT, ERROR, UNKNOWN]
               description: The status that the check transitioned to
+        flappingWindowSeconds:
+          type: integer
+          description: >-
+            Flapping (adaptive recovery) window. If a check flaps repeatedly
+            within this rolling window, it must stay stable progressively longer
+            before each auto-resolve. 0 = adaptive recovery off (constant
+            recovery period).
+          default: 21600
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off (constant recovery period).
+          default: 2
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          description: >-
+            Cap on the adaptive recovery period: required recovery never exceeds
+            this multiple of the base recovery period (also hard-capped at 30
+            minutes).
+          default: 8
         createdAt:
           type: string
           format: date-time
         updatedAt:
           type: string
           format: date-time
+        scheduling:
+          $ref: "#/components/schemas/CheckScheduling"
+
+    CheckScheduling:
+      type: object
+      description: >-
+        Read-only scheduling telemetry, derived from the check's per-region
+        scheduler jobs (max across regions). Present only on the check DETAIL
+        response (GET by uid/slug) — never on list responses — and omitted
+        until the check's first run produces a cost signal.
+      required: [costEwmaMs, delayEwmaMs, dutyCyclePct]
+      properties:
+        costEwmaMs:
+          type: number
+          description: Smoothed execution cost in milliseconds (EWMA).
+        delayEwmaMs:
+          type: number
+          description: >-
+            Smoothed start lateness in milliseconds (EWMA, pure telemetry).
+        dutyCyclePct:
+          type: integer
+          description: >-
+            round(100 × costEwmaMs / period in ms) — the share of a runner
+            slot this check permanently occupies. 100 means the check takes as
+            long to run as its period (a full-time slot).
 
     LastResult:
       type: object
@@ -1617,6 +2169,27 @@ components:
           example:
             env: prod
             app: api
+        flappingWindowSeconds:
+          type: integer
+          minimum: 0
+          default: 21600
+          description: >-
+            Flapping (adaptive recovery) window in seconds. Outages within this
+            rolling window accumulate the recovery backoff. 0 = off.
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          default: 2
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off (constant recovery).
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          default: 8
+          description: >-
+            Cap: required recovery never exceeds this multiple of the base
+            recovery period (also hard-capped at 30 minutes).
 
     UpdateCheckRequest:
       type: object
@@ -1643,6 +2216,24 @@ components:
           additionalProperties:
             type: string
           description: Key-value pairs (null = no change, empty object = clear all)
+        flappingWindowSeconds:
+          type: integer
+          minimum: 0
+          description: >-
+            Flapping (adaptive recovery) window in seconds. 0 = off. Omit to
+            leave unchanged.
+        flapBackoffFactor:
+          type: integer
+          minimum: 1
+          description: >-
+            Each flap multiplies the required recovery time by this factor.
+            1 = off. Omit to leave unchanged.
+        maxRecoveryMultiplier:
+          type: integer
+          minimum: 1
+          description: >-
+            Cap on the adaptive recovery period (multiple of the base recovery
+            period). Omit to leave unchanged.
 
     UpsertCheckRequest:
       type: object
@@ -1777,6 +2368,86 @@ components:
             $ref: "#/components/schemas/OrgResult"
         pagination:
           $ref: "#/components/schemas/CursorPagination"
+
+    CheckAvailabilityResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/AvailabilityPeriod"
+
+    AvailabilityPeriod:
+      type: object
+      properties:
+        period:
+          type: string
+          description: The requested period token, echoed back.
+          example: "7d"
+        windowStart:
+          type: string
+          format: date-time
+          description: Start of the resolved window (inclusive).
+        windowEnd:
+          type: string
+          format: date-time
+          description: End of the resolved window (exclusive) — always "now".
+        monitoredSeconds:
+          type: integer
+          format: int64
+          description: >
+            min(windowLength, now − check.createdAt). Time before the check
+            existed is not measured (and not downtime).
+        partial:
+          type: boolean
+          description: >
+            True when the check is younger than the window, so it was monitored
+            for only part of it.
+        hasData:
+          type: boolean
+          description: False when the window has no countable probes (then availabilityPct is null).
+        totalChecks:
+          type: integer
+          description: Total countable probes in the window.
+        successfulChecks:
+          type: integer
+          description: Probes counted as up (up + warning).
+        availabilityPct:
+          type: number
+          nullable: true
+          description: >
+            Probe-ratio availability (successfulChecks / totalChecks × 100).
+            Null when totalChecks == 0 — no data is not 100%.
+        downtimeSeconds:
+          type: integer
+          format: int64
+          description: >
+            Probe-time downtime: (1 − availabilityPct/100) × monitoredSeconds.
+        incidents:
+          $ref: "#/components/schemas/PeriodIncidents"
+
+    PeriodIncidents:
+      type: object
+      description: >
+        Confirmed-outage (wall-clock) stats for the window, built from incidents
+        whose started_at falls inside it, clamped to the window edges (an
+        unresolved incident runs to now).
+      properties:
+        count:
+          type: integer
+          description: Number of incidents that started in the window.
+        longestSeconds:
+          type: integer
+          format: int64
+          description: Longest single incident, clamped to the window.
+        averageSeconds:
+          type: integer
+          format: int64
+          description: Average incident duration.
+        totalDowntimeSeconds:
+          type: integer
+          format: int64
+          description: Sum of clamped incident durations.
 
     OrgResult:
       type: object
@@ -2079,3 +2750,190 @@ components:
         secret:
           type: boolean
           description: Whether this is a secret parameter (optional, defaults to false)
+
+    LaneLoadStats:
+      type: object
+      description: One lane's offered load for a worker.
+      required: [jobs, costEwmaSumMs, delayEwmaSumMs, dutySumPct]
+      properties:
+        jobs:
+          type: integer
+          description: Enabled check jobs in this lane the worker is eligible to claim.
+        costEwmaSumMs:
+          type: number
+          description: Sum of the jobs' cost EWMAs (ms) — wall-clock cost of one full pass.
+        delayEwmaSumMs:
+          type: number
+          description: Sum of the jobs' start-lateness EWMAs (ms) — grows when the lane runs behind.
+        dutySumPct:
+          type: number
+          description: >
+            Sum of per-job duty cycles (100 × cost EWMA / period). 100 ≈ one
+            permanently occupied runner slot; compare against the worker's
+            pool capacity to judge overload.
+
+    WorkerLaneLoad:
+      type: object
+      required: [workerUid, name, fast, slow]
+      properties:
+        workerUid:
+          type: string
+        name:
+          type: string
+        region:
+          type: string
+        lastActiveAt:
+          type: string
+          format: date-time
+        fast:
+          $ref: "#/components/schemas/LaneLoadStats"
+        slow:
+          $ref: "#/components/schemas/LaneLoadStats"
+
+    LaneLoadResponse:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkerLaneLoad"
+
+    DiscoveryType:
+      type: object
+      description: A registered discovery type that can drive a scan.
+      properties:
+        type:
+          type: string
+          description: User-facing discovery type id
+          example: lan
+        source:
+          type: string
+          description: The discovery source rows from this type carry
+          example: lan
+
+    StartDiscoveryScanRequest:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: A registered discovery type (see /discovery/types)
+          example: lan
+        parameters:
+          type: object
+          description: |
+            Type-specific parameters. LAN -> {cidrs, ports?, concurrency?, timeout?};
+            Freebox -> {channelUid}; Container -> {hosts, timeout?};
+            Kubernetes -> {clusterUid, namespaces?, timeout?}.
+          additionalProperties: true
+          example:
+            cidrs: ["192.168.1.0/24"]
+
+    DiscoveryScan:
+      type: object
+      description: A discovery scan job. Its UID is the scan UID.
+      properties:
+        uid:
+          type: string
+        type:
+          type: string
+          description: The underlying job type (e.g. network_discovery_plan, freebox_lan_discovery)
+        status:
+          type: string
+        config:
+          type: object
+          additionalProperties: true
+        scheduledAt:
+          type: string
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    DiscoveryScanProgress:
+      type: object
+      description: Uniform progress view for any scan. Non-chunked scans report totalChunks=1.
+      properties:
+        totalChunks:
+          type: integer
+        completedChunks:
+          type: integer
+        failedChunks:
+          type: integer
+        runningChunks:
+          type: integer
+        pendingChunks:
+          type: integer
+        derivedStatus:
+          type: string
+          enum: [pending, running, success, failed]
+        groupCount:
+          type: integer
+          description: Distinct group_key count rolled up under the scan
+        checkCount:
+          type: integer
+          description: Total suggested-check count rolled up under the scan
+
+    DiscoveredCheck:
+      type: object
+      description: One suggested check produced by a scan. Grouped for display by groupKey.
+      properties:
+        uid:
+          type: string
+        organizationUid:
+          type: string
+        jobUid:
+          type: string
+          description: The scan UID (plan UID for chunked scans)
+        source:
+          type: string
+          example: lan
+        groupKey:
+          type: string
+          description: Stable grouping identity (IP, container ID, workload uid)
+        groupLabel:
+          type: string
+          description: Display label (hostname-or-IP, container name, "ns/name")
+        name:
+          type: string
+        slug:
+          type: string
+        type:
+          type: string
+          description: Check type (http|tcp|icmp|docker|kubernetes…)
+        config:
+          type: object
+          additionalProperties: true
+        metadata:
+          type: object
+          description: Denormalized group-display hints (identical across a group's rows)
+          additionalProperties: true
+        promotedToCheckUid:
+          type: string
+          nullable: true
+        discoveredAt:
+          type: string
+          format: date-time
+
+    PromoteChecksRequest:
+      type: object
+      required: [uids]
+      properties:
+        uids:
+          type: array
+          description: The discovered-check UIDs to promote (a group's UIDs promote the whole group)
+          items:
+            type: string
+        overrides:
+          type: object
+          description: Optional adjustments applied to every created check
+          properties:
+            name:
+              type: string
+            period:
+              type: string
+              description: ISO 8601 duration (e.g. PT1M)

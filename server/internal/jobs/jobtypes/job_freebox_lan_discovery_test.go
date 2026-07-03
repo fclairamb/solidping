@@ -145,19 +145,38 @@ func runFreeboxJob(t *testing.T, f *fbDiscoveryFixture) error {
 	return runner.Run(context.Background(), f.jctx(t))
 }
 
-func (f *fbDiscoveryFixture) listHosts(t *testing.T) []*models.DiscoveredHost {
+func (f *fbDiscoveryFixture) listChecks(t *testing.T) []*models.DiscoveredCheck {
 	t.Helper()
 
-	var hosts []*models.DiscoveredHost
+	var checks []*models.DiscoveredCheck
 	err := f.dbSvc.DB().NewSelect().
-		Model(&hosts).
+		Model(&checks).
 		Where("organization_uid = ?", f.org.UID).
 		Where("deleted_at IS NULL").
-		Order("ip ASC").
+		Order("group_key ASC", "slug ASC").
 		Scan(t.Context())
 	require.NoError(t, err)
 
-	return hosts
+	return checks
+}
+
+// groupKeys returns the distinct group_key values across the given checks,
+// preserving first-seen order.
+func groupKeys(checks []*models.DiscoveredCheck) []string {
+	seen := map[string]struct{}{}
+
+	var out []string
+
+	for _, c := range checks {
+		if _, ok := seen[c.GroupKey]; ok {
+			continue
+		}
+
+		seen[c.GroupKey] = struct{}{}
+		out = append(out, c.GroupKey)
+	}
+
+	return out
 }
 
 func TestFreeboxLanDiscoveryPersistsHosts(t *testing.T) {
@@ -201,25 +220,26 @@ func TestFreeboxLanDiscoveryPersistsHosts(t *testing.T) {
 
 	r.NoError(runFreeboxJob(t, f))
 
-	hosts := f.listHosts(t)
-	r.Len(hosts, 2, "router must be filtered out by ListLanHosts")
+	checks := f.listChecks(t)
 
-	for _, h := range hosts {
-		r.Equal(models.DiscoverySourceFreebox, h.Source)
-		r.Equal(f.jobUID, h.JobUID)
+	for _, c := range checks {
+		r.Equal(models.DiscoverySourceFreebox, c.Source)
+		r.Equal(f.jobUID, c.JobUID)
 	}
 
 	// These hosts use TEST-NET-1 addresses (192.0.2.0/24, RFC 5737) which are
-	// guaranteed unroutable, so the active scan finds nothing and the rows fall
-	// back to the Freebox-provided name + reachability with empty ports/checks.
-	r.Equal("192.0.2.10", hosts[0].IP)
-	r.Equal("nas", hosts[0].Hostname)
-	r.True(hosts[0].ICMPReachable)
-	r.JSONEq("[]", string(hosts[0].OpenPorts))
-	r.JSONEq("[]", string(hosts[0].SuggestedChecks))
+	// guaranteed unroutable, so the active scan finds nothing. The reachable NAS
+	// (192.0.2.10) falls back to an ICMP suggestion; the unreachable phone
+	// (192.0.2.20) yields no suggested check. The router is filtered upstream.
+	keys := groupKeys(checks)
+	r.Equal([]string{"192.0.2.10"}, keys, "only the reachable NAS yields a fallback ICMP check")
 
-	r.Equal("192.0.2.20", hosts[1].IP)
-	r.False(hosts[1].ICMPReachable)
+	r.Len(checks, 1)
+	r.Equal("192.0.2.10", checks[0].GroupKey)
+	r.Equal("nas", checks[0].GroupLabel, "the Freebox device name is the group label")
+	// The suggest engine emits the "ping" alias (normalized to "icmp" at promote).
+	r.Equal("ping", checks[0].Type, "an unscannable but reachable host gets an ICMP suggestion")
+	r.Contains(string(checks[0].Metadata), "icmpReachable")
 }
 
 func TestFreeboxLanDiscoveryActivelyScansHosts(t *testing.T) {
@@ -259,34 +279,32 @@ func TestFreeboxLanDiscoveryActivelyScansHosts(t *testing.T) {
 
 	r.NoError(runFreeboxJob(t, f))
 
-	hosts := f.listHosts(t)
-	r.Len(hosts, 2)
+	checks := f.listChecks(t)
 
-	byIP := map[string]*models.DiscoveredHost{}
-	for _, h := range hosts {
-		byIP[h.IP] = h
+	byGroup := map[string][]*models.DiscoveredCheck{}
+	for _, c := range checks {
+		byGroup[c.GroupKey] = append(byGroup[c.GroupKey], c)
 	}
 
-	// The live host: the active scan found the open port + suggested checks.
-	live := byIP["127.0.0.1"]
-	r.NotNil(live)
-	r.Equal(models.DiscoverySourceFreebox, live.Source)
-	r.Equal("live-host", live.Hostname, "the Freebox device name must be preserved over reverse DNS")
-	r.Contains(string(live.OpenPorts), strconv.Itoa(openPort))
-	r.NotEqual("[]", string(live.OpenPorts), "active scan must populate open_ports")
-	r.NotEqual("[]", string(live.SuggestedChecks), "active scan must populate suggested_checks")
+	// The live host: the active scan found the open port → at least one suggested
+	// check, with the open port recorded in the group metadata. The Freebox device
+	// name is preserved as the group label.
+	live := byGroup["127.0.0.1"]
+	r.NotEmpty(live, "active scan must produce suggested checks for the live host")
 
-	var suggested []map[string]any
-	r.NoError(json.Unmarshal(live.SuggestedChecks, &suggested))
-	r.NotEmpty(suggested)
+	for _, c := range live {
+		r.Equal(models.DiscoverySourceFreebox, c.Source)
+		r.Equal("live-host", c.GroupLabel, "the Freebox device name must be the group label")
+	}
 
-	// The unscannable host: falls back to the Freebox name + reachability,
-	// empty ports/checks. It is never dropped.
-	dead := byIP["192.0.2.50"]
-	r.NotNil(dead)
-	r.Equal("dead-host", dead.Hostname)
-	r.JSONEq("[]", string(dead.OpenPorts))
-	r.JSONEq("[]", string(dead.SuggestedChecks))
+	r.Contains(string(live[0].Metadata), strconv.Itoa(openPort), "active scan must record the open port")
+
+	// The unscannable but reachable host falls back to an ICMP suggestion under
+	// its Freebox name. It is never dropped.
+	dead := byGroup["192.0.2.50"]
+	r.Len(dead, 1)
+	r.Equal("dead-host", dead[0].GroupLabel)
+	r.Equal("ping", dead[0].Type)
 }
 
 func TestFreeboxLanDiscoveryUpsertIsIdempotent(t *testing.T) {
@@ -312,8 +330,8 @@ func TestFreeboxLanDiscoveryUpsertIsIdempotent(t *testing.T) {
 	r.NoError(runFreeboxJob(t, f))
 	r.NoError(runFreeboxJob(t, f))
 
-	hosts := f.listHosts(t)
-	r.Len(hosts, 1, "re-running must update in place, not duplicate")
+	checks := f.listChecks(t)
+	r.Len(checks, 1, "re-running must update in place, not duplicate")
 }
 
 func TestFreeboxLanDiscoveryNotGranted(t *testing.T) {

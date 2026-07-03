@@ -5,7 +5,7 @@ title: Check Types
 
 # Check Types
 
-SolidPing supports **35 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
+SolidPing supports **36 check types** across multiple categories for monitoring your services. Each check type has specific configuration options and validation capabilities.
 
 ## Network Checks
 
@@ -487,6 +487,28 @@ tls://host:5061
 - **OPTIONS mode** succeeds when the server returns a valid SIP status code (matching `expect_status` if set).
 - **REGISTER mode** performs the standard two-step challenge/response and succeeds only on a final `200 OK`.
 
+### NTP (Time Server)
+
+Monitor an NTP time server. Unlike a plain UDP/123 reachability probe, this checker sends a real NTP request and judges the server **as a clock**: it confirms the server returns a valid response and reports itself healthy (stratum, leap indicator, and root distance, via the server's own self-report — no trust in the worker's clock). Two optional, opt-in thresholds let you also alert on the measured clock offset and on the server's stratum depth.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Host | NTP server hostname or IP | - (required) |
+| Port | NTP UDP port | `123` |
+| Version | NTP protocol version (`3` or `4`) | `4` |
+| Timeout | Query timeout (max `60s`) | `5s` |
+| Offset warn (ms) | Mark **warning** when the absolute clock offset exceeds this. `0` = off | off |
+| Offset critical (ms) | Mark **down** when the absolute clock offset exceeds this. Must be ≥ Offset warn. `0` = off | off |
+| Max stratum | Mark **down** when the server's stratum exceeds this (`1`–`15`). `0` = off | off |
+
+- **Default verdict** = reachable **and** the server reports a usable clock. A Kiss-o'-Death (stratum 0), an unsynchronized server (stratum 16), a `LeapNotInSync` leap indicator, or an out-of-range root distance all yield **down**.
+- **Clock offset is measured relative to the worker's own clock.** A worker whose clock is itself skewed will report a misleading offset, so the offset thresholds are opt-in rather than the default verdict — keep this in mind when running across a distributed worker fleet.
+- Metrics exposed: clock offset, RTT, stratum, root delay, root dispersion, root distance, poll interval, and precision.
+
+:::note Egress
+NTP uses outbound **UDP port 123**, which is frequently blocked by egress firewalls. A blocked path surfaces deterministically as `down`/`timeout`.
+:::
+
 ## Infrastructure
 
 ### SNMP
@@ -558,6 +580,66 @@ Monitor the quality of a Freebox broadband line (xDSL or FTTH) through the Freeb
 
 The check reports sync rates, SNR, attenuation, CRC counts (xDSL) or optical power and SFP details (FTTH), and fails when the WAN is down, the link is not trained, or any configured threshold is violated.
 
+### Kubernetes (Workload Replica Health)
+
+Monitor a Kubernetes workload's replica health — the structural analog of how the Docker check mirrors a container's HEALTHCHECK. The check connects via a stored **Kubernetes cluster connection** (an integration of type `kubernetes`) referenced by UID, never an inline credential.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| Cluster | Reference to a `kubernetes` integration connection | - (required) |
+| Namespace | Workload namespace | - (required) |
+| Kind | `Deployment` or `ReplicaSet` | - (required) |
+| Name | Workload name | - (required) |
+| Timeout | Per-execution API timeout (max 60s) | `10s` |
+
+**Status semantics** (ready vs. desired replicas):
+
+- **Up** — `readyReplicas == desiredReplicas` and `desiredReplicas > 0`.
+- **Warning** — `0 < readyReplicas < desiredReplicas` (mid-rollout or partially degraded), or `desiredReplicas == 0` (intentionally scaled to zero — surfaced, not paged).
+- **Down** — `readyReplicas == 0` with `desiredReplicas > 0`, a stuck rollout (Deployment `Progressing=False` / `ProgressDeadlineExceeded`), or the workload no longer exists.
+
+Outputs include the namespace, kind, name, container images, and workload conditions; metrics include `desiredReplicas`, `readyReplicas`, `availableReplicas`, `updatedReplicas`, and `unavailableReplicas`.
+
+#### Cluster connection
+
+Register a cluster once under **Integrations → Kubernetes** (it is a data source, not a notification channel). Three authentication modes:
+
+- **API server + token** — an API server URL plus a bearer token (typically a service-account token), optionally a CA certificate (or skip TLS verification).
+- **Kubeconfig** — paste a full kubeconfig that resolves to an API server and credentials.
+- **In-cluster** — when SolidPing itself runs as a pod in the target cluster, it uses the mounted service-account token; no credentials are stored.
+
+The token / kubeconfig is stored **encrypted** (AES-256-GCM) in the connection's private settings and is never returned to the dashboard. Use **Test connection** to confirm the credentials work — it calls the cluster's `/version` endpoint.
+
+#### Required RBAC
+
+The connection only needs read access to the monitored workloads. Bind a read-only `ClusterRole` to the service account whose token you register:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: solidping-readonly
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments", "replicasets"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: solidping-readonly
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: solidping-readonly
+subjects:
+  - kind: ServiceAccount
+    name: solidping
+    namespace: solidping
+```
+
+> Kubernetes discovery (enumerating workloads automatically) builds on this same connection and additionally needs `get`/`list` on `services`, `endpoints`, and `ingresses` (and `nodes`); grant those too if you plan to use it.
+
 ## Special Check Types
 
 ### Heartbeat
@@ -579,6 +661,8 @@ Passive monitoring that expects incoming pings at regular intervals. Instead of 
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.
 
+Minimum period: `30s` (default `1m`) — see [Check Intervals](#check-intervals).
+
 **Use cases:**
 - Complex multi-step API workflows
 - Custom business logic validation
@@ -588,6 +672,10 @@ Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs 
 ### Browser
 
 Headless browser-based monitoring using a real browser engine.
+
+Minimum period: `60s` (default `5m`) — a headless-browser run costs several
+seconds, so faster periods would occupy a monitoring slot continuously. See
+[Check Intervals](#check-intervals).
 
 **Use cases:**
 - Single-page application monitoring
@@ -615,12 +703,32 @@ All check types support these common options:
 
 Supported interval formats:
 
-- Seconds: `5s`, `30s`, `60s`
+- Seconds: `10s`, `30s`, `60s`
 - Minutes: `1m`, `5m`, `15m`
 - Hours: `1h`, `6h`, `24h`
 
-Minimum interval: `5s`
-Recommended minimum: `30s` for production
+### Minimum intervals
+
+The API enforces a minimum period per check type — both in the dashboard and
+on direct API calls (`400 VALIDATION_ERROR` naming the floor):
+
+| Check type | Minimum period | Default period |
+|------------|----------------|----------------|
+| `browser` | `60s` | `5m` |
+| `js` | `30s` | `1m` |
+| `ssl` | `1h` | `6h` |
+| `domain` | `6h` | `24h` |
+| `dnsbl` | `15m` | `1h` |
+| All other types | `10s` | `1m` |
+
+Heavy check types (headless browser, custom scripts) carry higher floors
+because each run can occupy a monitoring slot for several seconds — a fast
+period would keep a runner busy full-time. Existing checks are grandfathered:
+a period created before a floor was raised keeps working, and the limit
+applies on the next edit. The check detail page shows a warning when a check
+occupies 50% or more of a runner slot (its *duty cycle*).
+
+Recommended minimum: `30s` for production.
 
 ## Best Practices
 

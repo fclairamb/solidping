@@ -17,6 +17,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
@@ -99,7 +106,15 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
         />
       </div>
 
-      <PerTypePanel type={type} settings={settings} onChange={setSettings} org={org} channelUid={channelUid} />
+      <PerTypePanel
+        type={type}
+        settings={settings}
+        onChange={setSettings}
+        org={org}
+        channelUid={channelUid}
+        privateKeys={initial?.settingsPrivateKeys}
+        canTest={canTest}
+      />
 
       <div className="flex items-center justify-between rounded border p-3">
         <div>
@@ -133,9 +148,10 @@ export function IntegrationForm({ type, initial, initialName, onChange, org, cha
       </div>
 
       {/* Test delivery — available on every notifiable integration once it
-          exists (channelUid present). Freebox is a data source, not a
-          notification target, so it has nothing to test. */}
-      {channelUid && type !== "freebox" && (
+          exists (channelUid present). Data sources (Freebox, Kubernetes) are
+          not notification targets: Freebox has nothing to test, and Kubernetes
+          has its own "test connection" probe inside its panel. */}
+      {channelUid && type !== "freebox" && type !== "kubernetes" && (
         <TestNotificationSection
           org={org}
           channelUid={channelUid}
@@ -257,9 +273,14 @@ interface PerTypePanelProps {
   onChange: (next: Record<string, unknown>) => void;
   org?: string;
   channelUid?: string;
+  /** Names of the settings keys stored encrypted (so secret inputs can render
+   *  a "leave blank to keep" hint instead of echoing the value). */
+  privateKeys?: string[];
+  /** Whether a "test connection" probe may run (false while edits unsaved). */
+  canTest?: boolean;
 }
 
-function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePanelProps) {
+function PerTypePanel({ type, settings, onChange, org, channelUid, privateKeys, canTest }: PerTypePanelProps) {
   const { t } = useTranslation("integrations");
 
   const update = (key: string, value: unknown) =>
@@ -403,6 +424,17 @@ function PerTypePanel({ type, settings, onChange, org, channelUid }: PerTypePane
       );
     case "freebox":
       return <FreeboxStatusPanel settings={settings} />;
+    case "kubernetes":
+      return (
+        <KubernetesPanel
+          settings={settings}
+          onChange={onChange}
+          org={org}
+          channelUid={channelUid}
+          privateKeys={privateKeys}
+          canTest={canTest}
+        />
+      );
     case "webpush":
       return (
         <WebPushChannelPanel
@@ -444,6 +476,351 @@ function FreeboxStatusPanel({ settings }: { settings: Record<string, unknown> })
           "Leave as-is if SolidPing runs on the same LAN as the Freebox. For remote access, use the public hostname you configured in the Freebox admin under Settings → Freebox OS API.",
         )}
       </p>
+    </div>
+  );
+}
+
+// ---- Kubernetes cluster panel ----
+
+type KubeAuthMode = "token" | "kubeconfig" | "inCluster";
+
+interface KubernetesPanelProps {
+  settings: Record<string, unknown>;
+  onChange: (next: Record<string, unknown>) => void;
+  org?: string;
+  channelUid?: string;
+  privateKeys?: string[];
+  canTest?: boolean;
+}
+
+// KubernetesPanel collects the public cluster settings (apiServer, caCert,
+// insecureSkipTLSVerify, inCluster) and the write-only secret (token or pasted
+// kubeconfig). Secrets are never echoed back: when one is already stored
+// (present in privateKeys), the input shows a "leave blank to keep" hint and an
+// empty value is omitted from the patch so the stored secret is preserved.
+function KubernetesPanel({
+  settings,
+  onChange,
+  org,
+  channelUid,
+  privateKeys,
+  canTest = true,
+}: KubernetesPanelProps) {
+  const { t } = useTranslation("integrations");
+
+  const hasStoredToken = privateKeys?.includes("token") ?? false;
+  const hasStoredKubeconfig = privateKeys?.includes("kubeconfig") ?? false;
+
+  // Derive the initial auth mode: in-cluster wins, then a stored kubeconfig,
+  // else token (the default for a fresh form).
+  const initialMode: KubeAuthMode = settings.inCluster
+    ? "inCluster"
+    : hasStoredKubeconfig
+      ? "kubeconfig"
+      : "token";
+  const [mode, setMode] = useState<KubeAuthMode>(initialMode);
+
+  const update = (key: string, value: unknown) =>
+    onChange({ ...settings, [key]: value });
+
+  // Switching auth mode rewrites the relevant settings so we never send a
+  // mismatched combination (e.g. an apiServer alongside inCluster).
+  const handleModeChange = (next: KubeAuthMode) => {
+    setMode(next);
+    const base = { ...settings };
+    delete base.token;
+    delete base.kubeconfig;
+
+    if (next === "inCluster") {
+      onChange({ ...base, inCluster: true });
+      return;
+    }
+
+    delete base.inCluster;
+    onChange(base);
+  };
+
+  return (
+    <div className="space-y-3" data-testid="kubernetes-panel">
+      <div className="space-y-2">
+        <Label htmlFor="k8s-auth-mode">
+          {t("kubernetes.authMode", "Authentication")}
+        </Label>
+        <Select value={mode} onValueChange={(v) => handleModeChange(v as KubeAuthMode)}>
+          <SelectTrigger id="k8s-auth-mode" data-testid="kubernetes-auth-mode">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="token">
+              {t("kubernetes.authToken", "API server + token")}
+            </SelectItem>
+            <SelectItem value="kubeconfig">
+              {t("kubernetes.authKubeconfig", "Kubeconfig")}
+            </SelectItem>
+            <SelectItem value="inCluster">
+              {t("kubernetes.authInCluster", "In-cluster (this cluster)")}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {mode === "inCluster" && (
+        <p
+          className="rounded border bg-muted/30 p-3 text-xs text-muted-foreground"
+          data-testid="kubernetes-incluster-hint"
+        >
+          {t(
+            "kubernetes.inClusterHint",
+            "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored.",
+          )}
+        </p>
+      )}
+
+      {mode === "token" && (
+        <>
+          <div className="space-y-2">
+            <Label htmlFor="k8s-api-server">
+              {t("kubernetes.apiServer", "API server URL")}
+            </Label>
+            <Input
+              id="k8s-api-server"
+              type="url"
+              value={(settings.apiServer as string) || ""}
+              onChange={(e) => update("apiServer", e.target.value)}
+              placeholder="https://10.0.0.1:6443"
+              data-testid="kubernetes-api-server"
+            />
+          </div>
+          <KubeSecretField
+            id="k8s-token"
+            label={t("kubernetes.token", "Bearer token")}
+            value={(settings.token as string) || ""}
+            onChange={(v) => update("token", v)}
+            stored={hasStoredToken}
+            multiline={false}
+            testid="kubernetes-token"
+          />
+          <KubeTlsFields settings={settings} update={update} />
+        </>
+      )}
+
+      {mode === "kubeconfig" && (
+        <KubeSecretField
+          id="k8s-kubeconfig"
+          label={t("kubernetes.kubeconfig", "Kubeconfig (YAML)")}
+          value={(settings.kubeconfig as string) || ""}
+          onChange={(v) => update("kubeconfig", v)}
+          stored={hasStoredKubeconfig}
+          multiline
+          testid="kubernetes-kubeconfig"
+        />
+      )}
+
+      {channelUid && (
+        <KubernetesTestSection
+          org={org}
+          channelUid={channelUid}
+          canTest={canTest}
+        />
+      )}
+    </div>
+  );
+}
+
+// KubeTlsFields renders the CA cert + insecure-skip-tls-verify controls shared
+// by the token auth mode.
+function KubeTlsFields({
+  settings,
+  update,
+}: {
+  settings: Record<string, unknown>;
+  update: (key: string, value: unknown) => void;
+}) {
+  const { t } = useTranslation("integrations");
+  const insecure = settings.insecureSkipTLSVerify === true;
+
+  return (
+    <>
+      <div className="space-y-2">
+        <Label htmlFor="k8s-ca-cert">
+          {t("kubernetes.caCert", "CA certificate (PEM, optional)")}
+        </Label>
+        <Textarea
+          id="k8s-ca-cert"
+          rows={4}
+          value={(settings.caCert as string) || ""}
+          onChange={(e) => update("caCert", e.target.value)}
+          placeholder="-----BEGIN CERTIFICATE-----"
+          className="font-mono text-xs"
+          disabled={insecure}
+          data-testid="kubernetes-ca-cert"
+        />
+      </div>
+      <div className="flex items-center justify-between rounded border p-3">
+        <div>
+          <Label htmlFor="k8s-insecure" className="font-medium">
+            {t("kubernetes.insecure", "Skip TLS verification")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "kubernetes.insecureHelp",
+              "Disables API-server certificate verification. Use only for clusters with a self-signed cert you cannot pin.",
+            )}
+          </p>
+        </div>
+        <Switch
+          id="k8s-insecure"
+          checked={insecure}
+          onCheckedChange={(v) => update("insecureSkipTLSVerify", v)}
+          data-testid="kubernetes-insecure"
+        />
+      </div>
+    </>
+  );
+}
+
+// KubeSecretField is a write-only secret input (single-line password or
+// multiline textarea). When a secret is already stored it shows a placeholder
+// + hint and starts empty; submitting an empty value preserves the stored
+// secret (the backend's PATCH-merge omits absent secret keys).
+function KubeSecretField({
+  id,
+  label,
+  value,
+  onChange,
+  stored,
+  multiline,
+  testid,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  stored: boolean;
+  multiline: boolean;
+  testid: string;
+}) {
+  const { t } = useTranslation("integrations");
+  const placeholder = stored
+    ? t("kubernetes.secretStored", "•••••••• (stored — leave blank to keep)")
+    : "";
+
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      {multiline ? (
+        <Textarea
+          id={id}
+          rows={8}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder || "apiVersion: v1\nkind: Config\n..."}
+          className="font-mono text-xs"
+          data-testid={testid}
+        />
+      ) : (
+        <Input
+          id={id}
+          type="password"
+          autoComplete="new-password"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          data-testid={testid}
+        />
+      )}
+    </div>
+  );
+}
+
+// KubernetesTestSection probes the saved cluster connection (the /test
+// endpoint hits the cluster's /version). Like the notification test, it runs
+// against persisted settings, so it is disabled while there are unsaved edits.
+function KubernetesTestSection({
+  org,
+  channelUid,
+  canTest = true,
+}: {
+  org?: string;
+  channelUid: string;
+  canTest?: boolean;
+}) {
+  const { t } = useTranslation("integrations");
+  const test = useTestIntegration(org ?? "");
+  const [result, setResult] = useState<IntegrationTestResult | null>(null);
+
+  function handleTest() {
+    test.mutate(channelUid, {
+      onSuccess: (res) => setResult(res),
+      onError: (err) =>
+        setResult({
+          success: false,
+          statusCode: 0,
+          durationMs: 0,
+          error: err instanceof Error ? err.message : String(err),
+        }),
+    });
+  }
+
+  return (
+    <div
+      className="space-y-2 rounded border p-3"
+      data-testid="kubernetes-test-section"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <Label className="font-medium">
+            {t("kubernetes.testTitle", "Test cluster connection")}
+          </Label>
+          <p className="text-xs text-muted-foreground">
+            {t(
+              "kubernetes.testHelp",
+              "Probe the cluster API to confirm the credentials work. Uses the saved settings.",
+            )}
+          </p>
+        </div>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="inline-flex">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={!canTest || test.isPending}
+                onClick={handleTest}
+                data-testid="kubernetes-send-test"
+              >
+                {test.isPending ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-1 h-4 w-4" />
+                )}
+                {t("kubernetes.testButton", "Test connection")}
+              </Button>
+            </span>
+          </TooltipTrigger>
+          {!canTest && (
+            <TooltipContent>
+              {t(
+                "form.testNeedsSave",
+                "Save your changes first — the test uses the saved settings.",
+              )}
+            </TooltipContent>
+          )}
+        </Tooltip>
+      </div>
+      {result && (
+        <Badge
+          variant={result.success ? "success" : "destructive"}
+          data-testid="kubernetes-test-result"
+        >
+          {result.success
+            ? `${result.detail || t("kubernetes.connected", "Connected")} · ${result.durationMs} ms`
+            : `${t("kubernetes.failed", "Failed")} · ${result.durationMs} ms${
+                result.error ? ` — ${result.error}` : ""
+              }`}
+        </Badge>
+      )}
     </div>
   );
 }

@@ -85,7 +85,7 @@ func runReapSuite(t *testing.T, makeSvc func(t *testing.T) db.Service) {
 	newEnv := func(t *testing.T) *reapTestEnv {
 		t.Helper()
 		dbSvc := makeSvc(t)
-		svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+		svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 		return &reapTestEnv{t: t, r: require.New(t), dbSvc: dbSvc, svc: svc}
 	}
@@ -253,7 +253,7 @@ func TestReapStuckJobsPostgres(t *testing.T) {
 	require.NoError(t, dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 	e := &reapTestEnv{t: t, r: r, dbSvc: dbSvc, svc: svc}
 
 	truncate := func() {

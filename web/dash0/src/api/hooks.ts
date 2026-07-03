@@ -5,6 +5,11 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { apiFetch } from "./client";
+import {
+  stretchWhileLive,
+  useLiveSubscription,
+  useScopeLive,
+} from "@/contexts/LiveEventsContext";
 
 // Types
 export interface CheckGroup {
@@ -38,7 +43,7 @@ export interface Check {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "sleep";
   config?: Record<string, unknown>;
   configPrivateKeys?: string[];
   regions?: string[];
@@ -62,9 +67,24 @@ export interface Check {
     time?: string;
   };
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number;
+  flapBackoffFactor?: number;
+  maxRecoveryMultiplier?: number;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
+  /**
+   * Read-only scheduling telemetry (max across the check's per-region
+   * scheduler jobs). Detail responses only — never present on lists — and
+   * omitted until the check's first run produces a cost signal.
+   */
+  scheduling?: {
+    /** Smoothed execution cost in milliseconds (EWMA). */
+    costEwmaMs: number;
+    /** Smoothed start lateness in milliseconds (EWMA, telemetry). */
+    delayEwmaMs: number;
+    /** round(100 × cost / period): share of a runner slot this check occupies. */
+    dutyCyclePct: number;
+  };
 }
 
 export interface RegionDefinition {
@@ -78,7 +98,7 @@ export interface CreateCheckRequest {
   slug?: string;
   description?: string;
   checkGroupUid?: string;
-  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
+  type?: "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "sleep";
   config: Record<string, unknown>;
   regions?: string[];
   labels?: Record<string, string>;
@@ -99,7 +119,9 @@ export interface UpdateCheckRequest {
   internal?: boolean;
   period?: string;
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
 }
@@ -262,7 +284,16 @@ export function useInfiniteChecks(
 export function useCheck(
   org: string,
   uid: string,
-  options?: { with?: string; refetchInterval?: number }
+  options?: {
+    with?: string;
+    refetchInterval?: number;
+    /**
+     * Pass "always" when the consumer seeds local state from the response
+     * once (e.g. an edit form): combined with `isFetchedAfterMount`, it
+     * guarantees the seed comes from fresh data, not a stale cache entry.
+     */
+    refetchOnMount?: boolean | "always";
+  }
 ) {
   return useQuery({
     queryKey: ["check", org, uid, { with: options?.with }],
@@ -275,6 +306,7 @@ export function useCheck(
     },
     enabled: !!org && !!uid,
     refetchInterval: options?.refetchInterval,
+    refetchOnMount: options?.refetchOnMount,
   });
 }
 
@@ -391,7 +423,9 @@ export interface ExportCheck {
   escalationThreshold?: number;
   recoveryPeriodSeconds?: number;
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
 }
 
 export interface ImportResult {
@@ -661,6 +695,64 @@ export function useResult(org: string, checkUid: string, resultUid: string) {
       ),
     enabled: !!org && !!checkUid && !!resultUid,
     staleTime: Infinity,
+  });
+}
+
+/** Confirmed-outage (wall-clock) stats for one period. */
+export interface CheckAvailabilityIncidents {
+  count: number;
+  longestSeconds?: number;
+  averageSeconds?: number;
+  totalDowntimeSeconds?: number;
+}
+
+/**
+ * One period of server-measured availability. `availabilityPct` is `null` (and
+ * `hasData` false) when the window has no countable probes — no data is not
+ * 100%. `downtimeSeconds` is probe-time downtime; the `incidents` block is
+ * confirmed-outage wall-clock time.
+ */
+export interface CheckAvailabilityPeriod {
+  period: string;
+  windowStart: string;
+  windowEnd: string;
+  monitoredSeconds: number;
+  partial: boolean;
+  hasData: boolean;
+  totalChecks: number;
+  successfulChecks: number;
+  availabilityPct: number | null;
+  downtimeSeconds: number;
+  incidents: CheckAvailabilityIncidents;
+}
+
+export interface CheckAvailabilityResponse {
+  data: CheckAvailabilityPeriod[];
+}
+
+/**
+ * Fetches real per-period availability for one check from the server endpoint.
+ * `periods` is a comma-separated token list (e.g. "today,7d,30d,365d"); the
+ * server measures each window (probe-ratio availability + downtime + incident
+ * block) so the client does no availability math.
+ */
+export function useCheckAvailability(
+  org: string,
+  checkUid: string,
+  periods: string,
+  options?: { tz?: string; refetchInterval?: number },
+) {
+  return useQuery<CheckAvailabilityResponse>({
+    queryKey: ["checkAvailability", org, checkUid, periods, options?.tz],
+    queryFn: () => {
+      const params = new URLSearchParams({ periods });
+      if (options?.tz) params.set("tz", options.tz);
+      return apiFetch<CheckAvailabilityResponse>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/availability?${params.toString()}`,
+      );
+    },
+    enabled: !!org && !!checkUid && !!periods,
+    refetchInterval: options?.refetchInterval,
   });
 }
 
@@ -1096,6 +1188,12 @@ export function useRevokeToken() {
 }
 
 // Status Page types
+
+// StatusPagePeriod is the configured history window. 24h renders 24 hourly
+// buckets; 7d/30d/90d render N daily buckets. Mirrors the badge uptime-bar
+// vocabulary.
+export type StatusPagePeriod = "24h" | "7d" | "30d" | "90d";
+
 export interface StatusPage {
   uid: string;
   name: string;
@@ -1107,6 +1205,7 @@ export interface StatusPage {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  historyPeriod: StatusPagePeriod;
   sections?: StatusPageSection[];
   createdAt?: string;
 }
@@ -1143,6 +1242,7 @@ export interface CreateStatusPageRequest {
   showAvailability?: boolean;
   showResponseTime?: boolean;
   historyDays?: number;
+  historyPeriod?: StatusPagePeriod;
 }
 
 export interface UpdateStatusPageRequest {
@@ -1155,6 +1255,7 @@ export interface UpdateStatusPageRequest {
   showAvailability?: boolean;
   showResponseTime?: boolean;
   historyDays?: number;
+  historyPeriod?: StatusPagePeriod;
 }
 
 export interface CreateSectionRequest {
@@ -2104,6 +2205,37 @@ export function useSystemParameters() {
   });
 }
 
+// Per-worker check-lane load report (super-admin): job counts, summed
+// cost/delay EWMAs, and summed duty cycle per lane, computed server-side.
+export interface LaneLoadStats {
+  jobs: number;
+  costEwmaSumMs: number;
+  delayEwmaSumMs: number;
+  dutySumPct: number;
+}
+
+export interface WorkerLaneLoad {
+  workerUid: string;
+  name: string;
+  region?: string;
+  lastActiveAt?: string;
+  fast: LaneLoadStats;
+  slow: LaneLoadStats;
+}
+
+export function useSchedulingLaneLoad() {
+  return useQuery({
+    queryKey: ["system-scheduling-lane-load"],
+    queryFn: async () => {
+      const response = await apiFetch<{ data: WorkerLaneLoad[] }>(
+        "/api/v1/system/scheduling/lane-load"
+      );
+      return response.data || [];
+    },
+    refetchInterval: 30000,
+  });
+}
+
 export function useSetSystemParameter() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -2724,7 +2856,8 @@ export type ConnectionType =
   | "opsgenie"
   | "pushover"
   | "freebox"
-  | "webpush";
+  | "webpush"
+  | "kubernetes";
 
 // Capabilities mirror the backend capability registry
 // (server/internal/db/models/integration.go `CapabilitiesFor`). The two flags
@@ -2751,6 +2884,7 @@ export const CAPABILITIES: Record<ConnectionType, IntegrationCapabilities> = {
   pushover: NOTIFY,
   freebox: SOURCE,
   webpush: NOTIFY,
+  kubernetes: SOURCE,
 };
 
 /** Whether an integration type can receive notifications (act as a channel). */
@@ -2864,6 +2998,8 @@ export interface IntegrationTestResult {
   statusCode: number;
   durationMs: number;
   error?: string;
+  /** Optional human-readable success note (e.g. the Kubernetes server version). */
+  detail?: string;
 }
 
 export function useRotateWebhookSecret(org: string, integrationUid: string) {
@@ -3209,8 +3345,9 @@ export interface DiscoveryScan {
   updatedAt: string;
 }
 
-// DiscoveryScanProgress is the derived fan-out progress block returned alongside
-// a plan scan: chunk counts, an overall derived status, and the host roll-up count.
+// DiscoveryScanProgress is the uniform progress block returned alongside every
+// scan: chunk counts, an overall derived status, and the group/check roll-up
+// counts. Non-chunked scans report totalChunks=1.
 export interface DiscoveryScanProgress {
   totalChunks: number;
   completedChunks: number;
@@ -3218,72 +3355,72 @@ export interface DiscoveryScanProgress {
   runningChunks: number;
   pendingChunks: number;
   derivedStatus: "pending" | "running" | "success" | "failed";
-  hostCount: number;
+  groupCount: number;
+  checkCount: number;
 }
 
-export interface SuggestedCheck {
+export type DiscoverySource = "lan" | "freebox" | "container" | "kubernetes";
+
+// DiscoveryType is a registered discovery type returned by GET /discovery/types,
+// driving the registry-aware type picker.
+export interface DiscoveryType {
   type: string;
-  config: Record<string, unknown>;
+  source: DiscoverySource;
 }
 
-export type DiscoverySource = "lan" | "freebox";
-
-export interface DiscoveredHost {
+// DiscoveredCheck is one suggested check produced by a scan. Rows are grouped for
+// display by groupKey; the stored unit is the check.
+export interface DiscoveredCheck {
   uid: string;
   organizationUid: string;
   jobUid: string;
-  ip: string;
-  hostname?: string;
-  openPorts: number[];
-  icmpReachable: boolean;
-  suggestedChecks: SuggestedCheck[];
   source: DiscoverySource;
+  groupKey: string;
+  groupLabel: string;
+  name: string;
+  slug: string;
+  type: string;
+  config: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   promotedToCheckUid?: string;
   discoveredAt: string;
 }
 
+// StartDiscoveryScanRequest is the generic scan-start body: a registered type
+// plus its type-specific parameters.
 export interface StartDiscoveryScanRequest {
-  cidrs: string[];
-  ports?: number[];
-  timeout?: string;
-  concurrency?: number;
+  type: string;
+  parameters: Record<string, unknown>;
 }
 
-export interface PromoteCheckSpec {
-  checkType: string;
-  name?: string;
-  slug?: string;
-  period?: string;
-  extraConfig?: Record<string, unknown>;
+// PromoteChecksRequest promotes one or more discovered checks into real checks.
+// A group's UIDs promote the whole group; overrides adjust name/period.
+export interface PromoteChecksRequest {
+  uids: string[];
+  overrides?: {
+    name?: string;
+    period?: string;
+  };
 }
 
-export interface PromoteCandidateRequest {
-  checks: PromoteCheckSpec[];
+export function useDiscoveryTypes(org: string) {
+  return useQuery({
+    queryKey: ["discoveryTypes", org],
+    queryFn: () =>
+      apiFetch<{ data: DiscoveryType[] }>(`/api/v1/orgs/${org}/discovery/types`),
+    select: (res) => res?.data ?? [],
+  });
 }
 
 export function useStartDiscoveryScan(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (req: StartDiscoveryScanRequest) =>
-      apiFetch<{ data: DiscoveryScan }>(`/api/v1/orgs/${org}/discovery/scans`, {
-        method: "POST",
-        body: JSON.stringify(req),
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryScans", org] });
-    },
-  });
-}
-
-export function useStartFreeboxScan(org: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (channelUid: string) =>
-      apiFetch<{ data: DiscoveryScan }>(
-        `/api/v1/orgs/${org}/discovery/freebox-scans`,
+      apiFetch<{ data: DiscoveryScan; progress?: DiscoveryScanProgress }>(
+        `/api/v1/orgs/${org}/discovery/scans`,
         {
           method: "POST",
-          body: JSON.stringify({ channelUid }),
+          body: JSON.stringify(req),
         },
       ),
     onSuccess: () => {
@@ -3346,57 +3483,80 @@ export function useCancelScan(org: string) {
   });
 }
 
-export function useListCandidateHosts(
+// useListDiscoveredChecks returns the suggested checks for a scan (or org). The
+// frontend groups them by groupKey. While a fan-out scan is active, pass
+// pollWhileActive to stream rows in as chunks land.
+export function useListDiscoveredChecks(
   org: string,
-  opts?: { jobUid?: string; promoted?: boolean; source?: string },
-  // pollWhileActive streams hosts into the table while a fan-out scan is running
-  // (chunks land progressively), by polling the list every 3s.
+  opts?: { jobUid?: string; group?: string; promoted?: boolean; source?: string },
   pollWhileActive = false,
 ) {
   const params = new URLSearchParams();
   if (opts?.jobUid) params.set("jobUid", opts.jobUid);
+  if (opts?.group) params.set("group", opts.group);
   if (opts?.promoted !== undefined) params.set("promoted", String(opts.promoted));
   if (opts?.source) params.set("source", opts.source);
   const qs = params.toString();
 
   return useQuery({
-    queryKey: ["discoveryHosts", org, opts],
+    queryKey: ["discoveryChecks", org, opts],
     queryFn: () =>
-      apiFetch<{ data: DiscoveredHost[] }>(
-        `/api/v1/orgs/${org}/discovery/hosts${qs ? `?${qs}` : ""}`,
+      apiFetch<{ data: DiscoveredCheck[] }>(
+        `/api/v1/orgs/${org}/discovery/checks${qs ? `?${qs}` : ""}`,
       ),
     select: (res) => res?.data ?? [],
     refetchInterval: pollWhileActive ? 3000 : false,
   });
 }
 
-export function usePromoteCandidate(org: string) {
+// usePromoteChecks promotes the selected discovered-check UIDs into real checks.
+export function usePromoteChecks(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: ({ uid, req }: { uid: string; req: PromoteCandidateRequest }) =>
+    mutationFn: (req: PromoteChecksRequest) =>
       apiFetch<{ data: Check[] }>(
-        `/api/v1/orgs/${org}/discovery/hosts/${uid}/promote`,
+        `/api/v1/orgs/${org}/discovery/checks/promote`,
         {
           method: "POST",
           body: JSON.stringify(req),
         },
       ),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
       queryClient.invalidateQueries({ queryKey: ["checks", org] });
     },
   });
 }
 
-export function useDismissCandidate(org: string) {
+// useDismissCheck dismisses a single discovered check (soft delete).
+export function useDismissCheck(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: (uid: string) =>
-      apiFetch<void>(`/api/v1/orgs/${org}/discovery/hosts/${uid}`, {
+      apiFetch<void>(`/api/v1/orgs/${org}/discovery/checks/${uid}`, {
         method: "DELETE",
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["discoveryHosts", org] });
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
+    },
+  });
+}
+
+// useDismissGroup dismisses every discovered check in a group for a scan.
+export function useDismissGroup(org: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ jobUid, group }: { jobUid?: string; group: string }) => {
+      const params = new URLSearchParams();
+      if (jobUid) params.set("jobUid", jobUid);
+      params.set("group", group);
+      return apiFetch<void>(
+        `/api/v1/orgs/${org}/discovery/checks?${params.toString()}`,
+        { method: "DELETE" },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["discoveryChecks", org] });
     },
   });
 }
@@ -3621,8 +3781,14 @@ function jobsStatsAreActive(stats?: JobsStats): boolean {
   );
 }
 
-function jobsAdaptiveInterval(active: boolean): number {
-  return active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS;
+// jobsAdaptiveInterval picks the poll cadence. While the live hint stream is
+// connected, `jobs` hints drive freshness and the interval stretches to the
+// lazy safety net — the 2.5s active poll only runs when not live.
+function jobsAdaptiveInterval(active: boolean, isLive = false): number {
+  return stretchWhileLive(
+    active ? JOBS_ACTIVE_INTERVAL_MS : JOBS_IDLE_INTERVAL_MS,
+    isLive,
+  );
 }
 
 interface JobsScope {
@@ -3632,6 +3798,8 @@ interface JobsScope {
 // useJobsStats fetches the activity overview and drives adaptive refresh.
 export function useJobsStats(org: string, opts?: JobsScope) {
   const allOrgs = opts?.allOrgs ?? false;
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["jobsStats", org, { allOrgs }],
     queryFn: () =>
@@ -3642,7 +3810,10 @@ export function useJobsStats(org: string, opts?: JobsScope) {
       ).then((r) => r.data),
     enabled: !!org,
     refetchInterval: (query) =>
-      jobsAdaptiveInterval(jobsStatsAreActive(query.state.data as JobsStats | undefined)),
+      jobsAdaptiveInterval(
+        jobsStatsAreActive(query.state.data as JobsStats | undefined),
+        isLive,
+      ),
     refetchIntervalInBackground: false,
   });
 }
@@ -3658,6 +3829,8 @@ interface BackgroundJobsOptions extends JobsScope {
 // useBackgroundJobs lists background jobs (admin/super-admin).
 export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
   const allOrgs = opts?.allOrgs ?? false;
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["backgroundJobs", org, opts],
     queryFn: () => {
@@ -3675,7 +3848,7 @@ export function useBackgroundJobs(org: string, opts?: BackgroundJobsOptions) {
       ).then((r) => r.data ?? []);
     },
     enabled: !!org,
-    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false, isLive),
     refetchIntervalInBackground: false,
   });
 }
@@ -3689,6 +3862,8 @@ interface CheckScheduleOptions extends JobsScope {
 // useCheckSchedule lists check-schedule rows (admin/super-admin).
 export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
   const allOrgs = opts?.allOrgs ?? false;
+  useLiveSubscription({ entity: "jobs" });
+  const isLive = useScopeLive({ entity: "jobs" });
   return useQuery({
     queryKey: ["checkSchedule", org, opts],
     queryFn: () => {
@@ -3704,7 +3879,7 @@ export function useCheckSchedule(org: string, opts?: CheckScheduleOptions) {
       ).then((r) => r.data ?? []);
     },
     enabled: !!org,
-    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false),
+    refetchInterval: () => jobsAdaptiveInterval(opts?.active ?? false, isLive),
     refetchIntervalInBackground: false,
   });
 }
@@ -3751,5 +3926,166 @@ export function useCheckJob(org: string, uid: string, opts?: JobsScope) {
           : `/api/v1/orgs/${org}/check-jobs/${uid}`,
       ).then((r) => r.data),
     enabled: !!org && !!uid,
+  });
+}
+
+// Maintenance windows ---------------------------------------------------------
+// Backend: server/internal/handlers/maintenancewindows. The window response
+// carries no server-computed status or check counts — the UI derives status
+// client-side (see lib/maintenance-window-status.ts) and counts from the
+// /checks association endpoint.
+
+// One concrete activation of a (possibly recurring) maintenance window.
+// Mirrors models.Occurrence on the backend.
+export interface MaintenanceOccurrence {
+  startAt: string;
+  endAt: string;
+}
+
+export interface MaintenanceWindow {
+  uid: string;
+  title: string;
+  description?: string;
+  startAt: string;
+  endAt: string;
+  recurrence: "none" | "daily" | "weekly" | "monthly";
+  recurrenceEnd?: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+  // Server-computed lifecycle at response time. Optional so the client keeps
+  // working against older servers; views fall back to computeMaintenanceStatus.
+  status?: "active" | "upcoming" | "past";
+  // Server-computed upcoming activations (active one first). Optional; views
+  // fall back to the client nextOccurrences port.
+  nextOccurrences?: MaintenanceOccurrence[];
+}
+
+export interface MaintenanceWindowCheck {
+  uid: string;
+  checkUid?: string;
+  checkGroupUid?: string;
+}
+
+export interface CreateMaintenanceWindowRequest {
+  title: string;
+  description?: string;
+  startAt: string;
+  endAt: string;
+  recurrence: string;
+  recurrenceEnd?: string | null;
+}
+
+export type UpdateMaintenanceWindowRequest = Partial<CreateMaintenanceWindowRequest>;
+
+export interface SetMaintenanceWindowChecksRequest {
+  checkUids: string[];
+  checkGroupUids: string[];
+}
+
+export function useMaintenanceWindows(
+  org: string,
+  params?: { status?: string; limit?: number },
+) {
+  return useQuery({
+    queryKey: ["maintenanceWindows", org, params ?? {}],
+    queryFn: async () => {
+      const search = new URLSearchParams();
+      if (params?.status) search.set("status", params.status);
+      if (params?.limit) search.set("limit", String(params.limit));
+      const query = search.toString();
+      const response = await apiFetch<{ data?: MaintenanceWindow[] }>(
+        `/api/v1/orgs/${org}/maintenance-windows${query ? `?${query}` : ""}`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useMaintenanceWindow(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["maintenanceWindow", org, uid],
+    queryFn: () =>
+      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`),
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useMaintenanceWindowChecks(org: string, uid: string) {
+  return useQuery({
+    queryKey: ["maintenanceWindowChecks", org, uid],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: MaintenanceWindowCheck[] }>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}/checks`,
+      );
+      return response.data ?? [];
+    },
+    enabled: !!org && !!uid,
+  });
+}
+
+export function useCreateMaintenanceWindow(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: CreateMaintenanceWindowRequest) =>
+      apiFetch<MaintenanceWindow>(`/api/v1/orgs/${org}/maintenance-windows`, {
+        method: "POST",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+    },
+  });
+}
+
+export function useUpdateMaintenanceWindow(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpdateMaintenanceWindowRequest) =>
+      apiFetch<MaintenanceWindow>(
+        `/api/v1/orgs/${org}/maintenance-windows/${uid}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(request),
+        },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindow", org, uid] });
+    },
+  });
+}
+
+export function useDeleteMaintenanceWindow(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/maintenance-windows/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["maintenanceWindows", org] });
+    },
+  });
+}
+
+export function useSetMaintenanceWindowChecks(org: string, uid: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: SetMaintenanceWindowChecksRequest) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/maintenance-windows/${uid}/checks`, {
+        method: "PUT",
+        body: JSON.stringify(request),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: ["maintenanceWindowChecks", org, uid],
+      });
+    },
   });
 }

@@ -26,7 +26,7 @@ func newQueueDepthTestService(t *testing.T) (context.Context, *require.Assertion
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
+	svc := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
 
 	return ctx, r, dbSvc, svc
 }

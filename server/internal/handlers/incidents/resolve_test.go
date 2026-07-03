@@ -38,8 +38,8 @@ func newResolveSetup(t *testing.T) *resolveSetup {
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{}, nil)
 
 	org := models.NewOrganization("resolve-test", "Resolve Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))
@@ -191,4 +191,132 @@ func TestManualResolveIdempotent(t *testing.T) {
 		}
 	}
 	r.Equal(1, resolved, "exactly one resolved event regardless of duplicate calls")
+}
+
+// countResolvedEvents returns how many incident.resolved events the
+// persistence layer recorded for the given incident.
+func countResolvedEvents(t *testing.T, dbSvc *sqlite.Service, orgUID, incidentUID string) int {
+	t.Helper()
+	events := listIncidentEvents(t, dbSvc, orgUID, incidentUID)
+	count := 0
+	for _, e := range events {
+		if e.EventType == models.EventTypeIncidentResolved {
+			count++
+		}
+	}
+	return count
+}
+
+// TestManualResolveSuppressedRolledUpChildStillEmitsResolved pins the fixed
+// contract for grouped/rolled-up incidents: a paging-suppressed child that is
+// resolved must still RECORD its incident.resolved event (the dashboard
+// timeline shows closure) but must NOT page any channel. This is the inverse
+// of the pre-fix behavior, where the suppressed child's resolve fanned out a
+// notification and produced a context-free orphan "resolved" message.
+func TestManualResolveSuppressedRolledUpChildStillEmitsResolved(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := context.Background()
+	s := newResolveSetup(t)
+
+	// Mark the seeded incident as a rolled-up, paging-suppressed child.
+	suppressed := true
+	r.NoError(s.dbSvc.UpdateIncident(ctx, s.incident.UID, &models.IncidentUpdate{
+		PagingSuppressed: &suppressed,
+	}))
+
+	r.Equal(0, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"no notification jobs before resolve")
+
+	out, err := s.svc.ResolveIncident(ctx, s.org.Slug, &incidents.ResolveIncidentRequest{
+		IncidentUID: s.incident.UID,
+		Via:         "web",
+	})
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, out.State)
+
+	r.Equal(1, countResolvedEvents(t, s.dbSvc, s.org.UID, s.incident.UID),
+		"suppressed child still records exactly one incident.resolved event row")
+	r.Equal(0, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"suppressed child resolve must NOT page any channel")
+}
+
+// TestRolledUpChildResolveDoesNotPageWhenSuppressed exercises the same
+// invariant through the real rollup-attribution path: a child check with a
+// hard dependency on a parent that already has an open incident rolls up
+// (paging_suppressed=true, caused_by_incident_uid=parent) via applyRollup.
+// Resolving that still-suppressed child records the event but pages nothing.
+func TestRolledUpChildResolveDoesNotPageWhenSuppressed(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := context.Background()
+	s := newResolveSetup(t)
+
+	// A parent check with an open (non-suppressed) incident inside the window.
+	parent := models.NewCheck(s.org.UID, "parent", "http")
+	r.NoError(s.dbSvc.CreateCheck(ctx, parent))
+	parentInc := models.NewIncident(s.org.UID, parent.UID, time.Now().Add(-2*time.Minute), "parent is down")
+	r.NoError(s.dbSvc.CreateIncident(ctx, parentInc))
+
+	// A child check that hard-depends on the parent.
+	child := models.NewCheck(s.org.UID, "child", "http")
+	r.NoError(s.dbSvc.CreateCheck(ctx, child))
+	dep := models.NewCheckDependency(s.org.UID, parent.UID, child.UID, models.CheckDependencyKindHard, nil)
+	r.NoError(s.dbSvc.CreateCheckDependency(ctx, dep))
+	// Bind a channel to the child so a fan-out (if it wrongly happened) would
+	// produce a job we can detect.
+	childConn := models.NewIntegration(s.org.UID, models.ConnectionTypeWebhook, "child-ops")
+	childConn.Enabled = true
+	r.NoError(s.dbSvc.CreateChannel(ctx, childConn))
+	r.NoError(s.dbSvc.CreateCheckConnection(ctx, models.NewCheckConnection(child.UID, childConn.UID, s.org.UID)))
+
+	// Build the child incident and let applyRollup attribute + suppress it.
+	childInc := models.NewIncident(s.org.UID, child.UID, time.Now(), "child is down")
+	s.svc.ApplyRollupForTest(ctx, child, childInc)
+	r.True(childInc.PagingSuppressed, "child must be paging-suppressed after rollup")
+	r.NotNil(childInc.CausedByIncidentUID, "child must be attributed to the parent")
+	r.Equal(parentInc.UID, *childInc.CausedByIncidentUID)
+	r.NoError(s.dbSvc.CreateIncident(ctx, childInc))
+
+	before := pendingNotificationJobs(t, s.dbSvc, s.org.UID)
+
+	out, err := s.svc.ResolveIncident(ctx, s.org.Slug, &incidents.ResolveIncidentRequest{
+		IncidentUID: childInc.UID,
+		Via:         "web",
+	})
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, out.State)
+
+	r.Equal(1, countResolvedEvents(t, s.dbSvc, s.org.UID, childInc.UID),
+		"rolled-up child still records its incident.resolved event")
+	r.Equal(before, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"suppressed rolled-up child resolve enqueues zero notification jobs")
+}
+
+// TestUnsuppressedChildResolveStillPages is the regression guard for the fix:
+// once a child has been un-suppressed (the state reEvaluateChild leaves it in
+// when it is still down at parent resolution), it is a real standalone
+// incident and MUST page on its own subsequent resolution. Gating on the
+// current PagingSuppressed value (false here) must not silence it.
+func TestUnsuppressedChildResolveStillPages(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := context.Background()
+	s := newResolveSetup(t)
+
+	// The seeded incident is not suppressed (the post-reEvaluateChild state).
+	r.False(s.incident.PagingSuppressed)
+
+	r.Equal(0, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"no notification jobs before resolve")
+
+	out, err := s.svc.ResolveIncident(ctx, s.org.Slug, &incidents.ResolveIncidentRequest{
+		IncidentUID: s.incident.UID,
+		Via:         "web",
+	})
+	r.NoError(err)
+	r.Equal(models.IncidentStateResolved, out.State)
+
+	r.Equal(1, pendingNotificationJobs(t, s.dbSvc, s.org.UID),
+		"an un-suppressed child resolve pages one notification per bound channel")
 }

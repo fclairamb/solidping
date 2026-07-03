@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { subDays, startOfDay, startOfMinute } from "date-fns";
-import { useAllResults, useIncidents } from "@/api/hooks";
-import type { IncidentDetail, OrgResult } from "@/api/hooks";
+import { useCheckAvailability } from "@/api/hooks";
+import type { CheckAvailabilityPeriod } from "@/api/hooks";
+import { mapAvailabilityRow, selectAvailabilityRows } from "@/lib/availability-rows";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -14,228 +14,49 @@ import {
 } from "@/components/ui/table";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type PeriodId = "today" | "last7" | "last30" | "last365";
-
-export type AvailabilityChartPeriod = "day" | "week" | "month";
-
 interface AvailabilityTableProps {
   org: string;
   checkUid: string;
   refetchInterval?: number;
-  onPeriodSelect?: (period: AvailabilityChartPeriod) => void;
 }
 
-interface PeriodConfig {
-  id: PeriodId;
-  labelKey: "today" | "last7" | "last30" | "last365";
+// The period tokens we ask the server for, in display order (shortest window
+// first), with their label key. The server measures each window; the client
+// does no availability math.
+const PERIOD_ROWS: {
+  token: string;
+  labelKey: "last1h" | "last24h" | "last30" | "last90" | "last365";
   shortLabel: string;
-  getStart: () => Date;
-  durationMs: number;
-}
-
-const PERIODS: PeriodConfig[] = [
-  {
-    id: "today",
-    labelKey: "today",
-    shortLabel: "1d",
-    getStart: () => startOfDay(new Date()),
-    durationMs: Date.now() - startOfDay(new Date()).getTime(),
-  },
-  {
-    id: "last7",
-    labelKey: "last7",
-    shortLabel: "7d",
-    getStart: () => subDays(new Date(), 7),
-    durationMs: 7 * 24 * 60 * 60 * 1000,
-  },
-  {
-    id: "last30",
-    labelKey: "last30",
-    shortLabel: "30d",
-    getStart: () => subDays(new Date(), 30),
-    durationMs: 30 * 24 * 60 * 60 * 1000,
-  },
-  {
-    id: "last365",
-    labelKey: "last365",
-    shortLabel: "1y",
-    getStart: () => subDays(new Date(), 365),
-    durationMs: 365 * 24 * 60 * 60 * 1000,
-  },
+}[] = [
+  { token: "1h", labelKey: "last1h", shortLabel: "1h" },
+  { token: "24h", labelKey: "last24h", shortLabel: "24h" },
+  { token: "30d", labelKey: "last30", shortLabel: "30d" },
+  { token: "90d", labelKey: "last90", shortLabel: "90d" },
+  { token: "365d", labelKey: "last365", shortLabel: "1y" },
 ];
 
-function formatAvailability(pct: number): string {
-  if (pct >= 100) return "100%";
-  if (pct >= 99) return `${pct.toFixed(2)}%`;
-  return `${pct.toFixed(1)}%`;
-}
+const PERIODS_PARAM = PERIOD_ROWS.map((p) => p.token).join(",");
 
-const ROW_TO_GRAPH: Record<PeriodId, AvailabilityChartPeriod | null> = {
-  today: "day",
-  last7: "week",
-  last30: "month",
-  last365: null,
-};
-
-function formatDuration(ms: number): string {
-  if (ms <= 0) return "0s";
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  const days = Math.floor(hours / 24);
-
-  if (days > 0) return `${days}d ${hours % 24}h`;
-  if (hours > 0) return `${hours}h ${minutes % 60}m`;
-  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-  return `${seconds}s`;
-}
-
-function computeIncidentStats(
-  incidents: IncidentDetail[],
-  start: Date,
-  now: Date
-) {
-  const filtered = incidents.filter((inc) => {
-    if (!inc.startedAt) return false;
-    const startedAt = new Date(inc.startedAt);
-    return startedAt >= start && startedAt <= now;
-  });
-
-  if (filtered.length === 0) {
-    return { count: 0, longest: 0, average: 0 };
-  }
-
-  let totalDuration = 0;
-  let longest = 0;
-
-  for (const inc of filtered) {
-    const s = new Date(inc.startedAt!).getTime();
-    const e = inc.resolvedAt ? new Date(inc.resolvedAt).getTime() : now.getTime();
-    const dur = e - s;
-    totalDuration += dur;
-    if (dur > longest) longest = dur;
-  }
-
-  return {
-    count: filtered.length,
-    longest,
-    average: Math.round(totalDuration / filtered.length),
-  };
-}
-
-export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSelect }: AvailabilityTableProps) {
+export function AvailabilityTable({
+  org,
+  checkUid,
+  refetchInterval,
+}: AvailabilityTableProps) {
   const { t } = useTranslation("checks");
-  // Memoize timestamps to the current minute so query keys are stable across re-renders
-  const yearAgo = useMemo(() => {
-    const now = startOfMinute(new Date());
-    return subDays(now, 365).toISOString();
-  }, []);
 
-  // Fetch only aggregated tiers — raw results are excluded from availability
-  // computation (see computeAvailability below) and fetching them would add
-  // noise without benefit.
   const tableRefetchInterval = Math.max(refetchInterval ?? 60_000, 60_000);
 
-  const { data: allResults, isLoading: loadingResults } = useAllResults(org, {
-    checkUid,
-    periodStartAfter: yearAgo,
-    periodType: "hour,day,month",
-    with: "availabilityPct,totalChecks,successfulChecks,status",
-    size: 1000,
+  const { data, isLoading } = useCheckAvailability(org, checkUid, PERIODS_PARAM, {
     refetchInterval: tableRefetchInterval,
   });
 
-  // Bucket all aggregated results by the period windows we need.
-  const { todayRows, last7Rows, last30Rows, last365Rows } = useMemo(() => {
-    const data = allResults?.data ?? [];
-    const now = new Date();
-    const todayStart = startOfDay(now).getTime();
-    const day7 = subDays(now, 7).getTime();
-    const day30 = subDays(now, 30).getTime();
-    const day365 = subDays(now, 365).getTime();
-    return {
-      todayRows:   data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= todayStart),
-      last7Rows:   data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day7),
-      last30Rows:  data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day30),
-      last365Rows: data.filter((r) => r.periodStart && new Date(r.periodStart).getTime() >= day365),
-    };
-  }, [allResults]);
-
-  const { data: incidents, isLoading: loadingIncidents } = useIncidents(org, {
-    checkUid,
-    size: 100,
-    refetchInterval: tableRefetchInterval,
-  });
-
-  const isLoading = loadingResults || loadingIncidents;
-
-  const rows = useMemo(() => {
-    const now = new Date();
-
-    // Compute availability from aggregated rows only (hour/day/month).
-    // Raw results are excluded — they are only available for the current open
-    // bucket and are not yet rolled up by the aggregator. Showing them would
-    // produce misleading numbers (e.g. 50% from 5 up + 5 down pings) when no
-    // aggregated data exists yet. Show "-" instead.
-    function computeAvailability(data: OrgResult[] | undefined): number | null {
-      if (!data?.length) return null;
-      let successful = 0;
-      let total = 0;
-      for (const r of data) {
-        if (r.periodType === "raw") {
-          // Skip raw results — availability is only computed from aggregated tiers.
-          continue;
-        } else if (r.totalChecks != null && r.successfulChecks != null) {
-          total += r.totalChecks;
-          successful += r.successfulChecks;
-        } else if (r.availabilityPct != null) {
-          total += 1;
-          successful += r.availabilityPct / 100;
-        }
-      }
-      return total === 0 ? null : (successful / total) * 100;
-    }
-
-    const incidentData = incidents?.data || [];
-
-    return PERIODS.map((period) => {
-      let availability: number | null;
-      switch (period.id) {
-        case "today":
-          availability = computeAvailability(todayRows);
-          break;
-        case "last7":
-          availability = computeAvailability(last7Rows);
-          break;
-        case "last30":
-          availability = computeAvailability(last30Rows);
-          break;
-        case "last365":
-          availability = computeAvailability(last365Rows);
-          break;
-        default:
-          availability = null;
-      }
-
-      const incStats = computeIncidentStats(incidentData, period.getStart(), now);
-
-      const downtime =
-        availability != null
-          ? (1 - availability / 100) * period.durationMs
-          : null;
-
-      return {
-        id: period.id,
-        labelKey: period.labelKey,
-        shortLabel: period.shortLabel,
-        availability,
-        downtime,
-        incidents: incStats.count,
-        longest: incStats.longest,
-        average: incStats.average,
-      };
-    });
-  }, [todayRows, last7Rows, last30Rows, last365Rows, incidents]);
+  // Index the server's periods by token so each display row reads straight from
+  // the matching measurement (no recomputation client-side).
+  const byToken = useMemo(() => {
+    const map = new Map<string, CheckAvailabilityPeriod>();
+    for (const p of data?.data ?? []) map.set(p.period, p);
+    return map;
+  }, [data]);
 
   if (isLoading) {
     return (
@@ -268,35 +89,40 @@ export function AvailabilityTable({ org, checkUid, refetchInterval, onPeriodSele
             </TableRow>
           </TableHeader>
           <TableBody>
-            {rows.map((row) => {
-              const graphPeriod = ROW_TO_GRAPH[row.id];
-              const clickable = graphPeriod != null && onPeriodSelect != null;
+            {selectAvailabilityRows(
+              PERIOD_ROWS.map((row) => byToken.get(row.token)),
+            ).map(({ index, collapsed }) => {
+              const row = PERIOD_ROWS[index];
+              const view = mapAvailabilityRow(byToken.get(row.token));
+              // A collapsed row stands for the whole monitored history (all the
+              // longer windows measure the same span), so it gets its own label
+              // and the short form shows the actual days of data, not "1y".
+              const label = collapsed
+                ? t("detail.availability.sinceCreation")
+                : t(`detail.availability.${row.labelKey}`);
+              const shortLabel = collapsed
+                ? `${view.monitoredDays ?? 1}d`
+                : row.shortLabel;
+
               return (
-                <TableRow
-                  key={row.id}
-                  className={clickable ? "cursor-pointer hover:bg-muted/50" : undefined}
-                  onClick={
-                    clickable ? () => onPeriodSelect!(graphPeriod!) : undefined
-                  }
-                >
+                <TableRow key={row.token}>
                   <TableCell className="font-medium">
-                    <span className="sm:hidden">{row.shortLabel}</span>
-                    <span className="hidden sm:inline">{t(`detail.availability.${row.labelKey}`)}</span>
+                    <span className="sm:hidden">{shortLabel}</span>
+                    <span className="hidden sm:inline">{label}</span>
+                    {collapsed && view.monitoredDays != null && (
+                      <span className="block text-xs text-muted-foreground">
+                        {t("detail.availability.monitored", { days: view.monitoredDays })}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>{view.availabilityText}</TableCell>
+                  <TableCell>{view.downtimeText}</TableCell>
+                  <TableCell>{view.incidentCount}</TableCell>
+                  <TableCell>
+                    {view.longestText ?? t("detail.availability.none")}
                   </TableCell>
                   <TableCell>
-                    {row.availability != null
-                      ? formatAvailability(row.availability)
-                      : "-"}
-                  </TableCell>
-                  <TableCell>
-                    {row.downtime != null ? formatDuration(row.downtime) : "-"}
-                  </TableCell>
-                  <TableCell>{row.incidents}</TableCell>
-                  <TableCell>
-                    {row.incidents > 0 ? formatDuration(row.longest) : t("detail.availability.none")}
-                  </TableCell>
-                  <TableCell>
-                    {row.incidents > 0 ? formatDuration(row.average) : t("detail.availability.none")}
+                    {view.averageText ?? t("detail.availability.none")}
                   </TableCell>
                 </TableRow>
               );

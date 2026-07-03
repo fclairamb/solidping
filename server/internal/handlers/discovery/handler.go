@@ -10,7 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
@@ -18,13 +18,8 @@ import (
 )
 
 const (
-	// ErrorCodeDiscoveryRangeTooLarge is returned when CIDRs expand to more than 4096 addresses.
-	ErrorCodeDiscoveryRangeTooLarge base.ErrorCode = "DISCOVERY_RANGE_TOO_LARGE"
 	// ErrorCodeDiscoveryAlreadyRunning is returned when a scan is already in progress for the org.
 	ErrorCodeDiscoveryAlreadyRunning base.ErrorCode = "DISCOVERY_ALREADY_RUNNING"
-	// ErrorCodeFreeboxNotGranted is returned when a Freebox discovery targets a
-	// channel that has not completed the LCD-pairing flow.
-	ErrorCodeFreeboxNotGranted base.ErrorCode = "FREEBOX_NOT_GRANTED"
 	// keyData is the standard JSON response wrapper key.
 	keyData = "data"
 )
@@ -56,67 +51,47 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 // RegisterRoutes registers discovery routes on the given router group.
 // The group must already point to /orgs/:org/discovery and have RequireAuth + RequireOrgAccess applied.
 func (h *Handler) RegisterRoutes(group *bunrouter.Group) {
+	group.GET("/types", h.ListTypes)
 	group.POST("/scans", h.StartScan)
-	group.POST("/freebox-scans", h.StartFreeboxScan)
 	group.GET("/scans", h.ListScans)
 	group.GET("/scans/:jobUid", h.GetScan)
 	group.POST("/scans/:jobUid/cancel", h.CancelScan)
-	group.GET("/hosts", h.ListHosts)
-	group.POST("/hosts/:uid/promote", h.PromoteHost)
-	group.DELETE("/hosts/:uid", h.DismissHost)
+	group.GET("/checks", h.ListChecks)
+	group.POST("/checks/promote", h.PromoteChecks)
+	group.DELETE("/checks/:uid", h.DismissCheck)
+	group.DELETE("/checks", h.DismissGroup)
 }
 
-// StartFreeboxScanRequest is the body for POST /discovery/freebox-scans.
-type StartFreeboxScanRequest struct {
-	ChannelUID string `json:"channelUid"`
+// discoveryTypeDescriptor is the public capability descriptor for one registered
+// discovery type, driving the frontend type picker.
+type discoveryTypeDescriptor struct {
+	Type   string `json:"type"`
+	Source string `json:"source"`
 }
 
-// StartFreeboxScan handles POST /orgs/:org/discovery/freebox-scans.
-// Admin only. Launches a freebox_lan_discovery run for a paired channel.
-func (h *Handler) StartFreeboxScan(writer http.ResponseWriter, req bunrouter.Request) error {
-	if !isAdmin(req) {
-		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
+// ListTypes returns the registered discovery types so the frontend can build its
+// type picker without hard-coding the set.
+func (h *Handler) ListTypes(writer http.ResponseWriter, _ bunrouter.Request) error {
+	defs := scantypes.List()
+	out := make([]discoveryTypeDescriptor, 0, len(defs))
+
+	for _, d := range defs {
+		out = append(out, discoveryTypeDescriptor{Type: d.Type(), Source: string(d.Source())})
 	}
 
-	org, _ := mw.GetOrganizationFromContext(req.Context())
-	if org == nil {
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
-	}
-
-	var body StartFreeboxScanRequest
-	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
-		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "invalid request body")
-	}
-
-	if body.ChannelUID == "" {
-		return h.WriteError(
-			writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "channelUid is required",
-		)
-	}
-
-	job, err := h.svc.StartFreeboxScan(req.Context(), org.UID, body.ChannelUID)
-
-	switch {
-	case errors.Is(err, ErrFreeboxNotGranted):
-		return h.WriteError(
-			writer, http.StatusConflict, ErrorCodeFreeboxNotGranted, "Freebox channel is not paired yet",
-		)
-	case errors.Is(err, ErrFreeboxChannelNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "freebox channel not found")
-	case errors.Is(err, ErrAlreadyRunning):
-		return h.WriteError(
-			writer, http.StatusConflict, ErrorCodeDiscoveryAlreadyRunning,
-			"a discovery scan is already running for this organization",
-		)
-	case err != nil:
-		return h.WriteInternalError(writer, err)
-	}
-
-	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: job})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: out})
 }
 
-// StartScan handles POST /orgs/:org/discovery/scans.
-// Admin only.
+// StartScanRequest is the generic body for POST /discovery/scans.
+type StartScanRequest struct {
+	Type       string          `json:"type"`
+	Parameters json.RawMessage `json:"parameters"`
+}
+
+// StartScan handles POST /orgs/:org/discovery/scans. Admin only. The body is a
+// generic {type, parameters}; the discovery-type registry validates parameters
+// and resolves the job to enqueue. The response carries the scan job plus its
+// ScanProgress.
 func (h *Handler) StartScan(writer http.ResponseWriter, req bunrouter.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
@@ -127,30 +102,62 @@ func (h *Handler) StartScan(writer http.ResponseWriter, req bunrouter.Request) e
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	var cfg disc.Config
-	if err := json.NewDecoder(req.Body).Decode(&cfg); err != nil {
+	var body StartScanRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "invalid request body")
 	}
 
-	if len(cfg.CIDRs) == 0 {
-		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "cidrs is required")
+	if body.Type == "" {
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "type is required")
 	}
 
-	job, err := h.svc.StartScan(req.Context(), org.UID, &cfg)
+	job, err := h.svc.StartScan(req.Context(), org.UID, body.Type, body.Parameters)
+	if err != nil {
+		return h.writeScanError(writer, err)
+	}
 
-	switch {
-	case errors.Is(err, disc.ErrRangeTooLarge):
-		return h.WriteError(writer, http.StatusUnprocessableEntity, ErrorCodeDiscoveryRangeTooLarge, err.Error())
-	case errors.Is(err, ErrAlreadyRunning):
+	progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, job.UID)
+	if progErr != nil {
+		return h.WriteInternalError(writer, progErr)
+	}
+
+	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: job, "progress": progress})
+}
+
+// writeScanError maps a StartScan error (coded DiscoveryError, already-running,
+// or unexpected) to the proper HTTP response.
+func (h *Handler) writeScanError(writer http.ResponseWriter, err error) error {
+	if errors.Is(err, ErrAlreadyRunning) {
 		return h.WriteError(
 			writer, http.StatusConflict, ErrorCodeDiscoveryAlreadyRunning,
 			"a discovery scan is already running for this organization",
 		)
-	case err != nil:
-		return h.WriteInternalError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: job})
+	var de *scantypes.DiscoveryError
+	if errors.As(err, &de) {
+		status := statusForDiscoveryCode(de.Code)
+
+		return h.WriteError(writer, status, base.ErrorCode(de.Code), de.Message)
+	}
+
+	return h.WriteInternalError(writer, err)
+}
+
+// statusForDiscoveryCode maps a discovery error code to an HTTP status.
+func statusForDiscoveryCode(code string) int {
+	switch code {
+	case scantypes.CodeUnknownType:
+		return http.StatusBadRequest
+	case scantypes.CodeAlreadyRunning:
+		return http.StatusConflict
+	case scantypes.CodeFreeboxNotGranted:
+		return http.StatusConflict
+	case scantypes.CodeKubernetesClusterNotFound:
+		return http.StatusNotFound
+	default: // CodeInvalidParameters, DISCOVERY_RANGE_TOO_LARGE
+		return http.StatusUnprocessableEntity
+	}
 }
 
 // ListScans handles GET /orgs/:org/discovery/scans.
@@ -161,17 +168,13 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) e
 	}
 
 	jobs, err := h.svc.jobSvc.ListJobs(req.Context(), org.UID, jobsvc.ListJobsOptions{
-		Types: []string{
-			string(jobdef.JobTypeNetworkDiscoveryPlan),
-			string(jobdef.JobTypeNetworkDiscovery),
-			string(jobdef.JobTypeFreeboxLanDiscovery),
-		},
+		Types: scanJobTypes(),
 	})
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}
 
-	// Child network_discovery jobs (those carrying a parentJobUid) are
+	// Child network_discovery jobs (those carrying a parentJobUid) are an
 	// implementation detail of a fan-out scan — the scan itself is the plan job.
 	// Filter them out so the list shows one entry per user-initiated scan.
 	scans := make([]*models.Job, 0, len(jobs))
@@ -191,10 +194,9 @@ func (h *Handler) ListScans(writer http.ResponseWriter, req bunrouter.Request) e
 	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: scans})
 }
 
-// GetScan handles GET /orgs/:org/discovery/scans/:jobUid.
-// It returns the scan's job plus a derived progress block (chunk counts, derived
-// status, host count) for fan-out plan scans. Legacy/standalone jobs return a nil
-// progress block.
+// GetScan handles GET /orgs/:org/discovery/scans/:jobUid. It returns the scan's
+// job plus a uniform progress block (chunk counts, derived status, group/check
+// counts) for every scan type.
 func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
@@ -208,18 +210,12 @@ func (h *Handler) GetScan(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "scan not found")
 	}
 
-	resp := map[string]any{keyData: job}
-
-	if job.Type == string(jobdef.JobTypeNetworkDiscoveryPlan) {
-		progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, jobUID)
-		if progErr != nil {
-			return h.WriteInternalError(writer, progErr)
-		}
-
-		resp["progress"] = progress
+	progress, progErr := h.svc.GetScanProgress(req.Context(), org.UID, jobUID)
+	if progErr != nil {
+		return h.WriteInternalError(writer, progErr)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, resp)
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: job, "progress": progress})
 }
 
 // CancelScan handles POST /orgs/:org/discovery/scans/:jobUid/cancel.
@@ -248,16 +244,17 @@ func (h *Handler) CancelScan(writer http.ResponseWriter, req bunrouter.Request) 
 	return nil
 }
 
-// ListHosts handles GET /orgs/:org/discovery/hosts.
-func (h *Handler) ListHosts(writer http.ResponseWriter, req bunrouter.Request) error {
+// ListChecks handles GET /orgs/:org/discovery/checks.
+func (h *Handler) ListChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	org, _ := mw.GetOrganizationFromContext(req.Context())
 	if org == nil {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
 	queryParams := req.URL.Query()
-	opts := ListHostsOptions{
+	opts := ListChecksOptions{
 		JobUID: queryParams.Get("jobUid"),
+		Group:  queryParams.Get("group"),
 	}
 
 	if promoted := queryParams.Get("promoted"); promoted != "" {
@@ -275,17 +272,16 @@ func (h *Handler) ListHosts(writer http.ResponseWriter, req bunrouter.Request) e
 		}
 	}
 
-	hosts, err := h.svc.ListHosts(req.Context(), org.UID, opts)
+	rows, err := h.svc.ListDiscoveredChecks(req.Context(), org.UID, &opts)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}
 
-	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: hosts})
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{keyData: rows})
 }
 
-// PromoteHost handles POST /orgs/:org/discovery/hosts/:uid/promote.
-// Admin only.
-func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request) error {
+// PromoteChecks handles POST /orgs/:org/discovery/checks/promote. Admin only.
+func (h *Handler) PromoteChecks(writer http.ResponseWriter, req bunrouter.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -295,40 +291,29 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	hostUID := req.Param("uid")
-
 	var promoteReq PromoteRequest
 	if err := json.NewDecoder(req.Body).Decode(&promoteReq); err != nil {
 		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError, "invalid request body")
 	}
 
-	if len(promoteReq.Checks) == 0 {
+	if len(promoteReq.UIDs) == 0 {
 		return h.WriteError(
-			writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "at least one check is required",
+			writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "at least one uid is required",
 		)
 	}
 
-	for i := range promoteReq.Checks {
-		if promoteReq.Checks[i].CheckType == "" {
-			return h.WriteError(
-				writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "checkType is required",
-			)
-		}
-	}
-
-	// Need org slug for check creation.
 	org2, err := h.svc.dbSvc.GetOrganization(req.Context(), org.UID)
 	if err != nil {
 		return h.WriteInternalError(writer, err)
 	}
 
-	checkResps, err := h.svc.PromoteHost(req.Context(), org.UID, org2.Slug, hostUID, promoteReq)
+	checkResps, err := h.svc.PromoteChecks(req.Context(), org.UID, org2.Slug, promoteReq)
 
 	switch {
-	case errors.Is(err, ErrHostNotFound):
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "host not found")
+	case errors.Is(err, ErrCheckNotFound):
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "discovered check not found")
 	case errors.Is(err, ErrAlreadyPromoted):
-		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "host already promoted")
+		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict, "discovered check already promoted")
 	case err != nil:
 		return h.WriteInternalErrorR(writer, req.Request, err)
 	}
@@ -336,9 +321,8 @@ func (h *Handler) PromoteHost(writer http.ResponseWriter, req bunrouter.Request)
 	return h.WriteJSON(writer, http.StatusCreated, map[string]any{keyData: checkResps})
 }
 
-// DismissHost handles DELETE /orgs/:org/discovery/hosts/:uid.
-// Admin only.
-func (h *Handler) DismissHost(writer http.ResponseWriter, req bunrouter.Request) error {
+// DismissCheck handles DELETE /orgs/:org/discovery/checks/:uid. Admin only.
+func (h *Handler) DismissCheck(writer http.ResponseWriter, req bunrouter.Request) error {
 	if !isAdmin(req) {
 		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
 	}
@@ -348,11 +332,42 @@ func (h *Handler) DismissHost(writer http.ResponseWriter, req bunrouter.Request)
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
 	}
 
-	hostUID := req.Param("uid")
+	uid := req.Param("uid")
 
-	err := h.svc.SoftDeleteHost(req.Context(), org.UID, hostUID)
-	if errors.Is(err, ErrHostNotFound) {
-		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "host not found")
+	err := h.svc.SoftDeleteCheck(req.Context(), org.UID, uid)
+	if errors.Is(err, ErrCheckNotFound) {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "discovered check not found")
+	} else if err != nil {
+		return h.WriteInternalError(writer, err)
+	}
+
+	writer.WriteHeader(http.StatusNoContent)
+
+	return nil
+}
+
+// DismissGroup handles DELETE /orgs/:org/discovery/checks?jobUid=&group=.
+// Admin only. Soft-deletes every check in a group.
+func (h *Handler) DismissGroup(writer http.ResponseWriter, req bunrouter.Request) error {
+	if !isAdmin(req) {
+		return h.WriteError(writer, http.StatusForbidden, base.ErrorCodeForbidden, "admin access required")
+	}
+
+	org, _ := mw.GetOrganizationFromContext(req.Context())
+	if org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound, "organization not found")
+	}
+
+	queryParams := req.URL.Query()
+
+	group := queryParams.Get("group")
+	if group == "" {
+		return h.WriteError(writer, http.StatusUnprocessableEntity, base.ErrorCodeValidationError, "group is required")
+	}
+
+	_, err := h.svc.SoftDeleteGroup(req.Context(), org.UID, queryParams.Get("jobUid"), group)
+	if errors.Is(err, ErrCheckNotFound) {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "no checks found for group")
 	} else if err != nil {
 		return h.WriteInternalError(writer, err)
 	}

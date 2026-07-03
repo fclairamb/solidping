@@ -231,15 +231,15 @@ function JobsIndexPage() {
             )}
             <Button
               variant="outline"
-              size="icon"
               onClick={refresh}
               aria-label={t("refresh")}
             >
               <RefreshCw
-                className={`h-4 w-4 ${
+                className={`h-4 w-4 sm:mr-2 ${
                   stats.isRefetching ? "animate-spin" : ""
                 }`}
               />
+              <span className="hidden sm:inline">{t("refresh")}</span>
             </Button>
           </div>
         }

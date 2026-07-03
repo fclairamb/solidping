@@ -1,0 +1,116 @@
+{
+  "title": "Maintenance Windows",
+  "subtitle": "Schedule planned maintenance to suppress incident alerts",
+  "new": "New Window",
+  "empty": "No maintenance windows scheduled",
+  "searchPlaceholder": "Search maintenance windows...",
+  "noMatch": "No maintenance windows match your search",
+  "backToList": "Back to maintenance windows",
+  "edit": "Edit",
+  "checksCount_one": "{{count}} check",
+  "checksCount_other": "{{count}} checks",
+  "table": {
+    "title": "Title",
+    "schedule": "Schedule",
+    "recurrence": "Recurrence",
+    "status": "Status",
+    "checks": "Checks"
+  },
+  "recurrence": {
+    "none": "One-time",
+    "daily": "Daily",
+    "weekly": "Weekly",
+    "monthly": "Monthly"
+  },
+  "status": {
+    "active": "Active",
+    "upcoming": "Upcoming",
+    "past": "Past"
+  },
+  "form": {
+    "createTitle": "New Maintenance Window",
+    "editTitle": "Edit Maintenance Window",
+    "createDescription": "Schedule a maintenance period during which incident alerts are suppressed for the selected checks.",
+    "editDescription": "Update this maintenance window's schedule and affected checks.",
+    "detailsTitle": "Details",
+    "scheduleTitle": "Schedule",
+    "affectedTitle": "Affected checks",
+    "affectedDescription": "Incidents for these checks and groups are suppressed while the window is active.",
+    "title": "Title",
+    "titlePlaceholder": "Weekly DB backup",
+    "description": "Description",
+    "descriptionPlaceholder": "Optional context shown alongside this window",
+    "start": "Start",
+    "end": "End",
+    "startTime": "Start time",
+    "duration": "Duration",
+    "durationUnitMinutes": "minutes",
+    "durationUnitHours": "hours",
+    "firstDay": "First day",
+    "repeatOn": "Repeat on",
+    "dayOfMonth": "Day of month",
+    "dayOfMonthHelp": "Months shorter than your chosen day run on their last day.",
+    "recurrence": "Recurrence",
+    "recurrenceEnd": "Recurrence end",
+    "until": "Until",
+    "untilHelp": "Optional. After this date the window no longer recurs.",
+    "recurrenceEndHelp": "Optional. After this date the window no longer recurs.",
+    "utcNote": "All times are entered and stored in UTC.",
+    "checks": "Checks",
+    "groups": "Check groups",
+    "submitCreate": "Create Window",
+    "submitSave": "Save Changes",
+    "cancel": "Cancel",
+    "errors": {
+      "titleRequired": "Title is required",
+      "endAfterStart": "End time must be after start time",
+      "recurrenceEndAfterStart": "Recurrence end must be after the start time",
+      "durationRequired": "Duration must be greater than zero",
+      "durationOverlapsWarning": "This duration is longer than the repeat interval, so occurrences overlap.",
+      "firstDayRequired": "First day is required",
+      "untilAfterFirstDay": "Until must be after the first day"
+    }
+  },
+  "summary": {
+    "once": "One-time: {{start}} – {{end}}",
+    "daily": "Every day, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Every {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "On day {{day}} each month, {{start}} – {{end}} ({{duration}})",
+    "until": " · until {{date}}",
+    "noEnd": " · no end date",
+    "alertsPaused": "Incident alerts are paused for the affected checks during each occurrence.",
+    "nextLabel": "Next:",
+    "nextNone": "No upcoming occurrences"
+  },
+  "duration": {
+    "hoursShort": "h",
+    "minutesShort": "m",
+    "daysShort": "d"
+  },
+  "detail": {
+    "schedule": "Schedule",
+    "summary": "Summary",
+    "nextOccurrences": "Next occurrences",
+    "noNextOccurrences": "No upcoming occurrences",
+    "affectedChecks": "Affected checks",
+    "start": "Start",
+    "end": "End",
+    "recurrence": "Recurrence",
+    "recurrenceEnd": "Recurrence end",
+    "noAffected": "No checks or groups are affected by this window.",
+    "createdBy": "Created by",
+    "view": "View"
+  },
+  "toast": {
+    "created": "Maintenance window created",
+    "updated": "Maintenance window updated",
+    "deleted": "Maintenance window deleted",
+    "createFailed": "Failed to create maintenance window",
+    "updateFailed": "Failed to update maintenance window",
+    "deleteFailed": "Failed to delete maintenance window"
+  },
+  "delete": {
+    "confirmTitle": "Delete maintenance window?",
+    "confirmBody": "Are you sure you want to delete this maintenance window? This action cannot be undone."
+  }
+}

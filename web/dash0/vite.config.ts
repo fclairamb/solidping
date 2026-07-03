@@ -37,9 +37,15 @@ export default defineConfig(() => {
       port: 5174,
       allowedHosts: ["solidping.k8xp.com"],
       proxy: {
+        // ws: true lets this proxy also forward the realtime v2 WebSocket
+        // upgrade (GET /api/v1/orgs/:org/events/ws) to the backend dev
+        // server. Vite's own HMR client uses a separate websocket
+        // (its own dev server, not proxied through here), so this doesn't
+        // affect HMR.
         "/api": {
           target: "http://localhost:4000",
           changeOrigin: true,
+          ws: true,
         },
       },
     },

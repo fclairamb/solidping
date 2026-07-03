@@ -1,5 +1,9 @@
 import { test, expect, type Page } from "./fixtures";
 
+const API_BASE = (
+  process.env.E2E_BASE_URL ?? "http://localhost:4000/dash0/"
+).replace(/\/dash0\/?$/, "");
+
 // --- Helpers for the "Checks at a glance" tests -------------------------------
 // These tests mock the dashboard's data endpoints so the glance card is
 // deterministic regardless of seeded data or background polling. The dashboard
@@ -211,7 +215,6 @@ test.describe("Dashboard", () => {
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
-    const API_BASE = "http://localhost:4000";
 
     // Authenticate against the API to emit the activation milestone directly.
     const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
@@ -281,15 +284,6 @@ test.describe("Dashboard", () => {
     await page.waitForLoadState("networkidle");
     expect(page.url()).toContain("/orgs/test/incidents");
     expect(page.url()).toContain("state=active");
-
-    await page.goBack();
-    await page.waitForLoadState("networkidle");
-
-    // Availability tile — must NOT navigate
-    const availabilityTile = page.getByTestId("kpi-tile-availability");
-    await expect(availabilityTile).toBeVisible();
-    const tag = await availabilityTile.evaluate((el) => el.tagName.toLowerCase());
-    expect(tag).not.toBe("a");
   });
 
   test("healthy org: glance card lists checks with strips, no incidents card, footer links to /checks", async ({

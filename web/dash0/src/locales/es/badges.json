@@ -15,6 +15,8 @@
   "preview": "Vista previa",
   "refresh": "Actualizar",
   "selectCheckPrompt": "Seleccione una comprobación para previsualizar y generar insignias",
+  "checkNotFoundTitle": "Comprobación no encontrada",
+  "checkNotFound": "No encontramos la comprobación de este enlace. Es posible que se haya eliminado o renombrado. Seleccione una comprobación arriba para continuar.",
   "downloadFailed": "Error al descargar la insignia",
   "downloadSvg": "SVG",
   "downloadPng": "PNG",

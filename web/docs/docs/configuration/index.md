@@ -61,6 +61,7 @@ Use `SP_NODE_ROLE` to run SolidPing in a distributed configuration:
 |----------|---------|-------------|
 | `SP_AUTH_JWT_SECRET` | auto-generated | JWT signing secret |
 | `SP_AUTH_REGISTRATION_EMAIL_PATTERN` | - | Restrict registration by email regex |
+| `SP_AUTH_PASSWORD_ALGORITHM` | `argon2id` | Password hashing algorithm (`argon2id` or `bcrypt`) — see [Password Hashing](/configuration/authentication#password-hashing) for cost parameters |
 
 ### OAuth Providers
 
@@ -71,7 +72,7 @@ Set both `_CLIENT_ID` and `_CLIENT_SECRET` to enable each provider:
 | Google | `SP_GOOGLE_CLIENT_ID`, `SP_GOOGLE_CLIENT_SECRET` |
 | GitHub | `SP_GITHUB_CLIENT_ID`, `SP_GITHUB_CLIENT_SECRET` |
 | GitLab | `SP_GITLAB_CLIENT_ID`, `SP_GITLAB_CLIENT_SECRET` |
-| Microsoft | `SP_MICROSOFT_CLIENT_ID`, `SP_MICROSOFT_CLIENT_SECRET` |
+| Microsoft | `SP_MICROSOFT_CLIENT_ID`, `SP_MICROSOFT_CLIENT_SECRET`, `SP_MICROSOFT_TENANT_ID` (default `common`) |
 | Slack | `SP_SLACK_CLIENT_ID`, `SP_SLACK_CLIENT_SECRET` |
 | Discord | `SP_DISCORD_CLIENT_ID`, `SP_DISCORD_CLIENT_SECRET` |
 

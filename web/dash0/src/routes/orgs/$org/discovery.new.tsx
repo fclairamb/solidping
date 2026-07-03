@@ -4,6 +4,8 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ApiError } from "@/api/client";
+
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -26,27 +28,38 @@ import {
 } from "@/components/ui/select";
 import {
   canSource,
+  useDiscoveryTypes,
   useIntegrations,
   useStartDiscoveryScan,
-  useStartFreeboxScan,
+  type StartDiscoveryScanRequest,
 } from "@/api/hooks";
 
+// All scan methods the form can render a sub-form for. Used only to validate the
+// initial ?method= URL value; which methods are actually *selectable* is gated by
+// availableTypes (registry + connection capability) below.
+const KNOWN_METHODS = ["lan", "container", "freebox", "kubernetes"];
+
 export const Route = createFileRoute("/orgs/$org/discovery/new")({
+  // The scan method is part of the page's core navigation, so it lives in the
+  // URL (?method=…) rather than local state — bookmarkable, deep-linkable, and
+  // survives refresh/back-forward (dash0 convention).
+  validateSearch: (search: Record<string, unknown>): { method?: string } => {
+    const m = search.method;
+    return typeof m === "string" && m.length > 0 ? { method: m } : {};
+  },
   component: NewScanPage,
 });
-
-type ScanMethod = "lan" | "freebox";
 
 function NewScanPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
+  const { method } = Route.useSearch();
   const navigate = useNavigate();
   const startScan = useStartDiscoveryScan(org);
-  const startFreeboxScan = useStartFreeboxScan(org);
+  const { data: types } = useDiscoveryTypes(org);
   const { data: channels } = useIntegrations(org);
 
-  // Source integrations (canSource) that can drive a discovery scan, gated on the
-  // Freebox `granted` pairing state — mirrors the filter in `check-form.tsx`.
+  // Granted Freebox source channels — Freebox is only offered when one exists.
   const grantedFreeboxChannels = useMemo(
     () =>
       (channels ?? []).filter(
@@ -57,16 +70,63 @@ function NewScanPage() {
     [channels],
   );
 
-  const [method, setMethod] = useState<ScanMethod>("lan");
+  // Kubernetes cluster connections — Kubernetes is only offered when one exists.
+  const kubernetesClusters = useMemo(
+    () => (channels ?? []).filter((c) => c.type === "kubernetes"),
+    [channels],
+  );
+
+  // The selectable types are the registry's, gated by client capability: Freebox
+  // only appears when a granted channel exists; Kubernetes only when a cluster
+  // connection exists.
+  const availableTypes = useMemo(() => {
+    const registered = (types ?? []).map((d) => d.type);
+    // Default to LAN even before the registry list loads, so the form is usable.
+    const set = registered.length > 0 ? registered : ["lan"];
+    return set.filter((typ) => {
+      if (typ === "freebox") return grantedFreeboxChannels.length > 0;
+      if (typ === "kubernetes") return kubernetesClusters.length > 0;
+      return true;
+    });
+  }, [types, grantedFreeboxChannels, kubernetesClusters]);
+
+  // The selected scan method lives in the URL (?method=…) so picking a method
+  // updates the route and a deep-link/refresh restores the right form. We seed
+  // local state from the URL once on mount (the discovery layout route otherwise
+  // races a second search-validation pass that drops the param on a cold load),
+  // and write the param back on every change so the URL stays the source of truth.
+  const [type, setTypeState] = useState(() =>
+    typeof method === "string" && KNOWN_METHODS.includes(method) ? method : "lan",
+  );
+  const setType = (next: string) => {
+    setTypeState(next);
+    navigate({ to: ".", search: { method: next } });
+  };
   const [selectedChannelUid, setSelectedChannelUid] = useState("");
+  const [selectedClusterUid, setSelectedClusterUid] = useState("");
+  const [namespacesText, setNamespacesText] = useState("");
   const [cidrsText, setCidrsText] = useState("");
+  const [containerHostsText, setContainerHostsText] = useState(
+    "unix:///var/run/docker.sock",
+  );
   const [ports, setPorts] = useState("");
   const [timeout, setTimeout] = useState("");
   const [concurrency, setConcurrency] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [advanced, setAdvanced] = useState(false);
 
-  const isPending = startScan.isPending || startFreeboxScan.isPending;
+  // Preselect the connection when exactly one is available so "Start scan" is
+  // immediately submittable. Derived (not synced via an effect) so a single
+  // obvious choice doesn't leave Kubernetes/Freebox showing a disabled button.
+  // An explicit selection always wins over the auto-pick.
+  const effectiveClusterUid =
+    selectedClusterUid ||
+    (kubernetesClusters.length === 1 ? kubernetesClusters[0].uid : "");
+  const effectiveChannelUid =
+    selectedChannelUid ||
+    (grantedFreeboxChannels.length === 1 ? grantedFreeboxChannels[0].uid : "");
+
+  const isPending = startScan.isPending;
 
   // Estimate the total host count and chunk count for the entered CIDRs.
   const cidrEstimate = useMemo(() => {
@@ -83,52 +143,81 @@ function NewScanPage() {
     return { totalHosts, estimatedChunks };
   }, [cidrsText]);
 
-  const submitDisabled =
-    isPending ||
-    !confirmed ||
-    (method === "lan" ? !cidrsText.trim() : !selectedChannelUid);
+  // requiredFieldMissing flags the per-type required input being empty.
+  const requiredFieldMissing =
+    type === "lan"
+      ? !cidrsText.trim()
+      : type === "container"
+        ? !containerHostsText.trim()
+        : type === "kubernetes"
+          ? !effectiveClusterUid
+          : !effectiveChannelUid;
+
+  const submitDisabled = isPending || !confirmed || requiredFieldMissing;
+
+  // typeLabel maps a registry type id to its i18n label, falling back to the id.
+  const typeLabel = (typ: string) => t(`method.${typ}`, typ);
+
+  const buildRequest = (): StartDiscoveryScanRequest | null => {
+    if (type === "freebox") {
+      if (!effectiveChannelUid) return null;
+      return {
+        type: "freebox",
+        parameters: { channelUid: effectiveChannelUid },
+      };
+    }
+
+    if (type === "container") {
+      const hosts = containerHostsText
+        .split(/[\n,]+/)
+        .map((h) => h.trim())
+        .filter(Boolean);
+      if (hosts.length === 0) return null;
+      return { type: "container", parameters: { hosts } };
+    }
+
+    if (type === "kubernetes") {
+      if (!effectiveClusterUid) return null;
+      const namespaces = namespacesText
+        .split(/[\n,]+/)
+        .map((n) => n.trim())
+        .filter(Boolean);
+      const parameters: Record<string, unknown> = {
+        clusterUid: effectiveClusterUid,
+      };
+      if (namespaces.length > 0) parameters.namespaces = namespaces;
+      return { type: "kubernetes", parameters };
+    }
+
+    // LAN
+    const cidrs = cidrsText
+      .split(/[\n,]+/)
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (cidrs.length === 0) return null;
+
+    const parameters: Record<string, unknown> = { cidrs };
+    if (ports.trim()) {
+      parameters.ports = ports
+        .split(",")
+        .map((p) => parseInt(p.trim(), 10))
+        .filter((p) => !isNaN(p));
+    }
+    if (timeout.trim()) parameters.timeout = timeout.trim();
+    if (concurrency.trim()) parameters.concurrency = parseInt(concurrency.trim(), 10);
+
+    return { type: "lan", parameters };
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!confirmed) return;
 
-    if (method === "freebox") {
-      if (!selectedChannelUid) return;
-      try {
-        const result = await startFreeboxScan.mutateAsync(selectedChannelUid);
-        const jobUid = result?.data?.uid;
-        toast.success(t("freeboxScanStarted"));
-        navigate({
-          to: "/orgs/$org/discovery/$jobUid",
-          params: { org, jobUid: jobUid ?? "" },
-        });
-      } catch {
-        toast.error(t("freeboxScanFailed"));
-      }
-      return;
-    }
-
-    const cidrs = cidrsText
-      .split(/[\n,]+/)
-      .map((c) => c.trim())
-      .filter(Boolean);
-
-    if (cidrs.length === 0) {
+    const req = buildRequest();
+    if (!req) {
       toast.error(t("cidrsLabel") + " required");
       return;
     }
-
-    const req: Parameters<typeof startScan.mutateAsync>[0] = { cidrs };
-
-    if (ports.trim()) {
-      req.ports = ports
-        .split(",")
-        .map((p) => parseInt(p.trim(), 10))
-        .filter((p) => !isNaN(p));
-    }
-
-    if (timeout.trim()) req.timeout = timeout.trim();
-    if (concurrency.trim()) req.concurrency = parseInt(concurrency.trim(), 10);
 
     try {
       const result = await startScan.mutateAsync(req);
@@ -138,8 +227,14 @@ function NewScanPage() {
         to: "/orgs/$org/discovery/$jobUid",
         params: { org, jobUid: jobUid ?? "" },
       });
-    } catch {
-      toast.error(t("scanFailed"));
+    } catch (err) {
+      // The one rejection a user can act on gets its own message: another
+      // scan is still running for the org (409 from the serialization guard).
+      if (err instanceof ApiError && err.code === "DISCOVERY_ALREADY_RUNNING") {
+        toast.error(t("scanAlreadyRunning"));
+      } else {
+        toast.error(t("scanFailed"));
+      }
     }
   };
 
@@ -162,23 +257,21 @@ function NewScanPage() {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="space-y-1.5">
             <Label htmlFor="scan-method">{t("scanMethod")}</Label>
-            <Select
-              value={method}
-              onValueChange={(v) => setMethod(v as ScanMethod)}
-            >
+            <Select value={type} onValueChange={setType}>
               <SelectTrigger id="scan-method" aria-label={t("scanMethod")}>
                 <SelectValue placeholder={t("scanMethod")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="lan">{t("methodLan")}</SelectItem>
-                {grantedFreeboxChannels.length > 0 && (
-                  <SelectItem value="freebox">{t("methodFreebox")}</SelectItem>
-                )}
+                {availableTypes.map((typ) => (
+                  <SelectItem key={typ} value={typ}>
+                    {typeLabel(typ)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {method === "lan" ? (
+          {type === "lan" ? (
             <>
               <div className="space-y-1.5">
                 <Label htmlFor="cidrs">{t("cidrsLabel")}</Label>
@@ -241,11 +334,25 @@ function NewScanPage() {
                 )}
               </div>
             </>
-          ) : (
+          ) : type === "container" ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="container-hosts">{t("containerHosts")}</Label>
+              <Textarea
+                id="container-hosts"
+                value={containerHostsText}
+                onChange={(e) => setContainerHostsText(e.target.value)}
+                rows={3}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                {t("containerHostsHelp")}
+              </p>
+            </div>
+          ) : type === "freebox" ? (
             <div className="space-y-1.5">
               <Label htmlFor="freebox-channel">{t("selectFreeboxChannel")}</Label>
               <Select
-                value={selectedChannelUid}
+                value={effectiveChannelUid}
                 onValueChange={setSelectedChannelUid}
               >
                 <SelectTrigger
@@ -263,9 +370,45 @@ function NewScanPage() {
                 </SelectContent>
               </Select>
             </div>
-          )}
+          ) : type === "kubernetes" ? (
+            <>
+              <div className="space-y-1.5">
+                <Label htmlFor="k8s-cluster">{t("selectCluster")}</Label>
+                <Select
+                  value={effectiveClusterUid}
+                  onValueChange={setSelectedClusterUid}
+                >
+                  <SelectTrigger
+                    id="k8s-cluster"
+                    aria-label={t("selectCluster")}
+                  >
+                    <SelectValue placeholder={t("selectCluster")} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {kubernetesClusters.map((c) => (
+                      <SelectItem key={c.uid} value={c.uid}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="k8s-namespaces">{t("clusterNamespaces")}</Label>
+                <Input
+                  id="k8s-namespaces"
+                  placeholder="prod, staging"
+                  value={namespacesText}
+                  onChange={(e) => setNamespacesText(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  {t("clusterNamespacesHelp")}
+                </p>
+              </div>
+            </>
+          ) : null}
 
-          {method === "lan" && cidrEstimate.totalHosts > 4096 && (
+          {type === "lan" && cidrEstimate.totalHosts > 4096 && (
             <Alert variant="warning" data-testid="large-range-warning">
               <AlertDescription>
                 {t("largeRangeWarning", {

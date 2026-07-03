@@ -4,36 +4,39 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
 
+// jobDefinitionFactories maps each job type to a factory producing a fresh
+// definition. A map keeps GetJobDefinition flat as the type set grows (a long
+// switch trips the cyclomatic-complexity linter).
+//
+//nolint:gochecknoglobals // static lookup table, treated as a constant.
+var jobDefinitionFactories = map[jobdef.JobType]func() jobdef.JobDefinition{
+	jobdef.JobTypeSleep:            func() jobdef.JobDefinition { return &SleepJobDefinition{} },
+	jobdef.JobTypeEmail:            func() jobdef.JobDefinition { return &EmailJobDefinition{} },
+	jobdef.JobTypeWebhook:          func() jobdef.JobDefinition { return &WebhookJobDefinition{} },
+	jobdef.JobTypeStartup:          func() jobdef.JobDefinition { return &StartupJobDefinition{} },
+	jobdef.JobTypeAggregation:      func() jobdef.JobDefinition { return &AggregationJobDefinition{} },
+	jobdef.JobTypeStateCleanup:     func() jobdef.JobDefinition { return &StateCleanupJobDefinition{} },
+	jobdef.JobTypeNotification:     func() jobdef.JobDefinition { return &NotificationJobDefinition{} },
+	jobdef.JobTypeSnoozeSweep:      func() jobdef.JobDefinition { return &SnoozeSweepJobDefinition{} },
+	jobdef.JobTypeEscalationStep:   func() jobdef.JobDefinition { return &EscalationStepJobDefinition{} },
+	jobdef.JobTypeNetworkDiscovery: func() jobdef.JobDefinition { return &NetworkDiscoveryJobDefinition{} },
+	jobdef.JobTypeNetworkDiscoveryPlan: func() jobdef.JobDefinition {
+		return &NetworkDiscoveryPlanJobDefinition{}
+	},
+	jobdef.JobTypeFreeboxLanDiscovery: func() jobdef.JobDefinition { return &FreeboxLanDiscoveryJobDefinition{} },
+	jobdef.JobTypeContainerDiscovery:  func() jobdef.JobDefinition { return &ContainerDiscoveryJobDefinition{} },
+	jobdef.JobTypeKubernetesDiscovery: func() jobdef.JobDefinition { return &KubernetesDiscoveryJobDefinition{} },
+	jobdef.JobTypeStuckJobReaper:      func() jobdef.JobDefinition { return &StuckJobReaperJobDefinition{} },
+}
+
 // GetJobDefinition retrieves a job definition by type.
+//
+//nolint:ireturn // registry pattern returns the JobDefinition interface
 func GetJobDefinition(jobType jobdef.JobType) (jobdef.JobDefinition, bool) {
-	switch jobType {
-	case jobdef.JobTypeSleep:
-		return &SleepJobDefinition{}, true
-	case jobdef.JobTypeEmail:
-		return &EmailJobDefinition{}, true
-	case jobdef.JobTypeWebhook:
-		return &WebhookJobDefinition{}, true
-	case jobdef.JobTypeStartup:
-		return &StartupJobDefinition{}, true
-	case jobdef.JobTypeAggregation:
-		return &AggregationJobDefinition{}, true
-	case jobdef.JobTypeStateCleanup:
-		return &StateCleanupJobDefinition{}, true
-	case jobdef.JobTypeNotification:
-		return &NotificationJobDefinition{}, true
-	case jobdef.JobTypeSnoozeSweep:
-		return &SnoozeSweepJobDefinition{}, true
-	case jobdef.JobTypeEscalationStep:
-		return &EscalationStepJobDefinition{}, true
-	case jobdef.JobTypeNetworkDiscovery:
-		return &NetworkDiscoveryJobDefinition{}, true
-	case jobdef.JobTypeNetworkDiscoveryPlan:
-		return &NetworkDiscoveryPlanJobDefinition{}, true
-	case jobdef.JobTypeFreeboxLanDiscovery:
-		return &FreeboxLanDiscoveryJobDefinition{}, true
-	case jobdef.JobTypeStuckJobReaper:
-		return &StuckJobReaperJobDefinition{}, true
+	factory, ok := jobDefinitionFactories[jobType]
+	if !ok {
+		return nil, false
 	}
 
-	return nil, false
+	return factory(), true
 }

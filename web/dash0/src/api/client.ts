@@ -1,5 +1,22 @@
 const TOKEN_KEY = "solidping_session_token";
 
+// Timestamp of the most recent apiFetch activity (request start or
+// completion). The live-socket connection waits for a quiet gap before opening
+// its long-lived connection so it never competes with first-paint data
+// fetching — and so load-completion heuristics (e.g. Playwright's
+// `networkidle`, which needs 500ms with zero in-flight requests) can latch
+// before a permanent connection appears.
+let lastApiActivityTs = 0;
+
+export function noteApiActivity(): void {
+  lastApiActivityTs = Date.now();
+}
+
+export function msSinceLastApiActivity(): number {
+  if (lastApiActivityTs === 0) return Number.MAX_SAFE_INTEGER;
+  return Date.now() - lastApiActivityTs;
+}
+
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
@@ -69,6 +86,7 @@ export async function apiFetch<T>(
     headers.set("Content-Type", "application/json");
   }
 
+  noteApiActivity();
   let response: Response;
   try {
     response = await fetch(url, {
@@ -76,8 +94,10 @@ export async function apiFetch<T>(
       headers,
     });
   } catch {
+    noteApiActivity();
     throw new NetworkError();
   }
+  noteApiActivity();
 
   if (response.status === 401 && !skipAuth) {
     clearToken();

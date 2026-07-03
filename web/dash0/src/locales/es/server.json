@@ -8,6 +8,7 @@
     "mail": "Correo",
     "emailInbox": "Bandeja de entrada",
     "authentication": "Autenticación",
+    "hashing": "Hash de contraseñas",
     "performance": "Rendimiento",
     "slack": "Slack"
   },
@@ -72,7 +73,49 @@
       "appId": "App ID",
       "signingSecret": "Signing Secret",
       "botToken": "Token del bot",
-      "redirectUrl": "URL de redirección"
+      "redirectUrl": "URL de redirección",
+      "tenantId": "ID de inquilino"
+    },
+    "fieldHelp": {
+      "tenantId": "El ID de su directorio (inquilino) de Entra, o un dominio verificado. Déjelo en blanco para \"common\" (multiinquilino). Use \"organizations\" o \"consumers\" para restringir los tipos de cuenta."
+    }
+  },
+  "hashing": {
+    "title": "Hash de contraseñas",
+    "description": "Elija el algoritmo y el coste usados para cifrar las contraseñas locales. Ajustes más fuertes ralentizan el descifrado sin conexión pero consumen más CPU por inicio de sesión.",
+    "restartNotice": "Los cambios surten efecto tras reiniciar el servidor. Las contraseñas nuevas usan entonces el nuevo perfil; los usuarios existentes se migran en su próximo inicio de sesión si el re-hash está activado. Los valores configurados mediante YAML o variables de entorno no se muestran aquí — deje un campo vacío para heredar el valor predeterminado del servidor.",
+    "algorithm": "Algoritmo",
+    "algorithmHelp": "argon2id es el valor predeterminado moderno recomendado; bcrypt se ofrece por compatibilidad.",
+    "algorithms": {
+      "argon2id": "argon2id (recomendado)",
+      "bcrypt": "bcrypt"
+    },
+    "presets": {
+      "label": "Perfiles recomendados",
+      "help": "Los preajustes rellenan los campos de argon2id con un perfil alineado con OWASP. Elija uno y ajústelo si es necesario.",
+      "high": "64 MiB · t3 · p4",
+      "owasp": "19 MiB · t2 · p1",
+      "low": "9 MiB · t4 · p1"
+    },
+    "argon2": {
+      "memory": "Memoria (KiB)",
+      "memoryHelp": "Coste de memoria en KiB. Mínimo 8192; OWASP recomienda al menos 19456 (19 MiB).",
+      "time": "Iteraciones (tiempo)",
+      "timeHelp": "Número de pasadas sobre la memoria. Mínimo 1.",
+      "threads": "Paralelismo (hilos)",
+      "threadsHelp": "Carriles usados al calcular el hash. Entre 1 y 255.",
+      "keyLength": "Longitud de clave (bytes)",
+      "keyLengthHelp": "Longitud de la clave derivada en bytes. Mínimo 16.",
+      "saltLength": "Longitud de sal (bytes)",
+      "saltLengthHelp": "Longitud de la sal aleatoria en bytes. Mínimo 8."
+    },
+    "bcrypt": {
+      "cost": "Factor de coste",
+      "costHelp": "Factor de trabajo de bcrypt. Entre 10 y 31; se recomienda 12 o más."
+    },
+    "rehash": {
+      "label": "Volver a cifrar las contraseñas existentes en el próximo inicio de sesión",
+      "help": "Cuando está activado, un hash almacenado que ya no coincide con esta política se actualiza de forma transparente en el próximo inicio de sesión exitoso del usuario. Cuando está desactivado, solo las contraseñas nuevas usan el nuevo perfil."
     }
   },
   "performance": {
@@ -82,7 +125,24 @@
     "checkRunners": "Workers de comprobación",
     "checkRunnersHelp": "Número de goroutinas concurrentes para ejecutar las comprobaciones.",
     "jobRunners": "Workers de tareas",
-    "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano."
+    "jobRunnersHelp": "Número de goroutinas concurrentes para procesar tareas en segundo plano.",
+    "fastLaneReserved": "Plazas reservadas del carril rápido",
+    "fastLaneReservedHelp": "Plazas de runners reservadas para checks rápidos: los checks lentos (coste ≥ 2 s) nunca pueden ocupar más que Check Runners menos este número. Surte efecto tras reiniciar.",
+    "checkRunnersGroup": "Runners de checks",
+    "checkRunnersGroupHelp": "El pool que ejecuta los checks. La reserva del carril rápido se toma de este mismo pool.",
+    "jobRunnersGroup": "Tareas en segundo plano",
+    "fastLaneReservedTooHigh": "Debe ser menor que el total de runners de checks.",
+    "laneLoadTitle": "Carga actual",
+    "laneLoadDescription": "Carga ofrecida por worker y carril, calculada en el servidor. El duty es la suma de los ciclos de ocupación por check: 100 % ≈ un slot de runner ocupado permanentemente; un carril cuyo duty supera su capacidad va con retraso.",
+    "laneLoadEmpty": "Aún no hay workers registrados.",
+    "laneFast": "Carril rápido",
+    "laneSlow": "Carril lento",
+    "laneCol": "Carril",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ coste",
+    "delaySumCol": "Σ retraso",
+    "dutyCol": "Duty",
+    "overloaded": "Sobrecargado"
   },
   "emailInbox": {
     "title": "Bandeja de entrada",
@@ -144,7 +204,8 @@
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
       "saveButton": "Guardar",
-      "notEnabledHint": "La integración de Slack no está activada. Configúrela en los ajustes de autenticación o establezca SP_SLACK_ENABLED=true."
+      "notEnabledHint": "La integración de Slack no está activada. Configúrela en los ajustes de autenticación o establezca SP_SLACK_ENABLED=true.",
+      "restartHint": "Los cambios surten efecto después de reiniciar el servidor."
     },
     "status": {
       "title": "Estado de la conexión",

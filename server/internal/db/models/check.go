@@ -40,19 +40,19 @@ const (
 func (s CheckStatus) String() string {
 	switch s {
 	case CheckStatusCreated:
-		return "created"
+		return WireStatusCreated
 	case CheckStatusUp:
-		return "up"
+		return WireStatusUp
 	case CheckStatusDown:
-		return "down"
+		return WireStatusDown
 	case CheckStatusValidating:
-		return "validating"
+		return WireStatusValidating
 	case CheckStatusDegraded:
-		return "degraded"
+		return WireStatusDegraded
 	case CheckStatusWarning:
-		return "warning"
+		return WireStatusWarning
 	default:
-		return "unknown"
+		return WireStatusUnknown
 	}
 }
 
@@ -99,9 +99,28 @@ type Check struct {
 	// now - FirstSuccessSinceFailureAt >= RecoveryPeriod.
 	FirstSuccessSinceFailureAt *time.Time `bun:"first_success_since_failure_at"`
 
-	// Adaptive resolution settings (nil = use defaults)
+	// Adaptive resolution settings.
+	//
+	// ReopenCooldownMultiplier (nil = code default) drives the short
+	// blip-dedup window: a fast relapse reattaches to the just-resolved
+	// incident instead of paging again. Independent of the flapping layer.
 	ReopenCooldownMultiplier *int `bun:"reopen_cooldown_multiplier"`
-	MaxAdaptiveIncrease      *int `bun:"max_adaptive_increase"`
+
+	// Flapping (adaptive recovery) config — spec 2026-06-30-07. When a check
+	// flaps (repeated outages over a short horizon) the required stability
+	// before auto-resolving grows per flap, bounded by a cap. Off-by-default-
+	// equivalent: FlapBackoffFactor==1 or FlappingWindowSeconds==0 reproduces
+	// the constant RecoveryPeriodSeconds behavior.
+	FlappingWindowSeconds int `bun:"flapping_window_seconds,notnull,default:21600"`
+	FlapBackoffFactor     int `bun:"flap_backoff_factor,notnull,default:2"`
+	MaxRecoveryMultiplier int `bun:"max_recovery_multiplier,notnull,default:8"`
+
+	// Flap state, updated only on the rare incident-open/reopen (never per
+	// result). FlapCount is the number of outages accumulated inside the
+	// rolling flapping window; LastOutageAt is the wall-clock of the most
+	// recent outage onset and gates the window reset.
+	FlapCount    int        `bun:"flap_count,notnull,default:0"`
+	LastOutageAt *time.Time `bun:"last_outage_at"`
 
 	// Optional escalation policy. Falls back to the check_group's policy
 	// (and ultimately to no escalation) when nil.
@@ -137,6 +156,9 @@ func NewCheck(orgUID, slug, checkType string) *Check {
 		ConfirmationPeriodSeconds: 120,
 		EscalationThreshold:       10,
 		RecoveryPeriodSeconds:     120,
+		FlappingWindowSeconds:     21600, // 6h
+		FlapBackoffFactor:         2,
+		MaxRecoveryMultiplier:     8,
 		Status:                    CheckStatusCreated,
 		StatusStreak:              0,
 		CreatedAt:                 now,
@@ -185,7 +207,11 @@ type CheckUpdate struct {
 
 	// Adaptive resolution settings
 	ReopenCooldownMultiplier *int
-	MaxAdaptiveIncrease      *int
+
+	// Flapping (adaptive recovery) config — spec 2026-06-30-07.
+	FlappingWindowSeconds *int
+	FlapBackoffFactor     *int
+	MaxRecoveryMultiplier *int
 
 	// Optional escalation policy override (nil = inherit from group / none)
 	EscalationPolicyUID *string

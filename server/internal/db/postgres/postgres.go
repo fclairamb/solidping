@@ -62,6 +62,28 @@ type Config struct {
 
 	// Reset drops all tables before running migrations (only for test/demo run modes)
 	Reset bool
+
+	// Connection-pool bounds. Zero values leave database/sql's defaults
+	// (MaxOpenConns unlimited, MaxIdleConns 2, no lifetime), so an unset config
+	// behaves exactly as before.
+	MaxOpenConns    int
+	MaxIdleConns    int
+	ConnMaxLifetime time.Duration
+}
+
+// applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
+// arbitrarily many Postgres connections, each consuming client- and server-side
+// memory; the cap trades a little queueing for a predictable ceiling.
+func applyPoolLimits(sqldb *sql.DB, cfg *Config) {
+	if cfg.MaxOpenConns > 0 {
+		sqldb.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+	if cfg.MaxIdleConns > 0 {
+		sqldb.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	if cfg.ConnMaxLifetime > 0 {
+		sqldb.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
 }
 
 // Service implements db.Service for PostgreSQL.
@@ -76,12 +98,13 @@ type Service struct {
 var _ db.Service = (*Service)(nil)
 
 // New creates a new PostgreSQL service with an external database.
-func New(ctx context.Context, cfg Config) (*Service, error) {
+func New(ctx context.Context, cfg *Config) (*Service, error) {
 	if cfg.Embedded {
 		return NewEmbedded(ctx, cfg.EmbeddedDir, cfg.Port, cfg.LogSQL, cfg.RunMode, cfg.Reset)
 	}
 
 	sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(cfg.DSN)))
+	applyPoolLimits(sqldb, cfg)
 	bunDB := bun.NewDB(sqldb, pgdialect.New())
 
 	// Query hook is always installed: it emits Prometheus histograms
@@ -755,14 +778,27 @@ func (s *Service) UpdateUserToken(ctx context.Context, uid string, update models
 	return err
 }
 
-func (s *Service) DeleteUserToken(ctx context.Context, uid string) error {
-	_, err := s.db.NewUpdate().
+// DeleteUserToken soft-deletes a token, returning whether a live row existed
+// to delete (compare-and-set on deleted_at IS NULL): false means the token
+// was already deleted — for rotating OAuth refresh grants that is a replay
+// racing a concurrent redemption.
+func (s *Service) DeleteUserToken(ctx context.Context, uid string) (bool, error) {
+	res, err := s.db.NewUpdate().
 		Model((*models.UserToken)(nil)).
 		Where("uid = ?", uid).
+		Where("deleted_at IS NULL").
 		Set("deleted_at = ?", time.Now()).
 		Exec(ctx)
+	if err != nil {
+		return false, err
+	}
 
-	return err
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read delete user token result: %w", err)
+	}
+
+	return affected > 0, nil
 }
 
 // UserPasskey operations
@@ -1334,8 +1370,14 @@ func applyAdaptiveAndIncidentTrackingPg(
 	if update.ReopenCooldownMultiplier != nil {
 		query = query.Set("reopen_cooldown_multiplier = ?", *update.ReopenCooldownMultiplier)
 	}
-	if update.MaxAdaptiveIncrease != nil {
-		query = query.Set("max_adaptive_increase = ?", *update.MaxAdaptiveIncrease)
+	if update.FlappingWindowSeconds != nil {
+		query = query.Set("flapping_window_seconds = ?", *update.FlappingWindowSeconds)
+	}
+	if update.FlapBackoffFactor != nil {
+		query = query.Set("flap_backoff_factor = ?", *update.FlapBackoffFactor)
+	}
+	if update.MaxRecoveryMultiplier != nil {
+		query = query.Set("max_recovery_multiplier = ?", *update.MaxRecoveryMultiplier)
 	}
 	if update.ConfirmationPeriodSeconds != nil {
 		query = query.Set("confirmation_period_seconds = ?", *update.ConfirmationPeriodSeconds)
@@ -2358,6 +2400,24 @@ func (s *Service) UpdateCheckStatusAndClocks(
 	return err
 }
 
+// UpdateCheckFlapState persists the rolling flap counter and the last-outage
+// timestamp on a check. Written only on the rare incident open/reopen — never
+// on the per-result hot path. See spec 2026-06-30-07.
+func (s *Service) UpdateCheckFlapState(
+	ctx context.Context, checkUID string, flapCount int, lastOutageAt time.Time,
+) error {
+	_, err := s.db.NewUpdate().
+		Model((*models.Check)(nil)).
+		Where("uid = ?", checkUID).
+		Where("deleted_at IS NULL").
+		Set("flap_count = ?", flapCount).
+		Set("last_outage_at = ?", lastOutageAt).
+		Set("updated_at = ?", time.Now()).
+		Exec(ctx)
+
+	return err
+}
+
 // Event operations
 
 func (s *Service) CreateEvent(ctx context.Context, event *models.Event) error {
@@ -2502,8 +2562,10 @@ func (s *Service) SetStateEntry(
 	return nil
 }
 
-// DeleteStateEntry soft-deletes a state entry.
-func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key string) error {
+// DeleteStateEntry soft-deletes a state entry, returning whether a live row
+// existed to delete (compare-and-set on deleted_at IS NULL): false means the
+// entry was already deleted (or never existed) — a replay of a prior consume.
+func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key string) (bool, error) {
 	query := s.db.NewUpdate().
 		Model((*models.StateEntry)(nil)).
 		Set("deleted_at = ?", time.Now()).
@@ -2516,12 +2578,17 @@ func (s *Service) DeleteStateEntry(ctx context.Context, orgUID *string, key stri
 		query = query.Where("organization_uid IS NULL")
 	}
 
-	_, err := query.Exec(ctx)
+	res, err := query.Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to delete state entry: %w", err)
+		return false, fmt.Errorf("failed to delete state entry: %w", err)
 	}
 
-	return nil
+	affected, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("failed to read delete state entry result: %w", err)
+	}
+
+	return affected > 0, nil
 }
 
 // ListStateEntries returns all entries matching the key prefix.
@@ -3254,6 +3321,10 @@ func (s *Service) UpdateStatusPage(ctx context.Context, uid string, update *mode
 
 	if update.HistoryDays != nil {
 		query = query.Set("history_days = ?", *update.HistoryDays)
+	}
+
+	if update.HistoryPeriod != nil {
+		query = query.Set("history_period = ?", *update.HistoryPeriod)
 	}
 
 	if update.Language != nil {

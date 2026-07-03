@@ -136,6 +136,15 @@ func (rl *RateLimiter) cleanupLoop(ctx context.Context) {
 	}
 }
 
+// realtimeStreamSuffix matches the long-lived org hint WebSocket
+// (/api/v1/orgs/:org/events/ws). The connection must bypass both the request
+// timeout (a held-open WS response would be killed at MaxRequestDuration and
+// pin the timeout middleware goroutine) and the per-IP rate/concurrency
+// limits (each open tab would permanently occupy a concurrency slot). The
+// endpoint carries its own guards: realtime.max_connections and
+// realtime.max_subscriptions_per_connection.
+const realtimeStreamSuffix = "/events/ws"
+
 func isExcluded(path string) bool {
 	if !strings.HasPrefix(path, limitedPrefix) {
 		return true
@@ -144,6 +153,9 @@ func isExcluded(path string) bool {
 		if strings.HasPrefix(path, prefix) {
 			return true
 		}
+	}
+	if strings.HasPrefix(path, "/api/v1/orgs/") && strings.HasSuffix(path, realtimeStreamSuffix) {
+		return true
 	}
 	return false
 }
@@ -296,6 +308,19 @@ type IPState struct {
 // handler to report the configured limits without re-reading config.
 func (rl *RateLimiter) Config() config.RateLimitConfig {
 	return rl.cfg
+}
+
+// EntryCount returns the number of per-IP entries currently held in the
+// limiter's map. The map grows O(unique IPs) and is pruned by cleanupLoop;
+// this count lets the memory surface verify cleanup keeps pace under a wide
+// client base or scan. O(n) range; only called at metrics scrape time.
+func (rl *RateLimiter) EntryCount() int {
+	count := 0
+	rl.entries.Range(func(_, _ any) bool {
+		count++
+		return true
+	})
+	return count
 }
 
 // ExtractIP returns the client IP for the request using the configured

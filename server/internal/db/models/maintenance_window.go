@@ -32,7 +32,7 @@ func NewMaintenanceWindow(orgUID, title string, startAt, endAt time.Time) *Maint
 		Title:           title,
 		StartAt:         startAt,
 		EndAt:           endAt,
-		Recurrence:      "none",
+		Recurrence:      RecurrenceNone,
 		CreatedAt:       now,
 		UpdatedAt:       now,
 	}
@@ -63,9 +63,41 @@ type MaintenanceWindowCheck struct {
 	CreatedAt            time.Time `bun:"created_at,notnull"`
 }
 
+// Maintenance window recurrence cadences.
+const (
+	// RecurrenceNone marks a one-off (non-recurring) window.
+	RecurrenceNone = "none"
+	// RecurrenceDaily repeats the window every day at the anchor's time-of-day.
+	RecurrenceDaily = "daily"
+	// RecurrenceWeekly repeats the window every week on the anchor's weekday.
+	RecurrenceWeekly = "weekly"
+	// RecurrenceMonthly repeats the window every month on the anchor's day-of-month.
+	RecurrenceMonthly = "monthly"
+)
+
+// Maintenance window lifecycle statuses (returned by Status).
+const (
+	// MaintenanceStatusActive means a window occurrence covers now.
+	MaintenanceStatusActive = "active"
+	// MaintenanceStatusUpcoming means the window has future occurrences but none cover now.
+	MaintenanceStatusUpcoming = "upcoming"
+	// MaintenanceStatusPast means the window has no remaining occurrences.
+	MaintenanceStatusPast = "past"
+)
+
+// Occurrence is one concrete activation of a (possibly recurring) maintenance window.
+type Occurrence struct {
+	StartAt time.Time `json:"startAt"`
+	EndAt   time.Time `json:"endAt"`
+}
+
+// maxNextOccurrences caps how many occurrences NextOccurrences will ever compute,
+// guarding against pathological callers.
+const maxNextOccurrences = 100
+
 // IsActiveAt determines whether a maintenance window is active at the given time.
 func IsActiveAt(window *MaintenanceWindow, target time.Time) bool {
-	if window.Recurrence == "none" {
+	if window.Recurrence == RecurrenceNone {
 		return !target.Before(window.StartAt) && target.Before(window.EndAt)
 	}
 
@@ -79,21 +111,119 @@ func IsActiveAt(window *MaintenanceWindow, target time.Time) bool {
 		return false
 	}
 
-	duration := window.EndAt.Sub(window.StartAt)
-
-	switch window.Recurrence {
-	case "daily":
-		return isActiveForRecurrence(window.StartAt, duration, target, addDays)
-	case "weekly":
-		return isActiveForRecurrence(window.StartAt, duration, target, addWeeks)
-	case "monthly":
-		return isActiveForRecurrence(window.StartAt, duration, target, addMonths)
-	default:
+	adder := adderFor(window.Recurrence)
+	if adder == nil {
 		return false
 	}
+
+	duration := window.EndAt.Sub(window.StartAt)
+
+	return isActiveForRecurrence(window.StartAt, duration, target, adder)
+}
+
+// Status returns "active", "upcoming", or "past" for the window at now.
+//
+// It is the canonical recurrence-status semantics shared with the frontend
+// (computeMaintenanceStatus): active if IsActiveAt; else past for a non-recurring
+// window after its start, or a recurring window after its RecurrenceEnd; else upcoming.
+func Status(window *MaintenanceWindow, now time.Time) string {
+	if IsActiveAt(window, now) {
+		return MaintenanceStatusActive
+	}
+
+	if window.Recurrence == RecurrenceNone {
+		if now.Before(window.StartAt) {
+			return MaintenanceStatusUpcoming
+		}
+
+		return MaintenanceStatusPast
+	}
+
+	if window.RecurrenceEnd != nil && now.After(*window.RecurrenceEnd) {
+		return MaintenanceStatusPast
+	}
+
+	return MaintenanceStatusUpcoming
+}
+
+// NextOccurrences returns up to n occurrences whose end is at/after from, in
+// chronological order, honoring RecurrenceEnd. For recurrence "none" it returns the
+// single window when not yet past, else an empty slice. The currently-active
+// occurrence (if any) is included as the first entry.
+func NextOccurrences(window *MaintenanceWindow, from time.Time, n int) []Occurrence {
+	if n <= 0 {
+		return nil
+	}
+
+	if n > maxNextOccurrences {
+		n = maxNextOccurrences
+	}
+
+	duration := window.EndAt.Sub(window.StartAt)
+
+	if window.Recurrence == RecurrenceNone {
+		if !window.EndAt.After(from) {
+			return nil
+		}
+
+		return []Occurrence{{StartAt: window.StartAt, EndAt: window.EndAt}}
+	}
+
+	adder := adderFor(window.Recurrence)
+	if adder == nil {
+		return nil
+	}
+
+	return collectOccurrences(window, from, n, duration, adder)
+}
+
+// collectOccurrences walks anchored+clamped occurrences from the window's start,
+// skipping those whose end is before from, stopping at RecurrenceEnd.
+func collectOccurrences(
+	window *MaintenanceWindow, from time.Time, n int, duration time.Duration, adder timeAdder,
+) []Occurrence {
+	out := make([]Occurrence, 0, n)
+
+	// Start scanning a couple of steps before the first occurrence that could be
+	// active at from, so the currently-active occurrence is not skipped.
+	startK := occurrenceIndex(window.StartAt, from, adder) - 2
+	if startK < 0 {
+		startK = 0
+	}
+
+	for k := startK; len(out) < n && k < startK+maxNextOccurrences; k++ {
+		occStart := adder(window.StartAt, k)
+		occEnd := occStart.Add(duration)
+
+		if window.RecurrenceEnd != nil && occStart.After(*window.RecurrenceEnd) {
+			break
+		}
+
+		// Skip occurrences entirely in the past relative to from.
+		if !occEnd.After(from) {
+			continue
+		}
+
+		out = append(out, Occurrence{StartAt: occStart, EndAt: occEnd})
+	}
+
+	return out
 }
 
 type timeAdder func(t time.Time, n int) time.Time
+
+func adderFor(recurrence string) timeAdder {
+	switch recurrence {
+	case RecurrenceDaily:
+		return addDays
+	case RecurrenceWeekly:
+		return addWeeks
+	case RecurrenceMonthly:
+		return addMonths
+	default:
+		return nil
+	}
+}
 
 func addDays(t time.Time, n int) time.Time {
 	return t.AddDate(0, 0, n)
@@ -103,24 +233,84 @@ func addWeeks(t time.Time, n int) time.Time {
 	return t.AddDate(0, 0, n*7)
 }
 
-func addMonths(t time.Time, n int) time.Time {
-	return t.AddDate(0, n, 0)
-}
+// addMonths shifts base by n months, clamping the day to the last day of the
+// target month (Jan 31 +1mo -> Feb 28/29, not Mar 3).
+func addMonths(base time.Time, n int) time.Time {
+	year, month, day := base.Date()
+	first := time.Date(
+		year, month, 1,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location(),
+	)
+	target := first.AddDate(0, n, 0) // first-of-month never overflows
 
-// isActiveForRecurrence checks if target falls within any occurrence of a recurring window.
-func isActiveForRecurrence(start time.Time, duration time.Duration, target time.Time, adder timeAdder) bool {
-	// Step forward to find the occurrence just before or at target
-	current := start
-	for {
-		next := adder(current, 1)
-		if next.After(target) {
-			break
-		}
-		current = next
+	last := daysIn(target.Year(), target.Month())
+	if day > last {
+		day = last
 	}
 
-	// Check if target is within this occurrence
-	occurrenceEnd := current.Add(duration)
+	return time.Date(
+		target.Year(), target.Month(), day,
+		base.Hour(), base.Minute(), base.Second(), base.Nanosecond(), base.Location(),
+	)
+}
 
-	return !target.Before(current) && target.Before(occurrenceEnd)
+// daysIn returns the number of days in the given month (handles leap years).
+func daysIn(year int, month time.Month) int {
+	// Day 0 of the next month is the last day of this month.
+	return time.Date(year, month+1, 0, 0, 0, 0, 0, time.UTC).Day()
+}
+
+// occurrenceIndex returns an estimate of the occurrence index k such that
+// adder(start, k) is at or just before target. It overshoots/undershoots by at
+// most a step or two near month boundaries, so callers must clamp around it.
+func occurrenceIndex(start, target time.Time, adder timeAdder) int {
+	if !target.After(start) {
+		return 0
+	}
+
+	// Calibrate the per-step size from the first step off the anchor, then estimate.
+	step := adder(start, 1).Sub(start)
+	if step <= 0 {
+		return 0
+	}
+
+	k := int(target.Sub(start) / step)
+	if k < 0 {
+		k = 0
+	}
+
+	return k
+}
+
+// isActiveForRecurrence checks if target falls within any occurrence of a recurring
+// window. Every occurrence is anchored on the ORIGINAL start (adder(start, k)) so the
+// month-end clamp does not accumulate drift across occurrences.
+func isActiveForRecurrence(
+	start time.Time, duration time.Duration, target time.Time, adder timeAdder,
+) bool {
+	// Estimate the occurrence index, then scan a small window around it to absorb
+	// month-length variance, finding the latest occurrence whose start <= target.
+	k := occurrenceIndex(start, target, adder)
+
+	best := -1
+
+	for i := k - 2; i <= k+2; i++ {
+		if i < 0 {
+			continue
+		}
+
+		occStart := adder(start, i)
+		if !occStart.After(target) { // occStart <= target
+			best = i
+		}
+	}
+
+	if best < 0 {
+		return false
+	}
+
+	occStart := adder(start, best)
+	occEnd := occStart.Add(duration)
+
+	return !target.Before(occStart) && target.Before(occEnd)
 }

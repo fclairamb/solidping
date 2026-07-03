@@ -1,0 +1,116 @@
+{
+  "title": "Ventanas de mantenimiento",
+  "subtitle": "Programa mantenimientos para suprimir las alertas de incidentes",
+  "new": "Nueva ventana",
+  "empty": "No hay ventanas de mantenimiento programadas",
+  "searchPlaceholder": "Buscar ventanas de mantenimiento...",
+  "noMatch": "Ninguna ventana de mantenimiento coincide con tu búsqueda",
+  "backToList": "Volver a las ventanas de mantenimiento",
+  "edit": "Editar",
+  "checksCount_one": "{{count}} comprobación",
+  "checksCount_other": "{{count}} comprobaciones",
+  "table": {
+    "title": "Título",
+    "schedule": "Programación",
+    "recurrence": "Recurrencia",
+    "status": "Estado",
+    "checks": "Comprobaciones"
+  },
+  "recurrence": {
+    "none": "Puntual",
+    "daily": "Diaria",
+    "weekly": "Semanal",
+    "monthly": "Mensual"
+  },
+  "status": {
+    "active": "Activa",
+    "upcoming": "Próxima",
+    "past": "Pasada"
+  },
+  "form": {
+    "createTitle": "Nueva ventana de mantenimiento",
+    "editTitle": "Editar ventana de mantenimiento",
+    "createDescription": "Programa un periodo de mantenimiento durante el cual se suprimen las alertas de incidentes para las comprobaciones seleccionadas.",
+    "editDescription": "Actualiza la programación y las comprobaciones afectadas de esta ventana de mantenimiento.",
+    "detailsTitle": "Detalles",
+    "scheduleTitle": "Programación",
+    "affectedTitle": "Comprobaciones afectadas",
+    "affectedDescription": "Los incidentes de estas comprobaciones y grupos se suprimen mientras la ventana está activa.",
+    "title": "Título",
+    "titlePlaceholder": "Copia de seguridad semanal de la BD",
+    "description": "Descripción",
+    "descriptionPlaceholder": "Contexto opcional mostrado junto a esta ventana",
+    "start": "Inicio",
+    "end": "Fin",
+    "startTime": "Hora de inicio",
+    "duration": "Duración",
+    "durationUnitMinutes": "minutos",
+    "durationUnitHours": "horas",
+    "firstDay": "Primer día",
+    "repeatOn": "Repetir el",
+    "dayOfMonth": "Día del mes",
+    "dayOfMonthHelp": "Los meses más cortos que el día elegido se ejecutan su último día.",
+    "recurrence": "Recurrencia",
+    "recurrenceEnd": "Fin de recurrencia",
+    "until": "Hasta",
+    "untilHelp": "Opcional. Después de esta fecha, la ventana deja de repetirse.",
+    "recurrenceEndHelp": "Opcional. Después de esta fecha, la ventana deja de repetirse.",
+    "utcNote": "Todas las horas se introducen y almacenan en UTC.",
+    "checks": "Comprobaciones",
+    "groups": "Grupos de comprobaciones",
+    "submitCreate": "Crear ventana",
+    "submitSave": "Guardar cambios",
+    "cancel": "Cancelar",
+    "errors": {
+      "titleRequired": "El título es obligatorio",
+      "endAfterStart": "La hora de fin debe ser posterior a la hora de inicio",
+      "recurrenceEndAfterStart": "El fin de recurrencia debe ser posterior a la hora de inicio",
+      "durationRequired": "La duración debe ser mayor que cero",
+      "durationOverlapsWarning": "Esta duración es mayor que el intervalo de repetición, por lo que las ocurrencias se solapan.",
+      "firstDayRequired": "El primer día es obligatorio",
+      "untilAfterFirstDay": "La fecha de fin debe ser posterior al primer día"
+    }
+  },
+  "summary": {
+    "once": "Puntual: {{start}} – {{end}}",
+    "daily": "Cada día, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Cada {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "El día {{day}} de cada mes, {{start}} – {{end}} ({{duration}})",
+    "until": " · hasta {{date}}",
+    "noEnd": " · sin fecha de fin",
+    "alertsPaused": "Las alertas de incidentes se pausan para las comprobaciones afectadas durante cada ocurrencia.",
+    "nextLabel": "Próximas:",
+    "nextNone": "No hay próximas ocurrencias"
+  },
+  "duration": {
+    "hoursShort": "h",
+    "minutesShort": "min",
+    "daysShort": "d"
+  },
+  "detail": {
+    "schedule": "Programación",
+    "summary": "Resumen",
+    "nextOccurrences": "Próximas ocurrencias",
+    "noNextOccurrences": "No hay próximas ocurrencias",
+    "affectedChecks": "Comprobaciones afectadas",
+    "start": "Inicio",
+    "end": "Fin",
+    "recurrence": "Recurrencia",
+    "recurrenceEnd": "Fin de recurrencia",
+    "noAffected": "Ninguna comprobación ni grupo se ve afectado por esta ventana.",
+    "createdBy": "Creada por",
+    "view": "Ver"
+  },
+  "toast": {
+    "created": "Ventana de mantenimiento creada",
+    "updated": "Ventana de mantenimiento actualizada",
+    "deleted": "Ventana de mantenimiento eliminada",
+    "createFailed": "No se pudo crear la ventana de mantenimiento",
+    "updateFailed": "No se pudo actualizar la ventana de mantenimiento",
+    "deleteFailed": "No se pudo eliminar la ventana de mantenimiento"
+  },
+  "delete": {
+    "confirmTitle": "¿Eliminar ventana de mantenimiento?",
+    "confirmBody": "¿Seguro que quieres eliminar esta ventana de mantenimiento? Esta acción no se puede deshacer."
+  }
+}

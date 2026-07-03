@@ -38,6 +38,12 @@ func TestMigrationsEmbedded(t *testing.T) {
 		"v0.1.0 baseline up migration must be embedded")
 	assert.Contains(t, files, "migrations/001_v0_1_0.down.sql",
 		"v0.1.0 baseline down migration must be embedded")
+
+	// Verify the v0.2.0 consolidated delta migration is embedded
+	assert.Contains(t, files, "migrations/002_v0_2_0.up.sql",
+		"v0.2.0 delta up migration must be embedded")
+	assert.Contains(t, files, "migrations/002_v0_2_0.down.sql",
+		"v0.2.0 delta down migration must be embedded")
 }
 
 // TestMigrationCreatesIncidentColumns verifies that after running migrations,
@@ -145,61 +151,72 @@ func TestMigrationResultDurationAvg(t *testing.T) {
 	assert.Contains(t, colNames, "duration_avg", "duration_avg column must exist after migration 031")
 }
 
-// TestMigrationDiscoveredHostsSource verifies migration 030 adds the source
-// column and backfills existing rows to 'lan'.
-func TestMigrationDiscoveredHostsSource(t *testing.T) {
+// TestMigrationDiscoveredChecks verifies the v0.2.0 migration replaces
+// discovered_hosts with discovered_checks: the host table is gone, the check
+// table and its identity index exist.
+func TestMigrationDiscoveredChecks(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
+	r := require.New(t)
 
 	svc, err := New(ctx, Config{InMemory: true})
-	require.NoError(t, err)
+	r.NoError(err)
 	t.Cleanup(func() { _ = svc.Close() })
 
-	err = svc.Initialize(ctx)
-	require.NoError(t, err, "Initialize must succeed")
+	r.NoError(svc.Initialize(ctx), "Initialize must succeed")
 
-	// The source column must exist after migration 030.
+	tableExists := func(name string) bool {
+		var count int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='table' AND name=?", name,
+		).Scan(ctx, &count))
+
+		return count == 1
+	}
+
+	r.False(tableExists("discovered_hosts"), "discovered_hosts must be dropped")
+	r.True(tableExists("discovered_checks"), "discovered_checks must exist")
+
+	// The required columns exist.
 	type columnInfo struct {
-		Name    string `bun:"name"`
-		Notnull int    `bun:"notnull"`
+		Name string `bun:"name"`
 	}
 	var columns []columnInfo
-	err = svc.db.NewRaw(`SELECT name, "notnull" FROM pragma_table_info('discovered_hosts')`).Scan(ctx, &columns)
-	require.NoError(t, err)
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('discovered_checks')").Scan(ctx, &columns))
 
-	var sourceCol *columnInfo
-	for i := range columns {
-		if columns[i].Name == "source" {
-			sourceCol = &columns[i]
-		}
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
 	}
-	require.NotNil(t, sourceCol, "source column must exist after migration 030")
-	require.Equal(t, 1, sourceCol.Notnull, "source column must be NOT NULL")
+	for _, expected := range []string{
+		"uid", "organization_uid", "job_uid", "source", "group_key", "group_label",
+		"name", "slug", "type", "config", "metadata", "promoted_to_check_uid",
+		"discovered_at", "created_at", "updated_at", "deleted_at",
+	} {
+		assert.Contains(t, colNames, expected, "%s column must exist", expected)
+	}
 
-	// The per-source unique index must exist; the old per-ip one must be gone.
+	// The identity unique index must exist.
 	type indexInfo struct {
 		Name string `bun:"name"`
 	}
 	var indexes []indexInfo
-	err = svc.db.NewRaw(
-		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discovered_hosts'",
-	).Scan(ctx, &indexes)
-	require.NoError(t, err)
+	r.NoError(svc.db.NewRaw(
+		"SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='discovered_checks'",
+	).Scan(ctx, &indexes))
 
 	idxNames := make([]string, 0, len(indexes))
 	for _, i := range indexes {
 		idxNames = append(idxNames, i.Name)
 	}
-	assert.Contains(t, idxNames, "idx_discovered_hosts_org_ip_source_active",
-		"per-source unique index must exist")
-	assert.NotContains(t, idxNames, "idx_discovered_hosts_org_ip_active",
-		"old per-ip unique index must be dropped")
+	assert.Contains(t, idxNames, "idx_discovered_checks_identity_active",
+		"per-group identity unique index must exist")
 }
 
-// TestMigrationDiscoveredHostsSourceDefault verifies that a row inserted without
-// an explicit source defaults to 'lan' (column DEFAULT in the consolidated baseline).
-func TestMigrationDiscoveredHostsSourceDefault(t *testing.T) {
+// TestMigrationDiscoveredChecksDefaultConfig verifies a row inserted without an
+// explicit config defaults to an empty JSON object (column DEFAULT).
+func TestMigrationDiscoveredChecksDefaultConfig(t *testing.T) {
 	t.Parallel()
 
 	ctx := t.Context()
@@ -224,14 +241,158 @@ func TestMigrationDiscoveredHostsSourceDefault(t *testing.T) {
 	).Exec(ctx)
 	r.NoError(err)
 	_, err = svc.db.NewRaw(
-		"INSERT INTO discovered_hosts (uid, organization_uid, job_uid, ip) VALUES (?, ?, ?, ?)",
-		uuid.New().String(), orgUID, jobUID, "192.168.1.99",
+		"INSERT INTO discovered_checks "+
+			"(uid, organization_uid, job_uid, source, group_key, group_label, name, slug, type) "+
+			"VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		uuid.New().String(), orgUID, jobUID, "lan", "192.168.1.99", "192.168.1.99",
+		"192.168.1.99 · ICMP", "192-168-1-99-icmp", "icmp",
 	).Exec(ctx)
 	r.NoError(err)
 
-	var src string
-	r.NoError(svc.db.NewRaw("SELECT source FROM discovered_hosts WHERE ip = ?", "192.168.1.99").Scan(ctx, &src))
-	r.Equal("lan", src, "rows inserted without a source must default to 'lan'")
+	var cfg string
+	r.NoError(svc.db.NewRaw(
+		"SELECT config FROM discovered_checks WHERE group_key = ?", "192.168.1.99",
+	).Scan(ctx, &cfg))
+	r.Equal("{}", cfg, "rows inserted without a config must default to an empty object")
+}
+
+// TestMigrationCheckJobSchedulingColumns verifies the cost-aware,
+// plan-weighted scheduling columns exist on check_jobs, with the documented
+// off-by-default zero values and the per-lane ordering indexes.
+func TestMigrationCheckJobSchedulingColumns(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('check_jobs')").Scan(ctx, &columns))
+
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+	for _, expected := range []string{"cost_ewma_ms", "plan_weight", "effective_scheduled_at"} {
+		assert.Contains(t, colNames, expected, "%s column must exist", expected)
+	}
+
+	// The per-lane ordering indexes must exist (a single full
+	// effective_scheduled_at index never reaches the consolidated schema).
+	for _, idx := range []string{"idx_check_jobs_claim_fast", "idx_check_jobs_claim_slow"} {
+		var idxCount int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", idx,
+		).Scan(ctx, &idxCount))
+		assert.Equal(t, 1, idxCount, "the %s ordering index must exist", idx)
+	}
+
+	// A check_job materialized without explicit scheduling values defaults to
+	// the off-by-default zeros (pure-FIFO equivalent).
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "sched-org", "Sched Org",
+	).Exec(ctx)
+	r.NoError(err)
+	checkUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
+		checkUID, orgUID, "sched-check", "http", "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+	jobUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO check_jobs (uid, organization_uid, check_uid, period) VALUES (?, ?, ?, ?)",
+		jobUID, orgUID, checkUID, "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+
+	type schedRow struct {
+		CostEWMAMs float64 `bun:"cost_ewma_ms"`
+		PlanWeight int     `bun:"plan_weight"`
+	}
+	var got schedRow
+	r.NoError(svc.db.NewRaw(
+		"SELECT cost_ewma_ms, plan_weight FROM check_jobs WHERE uid = ?", jobUID,
+	).Scan(ctx, &got))
+	assert.InDelta(t, 0.0, got.CostEWMAMs, 0.001, "cost_ewma_ms defaults to 0")
+	assert.Equal(t, 0, got.PlanWeight, "plan_weight defaults to 0 (free)")
+}
+
+// TestMigrationCheckJobLane verifies the fast/slow check lanes (spec
+// 2026-07-01-03): the lane column exists with default 0 (fast), and the two
+// lane-partial claim indexes exist (replacing the single full
+// effective_scheduled_at index from an earlier iteration of the v0.2.0
+// scratch migrations — that index never reaches the consolidated schema).
+func TestMigrationCheckJobLane(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	r := require.New(t)
+
+	svc, err := New(ctx, Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = svc.Close() })
+
+	r.NoError(svc.Initialize(ctx))
+
+	// Column exists.
+	type columnInfo struct {
+		Name string `bun:"name"`
+	}
+	var columns []columnInfo
+	r.NoError(svc.db.NewRaw("SELECT name FROM pragma_table_info('check_jobs')").Scan(ctx, &columns))
+	colNames := make([]string, 0, len(columns))
+	for _, c := range columns {
+		colNames = append(colNames, c.Name)
+	}
+	r.Contains(colNames, "lane", "lane column must exist")
+
+	// Partial indexes exist; the superseded full index is gone.
+	idxCount := func(name string) int {
+		var n int
+		r.NoError(svc.db.NewRaw(
+			"SELECT count(*) FROM sqlite_master WHERE type='index' AND name=?", name,
+		).Scan(ctx, &n))
+
+		return n
+	}
+	assert.Equal(t, 1, idxCount("idx_check_jobs_claim_fast"), "fast-lane partial index must exist")
+	assert.Equal(t, 1, idxCount("idx_check_jobs_claim_slow"), "slow-lane partial index must exist")
+	assert.Equal(t, 0, idxCount("idx_check_jobs_effective_scheduled_at"),
+		"the superseded full effective_scheduled_at index must not exist")
+
+	// A check_job materialized without an explicit lane defaults to fast
+	// (classification happens in the post-exec release, not at insert time).
+	orgUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO organizations (uid, slug, name) VALUES (?, ?, ?)", orgUID, "lane-org", "Lane Org",
+	).Exec(ctx)
+	r.NoError(err)
+	checkUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO checks (uid, organization_uid, slug, type, period) VALUES (?, ?, ?, ?, ?)",
+		checkUID, orgUID, "lane-check", "http", "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+	jobUID := uuid.New().String()
+	_, err = svc.db.NewRaw(
+		"INSERT INTO check_jobs (uid, organization_uid, check_uid, period) VALUES (?, ?, ?, ?)",
+		jobUID, orgUID, checkUID, "1m0s",
+	).Exec(ctx)
+	r.NoError(err)
+
+	var lane int
+	r.NoError(svc.db.NewRaw("SELECT lane FROM check_jobs WHERE uid = ?", jobUID).Scan(ctx, &lane))
+	assert.Equal(t, 0, lane, "lane defaults to 0 (fast) on insert")
 }
 
 // TestMigrationIntegrationsSchemaFinalState verifies that after the consolidated

@@ -1,8 +1,51 @@
 package passwords
 
 import (
+	"sync"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
+
+// TestHashConcurrencyBound checks the argon2 semaphore is sized to bound peak
+// memory: between 1 and maxConcurrentHashes slots, matching the channel buffer.
+func TestHashConcurrencyBound(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	n := hashConcurrency()
+	r.GreaterOrEqual(n, 1)
+	r.LessOrEqual(n, maxConcurrentHashes)
+	r.Equal(n, cap(hashSem))
+}
+
+// TestBoundedIDKeyConcurrency hammers Hash/Verify from far more goroutines than
+// the semaphore allows, ensuring the bound neither deadlocks nor corrupts results
+// when callers contend for a slot.
+func TestBoundedIDKeyConcurrency(t *testing.T) {
+	t.Parallel()
+
+	const goroutines = 16
+	var wg sync.WaitGroup
+
+	for range goroutines {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pw := "concurrent-secret"
+			h, err := Hash(pw)
+			if err != nil {
+				t.Errorf("Hash failed: %v", err)
+				return
+			}
+			if !Verify(pw, h) {
+				t.Errorf("verify failed for freshly hashed password")
+			}
+		}()
+	}
+
+	wg.Wait()
+}
 
 func TestHashAndVerify(t *testing.T) {
 	t.Parallel()

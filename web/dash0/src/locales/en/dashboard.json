@@ -47,9 +47,7 @@
     "down": "Currently down",
     "downSubNone": "All up",
     "incidents": "Active incidents",
-    "incidentsSubNone": "None active",
-    "availability": "24h availability",
-    "availabilityNoData": "No data yet"
+    "incidentsSubNone": "None active"
   },
   "glance": {
     "title": "Checks at a glance",

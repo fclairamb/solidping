@@ -152,7 +152,7 @@ func (s *DiscordOAuthService) ValidateOAuthState(
 	}
 
 	// Delete state (one-time use)
-	_ = s.db.DeleteStateEntry(ctx, nil, discordOAuthStatePrefix+stateParam)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, discordOAuthStatePrefix+stateParam)
 
 	stateJSON, ok := (*entry.Value)["state"].(string)
 	if !ok {

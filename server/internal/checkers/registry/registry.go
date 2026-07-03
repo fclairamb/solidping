@@ -19,11 +19,13 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkimap"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkjs"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkkafka"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkminecraft"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmongodb"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmqtt"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmssql"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkmysql"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkntp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkoracle"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpop3"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkpostgres"
@@ -31,6 +33,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkredis"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksftp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksip"
+	"github.com/fclairamb/solidping/server/internal/checkers/checksleep"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksmtp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checksnmp"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkssh"
@@ -134,6 +137,12 @@ func GetChecker(checkType checkerdef.CheckType) (checkerdef.Checker, bool) {
 		return &checkdnsbl.DNSBLChecker{}, true
 	case checkerdef.CheckTypeSIP:
 		return &checksip.SIPChecker{}, true
+	case checkerdef.CheckTypeKubernetes:
+		return &checkkubernetes.KubernetesChecker{}, true
+	case checkerdef.CheckTypeNTP:
+		return &checkntp.NTPChecker{}, true
+	case checkerdef.CheckTypeSleep:
+		return &checksleep.SleepChecker{}, true
 	default:
 		return nil, false
 	}
@@ -217,6 +226,12 @@ func ParseConfig(checkType checkerdef.CheckType) (checkerdef.Config, bool) {
 		return &checkdnsbl.DNSBLConfig{}, true
 	case checkerdef.CheckTypeSIP:
 		return &checksip.SIPConfig{}, true
+	case checkerdef.CheckTypeKubernetes:
+		return &checkkubernetes.KubernetesConfig{}, true
+	case checkerdef.CheckTypeNTP:
+		return &checkntp.NTPConfig{}, true
+	case checkerdef.CheckTypeSleep:
+		return &checksleep.SleepConfig{}, true
 	default:
 		return nil, false
 	}

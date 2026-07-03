@@ -8,6 +8,7 @@
     "mail": "Mail",
     "emailInbox": "Email Inbox",
     "authentication": "Authentication",
+    "hashing": "Password Hashing",
     "performance": "Performance",
     "slack": "Slack"
   },
@@ -72,7 +73,49 @@
       "appId": "App ID",
       "signingSecret": "Signing Secret",
       "botToken": "Bot Token",
-      "redirectUrl": "Redirect URL"
+      "redirectUrl": "Redirect URL",
+      "tenantId": "Tenant ID"
+    },
+    "fieldHelp": {
+      "tenantId": "Your Entra directory (tenant) ID, or a verified domain. Leave blank for \"common\" (multi-tenant). Use \"organizations\" or \"consumers\" to restrict account types."
+    }
+  },
+  "hashing": {
+    "title": "Password Hashing",
+    "description": "Choose the algorithm and cost used to hash local passwords. Stronger settings slow down offline cracking but cost more CPU per login.",
+    "restartNotice": "Changes take effect after a server restart. New passwords then use the new profile; existing users are migrated on their next sign-in when re-hashing is enabled. Values configured via YAML or environment variables are not shown here — leave a field blank to inherit the server default.",
+    "algorithm": "Algorithm",
+    "algorithmHelp": "argon2id is the recommended modern default; bcrypt is offered for compatibility.",
+    "algorithms": {
+      "argon2id": "argon2id (recommended)",
+      "bcrypt": "bcrypt"
+    },
+    "presets": {
+      "label": "Recommended profiles",
+      "help": "Presets fill the argon2id fields with an OWASP-aligned profile. Pick one, then adjust if needed.",
+      "high": "64 MiB · t3 · p4",
+      "owasp": "19 MiB · t2 · p1",
+      "low": "9 MiB · t4 · p1"
+    },
+    "argon2": {
+      "memory": "Memory (KiB)",
+      "memoryHelp": "Memory cost in KiB. Minimum 8192; OWASP recommends at least 19456 (19 MiB).",
+      "time": "Iterations (time)",
+      "timeHelp": "Number of passes over memory. Minimum 1.",
+      "threads": "Parallelism (threads)",
+      "threadsHelp": "Lanes used while hashing. Between 1 and 255.",
+      "keyLength": "Key length (bytes)",
+      "keyLengthHelp": "Derived-key length in bytes. Minimum 16.",
+      "saltLength": "Salt length (bytes)",
+      "saltLengthHelp": "Random salt length in bytes. Minimum 8."
+    },
+    "bcrypt": {
+      "cost": "Cost factor",
+      "costHelp": "bcrypt work factor. Between 10 and 31; 12 or higher is recommended."
+    },
+    "rehash": {
+      "label": "Re-hash existing passwords on next sign-in",
+      "help": "When on, a stored hash that no longer matches this policy is transparently upgraded on the user's next successful password login. When off, only new passwords use the new profile."
     }
   },
   "performance": {
@@ -82,7 +125,24 @@
     "checkRunners": "Check Runners",
     "checkRunnersHelp": "Number of concurrent goroutines for running health checks.",
     "jobRunners": "Job Runners",
-    "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs."
+    "jobRunnersHelp": "Number of concurrent goroutines for processing background jobs.",
+    "fastLaneReserved": "Fast-lane reserved slots",
+    "fastLaneReservedHelp": "Check runner slots reserved for fast checks: slow checks (cost ≥ 2s) can never occupy more than Check Runners minus this many slots. Takes effect after restart.",
+    "checkRunnersGroup": "Check runners",
+    "checkRunnersGroupHelp": "The pool that executes checks. The fast-lane reservation is carved out of this same pool.",
+    "jobRunnersGroup": "Background jobs",
+    "fastLaneReservedTooHigh": "Must be smaller than the total check runners.",
+    "laneLoadTitle": "Current load",
+    "laneLoadDescription": "Server-computed offered load per worker and lane. Duty is the sum of per-check duty cycles: 100% ≈ one permanently occupied runner slot; a lane whose duty exceeds its slot capacity is running behind.",
+    "laneLoadEmpty": "No workers registered yet.",
+    "laneFast": "Fast lane",
+    "laneSlow": "Slow lane",
+    "laneCol": "Lane",
+    "jobsCol": "Jobs",
+    "costSumCol": "Σ cost",
+    "delaySumCol": "Σ delay",
+    "dutyCol": "Duty",
+    "overloaded": "Overloaded"
   },
   "emailInbox": {
     "title": "Email Inbox",
@@ -144,7 +204,8 @@
       "appTokenLabel": "App-Level Token",
       "appTokenPlaceholder": "xapp-…",
       "saveButton": "Save",
-      "notEnabledHint": "Slack integration is not enabled. Configure it under Authentication settings or set SP_SLACK_ENABLED=true."
+      "notEnabledHint": "Slack integration is not enabled. Configure it under Authentication settings or set SP_SLACK_ENABLED=true.",
+      "restartHint": "Changes take effect after the server restarts."
     },
     "status": {
       "title": "Connection Status",

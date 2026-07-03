@@ -17,12 +17,7 @@ function SafeMarkdown({ content }: { content: string }) {
           const scheme = href?.split(":")[0] ?? "";
           if (!ALLOWED_SCHEMES.includes(scheme)) return <>{children}</>;
           return (
-            <a
-              href={href}
-              rel="noopener noreferrer"
-              target="_blank"
-              {...props}
-            >
+            <a href={href} rel="noopener noreferrer" target="_blank" {...props}>
               {children}
             </a>
           );
@@ -66,7 +61,8 @@ function formatRelativeTime(dateStr: string): string {
   const diffMins = Math.floor(diffMs / 60_000);
 
   if (diffMins < 1) return "just now";
-  if (diffMins < 60) return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
+  if (diffMins < 60)
+    return `${diffMins} minute${diffMins === 1 ? "" : "s"} ago`;
 
   const diffHours = Math.floor(diffMins / 60);
   if (diffHours < 24)
@@ -82,7 +78,10 @@ interface StatusUpdateCardProps {
 
 export function StatusUpdateCard({ update }: StatusUpdateCardProps) {
   return (
-    <div className="rounded-lg border border-border bg-card p-4 space-y-2">
+    <div
+      id={`update-${update.uid}`}
+      className="scroll-mt-24 rounded-lg border border-border bg-card p-4 space-y-2"
+    >
       {/* Header row: title (left) + kind badge + timestamp (right) */}
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <h3 className="text-sm font-semibold text-foreground min-w-0 break-words">

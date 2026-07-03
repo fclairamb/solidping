@@ -19,11 +19,14 @@ type PgEventNotifier struct {
 	db        *bun.DB
 	listener  *pq.Listener
 	listeners map[string][]chan string // eventType -> channels
-	mu        sync.RWMutex
-	done      chan struct{}
-	closeOnce sync.Once
-	wg        sync.WaitGroup
-	logger    *slog.Logger
+	// reconnectChans receive a signal whenever the pq.Listener re-establishes
+	// its session after a drop (see ReconnectEvents / notifier.ReconnectNotifier).
+	reconnectChans []chan struct{}
+	mu             sync.RWMutex
+	done           chan struct{}
+	closeOnce      sync.Once
+	wg             sync.WaitGroup
+	logger         *slog.Logger
 }
 
 // NewPgEventNotifier creates a new PostgreSQL LISTEN/NOTIFY based notifier.
@@ -53,6 +56,10 @@ func NewPgEventNotifier(db *bun.DB, connString string, logger *slog.Logger) (*Pg
 				logger.Warn("postgres listener disconnected", "error", err)
 			case pq.ListenerEventReconnected:
 				logger.Info("postgres listener reconnected")
+				// pq.Listener re-issues LISTEN for every registered channel on
+				// its own; consumers only need to resync state they may have
+				// missed while the session was down.
+				n.signalReconnect()
 			case pq.ListenerEventConnectionAttemptFailed:
 				logger.Error("postgres listener connection attempt failed", "error", err)
 			}
@@ -159,9 +166,51 @@ func (n *PgEventNotifier) Listen(eventType string) <-chan string {
 		n.listeners[eventType] = []chan string{}
 	}
 
-	ch := make(chan string, 1) // Buffered to avoid blocking
+	ch := make(chan string, ListenerBuffer) // buffered: see ListenerBuffer
 	n.listeners[eventType] = append(n.listeners[eventType], ch)
 	return ch
+}
+
+// ReconnectEvents registers and returns a channel signaled each time the
+// underlying pq.Listener reconnects after a connection drop. Buffered (size 1)
+// with non-blocking sends so reconnect bursts coalesce into a single pending
+// signal. Closed by Close. Implements notifier.ReconnectNotifier.
+func (n *PgEventNotifier) ReconnectEvents() <-chan struct{} {
+	n.mu.Lock()
+	defer n.mu.Unlock()
+
+	ch := make(chan struct{}, 1)
+	n.reconnectChans = append(n.reconnectChans, ch)
+
+	return ch
+}
+
+// signalReconnect fans a reconnect signal out to every registered reconnect
+// channel without blocking (a full channel already has a pending signal).
+func (n *PgEventNotifier) signalReconnect() {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+
+	for _, ch := range n.reconnectChans {
+		select {
+		case ch <- struct{}{}:
+		default:
+			// Signal already pending — reconnects coalesce.
+		}
+	}
+}
+
+// ListenerCount returns the total number of registered listener channels across
+// all event types. Mirrors LocalEventNotifier.ListenerCount so the memory
+// surface can report listener cardinality regardless of the DB backend.
+func (n *PgEventNotifier) ListenerCount() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	total := 0
+	for _, channels := range n.listeners {
+		total += len(channels)
+	}
+	return total
 }
 
 // Close releases resources used by the PostgreSQL listener.
@@ -186,6 +235,10 @@ func (n *PgEventNotifier) Close() error {
 				close(ch)
 			}
 		}
+		for _, ch := range n.reconnectChans {
+			close(ch)
+		}
+		n.reconnectChans = nil
 	})
 	return err
 }

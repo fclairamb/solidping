@@ -69,6 +69,38 @@ test.describe("Checks", () => {
     });
   });
 
+  test("should show a live probe-count estimate under the period inputs", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Open the new-check form (default type is HTTP = an active check).
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Pin the interval to 1 minute so the count is deterministic (120s / 60s = 2).
+    await page.getByTestId("check-period-select").click();
+    await page.getByRole("option", { name: "1 minute" }).click();
+
+    // Confirmation 120 -> "= 2 min" with the approximate probe count for the
+    // active 1-minute interval.
+    await page.getByTestId("confirmation-period-input").fill("120");
+    const confirmationEstimate = page.getByTestId("confirmation-period-estimate");
+    await expect(confirmationEstimate).toContainText("= 2 min");
+    await expect(confirmationEstimate).toContainText("≈ 2 checks");
+
+    // Recovery 0 -> the immediate-resolve copy, no probe count.
+    await page.getByTestId("recovery-period-input").fill("0");
+    const recoveryEstimate = page.getByTestId("recovery-period-estimate");
+    await expect(recoveryEstimate).toContainText("immediately");
+    await expect(recoveryEstimate).not.toContainText("≈");
+  });
+
   test("should load check detail page on direct URL access", async ({
     authenticatedPage,
   }) => {
@@ -285,7 +317,7 @@ test.describe("Checks", () => {
     });
   });
 
-  test("should persist adaptive resolution parameters after editing", async ({
+  test("should persist flapping parameters after editing", async ({
     authenticatedPage,
   }) => {
     const page = authenticatedPage;
@@ -299,9 +331,9 @@ test.describe("Checks", () => {
     await page.waitForLoadState("networkidle");
     await expect(page.getByTestId("check-name-input")).toBeVisible();
 
-    const checkName = `E2E Adaptive ${Date.now()}`;
+    const checkName = `E2E Flapping ${Date.now()}`;
     await page.getByTestId("check-name-input").fill(checkName);
-    await page.getByTestId("check-url-input").fill("https://example.com/adaptive-test");
+    await page.getByTestId("check-url-input").fill("https://example.com/flapping-test");
     await page.getByTestId("check-submit-button").click();
 
     // Wait for check detail page
@@ -314,9 +346,14 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Set adaptive resolution parameters
-    await page.locator("#reopenCooldownMultiplier").fill("3");
-    await page.locator("#maxAdaptiveIncrease").fill("7");
+    // Set flapping parameters (reopen multiplier is kept; window/factor/cap are new)
+    await page.getByTestId("reopen-cooldown-input").fill("3");
+    await page.getByTestId("flapping-window-input").fill("7200");
+    await page.getByTestId("flap-backoff-input").fill("3");
+    await page.getByTestId("max-recovery-multiplier-input").fill("6");
+
+    // The flapping window shows a human-duration estimate
+    await expect(page.getByTestId("flapping-window-estimate")).toContainText("2 h");
 
     // Submit the edit form
     await page.getByTestId("check-submit-button").click();
@@ -330,13 +367,15 @@ test.describe("Checks", () => {
     await page.waitForURL(/\/edit$/);
     await page.waitForLoadState("networkidle");
 
-    // Verify the adaptive resolution values are still set
-    await expect(page.locator("#reopenCooldownMultiplier")).toHaveValue("3");
-    await expect(page.locator("#maxAdaptiveIncrease")).toHaveValue("7");
+    // Verify the flapping values are still set
+    await expect(page.getByTestId("reopen-cooldown-input")).toHaveValue("3");
+    await expect(page.getByTestId("flapping-window-input")).toHaveValue("7200");
+    await expect(page.getByTestId("flap-backoff-input")).toHaveValue("3");
+    await expect(page.getByTestId("max-recovery-multiplier-input")).toHaveValue("6");
 
     // Take screenshot
     await page.screenshot({
-      path: "test-results/screenshots/checks-adaptive-resolution-persisted.png",
+      path: "test-results/screenshots/checks-flapping-persisted.png",
       fullPage: true,
     });
   });
@@ -479,6 +518,65 @@ test.describe("Checks", () => {
     // Take screenshot of edit form with persisted values
     await page.screenshot({
       path: "test-results/screenshots/checks-ws-edit.png",
+      fullPage: true,
+    });
+  });
+
+  test("disabled check shows a grey (data-disabled) status dot on the listing", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const stamp = Date.now();
+    const enabledName = `E2E Dot Enabled ${stamp}`;
+    const disabledName = `E2E Dot Disabled ${stamp}`;
+
+    // Helper: create an HTTP check and land on its detail page.
+    async function createCheck(name: string) {
+      await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+      await page.waitForURL(/\/checks/);
+      await page.waitForLoadState("networkidle");
+      await page.getByTestId("new-check-button").click();
+      await page.waitForURL(/\/checks\/new/);
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByTestId("check-name-input")).toBeVisible();
+      await page.getByTestId("check-name-input").fill(name);
+      await page.getByTestId("check-url-input").fill("https://example.com/dot-test");
+      await page.getByTestId("check-submit-button").click();
+      await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+      await page.waitForLoadState("networkidle");
+      await expect(page.getByRole("heading", { name })).toBeVisible();
+    }
+
+    // Create one check that stays enabled.
+    await createCheck(enabledName);
+
+    // Create a second check and disable it from its detail page.
+    await createCheck(disabledName);
+    await page.getByRole("button", { name: /Disable|Enable/ }).click();
+    // Once disabled the toggle relabels to "Enable" — wait for the flip.
+    await expect(page.getByRole("button", { name: /Enable/ })).toBeVisible();
+
+    // Back to the listing.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks$/);
+    await page.waitForLoadState("networkidle");
+
+    // The disabled row's dot reports data-disabled="true" and carries the
+    // localized "Disabled" tooltip/aria-label; the enabled row's dot is "false".
+    const disabledRow = page.locator("tr", { hasText: disabledName });
+    const enabledRow = page.locator("tr", { hasText: enabledName });
+    await expect(disabledRow).toBeVisible();
+    await expect(enabledRow).toBeVisible();
+
+    const disabledDot = disabledRow.getByTestId("check-status-dot");
+    const enabledDot = enabledRow.getByTestId("check-status-dot");
+    await expect(disabledDot).toHaveAttribute("data-disabled", "true");
+    await expect(disabledDot).toHaveAttribute("aria-label", "Disabled");
+    await expect(disabledDot).toHaveAttribute("title", "Disabled");
+    await expect(enabledDot).toHaveAttribute("data-disabled", "false");
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-disabled-dot-listing.png",
       fullPage: true,
     });
   });

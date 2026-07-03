@@ -99,6 +99,27 @@
     "paired": "Paired — connection ready",
     "cancel": "Cancel"
   },
+  "kubernetes": {
+    "name": "Kubernetes",
+    "description": "Connect a Kubernetes cluster to monitor workload replica health",
+    "authMode": "Authentication",
+    "authToken": "API server + token",
+    "authKubeconfig": "Kubeconfig",
+    "authInCluster": "In-cluster (this cluster)",
+    "inClusterHint": "Uses the service-account token mounted in SolidPing's own pod. Only works when SolidPing runs inside the target cluster; no credentials are stored.",
+    "apiServer": "API server URL",
+    "token": "Bearer token",
+    "kubeconfig": "Kubeconfig (YAML)",
+    "caCert": "CA certificate (PEM, optional)",
+    "insecure": "Skip TLS verification",
+    "insecureHelp": "Disables API-server certificate verification. Use only for clusters with a self-signed cert you cannot pin.",
+    "secretStored": "•••••••• (stored — leave blank to keep)",
+    "testTitle": "Test cluster connection",
+    "testHelp": "Probe the cluster API to confirm the credentials work. Uses the saved settings.",
+    "testButton": "Test connection",
+    "connected": "Connected",
+    "failed": "Failed"
+  },
   "hint": {
     "slack": "Connect a Slack workspace via OAuth",
     "discord": "Send to a Discord webhook URL",
@@ -110,6 +131,7 @@
     "opsgenie": "Page on-call engineers via Opsgenie",
     "pushover": "Mobile push notifications via Pushover",
     "freebox": "Monitor a Free Freebox (line quality, sync rate, network state)",
-    "webpush": "Receive alerts as browser notifications on your subscribed devices"
+    "webpush": "Receive alerts as browser notifications on your subscribed devices",
+    "kubernetes": "Monitor Kubernetes workload replica health (Deployments, ReplicaSets)"
   }
 }

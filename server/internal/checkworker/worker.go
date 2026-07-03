@@ -23,6 +23,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -53,7 +54,12 @@ const (
 
 // CheckWorker executes check jobs from the queue.
 type CheckWorker struct {
-	worker      *models.Worker
+	// worker holds the registered worker identity. It is written once by
+	// registerWorker (from Run's goroutine) and then read from many goroutines
+	// (runners, fetcher, heartbeat, the Prometheus channel collector, and tests),
+	// so access goes through atomic.Pointer to avoid a data race. Use
+	// setWorker/getWorker rather than touching the field directly.
+	worker      atomic.Pointer[models.Worker]
 	dbService   db.Service
 	checkJobSvc checkjobsvc.Service
 	incidentSvc *incidents.Service
@@ -68,6 +74,25 @@ type CheckWorker struct {
 	availableRunners atomic.Int32          // Runners waiting for jobs
 	jobsChan         chan *models.CheckJob // Fetcher → Runners
 	completionChan   chan struct{}         // Runners → Fetcher (wake-up signal)
+
+	// Fast/slow lane reservation (spec 2026-07-01-03 D3/D4): slow-lane jobs in
+	// flight never exceed poolSize − fastLaneReserved on this worker, so a
+	// burst of slow probes can never occupy the whole pool and starve due fast
+	// checks. busySlow counts in-flight slow-lane jobs: incremented by the
+	// fetcher right after a successful claim (accounting at claim time — not
+	// at runner start — closes the window where a re-fetch could read a stale
+	// count and over-claim slow) and decremented by the runner when the job
+	// finishes. The express path bypasses both the pool and this accounting (a
+	// freshly created check is lane-fast by definition; its goroutine is
+	// additive).
+	busySlow         atomic.Int32
+	fastLaneReserved int // reserved fast-only slots, clamped to [0, poolSize−1]
+
+	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09): schedParams is
+	// the pure math config that deprioritizes slow checks (and credits paid
+	// tiers) by pushing each job's effective scheduled_at on reschedule. It only
+	// reorders fetch order — it never sheds or defers a claimed job.
+	schedParams scheduling.Params
 
 	// Self-stats reporting fields
 	internalCheckUID string // UID of the internal check for this worker
@@ -85,21 +110,90 @@ func NewCheckWorker(
 
 	poolSize := cfg.Server.CheckWorker.Nb
 	if poolSize <= 0 {
-		poolSize = 5
+		// I/O-bound work tolerates far more concurrency than a CPU-bound pool;
+		// a goroutine parked on a slow socket costs ~KB and zero CPU. Slow
+		// checks are deprioritized in fetch order (spec 2026-06-30-09) and
+		// capacity-capped by the fast-lane reservation below (spec
+		// 2026-07-01-03), not by this count.
+		poolSize = 25
 	}
+
+	// Clamp the fast-lane floor to [0, poolSize−1] (spec 2026-07-01-03 D3): a
+	// floor at or above the pool size would leave the slow lane zero slots
+	// forever, silently killing every slow check.
+	fastLaneReserved := cfg.Server.Scheduling.FastLaneReserved
+	switch {
+	case fastLaneReserved < 0:
+		logger.Warn("scheduling.fast_lane_reserved is negative; clamping to 0 (no reservation)",
+			"configured", cfg.Server.Scheduling.FastLaneReserved)
+		fastLaneReserved = 0
+	case fastLaneReserved >= poolSize:
+		logger.Warn("scheduling.fast_lane_reserved >= pool size would starve the slow lane; clamping to pool−1",
+			"configured", cfg.Server.Scheduling.FastLaneReserved,
+			"pool_size", poolSize,
+			"clamped", poolSize-1)
+		fastLaneReserved = poolSize - 1
+	}
+
+	schedParams := schedulingParamsFromConfig(cfg.Server.Scheduling)
 
 	return &CheckWorker{
 		dbService:   dbService,
 		config:      cfg,
 		services:    svc,
 		checkJobSvc: checkJobSvc,
-		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}),
+		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
 		// Channel-based architecture
-		poolSize:       poolSize,
-		jobsChan:       make(chan *models.CheckJob),
-		completionChan: make(chan struct{}, 1),
+		poolSize:         poolSize,
+		fastLaneReserved: fastLaneReserved,
+		jobsChan:         make(chan *models.CheckJob),
+		completionChan:   make(chan struct{}, 1),
+		schedParams:      schedParams,
+	}
+}
+
+// laneLimits computes the per-lane claim limits (fast, slow) for one fetch
+// (spec 2026-07-01-03 D3). Fast jobs may occupy any free slot (the fast limit
+// is the full free capacity); slow jobs may only occupy slots above the
+// reserved fast floor:
+//
+//	slowBudget = max(0, (poolSize − fastReserved) − busySlow)
+//
+// clamped to the free slots. An idle slow lane donates everything to fast
+// (trivially); an idle fast stream lets slow borrow up to poolSize −
+// fastReserved; a fast burst never finds fewer than fastReserved slots
+// occupied by nothing slower than another fast check. Per-worker enforcement
+// is fleet-correct: every worker independently guarantees its own floor.
+func laneLimits(free, poolSize, fastReserved, busySlow int) (int, int) {
+	slowLimit := (poolSize - fastReserved) - busySlow
+	if slowLimit < 0 {
+		slowLimit = 0
+	}
+	if slowLimit > free {
+		slowLimit = free
+	}
+
+	return free, slowLimit
+}
+
+// schedulingParamsFromConfig converts the koanf SchedulingConfig (seconds / ms
+// scalars) into the worker's scheduling.Params (typed durations). Every zero
+// value maps to "feature off", so the default config reproduces pure-FIFO,
+// flat-30s behavior.
+func schedulingParamsFromConfig(cfg config.SchedulingConfig) scheduling.Params {
+	secs := func(seconds float64) time.Duration { return time.Duration(seconds * float64(time.Second)) }
+	millis := func(ms float64) time.Duration { return time.Duration(ms * float64(time.Millisecond)) }
+
+	return scheduling.Params{
+		SlowThresholdMs:     cfg.SlowThresholdMs,
+		TierCreditPerWeight: secs(cfg.TierCreditSeconds),
+		TierCreditMax:       secs(cfg.TierCreditMaxSeconds),
+		CostTimeoutFactor:   cfg.CostTimeoutFactor,
+		CostTimeoutFloor:    millis(cfg.CostTimeoutFloorMs),
+		LaneSlowThresholdMs: cfg.LaneSlowThresholdMs,
+		LaneFastThresholdMs: cfg.LaneFastThresholdMs,
 	}
 }
 
@@ -112,9 +206,10 @@ func (r *CheckWorker) Run(ctx context.Context) error {
 		return fmt.Errorf("failed to register worker: %w", err)
 	}
 
+	registered := r.getWorker()
 	r.logger.InfoContext(ctx, "Worker registered",
-		"worker_uid", r.worker.UID,
-		"worker_slug", r.worker.Slug,
+		"worker_uid", registered.UID,
+		"worker_slug", registered.Slug,
 		"pool_size", r.poolSize)
 
 	// 1b. Register per-worker Prometheus channel-depth collector
@@ -188,8 +283,20 @@ func (r *CheckWorker) registerWorker(ctx context.Context) error {
 		return err
 	}
 
-	r.worker = registeredWorker
+	r.setWorker(registeredWorker)
 	return nil
+}
+
+// setWorker publishes the registered worker identity. Safe to call from any
+// goroutine.
+func (r *CheckWorker) setWorker(worker *models.Worker) {
+	r.worker.Store(worker)
+}
+
+// getWorker returns the registered worker identity, or nil before registration.
+// Safe to call from any goroutine.
+func (r *CheckWorker) getWorker() *models.Worker {
+	return r.worker.Load()
 }
 
 // heartbeatLoop periodically updates the worker's last_active_at.
@@ -210,7 +317,7 @@ func (r *CheckWorker) heartbeatLoop(ctx context.Context) {
 
 // updateHeartbeat updates the worker's last_active_at timestamp.
 func (r *CheckWorker) updateHeartbeat(ctx context.Context) {
-	if err := r.dbService.UpdateWorkerHeartbeat(ctx, r.worker.UID); err != nil {
+	if err := r.dbService.UpdateWorkerHeartbeat(ctx, r.getWorker().UID); err != nil {
 		r.logger.ErrorContext(ctx, "Failed to update heartbeat", "error", err)
 	}
 }
@@ -272,13 +379,21 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		return nil
 	}
 
+	// Per-lane reservation (spec 2026-07-01-03 D3): fast may fill every free
+	// slot; slow is bounded by the budget left under the fast floor.
+	fastLimit, slowLimit := laneLimits(
+		available, r.poolSize, r.fastLaneReserved, int(r.busySlow.Load()),
+	)
+
 	cfg := r.config.Server.CheckWorker
 	fetchStart := time.Now()
+	worker := r.getWorker()
 	jobs, err := r.checkJobSvc.ClaimJobs(
 		ctx,
-		r.worker.UID,
-		r.worker.Region,
-		available,
+		worker.UID,
+		worker.Region,
+		fastLimit,
+		slowLimit,
 		cfg.FetchMaxAhead,
 	)
 	prommetrics.RecordCheckStage("fetch", time.Since(fetchStart).Seconds())
@@ -298,6 +413,21 @@ func (r *CheckWorker) fetchAndDistributeJobs(ctx context.Context, logger *slog.L
 		}
 		return err
 	}
+
+	// Account in-flight slow jobs at claim time (D4): the count must be
+	// visible before any subsequent fetch computes its slow budget, and a
+	// runner-side increment would leave a window between channel handoff and
+	// runner start where a re-fetch could over-claim slow. The runner
+	// decrements when the job finishes.
+	slowClaimed := 0
+	for _, job := range jobs {
+		if job.Lane == scheduling.LaneSlow {
+			r.busySlow.Add(1)
+			slowClaimed++
+		}
+	}
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelFast, len(jobs)-slowClaimed)
+	prommetrics.RecordLaneClaims(prommetrics.LaneLabelSlow, slowClaimed)
 
 	// Distribute jobs to runners
 	for _, job := range jobs {
@@ -363,7 +493,8 @@ func (r *CheckWorker) handleExpressEvent(ctx context.Context, logger *slog.Logge
 		return
 	}
 
-	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, r.worker.UID, r.worker.Region, msg.CheckUID)
+	worker := r.getWorker()
+	jobs, err := r.checkJobSvc.ClaimJobsForCheck(ctx, worker.UID, worker.Region, msg.CheckUID)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			logger.WarnContext(ctx, "express claim failed",
@@ -420,6 +551,12 @@ func (r *CheckWorker) runnerLoop(ctx context.Context, id int) {
 			logger.ErrorContext(ctx, "Error executing job",
 				"error", err,
 				"check_uid", job.CheckUID)
+		}
+
+		// A finished slow-lane job frees its reserved-budget slot (the
+		// matching increment happened in the fetcher at claim time).
+		if job.Lane == scheduling.LaneSlow {
+			r.busySlow.Add(-1)
 		}
 
 		// Signal completion to wake fetcher (non-blocking)
@@ -540,10 +677,15 @@ func (r *CheckWorker) executeJob(
 		}
 	}
 
-	// 4. Execute check with timeout
-	// Use background context so the check can complete even during shutdown
-	// Only the 30s timeout should cancel the check, not the runner shutdown
-	execCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	// 4. Execute check with a cost-aware timeout.
+	// Use background context so the check can complete even during shutdown —
+	// only the timeout should cancel the check, not the runner shutdown. The
+	// ceiling is clamp(factor × cost_ewma, floor, 30s): a 200ms-p95 check no
+	// longer reserves 30s of worst-case occupancy, while chronic 30s offenders
+	// still hit the ceiling. With the cost-aware timeout disabled this is the
+	// historical flat 30s.
+	execTimeout := r.schedParams.ExecutionTimeout(checkJob.CostEWMAMs)
+	execCtx, cancel := context.WithTimeout(context.Background(), execTimeout)
 	defer cancel()
 
 	execStart := time.Now()
@@ -623,7 +765,11 @@ func (r *CheckWorker) executeJob(
 	}
 
 	releaseStart := time.Now()
-	releaseErr := r.releaseLease(releaseCtx, checkJob)
+	// Fold the just-measured cost into the same post-exec write (no extra
+	// query on the hot path): update the EWMA and recompute the effective
+	// deadline used for cost-aware claim ordering. Timeouts are pinned to the
+	// ceiling so a chronic offender's cost reflects its worst-case occupancy.
+	releaseErr := r.releaseLeaseWithCost(releaseCtx, checkJob, *result, execStart)
 	prommetrics.RecordCheckStage("release_lease", time.Since(releaseStart).Seconds())
 	if releaseErr != nil {
 		return fmt.Errorf("failed to release lease: %w", releaseErr)
@@ -637,6 +783,69 @@ func (r *CheckWorker) executeJob(
 	return nil
 }
 
+// costSampleMs derives the cost sample (ms) to fold into the EWMA from a result.
+// A timeout is pinned to the execution ceiling so a perpetually-timing-out check
+// converges to the maximum cost (and stays slow-classified) rather than being
+// scored by the partial duration measured before the deadline fired.
+func (r *CheckWorker) costSampleMs(result checkerdef.Result) float64 {
+	if result.Status == checkerdef.StatusTimeout {
+		return float64(scheduling.DefaultExecutionTimeout.Milliseconds())
+	}
+
+	return float64(result.Duration.Milliseconds())
+}
+
+// releaseLeaseWithCost releases the lease for an actively-probed check, folding
+// the new cost and delay EWMAs, the recomputed effective_scheduled_at, and the
+// hysteresis-classified lane into the same write. The effective deadline and
+// the lane are computed from the cost EWMA only (specs 2026-07-01-02 /
+// 2026-07-01-03): the delay EWMA is persisted as telemetry but never steers
+// the claim order nor the lane — delay is a victim signal, and classifying on
+// it would send starved fast checks into the slow lane. execStart is when the
+// outbound probe actually began.
+func (r *CheckWorker) releaseLeaseWithCost(
+	ctx context.Context,
+	checkJob *models.CheckJob,
+	result checkerdef.Result,
+	execStart time.Time,
+) error {
+	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
+	newCost := scheduling.UpdateEWMA(checkJob.CostEWMAMs, r.costSampleMs(result))
+	newDelay := scheduling.UpdateEWMA(checkJob.DelayEWMAMs, r.delaySampleMs(checkJob, execStart))
+	effective := r.schedParams.EffectiveScheduledAt(nextScheduledAt, newCost, checkJob.PlanWeight)
+	newLane := scheduling.ClassifyLane(checkJob.Lane, newCost, r.schedParams)
+
+	return r.checkJobSvc.ReleaseLeaseWithSchedulingState(
+		ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt, newCost, newDelay, effective, newLane,
+	)
+}
+
+// delaySampleMs is the scheduling-delay sample (ms) folded into the delay EWMA:
+// how far past the job's real scheduled_at the probe actually started, floored
+// at 0 — true start lateness vs the schedule the user configured (spec
+// 2026-07-01-02 D4). The runner sleeps until scheduled_at, so under spare
+// capacity the probe starts on time and this is 0; it only goes positive when
+// contention pushes the start past the schedule. Pure telemetry: it feeds the
+// cost-distribution endpoint and the lane-split go/no-go, never the claim
+// order, so there is no feedback loop. Falls back to effective_scheduled_at
+// when the row has no scheduled_at (should not happen in practice).
+func (r *CheckWorker) delaySampleMs(checkJob *models.CheckJob, execStart time.Time) float64 {
+	ref := checkJob.ScheduledAt
+	if ref == nil {
+		ref = checkJob.EffectiveScheduledAt
+	}
+	if ref == nil {
+		return 0
+	}
+
+	lateness := execStart.Sub(*ref)
+	if lateness < 0 {
+		return 0
+	}
+
+	return float64(lateness.Milliseconds())
+}
+
 // saveResult saves a check result to the database and processes incidents.
 func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob, checkResult checkerdef.Result) error {
 	resultUID, err := uuid.NewV7()
@@ -647,6 +856,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 	status := int(checkResult.Status)
 	durationMs := float32(checkResult.Duration.Seconds() * 1000)
 	lastForStatus := true
+	worker := r.getWorker()
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -654,7 +864,7 @@ func (r *CheckWorker) saveResult(ctx context.Context, checkJob *models.CheckJob,
 		CheckUID:        checkJob.CheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Region:          checkJob.Region,
 		Status:          &status,
 		Duration:        &durationMs,
@@ -708,6 +918,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 	status := int(checkerdef.StatusError)
 	durationMs := float32(0)
 	lastForStatus := true
+	worker := r.getWorker()
 
 	result := &models.Result{
 		UID:             resultUID.String(),
@@ -715,7 +926,7 @@ func (r *CheckWorker) saveErrorResult(ctx context.Context, checkJob *models.Chec
 		CheckUID:        checkJob.CheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Region:          checkJob.Region,
 		Status:          &status,
 		Duration:        &durationMs,
@@ -757,7 +968,7 @@ func (r *CheckWorker) releaseLease(ctx context.Context, checkJob *models.CheckJo
 	// Parse period and calculate next scheduled time
 	nextScheduledAt := r.calculateNextScheduledAt(checkJob)
 
-	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.worker.UID, nextScheduledAt)
+	return r.checkJobSvc.ReleaseLease(ctx, checkJob.UID, r.getWorker().UID, nextScheduledAt)
 }
 
 // isPassiveCheckType reports whether a check type is passive — driven by
@@ -911,7 +1122,8 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 
 // createInternalCheck creates or retrieves the internal check for this worker.
 func (r *CheckWorker) createInternalCheck(ctx context.Context) error {
-	slug := "int-checks-" + r.worker.Slug
+	worker := r.getWorker()
+	slug := "int-checks-" + worker.Slug
 
 	// Check if already exists
 	existing, err := r.dbService.GetCheckByUidOrSlug(ctx, r.defaultOrgUID, slug)
@@ -933,7 +1145,7 @@ func (r *CheckWorker) createInternalCheck(ctx context.Context) error {
 
 	// Create new internal check
 	check := models.NewCheck(r.defaultOrgUID, slug, "checkworker")
-	name := "Check Worker: " + r.worker.Name
+	name := "Check Worker: " + worker.Name
 	check.Name = &name
 	check.Enabled = false // Don't schedule it as a regular check
 	check.Internal = true
@@ -963,13 +1175,14 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 		return
 	}
 
+	worker := r.getWorker()
 	result := &models.Result{
 		UID:             resultUID.String(),
 		OrganizationUID: r.defaultOrgUID,
 		CheckUID:        r.internalCheckUID,
 		PeriodType:      periodTypeRaw,
 		PeriodStart:     time.Now(),
-		WorkerUID:       &r.worker.UID,
+		WorkerUID:       &worker.UID,
 		Status:          &status,
 		Metrics: models.JSONMap{
 			"job_runs":         reported.TotalChecks,

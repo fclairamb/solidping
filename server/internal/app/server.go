@@ -23,10 +23,12 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/uptrace/bunrouter"
+	k8sclient "k8s.io/client-go/kubernetes"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkfreeboxline"
+	"github.com/fclairamb/solidping/server/internal/checkers/checkkubernetes"
 	"github.com/fclairamb/solidping/server/internal/checkworker"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/config"
@@ -39,6 +41,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	entitlementsapi "github.com/fclairamb/solidping/server/internal/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/auth"
+	"github.com/fclairamb/solidping/server/internal/handlers/availability"
 	"github.com/fclairamb/solidping/server/internal/handlers/badges"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checkchannels"
@@ -67,6 +70,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/maintenancewindows"
 	"github.com/fclairamb/solidping/server/internal/handlers/members"
 	"github.com/fclairamb/solidping/server/internal/handlers/oncallschedules"
+	"github.com/fclairamb/solidping/server/internal/handlers/realtimews"
 	regionshandler "github.com/fclairamb/solidping/server/internal/handlers/regions"
 	"github.com/fclairamb/solidping/server/internal/handlers/results"
 	"github.com/fclairamb/solidping/server/internal/handlers/severities"
@@ -78,6 +82,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
+	integrationk8s "github.com/fclairamb/solidping/server/internal/integrations/kubernetes"
 	"github.com/fclairamb/solidping/server/internal/integrations/slack"
 	"github.com/fclairamb/solidping/server/internal/jmap"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
@@ -90,9 +95,11 @@ import (
 	"github.com/fclairamb/solidping/server/internal/oauth"
 	"github.com/fclairamb/solidping/server/internal/profiler"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/regions"
 	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
+	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 	"github.com/fclairamb/solidping/server/internal/version"
 	webpushpkg "github.com/fclairamb/solidping/server/internal/webpush"
 	"github.com/fclairamb/solidping/server/test/testdata"
@@ -142,6 +149,7 @@ type Server struct {
 	jmapManager           *jmap.Manager
 	slackSocketSupervisor *slack.SlackSocketSupervisor
 	rateLimiter           *middleware.RateLimiter // For the /api/mgmt/limits introspection handler
+	realtimeHub           *realtime.Hub           // Live hint stream fan-out (nil when realtime disabled)
 	cancelCtx             context.CancelFunc
 	workersWg             sync.WaitGroup // Tracks workers
 }
@@ -155,22 +163,34 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		err       error
 	)
 
+	// Install the process-wide password-hashing policy from config. Parameters
+	// are already validated by cfg.Validate() at startup, so a failure here is a
+	// genuinely unknown algorithm and must abort (never silently fall back).
+	pwPolicy, err := passwords.PolicyFromConfig(&cfg.Auth)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve password hashing policy: %w", err)
+	}
+	passwords.SetDefaultPolicy(pwPolicy)
+
 	// Initialize database service based on configuration
 
 	switch cfg.Database.Type {
 	case "postgres":
-		dbService, err = postgres.New(ctx, postgres.Config{
-			DSN:      cfg.Database.URL,
-			Embedded: false,
-			LogSQL:   cfg.Database.LogSQL,
-			RunMode:  cfg.RunMode,
-			Reset:    cfg.Database.Reset,
+		dbService, err = postgres.New(ctx, &postgres.Config{
+			DSN:             cfg.Database.URL,
+			Embedded:        false,
+			LogSQL:          cfg.Database.LogSQL,
+			RunMode:         cfg.RunMode,
+			Reset:           cfg.Database.Reset,
+			MaxOpenConns:    cfg.Database.MaxOpenConns,
+			MaxIdleConns:    cfg.Database.MaxIdleConns,
+			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)
 		}
 	case "postgres-embedded":
-		dbService, err = postgres.New(ctx, postgres.Config{
+		dbService, err = postgres.New(ctx, &postgres.Config{
 			Embedded:    true,
 			EmbeddedDir: "/tmp/solidping-postgres-test",
 			Port:        embeddedPostgresPort,
@@ -229,9 +249,16 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 	svcList.EventNotifier = eventNotifier
 
+	// Realtime hint publisher: write paths (results, incidents, jobs) publish
+	// org-scoped dirty hints through it onto the notifier bus. Left nil when
+	// the feature is disabled — every publish site is nil-safe.
+	if cfg.Realtime.Enabled {
+		svcList.Realtime = realtime.NewPublisher(ctx, eventNotifier, cfg.Realtime.FlushInterval, slog.Default())
+	}
+
 	// GetJobWait subscribes internally via notifier.Listen("job.created") on each
 	// call, so no external wakeup channel is needed here.
-	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier)
+	jobService := jobsvc.NewService(dbService.DB(), dbService, eventNotifier, svcList.Realtime)
 	svcList.Jobs = jobService
 
 	checkJobService := checkjobsvc.NewService(dbService.DB())
@@ -270,6 +297,14 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	// importable from unit tests without a live database. Mirrors the
 	// checkjs.ResolveChecker indirection pattern set up by the registry.
 	checkfreeboxline.ConnectionResolverFunc = newFreeboxConnectionResolver(dbService, credSvc)
+
+	// Wire the kubernetes checker's clientset resolver. Same indirection: the
+	// resolver owns the DB lookup + credential decrypt (via the integrations
+	// kubernetes package's single chokepoint) so the checker package stays
+	// importable from unit tests without a live database or cluster.
+	checkkubernetes.ClientsetResolverFunc = func(ctx context.Context, clusterUID string) (k8sclient.Interface, error) {
+		return integrationk8s.ResolveClientsetByUID(ctx, dbService, credSvc, clusterUID)
+	}
 
 	// Initialize Sentry error tracking
 	if err := initSentry(cfg.Sentry); err != nil {
@@ -324,6 +359,29 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 	}
 
 	return server, nil
+}
+
+// registerSubsystemMetrics wires the A2 subsystem-size collector to the live
+// services (DEK cache, event listeners) and rate limiter. Reads are taken at
+// scrape time via closures, so the collector holds no copies and costs nothing
+// at idle. Guards each source for nil so a partially-initialized server (or a
+// future role that skips a subsystem) degrades to 0 rather than panicking.
+func (s *Server) registerSubsystemMetrics(reg prometheus.Registerer) {
+	sizes := prommetrics.SubsystemSizes{}
+
+	if s.services != nil {
+		if cred := s.services.Credentials; cred != nil {
+			sizes.DEKCacheEntries = cred.DEKCacheLen
+		}
+		if ev := s.services.EventNotifier; ev != nil {
+			sizes.EventListeners = func() int { return notifier.ListenerCount(ev) }
+		}
+	}
+	if s.rateLimiter != nil {
+		sizes.RateLimitEntries = s.rateLimiter.EntryCount
+	}
+
+	prommetrics.RegisterSubsystems(reg, sizes)
 }
 
 // SetupRoutes builds the HTTP router and registers every handler. It must
@@ -486,7 +544,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// MCP endpoint (auth via PAT token, org derived from token)
 	s.mcpHandler = mcp.NewHandler(
 		s.dbService, s.services.EventNotifier, s.jobSvc, checkTypesService,
-		s.services.Credentials, s.services.Entitlements,
+		s.services.Credentials, s.services.Entitlements, s.services.Realtime,
 	)
 	mcpGroup := api.NewGroup("/mcp").Use(authMiddleware.RequireMCPAuth)
 	mcpGroup.POST("", s.mcpHandler.Handle)
@@ -647,7 +705,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	api.GET("/orgs/:org/checks/:check/badges/:components", badgesHandler.GetBadge)
 
 	// Heartbeat ingestion routes (public, token-based auth)
-	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc)
+	heartbeatService := heartbeat.NewService(s.dbService, s.jobSvc, s.services.Realtime)
 	heartbeatHandler := heartbeat.NewHandler(heartbeatService, s.config)
 	api.POST("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
 	api.GET("/heartbeat/:org/:identifier", heartbeatHandler.ReceiveHeartbeat)
@@ -656,7 +714,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	workersService := workers.NewService(
 		s.dbService,
 		s.services.CheckJobs,
-		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock),
+		incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime),
 		s.services.Credentials,
 	)
 	workersHandler := workers.NewHandler(workersService, s.config)
@@ -676,8 +734,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgChecksResults := api.NewGroup("/orgs/:org/checks/:check/results").Use(authMiddleware.RequireAuth)
 	orgChecksResults.GET("/:uid", resultsHandler.GetResult)
 
+	// Per-check availability statistics (real per-period probe-ratio + incidents)
+	availabilityService := availability.NewService(s.dbService)
+	availabilityHandler := availability.NewHandler(availabilityService, s.config)
+	orgChecksAvail := api.NewGroup("/orgs/:org/checks/:check/availability").Use(authMiddleware.RequireAuth)
+	orgChecksAvail.GET("", availabilityHandler.GetAvailability)
+
 	// Incidents routes (authentication required)
-	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock)
+	incidentsService := incidents.NewService(s.dbService, s.jobSvc, s.services.Clock, s.services.Realtime)
 	incidentsHandler := incidents.NewHandler(incidentsService, s.config)
 	orgIncidents := api.NewGroup("/orgs/:org/incidents").Use(authMiddleware.RequireAuth)
 	orgIncidents.GET("", incidentsHandler.ListIncidents)
@@ -767,6 +831,23 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	orgEvents := api.NewGroup("/orgs/:org/events").Use(authMiddleware.RequireAuth)
 	orgEvents.GET("", eventsHandler.ListEvents)
 
+	// Realtime hint WebSocket. The hub/handler are always constructed and the
+	// route is always registered — even when SP_REALTIME_ENABLED=false — so a
+	// disabled feature still accepts the upgrade and immediately closes with
+	// 4404 (browsers cannot see HTTP status at upgrade time, only close
+	// codes; see handlers/realtimews). Registered OUTSIDE
+	// RequireAuth/RequireOrgAccess: browsers cannot present credentials at
+	// WebSocket-upgrade time, so the handler performs the exact same
+	// validation in-band and closes 4401/4403 otherwise. The path is
+	// excluded from the request timeout and rate limits
+	// (middleware.isExcluded) — the hub's max_connections and
+	// max_subscriptions_per_connection guards bound it instead.
+	s.realtimeHub = realtime.NewHubWithSubscriptionCap(
+		s.services.EventNotifier, s.config.Realtime.MaxConnections,
+		s.config.Realtime.MaxSubscriptionsPerConnection, slog.Default())
+	wsHandler := realtimews.NewHandler(s.realtimeHub, s.authService, s.dbService, s.config)
+	api.GET("/orgs/:org/events/ws", wsHandler.Serve)
+
 	// Files routes (authentication required for org-scoped, plus public signed-URL route)
 	filesService := files.NewService(s.dbService, s.config)
 	filesHandler := files.NewHandler(filesService, s.config)
@@ -802,7 +883,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// The supervisor is started from Server.Start() once we have a real
 	// cancellable context.
 	s.jmapManager = jmap.NewManager(s.dbService)
-	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, slog.Default()))
+	s.jmapManager.RegisterHandler(emailcheck.NewHandler(s.dbService, s.jobSvc, s.services.Realtime, slog.Default()))
 	systemService.SetEmailInboxManager(s.jmapManager)
 
 	systemHandler := system.NewHandler(systemService, s.config)
@@ -831,6 +912,7 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	systemActions.POST("/email-inbox/test", systemHandler.EmailInboxTest)
 	systemActions.POST("/email-inbox/sync", systemHandler.EmailInboxSync)
 	systemActions.GET("/activation", systemHandler.ListActivationFunnel)
+	systemActions.GET("/scheduling/lane-load", systemHandler.LaneLoad)
 
 	// Org entitlements routes. The handler does its own auth gating
 	// (service token preferred for SaaS billing service; admin user
@@ -1006,9 +1088,25 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	mgmt.GET("/limits", s.getLimits)
 	mgmt.POST("/report", feedbackHandler.SubmitReport)
 
+	// Memory snapshot (super-admin only): runtime memstats, process RSS,
+	// suspect-subsystem sizes and build cgo/SQLite-driver facts. Gated because
+	// memstats + subsystem cardinality are operationally sensitive, unlike
+	// health/version. The raw pprof surface stays on the localhost-bound
+	// profiler server.
+	mgmtAdmin := mainGroup.NewGroup("/api/mgmt").
+		Use(authMiddleware.RequireAuth).
+		Use(authMiddleware.RequireSuperAdmin)
+	mgmtAdmin.GET("/memory", s.getMemory)
+	// Scheduler cost/delay distribution (super-admin, read-only): aggregate
+	// percentiles of cost_ewma_ms / delay_ewma_ms across check_jobs plus
+	// fast/slow counts at a candidate threshold. Low-cardinality analysis for
+	// the fast/slow-lane go/no-go decision (spec 2026-07-01-01).
+	mgmtAdmin.GET("/scheduling/cost-distribution", s.getCostDistribution)
+
 	// Prometheus metrics endpoint
 	if s.config.Prometheus.Enabled {
 		prommetrics.Register(prometheus.DefaultRegisterer)
+		s.registerSubsystemMetrics(prometheus.DefaultRegisterer)
 
 		metricsPath := s.config.Prometheus.Path
 		if metricsPath == "" {
@@ -1750,6 +1848,14 @@ func (s *Server) Start(ctx context.Context) error {
 			return err
 		}
 
+		// Close the realtime hub first: it terminates every held-open
+		// realtime WebSocket connection so srv.Shutdown (which waits for
+		// active connections) can drain instead of hanging until the
+		// shutdown timeout.
+		if s.realtimeHub != nil {
+			s.realtimeHub.Close()
+		}
+
 		// Shutdown HTTP server first to stop accepting new requests
 		// Using fresh context for shutdown timeout after main ctx is canceled
 		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), s.config.Server.ShutdownTimeout)
@@ -1896,6 +2002,18 @@ func (s *Server) Close(ctx context.Context) error {
 		}
 	}
 
+	// Stop the realtime fan-out before the notifier it rides on: the hub
+	// releases any remaining WebSocket subscribers and the publisher flushes
+	// its pending hints while the bus is still up.
+	if s.realtimeHub != nil {
+		s.realtimeHub.Close()
+	}
+	if s.services != nil {
+		// nil-safe; the shutdown flush deliberately runs on a background
+		// context (the caller's ctx is already canceled at this point).
+		s.services.Realtime.Close() //nolint:contextcheck // background flush by design
+	}
+
 	// Close notifier first (stops listening for notifications)
 	if s.services != nil && s.services.EventNotifier != nil {
 		if err := s.services.EventNotifier.Close(); err != nil {
@@ -1937,6 +2055,10 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 		return fmt.Errorf("failed to initialize system config: %w", err)
 	}
 
+	// Re-resolve and re-install the password-hashing policy now that the
+	// system-parameter overlay has mutated cfg.Auth.Password.* (see spec Q2).
+	reResolvePasswordPolicy(ctx, cfg)
+
 	// Update the server's auth config if JWT secret changed
 	if cfg.Auth.JWTSecret != s.config.Auth.JWTSecret {
 		// The auth service was already created with the old secret.
@@ -1945,6 +2067,35 @@ func (s *Server) InitializeSystemConfig(ctx context.Context, cfg *config.Config)
 	}
 
 	return nil
+}
+
+// reResolvePasswordPolicy re-resolves the process-wide password-hashing policy
+// from cfg.Auth.Password after the system-parameter overlay has mutated it. The
+// policy installed in NewServer (server.go:165) only reflected YAML/env, so
+// without this any auth.password.* values stored via the Server Settings UI
+// would be ignored even across a restart (see spec Q2).
+//
+// It is deliberately best-effort and NON-fatal: a malformed stored value (e.g.
+// set via the raw API, bypassing write validation) must never brick startup, so
+// on error we warn and keep the prior policy. The early NewServer install
+// remains the default for any hashing before this point. The overlaid block is
+// validated first (same bounds as config load) so a sub-floor value that slipped
+// past the write handler can't install a degraded policy either.
+func reResolvePasswordPolicy(ctx context.Context, cfg *config.Config) {
+	if err := config.ValidatePasswordConfigBlock(&cfg.Auth.Password); err != nil {
+		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
+
+		return
+	}
+
+	pol, err := passwords.PolicyFromConfig(&cfg.Auth)
+	if err != nil {
+		slog.WarnContext(ctx, "password policy from system params invalid; keeping prior policy", "error", err)
+
+		return
+	}
+
+	passwords.SetDefaultPolicy(pol)
 }
 
 // MaybeAutoMigrateEncryption sweeps existing plaintext secrets into the

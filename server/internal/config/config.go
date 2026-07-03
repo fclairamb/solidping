@@ -67,6 +67,42 @@ var (
 	ErrInvalidAggregationRetention = errors.New("aggregation retention values must be >= 1")
 	// ErrInvalidDeploymentMode is returned when SP_DEPLOYMENT_MODE is set to something other than "saas" / "self-hosted".
 	ErrInvalidDeploymentMode = errors.New("deployment mode must be 'saas' or 'self-hosted'")
+	// ErrInvalidPasswordAlgorithm is returned when auth.password.algorithm is not a supported algorithm.
+	ErrInvalidPasswordAlgorithm = errors.New("password hashing algorithm must be 'argon2id' or 'bcrypt'")
+	// ErrInvalidArgon2Params is returned when an argon2id cost parameter is below its hard floor.
+	ErrInvalidArgon2Params = errors.New("invalid argon2id parameters")
+	// ErrInvalidBcryptCost is returned when bcrypt cost is outside the accepted [10,31] range.
+	ErrInvalidBcryptCost = errors.New("bcrypt cost must be between 10 and 31")
+	// ErrInvalidPasswordParameter is returned by ValidatePasswordParameter when a
+	// single auth.password.* value is out of range or the wrong type.
+	ErrInvalidPasswordParameter = errors.New("invalid password hashing parameter")
+	// ErrInvalidLaneThresholds is returned when the lane hysteresis band is
+	// inverted or degenerate: lane_fast_threshold_ms must be strictly below
+	// lane_slow_threshold_ms (and neither may be negative) so the dead-band
+	// exists and a check cannot satisfy both edges at once.
+	ErrInvalidLaneThresholds = errors.New(
+		"scheduling lane thresholds must satisfy 0 <= lane_fast_threshold_ms < lane_slow_threshold_ms",
+	)
+)
+
+// Supported password-hashing algorithm identifiers.
+const (
+	PasswordAlgorithmArgon2id = "argon2id"
+	PasswordAlgorithmBcrypt   = "bcrypt"
+)
+
+// Hard floors / OWASP advisory thresholds for password-hashing validation.
+const (
+	argon2MemoryFloorKiB = 8192  // hard reject below this (KiB)
+	argon2MemoryOWASPKiB = 19456 // warn below this OWASP floor (KiB)
+	argon2TimeFloor      = 1
+	argon2ThreadsFloor   = 1
+	argon2ThreadsMax     = 255 // uint8 ceiling, matches Argon2Params.Threads
+	argon2KeyLengthFloor = 16
+	argon2SaltLenFloor   = 8
+	bcryptCostMin        = 10
+	bcryptCostMax        = 31
+	bcryptCostAdvisory   = 12 // warn below this
 )
 
 // ValidNodeRoles returns all valid role values.
@@ -110,6 +146,34 @@ type PrometheusConfig struct {
 	Path    string `koanf:"path"`    // Path for the metrics endpoint (default: /metrics)
 }
 
+// RealtimeConfig controls the org-scoped live hint WebSocket
+// (GET /api/v1/orgs/:org/events/ws). When disabled the endpoint still
+// upgrades but immediately closes with 4404 (same "feature disabled"
+// convention as SP_PROMETHEUS_ENABLED's 404) and the dashboard silently keeps
+// polling.
+type RealtimeConfig struct {
+	// Enabled gates the WebSocket endpoint and the hint publisher/hub.
+	Enabled bool `koanf:"enabled"`
+	// FlushInterval is the hint coalescing window per org per instance
+	// (SP_REALTIME_FLUSH_INTERVAL, default 1s).
+	FlushInterval time.Duration `koanf:"flush_interval"`
+	// PingInterval is the transport-level ping keep-alive period
+	// (SP_REALTIME_PING_INTERVAL, default 25s).
+	PingInterval time.Duration `koanf:"ping_interval"`
+	// MaxConnections caps concurrent hint connections per instance
+	// (SP_REALTIME_MAX_CONNECTIONS, default 1000; 0 = unlimited).
+	MaxConnections int `koanf:"max_connections"`
+	// AuthGrace is how long an unauthenticated connection has to send an
+	// `auth` message before the server closes it with 4401
+	// (SP_REALTIME_AUTH_GRACE, default 5s). Only applies to connections that
+	// didn't pre-authenticate via header/cookie at upgrade time.
+	AuthGrace time.Duration `koanf:"auth_grace"`
+	// MaxSubscriptionsPerConnection caps how many scopes a single connection
+	// may subscribe to (SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION, default
+	// 512; 0 = unlimited).
+	MaxSubscriptionsPerConnection int `koanf:"max_subscriptions_per_connection"`
+}
+
 // CheckersConfig controls which check types are enabled at the server level.
 type CheckersConfig struct {
 	Enabled       []string `koanf:"enabled"`        // Explicit allowlist (empty = all)
@@ -149,9 +213,11 @@ type Config struct {
 	Discord     DiscordOAuthConfig   `koanf:"discord"`
 	Node        NodeConfig           `koanf:"node"`
 	Profiler    ProfilerConfig       `koanf:"profiler"`
+	Runtime     RuntimeConfig        `koanf:"runtime"`
 	OTel        OTelConfig           `koanf:"otel"`
 	Sentry      SentryConfig         `koanf:"sentry"`
 	Prometheus  PrometheusConfig     `koanf:"prometheus"`
+	Realtime    RealtimeConfig       `koanf:"realtime"`
 	Checkers    CheckersConfig       `koanf:"checkers"`
 	Aggregation AggregationConfig    `koanf:"aggregation"`
 	Jobs        JobsConfig           `koanf:"jobs"`
@@ -182,6 +248,33 @@ type NodeConfig struct {
 type ProfilerConfig struct {
 	Enabled bool   `koanf:"enabled"` // Enable the profiler server
 	Listen  string `koanf:"listen"`  // Listen address (e.g., "localhost:6060")
+	// BlockRate is passed to runtime.SetBlockProfileRate when > 0, enabling
+	// /debug/pprof/block. 1 = sample every blocking event (highest fidelity,
+	// highest cost); larger N samples 1/N. 0 (default) disables block profiling.
+	BlockRate int `koanf:"block_rate"`
+	// MutexFraction is passed to runtime.SetMutexProfileFraction when > 0,
+	// enabling /debug/pprof/mutex. 1 = report every mutex contention event;
+	// larger N reports 1/N. 0 (default) disables mutex profiling.
+	MutexFraction int `koanf:"mutex_fraction"`
+}
+
+// RuntimeConfig contains Go runtime memory guardrails (GOMEMLIMIT soft cap and
+// GOGC). Applied once at startup by internal/memlimit. A native GOMEMLIMIT /
+// GOGC env var always overrides these knobs.
+type RuntimeConfig struct {
+	// MemoryLimit is the explicit GOMEMLIMIT soft cap (SP_RUNTIME_MEMORY_LIMIT).
+	// Accepts human sizes ("400MiB", "1GiB") or raw bytes; empty = unset.
+	MemoryLimit string `koanf:"memory_limit"`
+	// AutoMemoryLimit derives the soft cap from the container's cgroup memory
+	// limit when MemoryLimit is unset and no GOMEMLIMIT env var is present
+	// (SP_RUNTIME_AUTO_MEMORY_LIMIT). Default true: a no-op off-container.
+	AutoMemoryLimit bool `koanf:"auto_memory_limit"`
+	// MemoryLimitRatio is the fraction of the detected cgroup limit to use as
+	// the soft cap (SP_RUNTIME_MEMORY_LIMIT_RATIO). Default 0.9.
+	MemoryLimitRatio float64 `koanf:"memory_limit_ratio"`
+	// GCPercent maps to GOGC / debug.SetGCPercent when > 0
+	// (SP_RUNTIME_GC_PERCENT). 0 leaves the runtime default untouched.
+	GCPercent int `koanf:"gc_percent"`
 }
 
 // ShouldRunAPI returns true if this node should run the HTTP server.
@@ -265,6 +358,38 @@ type AuthConfig struct {
 	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
 	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
 	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
+	Password                 PasswordConfig `koanf:"password"`
+}
+
+// PasswordConfig selects the password-hashing algorithm and its cost
+// parameters. Defaults reproduce the historical argon2id profile exactly, so
+// upgrading the binary changes nothing until an operator reconfigures it. On a
+// successful login, a stored hash whose algorithm or cost no longer matches this
+// policy is transparently re-hashed (see internal/utils/passwords).
+type PasswordConfig struct {
+	Algorithm string       `koanf:"algorithm"` // "argon2id" (default) | "bcrypt"
+	Argon2    Argon2Params `koanf:"argon2"`
+	Bcrypt    BcryptParams `koanf:"bcrypt"`
+	// RehashOnLogin gates the lazy login-time rehash. When true (default), a
+	// stored hash that no longer matches the active policy is transparently
+	// re-minted on the user's next successful password login. When false, only
+	// new passwords (new users, password changes/resets) use the new profile;
+	// existing hashes are left untouched.
+	RehashOnLogin bool `koanf:"rehash_on_login"`
+}
+
+// Argon2Params are the argon2id cost parameters (memory in KiB).
+type Argon2Params struct {
+	Memory     uint32 `koanf:"memory"`      // KiB, default 65536 (64 MiB)
+	Time       uint32 `koanf:"time"`        // default 3
+	Threads    uint8  `koanf:"threads"`     // default 4
+	KeyLength  uint32 `koanf:"key_length"`  // default 32
+	SaltLength uint32 `koanf:"salt_length"` // default 16
+}
+
+// BcryptParams are the bcrypt cost parameters.
+type BcryptParams struct {
+	Cost int `koanf:"cost"` // default 12 (bcrypt range 4–31; validated >= 10)
 }
 
 // WebAuthnConfig configures the passkey / WebAuthn relying party. RPID
@@ -376,6 +501,58 @@ type ServerConfig struct {
 	// docs. Multi-word koanf key → read via applyServerEnv (SP_DOCS_HOST /
 	// SP_SERVER_DOCS_HOST), not the auto env loader.
 	DocsHost string `koanf:"docs_host"`
+	// Scheduling holds the cost-aware, plan-weighted check-scheduling knobs.
+	// Multi-word keys → read via applySchedulingEnv. See project_koanf_env_quirk.
+	Scheduling SchedulingConfig `koanf:"scheduling"`
+}
+
+// SchedulingConfig tunes cost-aware, plan-weighted check execution
+// (spec 2026-06-30-09). The knobs only reorder fetch order (by adjusting a
+// job's effective scheduled_at) and bound the per-check execution timeout —
+// they never shed or defer a claimed job. The cost/delay deprioritization is
+// driven by per-job EWMAs (0 until first run, so fresh jobs are pure FIFO); the
+// tier credit and cost-aware timeout below are gated by their knobs (0 = off).
+type SchedulingConfig struct {
+	// SlowThresholdMs is the dead-band on the deprioritization offset: a check's
+	// effective_scheduled_at is only pushed past its real scheduled_at once its
+	// combined cost+delay EWMA reaches this many ms. Below it the offset is 0
+	// (effective == scheduled_at), so small per-run variance never reorders fast
+	// checks. Default 2000 (see Load); 0 disables the dead-band (any offset applies).
+	SlowThresholdMs float64 `koanf:"slow_threshold_ms"`
+	// TierCreditSeconds is the deadline credit per unit of plan_weight (paid
+	// jobs sort earlier under contention). 0 disables the credit.
+	TierCreditSeconds float64 `koanf:"tier_credit_seconds"`
+	// TierCreditMaxSeconds caps total tier credit regardless of weight. 0 = no
+	// separate cap.
+	TierCreditMaxSeconds float64 `koanf:"tier_credit_max_seconds"`
+	// CostTimeoutFactor multiplies cost_ewma_ms to derive the per-check
+	// execution timeout, clamped to [floor, 30s]. Default 3 (see Load; on by
+	// default per spec 2026-07-01-04 D4). 0 disables (flat 30s timeout). A job
+	// that never ran (cost 0) always keeps the full 30s regardless of the floor.
+	CostTimeoutFactor float64 `koanf:"cost_timeout_factor"`
+	// CostTimeoutFloorMs is the minimum cost-aware timeout in ms, so a fast
+	// check is never given an unreasonably short ceiling. Default 5000 (see
+	// Load). Only used when CostTimeoutFactor > 0.
+	CostTimeoutFloorMs float64 `koanf:"cost_timeout_floor_ms"`
+
+	// LaneSlowThresholdMs is the promote edge of the fast/slow lane hysteresis
+	// band (spec 2026-07-01-03): a check whose cost EWMA reaches this many ms
+	// is classified into the slow lane on its next post-exec write. Default
+	// 2000 (see Load); 0 disables lane classification (jobs hold their stored
+	// lane).
+	LaneSlowThresholdMs float64 `koanf:"lane_slow_threshold_ms"`
+	// LaneFastThresholdMs is the demote edge of the band: a slow-lane check
+	// whose cost EWMA drops below this many ms returns to the fast lane.
+	// Must be strictly below LaneSlowThresholdMs (validated); the dead-band
+	// stops threshold hoverers from flipping lanes every run. Default 1000.
+	LaneFastThresholdMs float64 `koanf:"lane_fast_threshold_ms"`
+	// FastLaneReserved is the number of runner slots reserved for fast-lane
+	// checks on each worker: slow jobs in flight never exceed pool_size −
+	// FastLaneReserved, while fast jobs may use any free slot (slow borrows
+	// idle fast capacity, never the reverse). Clamped to [0, pool_size−1]
+	// with a startup warning when out of range. Default 5; 0 disables the
+	// reservation (slow may fill the pool, pre-lane behavior).
+	FastLaneReserved int `koanf:"fast_lane_reserved"`
 }
 
 // RedirectRule represents a path-based redirect configuration for development proxying.
@@ -392,6 +569,14 @@ type DatabaseConfig struct {
 	Dir    string `koanf:"dir"`    // SQLite data directory (for "sqlite" type)
 	LogSQL bool   `koanf:"logsql"` // Enable SQL query logging using slog
 	Reset  bool   `koanf:"reset"`  // Reset database on startup (only for test/demo run modes)
+
+	// PostgreSQL connection-pool bounds. Without these, database/sql leaves the
+	// pool unbounded (default MaxOpenConns = 0 = unlimited), so a burst can open
+	// arbitrarily many connections — each with its own buffers client- and
+	// server-side. SQLite ignores these (it is pinned to a single writer).
+	MaxOpenConns    int           `koanf:"max_open_conns"`    // 0 = driver default (unlimited)
+	MaxIdleConns    int           `koanf:"max_idle_conns"`    // 0 = driver default (2)
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"` // 0 = no expiry
 }
 
 // Load reads configuration from defaults, config file, and environment variables.
@@ -414,7 +599,38 @@ func Load() (*Config, error) {
 			},
 			CheckWorker: CheckWorkerConfig{
 				FetchMaxAhead: 5 * time.Minute,
-				Nb:            3,
+				// Check execution is almost pure network I/O — a goroutine
+				// parked on a slow socket costs ~KB and zero CPU — so a tiny
+				// pool artificially manufactures head-of-line blocking (a
+				// handful of slow checks = 100% occupancy = total stall). The
+				// real bound is now DB-flush throughput, not this goroutine
+				// count. Slow checks are deprioritized (not capped), so they
+				// fall back in fetch order without being shed. See spec
+				// 2026-06-30-09.
+				Nb: 25,
+			},
+			Scheduling: SchedulingConfig{
+				// Deprioritize a check only once its combined cost+delay EWMA
+				// reaches this many ms; below it, effective_scheduled_at stays at
+				// the real scheduled_at (pure FIFO) so small per-run variance never
+				// reorders fast checks. Tier weighting stays opt-in (0).
+				SlowThresholdMs: 2000,
+				// Cost-aware timeout is ON by default (spec 2026-07-01-04 D4):
+				// timeout = clamp(3 × cost_ewma, 5s, 30s). A 200ms check's
+				// worst-case slot occupancy drops 30s → 5s while measured slow
+				// checks keep the full ceiling. A never-run job (cost 0) gets
+				// the full 30s, not the floor, so first runs measure honestly.
+				// Set cost_timeout_factor to 0 to disable.
+				CostTimeoutFactor:  3,
+				CostTimeoutFloorMs: 5000,
+				// Fast/slow lane hysteresis band + reservation (spec
+				// 2026-07-01-03): promote to the slow lane at a 2s cost EWMA,
+				// demote back below 1s, and keep 5 of the pool's runner slots
+				// off-limits to slow jobs. The migration-009 backfill uses the
+				// same 2000ms promote threshold.
+				LaneSlowThresholdMs: 2000,
+				LaneFastThresholdMs: 1000,
+				FastLaneReserved:    5,
 			},
 			RateLimiting: RateLimitConfig{
 				RequestsPerMinute: 300,
@@ -427,8 +643,11 @@ func Load() (*Config, error) {
 			},
 		},
 		Database: DatabaseConfig{
-			Type: DatabaseTypeSQLite,
-			Dir:  ".",
+			Type:            DatabaseTypeSQLite,
+			Dir:             ".",
+			MaxOpenConns:    25,
+			MaxIdleConns:    10,
+			ConnMaxLifetime: time.Hour,
 		},
 		Auth: AuthConfig{
 			JWTSecret:          "change-me-in-production",
@@ -437,6 +656,21 @@ func Load() (*Config, error) {
 			WebAuthn: WebAuthnConfig{
 				Enabled:       true,
 				RPDisplayName: "SolidPing",
+			},
+			// Defaults reproduce the historical hardcoded argon2id profile
+			// (m=64 MiB, t=3, p=4, 32-byte key, 16-byte salt) so upgrading
+			// changes nothing until reconfigured.
+			Password: PasswordConfig{
+				Algorithm: PasswordAlgorithmArgon2id,
+				Argon2: Argon2Params{
+					Memory:     64 * 1024,
+					Time:       3,
+					Threads:    4,
+					KeyLength:  32,
+					SaltLength: 16,
+				},
+				Bcrypt:        BcryptParams{Cost: 12},
+				RehashOnLogin: true,
 			},
 		},
 		Email: EmailConfig{
@@ -476,9 +710,21 @@ func Load() (*Config, error) {
 			Enabled: false,
 			Listen:  "localhost:6060",
 		},
+		Runtime: RuntimeConfig{
+			AutoMemoryLimit:  true,
+			MemoryLimitRatio: 0.9,
+		},
 		Prometheus: PrometheusConfig{
 			Enabled: true,
 			Path:    "/metrics",
+		},
+		Realtime: RealtimeConfig{
+			Enabled:                       true,
+			FlushInterval:                 time.Second,
+			PingInterval:                  25 * time.Second,
+			MaxConnections:                1000,
+			AuthGrace:                     5 * time.Second,
+			MaxSubscriptionsPerConnection: 512,
 		},
 		Encryption: EncryptionConfig{
 			AutoMigrate: true,
@@ -566,10 +812,15 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
 	applyJobsEnv(&cfg.Jobs)
 	applyServerEnv(&cfg.Server)
+	applySchedulingEnv(&cfg.Server.Scheduling)
+	applyProfilerEnv(&cfg.Profiler)
+	applyRuntimeEnv(&cfg.Runtime)
+	applyRealtimeEnv(&cfg.Realtime)
 
 	// When in test mode and no database type is specified, default to sqlite-memory
 	if cfg.RunMode == "test" && cfg.Database.Type == "" {
@@ -580,6 +831,8 @@ func Load() (*Config, error) {
 	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
 	}
+
+	applyDatabasePoolEnv(&cfg.Database)
 
 	// Parse LOG_LEVEL environment variable
 	cfg.LogLevel = ParseLogLevel(os.Getenv("SP_LOG_LEVEL"))
@@ -634,6 +887,82 @@ func applyRateLimitingEnv(cfg *RateLimitConfig) {
 	durEnv("SP_SERVER_RATE_LIMITING_MAX_QUEUE_WAIT", &cfg.MaxQueueWait)
 }
 
+// applyPasswordHashingEnv reads SP_AUTH_PASSWORD_* into cfg. koanf's env loader
+// collapses every underscore in SP_*-prefixed names to a dot, so multi-word keys
+// like SP_AUTH_PASSWORD_ARGON2_MEMORY / ..._KEY_LENGTH / ..._BCRYPT_COST mis-map
+// (e.g. auth.password.argon2.key.length). Reading them here keeps the
+// password-hashing policy env-configurable, mirroring applyRateLimitingEnv.
+// SP_AUTH_PASSWORD_ALGORITHM (single word) is folded in for consistency.
+//
+// SP_AUTH_PASSWORD_* is read in TWO places, deliberately — this is not an
+// accidental double-apply:
+//
+//  1. Here (config.Load), this is the EARLY / env-only bootstrap path. The policy
+//     installed in NewServer (server.go:165) runs before the DB is reachable, so
+//     an env-only deployment with no DB-stored params must still pick up its
+//     hashing profile from env. This path owns nothing but env.
+//  2. systemconfig (Service.Initialize), the AUTHORITATIVE env>DB>default overlay.
+//     It re-reads the same SP_AUTH_PASSWORD_* env vars and the DB-stored
+//     auth.password.* parameters and re-resolves the policy afterwards
+//     (app.reResolvePasswordPolicy). Because env keeps the highest precedence in
+//     BOTH paths, re-applying env here is idempotent: env can only ever set the
+//     same value the overlay would. A DB-stored value (no env) is invisible to
+//     this early path and only takes effect through the overlay — which is exactly
+//     the intended division: env-only deployments work at boot, DB-backed
+//     overrides win after the overlay.
+func applyPasswordHashingEnv(cfg *PasswordConfig) {
+	strEnv := func(name string, dst *string) {
+		if v := os.Getenv(name); v != "" {
+			*dst = v
+		}
+	}
+	u32Env := func(name string, dst *uint32) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.ParseUint(v, 10, 32); err == nil {
+			*dst = uint32(n)
+		}
+	}
+	u8Env := func(name string, dst *uint8) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.ParseUint(v, 10, 8); err == nil {
+			*dst = uint8(n)
+		}
+	}
+	intEnv := func(name string, dst *int) {
+		v := os.Getenv(name)
+		if v == "" {
+			return
+		}
+		if n, err := strconv.Atoi(v); err == nil {
+			*dst = n
+		}
+	}
+	boolEnv := func(name string, dst *bool) {
+		v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+		switch v {
+		case "true", "1", "yes":
+			*dst = true
+		case "false", "0", "no":
+			*dst = false
+		}
+	}
+
+	strEnv("SP_AUTH_PASSWORD_ALGORITHM", &cfg.Algorithm)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_MEMORY", &cfg.Argon2.Memory)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_TIME", &cfg.Argon2.Time)
+	u8Env("SP_AUTH_PASSWORD_ARGON2_THREADS", &cfg.Argon2.Threads)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", &cfg.Argon2.KeyLength)
+	u32Env("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", &cfg.Argon2.SaltLength)
+	intEnv("SP_AUTH_PASSWORD_BCRYPT_COST", &cfg.Bcrypt.Cost)
+	boolEnv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", &cfg.RehashOnLogin)
+}
+
 // applyJobsEnv reads SP_JOBS_* into cfg. koanf's env loader collapses every
 // underscore in SP_*-prefixed names to a dot, so it would map these to
 // jobs.stuck.timeout / jobs.reaper.interval and miss the snake_case koanf tags
@@ -652,6 +981,39 @@ func applyJobsEnv(cfg *JobsConfig) {
 	}
 }
 
+// applyRealtimeEnv reads the multi-word SP_REALTIME_* knobs koanf's env
+// loader cannot bind (it collapses underscores to dots, so
+// SP_REALTIME_FLUSH_INTERVAL would map to realtime.flush.interval and miss
+// the snake_case koanf tag "flush_interval"). SP_REALTIME_ENABLED is a single
+// word and binds through koanf directly. See project_koanf_env_quirk.
+func applyRealtimeEnv(cfg *RealtimeConfig) {
+	if v := os.Getenv("SP_REALTIME_FLUSH_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.FlushInterval = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_PING_INTERVAL"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.PingInterval = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_MAX_CONNECTIONS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxConnections = n
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_AUTH_GRACE"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.AuthGrace = d
+		}
+	}
+	if v := os.Getenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxSubscriptionsPerConnection = n
+		}
+	}
+}
+
 // applyServerEnv reads multi-word SP_SERVER_* keys that koanf's env loader
 // cannot bind (it collapses underscores to dots, so server.docs_host would
 // become server.docs.host). docs_host accepts SP_SERVER_DOCS_HOST and the
@@ -661,6 +1023,97 @@ func applyServerEnv(cfg *ServerConfig) {
 		cfg.DocsHost = v
 	} else if v := os.Getenv("SP_DOCS_HOST"); v != "" {
 		cfg.DocsHost = v
+	}
+}
+
+// applySchedulingEnv reads the multi-word SP_SCHEDULING_* knobs koanf's env
+// loader cannot bind (it collapses underscores to dots and would miss the
+// snake_case koanf tags like "slow_cost_threshold_ms"). These override the
+// defaults set in Load — cost deprioritization and the slow lane are on by
+// default; tier weighting and the cost-aware timeout remain opt-in at 0. See
+// project_koanf_env_quirk.
+func applySchedulingEnv(cfg *SchedulingConfig) {
+	parseFloat := func(env string, dst *float64) {
+		if v := os.Getenv(env); v != "" {
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				*dst = f
+			}
+		}
+	}
+
+	parseFloat("SP_SCHEDULING_SLOW_THRESHOLD_MS", &cfg.SlowThresholdMs)
+	parseFloat("SP_SCHEDULING_TIER_CREDIT_SECONDS", &cfg.TierCreditSeconds)
+	parseFloat("SP_SCHEDULING_TIER_CREDIT_MAX_SECONDS", &cfg.TierCreditMaxSeconds)
+	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FACTOR", &cfg.CostTimeoutFactor)
+	parseFloat("SP_SCHEDULING_COST_TIMEOUT_FLOOR_MS", &cfg.CostTimeoutFloorMs)
+	parseFloat("SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS", &cfg.LaneSlowThresholdMs)
+	parseFloat("SP_SCHEDULING_LANE_FAST_THRESHOLD_MS", &cfg.LaneFastThresholdMs)
+	if v := os.Getenv("SP_SCHEDULING_FAST_LANE_RESERVED"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.FastLaneReserved = n
+		}
+	}
+}
+
+// applyProfilerEnv reads the multi-word SP_PROFILER_* knobs koanf's env loader
+// cannot bind (it would map them to profiler.block.rate / profiler.mutex.fraction
+// and miss the snake_case koanf tags "block_rate" / "mutex_fraction"). Both are
+// opt-in profiling-session levers with runtime cost; default 0 = off. See
+// project_koanf_env_quirk.
+func applyProfilerEnv(cfg *ProfilerConfig) {
+	if v := os.Getenv("SP_PROFILER_BLOCK_RATE"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.BlockRate = n
+		}
+	}
+	if v := os.Getenv("SP_PROFILER_MUTEX_FRACTION"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MutexFraction = n
+		}
+	}
+}
+
+// applyDatabasePoolEnv reads the multi-word SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
+// knobs koanf's env loader cannot bind (it would collapse the underscores to dots
+// and miss the snake_case koanf tags). See project_koanf_env_quirk.
+func applyDatabasePoolEnv(cfg *DatabaseConfig) {
+	if v := os.Getenv("SP_DB_MAX_OPEN_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxOpenConns = n
+		}
+	}
+	if v := os.Getenv("SP_DB_MAX_IDLE_CONNS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.MaxIdleConns = n
+		}
+	}
+	if v := os.Getenv("SP_DB_CONN_MAX_LIFETIME"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ConnMaxLifetime = d
+		}
+	}
+}
+
+// applyRuntimeEnv reads the multi-word SP_RUNTIME_* knobs koanf's env loader
+// cannot bind (it would collapse the underscores to dots and miss the snake_case
+// koanf tags "memory_limit" / "auto_memory_limit" / "memory_limit_ratio" /
+// "gc_percent"). See project_koanf_env_quirk.
+func applyRuntimeEnv(cfg *RuntimeConfig) {
+	if v := os.Getenv("SP_RUNTIME_MEMORY_LIMIT"); v != "" {
+		cfg.MemoryLimit = v
+	}
+	if v := os.Getenv("SP_RUNTIME_AUTO_MEMORY_LIMIT"); v != "" {
+		cfg.AutoMemoryLimit = v == envTrue || v == "1"
+	}
+	if v := os.Getenv("SP_RUNTIME_MEMORY_LIMIT_RATIO"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			cfg.MemoryLimitRatio = f
+		}
+	}
+	if v := os.Getenv("SP_RUNTIME_GC_PERCENT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.GCPercent = n
+		}
 	}
 }
 
@@ -731,26 +1184,8 @@ func ComputeBugReportEnabled(gh *AppGitHubConfig) bool {
 
 // Validate checks that the configuration is valid and returns an error if not.
 func (c *Config) Validate() error {
-	// Validate database type
-	validTypes := []string{
-		DatabaseTypePostgres,
-		DatabaseTypePostgresEmbedded,
-		DatabaseTypeSQLite,
-		DatabaseTypeSQLiteMemory,
-	}
-
-	if !slices.Contains(validTypes, c.Database.Type) {
-		return fmt.Errorf("%w, got '%s'", ErrInvalidDatabaseType, c.Database.Type)
-	}
-
-	// Validate postgres requires URL
-	if c.Database.Type == DatabaseTypePostgres && c.Database.URL == "" {
-		return ErrDatabaseURLRequired
-	}
-
-	// Validate sqlite requires directory (unless memory mode or test mode)
-	if c.Database.Type == DatabaseTypeSQLite && c.Database.Dir == "" {
-		return ErrDatabaseDirRequired
+	if err := validateDatabaseConfig(&c.Database); err != nil {
+		return err
 	}
 
 	// Validate node role
@@ -780,6 +1215,222 @@ func (c *Config) Validate() error {
 	}
 	if !slices.Contains(ValidDeploymentModes(), c.Deployment.Mode) {
 		return fmt.Errorf("%w, got '%s'", ErrInvalidDeploymentMode, c.Deployment.Mode)
+	}
+
+	if err := validatePasswordConfig(&c.Auth.Password); err != nil {
+		return err
+	}
+
+	if err := validateLaneThresholds(&c.Server.Scheduling); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// validateLaneThresholds fails fast on an inverted or degenerate lane
+// hysteresis band (spec 2026-07-01-03): with the classifier enabled
+// (lane_slow_threshold_ms > 0), the demote edge must sit strictly below the
+// promote edge — fast >= slow would make every classified check satisfy the
+// promote rule and never the demote one (or vice versa), silently pinning the
+// fleet into one lane. Negative thresholds are rejected outright. A slow
+// threshold of 0 disables classification, in which case the fast threshold is
+// ignored. FastLaneReserved is not validated here: its bound depends on the
+// worker pool size, so the worker clamps it (with a warning) at startup.
+func validateLaneThresholds(cfg *SchedulingConfig) error {
+	if cfg.LaneSlowThresholdMs < 0 || cfg.LaneFastThresholdMs < 0 {
+		return fmt.Errorf("%w: fast=%v slow=%v",
+			ErrInvalidLaneThresholds, cfg.LaneFastThresholdMs, cfg.LaneSlowThresholdMs)
+	}
+	if cfg.LaneSlowThresholdMs > 0 && cfg.LaneFastThresholdMs >= cfg.LaneSlowThresholdMs {
+		return fmt.Errorf("%w: fast=%v slow=%v",
+			ErrInvalidLaneThresholds, cfg.LaneFastThresholdMs, cfg.LaneSlowThresholdMs)
+	}
+
+	return nil
+}
+
+// validateDatabaseConfig checks the database type and its type-specific
+// requirements (postgres needs a URL, on-disk sqlite needs a directory).
+func validateDatabaseConfig(cfg *DatabaseConfig) error {
+	validTypes := []string{
+		DatabaseTypePostgres,
+		DatabaseTypePostgresEmbedded,
+		DatabaseTypeSQLite,
+		DatabaseTypeSQLiteMemory,
+	}
+
+	if !slices.Contains(validTypes, cfg.Type) {
+		return fmt.Errorf("%w, got '%s'", ErrInvalidDatabaseType, cfg.Type)
+	}
+
+	// Postgres requires a URL.
+	if cfg.Type == DatabaseTypePostgres && cfg.URL == "" {
+		return ErrDatabaseURLRequired
+	}
+
+	// On-disk SQLite requires a directory (memory mode does not).
+	if cfg.Type == DatabaseTypeSQLite && cfg.Dir == "" {
+		return ErrDatabaseDirRequired
+	}
+
+	return nil
+}
+
+// ValidatePasswordConfigBlock validates a fully-resolved password config block
+// against the same bounds enforced at config load. It is exported so the startup
+// policy re-resolve (after the system-parameter overlay) can reject a malformed
+// stored value and keep the prior policy instead of installing a degraded one.
+func ValidatePasswordConfigBlock(pwCfg *PasswordConfig) error {
+	return validatePasswordConfig(pwCfg)
+}
+
+// validatePasswordConfig fails fast at config load for an unsupported algorithm
+// or sub-floor cost parameters, so a misconfiguration can never lock everyone
+// out at first login. Near-floor (but accepted) values are warn-logged.
+func validatePasswordConfig(pwCfg *PasswordConfig) error {
+	// An empty algorithm means "unset" and resolves to the argon2id default at
+	// policy-resolution time; validating an unset/zero-value block as argon2id
+	// would reject the legitimate zero values, so accept it here.
+	if pwCfg.Algorithm == "" {
+		return nil
+	}
+
+	switch pwCfg.Algorithm {
+	case PasswordAlgorithmArgon2id:
+		if err := validateArgon2Params(&pwCfg.Argon2); err != nil {
+			return err
+		}
+	case PasswordAlgorithmBcrypt:
+		if pwCfg.Bcrypt.Cost < bcryptCostMin || pwCfg.Bcrypt.Cost > bcryptCostMax {
+			return fmt.Errorf("%w, got %d", ErrInvalidBcryptCost, pwCfg.Bcrypt.Cost)
+		}
+		if pwCfg.Bcrypt.Cost < bcryptCostAdvisory {
+			slog.Warn("bcrypt cost is below the recommended value",
+				"cost", pwCfg.Bcrypt.Cost, "recommended", bcryptCostAdvisory)
+		}
+	default:
+		return fmt.Errorf("%w, got '%s'", ErrInvalidPasswordAlgorithm, pwCfg.Algorithm)
+	}
+
+	return nil
+}
+
+// validateArgon2Params rejects sub-floor argon2id parameters and warn-logs
+// memory below the OWASP floor (which is allowed).
+func validateArgon2Params(params *Argon2Params) error {
+	if params.Memory < argon2MemoryFloorKiB ||
+		params.Time < argon2TimeFloor ||
+		params.Threads < argon2ThreadsFloor ||
+		params.KeyLength < argon2KeyLengthFloor ||
+		params.SaltLength < argon2SaltLenFloor {
+		return fmt.Errorf("%w: memory=%d(min %d KiB) time=%d threads=%d key_length=%d salt_length=%d",
+			ErrInvalidArgon2Params,
+			params.Memory, argon2MemoryFloorKiB,
+			params.Time, params.Threads, params.KeyLength, params.SaltLength)
+	}
+	if params.Memory < argon2MemoryOWASPKiB {
+		slog.Warn("argon2id memory is below the OWASP floor; offline-crack resistance is reduced",
+			"memoryKiB", params.Memory, "owaspFloorKiB", argon2MemoryOWASPKiB)
+	}
+
+	return nil
+}
+
+// Known auth.password.* parameter keys, exported so the system-parameter write
+// handler can validate them against the same bounds used at config load.
+const (
+	ParamKeyPasswordAlgorithm     = "auth.password.algorithm"
+	ParamKeyPasswordArgon2Memory  = "auth.password.argon2.memory"
+	ParamKeyPasswordArgon2Time    = "auth.password.argon2.time"
+	ParamKeyPasswordArgon2Threads = "auth.password.argon2.threads"
+	ParamKeyPasswordArgon2KeyLen  = "auth.password.argon2.key_length"
+	ParamKeyPasswordArgon2SaltLen = "auth.password.argon2.salt_length"
+	ParamKeyPasswordBcryptCost    = "auth.password.bcrypt.cost"
+	ParamKeyPasswordRehashOnLogin = "auth.password.rehash_on_login"
+)
+
+// IsPasswordParameterKey reports whether key is one of the validated
+// auth.password.* system parameters.
+func IsPasswordParameterKey(key string) bool {
+	switch key {
+	case ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
+		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
+		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin:
+		return true
+	default:
+		return false
+	}
+}
+
+// paramToInt coerces a JSON-decoded system-parameter value (float64 from
+// encoding/json, or native int) to an int. Returns ok=false on any other type.
+func paramToInt(value any) (int, bool) {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed), true
+	case int:
+		return typed, true
+	default:
+		return 0, false
+	}
+}
+
+// ValidatePasswordParameter validates a single auth.password.* value against the
+// exact bounds enforced by Config.Validate, so a value saved through the
+// system-parameter API can never produce a config that aborts the next startup.
+// It is the single source of truth shared by the write handler and config load.
+func ValidatePasswordParameter(key string, value any) error {
+	switch key {
+	case ParamKeyPasswordAlgorithm:
+		algo, ok := value.(string)
+		if !ok || (algo != PasswordAlgorithmArgon2id && algo != PasswordAlgorithmBcrypt) {
+			return fmt.Errorf("%w: %s must be 'argon2id' or 'bcrypt'", ErrInvalidPasswordParameter, key)
+		}
+	case ParamKeyPasswordArgon2Memory:
+		return validatePasswordIntBound(key, value, argon2MemoryFloorKiB)
+	case ParamKeyPasswordArgon2Time:
+		return validatePasswordIntBound(key, value, argon2TimeFloor)
+	case ParamKeyPasswordArgon2Threads:
+		return validatePasswordIntRange(key, value, argon2ThreadsFloor, argon2ThreadsMax)
+	case ParamKeyPasswordArgon2KeyLen:
+		return validatePasswordIntBound(key, value, argon2KeyLengthFloor)
+	case ParamKeyPasswordArgon2SaltLen:
+		return validatePasswordIntBound(key, value, argon2SaltLenFloor)
+	case ParamKeyPasswordBcryptCost:
+		return validatePasswordIntRange(key, value, bcryptCostMin, bcryptCostMax)
+	case ParamKeyPasswordRehashOnLogin:
+		if _, ok := value.(bool); !ok {
+			return fmt.Errorf("%w: %s must be a boolean", ErrInvalidPasswordParameter, key)
+		}
+	default:
+		return fmt.Errorf("%w: unknown key %s", ErrInvalidPasswordParameter, key)
+	}
+
+	return nil
+}
+
+// validatePasswordIntBound rejects a value below floor (inclusive lower bound only).
+func validatePasswordIntBound(key string, value any, floor int) error {
+	n, ok := paramToInt(value)
+	if !ok {
+		return fmt.Errorf("%w: %s must be a number", ErrInvalidPasswordParameter, key)
+	}
+	if n < floor {
+		return fmt.Errorf("%w: %s must be >= %d, got %d", ErrInvalidPasswordParameter, key, floor, n)
+	}
+
+	return nil
+}
+
+// validatePasswordIntRange rejects a value outside [low, high].
+func validatePasswordIntRange(key string, value any, low, high int) error {
+	n, ok := paramToInt(value)
+	if !ok {
+		return fmt.Errorf("%w: %s must be a number", ErrInvalidPasswordParameter, key)
+	}
+	if n < low || n > high {
+		return fmt.Errorf("%w: %s must be between %d and %d, got %d", ErrInvalidPasswordParameter, key, low, high, n)
 	}
 
 	return nil

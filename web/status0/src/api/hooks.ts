@@ -5,10 +5,17 @@ export interface ResourceCheckInfo {
   name?: string;
   type: string;
   status: string;
+  // True when the check is inside an active maintenance window right now, so
+  // the public page shows a "Scheduled Maintenance" badge instead of raw status.
+  inMaintenance?: boolean;
 }
 
-export interface DailyAvailabilityPoint {
+// AvailabilityPoint is a single bucket: a day in daily mode, an hour in 24h
+// mode. `time` (RFC3339 bucket start) is the authoritative anchor for hourly
+// buckets; `date` is kept for back-compat.
+export interface AvailabilityPoint {
   date: string;
+  time?: string;
   availabilityPct: number;
   status: string;
 }
@@ -21,8 +28,14 @@ export interface ResponseTimePoint {
 
 export interface ResourceAvailabilityData {
   overallAvailabilityPct?: number;
-  dailyAvailability?: DailyAvailabilityPoint[];
+  // dailyAvailability holds the per-bucket points; when bucketUnit is "hour"
+  // these are 24 hourly buckets despite the legacy key name.
+  dailyAvailability?: AvailabilityPoint[];
   responseTimeData?: ResponseTimePoint[];
+  // period is the active history period ("24h"|"7d"|"30d"|"90d").
+  period?: string;
+  // bucketUnit is the granularity of each point: "day" or "hour".
+  bucketUnit?: "day" | "hour" | string;
 }
 
 export interface StatusPageResource {
@@ -68,6 +81,7 @@ export interface StatusPage {
   showAvailability: boolean;
   showResponseTime: boolean;
   historyDays: number;
+  historyPeriod: "24h" | "7d" | "30d" | "90d";
   language?: string;
   sections?: StatusPageSection[];
   recentUpdates?: StatusUpdatePublicResponse[];

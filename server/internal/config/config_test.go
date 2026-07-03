@@ -321,6 +321,165 @@ func TestApplyFileStorageEnv(t *testing.T) {
 	r.Equal("minio123", cfg.S3SecretKey)
 }
 
+// TestApplyProfilerEnv confirms SP_PROFILER_BLOCK_RATE / _MUTEX_FRACTION land on
+// the snake_case-tagged ProfilerConfig fields despite koanf's env
+// underscore→dot collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyProfilerEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_PROFILER_BLOCK_RATE", "5")
+	t.Setenv("SP_PROFILER_MUTEX_FRACTION", "7")
+
+	cfg := ProfilerConfig{}
+	applyProfilerEnv(&cfg)
+
+	r.Equal(5, cfg.BlockRate)
+	r.Equal(7, cfg.MutexFraction)
+}
+
+// TestApplyRealtimeEnv confirms the multi-word SP_REALTIME_* knobs land on the
+// snake_case-tagged RealtimeConfig fields despite koanf's env underscore→dot
+// collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyRealtimeEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_REALTIME_FLUSH_INTERVAL", "2s")
+	t.Setenv("SP_REALTIME_PING_INTERVAL", "40s")
+	t.Setenv("SP_REALTIME_MAX_CONNECTIONS", "42")
+	t.Setenv("SP_REALTIME_AUTH_GRACE", "9s")
+	t.Setenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION", "77")
+
+	cfg := RealtimeConfig{
+		Enabled: true, FlushInterval: time.Second, PingInterval: 25 * time.Second, MaxConnections: 1000,
+		AuthGrace: 5 * time.Second, MaxSubscriptionsPerConnection: 512,
+	}
+	applyRealtimeEnv(&cfg)
+
+	r.Equal(2*time.Second, cfg.FlushInterval)
+	r.Equal(40*time.Second, cfg.PingInterval)
+	r.Equal(42, cfg.MaxConnections)
+	r.Equal(9*time.Second, cfg.AuthGrace)
+	r.Equal(77, cfg.MaxSubscriptionsPerConnection)
+}
+
+// TestRealtimeDefaults confirms the realtime feature defaults to enabled with
+// the documented flush/ping windows, connection cap, auth grace, and
+// per-connection subscription cap.
+func TestRealtimeDefaults(t *testing.T) { //nolint:paralleltest // Load reads process env
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+
+	r.True(cfg.Realtime.Enabled)
+	r.Equal(time.Second, cfg.Realtime.FlushInterval)
+	r.Equal(25*time.Second, cfg.Realtime.PingInterval)
+	r.Equal(1000, cfg.Realtime.MaxConnections)
+	r.Equal(5*time.Second, cfg.Realtime.AuthGrace)
+	r.Equal(512, cfg.Realtime.MaxSubscriptionsPerConnection)
+}
+
+// TestApplyRuntimeEnv confirms the SP_RUNTIME_* memory-guardrail knobs land on
+// the snake_case-tagged RuntimeConfig fields despite koanf's env underscore→dot
+// collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyRuntimeEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_RUNTIME_MEMORY_LIMIT", "400MiB")
+	t.Setenv("SP_RUNTIME_AUTO_MEMORY_LIMIT", "false")
+	t.Setenv("SP_RUNTIME_MEMORY_LIMIT_RATIO", "0.75")
+	t.Setenv("SP_RUNTIME_GC_PERCENT", "60")
+
+	cfg := RuntimeConfig{AutoMemoryLimit: true, MemoryLimitRatio: 0.9}
+	applyRuntimeEnv(&cfg)
+
+	r.Equal("400MiB", cfg.MemoryLimit)
+	r.False(cfg.AutoMemoryLimit)
+	r.InEpsilon(0.75, cfg.MemoryLimitRatio, 1e-9)
+	r.Equal(60, cfg.GCPercent)
+}
+
+// TestApplySchedulingLaneEnv confirms the SP_SCHEDULING_LANE_* / _FAST_LANE_*
+// knobs land on the snake_case-tagged SchedulingConfig fields despite koanf's
+// env underscore→dot collapse (spec 2026-07-01-03). Uses t.Setenv, which is
+// incompatible with t.Parallel.
+func TestApplySchedulingLaneEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_SCHEDULING_LANE_SLOW_THRESHOLD_MS", "3000")
+	t.Setenv("SP_SCHEDULING_LANE_FAST_THRESHOLD_MS", "1500")
+	t.Setenv("SP_SCHEDULING_FAST_LANE_RESERVED", "7")
+
+	cfg := SchedulingConfig{
+		LaneSlowThresholdMs: 2000,
+		LaneFastThresholdMs: 1000,
+		FastLaneReserved:    5,
+	}
+	applySchedulingEnv(&cfg)
+
+	r.InEpsilon(3000.0, cfg.LaneSlowThresholdMs, 1e-9)
+	r.InEpsilon(1500.0, cfg.LaneFastThresholdMs, 1e-9)
+	r.Equal(7, cfg.FastLaneReserved)
+}
+
+// TestValidateLaneThresholds covers the fast<slow lane-band validation (spec
+// 2026-07-01-03): inverted or degenerate bands are startup errors, disabled
+// classification (slow=0) is accepted, negatives are rejected.
+func TestValidateLaneThresholds(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		fast    float64
+		slow    float64
+		wantErr bool
+	}{
+		{"defaults are valid", 1000, 2000, false},
+		{"classifier disabled ignores fast", 5000, 0, false},
+		{"zero band edges with classifier off", 0, 0, false},
+		{"fast may be 0 with classifier on", 0, 2000, false},
+		{"inverted thresholds rejected", 3000, 2000, true},
+		{"equal thresholds rejected (no dead-band)", 2000, 2000, true},
+		{"negative fast rejected", -1, 2000, true},
+		{"negative slow rejected", 1000, -5, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := SchedulingConfig{
+				LaneFastThresholdMs: tt.fast,
+				LaneSlowThresholdMs: tt.slow,
+			}
+			err := validateLaneThresholds(&cfg)
+			if tt.wantErr {
+				require.ErrorIs(t, err, ErrInvalidLaneThresholds)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+// TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
+// pool knobs land on the snake_case-tagged DatabaseConfig fields. Uses t.Setenv,
+// which is incompatible with t.Parallel.
+func TestApplyDatabasePoolEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_DB_MAX_OPEN_CONNS", "40")
+	t.Setenv("SP_DB_MAX_IDLE_CONNS", "8")
+	t.Setenv("SP_DB_CONN_MAX_LIFETIME", "90m")
+
+	cfg := DatabaseConfig{MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifetime: time.Hour}
+	applyDatabasePoolEnv(&cfg)
+
+	r.Equal(40, cfg.MaxOpenConns)
+	r.Equal(8, cfg.MaxIdleConns)
+	r.Equal(90*time.Minute, cfg.ConnMaxLifetime)
+}
+
 // TestApplyJobsEnv confirms SP_JOBS_* durations land on the snake_case-tagged
 // JobsConfig fields despite koanf's env underscore→dot collapse. Uses t.Setenv,
 // which is incompatible with t.Parallel.
@@ -365,4 +524,269 @@ func TestApplyFileStorageEnv_PathStyleVariants(t *testing.T) {
 	var c2 FileStorageConfig
 	applyFileStorageEnv(&c2)
 	r.False(c2.S3UsePathStyle)
+}
+
+// defaultPasswordConfig returns the same PasswordConfig the Load() defaults
+// literal installs — the historical argon2id profile.
+func defaultPasswordConfig() PasswordConfig {
+	return PasswordConfig{
+		Algorithm: PasswordAlgorithmArgon2id,
+		Argon2: Argon2Params{
+			Memory:     64 * 1024,
+			Time:       3,
+			Threads:    4,
+			KeyLength:  32,
+			SaltLength: 16,
+		},
+		Bcrypt:        BcryptParams{Cost: 12},
+		RehashOnLogin: true,
+	}
+}
+
+// validBaseConfig returns a minimal Config that passes Validate, so password
+// validation can be exercised in isolation.
+func validBaseConfig() *Config {
+	return &Config{
+		Database: DatabaseConfig{Type: DatabaseTypeSQLite, Dir: "."},
+		Node:     NodeConfig{Role: NodeRoleAll},
+		Aggregation: AggregationConfig{
+			RetentionRaw:  24,
+			RetentionHour: 30,
+			RetentionDay:  12,
+		},
+		Deployment: DeploymentConfig{Mode: DeploymentModeSelfHosted},
+		Auth:       AuthConfig{Password: defaultPasswordConfig()},
+	}
+}
+
+// TestPasswordConfigDefaults asserts the Load() defaults reproduce today's exact
+// argon2id profile, so upgrading the binary is a no-op until reconfigured.
+func TestPasswordConfigDefaults(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	defaults := defaultPasswordConfig()
+	r.Equal(PasswordAlgorithmArgon2id, defaults.Algorithm)
+	r.Equal(uint32(64*1024), defaults.Argon2.Memory)
+	r.Equal(uint32(3), defaults.Argon2.Time)
+	r.Equal(uint8(4), defaults.Argon2.Threads)
+	r.Equal(uint32(32), defaults.Argon2.KeyLength)
+	r.Equal(uint32(16), defaults.Argon2.SaltLength)
+	r.Equal(12, defaults.Bcrypt.Cost)
+	r.True(defaults.RehashOnLogin, "rehash-on-login defaults to true (preserves legacy migration behavior)")
+}
+
+// TestApplyPasswordHashingEnv confirms SP_AUTH_PASSWORD_* lands on the
+// snake_case-tagged fields despite koanf's env underscore→dot collapse. Uses
+// t.Setenv, which is incompatible with t.Parallel.
+func TestApplyPasswordHashingEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_PASSWORD_ALGORITHM", "bcrypt")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_MEMORY", "19456")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_TIME", "2")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_THREADS", "1")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH", "24")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH", "12")
+	t.Setenv("SP_AUTH_PASSWORD_BCRYPT_COST", "11")
+	t.Setenv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", "false")
+
+	cfg := defaultPasswordConfig() // starts with RehashOnLogin: true
+	applyPasswordHashingEnv(&cfg)
+
+	r.Equal("bcrypt", cfg.Algorithm)
+	r.Equal(uint32(19456), cfg.Argon2.Memory)
+	r.Equal(uint32(2), cfg.Argon2.Time)
+	r.Equal(uint8(1), cfg.Argon2.Threads)
+	r.Equal(uint32(24), cfg.Argon2.KeyLength)
+	r.Equal(uint32(12), cfg.Argon2.SaltLength)
+	r.Equal(11, cfg.Bcrypt.Cost)
+	r.False(cfg.RehashOnLogin, "SP_AUTH_PASSWORD_REHASH_ON_LOGIN=false must override the default")
+}
+
+// TestApplyPasswordHashingEnvIsIdempotent pins the safety property behind the
+// deliberate dual read of SP_AUTH_PASSWORD_* (config.Load's early bootstrap path
+// AND systemconfig's authoritative overlay both read it): applying the env on top
+// of an already-env-applied config must be a no-op. This is what makes the
+// overlap harmless — env can only ever set the same value, never drift, so the
+// two read paths can never conflict. Uses t.Setenv, so it is not parallel.
+func TestApplyPasswordHashingEnvIsIdempotent(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_PASSWORD_ALGORITHM", "bcrypt")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_MEMORY", "19456")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_TIME", "2")
+	t.Setenv("SP_AUTH_PASSWORD_ARGON2_THREADS", "1")
+	t.Setenv("SP_AUTH_PASSWORD_BCRYPT_COST", "14")
+	t.Setenv("SP_AUTH_PASSWORD_REHASH_ON_LOGIN", "false")
+
+	cfg := defaultPasswordConfig()
+	applyPasswordHashingEnv(&cfg)
+	once := cfg
+
+	// Re-apply the same env (mimicking the second read path) — must not change a
+	// single field.
+	applyPasswordHashingEnv(&cfg)
+	r.Equal(once, cfg, "re-reading SP_AUTH_PASSWORD_* must be idempotent")
+}
+
+// TestValidatePasswordConfig covers the fail-fast validation: defaults pass,
+// bcrypt with honored cost passes, and each misconfiguration is rejected.
+func TestValidatePasswordConfig(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		mutate  func(*PasswordConfig)
+		wantErr error
+	}{
+		{
+			name:   "argon2id defaults ok",
+			mutate: func(_ *PasswordConfig) {},
+		},
+		{
+			name: "bcrypt cost honored ok",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 12
+			},
+		},
+		{
+			name: "unknown algorithm rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = "scrypt"
+			},
+			wantErr: ErrInvalidPasswordAlgorithm,
+		},
+		{
+			name: "bcrypt cost too low rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 9
+			},
+			wantErr: ErrInvalidBcryptCost,
+		},
+		{
+			name: "bcrypt cost too high rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Algorithm = PasswordAlgorithmBcrypt
+				p.Bcrypt.Cost = 32
+			},
+			wantErr: ErrInvalidBcryptCost,
+		},
+		{
+			name: "argon2 memory below floor rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Argon2.Memory = 4096
+			},
+			wantErr: ErrInvalidArgon2Params,
+		},
+		{
+			name: "argon2 key length below floor rejected",
+			mutate: func(p *PasswordConfig) {
+				p.Argon2.KeyLength = 8
+			},
+			wantErr: ErrInvalidArgon2Params,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			cfg := validBaseConfig()
+			tc.mutate(&cfg.Auth.Password)
+
+			err := cfg.Validate()
+			if tc.wantErr != nil {
+				r.ErrorIs(err, tc.wantErr)
+			} else {
+				r.NoError(err)
+			}
+		})
+	}
+}
+
+// TestValidatePasswordParameter covers the single-key write-time validator used
+// by the system-parameter handler. Values arrive as encoding/json types
+// (float64 for numbers, string for the algorithm, bool for rehash). The bounds
+// must match the fail-fast checks in Validate so a value saved through the UI can
+// never abort the next startup.
+func TestValidatePasswordParameter(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		key     string
+		value   any
+		wantErr bool
+	}{
+		// Algorithm.
+		{name: "algorithm argon2id ok", key: ParamKeyPasswordAlgorithm, value: "argon2id"},
+		{name: "algorithm bcrypt ok", key: ParamKeyPasswordAlgorithm, value: "bcrypt"},
+		{name: "algorithm sha1 rejected", key: ParamKeyPasswordAlgorithm, value: "sha1", wantErr: true},
+		{name: "algorithm wrong type rejected", key: ParamKeyPasswordAlgorithm, value: float64(1), wantErr: true},
+		// Argon2 memory (floor 8192).
+		{name: "memory at floor ok", key: ParamKeyPasswordArgon2Memory, value: float64(8192)},
+		{name: "memory 19456 ok", key: ParamKeyPasswordArgon2Memory, value: float64(19456)},
+		{name: "memory 1024 rejected", key: ParamKeyPasswordArgon2Memory, value: float64(1024), wantErr: true},
+		{name: "memory non-number rejected", key: ParamKeyPasswordArgon2Memory, value: "lots", wantErr: true},
+		// Argon2 time (floor 1).
+		{name: "time 1 ok", key: ParamKeyPasswordArgon2Time, value: float64(1)},
+		{name: "time 0 rejected", key: ParamKeyPasswordArgon2Time, value: float64(0), wantErr: true},
+		// Argon2 threads (1..255).
+		{name: "threads 1 ok", key: ParamKeyPasswordArgon2Threads, value: float64(1)},
+		{name: "threads 255 ok", key: ParamKeyPasswordArgon2Threads, value: float64(255)},
+		{name: "threads 0 rejected", key: ParamKeyPasswordArgon2Threads, value: float64(0), wantErr: true},
+		{name: "threads 256 rejected", key: ParamKeyPasswordArgon2Threads, value: float64(256), wantErr: true},
+		// Argon2 key/salt length floors.
+		{name: "key_length 16 ok", key: ParamKeyPasswordArgon2KeyLen, value: float64(16)},
+		{name: "key_length 8 rejected", key: ParamKeyPasswordArgon2KeyLen, value: float64(8), wantErr: true},
+		{name: "salt_length 8 ok", key: ParamKeyPasswordArgon2SaltLen, value: float64(8)},
+		{name: "salt_length 4 rejected", key: ParamKeyPasswordArgon2SaltLen, value: float64(4), wantErr: true},
+		// Bcrypt cost (10..31).
+		{name: "cost 10 ok", key: ParamKeyPasswordBcryptCost, value: float64(10)},
+		{name: "cost 31 ok", key: ParamKeyPasswordBcryptCost, value: float64(31)},
+		{name: "cost 9 rejected", key: ParamKeyPasswordBcryptCost, value: float64(9), wantErr: true},
+		{name: "cost 99 rejected", key: ParamKeyPasswordBcryptCost, value: float64(99), wantErr: true},
+		// Rehash bool.
+		{name: "rehash true ok", key: ParamKeyPasswordRehashOnLogin, value: true},
+		{name: "rehash false ok", key: ParamKeyPasswordRehashOnLogin, value: false},
+		{name: "rehash string rejected", key: ParamKeyPasswordRehashOnLogin, value: "soon", wantErr: true},
+		// Unknown key.
+		{name: "unknown key rejected", key: "auth.password.unknown", value: float64(1), wantErr: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+
+			err := ValidatePasswordParameter(tc.key, tc.value)
+			if tc.wantErr {
+				r.ErrorIs(err, ErrInvalidPasswordParameter)
+			} else {
+				r.NoError(err)
+			}
+		})
+	}
+}
+
+// TestIsPasswordParameterKey pins the set of keys the write handler routes
+// through ValidatePasswordParameter.
+func TestIsPasswordParameterKey(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for _, key := range []string{
+		ParamKeyPasswordAlgorithm, ParamKeyPasswordArgon2Memory, ParamKeyPasswordArgon2Time,
+		ParamKeyPasswordArgon2Threads, ParamKeyPasswordArgon2KeyLen, ParamKeyPasswordArgon2SaltLen,
+		ParamKeyPasswordBcryptCost, ParamKeyPasswordRehashOnLogin,
+	} {
+		r.Truef(IsPasswordParameterKey(key), "%s should be a password parameter key", key)
+	}
+
+	r.False(IsPasswordParameterKey("server.base_url"))
+	r.False(IsPasswordParameterKey("auth.jwt_secret"))
 }

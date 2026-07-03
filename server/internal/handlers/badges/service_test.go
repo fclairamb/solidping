@@ -1,6 +1,7 @@
 package badges
 
 import (
+	"context"
 	"math"
 	"regexp"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 )
 
 func TestAvailabilityColor(t *testing.T) {
@@ -726,109 +728,96 @@ func TestBuildGraphPoints(t *testing.T) {
 	r.Nil(points[2])
 }
 
-// TestBucketAccumulator verifies that mixing raw and hour rows in the same
-// bucket produces correctly weighted availability and average duration.
-func TestBucketAccumulator(t *testing.T) {
-	t.Parallel()
+// setupBadgeResultsTest spins up an in-memory DB with one org + one check and a
+// badge Service, so fetchBucketData can be exercised against the real ListResults
+// query path (the same shared uptimebar union the status page uses).
+func setupBadgeResultsTest(t *testing.T) (context.Context, *Service, *models.Organization, *models.Check) {
+	t.Helper()
 
-	r := require.New(t)
+	ctx := t.Context()
 
-	// Simulate: 1 raw row (up, 100ms) + 1 hour row (9 checks, 8 up, avg 200ms).
-	// Expected availability = 9/10 = 90%; weighted avg duration = (100*1 + 200*9)/10 = 1900/10 = 190ms.
-	acc := &bucketAccumulator{}
+	dbService, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	require.NoError(t, err)
+	require.NoError(t, dbService.Initialize(ctx))
+	t.Cleanup(func() { _ = dbService.Close() })
 
-	// Raw row
-	statusUp := int(models.ResultStatusUp)
-	rawDuration := float32(100.0)
-	raw := &models.Result{
-		PeriodType: models.PeriodTypeRaw,
-		Status:     &statusUp,
-		Duration:   &rawDuration,
-	}
+	org := models.NewOrganization("acme", "Acme")
+	require.NoError(t, dbService.CreateOrganization(ctx, org))
 
-	// Aggregate raw row
-	if raw.Status != nil {
-		s := models.ResultStatus(*raw.Status)
-		if s != models.ResultStatusCreated && s != models.ResultStatusRunning {
-			acc.total++
-			if *raw.Status == int(models.ResultStatusUp) {
-				acc.up++
-			}
-			if raw.Duration != nil {
-				acc.durSum += float64(*raw.Duration)
-				acc.durCnt++
-			}
-		}
-	}
+	check := models.NewCheck(org.UID, "API", "http")
+	require.NoError(t, dbService.CreateCheck(ctx, check))
 
-	// Hour aggregated row: 9 total, 8 up, avg duration 200ms
-	total := 9
-	successful := 8
-	avgDur := float32(200.0)
-	hourRow := &models.Result{
-		PeriodType:       models.PeriodTypeHour,
-		TotalChecks:      &total,
-		SuccessfulChecks: &successful,
-		DurationAvg:      &avgDur,
-	}
-
-	if hourRow.TotalChecks != nil {
-		acc.total += *hourRow.TotalChecks
-	}
-	if hourRow.SuccessfulChecks != nil {
-		acc.up += *hourRow.SuccessfulChecks
-	}
-	if hourRow.DurationAvg != nil && hourRow.TotalChecks != nil && *hourRow.TotalChecks > 0 {
-		acc.durSum += float64(*hourRow.DurationAvg) * float64(*hourRow.TotalChecks)
-		acc.durCnt += *hourRow.TotalChecks
-	}
-
-	// Verify: 9 total (1 raw + 8 successful+1 from hour row... wait, total is 9, up is 8+1=9)
-	// Actually: raw contributes total=1, up=1; hour contributes total=9, up=8 → total=10, up=9
-	r.Equal(10, acc.total)
-	r.Equal(9, acc.up)
-	r.InDelta(90.0, float64(acc.up)/float64(acc.total)*100, 0.001)
-
-	// Weighted average duration: (100*1 + 200*9) / (1+9) = 1900/10 = 190ms
-	r.Equal(10, acc.durCnt)
-	r.InDelta(190.0, acc.durSum/float64(acc.durCnt), 0.001)
+	return ctx, NewService(dbService), org, check
 }
 
-// TestBucketAccumulatorSkipsCreatedRunning verifies that raw rows with
-// created or running status are excluded from the totals.
-func TestBucketAccumulatorSkipsCreatedRunning(t *testing.T) {
+// TestFetchBucketData_MixesRawAndRollup verifies that the badge, via the shared
+// uptimebar union, mixes a raw row and an hour rollup row in the same bucket into
+// correctly weighted availability and average duration.
+func TestFetchBucketData_MixesRawAndRollup(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
+	ctx, svc, org, check := setupBadgeResultsTest(t)
 
-	acc := &bucketAccumulator{}
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
 
-	statusCreated := int(models.ResultStatusCreated)
-	statusRunning := int(models.ResultStatusRunning)
-	statusDown := int(models.ResultStatusDown)
+	// 1 raw row (up, 100ms) + 1 hour row (9 checks, 8 up, avg 200ms) in one hour.
+	// Expected availability = 9/10 = 90%; weighted avg = (100*1 + 200*9)/10 = 190ms.
+	rawUp := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 100)
+	rawUp.PeriodStart = currentHour.Add(time.Minute)
+	r.NoError(svc.dbSvc.CreateResult(ctx, rawUp))
 
-	rows := []*models.Result{
-		{PeriodType: models.PeriodTypeRaw, Status: &statusCreated},
-		{PeriodType: models.PeriodTypeRaw, Status: &statusRunning},
-		{PeriodType: models.PeriodTypeRaw, Status: &statusDown},
+	total, successful := 9, 8
+	avgDur := float32(200.0)
+	hourRow := models.NewResult(org.UID, check.UID, models.ResultStatusUp, 0)
+	hourRow.PeriodType = models.PeriodTypeHour
+	hourRow.PeriodStart = currentHour
+	hourRow.Status = nil
+	hourRow.Duration = nil
+	hourRow.TotalChecks = &total
+	hourRow.SuccessfulChecks = &successful
+	hourRow.DurationAvg = &avgDur
+	r.NoError(svc.dbSvc.CreateResult(ctx, hourRow))
+
+	availMap, durationMap, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
+	r.NoError(err)
+
+	r.InDelta(90.0, availMap[currentHour], 0.001)
+	r.NotNil(durationMap[currentHour])
+	r.InDelta(190.0, *durationMap[currentHour], 0.001)
+}
+
+// TestFetchBucketData_WarningCountsAsUp pins the intended badge behavior change:
+// the raw path now counts Warning as up (CountsAsUp), aligning the badge's raw
+// tier with its own rolled-up tier and the aggregation job. Created/running
+// lifecycle markers stay excluded from the denominator.
+func TestFetchBucketData_WarningCountsAsUp(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc, org, check := setupBadgeResultsTest(t)
+
+	now := time.Now().UTC()
+	currentHour := now.Truncate(time.Hour)
+
+	insert := func(st models.ResultStatus, off time.Duration) {
+		res := models.NewResult(org.UID, check.UID, st, 0)
+		res.PeriodStart = currentHour.Add(off)
+		r.NoError(svc.dbSvc.CreateResult(ctx, res))
 	}
 
-	for _, row := range rows {
-		if row.Status == nil {
-			continue
-		}
-		s := models.ResultStatus(*row.Status)
-		if s == models.ResultStatusCreated || s == models.ResultStatusRunning {
-			continue
-		}
-		acc.total++
-		if *row.Status == int(models.ResultStatusUp) {
-			acc.up++
-		}
-	}
+	insert(models.ResultStatusUp, time.Minute)
+	insert(models.ResultStatusWarning, 2*time.Minute) // counts as up
+	insert(models.ResultStatusDown, 3*time.Minute)
+	insert(models.ResultStatusCreated, 4*time.Minute) // lifecycle → excluded
+	insert(models.ResultStatusRunning, 5*time.Minute) // lifecycle → excluded
 
-	r.Equal(1, acc.total)
-	r.Equal(0, acc.up)
+	availMap, _, _, err := svc.fetchBucketData(ctx, org.UID, check.UID, "24h")
+	r.NoError(err)
+
+	// 2 up/warning of 3 countable = 66.67%.
+	r.InDelta(66.6667, availMap[currentHour], 0.01)
 }
 
 func TestComputeUptimeBarLabels7d(t *testing.T) {

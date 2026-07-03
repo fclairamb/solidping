@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import {
   ArrowLeft,
+  AlertCircle,
   BadgeCheck,
   Copy,
   Check as CheckIcon,
@@ -10,10 +11,11 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import { useChecks, type Check } from "@/api/hooks";
+import { useChecks, useCheck, type Check } from "@/api/hooks";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/page-header";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -331,7 +333,14 @@ function BadgesPage() {
   const { org } = Route.useParams();
   const search = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const { data: checks = [], isLoading, error } = useChecks(org);
+  // Raise to the endpoint max so the dropdown covers up to 100 checks (default is 20).
+  const { data: checks = [], isLoading, error } = useChecks(org, { limit: 100 });
+  // Resolve the selected check directly (by uid or slug) so a deep-link to a check
+  // outside the loaded list page still works. Auto-disabled when no check param.
+  const { data: directCheck, isLoading: directLoading } = useCheck(
+    org,
+    search.check ?? ""
+  );
 
   const components = search.components ?? "status";
   const period = search.period ?? "30d";
@@ -355,8 +364,20 @@ function BadgesPage() {
 
   const selectedCheck = search.check
     ? checks.find((c) => c.uid === search.check) ??
-      checks.find((c) => c.slug === search.check)
+      checks.find((c) => c.slug === search.check) ??
+      directCheck
     : undefined;
+
+  // Always include the resolved check as a dropdown option so the Radix Select
+  // trigger shows its name even when it sorts outside the loaded list page.
+  const checkOptions =
+    selectedCheck && !checks.some((c) => c.uid === selectedCheck.uid)
+      ? [selectedCheck, ...checks]
+      : checks;
+
+  // A check param is set but nothing resolved and the direct fetch is no longer
+  // in flight → stale/unknown check (e.g. deleted, or a broken bookmark).
+  const checkNotFound = !!search.check && !selectedCheck && !directLoading;
 
   const updateSearch = (updates: Partial<BadgeSearch>) => {
     navigate({
@@ -375,7 +396,7 @@ function BadgesPage() {
   };
 
   const handleCheckChange = (uid: string) => {
-    const check = checks.find((c) => c.uid === uid);
+    const check = checkOptions.find((c) => c.uid === uid);
     updateSearch({ check: check?.slug || uid });
   };
 
@@ -448,7 +469,7 @@ function BadgesPage() {
                     <SelectValue placeholder={t("selectCheck")} />
                   </SelectTrigger>
                   <SelectContent>
-                    {checks.map((check) => (
+                    {checkOptions.map((check) => (
                       <SelectItem key={check.uid} value={check.uid}>
                         {check.name || check.slug || check.uid.slice(0, 8)}
                       </SelectItem>
@@ -595,6 +616,20 @@ function BadgesPage() {
                 width={width}
               />
             </div>
+          ) : checkNotFound ? (
+            <Alert variant="warning" data-testid="badge-check-not-found">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>{t("checkNotFoundTitle")}</AlertTitle>
+              <AlertDescription>{t("checkNotFound")}</AlertDescription>
+            </Alert>
+          ) : search.check ? (
+            // A check is named in the URL and the direct fetch is still resolving —
+            // show a skeleton rather than flashing the "select a check" prompt.
+            <Card>
+              <CardContent className="py-8">
+                <Skeleton className="h-48 w-full" data-testid="badge-preview-loading" />
+              </CardContent>
+            </Card>
           ) : (
             <Card>
               <CardContent className="flex items-center justify-center py-16">

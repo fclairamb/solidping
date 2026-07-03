@@ -115,3 +115,9 @@ All three are independent — enabling one does not enable any other.
 ## Specs
 - Filename format: `YYYY-MM-DD-NN-title.md` (`NN` unique per day across `specs/todos/` and `specs/done/YYYY/MM/`)
 - Active: `specs/todos/`, Done: `specs/done/YYYY/MM/`, Backlog: `specs/backlog/`, Cancelled: `specs/cancelled/`
+
+## Batch branches
+`/implement-todos` and similar multi-spec runs integrate onto a dated **batch branch** (e.g. `batch/2026-06-23`).
+- **When the working tree is on a batch branch, never change the current branch.** Keep it checked out on the batch branch and do all integration there.
+- The working tree is shared — subagents and concurrent automations run against it — so a `git checkout` onto another branch can strand the batch branch, race another automation's git operations, or leave the tree parked on a feature branch after a crashed step.
+- If a step genuinely needs an isolated branch, use a separate `git worktree` instead of switching this tree's current branch.

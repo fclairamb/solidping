@@ -26,6 +26,7 @@ import { Route as OrgsOrgRegisterRouteImport } from './routes/orgs/$org/register
 import { Route as OrgsOrgOrganizationRouteImport } from './routes/orgs/$org/organization'
 import { Route as OrgsOrgOnCallRouteImport } from './routes/orgs/$org/on-call'
 import { Route as OrgsOrgMeRouteImport } from './routes/orgs/$org/me'
+import { Route as OrgsOrgMaintenanceWindowsRouteImport } from './routes/orgs/$org/maintenance-windows'
 import { Route as OrgsOrgLoginRouteImport } from './routes/orgs/$org/login'
 import { Route as OrgsOrgJobsRouteImport } from './routes/orgs/$org/jobs'
 import { Route as OrgsOrgIntegrationsRouteImport } from './routes/orgs/$org/integrations'
@@ -44,6 +45,7 @@ import { Route as OrgsOrgStatusPagesIndexRouteImport } from './routes/orgs/$org/
 import { Route as OrgsOrgServerIndexRouteImport } from './routes/orgs/$org/server.index'
 import { Route as OrgsOrgOrganizationIndexRouteImport } from './routes/orgs/$org/organization.index'
 import { Route as OrgsOrgOnCallIndexRouteImport } from './routes/orgs/$org/on-call.index'
+import { Route as OrgsOrgMaintenanceWindowsIndexRouteImport } from './routes/orgs/$org/maintenance-windows.index'
 import { Route as OrgsOrgJobsIndexRouteImport } from './routes/orgs/$org/jobs.index'
 import { Route as OrgsOrgIntegrationsIndexRouteImport } from './routes/orgs/$org/integrations.index'
 import { Route as OrgsOrgIncidentsIndexRouteImport } from './routes/orgs/$org/incidents.index'
@@ -64,6 +66,7 @@ import { Route as OrgsOrgServerWebRouteImport } from './routes/orgs/$org/server.
 import { Route as OrgsOrgServerSlackRouteImport } from './routes/orgs/$org/server.slack'
 import { Route as OrgsOrgServerPerformanceRouteImport } from './routes/orgs/$org/server.performance'
 import { Route as OrgsOrgServerMailRouteImport } from './routes/orgs/$org/server.mail'
+import { Route as OrgsOrgServerHashingRouteImport } from './routes/orgs/$org/server.hashing'
 import { Route as OrgsOrgServerEmailInboxRouteImport } from './routes/orgs/$org/server.email-inbox'
 import { Route as OrgsOrgServerAuthRouteImport } from './routes/orgs/$org/server.auth'
 import { Route as OrgsOrgServerActivationRouteImport } from './routes/orgs/$org/server.activation'
@@ -77,6 +80,8 @@ import { Route as OrgsOrgOnCallSlugRouteImport } from './routes/orgs/$org/on-cal
 import { Route as OrgsOrgOauthConsentRouteImport } from './routes/orgs/$org/oauth.consent'
 import { Route as OrgsOrgNotificationsNotificationUidRouteImport } from './routes/orgs/$org/notifications.$notificationUid'
 import { Route as OrgsOrgMeNotificationsRouteImport } from './routes/orgs/$org/me.notifications'
+import { Route as OrgsOrgMaintenanceWindowsNewRouteImport } from './routes/orgs/$org/maintenance-windows.new'
+import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid'
 import { Route as OrgsOrgJobsJobUidRouteImport } from './routes/orgs/$org/jobs.$jobUid'
 import { Route as OrgsOrgIntegrationsNewRouteImport } from './routes/orgs/$org/integrations.new'
 import { Route as OrgsOrgIntegrationsIntegrationUidRouteImport } from './routes/orgs/$org/integrations.$integrationUid'
@@ -93,15 +98,16 @@ import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/ac
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
 import { Route as OrgsOrgStatusPagesStatusPageUidIndexRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.index'
 import { Route as OrgsOrgOnCallSlugIndexRouteImport } from './routes/orgs/$org/on-call.$slug.index'
+import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.index'
 import { Route as OrgsOrgDiscoveryJobUidIndexRouteImport } from './routes/orgs/$org/discovery.$jobUid.index'
 import { Route as OrgsOrgChecksCheckUidIndexRouteImport } from './routes/orgs/$org/checks.$checkUid.index'
 import { Route as OrgsOrgStatusUpdatesUpdateUidEditRouteImport } from './routes/orgs/$org/status-updates.$updateUid.edit'
 import { Route as OrgsOrgStatusPagesStatusPageUidEditRouteImport } from './routes/orgs/$org/status-pages.$statusPageUid.edit'
 import { Route as OrgsOrgOnCallSlugEditRouteImport } from './routes/orgs/$org/on-call.$slug.edit'
+import { Route as OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport } from './routes/orgs/$org/maintenance-windows.$maintenanceWindowUid.edit'
 import { Route as OrgsOrgJobsCheckCheckJobUidRouteImport } from './routes/orgs/$org/jobs.check.$checkJobUid'
 import { Route as OrgsOrgChecksCheckUidEditRouteImport } from './routes/orgs/$org/checks.$checkUid.edit'
 import { Route as OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport } from './routes/orgs/$org/incidents.$incidentUid_.notifications.$notificationUid'
-import { Route as OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport } from './routes/orgs/$org/discovery.$jobUid.$hostUid.promote'
 import { Route as OrgsOrgChecksCheckUidResultsResultUidRouteImport } from './routes/orgs/$org/checks.$checkUid.results.$resultUid'
 
 const NoOrgRoute = NoOrgRouteImport.update({
@@ -190,6 +196,12 @@ const OrgsOrgMeRoute = OrgsOrgMeRouteImport.update({
   path: '/me',
   getParentRoute: () => OrgsOrgRoute,
 } as any)
+const OrgsOrgMaintenanceWindowsRoute =
+  OrgsOrgMaintenanceWindowsRouteImport.update({
+    id: '/maintenance-windows',
+    path: '/maintenance-windows',
+    getParentRoute: () => OrgsOrgRoute,
+  } as any)
 const OrgsOrgLoginRoute = OrgsOrgLoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -283,6 +295,12 @@ const OrgsOrgOnCallIndexRoute = OrgsOrgOnCallIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgOnCallRoute,
 } as any)
+const OrgsOrgMaintenanceWindowsIndexRoute =
+  OrgsOrgMaintenanceWindowsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgMaintenanceWindowsRoute,
+  } as any)
 const OrgsOrgJobsIndexRoute = OrgsOrgJobsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -389,6 +407,11 @@ const OrgsOrgServerMailRoute = OrgsOrgServerMailRouteImport.update({
   path: '/mail',
   getParentRoute: () => OrgsOrgServerRoute,
 } as any)
+const OrgsOrgServerHashingRoute = OrgsOrgServerHashingRouteImport.update({
+  id: '/hashing',
+  path: '/hashing',
+  getParentRoute: () => OrgsOrgServerRoute,
+} as any)
 const OrgsOrgServerEmailInboxRoute = OrgsOrgServerEmailInboxRouteImport.update({
   id: '/email-inbox',
   path: '/email-inbox',
@@ -460,6 +483,18 @@ const OrgsOrgMeNotificationsRoute = OrgsOrgMeNotificationsRouteImport.update({
   path: '/notifications',
   getParentRoute: () => OrgsOrgMeRoute,
 } as any)
+const OrgsOrgMaintenanceWindowsNewRoute =
+  OrgsOrgMaintenanceWindowsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => OrgsOrgMaintenanceWindowsRoute,
+  } as any)
+const OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute =
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteImport.update({
+    id: '/$maintenanceWindowUid',
+    path: '/$maintenanceWindowUid',
+    getParentRoute: () => OrgsOrgMaintenanceWindowsRoute,
+  } as any)
 const OrgsOrgJobsJobUidRoute = OrgsOrgJobsJobUidRouteImport.update({
   id: '/$jobUid',
   path: '/$jobUid',
@@ -546,6 +581,12 @@ const OrgsOrgOnCallSlugIndexRoute = OrgsOrgOnCallSlugIndexRouteImport.update({
   path: '/',
   getParentRoute: () => OrgsOrgOnCallSlugRoute,
 } as any)
+const OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute =
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute,
+  } as any)
 const OrgsOrgDiscoveryJobUidIndexRoute =
   OrgsOrgDiscoveryJobUidIndexRouteImport.update({
     id: '/',
@@ -575,6 +616,12 @@ const OrgsOrgOnCallSlugEditRoute = OrgsOrgOnCallSlugEditRouteImport.update({
   path: '/edit',
   getParentRoute: () => OrgsOrgOnCallSlugRoute,
 } as any)
+const OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute =
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport.update({
+    id: '/edit',
+    path: '/edit',
+    getParentRoute: () => OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute,
+  } as any)
 const OrgsOrgJobsCheckCheckJobUidRoute =
   OrgsOrgJobsCheckCheckJobUidRouteImport.update({
     id: '/check/$checkJobUid',
@@ -592,12 +639,6 @@ const OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute =
     id: '/$incidentUid_/notifications/$notificationUid',
     path: '/$incidentUid/notifications/$notificationUid',
     getParentRoute: () => OrgsOrgIncidentsRoute,
-  } as any)
-const OrgsOrgDiscoveryJobUidHostUidPromoteRoute =
-  OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport.update({
-    id: '/$hostUid/promote',
-    path: '/$hostUid/promote',
-    getParentRoute: () => OrgsOrgDiscoveryJobUidRoute,
   } as any)
 const OrgsOrgChecksCheckUidResultsResultUidRoute =
   OrgsOrgChecksCheckUidResultsResultUidRouteImport.update({
@@ -627,6 +668,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/integrations': typeof OrgsOrgIntegrationsRouteWithChildren
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -650,6 +692,8 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteWithChildren
+  '/orgs/$org/maintenance-windows/new': typeof OrgsOrgMaintenanceWindowsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
@@ -663,6 +707,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -683,6 +728,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/integrations/': typeof OrgsOrgIntegrationsIndexRoute
   '/orgs/$org/jobs/': typeof OrgsOrgJobsIndexRoute
+  '/orgs/$org/maintenance-windows/': typeof OrgsOrgMaintenanceWindowsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
@@ -691,15 +737,16 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRoutesByTo {
@@ -730,6 +777,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
+  '/orgs/$org/maintenance-windows/new': typeof OrgsOrgMaintenanceWindowsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
@@ -742,6 +790,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -761,6 +810,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/incidents': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/integrations': typeof OrgsOrgIntegrationsIndexRoute
   '/orgs/$org/jobs': typeof OrgsOrgJobsIndexRoute
+  '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsIndexRoute
   '/orgs/$org/on-call': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server': typeof OrgsOrgServerIndexRoute
@@ -769,15 +819,16 @@ export interface FileRoutesByTo {
   '/orgs/$org/test': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid': typeof OrgsOrgDiscoveryJobUidIndexRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$slug': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRoutesById {
@@ -802,6 +853,7 @@ export interface FileRoutesById {
   '/orgs/$org/integrations': typeof OrgsOrgIntegrationsRouteWithChildren
   '/orgs/$org/jobs': typeof OrgsOrgJobsRouteWithChildren
   '/orgs/$org/login': typeof OrgsOrgLoginRoute
+  '/orgs/$org/maintenance-windows': typeof OrgsOrgMaintenanceWindowsRouteWithChildren
   '/orgs/$org/me': typeof OrgsOrgMeRouteWithChildren
   '/orgs/$org/on-call': typeof OrgsOrgOnCallRouteWithChildren
   '/orgs/$org/organization': typeof OrgsOrgOrganizationRouteWithChildren
@@ -825,6 +877,8 @@ export interface FileRoutesById {
   '/orgs/$org/integrations/$integrationUid': typeof OrgsOrgIntegrationsIntegrationUidRoute
   '/orgs/$org/integrations/new': typeof OrgsOrgIntegrationsNewRoute
   '/orgs/$org/jobs/$jobUid': typeof OrgsOrgJobsJobUidRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteWithChildren
+  '/orgs/$org/maintenance-windows/new': typeof OrgsOrgMaintenanceWindowsNewRoute
   '/orgs/$org/me/notifications': typeof OrgsOrgMeNotificationsRoute
   '/orgs/$org/notifications/$notificationUid': typeof OrgsOrgNotificationsNotificationUidRoute
   '/orgs/$org/oauth/consent': typeof OrgsOrgOauthConsentRoute
@@ -838,6 +892,7 @@ export interface FileRoutesById {
   '/orgs/$org/server/activation': typeof OrgsOrgServerActivationRoute
   '/orgs/$org/server/auth': typeof OrgsOrgServerAuthRoute
   '/orgs/$org/server/email-inbox': typeof OrgsOrgServerEmailInboxRoute
+  '/orgs/$org/server/hashing': typeof OrgsOrgServerHashingRoute
   '/orgs/$org/server/mail': typeof OrgsOrgServerMailRoute
   '/orgs/$org/server/performance': typeof OrgsOrgServerPerformanceRoute
   '/orgs/$org/server/slack': typeof OrgsOrgServerSlackRoute
@@ -858,6 +913,7 @@ export interface FileRoutesById {
   '/orgs/$org/incidents/': typeof OrgsOrgIncidentsIndexRoute
   '/orgs/$org/integrations/': typeof OrgsOrgIntegrationsIndexRoute
   '/orgs/$org/jobs/': typeof OrgsOrgJobsIndexRoute
+  '/orgs/$org/maintenance-windows/': typeof OrgsOrgMaintenanceWindowsIndexRoute
   '/orgs/$org/on-call/': typeof OrgsOrgOnCallIndexRoute
   '/orgs/$org/organization/': typeof OrgsOrgOrganizationIndexRoute
   '/orgs/$org/server/': typeof OrgsOrgServerIndexRoute
@@ -866,15 +922,16 @@ export interface FileRoutesById {
   '/orgs/$org/test/': typeof OrgsOrgTestIndexRoute
   '/orgs/$org/checks/$checkUid/edit': typeof OrgsOrgChecksCheckUidEditRoute
   '/orgs/$org/jobs/check/$checkJobUid': typeof OrgsOrgJobsCheckCheckJobUidRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
   '/orgs/$org/on-call/$slug/edit': typeof OrgsOrgOnCallSlugEditRoute
   '/orgs/$org/status-pages/$statusPageUid/edit': typeof OrgsOrgStatusPagesStatusPageUidEditRoute
   '/orgs/$org/status-updates/$updateUid/edit': typeof OrgsOrgStatusUpdatesUpdateUidEditRoute
   '/orgs/$org/checks/$checkUid/': typeof OrgsOrgChecksCheckUidIndexRoute
   '/orgs/$org/discovery/$jobUid/': typeof OrgsOrgDiscoveryJobUidIndexRoute
+  '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
   '/orgs/$org/on-call/$slug/': typeof OrgsOrgOnCallSlugIndexRoute
   '/orgs/$org/status-pages/$statusPageUid/': typeof OrgsOrgStatusPagesStatusPageUidIndexRoute
   '/orgs/$org/checks/$checkUid/results/$resultUid': typeof OrgsOrgChecksCheckUidResultsResultUidRoute
-  '/orgs/$org/discovery/$jobUid/$hostUid/promote': typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
   '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid': typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRoute
 }
 export interface FileRouteTypes {
@@ -900,6 +957,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations'
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
+    | '/orgs/$org/maintenance-windows'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -923,6 +981,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
+    | '/orgs/$org/maintenance-windows/new'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
@@ -936,6 +996,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -956,6 +1017,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/incidents/'
     | '/orgs/$org/integrations/'
     | '/orgs/$org/jobs/'
+    | '/orgs/$org/maintenance-windows/'
     | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
@@ -964,15 +1026,16 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -1003,6 +1066,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
+    | '/orgs/$org/maintenance-windows/new'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
@@ -1015,6 +1079,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -1034,6 +1099,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/incidents'
     | '/orgs/$org/integrations'
     | '/orgs/$org/jobs'
+    | '/orgs/$org/maintenance-windows'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
     | '/orgs/$org/server'
@@ -1042,15 +1108,16 @@ export interface FileRouteTypes {
     | '/orgs/$org/test'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/discovery/$jobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
     | '/orgs/$org/on-call/$slug'
     | '/orgs/$org/status-pages/$statusPageUid'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
   id:
     | '__root__'
@@ -1074,6 +1141,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations'
     | '/orgs/$org/jobs'
     | '/orgs/$org/login'
+    | '/orgs/$org/maintenance-windows'
     | '/orgs/$org/me'
     | '/orgs/$org/on-call'
     | '/orgs/$org/organization'
@@ -1097,6 +1165,8 @@ export interface FileRouteTypes {
     | '/orgs/$org/integrations/$integrationUid'
     | '/orgs/$org/integrations/new'
     | '/orgs/$org/jobs/$jobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
+    | '/orgs/$org/maintenance-windows/new'
     | '/orgs/$org/me/notifications'
     | '/orgs/$org/notifications/$notificationUid'
     | '/orgs/$org/oauth/consent'
@@ -1110,6 +1180,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/server/activation'
     | '/orgs/$org/server/auth'
     | '/orgs/$org/server/email-inbox'
+    | '/orgs/$org/server/hashing'
     | '/orgs/$org/server/mail'
     | '/orgs/$org/server/performance'
     | '/orgs/$org/server/slack'
@@ -1130,6 +1201,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/incidents/'
     | '/orgs/$org/integrations/'
     | '/orgs/$org/jobs/'
+    | '/orgs/$org/maintenance-windows/'
     | '/orgs/$org/on-call/'
     | '/orgs/$org/organization/'
     | '/orgs/$org/server/'
@@ -1138,15 +1210,16 @@ export interface FileRouteTypes {
     | '/orgs/$org/test/'
     | '/orgs/$org/checks/$checkUid/edit'
     | '/orgs/$org/jobs/check/$checkJobUid'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
     | '/orgs/$org/on-call/$slug/edit'
     | '/orgs/$org/status-pages/$statusPageUid/edit'
     | '/orgs/$org/status-updates/$updateUid/edit'
     | '/orgs/$org/checks/$checkUid/'
     | '/orgs/$org/discovery/$jobUid/'
+    | '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
     | '/orgs/$org/on-call/$slug/'
     | '/orgs/$org/status-pages/$statusPageUid/'
     | '/orgs/$org/checks/$checkUid/results/$resultUid'
-    | '/orgs/$org/discovery/$jobUid/$hostUid/promote'
     | '/orgs/$org/incidents/$incidentUid_/notifications/$notificationUid'
   fileRoutesById: FileRoutesById
 }
@@ -1283,6 +1356,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgMeRouteImport
       parentRoute: typeof OrgsOrgRoute
     }
+    '/orgs/$org/maintenance-windows': {
+      id: '/orgs/$org/maintenance-windows'
+      path: '/maintenance-windows'
+      fullPath: '/orgs/$org/maintenance-windows'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsRouteImport
+      parentRoute: typeof OrgsOrgRoute
+    }
     '/orgs/$org/login': {
       id: '/orgs/$org/login'
       path: '/login'
@@ -1408,6 +1488,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/on-call/'
       preLoaderRoute: typeof OrgsOrgOnCallIndexRouteImport
       parentRoute: typeof OrgsOrgOnCallRoute
+    }
+    '/orgs/$org/maintenance-windows/': {
+      id: '/orgs/$org/maintenance-windows/'
+      path: '/'
+      fullPath: '/orgs/$org/maintenance-windows/'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsIndexRouteImport
+      parentRoute: typeof OrgsOrgMaintenanceWindowsRoute
     }
     '/orgs/$org/jobs/': {
       id: '/orgs/$org/jobs/'
@@ -1549,6 +1636,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgServerMailRouteImport
       parentRoute: typeof OrgsOrgServerRoute
     }
+    '/orgs/$org/server/hashing': {
+      id: '/orgs/$org/server/hashing'
+      path: '/hashing'
+      fullPath: '/orgs/$org/server/hashing'
+      preLoaderRoute: typeof OrgsOrgServerHashingRouteImport
+      parentRoute: typeof OrgsOrgServerRoute
+    }
     '/orgs/$org/server/email-inbox': {
       id: '/orgs/$org/server/email-inbox'
       path: '/email-inbox'
@@ -1639,6 +1733,20 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/me/notifications'
       preLoaderRoute: typeof OrgsOrgMeNotificationsRouteImport
       parentRoute: typeof OrgsOrgMeRoute
+    }
+    '/orgs/$org/maintenance-windows/new': {
+      id: '/orgs/$org/maintenance-windows/new'
+      path: '/new'
+      fullPath: '/orgs/$org/maintenance-windows/new'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsNewRouteImport
+      parentRoute: typeof OrgsOrgMaintenanceWindowsRoute
+    }
+    '/orgs/$org/maintenance-windows/$maintenanceWindowUid': {
+      id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
+      path: '/$maintenanceWindowUid'
+      fullPath: '/orgs/$org/maintenance-windows/$maintenanceWindowUid'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteImport
+      parentRoute: typeof OrgsOrgMaintenanceWindowsRoute
     }
     '/orgs/$org/jobs/$jobUid': {
       id: '/orgs/$org/jobs/$jobUid'
@@ -1752,6 +1860,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallSlugIndexRouteImport
       parentRoute: typeof OrgsOrgOnCallSlugRoute
     }
+    '/orgs/$org/maintenance-windows/$maintenanceWindowUid/': {
+      id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
+      path: '/'
+      fullPath: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRouteImport
+      parentRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute
+    }
     '/orgs/$org/discovery/$jobUid/': {
       id: '/orgs/$org/discovery/$jobUid/'
       path: '/'
@@ -1787,6 +1902,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgOnCallSlugEditRouteImport
       parentRoute: typeof OrgsOrgOnCallSlugRoute
     }
+    '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit': {
+      id: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
+      path: '/edit'
+      fullPath: '/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit'
+      preLoaderRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRouteImport
+      parentRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute
+    }
     '/orgs/$org/jobs/check/$checkJobUid': {
       id: '/orgs/$org/jobs/check/$checkJobUid'
       path: '/check/$checkJobUid'
@@ -1807,13 +1929,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/orgs/$org/incidents/$incidentUid/notifications/$notificationUid'
       preLoaderRoute: typeof OrgsOrgIncidentsIncidentUidNotificationsNotificationUidRouteImport
       parentRoute: typeof OrgsOrgIncidentsRoute
-    }
-    '/orgs/$org/discovery/$jobUid/$hostUid/promote': {
-      id: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
-      path: '/$hostUid/promote'
-      fullPath: '/orgs/$org/discovery/$jobUid/$hostUid/promote'
-      preLoaderRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRouteImport
-      parentRoute: typeof OrgsOrgDiscoveryJobUidRoute
     }
     '/orgs/$org/checks/$checkUid/results/$resultUid': {
       id: '/orgs/$org/checks/$checkUid/results/$resultUid'
@@ -1881,14 +1996,11 @@ const OrgsOrgChecksRouteWithChildren = OrgsOrgChecksRoute._addFileChildren(
 
 interface OrgsOrgDiscoveryJobUidRouteChildren {
   OrgsOrgDiscoveryJobUidIndexRoute: typeof OrgsOrgDiscoveryJobUidIndexRoute
-  OrgsOrgDiscoveryJobUidHostUidPromoteRoute: typeof OrgsOrgDiscoveryJobUidHostUidPromoteRoute
 }
 
 const OrgsOrgDiscoveryJobUidRouteChildren: OrgsOrgDiscoveryJobUidRouteChildren =
   {
     OrgsOrgDiscoveryJobUidIndexRoute: OrgsOrgDiscoveryJobUidIndexRoute,
-    OrgsOrgDiscoveryJobUidHostUidPromoteRoute:
-      OrgsOrgDiscoveryJobUidHostUidPromoteRoute,
   }
 
 const OrgsOrgDiscoveryJobUidRouteWithChildren =
@@ -1977,6 +2089,43 @@ const OrgsOrgJobsRouteWithChildren = OrgsOrgJobsRoute._addFileChildren(
   OrgsOrgJobsRouteChildren,
 )
 
+interface OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteChildren {
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute
+}
+
+const OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteChildren: OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteChildren =
+  {
+    OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute:
+      OrgsOrgMaintenanceWindowsMaintenanceWindowUidEditRoute,
+    OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute:
+      OrgsOrgMaintenanceWindowsMaintenanceWindowUidIndexRoute,
+  }
+
+const OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteWithChildren =
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute._addFileChildren(
+    OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteChildren,
+  )
+
+interface OrgsOrgMaintenanceWindowsRouteChildren {
+  OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute: typeof OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteWithChildren
+  OrgsOrgMaintenanceWindowsNewRoute: typeof OrgsOrgMaintenanceWindowsNewRoute
+  OrgsOrgMaintenanceWindowsIndexRoute: typeof OrgsOrgMaintenanceWindowsIndexRoute
+}
+
+const OrgsOrgMaintenanceWindowsRouteChildren: OrgsOrgMaintenanceWindowsRouteChildren =
+  {
+    OrgsOrgMaintenanceWindowsMaintenanceWindowUidRoute:
+      OrgsOrgMaintenanceWindowsMaintenanceWindowUidRouteWithChildren,
+    OrgsOrgMaintenanceWindowsNewRoute: OrgsOrgMaintenanceWindowsNewRoute,
+    OrgsOrgMaintenanceWindowsIndexRoute: OrgsOrgMaintenanceWindowsIndexRoute,
+  }
+
+const OrgsOrgMaintenanceWindowsRouteWithChildren =
+  OrgsOrgMaintenanceWindowsRoute._addFileChildren(
+    OrgsOrgMaintenanceWindowsRouteChildren,
+  )
+
 interface OrgsOrgMeRouteChildren {
   OrgsOrgMeNotificationsRoute: typeof OrgsOrgMeNotificationsRoute
 }
@@ -2043,6 +2192,7 @@ interface OrgsOrgServerRouteChildren {
   OrgsOrgServerActivationRoute: typeof OrgsOrgServerActivationRoute
   OrgsOrgServerAuthRoute: typeof OrgsOrgServerAuthRoute
   OrgsOrgServerEmailInboxRoute: typeof OrgsOrgServerEmailInboxRoute
+  OrgsOrgServerHashingRoute: typeof OrgsOrgServerHashingRoute
   OrgsOrgServerMailRoute: typeof OrgsOrgServerMailRoute
   OrgsOrgServerPerformanceRoute: typeof OrgsOrgServerPerformanceRoute
   OrgsOrgServerSlackRoute: typeof OrgsOrgServerSlackRoute
@@ -2054,6 +2204,7 @@ const OrgsOrgServerRouteChildren: OrgsOrgServerRouteChildren = {
   OrgsOrgServerActivationRoute: OrgsOrgServerActivationRoute,
   OrgsOrgServerAuthRoute: OrgsOrgServerAuthRoute,
   OrgsOrgServerEmailInboxRoute: OrgsOrgServerEmailInboxRoute,
+  OrgsOrgServerHashingRoute: OrgsOrgServerHashingRoute,
   OrgsOrgServerMailRoute: OrgsOrgServerMailRoute,
   OrgsOrgServerPerformanceRoute: OrgsOrgServerPerformanceRoute,
   OrgsOrgServerSlackRoute: OrgsOrgServerSlackRoute,
@@ -2162,6 +2313,7 @@ interface OrgsOrgRouteChildren {
   OrgsOrgIntegrationsRoute: typeof OrgsOrgIntegrationsRouteWithChildren
   OrgsOrgJobsRoute: typeof OrgsOrgJobsRouteWithChildren
   OrgsOrgLoginRoute: typeof OrgsOrgLoginRoute
+  OrgsOrgMaintenanceWindowsRoute: typeof OrgsOrgMaintenanceWindowsRouteWithChildren
   OrgsOrgMeRoute: typeof OrgsOrgMeRouteWithChildren
   OrgsOrgOnCallRoute: typeof OrgsOrgOnCallRouteWithChildren
   OrgsOrgOrganizationRoute: typeof OrgsOrgOrganizationRouteWithChildren
@@ -2188,6 +2340,7 @@ const OrgsOrgRouteChildren: OrgsOrgRouteChildren = {
   OrgsOrgIntegrationsRoute: OrgsOrgIntegrationsRouteWithChildren,
   OrgsOrgJobsRoute: OrgsOrgJobsRouteWithChildren,
   OrgsOrgLoginRoute: OrgsOrgLoginRoute,
+  OrgsOrgMaintenanceWindowsRoute: OrgsOrgMaintenanceWindowsRouteWithChildren,
   OrgsOrgMeRoute: OrgsOrgMeRouteWithChildren,
   OrgsOrgOnCallRoute: OrgsOrgOnCallRouteWithChildren,
   OrgsOrgOrganizationRoute: OrgsOrgOrganizationRouteWithChildren,

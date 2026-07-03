@@ -26,7 +26,8 @@ const (
 	// ack/snooze/resolve drops the rest of the policy without extra wiring.
 	JobTypeEscalationStep JobType = "escalation_step"
 	// JobTypeNetworkDiscovery scans a set of CIDR ranges for responsive hosts and
-	// records them in the discovered_hosts table for operator review and promotion.
+	// records suggested checks in the discovered_checks table (grouped by IP) for
+	// operator review and promotion.
 	JobTypeNetworkDiscovery JobType = "network_discovery"
 	// JobTypeNetworkDiscoveryPlan is the lightweight coordinator job for a large
 	// fan-out scan. It splits the requested CIDRs into ≤MaxAddresses chunks and
@@ -34,9 +35,17 @@ const (
 	// UID as parentJobUid. Its own UID is the scan UID shown in the UI.
 	JobTypeNetworkDiscoveryPlan JobType = "network_discovery_plan"
 	// JobTypeFreeboxLanDiscovery queries a paired Freebox channel's LAN browser
-	// and records the hosts it knows about in the discovered_hosts table
+	// and records suggested checks in the discovered_checks table
 	// (source='freebox') so they share the LAN-scan promote/dismiss UX.
 	JobTypeFreeboxLanDiscovery JobType = "freebox_lan_discovery"
+	// JobTypeContainerDiscovery connects to one or more Docker-compatible API
+	// endpoints, lists running containers, and records them in discovered_checks
+	// (source='container', one group per container) for operator review and promotion.
+	JobTypeContainerDiscovery JobType = "container_discovery"
+	// JobTypeKubernetesDiscovery connects to a configured Kubernetes cluster, lists
+	// Deployments and bare ReplicaSets, and records them in discovered_checks
+	// (source='kubernetes', one group per workload) for operator review and promotion.
+	JobTypeKubernetesDiscovery JobType = "kubernetes_discovery"
 	// JobTypeStuckJobReaper periodically recovers jobs left in 'running' by a
 	// dead/redeployed worker: it rides the existing retry chain (retried +
 	// backoff clone) until the retry cap, then 'failed' with reason

@@ -723,8 +723,7 @@ func processRawResult(
 	lastOutput *models.JSONMap,
 ) {
 	// Skip non-data statuses (initial, running) — they are lifecycle markers, not measurements
-	if result.Status != nil &&
-		(*result.Status == int(models.ResultStatusRunning) || *result.Status == int(models.ResultStatusCreated)) {
+	if result.Status != nil && models.ResultStatus(*result.Status).IsLifecycleMarker() {
 		return
 	}
 
@@ -749,8 +748,7 @@ func processRawResult(
 		// up, there is just something to report. The window's promotion to
 		// the aggregated Degraded status is handled by the dominant-status
 		// selection, not here, so availability can be 100% on a Degraded row.
-		if *result.Status == int(models.ResultStatusUp) ||
-			*result.Status == int(models.ResultStatusWarning) {
+		if models.ResultStatus(*result.Status).CountsAsUp() {
 			*successCount++
 		}
 	}

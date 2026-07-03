@@ -9,7 +9,9 @@ import (
 	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // Validation-error field/message constants. Kept as constants to satisfy
@@ -18,6 +20,41 @@ const (
 	invalidJSONField   = "body"
 	invalidJSONMessage = "Invalid JSON format"
 )
+
+// isAdmin returns true if the request context has an admin or super admin role.
+// Mirrors the discovery handler's admin check so source-type (cluster)
+// connections share a single authorization rule.
+func isAdmin(req bunrouter.Request) bool {
+	claims, ok := mw.GetClaimsFromContext(req.Context())
+	if !ok || claims == nil {
+		return false
+	}
+
+	return claims.Role == "admin" || claims.IsSuperAdmin()
+}
+
+// requireAdminForSourceType writes a 403 and returns true when connType is a
+// data-source connection (e.g. kubernetes, freebox) and the caller is not an
+// admin. Notification-only channels (slack, email, webhook, …) are
+// self-service and never gated here, so non-admins keep managing their own
+// channels. Returns false when the request may proceed.
+func (h *Handler) requireAdminForSourceType(
+	writer http.ResponseWriter, req bunrouter.Request, connType models.ConnectionType,
+) (bool, error) {
+	if !models.CapabilitiesFor(connType).CanSource {
+		return false, nil
+	}
+
+	if isAdmin(req) {
+		return false, nil
+	}
+
+	err := h.WriteError(
+		writer, http.StatusForbidden, base.ErrorCodeForbidden,
+		"admin access required to manage source connections")
+
+	return true, err
+}
 
 // Handler provides HTTP handlers for connection management endpoints.
 type Handler struct {
@@ -93,6 +130,13 @@ func (h *Handler) CreateIntegration(writer http.ResponseWriter, req bunrouter.Re
 		return h.WriteValidationError(writer, "Validation error", validationErrors)
 	}
 
+	// Source-type (cluster) connections — e.g. kubernetes, freebox — are
+	// admin-only. Notification channels stay self-service.
+	if blocked, err := h.requireAdminForSourceType(
+		writer, req, models.ConnectionType(createReq.Type)); blocked {
+		return err
+	}
+
 	connection, err := h.svc.CreateIntegration(req.Context(), orgSlug, createReq)
 	if err != nil {
 		return h.handleError(writer, err)
@@ -113,6 +157,18 @@ func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req bunrouter.Re
 		})
 	}
 
+	// Modifying a source-type (cluster) connection is admin-only, consistent
+	// with create/delete. Resolve the existing connection to key off its type.
+	existing, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	if blocked, gErr := h.requireAdminForSourceType(
+		writer, req, models.ConnectionType(existing.Type)); blocked {
+		return gErr
+	}
+
 	connection, err := h.svc.UpdateIntegration(req.Context(), orgSlug, connectionUID, updateReq)
 	if err != nil {
 		return h.handleError(writer, err)
@@ -125,6 +181,18 @@ func (h *Handler) UpdateIntegration(writer http.ResponseWriter, req bunrouter.Re
 func (h *Handler) DeleteIntegration(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	connectionUID := req.Param("uid")
+
+	// Deleting a source-type (cluster) connection is admin-only. Look up the
+	// existing connection so the guard keys off its stored type.
+	existing, err := h.svc.GetIntegration(req.Context(), orgSlug, connectionUID)
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	if blocked, gErr := h.requireAdminForSourceType(
+		writer, req, models.ConnectionType(existing.Type)); blocked {
+		return gErr
+	}
 
 	if err := h.svc.DeleteIntegration(req.Context(), orgSlug, connectionUID); err != nil {
 		return h.handleError(writer, err)
@@ -211,7 +279,7 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound, "Connection not found")
 	case errors.Is(err, ErrInvalidConnectionType):
 		return h.WriteValidationError(writer, "Invalid connection type", []base.ValidationErrorField{
-			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox"},
+			{Name: "type", Message: "Type must be one of: slack, discord, webhook, email, freebox, kubernetes"},
 		})
 	case errors.Is(err, ErrFreeboxNotPairing):
 		return h.WriteError(writer, http.StatusConflict, base.ErrorCodeConflict,

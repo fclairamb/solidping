@@ -17,9 +17,10 @@ import (
 // middlewares wrapped beneath this one) takes longer than maxDuration.
 //
 // A maxDuration of 0 disables the middleware: the handler runs unconditionally.
-// Paths in excludedPrefixes (workers, heartbeat, /api/mgmt/, /metrics) bypass
-// the timeout — long-running worker endpoints and Prometheus scrapes must not
-// be capped.
+// Paths in excludedPrefixes (workers, heartbeat, /api/mgmt/, /metrics) and the
+// realtime hint WebSocket (/api/v1/orgs/:org/events/ws) bypass the timeout —
+// long-running worker endpoints, Prometheus scrapes and held-open WebSocket
+// connections must not be capped.
 func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 	return func(next bunrouter.HandlerFunc) bunrouter.HandlerFunc {
 		return func(writer http.ResponseWriter, req bunrouter.Request) error {
@@ -47,11 +48,22 @@ func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunro
 				// only emits it if the handler has not already started writing.
 				// This prevents both sides from mutating the shared http.Header
 				// map at once ("fatal error: concurrent map writes").
-				guarded.writeTimeout()
-				// Drain the handler in the background — we cannot stop it,
-				// but we have already responded to the client.
-				go func() { <-done }()
-				return nil
+				if guarded.writeTimeout() {
+					// The 504 is on the wire and every future handler write is
+					// a swallowed no-op, so returning is safe. Drain the
+					// handler in the background — we cannot stop it, but we
+					// have already responded to the client.
+					go func() { <-done }()
+					return nil
+				}
+				// The handler committed its own response before the deadline
+				// and may still be streaming it. Returning now would let
+				// net/http finish the request and recycle the connection's
+				// write buffers while that write is in flight — a guaranteed
+				// SIGSEGV (observed as a bufio.Writer nil dereference under
+				// CI load). The request context is already canceled, so the
+				// handler aborts at its next ctx-aware call; wait it out.
+				return <-done
 			}
 		}
 	}
@@ -67,7 +79,11 @@ func RequestTimeout(maxDuration time.Duration) func(bunrouter.HandlerFunc) bunro
 //
 // The two sides are mutually exclusive: whoever flips the writer first
 // (handler via WriteHeader/Write, or the middleware via writeTimeout) wins;
-// the loser's subsequent calls become no-ops.
+// the loser's subsequent calls become no-ops. When the handler wins, the
+// middleware must keep ServeHTTP alive until the handler returns (see
+// RequestTimeout): net/http recycles the connection's write buffers the moment
+// ServeHTTP returns, so returning under a still-streaming handler crashes the
+// process.
 type timeoutWriter struct {
 	http.ResponseWriter
 
@@ -98,17 +114,21 @@ func (w *timeoutWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+// Write forwards to the real writer while holding the mutex for the whole
+// write. Releasing the lock before the underlying Write (as an earlier version
+// did) reopens the crash this guard exists to prevent: writeTimeout could run
+// in the gap, see no committed header, 504 and let the middleware return —
+// recycling the connection's buffers under the in-flight write.
 func (w *timeoutWriter) Write(data []byte) (int, error) {
 	w.mu.Lock()
+	defer w.mu.Unlock()
 	if w.timedOut {
-		w.mu.Unlock()
 		return len(data), nil
 	}
 	if !w.wroteHdr {
 		w.wroteHdr = true
 		w.flushHeaderLocked()
 	}
-	w.mu.Unlock()
 	return w.ResponseWriter.Write(data)
 }
 
@@ -125,11 +145,20 @@ func (w *timeoutWriter) flushHeaderLocked() {
 // committed its own header to the connection. It runs under the same mutex as
 // the handler's WriteHeader/Write, and writes only to the real ResponseWriter's
 // header map (never the handler's private one), so the two never collide.
-func (w *timeoutWriter) writeTimeout() {
+//
+// It reports whether the middleware now owns the response (the 504 was written,
+// or a previous call already did): the caller may then return and leave the
+// handler draining in the background. A false return means the handler
+// committed a response first — the caller MUST wait for the handler to finish
+// before returning, because the connection is still being written to.
+func (w *timeoutWriter) writeTimeout() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.wroteHdr || w.timedOut {
-		return
+	if w.timedOut {
+		return true
+	}
+	if w.wroteHdr {
+		return false
 	}
 	w.timedOut = true
 
@@ -143,4 +172,6 @@ func (w *timeoutWriter) writeTimeout() {
 	if err == nil {
 		_, _ = w.ResponseWriter.Write(body)
 	}
+
+	return true
 }

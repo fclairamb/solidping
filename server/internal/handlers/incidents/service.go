@@ -16,6 +16,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobtypes"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -85,6 +86,12 @@ type Service struct {
 	jobsSvc jobsvc.Service
 	clock   clock.Clock
 
+	// rt publishes org-scoped live dashboard hints: `results` (coalesced) on
+	// every processed result, `checks` (immediate) on a visible status
+	// transition, `incidents`+`events` (immediate) alongside event writes.
+	// Nil-safe — a nil publisher no-ops (realtime disabled, tests).
+	rt *realtime.Publisher
+
 	// mwCache caches per-check maintenance-window definitions with a TTL.
 	// Strong-reference map (not internal/utils/cache, whose weak.Pointer
 	// values would be GC'd almost immediately here). Keyed by checkUID.
@@ -92,12 +99,14 @@ type Service struct {
 	mwCacheMu sync.RWMutex
 }
 
-// NewService creates a new incident service.
-func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock) *Service {
+// NewService creates a new incident service. rt may be nil (realtime
+// disabled): every publish through it is a nil-safe no-op.
+func NewService(dbService db.Service, jobsSvc jobsvc.Service, clk clock.Clock, rt *realtime.Publisher) *Service {
 	return &Service{
 		db:      dbService,
 		jobsSvc: jobsSvc,
 		clock:   clk,
+		rt:      rt,
 		mwCache: make(map[string]mwCacheEntry),
 	}
 }
@@ -139,6 +148,11 @@ func (s *Service) isCheckInActiveMaintenance(ctx context.Context, checkUID strin
 // ProcessCheckResult processes a check result and manages incidents.
 // This is the main entry point called after each check execution.
 func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, result *models.Result) error {
+	// Live hint: a result has been persisted for this org (this runs after
+	// every save path — executor, remote worker, heartbeat, email check).
+	// Coalesced: the publisher bounds bus traffic to ~1 hint/org/sec.
+	s.rt.Publish(ctx, check.OrganizationUID, check.UID, realtime.KindResults)
+
 	if result.Status == nil {
 		return nil // Skip results without status
 	}
@@ -186,6 +200,7 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	newStatus, newStreak, statusChangedAt := deriveCheckStatus(
 		check, isSuccess, isFailure, isWarning, activeIncident, now,
 	)
+	statusChanged := check.Status != newStatus
 
 	// Warning is clock-neutral: it never arms or clears the confirmation /
 	// recovery clocks, so a pre-incident failure streak or an open incident's
@@ -204,6 +219,8 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 		return fmt.Errorf("failed to update check status and clocks: %w", err)
 	}
 
+	s.publishStatusHint(ctx, check.OrganizationUID, check.UID, statusChanged)
+
 	// Update local check object for incident logic
 	check.Status = newStatus
 	check.StatusStreak = newStreak
@@ -219,6 +236,16 @@ func (s *Service) ProcessCheckResult(ctx context.Context, check *models.Check, r
 	}
 
 	return s.routeCheckResultWithIncident(ctx, check, result, isFailure, activeIncident)
+}
+
+// publishStatusHint emits the immediate `checks` live hint when the visible
+// check status flipped — dashboards must show a transition within ~2s, so it
+// bypasses the coalescing window. No-op when the status is unchanged.
+func (s *Service) publishStatusHint(ctx context.Context, orgUID, checkUID string, statusChanged bool) {
+	if !statusChanged {
+		return
+	}
+	s.rt.PublishImmediate(ctx, orgUID, checkUID, realtime.KindChecks)
 }
 
 // deriveIncidentClocks computes the FirstFailureAt and
@@ -472,20 +499,113 @@ func confirmationElapsed(check *models.Check, now time.Time) bool {
 	return !now.Before(check.FirstFailureAt.Add(period))
 }
 
-// recoveryElapsed reports whether the configured RecoveryPeriod has
-// passed since the first success arrived during the active incident.
-// A 0-second period means "resolve immediately on first success".
+// recoveryElapsed reports whether the *effective* RecoveryPeriod has passed
+// since the first success arrived during the active incident. The effective
+// period is flap-aware (see effectiveRecoveryPeriod): a flapping check must
+// stay stable progressively longer before auto-resolving. A 0-second base
+// period means "resolve immediately on first success".
 func recoveryElapsed(check *models.Check, now time.Time) bool {
 	if check.FirstSuccessSinceFailureAt == nil {
 		return false
 	}
-	period := time.Duration(check.RecoveryPeriodSeconds) * time.Second
 
-	return !now.Before(check.FirstSuccessSinceFailureAt.Add(period))
+	return !now.Before(check.FirstSuccessSinceFailureAt.Add(effectiveRecoveryPeriod(check)))
+}
+
+// recoveryHardCeiling bounds the effective recovery period in wall-clock time,
+// mirroring the existing reopen-cooldown clamp (maxCooldown). Even a long
+// backoff or a large multiplier can never push the required stability beyond
+// this.
+const recoveryHardCeiling = 30 * time.Minute
+
+// effectiveRecoveryPeriod returns the stability required before an incident
+// auto-resolves, given how much the check has been flapping:
+//
+//	effective = min( R · F^flapCount , R · MaxRecoveryMultiplier , HARD_CEILING )
+//
+// where R = RecoveryPeriodSeconds and F = FlapBackoffFactor. It short-circuits
+// to a plain R (today's constant behavior) when the flapping feature is off
+// for this check — F<=1, FlappingWindowSeconds==0, or no flaps accumulated yet
+// — so existing checks never regress.
+func effectiveRecoveryPeriod(check *models.Check) time.Duration {
+	base := time.Duration(check.RecoveryPeriodSeconds) * time.Second
+
+	if check.FlapBackoffFactor <= 1 || check.FlappingWindowSeconds == 0 || check.FlapCount <= 0 {
+		return base
+	}
+
+	// Cap multiplier: required recovery never exceeds R × MaxRecoveryMultiplier.
+	capMult := check.MaxRecoveryMultiplier
+	if capMult < 1 {
+		capMult = 1
+	}
+
+	// Compute F^flapCount in integer space, short-circuiting once it reaches or
+	// exceeds the cap so a large flapCount can't overflow.
+	multiplier := 1
+	for range check.FlapCount {
+		multiplier *= check.FlapBackoffFactor
+		if multiplier >= capMult {
+			multiplier = capMult
+
+			break
+		}
+	}
+
+	effective := base * time.Duration(multiplier)
+	if effective > recoveryHardCeiling {
+		effective = recoveryHardCeiling
+	}
+
+	return effective
+}
+
+// bumpFlap updates the check's rolling flap counter for an outage onset at
+// `now`. If this is the first-ever outage, or the previous outage is older
+// than the flapping window, the counter resets to 0 (this outage starts a
+// fresh window). Otherwise it increments — the outage lands inside the active
+// window and counts as a flap. LastOutageAt is always advanced to `now`.
+//
+// Mutates the in-memory check; the caller persists flap_count / last_outage_at.
+func bumpFlap(check *models.Check, now time.Time) {
+	window := time.Duration(check.FlappingWindowSeconds) * time.Second
+
+	if check.LastOutageAt == nil || window == 0 || now.Sub(*check.LastOutageAt) > window {
+		check.FlapCount = 0
+	} else {
+		check.FlapCount++
+	}
+
+	t := now
+	check.LastOutageAt = &t
+}
+
+// recordFlap bumps the in-memory flap state for an outage onset and persists
+// flap_count / last_outage_at to the check row. Best-effort: a persistence
+// failure is logged but never blocks incident creation/reopen — the in-memory
+// value still drives this result's effective recovery threshold. Called only
+// on the rare incident open/reopen, so the extra write is off the per-result
+// hot path (spec 2026-06-30-07).
+func (s *Service) recordFlap(ctx context.Context, check *models.Check) {
+	bumpFlap(check, s.clock.Now())
+
+	if check.LastOutageAt == nil {
+		return
+	}
+
+	if err := s.db.UpdateCheckFlapState(ctx, check.UID, check.FlapCount, *check.LastOutageAt); err != nil {
+		slog.WarnContext(ctx, "Failed to persist flap state",
+			"checkUID", check.UID, "error", err)
+	}
 }
 
 // createIncident creates a new incident.
 func (s *Service) createIncident(ctx context.Context, check *models.Check, result *models.Result) error {
+	// Record this outage onset against the rolling flapping window before the
+	// incident is created, so the new incident's effective recovery threshold
+	// already reflects the (possibly escalated) flap level.
+	s.recordFlap(ctx, check)
+
 	// Generate title
 	title := s.generateIncidentTitle(check)
 
@@ -594,15 +714,14 @@ func calculateCooldown(check *models.Check) time.Duration {
 	return cooldown
 }
 
-// effectiveRecoveryPeriodSeconds is retained as a thin pass-through so the
-// reopen-event payload can keep emitting a "how long does recovery take"
-// number for downstream notifications. The adaptive-per-relapse multiplier
-// is gone (spec 2026-05-08-02 dropped count-based adaptive recovery); we
-// return the configured period as-is. The MaxAdaptiveIncrease check field
-// stays around for the reopen-cooldown calculation, which is a separate
-// adaptive concern.
+// effectiveRecoveryPeriodSeconds reports the *adaptive* recovery threshold (in
+// seconds) currently in force for this check, so the reopen-event payload's
+// `effective_recovery_threshold` carries the true number downstream
+// notifications should show. With flapping off (or no flaps accumulated) this
+// equals the configured RecoveryPeriodSeconds; with flapping active it reflects
+// the per-flap backoff and cap. See spec 2026-06-30-07.
 func effectiveRecoveryPeriodSeconds(check *models.Check) int {
-	return check.RecoveryPeriodSeconds
+	return int(effectiveRecoveryPeriod(check) / time.Second)
 }
 
 // tryReopenIncident looks for a recently resolved incident and reopens it if appropriate.
@@ -629,10 +748,13 @@ func (s *Service) tryReopenIncident(
 		return false, nil
 	}
 
-	// Guard: don't reopen if check was modified after incident was resolved
-	if incident.ResolvedAt != nil && check.UpdatedAt.After(*incident.ResolvedAt) {
-		return false, nil
-	}
+	// We intentionally do not gate reopening on check.UpdatedAt vs ResolvedAt.
+	// UpdatedAt is bumped by every result write (status, streak and the incident
+	// clocks all persist through UpdateCheckStatusAndClocks), so it churns on each
+	// probe and is always after ResolvedAt — using it here blocked every
+	// legitimate fast relapse. Suppressing a reopen after a genuine config change
+	// would need a dedicated config-modified timestamp, which does not exist yet;
+	// within the short reopen cooldown the reattach is the right behavior.
 
 	return true, s.reopenIncident(ctx, check, result, incident)
 }
@@ -642,6 +764,13 @@ func (s *Service) reopenIncident(
 	ctx context.Context, check *models.Check, result *models.Result, incident *models.Incident,
 ) error {
 	now := s.clock.Now()
+
+	// A reopen is an outage onset too — and a fast relapse is the strongest
+	// flap signal — so it counts against the flapping window. Bump before
+	// emitting the reopened event so keyEffectiveRecoveryThreshold reflects the
+	// escalated level.
+	s.recordFlap(ctx, check)
+
 	activeState := models.IncidentStateActive
 	newRelapseCount := incident.RelapseCount + 1
 	newFailureCount := incident.FailureCount + 1
@@ -1130,13 +1259,22 @@ func (s *Service) emitEvent(
 		return err
 	}
 
+	// Live hint: incident lifecycle and its timeline event are visible state —
+	// immediate so an opening incident reaches watching dashboards instantly.
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
+
 	// Queue notifications for incident lifecycle events
 	switch eventType {
 	case models.EventTypeIncidentCreated, models.EventTypeIncidentResolved, models.EventTypeIncidentEscalated,
 		models.EventTypeIncidentReopened:
-		if incident.PagingSuppressed && eventType != models.EventTypeIncidentResolved {
-			// Rolled-up child: notifications are deferred until parent
-			// resolves. Resolve still notifies so timeline observers see closure.
+		if incident.PagingSuppressed {
+			// Rolled-up child: record the lifecycle event (already done above
+			// via CreateEvent) but do not page. Paging is suppressed for the
+			// child's entire lifecycle — opened, escalated, and resolved.
+			// Timeline observers see closure through the event row / dashboard,
+			// not a paging channel. A child that is still down when its parent
+			// resolves is un-suppressed first by reEvaluateChild (paging_suppressed
+			// flips to false), so it pages normally on its own later resolution.
 			return nil
 		}
 
@@ -1839,6 +1977,8 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 		// Don't fail the acknowledgment for event creation errors
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
+
 	s.cancelPendingNotifications(ctx, incident.UID, nil)
 
 	slog.InfoContext(ctx, "Incident acknowledged",
@@ -1943,6 +2083,8 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
+
 	return incident, nil
 }
 
@@ -2035,6 +2177,8 @@ func (s *Service) snoozeIncidentByOrgUID(
 			"incident_uid", incident.UID, "error", err)
 	}
 
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
+
 	s.cancelPendingNotifications(ctx, incident.UID, &until)
 
 	return incident, nil
@@ -2125,6 +2269,8 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 		slog.WarnContext(ctx, "Failed to create unsnooze event",
 			"incident_uid", incident.UID, "error", err)
 	}
+
+	s.rt.PublishImmediate(ctx, orgUID, incident.CheckUID, realtime.KindIncidents, realtime.KindEvents)
 
 	return incident, nil
 }

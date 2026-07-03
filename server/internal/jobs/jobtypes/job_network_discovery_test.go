@@ -65,17 +65,23 @@ func TestNetworkDiscoveryChildRollsUpUnderParent(t *testing.T) {
 
 	r.NoError(runner.Run(context.Background(), jctx))
 
-	var hosts []*models.DiscoveredHost
+	var checks []*models.DiscoveredCheck
 	r.NoError(dbSvc.DB().NewSelect().
-		Model(&hosts).
+		Model(&checks).
 		Where("organization_uid = ?", org.UID).
 		Where("deleted_at IS NULL").
 		Scan(ctx))
 
-	r.Len(hosts, 1)
-	r.Equal("127.0.0.1", hosts[0].IP)
-	// The host rolls up under the PLAN UID, not the child job's own UID.
-	r.Equal(plan.UID, hosts[0].JobUID)
-	r.NotEqual(child.UID, hosts[0].JobUID)
-	r.Contains(string(hosts[0].OpenPorts), strconv.Itoa(openPort))
+	r.NotEmpty(checks, "the responsive host must yield at least one suggested check")
+
+	for _, c := range checks {
+		// Every check rolls up under the PLAN UID, not the child job's own UID.
+		r.Equal(plan.UID, c.JobUID)
+		r.NotEqual(child.UID, c.JobUID)
+		r.Equal("127.0.0.1", c.GroupKey)
+		r.Equal(models.DiscoverySourceLAN, c.Source)
+	}
+
+	// The open port shows up in the group metadata (denormalized).
+	r.Contains(string(checks[0].Metadata), strconv.Itoa(openPort))
 }

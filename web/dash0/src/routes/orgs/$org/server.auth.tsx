@@ -25,7 +25,14 @@ export const Route = createFileRoute("/orgs/$org/server/auth")({
   component: AuthSettingsPage,
 });
 
-type FieldKind = "clientId" | "clientSecret" | "appId" | "signingSecret" | "botToken" | "redirectUrl";
+type FieldKind =
+  | "clientId"
+  | "clientSecret"
+  | "appId"
+  | "signingSecret"
+  | "botToken"
+  | "redirectUrl"
+  | "tenantId";
 
 interface ProviderConfig {
   name: string;
@@ -34,6 +41,8 @@ interface ProviderConfig {
     key: string;
     labelKey: FieldKind;
     secret: boolean;
+    // Optional muted hint rendered under the input, keyed under server:auth.fieldHelp.
+    helpKey?: FieldKind;
   }[];
 }
 
@@ -68,6 +77,12 @@ const providers: ProviderConfig[] = [
     fields: [
       { key: "auth.microsoft.client_id", labelKey: "clientId", secret: false },
       { key: "auth.microsoft.client_secret", labelKey: "clientSecret", secret: true },
+      {
+        key: "auth.microsoft.tenant_id",
+        labelKey: "tenantId",
+        secret: false,
+        helpKey: "tenantId",
+      },
     ],
   },
   {
@@ -306,12 +321,13 @@ function AuthSettingsPage() {
                       <div className="relative flex-1">
                         <Input
                           id={field.key}
+                          data-testid={`provider-field-${field.key}`}
                           type={
                             field.secret && !visibleSecrets.has(field.key)
                               ? "password"
                               : "text"
                           }
-                          placeholder={label}
+                          placeholder={field.labelKey === "tenantId" ? "common" : label}
                           value={values[field.key] ?? ""}
                           onChange={(e) =>
                             setValues((prev) => ({
@@ -348,6 +364,11 @@ function AuthSettingsPage() {
                         </Button>
                       )}
                     </div>
+                  )}
+                  {field.helpKey && (
+                    <p className="text-xs text-muted-foreground">
+                      {t(`server:auth.fieldHelp.${field.helpKey}`)}
+                    </p>
                   )}
                 </div>
                 );

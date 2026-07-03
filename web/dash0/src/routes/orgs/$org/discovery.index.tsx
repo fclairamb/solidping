@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Network, Plus, RefreshCw, Scan } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
+  useDiscoveryTypes,
   useListDiscoveryScans,
   type DiscoveryScan,
 } from "@/api/hooks";
@@ -48,39 +49,81 @@ function statusBadgeVariant(status: string): "default" | "secondary" | "destruct
 }
 
 // scanSource derives the discovery source from the underlying job type.
-function scanSource(type: string): "lan" | "freebox" {
-  return type === "freebox_lan_discovery" ? "freebox" : "lan";
+function scanSource(type: string): string {
+  switch (type) {
+    case "freebox_lan_discovery":
+      return "freebox";
+    case "container_discovery":
+      return "container";
+    case "kubernetes_discovery":
+      return "kubernetes";
+    default:
+      return "lan";
+  }
+}
+
+// scanDetails returns a generic, source-aware one-line summary of a scan's
+// config, replacing the old LAN-only "CIDRs" cell: CIDRs for LAN, hosts for
+// container, namespaces for kubernetes (empty ⇒ "All namespaces"), "—" otherwise.
+function scanDetails(
+  source: string,
+  config: Record<string, unknown> | undefined,
+  allNamespacesLabel: string,
+): string {
+  const cfg = config ?? {};
+  const joinList = (key: string) =>
+    Array.isArray(cfg[key]) ? (cfg[key] as unknown[]).map(String).join(", ") : "";
+  switch (source) {
+    case "lan":
+      return joinList("cidrs") || "—";
+    case "container":
+      return joinList("hosts") || "—";
+    case "kubernetes":
+      return joinList("namespaces") || allNamespacesLabel;
+    default:
+      return "—";
+  }
 }
 
 function ScanRow({ scan, org }: { scan: DiscoveryScan; org: string }) {
   const { t } = useTranslation("discovery");
+  const navigate = useNavigate();
   const statusLabel = t(`scanStatus.${scan.status}`, scan.status);
   const source = scanSource(scan.type);
+  const details = scanDetails(
+    source,
+    scan.config as Record<string, unknown> | undefined,
+    t("allNamespaces"),
+  );
+
+  const open = () =>
+    void navigate({
+      to: "/orgs/$org/discovery/$jobUid",
+      params: { org, jobUid: scan.uid },
+    });
 
   return (
-    <TableRow>
+    <TableRow
+      className="cursor-pointer hover:bg-muted/50"
+      role="link"
+      tabIndex={0}
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
+    >
       <TableCell>
-        <Badge variant="outline">
-          {t(source === "freebox" ? "sourceFreebox" : "sourceLan")}
-        </Badge>
+        <Badge variant="outline">{t(`sourceLabel.${source}`, source)}</Badge>
       </TableCell>
       <TableCell>
         <Badge variant={statusBadgeVariant(scan.status)}>{statusLabel}</Badge>
       </TableCell>
-      <TableCell className="text-xs text-muted-foreground">
-        {Array.isArray((scan.config as { cidrs?: string[] })?.cidrs)
-          ? ((scan.config as { cidrs?: string[] }).cidrs ?? []).join(", ")
-          : "—"}
-      </TableCell>
+      <TableCell className="text-xs text-muted-foreground">{details}</TableCell>
       <TableCell className="text-xs text-muted-foreground">
         {new Date(scan.createdAt).toLocaleString()}
-      </TableCell>
-      <TableCell className="text-right">
-        <Button asChild variant="ghost" size="sm">
-          <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid: scan.uid }}>
-            {t("hosts")}
-          </Link>
-        </Button>
       </TableCell>
     </TableRow>
   );
@@ -90,7 +133,15 @@ function DiscoveryIndexPage() {
   const { t } = useTranslation("discovery");
   const { org } = Route.useParams();
   const { data: scans, isLoading, isRefetching, refetch } = useListDiscoveryScans(org);
-  const [sourceFilter, setSourceFilter] = useState<"all" | "lan" | "freebox">("all");
+  const { data: types } = useDiscoveryTypes(org);
+  const [sourceFilter, setSourceFilter] = useState<string>("all");
+
+  // Source filter options are driven by the registry (sources of registered
+  // types), falling back to the known sources so the filter is never empty.
+  const sourceOptions = useMemo(() => {
+    const fromRegistry = Array.from(new Set((types ?? []).map((d) => d.source)));
+    return fromRegistry.length > 0 ? fromRegistry : ["lan", "freebox"];
+  }, [types]);
 
   const filteredScans = useMemo(() => {
     if (!scans) return scans;
@@ -109,17 +160,22 @@ function DiscoveryIndexPage() {
           <>
             <Button
               variant="outline"
-              size="icon"
               onClick={() => void refetch()}
               disabled={isRefetching}
-              aria-label="Refresh"
+              aria-label={t("refresh")}
             >
-              <RefreshCw className={`h-4 w-4 ${isRefetching ? "animate-spin" : ""}`} />
+              <RefreshCw className={`h-4 w-4 sm:mr-2 ${isRefetching ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">{t("refresh")}</span>
             </Button>
             <Button asChild>
-              <Link to="/orgs/$org/discovery/new" params={{ org }}>
-                <Plus className="h-4 w-4 mr-1" />
-                {t("newScan")}
+              <Link
+                to="/orgs/$org/discovery/new"
+                params={{ org }}
+                search={{ method: "lan" }}
+                aria-label={t("newScan")}
+              >
+                <Plus className="sm:mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">{t("newScan")}</span>
               </Link>
             </Button>
           </>
@@ -133,17 +189,17 @@ function DiscoveryIndexPage() {
               <Scan className="h-5 w-5" />
               {t("scans")}
             </CardTitle>
-            <Select
-              value={sourceFilter}
-              onValueChange={(v) => setSourceFilter(v as "all" | "lan" | "freebox")}
-            >
+            <Select value={sourceFilter} onValueChange={setSourceFilter}>
               <SelectTrigger className="w-40" aria-label={t("filterBySource")}>
                 <SelectValue placeholder={t("filterBySource")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">{t("allSources")}</SelectItem>
-                <SelectItem value="lan">{t("sourceLan")}</SelectItem>
-                <SelectItem value="freebox">{t("sourceFreebox")}</SelectItem>
+                {sourceOptions.map((src) => (
+                  <SelectItem key={src} value={src}>
+                    {t(`sourceLabel.${src}`, src)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -164,9 +220,8 @@ function DiscoveryIndexPage() {
                 <TableRow>
                   <TableHead>{t("source")}</TableHead>
                   <TableHead>{t("status")}</TableHead>
-                  <TableHead>{t("cidrs")}</TableHead>
+                  <TableHead>{t("details")}</TableHead>
                   <TableHead>{t("startedAt")}</TableHead>
-                  <TableHead />
                 </TableRow>
               </TableHeader>
               <TableBody>

@@ -10,6 +10,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/uptimebar"
 )
 
 // Badge service errors.
@@ -203,7 +204,7 @@ func (s *Service) appendRowFragments(
 	ctx context.Context, orgUID, checkUID string, opts BadgeOptions,
 	width int, hasBar, hasGraph bool, rows []string, totalHeight int,
 ) ([]string, int, error) {
-	availMap, durationMap, bucketStart, n, bucketDuration, err := s.fetchBucketData(
+	availMap, durationMap, win, err := s.fetchBucketData(
 		ctx, orgUID, checkUID, opts.Period,
 	)
 	if err != nil {
@@ -211,16 +212,16 @@ func (s *Service) appendRowFragments(
 	}
 
 	if hasBar {
-		segments := buildBarSegments(availMap, bucketStart, n, bucketDuration)
-		labels := computeUptimeBarLabels(bucketStart, n, bucketDuration)
-		barValues := computeUptimeBarValues(availMap, bucketStart, n, bucketDuration, width)
+		segments := buildBarSegments(availMap, win.bucketStart, win.n, win.bucketDuration)
+		labels := computeUptimeBarLabels(win.bucketStart, win.n, win.bucketDuration)
+		barValues := computeUptimeBarValues(availMap, win.bucketStart, win.n, win.bucketDuration, width)
 		yOffset := totalHeight + rowGap
 		rows = append(rows, renderUptimeBarRow(segments, labels, barValues, width, rowHeightBar, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightBar
 	}
 
 	if hasGraph {
-		points := buildGraphPoints(durationMap, bucketStart, n, bucketDuration)
+		points := buildGraphPoints(durationMap, win.bucketStart, win.n, win.bucketDuration)
 		yOffset := totalHeight + rowGap
 		rows = append(rows, renderResponseTimeGraphRow(points, width, rowHeightGraph, yOffset, opts.Style))
 		totalHeight = yOffset + rowHeightGraph
@@ -229,86 +230,28 @@ func (s *Service) appendRowFragments(
 	return rows, totalHeight, nil
 }
 
-// bucketAccumulator accumulates availability and duration stats for one bucket
-// across multiple result rows (potentially from different period types).
-type bucketAccumulator struct {
-	up     int
-	total  int
-	durSum float64
-	durCnt int
+// barWindow is the time anchor of an uptime-bar render: the n buckets of
+// bucketDuration starting at bucketStart (oldest), the newest being the current,
+// in-progress bucket.
+type barWindow struct {
+	bucketStart    time.Time
+	n              int
+	bucketDuration time.Duration
 }
 
-// accumulateRaw merges a raw result row into acc.
-// Returns false when the row should be skipped (created/running status).
-func (acc *bucketAccumulator) accumulateRaw(result *models.Result) {
-	if result.Status == nil {
-		return
-	}
-
-	st := models.ResultStatus(*result.Status)
-	if st == models.ResultStatusCreated || st == models.ResultStatusRunning {
-		return
-	}
-
-	acc.total++
-
-	if *result.Status == int(models.ResultStatusUp) {
-		acc.up++
-	}
-
-	if result.Duration != nil {
-		acc.durSum += float64(*result.Duration)
-		acc.durCnt++
-	}
-}
-
-// accumulateAgg merges an hour/day aggregated result row into acc.
-func (acc *bucketAccumulator) accumulateAgg(result *models.Result) {
-	if result.TotalChecks != nil {
-		acc.total += *result.TotalChecks
-	}
-
-	if result.SuccessfulChecks != nil {
-		acc.up += *result.SuccessfulChecks
-	}
-
-	if result.DurationAvg != nil && result.TotalChecks != nil && *result.TotalChecks > 0 {
-		acc.durSum += float64(*result.DurationAvg) * float64(*result.TotalChecks)
-		acc.durCnt += *result.TotalChecks
-	}
-}
-
-// buildBucketMaps converts the per-bucket accumulators into the availability
-// and duration maps consumed by buildBarSegments / buildGraphPoints.
-func buildBucketMaps(accMap map[time.Time]*bucketAccumulator) (map[time.Time]float64, map[time.Time]*float64) {
-	availMap := make(map[time.Time]float64, len(accMap))
-	durationMap := make(map[time.Time]*float64, len(accMap))
-
-	for bucket, acc := range accMap {
-		if acc.total > 0 {
-			availMap[bucket] = float64(acc.up) / float64(acc.total) * 100
-		}
-
-		if acc.durCnt > 0 {
-			v := acc.durSum / float64(acc.durCnt)
-			durationMap[bucket] = &v
-		}
-	}
-
-	return availMap, durationMap
-}
-
-// fetchBucketData runs a multi-tier query (raw + hour + day) and returns
-// per-bucket availability and average-duration maps. Because the tiers cover
-// non-overlapping age bands, unioning them never double-counts.
+// bucketStatsForPeriod runs the shared uptimebar bucketing for one check over the
+// uptime-bar window for the given period and returns the per-bucket stats plus
+// the window anchor. This is the single seam the badge buckets from; the status
+// page buckets from the same uptimebar helper, so the two surfaces cannot diverge
+// on which data feeds the bar.
 //
 // The window spans n buckets ending at the current, in-progress bucket, so a
 // freshly-created check shows its data immediately: the current bucket is filled
-// from raw rows (via accumulateRaw) until the hourly rollup runs, mirroring how
-// the status page synthesizes "today" from raw rows.
-func (s *Service) fetchBucketData(
+// from raw rows until the hourly rollup runs. Warning rows count as up
+// (CountsAsUp), matching the rolled-up tier and the aggregation job.
+func (s *Service) bucketStatsForPeriod(
 	ctx context.Context, orgUID, checkUID, period string,
-) (map[time.Time]float64, map[time.Time]*float64, time.Time, int, time.Duration, error) {
+) (map[time.Time]uptimebar.BucketStats, barWindow, error) {
 	_, n, bucketDuration := uptimeBarPeriodInfo(period)
 
 	now := time.Now().UTC()
@@ -316,40 +259,62 @@ func (s *Service) fetchBucketData(
 	// the oldest is (n-1) buckets earlier. Using -(n-1) rather than -n keeps the
 	// in-progress bucket inside the rendered window.
 	bucketStart := now.Truncate(bucketDuration).Add(-time.Duration(n-1) * bucketDuration)
+	win := barWindow{bucketStart: bucketStart, n: n, bucketDuration: bucketDuration}
 
-	filter := &models.ListResultsFilter{
-		OrganizationUID:  orgUID,
-		CheckUIDs:        []string{checkUID},
-		PeriodTypes:      []string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
-		PeriodStartAfter: &bucketStart,
-	}
-
-	res, err := s.dbSvc.ListResults(ctx, filter)
+	byCheck, err := uptimebar.BucketAvailability(
+		ctx, s.dbSvc, orgUID, []string{checkUID}, bucketDuration, bucketStart, n,
+	)
 	if err != nil {
-		return nil, nil, time.Time{}, 0, 0, err
+		return nil, barWindow{}, err
 	}
 
-	accMap := make(map[time.Time]*bucketAccumulator, n)
+	return byCheck[checkUID], win, nil
+}
 
-	for _, result := range res.Results {
-		bucket := result.PeriodStart.UTC().Truncate(bucketDuration)
+// fetchBucketData returns per-bucket availability and average-duration maps for
+// the uptime bar plus the window anchor, projected from the shared per-bucket
+// stats.
+func (s *Service) fetchBucketData(
+	ctx context.Context, orgUID, checkUID, period string,
+) (map[time.Time]float64, map[time.Time]*float64, barWindow, error) {
+	byBucket, win, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
+	if err != nil {
+		return nil, nil, barWindow{}, err
+	}
 
-		acc := accMap[bucket]
-		if acc == nil {
-			acc = &bucketAccumulator{}
-			accMap[bucket] = acc
+	availMap := make(map[time.Time]float64, win.n)
+	durationMap := make(map[time.Time]*float64, win.n)
+
+	for bucket := range byBucket {
+		stats := byBucket[bucket]
+
+		if pct, ok := stats.AvailabilityPct(); ok {
+			availMap[bucket] = pct
 		}
 
-		if result.PeriodType == models.PeriodTypeRaw {
-			acc.accumulateRaw(result)
-		} else {
-			acc.accumulateAgg(result)
+		if dur, ok := stats.AvgDuration(); ok {
+			v := dur
+			durationMap[bucket] = &v
 		}
 	}
 
-	availMap, durationMap := buildBucketMaps(accMap)
+	return availMap, durationMap, win, nil
+}
 
-	return availMap, durationMap, bucketStart, n, bucketDuration, nil
+// BucketAvailabilityForPeriod returns the badge's per-bucket availability stats
+// for a check over the uptime-bar window of the given period. It exposes the
+// exact bucketing the badge renders from so other surfaces (the status page) can
+// assert cross-surface parity. The keys are bucket-start times truncated to the
+// period's bucket duration.
+func BucketAvailabilityForPeriod(
+	ctx context.Context, s *Service, orgUID, checkUID, period string,
+) (map[time.Time]uptimebar.BucketStats, error) {
+	byBucket, _, err := s.bucketStatsForPeriod(ctx, orgUID, checkUID, period)
+	if err != nil {
+		return nil, err
+	}
+
+	return byBucket, nil
 }
 
 // buildBarSegments resolves the colored segments for the uptime bar row.
@@ -779,28 +744,13 @@ func parsePeriod(period string) time.Duration {
 	}
 }
 
+// calculateAvailability computes the availability percentage over raw results
+// using the shared rule (excludes created/running lifecycle markers; counts
+// up+warning as success), so badges agree with the status page and the
+// aggregation job. Warning now counts as up — a deliberate cross-surface
+// alignment (see spec 2026-06-30-02).
 func calculateAvailability(results []*models.Result) float64 {
-	if len(results) == 0 {
-		return 0
-	}
-
-	var upCount, total int
-
-	for _, result := range results {
-		if result.Status != nil {
-			status := models.ResultStatus(*result.Status)
-			if status == models.ResultStatusCreated || status == models.ResultStatusRunning {
-				continue
-			}
-
-			total++
-
-			if *result.Status == int(models.ResultStatusUp) {
-				upCount++
-			}
-		}
-	}
-
+	upCount, total := models.RawAvailability(results)
 	if total == 0 {
 		return 0
 	}

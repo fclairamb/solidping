@@ -1,4 +1,48 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+
+// Honor E2E_BASE_URL (side-car test server) like playwright.config.ts does;
+// fall back to the CI default.
+const API_BASE = process.env.E2E_BASE_URL
+  ? new URL(process.env.E2E_BASE_URL).origin
+  : "http://localhost:4000";
+
+// The backend serializes discovery scans per org (409 DISCOVERY_ALREADY_RUNNING
+// while any plan or chunk job is live), so a test that starts a scan must wait
+// for the previous tests' scans to drain first — the scans LIST only shows plan
+// jobs, so poll the jobs API where chunk children are visible too. Stopping a
+// scan now cancels its running chunks (worker cancellation watcher), so this
+// settles in seconds.
+async function waitForScanQuiescence(page: Page) {
+  const login = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+    data: { org: "test", email: "test@test.com", password: "test" },
+  });
+  const { accessToken, organization } = await login.json();
+
+  await expect
+    .poll(
+      async () => {
+        const r = await page.request.get(
+          `${API_BASE}/api/v1/orgs/${organization.uid}/jobs`,
+          { headers: { Authorization: `Bearer ${accessToken}` } },
+        );
+        const jobs = ((await r.json()).data ?? []) as Array<{
+          type: string;
+          status: string;
+        }>;
+        return jobs.filter(
+          (j) =>
+            (j.type === "network_discovery" ||
+              j.type === "network_discovery_plan") &&
+            (j.status === "pending" || j.status === "running"),
+        ).length;
+      },
+      {
+        timeout: 30000,
+        message: "waiting for prior discovery scans to drain",
+      },
+    )
+    .toBe(0);
+}
 
 test.describe("Network Discovery", () => {
   test.beforeEach(async ({ page }) => {
@@ -91,6 +135,7 @@ test.describe("Network Discovery", () => {
     page.on("pageerror", (err) => pageErrors.push(err));
 
     // Create a scan through the form; on success it navigates to the detail page.
+    await waitForScanQuiescence(page);
     await page.goto("/dash0/orgs/test/discovery/new");
     await page.fill("textarea", "127.0.0.1/32");
     await page.getByRole("checkbox").check();
@@ -138,13 +183,8 @@ test.describe("Network Discovery", () => {
   // Fan-out: a range larger than a /20 (here a /18 → 4 bounded chunks) is now
   // accepted (no DISCOVERY_RANGE_TOO_LARGE), creates a plan scan, and the detail
   // page renders the chunk-progress indicator.
-  // A single test covers the full large-range lifecycle: fan-out into chunks,
-  // then stopping mid-scan. These cannot be two independent tests because the
-  // server allows only one active scan per org and a stopped scan's *running*
-  // child chunks keep the "already running" guard set for minutes (CancelScan
-  // only cancels pending children) — so a second large scan started seconds
-  // later would be rejected.
   test("large range fans out into chunks and can be stopped mid-scan", async ({ page }) => {
+    await waitForScanQuiescence(page);
     await page.goto("/dash0/orgs/test/discovery/new");
     // 10.10.0.0/18 = 16384 addresses → 4 chunks of /20.
     await page.fill("textarea", "10.10.0.0/18");
@@ -196,9 +236,9 @@ test.describe("Network Discovery", () => {
     await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
   });
 
-  // A stable, seeded completed scan — lets the detail-header tests load the
-  // detail page directly without creating a scan (which is gated by the
-  // one-active-scan-per-org rule and would flake when other tests run first).
+  // A stable, seeded completed scan with two suggested checks grouped under
+  // 127.0.0.1 — lets the detail-page tests load directly without creating a scan
+  // (which is gated by the one-active-scan-per-org rule and would flake).
   const SEEDED_SCAN_UID = "00000000-0000-0000-0000-000000000007";
 
   // Detail-page header: the back arrow lives as the leftmost item of the
@@ -214,9 +254,7 @@ test.describe("Network Discovery", () => {
     const backButton = page.getByRole("link", { name: /^back$/i });
     await expect(backButton).toBeVisible();
 
-    // It sits inside the right-aligned cluster, *after* the title, not before
-    // it. Compare horizontal position: the back button is to the right of the
-    // "Scan Details" heading.
+    // It sits inside the right-aligned cluster, *after* the title, not before it.
     const heading = page.getByRole("heading", { name: /scan details/i });
     const headingBox = await heading.boundingBox();
     const backBox = await backButton.boundingBox();
@@ -249,6 +287,173 @@ test.describe("Network Discovery", () => {
       page.getByRole("button", { name: /^refresh$/i }),
     ).toBeVisible();
     await expect(page.getByText(/^refresh$/i)).toBeHidden();
+  });
+
+  // The seeded scan renders its suggested checks GROUPED under 127.0.0.1, with a
+  // group header carrying the source badge and per-check rows beneath.
+  test("scan detail renders discovered checks grouped by host", async ({ page }) => {
+    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    // A group card for 127.0.0.1 is shown.
+    const group = page.getByTestId("discovery-group").filter({ hasText: "127.0.0.1" });
+    await expect(group.first()).toBeVisible();
+
+    // It contains per-check rows (the seed has a TCP and an ICMP suggestion).
+    const checkRows = group.first().getByTestId("discovery-check-row");
+    await expect(checkRows.first()).toBeVisible();
+    expect(await checkRows.count()).toBeGreaterThanOrEqual(2);
+  });
+
+  // The group header offers "select all in group", which arms the Promote button.
+  test("selecting a whole group enables the Promote action", async ({ page }) => {
+    await page.goto(`/dash0/orgs/test/discovery/${SEEDED_SCAN_UID}`);
+    await expect(page.getByRole("heading", { name: /scan details/i })).toBeVisible();
+
+    const promoteButton = page.getByRole("button", { name: /promote selected/i });
+    await expect(promoteButton).toBeDisabled();
+
+    // Tick the group's "select all" checkbox.
+    await page
+      .getByTestId("discovery-group")
+      .filter({ hasText: "127.0.0.1" })
+      .first()
+      .getByRole("checkbox", { name: /select all in group/i })
+      .check();
+
+    await expect(promoteButton).toBeEnabled();
+  });
+
+  // Container discovery: the registry-driven method picker offers "Containers",
+  // and selecting it reveals the Docker-endpoint textarea prefilled with the
+  // local socket. The test org has no Docker dependency for this form-level check.
+  test("container method is offered and reveals the host textarea", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await expect(page.getByRole("combobox", { name: /scan method/i })).toBeVisible();
+
+    // Open the method select and pick Containers.
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    const containerOption = page.getByRole("option", { name: /containers/i });
+    await expect(containerOption).toBeVisible();
+    await containerOption.click();
+
+    // The container host textarea is shown, prefilled with the local socket.
+    const hostsField = page.getByLabel(/container host/i);
+    await expect(hostsField).toBeVisible();
+    await expect(hostsField).toHaveValue(/unix:\/\/\/var\/run\/docker\.sock/);
+  });
+
+  test("container scan start button arms only after confirmation", async ({ page }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    await page.getByRole("option", { name: /containers/i }).click();
+
+    // Hosts are prefilled, but confirmation is still required.
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeDisabled();
+    await page.getByRole("checkbox").check();
+    await expect(page.getByRole("button", { name: /start scan/i })).toBeEnabled();
+  });
+
+  test("Kubernetes method option is hidden when no cluster connection exists", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery/new");
+    // Open the scan-method select; the test org has no kubernetes cluster
+    // connection, so the Kubernetes option is not offered (capability-gated).
+    await page.getByRole("combobox", { name: /scan method/i }).click();
+    await expect(
+      page.getByRole("option", { name: /IP range|LAN/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: /^kubernetes$/i }),
+    ).toHaveCount(0);
+  });
+
+  test("source filter includes the registry sources on the scans list", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    // The source filter is registry-driven; opening it shows the kubernetes
+    // source (registered by the kubernetes discovery type) alongside the rest.
+    await page.getByRole("combobox", { name: /filter by source/i }).click();
+    await expect(
+      page.getByRole("option", { name: /^kubernetes$/i }),
+    ).toBeVisible();
+  });
+
+  // The index "Start new scan" button mirrors every other primary "New X"
+  // button: icon-only below the Tailwind `sm` (640px) breakpoint, full label at
+  // and above it. Its accessible name ("Start new scan") survives at every width
+  // via the aria-label on the link.
+  test("index Start-new-scan button is icon-only on mobile and labelled on desktop", async ({
+    page,
+  }) => {
+    // Mobile width: the button is present (by accessible name) but its text label
+    // is hidden.
+    await page.setViewportSize({ width: 390, height: 800 });
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /start new scan/i }),
+    ).toBeVisible();
+    await expect(page.getByText(/start new scan/i)).toBeHidden();
+
+    // Desktop width: the text label is revealed.
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(page.getByText(/start new scan/i)).toBeVisible();
+  });
+
+  // Clicking anywhere in a scan row navigates to that scan's detail page (the
+  // row is the link target; there is no trailing "View checks" cell anymore).
+  test("clicking a scan row navigates to the scan detail page", async ({
+    page,
+  }) => {
+    // Seed a row by creating a scan (navigates to the detail page on success).
+    // The backend serializes scans per org, so drain earlier tests' scans
+    // first — this test used to flake with 409 DISCOVERY_ALREADY_RUNNING while
+    // the stopped /18 fan-out's chunks were still draining.
+    await waitForScanQuiescence(page);
+    await page.goto("/dash0/orgs/test/discovery/new");
+    await page.fill("textarea", "127.0.0.1/32");
+    await page.getByRole("checkbox").check();
+    await page.getByRole("button", { name: /start scan/i }).click();
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+
+    // Back on the index, click the first body row — the whole row is clickable.
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(page.getByRole("table")).toBeVisible();
+    const firstRow = page.locator("tbody tr").first();
+    await expect(firstRow).toBeVisible();
+    await firstRow.click();
+
+    await page.waitForURL(/\/discovery\/[0-9a-f-]{36}$/);
+    await expect(
+      page.getByRole("heading", { name: /scan details/i }),
+    ).toBeVisible();
+  });
+
+  // The redundant "View checks" link and the LAN-only "CIDRs" column header are
+  // both gone — superseded by the clickable row and the generic "Details" column.
+  test("scan list has no View-checks link and no CIDRs column header", async ({
+    page,
+  }) => {
+    await page.goto("/dash0/orgs/test/discovery");
+    await expect(
+      page.getByRole("heading", { name: /network discovery/i }),
+    ).toBeVisible();
+
+    await expect(
+      page.getByRole("link", { name: /view checks/i }),
+    ).toHaveCount(0);
+
+    const headerRow = page.locator("thead tr");
+    if (await headerRow.count()) {
+      await expect(headerRow.getByText(/^CIDRs$/i)).toHaveCount(0);
+      // The generic "Details" header replaces it.
+      await expect(headerRow.getByText(/^Details$/i)).toBeVisible();
+    }
   });
 
   test("notifications page renders the My pages header", async ({ page }) => {

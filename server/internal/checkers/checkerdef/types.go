@@ -170,6 +170,18 @@ const (
 	CheckTypeDNSBL CheckType = "dnsbl"
 	// CheckTypeSIP checks SIP server reachability (OPTIONS) and registration (REGISTER).
 	CheckTypeSIP CheckType = "sip"
+	// CheckTypeKubernetes monitors a Kubernetes workload's replica health
+	// (Deployment / ReplicaSet ready vs desired replicas).
+	CheckTypeKubernetes CheckType = "kubernetes"
+	// CheckTypeNTP monitors an NTP time server: reachability plus the server's
+	// self-reported health (stratum, leap indicator, root distance), with
+	// optional clock-offset and max-stratum thresholds.
+	CheckTypeNTP CheckType = "ntp"
+	// CheckTypeSleep is a synthetic/testing check that sleeps for a configured
+	// duration. It performs no network I/O and exists as a deterministic load
+	// generator for the scheduler. It is NOT a customer-facing check type and
+	// must not be counted in the customer "N check types" tally.
+	CheckTypeSleep CheckType = "sleep"
 )
 
 // Common output and config map keys used across checker implementations.
@@ -203,6 +215,7 @@ const (
 	labelReqScripting       = "requires:scripting-runtime"
 	labelReqDockerSocket    = "requires:docker-socket"
 	labelReqChrome          = "requires:chrome"
+	labelReqK8sCluster      = "requires:kubernetes-cluster"
 
 	labelCatNetwork        = "category:network"
 	labelCatSecurity       = "category:security"
@@ -213,6 +226,13 @@ const (
 	labelCatInfrastructure = "category:infrastructure"
 	labelCatOther          = "category:other"
 )
+
+// GlobalMinPeriod is the smallest period the API accepts for any check type
+// that does not declare its own (stricter) MinPeriod. It matches the smallest
+// period in real-world use; sub-10s checks are out of scope for the
+// results/aggregation model (spec 2026-07-01-04). The synthetic `sleep` type
+// and internal checks are exempt at the validation site, not here.
+const GlobalMinPeriod = 10 * time.Second
 
 // CheckTypeMeta holds metadata and labels for a check type.
 type CheckTypeMeta struct {
@@ -248,7 +268,7 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeMongoDB, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check MongoDB database health"},
 	{Type: CheckTypeFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check FTP server availability"},
 	{Type: CheckTypeSFTP, Labels: []string{labelSafe, labelReqFileProtocol, labelCatRemoteAccess}, Description: "Check SFTP server availability"},
-	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts"},
+	{Type: CheckTypeJS, Labels: []string{labelUnsafe, labelReqScripting, labelCatOther}, Description: "Run custom JavaScript scripts", MinPeriod: 30 * time.Second, DefaultPeriod: time.Minute},
 	{Type: CheckTypeMSSQL, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Microsoft SQL Server health"},
 	{Type: CheckTypeOracle, Labels: []string{labelSafe, labelReqDatabaseDriver, labelCatDatabase}, Description: "Check Oracle Database health"},
 	{Type: CheckTypeGRPC, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check gRPC service health"},
@@ -259,10 +279,13 @@ var checkTypesRegistry = []CheckTypeMeta{
 	{Type: CheckTypeRabbitMQ, Labels: []string{labelSafe, labelReqMessagingClient, labelCatMessaging}, Description: "Check RabbitMQ server health"},
 	{Type: CheckTypeSNMP, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor devices via SNMP"},
 	{Type: CheckTypeDocker, Labels: []string{labelUnsafe, labelReqDockerSocket, labelCatInfrastructure}, Description: "Monitor Docker container health"},
-	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome"},
+	{Type: CheckTypeBrowser, Labels: []string{labelUnsafe, labelReqChrome, labelCatOther}, Description: "Monitor pages with headless Chrome", MinPeriod: time.Minute, DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeFreeboxLine, Labels: []string{labelSafe, labelStandalone, labelCatInfrastructure}, Description: "Monitor Freebox xDSL/FTTH line quality", DefaultPeriod: 5 * time.Minute},
 	{Type: CheckTypeDNSBL, Labels: []string{labelSafe, labelStandalone, labelCatSecurity}, Description: "Check if an IP/domain is on DNS blocklists", MinPeriod: 15 * time.Minute, DefaultPeriod: time.Hour},
 	{Type: CheckTypeSIP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Check SIP server reachability and registration"},
+	{Type: CheckTypeKubernetes, Labels: []string{labelSafe, labelReqK8sCluster, labelCatInfrastructure}, Description: "Monitor Kubernetes workload replica health"},
+	{Type: CheckTypeNTP, Labels: []string{labelSafe, labelStandalone, labelCatNetwork}, Description: "Monitor NTP time servers", DefaultPeriod: 5 * time.Minute},
+	{Type: CheckTypeSleep, Labels: []string{labelSafe, labelStandalone, labelCatOther}, Description: "Sleep for a fixed duration (synthetic/testing)", DefaultPeriod: 1 * time.Minute},
 }
 
 // GetCheckTypeMeta returns the metadata for a given check type, or nil if not found.
@@ -352,5 +375,8 @@ func ListCheckTypes(_ *ListSampleOptions) []CheckType {
 		CheckTypeFreeboxLine,
 		CheckTypeDNSBL,
 		CheckTypeSIP,
+		CheckTypeKubernetes,
+		CheckTypeNTP,
+		CheckTypeSleep,
 	}
 }

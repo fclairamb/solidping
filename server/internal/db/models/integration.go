@@ -24,6 +24,7 @@ const (
 	ConnectionTypePushover   ConnectionType = "pushover"
 	ConnectionTypeFreebox    ConnectionType = "freebox"
 	ConnectionTypeWebPush    ConnectionType = "webpush"
+	ConnectionTypeKubernetes ConnectionType = "kubernetes"
 )
 
 // Capabilities describes what roles an integration type can play. The two
@@ -50,7 +51,7 @@ type Capabilities struct {
 //nolint:exhaustive // default branch handles all notification-sink types.
 func CapabilitiesFor(t ConnectionType) Capabilities {
 	switch t {
-	case ConnectionTypeFreebox:
+	case ConnectionTypeFreebox, ConnectionTypeKubernetes:
 		return Capabilities{CanSource: true}
 	default: // all current notification sinks
 		return Capabilities{CanNotify: true}
@@ -260,4 +261,86 @@ func FreeboxSettingsFromJSONMap(m JSONMap) (*FreeboxSettings, error) {
 // ever store it once, on a successful pairing grant.
 type FreeboxPrivateSettings struct {
 	AppToken string `json:"appToken"`
+}
+
+// KubernetesSettings is the public (queryable) side of a Kubernetes cluster
+// connection's Settings JSONB. The matching secret — a bearer token or a
+// pasted kubeconfig — lives encrypted in SettingsPrivate under the "token" /
+// "kubeconfig" keys (see KubernetesPrivateSettings). An in-cluster connection
+// (InCluster=true) stores no secret and is resolved via the mounted service
+// account at connect time.
+//
+//nolint:tagliatelle // keep the TLS acronym uppercase (matches spec + kubeconfig).
+type KubernetesSettings struct {
+	// APIServer is the cluster API server URL (e.g. "https://10.0.0.1:6443").
+	// Empty when InCluster is true.
+	APIServer string `json:"apiServer,omitempty"`
+	// CACert is the PEM-encoded cluster CA bundle used to verify the API
+	// server certificate. Optional; ignored when InsecureSkipTLSVerify is set.
+	CACert string `json:"caCert,omitempty"`
+	// InsecureSkipTLSVerify disables API-server certificate verification.
+	// Use only for clusters with self-signed certs you cannot pin.
+	InsecureSkipTLSVerify bool `json:"insecureSkipTLSVerify,omitempty"`
+	// InCluster resolves the connection from the pod's mounted service-account
+	// token (rest.InClusterConfig). Only works when solidping runs inside the
+	// target cluster; needs no stored secret.
+	InCluster bool `json:"inCluster,omitempty"`
+}
+
+// ToJSONMap converts KubernetesSettings to JSONMap for storage.
+func (ks *KubernetesSettings) ToJSONMap() (JSONMap, error) {
+	data, err := json.Marshal(ks)
+	if err != nil {
+		return nil, err
+	}
+
+	var m JSONMap
+	if err := json.Unmarshal(data, &m); err != nil {
+		return nil, err
+	}
+
+	return m, nil
+}
+
+// KubernetesSettingsFromJSONMap parses KubernetesSettings from a JSONMap.
+func KubernetesSettingsFromJSONMap(m JSONMap) (*KubernetesSettings, error) {
+	data, err := json.Marshal(m)
+	if err != nil {
+		return nil, err
+	}
+
+	var ks KubernetesSettings
+	if err := json.Unmarshal(data, &ks); err != nil {
+		return nil, err
+	}
+
+	return &ks, nil
+}
+
+// KubernetesPrivateSettings carries the encrypted secret half of a Kubernetes
+// cluster connection. Exactly one of Token or Kubeconfig is set for a remote
+// connection; both are empty for an in-cluster connection.
+type KubernetesPrivateSettings struct {
+	// Token is a bearer token (typically a service-account token) presented to
+	// the API server.
+	Token string `json:"token,omitempty"`
+	// Kubeconfig is a full kubeconfig YAML document that resolves to an API
+	// server + credentials. Takes precedence over Token when set.
+	Kubeconfig string `json:"kubeconfig,omitempty"`
+}
+
+// KubernetesPrivateSettingsFromMap parses the decrypted secret half from a
+// plaintext map (the shape returned by credentials.DecryptForOrg or the
+// plaintext fallback on Settings).
+func KubernetesPrivateSettingsFromMap(decrypted map[string]any) *KubernetesPrivateSettings {
+	priv := &KubernetesPrivateSettings{}
+	if v, ok := decrypted["token"].(string); ok {
+		priv.Token = v
+	}
+
+	if v, ok := decrypted["kubeconfig"].(string); ok {
+		priv.Kubeconfig = v
+	}
+
+	return priv
 }

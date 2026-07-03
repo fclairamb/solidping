@@ -16,9 +16,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
-	disc "github.com/fclairamb/solidping/server/internal/discovery"
+	"github.com/fclairamb/solidping/server/internal/discovery/scantypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
-	"github.com/fclairamb/solidping/server/internal/integrations/freebox"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 )
@@ -30,44 +29,38 @@ import (
 const staleScanThreshold = 30 * time.Minute
 
 var (
-	// ErrHostNotFound is returned when a discovered host is not found.
-	ErrHostNotFound = errors.New("discovered host not found")
+	// ErrCheckNotFound is returned when a discovered check is not found.
+	ErrCheckNotFound = errors.New("discovered check not found")
 	// ErrScanNotFound is returned when a discovery scan (plan job) is not found.
 	ErrScanNotFound = errors.New("discovery scan not found")
 	// ErrAlreadyRunning is returned when a discovery job is already running for the org.
 	ErrAlreadyRunning = errors.New("a discovery scan is already running for this organization")
-	// ErrAlreadyPromoted is returned when a host has already been promoted.
-	ErrAlreadyPromoted = errors.New("host already promoted")
-	// ErrFreeboxNotGranted is returned when a Freebox discovery targets a
-	// channel that has not completed the LCD-pairing flow.
-	ErrFreeboxNotGranted = errors.New("freebox channel is not paired yet")
-	// ErrFreeboxChannelNotFound is returned when the targeted Freebox channel
-	// does not exist, belongs to another org, or is not a Freebox channel.
-	ErrFreeboxChannelNotFound = errors.New("freebox channel not found")
+	// ErrAlreadyPromoted is returned when a check has already been promoted.
+	ErrAlreadyPromoted = errors.New("discovered check already promoted")
 )
 
-// ListHostsOptions configures which hosts to return.
-type ListHostsOptions struct {
+// ListChecksOptions configures which discovered checks to return.
+type ListChecksOptions struct {
 	JobUID   string
+	Group    string
 	Promoted *bool
 	Sources  []models.DiscoverySource
 	Limit    int
 	Offset   int
 }
 
-// PromoteCheckSpec describes a single check to create when promoting a host.
-type PromoteCheckSpec struct {
-	CheckType   string         `json:"checkType"`
-	Name        string         `json:"name,omitempty"`
-	Slug        string         `json:"slug,omitempty"`
-	Period      *string        `json:"period,omitempty"`
-	ExtraConfig map[string]any `json:"extraConfig,omitempty"`
+// PromoteOverrides carries optional adjustments applied to every check created
+// in a promote call (the row already carries name/slug/config).
+type PromoteOverrides struct {
+	Name   string  `json:"name,omitempty"`
+	Period *string `json:"period,omitempty"`
 }
 
-// PromoteRequest is the request body for promoting a discovered host into one
-// or more checks in a single call.
+// PromoteRequest is the request body for promoting one or more discovered checks
+// into real checks in a single call.
 type PromoteRequest struct {
-	Checks []PromoteCheckSpec `json:"checks"`
+	UIDs      []string         `json:"uids"`
+	Overrides PromoteOverrides `json:"overrides,omitempty"`
 }
 
 // Service provides business logic for network discovery operations.
@@ -100,90 +93,58 @@ func NewService(
 	}
 }
 
-// StartScan creates a fan-out discovery scan. It validates the range against the
-// overall ceiling (ValidatePlanCIDRs), guards against an already-running scan for
-// the org, then creates a single network_discovery_plan job. That plan job's UID
-// is the scan UID; when it runs it splits the range into bounded child jobs.
-// Returns ErrRangeTooLarge if the range exceeds MaxScanChunks, ErrAlreadyRunning
-// if another scan is in progress.
-func (s *Service) StartScan(ctx context.Context, orgUID string, cfg *disc.Config) (*models.Job, error) {
-	if err := disc.ValidatePlanCIDRs(cfg.CIDRs); err != nil {
+// StartScan resolves the discovery type from the registry, validates its
+// parameters (which yields the job type + config to enqueue), guards against an
+// already-running scan of that resolved job type, then creates the scan job. The
+// returned job's UID is the scan UID. A coded *scantypes.DiscoveryError is
+// returned for an unknown type, invalid parameters, or a precondition failure;
+// ErrAlreadyRunning when a scan of the same type is already in flight.
+func (s *Service) StartScan(
+	ctx context.Context, orgUID, typ string, parameters json.RawMessage,
+) (*models.Job, error) {
+	def, ok := scantypes.Get(typ)
+	if !ok {
+		return nil, scantypes.NewError(scantypes.CodeUnknownType, fmt.Sprintf("unknown discovery type %q", typ))
+	}
+
+	deps := scantypes.Deps{DBService: s.dbSvc, Creds: s.creds}
+
+	jobType, jobConfig, err := def.BuildJob(ctx, deps, orgUID, parameters)
+	if err != nil {
 		return nil, err
 	}
 
-	// Check for already-running scan (plan or any non-stale child).
-	if err := s.checkScanAlreadyRunning(ctx, orgUID); err != nil {
-		return nil, err
-	}
-
-	// The plan job carries no parentJobUid — children inherit it from the plan UID.
-	cfg.ParentJobUID = ""
-
-	configBytes, err := json.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal discovery config: %w", err)
-	}
-
-	job, err := s.jobSvc.CreateJob(
-		ctx,
-		orgUID,
-		string(jobdef.JobTypeNetworkDiscoveryPlan),
-		configBytes,
-		nil,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create discovery plan job: %w", err)
-	}
-
-	return job, nil
-}
-
-// StartFreeboxScan validates that channelUID is a paired Freebox channel,
-// guards against a Freebox discovery already running for the org, then creates
-// a freebox_lan_discovery job. Returns ErrFreeboxNotGranted /
-// ErrFreeboxChannelNotFound when validation fails, ErrAlreadyRunning when a
-// run is already in flight.
-func (s *Service) StartFreeboxScan(ctx context.Context, orgUID, channelUID string) (*models.Job, error) {
-	// Fail fast: probe the channel via the shared resolver so we surface a
-	// 409/404 before queueing a job that would just fail on first run.
-	if _, err := freebox.ListLanHostsForChannel(ctx, s.dbSvc, s.creds, orgUID, channelUID); err != nil {
-		switch {
-		case errors.Is(err, freebox.ErrFreeboxNotGranted):
-			return nil, ErrFreeboxNotGranted
-		case errors.Is(err, freebox.ErrFreeboxChannelNotFound):
-			return nil, ErrFreeboxChannelNotFound
-		default:
-			return nil, fmt.Errorf("validate freebox channel: %w", err)
+	// Guard against a concurrent scan of the same resolved job type. Fan-out scans
+	// (network_discovery_plan) also guard on non-stale child chunks.
+	if jobType == string(jobdef.JobTypeNetworkDiscoveryPlan) {
+		if guardErr := s.checkScanAlreadyRunning(ctx, orgUID); guardErr != nil {
+			return nil, guardErr
 		}
+	} else if guardErr := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobType(jobType)); guardErr != nil {
+		return nil, guardErr
 	}
 
-	if err := s.checkAlreadyRunning(ctx, orgUID, jobdef.JobTypeFreeboxLanDiscovery); err != nil {
-		return nil, err
-	}
-
-	configBytes, err := json.Marshal(jobFreeboxConfig{ChannelUID: channelUID})
+	job, err := s.jobSvc.CreateJob(ctx, orgUID, jobType, jobConfig, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal freebox discovery config: %w", err)
-	}
-
-	job, err := s.jobSvc.CreateJob(
-		ctx,
-		orgUID,
-		string(jobdef.JobTypeFreeboxLanDiscovery),
-		configBytes,
-		nil,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create freebox discovery job: %w", err)
+		return nil, fmt.Errorf("failed to create discovery scan job: %w", err)
 	}
 
 	return job, nil
 }
 
-// jobFreeboxConfig is the config payload for a freebox_lan_discovery job. Kept
-// local to avoid importing the jobtypes package (which would create a cycle).
-type jobFreeboxConfig struct {
-	ChannelUID string `json:"channelUid"`
+// scanJobTypes returns the job types that constitute discovery scans, for the
+// scan list. It is keyed off the registry being non-empty (every registered type
+// maps onto one of these job types via its BuildJob; the activation test asserts
+// the correspondence) plus the fan-out child type so child rows can be filtered
+// out of the user-facing list.
+func scanJobTypes() []string {
+	return []string{
+		string(jobdef.JobTypeNetworkDiscoveryPlan),
+		string(jobdef.JobTypeNetworkDiscovery),
+		string(jobdef.JobTypeFreeboxLanDiscovery),
+		string(jobdef.JobTypeContainerDiscovery),
+		string(jobdef.JobTypeKubernetesDiscovery),
+	}
 }
 
 // checkAlreadyRunning returns ErrAlreadyRunning if a discovery job of the given
@@ -262,8 +223,10 @@ func (s *Service) checkScanAlreadyRunning(ctx context.Context, orgUID string) er
 	return nil
 }
 
-// ScanProgress is the derived progress view of a fan-out scan, aggregated from
-// the plan job plus its child network_discovery jobs.
+// ScanProgress is the derived progress view of a scan. For a fan-out (chunked)
+// scan it aggregates the plan job plus its child network_discovery jobs; for a
+// non-chunked scan it reports a single chunk and the job's own status. groupCount
+// and checkCount come from the discovered_checks rolled up under the scan UID.
 type ScanProgress struct {
 	TotalChunks     int    `json:"totalChunks"`
 	CompletedChunks int    `json:"completedChunks"`
@@ -271,21 +234,42 @@ type ScanProgress struct {
 	RunningChunks   int    `json:"runningChunks"`
 	PendingChunks   int    `json:"pendingChunks"`
 	DerivedStatus   string `json:"derivedStatus"`
-	HostCount       int    `json:"hostCount"`
+	GroupCount      int    `json:"groupCount"`
+	CheckCount      int    `json:"checkCount"`
 }
 
-// GetScanProgress aggregates a fan-out scan's progress from the plan job and its
-// children. derivedStatus is "running" while the plan is pending/running or any
-// child is pending/running; "success" once every child is terminal; "failed" only
-// if the plan job itself failed.
-func (s *Service) GetScanProgress(ctx context.Context, orgUID, planUID string) (*ScanProgress, error) {
-	plan, err := s.jobSvc.GetJob(ctx, planUID)
+// GetScanProgress returns a uniform progress view for any scan job. A fan-out
+// plan rolls up its children; any other scan job reports totalChunks=1 and a
+// chunk bucket derived from its own status.
+func (s *Service) GetScanProgress(ctx context.Context, orgUID, scanUID string) (*ScanProgress, error) {
+	job, err := s.jobSvc.GetJob(ctx, scanUID)
 	if err != nil {
 		return nil, ErrScanNotFound
 	}
 
 	progress := &ScanProgress{}
 
+	if job.Type == string(jobdef.JobTypeNetworkDiscoveryPlan) {
+		s.fillPlanProgress(ctx, job, orgUID, scanUID, progress)
+	} else {
+		fillSingleJobProgress(job, progress)
+	}
+
+	groupCount, checkCount, err := s.countDiscovered(ctx, orgUID, scanUID)
+	if err != nil {
+		return nil, err
+	}
+
+	progress.GroupCount = groupCount
+	progress.CheckCount = checkCount
+
+	return progress, nil
+}
+
+// fillPlanProgress aggregates a fan-out plan's children into the progress block.
+func (s *Service) fillPlanProgress(
+	ctx context.Context, plan *models.Job, orgUID, planUID string, progress *ScanProgress,
+) {
 	// Denominator: prefer the plan's recorded totalChunks, fall back to counting children.
 	if plan.Output != nil {
 		if v, ok := plan.Output["totalChunks"]; ok {
@@ -293,12 +277,11 @@ func (s *Service) GetScanProgress(ctx context.Context, orgUID, planUID string) (
 		}
 	}
 
-	// Count children by status.
 	parentExpr := s.parentJobUIDExpr()
 
 	var children []*models.Job
 
-	err = s.db.NewSelect().
+	err := s.db.NewSelect().
 		Model(&children).
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
 		Where("organization_uid = ?", orgUID).
@@ -306,7 +289,9 @@ func (s *Service) GetScanProgress(ctx context.Context, orgUID, planUID string) (
 		Where(parentExpr+" = ?", planUID).
 		Scan(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count child jobs: %w", err)
+		slog.ErrorContext(ctx, "failed to count child jobs for scan progress", "plan_uid", planUID, "error", err)
+
+		return
 	}
 
 	for _, child := range children {
@@ -329,27 +314,68 @@ func (s *Service) GetScanProgress(ctx context.Context, orgUID, planUID string) (
 		progress.TotalChunks = len(children)
 	}
 
-	// Host count rolled up under the plan UID.
-	hostCount, err := s.db.NewSelect().
-		TableExpr("discovered_hosts").
+	progress.DerivedStatus = derivePlanStatus(plan, progress)
+}
+
+// fillSingleJobProgress reports a non-chunked scan as a single chunk whose state
+// mirrors the job's own status.
+func fillSingleJobProgress(job *models.Job, progress *ScanProgress) {
+	progress.TotalChunks = 1
+
+	switch job.Status {
+	case models.JobStatusSuccess:
+		progress.CompletedChunks = 1
+		progress.DerivedStatus = string(models.JobStatusSuccess)
+	case models.JobStatusFailed:
+		progress.FailedChunks = 1
+		progress.DerivedStatus = string(models.JobStatusFailed)
+	case models.JobStatusRunning:
+		progress.RunningChunks = 1
+		progress.DerivedStatus = string(models.JobStatusRunning)
+	case models.JobStatusRetried:
+		progress.PendingChunks = 1
+		progress.DerivedStatus = string(models.JobStatusRunning)
+	case models.JobStatusPending:
+		progress.PendingChunks = 1
+		progress.DerivedStatus = string(models.JobStatusRunning)
+	default:
+		progress.PendingChunks = 1
+		progress.DerivedStatus = string(models.JobStatusPending)
+	}
+}
+
+// countDiscovered returns the distinct group count and total check count rolled
+// up under a scan UID.
+func (s *Service) countDiscovered(ctx context.Context, orgUID, scanUID string) (int, int, error) {
+	checkCount, err := s.db.NewSelect().
+		TableExpr("discovered_checks").
 		Where("organization_uid = ?", orgUID).
-		Where("job_uid = ?", planUID).
+		Where("job_uid = ?", scanUID).
 		Where("deleted_at IS NULL").
 		Count(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("failed to count hosts: %w", err)
+		return 0, 0, fmt.Errorf("failed to count discovered checks: %w", err)
 	}
 
-	progress.HostCount = hostCount
+	var groupCount int
 
-	progress.DerivedStatus = deriveScanStatus(plan, progress)
+	err = s.db.NewSelect().
+		ColumnExpr("COUNT(DISTINCT group_key)").
+		TableExpr("discovered_checks").
+		Where("organization_uid = ?", orgUID).
+		Where("job_uid = ?", scanUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx, &groupCount)
+	if err != nil {
+		return 0, 0, fmt.Errorf("failed to count discovered groups: %w", err)
+	}
 
-	return progress, nil
+	return groupCount, checkCount, nil
 }
 
-// deriveScanStatus computes the overall scan status from the plan job and the
+// derivePlanStatus computes the overall scan status from the plan job and the
 // aggregated child progress.
-func deriveScanStatus(plan *models.Job, progress *ScanProgress) string {
+func derivePlanStatus(plan *models.Job, progress *ScanProgress) string {
 	switch {
 	case plan.Status == models.JobStatusFailed:
 		return string(models.JobStatusFailed)
@@ -380,10 +406,17 @@ func toInt(v any) int {
 	}
 }
 
-// CancelScan stops a fan-out scan: it cancels the plan job if still pending, then
-// cancels every pending child network_discovery job (soft delete). Running
-// children are bounded (~minutes) and finish naturally; the net effect is that no
-// new chunks start. Returns ErrScanNotFound if no such plan exists for the org.
+// CancelScan stops a fan-out scan: it cancels the plan job if still pending,
+// then soft-deletes every live (pending or running) child network_discovery
+// job. Soft-deleting a running child does two things at once: the
+// already-running guard stops counting it immediately (a new scan can start
+// right away instead of waiting out the chunk, measured at ~1min for a /20 of
+// unroutable addresses), and the job worker's cancellation watcher notices the
+// deletion within its poll interval and cancels the chunk's context so the
+// runner slot frees promptly. A plan still mid-chunking can enqueue a child in
+// the small window between this sweep and its own watcher-driven cancellation;
+// that residual chunk is bounded and finishes naturally. Returns
+// ErrScanNotFound if no such plan exists for the org.
 func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error {
 	plan, err := s.jobSvc.GetJob(ctx, planUID)
 	if err != nil || plan.OrganizationUID == nil || *plan.OrganizationUID != orgUID {
@@ -397,8 +430,10 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 		return fmt.Errorf("cancel plan job: %w", cancelErr)
 	}
 
-	// Soft-delete every pending child in one statement (CancelJob is per-UID and
-	// pending-only; a bulk update matches its semantics for the child set).
+	// Soft-delete every live child in one statement. Pending children never
+	// start; running children are aborted by the worker's cancellation
+	// watcher (and stop counting against the already-running guard the moment
+	// this commits).
 	now := time.Now()
 	parentExpr := s.parentJobUIDExpr()
 
@@ -408,98 +443,36 @@ func (s *Service) CancelScan(ctx context.Context, orgUID, planUID string) error 
 		Set("updated_at = ?", now).
 		Where("type = ?", string(jobdef.JobTypeNetworkDiscovery)).
 		Where("organization_uid = ?", orgUID).
-		Where("status = ?", models.JobStatusPending).
+		Where("status IN (?)", bun.List([]models.JobStatus{models.JobStatusPending, models.JobStatusRunning})).
 		Where("deleted_at IS NULL").
 		Where(parentExpr+" = ?", planUID).
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("cancel pending child jobs: %w", err)
+		return fmt.Errorf("cancel live child jobs: %w", err)
 	}
 
 	return nil
 }
 
-// UpsertDiscoveredHost inserts or updates a discovered host record.
-// On conflict (same org+ip, not deleted, not promoted) it updates the scan data.
-func (s *Service) UpsertDiscoveredHost(ctx context.Context, host *models.DiscoveredHost) error {
-	openPortsJSON, err := json.Marshal(host.OpenPorts)
-	if err != nil {
-		return fmt.Errorf("marshal open_ports: %w", err)
-	}
-
-	suggestedJSON, err := json.Marshal(host.SuggestedChecks)
-	if err != nil {
-		return fmt.Errorf("marshal suggested_checks: %w", err)
-	}
-
-	host.OpenPorts = openPortsJSON
-	host.SuggestedChecks = suggestedJSON
-
-	var insertQuery *bun.InsertQuery
-
-	if s.isPostgres {
-		insertQuery = s.db.NewInsert().
-			Model(host).
-			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
-			Set("job_uid = EXCLUDED.job_uid").
-			Set("hostname = EXCLUDED.hostname").
-			Set("open_ports = EXCLUDED.open_ports").
-			Set("icmp_reachable = EXCLUDED.icmp_reachable").
-			Set("suggested_checks = EXCLUDED.suggested_checks").
-			Set("discovered_at = EXCLUDED.discovered_at")
-	} else {
-		// SQLite: INSERT OR REPLACE semantics via conflict handling.
-		insertQuery = s.db.NewInsert().
-			Model(host).
-			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
-			Set("job_uid = excluded.job_uid").
-			Set("hostname = excluded.hostname").
-			Set("open_ports = excluded.open_ports").
-			Set("icmp_reachable = excluded.icmp_reachable").
-			Set("suggested_checks = excluded.suggested_checks").
-			Set("discovered_at = excluded.discovered_at")
-	}
-
-	_, err = insertQuery.Exec(ctx)
-	if err != nil {
-		return fmt.Errorf("upsert discovered host: %w", err)
-	}
-
-	return nil
-}
-
-// ListByJob returns all active discovered hosts for a specific job.
-func (s *Service) ListByJob(ctx context.Context, orgUID, jobUID string) ([]*models.DiscoveredHost, error) {
-	var hosts []*models.DiscoveredHost
-
-	err := s.db.NewSelect().
-		Model(&hosts).
-		Where("organization_uid = ?", orgUID).
-		Where("job_uid = ?", jobUID).
-		Where("deleted_at IS NULL").
-		Order("discovered_at ASC").
-		Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list by job: %w", err)
-	}
-
-	return hosts, nil
-}
-
-// ListHosts returns discovered hosts for an org with optional filters.
-func (s *Service) ListHosts(
-	ctx context.Context, orgUID string, opts ListHostsOptions,
-) ([]*models.DiscoveredHost, error) {
-	var hosts []*models.DiscoveredHost
+// ListDiscoveredChecks returns discovered checks for an org with optional
+// filters. Rows are ordered by group then slug so the frontend can group them.
+func (s *Service) ListDiscoveredChecks(
+	ctx context.Context, orgUID string, opts *ListChecksOptions,
+) ([]*models.DiscoveredCheck, error) {
+	var rows []*models.DiscoveredCheck
 
 	query := s.db.NewSelect().
-		Model(&hosts).
+		Model(&rows).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
-		Order("discovered_at DESC")
+		Order("group_label ASC", "slug ASC")
 
 	if opts.JobUID != "" {
 		query = query.Where("job_uid = ?", opts.JobUID)
+	}
+
+	if opts.Group != "" {
+		query = query.Where("group_key = ?", opts.Group)
 	}
 
 	if opts.Promoted != nil {
@@ -527,118 +500,142 @@ func (s *Service) ListHosts(
 		query = query.Offset(opts.Offset)
 	}
 
-	err := query.Scan(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("list hosts: %w", err)
+	if err := query.Scan(ctx); err != nil {
+		return nil, fmt.Errorf("list discovered checks: %w", err)
 	}
 
-	return hosts, nil
+	return rows, nil
 }
 
-// GetHost returns a single discovered host by UID (scoped to org).
-func (s *Service) GetHost(ctx context.Context, orgUID, hostUID string) (*models.DiscoveredHost, error) {
-	var host models.DiscoveredHost
+// getChecks loads the active, unpromoted discovered checks for the given UIDs,
+// scoped to the org. It errors with ErrCheckNotFound when any UID is missing and
+// ErrAlreadyPromoted when any is already promoted.
+func (s *Service) getChecks(ctx context.Context, orgUID string, uids []string) ([]*models.DiscoveredCheck, error) {
+	var rows []*models.DiscoveredCheck
 
 	err := s.db.NewSelect().
-		Model(&host).
-		Where("uid = ?", hostUID).
+		Model(&rows).
 		Where("organization_uid = ?", orgUID).
+		Where("uid IN (?)", bun.List(uids)).
 		Where("deleted_at IS NULL").
 		Scan(ctx)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil, ErrHostNotFound
-	} else if err != nil {
-		return nil, fmt.Errorf("get host: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("load discovered checks: %w", err)
 	}
 
-	return &host, nil
+	if len(rows) != len(uids) {
+		return nil, ErrCheckNotFound
+	}
+
+	for _, row := range rows {
+		if row.PromotedToCheckUID != nil {
+			return nil, ErrAlreadyPromoted
+		}
+	}
+
+	return rows, nil
 }
 
-// PromoteHost creates one or more Checks from the discovered host and marks the
-// host as promoted (pointing promoted_to_check_uid at the first created check).
-// Check creation is fail-fast: if a later CreateCheck errors, earlier checks
-// persist and the error is returned (full transactional rollback is a follow-up).
-func (s *Service) PromoteHost(
-	ctx context.Context, orgUID, orgSlug, hostUID string, req PromoteRequest,
+// PromoteChecks creates one real Check per referenced discovered-check row
+// (config/name/slug already on the row; overrides may adjust name/period) and
+// marks each row promoted. Created checks carry the auto-discovery +
+// discovery-job labels. Check creation is fail-fast: if a later CreateCheck
+// errors, earlier checks persist and the error is returned.
+func (s *Service) PromoteChecks(
+	ctx context.Context, orgUID, orgSlug string, req PromoteRequest,
 ) ([]checks.CheckResponse, error) {
-	host, err := s.GetHost(ctx, orgUID, hostUID)
+	rows, err := s.getChecks(ctx, orgUID, req.UIDs)
 	if err != nil {
 		return nil, err
 	}
 
-	if host.PromotedToCheckUID != nil {
-		return nil, ErrAlreadyPromoted
-	}
+	created := make([]checks.CheckResponse, 0, len(rows))
 
-	// Add discovery labels — shared across every created check.
-	labels := map[string]string{
-		"auto-discovery": "true",
-		"discovery-job":  host.JobUID,
-	}
-
-	created := make([]checks.CheckResponse, 0, len(req.Checks))
-
-	for i := range req.Checks {
-		spec := req.Checks[i]
-		// Build the check config from the host's matching suggested check, then merge ExtraConfig.
-		checkConfig, cfgErr := buildCheckConfig(host, spec)
-		if cfgErr != nil {
-			return nil, cfgErr
-		}
-
-		createReq := checks.CreateCheckRequest{
-			Type:   normalizeCheckType(spec.CheckType),
-			Name:   spec.Name,
-			Slug:   spec.Slug,
-			Period: spec.Period,
-			Config: checkConfig,
-			Labels: labels,
-		}
-
-		if createReq.Name == "" {
-			createReq.Name = host.IP
-		}
-
-		checkResp, createErr := s.checksSvc.CreateCheck(ctx, orgSlug, createReq)
+	for _, row := range rows {
+		checkResp, createErr := s.promoteOne(ctx, orgSlug, row, req.Overrides)
 		if createErr != nil {
-			return nil, fmt.Errorf("create check: %w", createErr)
+			return nil, createErr
 		}
 
 		created = append(created, checkResp)
-	}
 
-	// Mark host as promoted, pointing at the first created check.
-	firstUID := created[0].UID
-	_, dbErr := s.db.NewUpdate().
-		TableExpr("discovered_hosts").
-		Set("promoted_to_check_uid = ?", firstUID).
-		Where("uid = ?", hostUID).
-		Where("organization_uid = ?", orgUID).
-		Where("deleted_at IS NULL").
-		Exec(ctx)
-
-	if dbErr != nil {
-		slog.ErrorContext(ctx, "failed to mark host as promoted (checks were created)",
-			"host_uid", hostUID, "check_uid", firstUID, "error", dbErr)
-		// Not fatal — the checks were created. Just log.
+		s.markPromoted(ctx, orgUID, row.UID, checkResp.UID)
 	}
 
 	return created, nil
 }
 
-// SoftDeleteHost soft-deletes a discovered host.
-func (s *Service) SoftDeleteHost(ctx context.Context, orgUID, hostUID string) error {
-	now := time.Now()
+// promoteOne creates a single real check from a discovered-check row.
+func (s *Service) promoteOne(
+	ctx context.Context, orgSlug string, row *models.DiscoveredCheck, overrides PromoteOverrides,
+) (checks.CheckResponse, error) {
+	config := map[string]any{}
+	if len(row.Config) > 0 {
+		if err := json.Unmarshal(row.Config, &config); err != nil {
+			return checks.CheckResponse{}, fmt.Errorf("parse discovered check config: %w", err)
+		}
+	}
 
-	result, err := s.db.NewUpdate().
-		TableExpr("discovered_hosts").
-		Set("deleted_at = ?", now).
-		Where("uid = ?", hostUID).
+	name := row.Name
+	if overrides.Name != "" {
+		name = overrides.Name
+	}
+
+	if name == "" {
+		name = row.GroupLabel
+	}
+
+	createReq := checks.CreateCheckRequest{
+		Type:   normalizeCheckType(row.Type),
+		Name:   name,
+		Slug:   row.Slug,
+		Period: overrides.Period,
+		Config: config,
+		Labels: map[string]string{
+			"auto-discovery": "true",
+			"discovery-job":  row.JobUID,
+		},
+	}
+
+	checkResp, err := s.checksSvc.CreateCheck(ctx, orgSlug, createReq)
+	if err != nil {
+		return checks.CheckResponse{}, fmt.Errorf("create check: %w", err)
+	}
+
+	return checkResp, nil
+}
+
+// markPromoted points a discovered check's promoted_to_check_uid at the created
+// check. A failure here is non-fatal (the check exists) — it is logged.
+func (s *Service) markPromoted(ctx context.Context, orgUID, checkUID, createdUID string) {
+	_, err := s.db.NewUpdate().
+		TableExpr("discovered_checks").
+		Set("promoted_to_check_uid = ?", createdUID).
+		Set("updated_at = ?", time.Now()).
+		Where("uid = ?", checkUID).
 		Where("organization_uid = ?", orgUID).
 		Where("deleted_at IS NULL").
 		Exec(ctx)
 	if err != nil {
-		return fmt.Errorf("soft delete host: %w", err)
+		slog.ErrorContext(ctx, "failed to mark discovered check as promoted (check was created)",
+			"discovered_check_uid", checkUID, "check_uid", createdUID, "error", err)
+	}
+}
+
+// SoftDeleteCheck soft-deletes a single discovered check (dismiss).
+func (s *Service) SoftDeleteCheck(ctx context.Context, orgUID, uid string) error {
+	now := time.Now()
+
+	result, err := s.db.NewUpdate().
+		TableExpr("discovered_checks").
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Exec(ctx)
+	if err != nil {
+		return fmt.Errorf("soft delete discovered check: %w", err)
 	}
 
 	rows, err := result.RowsAffected()
@@ -647,54 +644,73 @@ func (s *Service) SoftDeleteHost(ctx context.Context, orgUID, hostUID string) er
 	}
 
 	if rows == 0 {
-		return ErrHostNotFound
+		return ErrCheckNotFound
 	}
 
 	return nil
 }
 
+// SoftDeleteGroup soft-deletes every active discovered check in a group for a
+// scan (dismiss a whole group). It returns the number of rows dismissed.
+func (s *Service) SoftDeleteGroup(ctx context.Context, orgUID, jobUID, group string) (int, error) {
+	now := time.Now()
+
+	query := s.db.NewUpdate().
+		TableExpr("discovered_checks").
+		Set("deleted_at = ?", now).
+		Set("updated_at = ?", now).
+		Where("organization_uid = ?", orgUID).
+		Where("group_key = ?", group).
+		Where("deleted_at IS NULL")
+
+	if jobUID != "" {
+		query = query.Where("job_uid = ?", jobUID)
+	}
+
+	result, err := query.Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("soft delete discovered group: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("rows affected: %w", err)
+	}
+
+	if rows == 0 {
+		return 0, ErrCheckNotFound
+	}
+
+	return int(rows), nil
+}
+
+// GetCheck returns a single discovered check by UID (scoped to org).
+func (s *Service) GetCheck(ctx context.Context, orgUID, uid string) (*models.DiscoveredCheck, error) {
+	var row models.DiscoveredCheck
+
+	err := s.db.NewSelect().
+		Model(&row).
+		Where("uid = ?", uid).
+		Where("organization_uid = ?", orgUID).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCheckNotFound
+	} else if err != nil {
+		return nil, fmt.Errorf("get discovered check: %w", err)
+	}
+
+	return &row, nil
+}
+
 // normalizeCheckType maps the discovery scan engine's check-type aliases to the
 // registered check types accepted by the checks service. The suggest engine emits
 // "ping" (matching the urlparse alias), which the registry knows only as "icmp".
+// docker/kubernetes pass through unchanged.
 func normalizeCheckType(checkType string) string {
 	if checkType == "ping" {
 		return "icmp"
 	}
 
 	return checkType
-}
-
-// buildCheckConfig constructs the check config merging suggested config with override.
-func buildCheckConfig(host *models.DiscoveredHost, spec PromoteCheckSpec) (map[string]any, error) {
-	config := make(map[string]any)
-
-	// Try to find a matching suggested check for the requested type.
-	var suggestions []disc.SuggestedCheck
-	if len(host.SuggestedChecks) > 0 {
-		if err := json.Unmarshal(host.SuggestedChecks, &suggestions); err != nil {
-			return nil, fmt.Errorf("parse suggested checks: %w", err)
-		}
-	}
-
-	for _, s := range suggestions {
-		if s.Type == spec.CheckType {
-			for k, v := range s.Config {
-				config[k] = v
-			}
-
-			break
-		}
-	}
-
-	// If no suggestion matched, use the host IP as the base.
-	if len(config) == 0 {
-		config["host"] = host.IP
-	}
-
-	// Merge ExtraConfig overrides.
-	for k, v := range spec.ExtraConfig {
-		config[k] = v
-	}
-
-	return config, nil
 }

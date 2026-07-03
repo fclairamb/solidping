@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bunrouter"
@@ -17,6 +18,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 	"github.com/fclairamb/solidping/server/internal/handlers/checks"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // TestCreateCheckHandlerReturns402OverCap verifies the HTTP layer translates a
@@ -75,4 +77,367 @@ func TestCreateCheckHandlerReturns402OverCap(t *testing.T) {
 	r.Equal("MaxChecks", body["limitName"])
 	r.InDelta(float64(1), body["limit"], 0.0001)
 	r.InDelta(float64(1), body["currentUsage"], 0.0001)
+}
+
+// newCheckHandlerRouter builds a checks handler over a fresh in-memory db with
+// a single org and POST/GET/PATCH routes wired. Returns the router and org slug.
+func newCheckHandlerRouter(t *testing.T) (*bunrouter.Router, string) {
+	t.Helper()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("flap-h", "Flap Handler Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+	handler := checks.NewHandler(svc, &config.Config{})
+
+	router := bunrouter.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	group.POST("", handler.CreateCheck)
+	group.GET("/:checkUid", handler.GetCheck)
+	group.PATCH("/:checkUid", handler.UpdateCheck)
+
+	return router, org.Slug
+}
+
+// TestCreateCheckFlappingFieldsRoundTrip verifies the three flapping
+// (adaptive-recovery) knobs are accepted on create and echoed back on GET.
+func TestCreateCheckFlappingFieldsRoundTrip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	body, err := json.Marshal(map[string]any{
+		"type":                  "http",
+		"config":                map[string]any{"url": "https://example.com"},
+		"flappingWindowSeconds": 7200,
+		"flapBackoffFactor":     3,
+		"maxRecoveryMultiplier": 5,
+	})
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/api/v1/orgs/"+orgSlug+"/checks", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	r.InDelta(float64(7200), created["flappingWindowSeconds"], 0.0001)
+	r.InDelta(float64(3), created["flapBackoffFactor"], 0.0001)
+	r.InDelta(float64(5), created["maxRecoveryMultiplier"], 0.0001)
+
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	getReq := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/orgs/"+orgSlug+"/checks/"+uid, http.NoBody)
+	getRec := httptest.NewRecorder()
+	router.ServeHTTP(getRec, getReq)
+	r.Equal(http.StatusOK, getRec.Code, getRec.Body.String())
+
+	var fetched map[string]any
+	r.NoError(json.Unmarshal(getRec.Body.Bytes(), &fetched))
+	r.InDelta(float64(7200), fetched["flappingWindowSeconds"], 0.0001)
+	r.InDelta(float64(3), fetched["flapBackoffFactor"], 0.0001)
+	r.InDelta(float64(5), fetched["maxRecoveryMultiplier"], 0.0001)
+}
+
+// postCheck marshals body and POSTs it to the org's checks collection.
+func postCheck(t *testing.T, router *bunrouter.Router, orgSlug string, body map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	r := require.New(t)
+
+	payload, err := json.Marshal(body)
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/api/v1/orgs/"+orgSlug+"/checks", bytes.NewBuffer(payload))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	return rec
+}
+
+// TestCheckPeriodBoundsOnCreate covers the server-side per-type period floors
+// (spec 2026-07-01-04 D1/D2) end to end at the HTTP layer: heavy types get
+// their registry MinPeriod, everything else the global 10s floor, and the
+// sleep / internal exemptions hold.
+func TestCheckPeriodBoundsOnCreate(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		body        map[string]any
+		wantStatus  int
+		wantMessage string // substring of the VALIDATION_ERROR title
+	}{
+		{
+			name: "browser at 10s is rejected naming the 60s floor",
+			body: map[string]any{
+				"type": "browser", "period": "00:00:10",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for browser checks must be at least 60s",
+		},
+		{
+			name: "browser at 60s is created",
+			body: map[string]any{
+				"type": "browser", "period": "00:01:00",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "js at 10s is rejected naming the 30s floor",
+			body: map[string]any{
+				"type": "js", "period": "00:00:10",
+				"config": map[string]any{"script": "sp.ok()"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for js checks must be at least 30s",
+		},
+		{
+			name: "plain http at 5s hits the global 10s floor",
+			body: map[string]any{
+				"type": "http", "period": "PT5S",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "period for http checks must be at least 10s",
+		},
+		{
+			name: "plain http at 10s is created",
+			body: map[string]any{
+				"type": "http", "period": "00:00:10",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "sleep at 10s is exempt",
+			body: map[string]any{
+				"type": "sleep", "period": "00:00:10",
+				"config": map[string]any{"sleep_ms": 200},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "internal browser at 10s is exempt",
+			body: map[string]any{
+				"type": "browser", "period": "00:00:10", "internal": true,
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name: "absent period falls back to the default and passes",
+			body: map[string]any{
+				"type":   "browser",
+				"config": map[string]any{"url": "https://example.com"},
+			},
+			wantStatus: http.StatusCreated,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			r := require.New(t)
+			router, orgSlug := newCheckHandlerRouter(t)
+
+			rec := postCheck(t, router, orgSlug, tt.body)
+			r.Equal(tt.wantStatus, rec.Code, rec.Body.String())
+
+			if tt.wantMessage == "" {
+				return
+			}
+
+			var errBody map[string]any
+			r.NoError(json.Unmarshal(rec.Body.Bytes(), &errBody))
+			r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+			r.Contains(errBody["title"], tt.wantMessage)
+		})
+	}
+}
+
+// TestCheckPeriodBoundsOnPatch pins that PATCH re-validates the period against
+// the stored type: shrinking below the floor is a 400, a legal value succeeds,
+// and a period-less PATCH leaves a grandfathered value untouched.
+func TestCheckPeriodBoundsOnPatch(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	rec := postCheck(t, router, orgSlug, map[string]any{
+		"type": "browser", "period": "00:05:00",
+		"config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	patch := func(body map[string]any) *httptest.ResponseRecorder {
+		payload, err := json.Marshal(body)
+		r.NoError(err)
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodPatch, "/api/v1/orgs/"+orgSlug+"/checks/"+uid, bytes.NewBuffer(payload))
+		req.Header.Set("Content-Type", "application/json")
+		patchRec := httptest.NewRecorder()
+		router.ServeHTTP(patchRec, req)
+
+		return patchRec
+	}
+
+	// Shrinking below the browser floor is rejected with the bound in the message.
+	patchRec := patch(map[string]any{"period": "00:00:10"})
+	r.Equal(http.StatusBadRequest, patchRec.Code, patchRec.Body.String())
+
+	var errBody map[string]any
+	r.NoError(json.Unmarshal(patchRec.Body.Bytes(), &errBody))
+	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
+	r.Contains(errBody["title"], "period for browser checks must be at least 60s")
+
+	// A legal period is accepted.
+	patchRec = patch(map[string]any{"period": "00:02:00"})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+
+	// A PATCH without a period never re-validates (grandfathering: the limit
+	// bites only on a write to the period).
+	patchRec = patch(map[string]any{"name": "renamed"})
+	r.Equal(http.StatusOK, patchRec.Code, patchRec.Body.String())
+}
+
+// TestCheckDetailSchedulingBlock covers the read-only scheduling telemetry
+// (spec 2026-07-01-04 D3): absent before the first run (no cost signal), max
+// across the per-region jobs once present, dutyCyclePct = round(100 × cost /
+// period), and never present on list responses.
+func TestCheckDetailSchedulingBlock(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	ctx := t.Context()
+
+	dbSvc, err := sqlite.New(ctx, sqlite.Config{InMemory: true})
+	r.NoError(err)
+	r.NoError(dbSvc.Initialize(ctx))
+	t.Cleanup(func() { _ = dbSvc.Close() })
+
+	org := models.NewOrganization("sched-h", "Scheduling Handler Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	entSvc := entcore.NewService(dbSvc, entcore.DefaultsFor(config.DeploymentModeSelfHosted), 0)
+	svc := checks.NewService(dbSvc, notifier.NewLocalEventNotifier(), disabledCreds(t), entSvc)
+	handler := checks.NewHandler(svc, &config.Config{})
+
+	router := bunrouter.New()
+	group := router.NewGroup("/api/v1/orgs/:org/checks")
+	group.POST("", handler.CreateCheck)
+	group.GET("", handler.ListChecks)
+	group.GET("/:checkUid", handler.GetCheck)
+
+	rec := postCheck(t, router, org.Slug, map[string]any{
+		"type": "http", "period": "00:00:10",
+		"config": map[string]any{"url": "https://example.com"},
+	})
+	r.Equal(http.StatusCreated, rec.Code, rec.Body.String())
+
+	var created map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &created))
+	uid, _ := created["uid"].(string)
+	r.NotEmpty(uid)
+
+	getDetail := func() map[string]any {
+		req := httptest.NewRequestWithContext(
+			t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks/"+uid, http.NoBody)
+		getRec := httptest.NewRecorder()
+		router.ServeHTTP(getRec, req)
+		r.Equal(http.StatusOK, getRec.Code, getRec.Body.String())
+
+		var body map[string]any
+		r.NoError(json.Unmarshal(getRec.Body.Bytes(), &body))
+
+		return body
+	}
+
+	// Before the first run there is no cost signal → the block is absent.
+	r.NotContains(getDetail(), "scheduling", "scheduling must be omitted until the first run")
+
+	// Seed two per-region jobs with diverging EWMAs; detail reports the max.
+	regionEU, regionUS := "eu", "us"
+	jobEU := models.NewCheckJob(org.UID, uid, timeutils.Duration(10*time.Second))
+	jobEU.Region = &regionEU
+	jobEU.CostEWMAMs = 2000
+	jobEU.DelayEWMAMs = 13432
+	r.NoError(dbSvc.CreateCheckJob(ctx, jobEU))
+
+	jobUS := models.NewCheckJob(org.UID, uid, timeutils.Duration(10*time.Second))
+	jobUS.Region = &regionUS
+	jobUS.CostEWMAMs = 10036
+	jobUS.DelayEWMAMs = 500
+	r.NoError(dbSvc.CreateCheckJob(ctx, jobUS))
+
+	detail := getDetail()
+	sched, ok := detail["scheduling"].(map[string]any)
+	r.True(ok, "scheduling block expected on the detail response: %v", detail)
+	r.InDelta(float64(10036), sched["costEwmaMs"], 0.0001, "max cost across regions")
+	r.InDelta(float64(13432), sched["delayEwmaMs"], 0.0001, "max delay across regions")
+	// 10036ms cost on a 10000ms period → round(100.36) = 100.
+	r.InDelta(float64(100), sched["dutyCyclePct"], 0.0001)
+
+	// List responses stay lean: no scheduling key on any item.
+	listReq := httptest.NewRequestWithContext(
+		t.Context(), http.MethodGet, "/api/v1/orgs/"+org.Slug+"/checks", http.NoBody)
+	listRec := httptest.NewRecorder()
+	router.ServeHTTP(listRec, listReq)
+	r.Equal(http.StatusOK, listRec.Code, listRec.Body.String())
+
+	var list struct {
+		Data []map[string]any `json:"data"`
+	}
+	r.NoError(json.Unmarshal(listRec.Body.Bytes(), &list))
+	r.NotEmpty(list.Data)
+	for _, item := range list.Data {
+		r.NotContains(item, "scheduling", "list responses must not carry the scheduling block")
+	}
+}
+
+// TestCreateCheckFlappingValidationRejectsBadFactor pins that an out-of-range
+// flapBackoffFactor (< 1) is a 400 VALIDATION_ERROR, not a 500.
+func TestCreateCheckFlappingValidationRejectsBadFactor(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	router, orgSlug := newCheckHandlerRouter(t)
+
+	body, err := json.Marshal(map[string]any{
+		"type":              "http",
+		"config":            map[string]any{"url": "https://example.com"},
+		"flapBackoffFactor": 0, // invalid: must be >= 1
+	})
+	r.NoError(err)
+
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost, "/api/v1/orgs/"+orgSlug+"/checks", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	r.Equal(http.StatusBadRequest, rec.Code, rec.Body.String())
+
+	var errBody map[string]any
+	r.NoError(json.Unmarshal(rec.Body.Bytes(), &errBody))
+	r.Equal(string(base.ErrorCodeValidationError), errBody["code"])
 }

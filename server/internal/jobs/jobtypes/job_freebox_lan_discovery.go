@@ -5,10 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net"
-
-	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	disc "github.com/fclairamb/solidping/server/internal/discovery"
@@ -55,10 +52,10 @@ type FreeboxLanDiscoveryJobRun struct {
 
 // Run queries the paired Freebox channel's LAN browser, then actively probes
 // each reported host through the same scanner engine the CIDR scan uses, so
-// Freebox-discovered hosts get identical-quality icmpReachable / open_ports /
-// suggested_checks. The Freebox-provided device name is preserved over reverse
-// DNS, and any host the active scan finds unresponsive still falls back to the
-// router's reachability flag so no known device is dropped.
+// Freebox-discovered hosts get identical-quality suggested checks. The
+// Freebox-provided device name is preserved over reverse DNS, and any host the
+// active scan finds unresponsive still falls back to the router's reachability
+// flag (an ICMP suggestion when reachable) so no known device is dropped.
 func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobContext) error {
 	log := jctx.Logger
 
@@ -100,106 +97,45 @@ func (r *FreeboxLanDiscoveryJobRun) Run(ctx context.Context, jctx *jobdef.JobCon
 		return fmt.Errorf("scan freebox hosts: %w", err)
 	}
 
+	rows := buildFreeboxRows(lanHosts, scanned)
+
 	log.InfoContext(ctx, "Freebox LAN discovery complete",
 		"host_count", len(lanHosts),
 		"responsive_count", len(scanned),
+		"check_count", len(rows),
 		"org_uid", orgUID,
 		"job_uid", jobUID,
 	)
 
-	return r.persistHosts(ctx, jctx.DB, orgUID, jobUID, lanHosts, scanned, log)
+	return disc.UpsertDiscoveredChecks(ctx, jctx.DB, orgUID, jobUID, models.DiscoverySourceFreebox, rows, log)
 }
 
-// persistHosts upserts the Freebox-discovered hosts into discovered_hosts,
-// merging the active-scan results into each Freebox host. A host the scanner
-// found responsive gets real open_ports / suggested_checks and the scan's
-// (hint-preserved) hostname and ICMP reachability; a host the scan did not see
-// falls back to the Freebox name + reachability flag with empty ports/checks so
-// it is never dropped. Mirrors NetworkDiscoveryJobRun.persistHosts: per-host
-// failures are logged and skipped rather than aborting the whole run.
-func (r *FreeboxLanDiscoveryJobRun) persistHosts(
-	ctx context.Context,
-	db *bun.DB,
-	orgUID, jobUID string,
-	lanHosts []freebox.LanHost,
-	scanned []disc.DiscoveredHost,
-	log *slog.Logger,
-) error {
+// buildFreeboxRows turns each Freebox device into suggested-check rows. A host
+// the scanner found responsive contributes the scan's grouped suggested checks
+// (which already preserve the Freebox name as the group label); a host the scan
+// did not see falls back to the Freebox name + reachability flag — an ICMP
+// suggestion when reachable, or nothing — so it is never silently dropped.
+func buildFreeboxRows(lanHosts []freebox.LanHost, scanned []disc.DiscoveredHost) []disc.SuggestedCheck {
 	byIP := make(map[string]*disc.DiscoveredHost, len(scanned))
 	for i := range scanned {
 		byIP[scanned[i].IP] = &scanned[i]
 	}
 
+	rows := make([]disc.SuggestedCheck, 0, len(lanHosts))
+
 	for idx := range lanHosts {
 		lan := &lanHosts[idx]
 
-		host, err := buildFreeboxHost(orgUID, jobUID, lan, byIP[lan.IP])
-		if err != nil {
-			log.WarnContext(ctx, "failed to build freebox discovered host",
-				"ip", lan.IP, "error", err)
+		if scan := byIP[lan.IP]; scan != nil {
+			rows = append(rows, scan.SuggestedChecks...)
 
 			continue
 		}
 
-		_, err = db.NewInsert().
-			Model(host).
-			On("CONFLICT (organization_uid, ip, source) WHERE deleted_at IS NULL AND promoted_to_check_uid IS NULL DO UPDATE").
-			Set("job_uid = EXCLUDED.job_uid").
-			Set("hostname = EXCLUDED.hostname").
-			Set("open_ports = EXCLUDED.open_ports").
-			Set("icmp_reachable = EXCLUDED.icmp_reachable").
-			Set("suggested_checks = EXCLUDED.suggested_checks").
-			Set("discovered_at = EXCLUDED.discovered_at").
-			Exec(ctx)
-		if err != nil {
-			log.WarnContext(ctx, "failed to upsert freebox discovered host",
-				"ip", lan.IP, "error", err)
-			// Continue with other hosts; don't abort the whole run.
-		}
+		// Fallback for an unscannable host: an ICMP suggestion when the Freebox
+		// reports it reachable. SuggestChecks returns no rows when not reachable.
+		rows = append(rows, disc.SuggestChecks(lan.IP, lan.Name, lan.Reachable, nil)...)
 	}
 
-	return nil
-}
-
-// buildFreeboxHost assembles a DiscoveredHost row for one Freebox device,
-// merging the active-scan result when present. When scan is nil (host did not
-// respond to the active probe), it falls back to the Freebox-reported name and
-// reachability with empty ports/checks.
-func buildFreeboxHost(
-	orgUID, jobUID string,
-	lan *freebox.LanHost,
-	scan *disc.DiscoveredHost,
-) (*models.DiscoveredHost, error) {
-	host := models.NewDiscoveredHost(orgUID, jobUID, lan.IP, models.DiscoverySourceFreebox)
-	host.Hostname = lan.Name
-	host.ICMPReachable = lan.Reachable
-
-	if scan == nil {
-		// open_ports / suggested_checks keep the "[]" defaults set by
-		// NewDiscoveredHost.
-		return host, nil
-	}
-
-	// HostnameHint preservation means scan.Hostname is already the Freebox name
-	// when one was provided; fall back to it only if it is non-empty.
-	if scan.Hostname != "" {
-		host.Hostname = scan.Hostname
-	}
-
-	host.ICMPReachable = scan.ICMPReachable
-
-	openPortsJSON, err := json.Marshal(scan.OpenPorts)
-	if err != nil {
-		return nil, fmt.Errorf("marshal open_ports for %s: %w", lan.IP, err)
-	}
-
-	suggestedJSON, err := json.Marshal(scan.SuggestedChecks)
-	if err != nil {
-		return nil, fmt.Errorf("marshal suggested_checks for %s: %w", lan.IP, err)
-	}
-
-	host.OpenPorts = openPortsJSON
-	host.SuggestedChecks = suggestedJSON
-
-	return host, nil
+	return rows
 }

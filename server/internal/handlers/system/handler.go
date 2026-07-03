@@ -13,6 +13,10 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jmap"
 )
 
+// paramValueField is the field name reported in a validation error for the
+// request body's "value" field.
+const paramValueField = "value"
+
 // Handler provides HTTP handlers for system parameter endpoints.
 type Handler struct {
 	base.HandlerBase
@@ -125,6 +129,10 @@ func (h *Handler) handleError(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrParameterNotFound):
 		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound, "Parameter not found")
+	case errors.Is(err, ErrInvalidParameter):
+		return h.WriteValidationError(writer, err.Error(), []base.ValidationErrorField{
+			{Name: paramValueField, Message: err.Error()},
+		})
 	default:
 		return h.WriteInternalError(writer, err)
 	}
@@ -277,4 +285,17 @@ func (h *Handler) handleEmailInboxError(writer http.ResponseWriter, err error) e
 		return h.WriteError(writer, http.StatusBadRequest,
 			base.ErrorCodeEmailInboxTestFailed, err.Error())
 	}
+}
+
+// LaneLoad handles GET /api/v1/system/scheduling/lane-load. Super-admin only.
+// Returns each worker's offered check load per lane (job counts, summed
+// cost/delay EWMAs, summed duty cycle) so overload is visible server-side
+// instead of being re-derived client-side from raw rows.
+func (h *Handler) LaneLoad(writer http.ResponseWriter, req bunrouter.Request) error {
+	report, err := h.svc.LaneLoad(req.Context())
+	if err != nil {
+		return h.handleError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, map[string]any{"data": report})
 }

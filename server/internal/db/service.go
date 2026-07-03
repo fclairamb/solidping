@@ -99,18 +99,21 @@ type Service interface {
 	ListUserTokens(ctx context.Context, userUID string) ([]*models.UserToken, error)
 	ListUserTokensByType(ctx context.Context, userUID string, tokenType models.TokenType) ([]*models.UserToken, error)
 	UpdateUserToken(ctx context.Context, uid string, update models.UserTokenUpdate) error
-	DeleteUserToken(ctx context.Context, uid string) error
+	// DeleteUserToken soft-deletes a token, returning whether a live row
+	// existed to delete (compare-and-set on deleted_at IS NULL). Callers
+	// relying on single-use rotation semantics (the OAuth refresh-grant
+	// exchange) use the bool to detect a replay racing a concurrent
+	// redemption; plain revocation callers may ignore it.
+	DeleteUserToken(ctx context.Context, uid string) (bool, error)
 
-	// OAuth (MCP authorization server) operations
+	// OAuth (MCP authorization server) operations. Only the client registry
+	// has dedicated storage: authorization codes are issued/redeemed through
+	// the generic State Storage operations below (state_entries, keyed by
+	// oauth.authCodeKeyPrefix + a random suffix, scoped to the granting org),
+	// and refresh grants are UserToken rows with type oauth_refresh managed
+	// via the UserToken operations above.
 	CreateOAuthClient(ctx context.Context, client *models.OAuthClient) error
 	GetOAuthClientByClientID(ctx context.Context, clientID string) (*models.OAuthClient, error)
-	CreateOAuthAuthCode(ctx context.Context, code *models.OAuthAuthCode) error
-	GetOAuthAuthCode(ctx context.Context, code string) (*models.OAuthAuthCode, error)
-	ConsumeOAuthAuthCode(ctx context.Context, code string, now time.Time) (bool, error)
-	CreateOAuthRefreshToken(ctx context.Context, token *models.OAuthRefreshToken) error
-	GetOAuthRefreshToken(ctx context.Context, token string) (*models.OAuthRefreshToken, error)
-	RevokeOAuthRefreshToken(ctx context.Context, token string, now time.Time) (bool, error)
-	RevokeOAuthRefreshTokensForUser(ctx context.Context, userUID string, now time.Time) error
 
 	// UserPasskey operations
 	CreateUserPasskey(ctx context.Context, passkey *models.UserPasskey) error
@@ -257,6 +260,16 @@ type Service interface {
 		clocks models.IncidentClockUpdate,
 	) error
 
+	// UpdateCheckFlapState persists the rolling flap counter and the
+	// last-outage timestamp on a check. Called only on the rare incident
+	// open/reopen (never on the per-result hot path) — spec 2026-06-30-07.
+	UpdateCheckFlapState(
+		ctx context.Context,
+		checkUID string,
+		flapCount int,
+		lastOutageAt time.Time,
+	) error
+
 	// Event operations
 	CreateEvent(ctx context.Context, event *models.Event) error
 	ListEvents(ctx context.Context, filter *models.ListEventsFilter) ([]*models.Event, error)
@@ -300,8 +313,12 @@ type Service interface {
 	// SetStateEntry creates or updates a state entry. TTL is optional (nil = never expires).
 	// orgUID can be nil for global entries.
 	SetStateEntry(ctx context.Context, orgUID *string, key string, value *models.JSONMap, ttl *time.Duration) error
-	// DeleteStateEntry soft-deletes a state entry.
-	DeleteStateEntry(ctx context.Context, orgUID *string, key string) error
+	// DeleteStateEntry soft-deletes a state entry, returning whether a live
+	// (not already deleted, not expired-out) row existed to delete. This is an
+	// atomic compare-and-set: callers relying on single-use semantics (e.g. the
+	// OAuth authorization-code consume step) use the returned bool to detect a
+	// replay racing a concurrent redemption.
+	DeleteStateEntry(ctx context.Context, orgUID *string, key string) (bool, error)
 	// ListStateEntries returns all entries matching the key prefix (using SQL LIKE).
 	ListStateEntries(ctx context.Context, orgUID *string, keyPrefix string) ([]*models.StateEntry, error)
 	// GetOrCreateStateEntry returns existing entry or creates new one.

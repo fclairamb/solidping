@@ -43,8 +43,8 @@ func newValidatingSetup(t *testing.T, confirmationSeconds int) *validatingSetup 
 	r.NoError(dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })
 
-	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier())
-	svc := incidents.NewService(dbSvc, jobs, clock.Real{})
+	jobs := jobsvc.NewService(dbSvc.DB(), dbSvc, notifier.NewLocalEventNotifier(), nil)
+	svc := incidents.NewService(dbSvc, jobs, clock.Real{}, nil)
 
 	org := models.NewOrganization("validating-test", "Validating Test")
 	r.NoError(dbSvc.CreateOrganization(ctx, org))

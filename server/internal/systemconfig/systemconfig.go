@@ -48,6 +48,7 @@ const (
 	KeyGitLabClientSecret       ParameterKey = "auth.gitlab.client_secret"
 	KeyMicrosoftClientID        ParameterKey = "auth.microsoft.client_id"
 	KeyMicrosoftClientSecret    ParameterKey = "auth.microsoft.client_secret"
+	KeyMicrosoftTenantID        ParameterKey = "auth.microsoft.tenant_id"
 	KeySlackAppID               ParameterKey = "auth.slack.app_id"
 	KeySlackClientID            ParameterKey = "auth.slack.client_id"
 	KeySlackClientSecret        ParameterKey = "auth.slack.client_secret"
@@ -67,6 +68,26 @@ const (
 	KeyAggregationRetentionRaw  ParameterKey = "aggregation.retention_raw"
 	KeyAggregationRetentionHour ParameterKey = "aggregation.retention_hour"
 	KeyAggregationRetentionDay  ParameterKey = "aggregation.retention_day"
+
+	// Password-hashing policy keys. These mutate cfg.Auth.Password.* and take
+	// effect after a restart, when the policy is re-resolved from the overlaid
+	// config (see app.Server.InitializeSystemConfig). Numeric values arrive as
+	// float64 from encoding/json; ApplyFunc coerces them.
+	KeyPasswordAlgorithm     ParameterKey = "auth.password.algorithm"
+	KeyPasswordArgon2Memory  ParameterKey = "auth.password.argon2.memory"
+	KeyPasswordArgon2Time    ParameterKey = "auth.password.argon2.time"
+	KeyPasswordArgon2Threads ParameterKey = "auth.password.argon2.threads"
+	KeyPasswordArgon2KeyLen  ParameterKey = "auth.password.argon2.key_length"
+	KeyPasswordArgon2SaltLen ParameterKey = "auth.password.argon2.salt_length"
+	KeyPasswordBcryptCost    ParameterKey = "auth.password.bcrypt.cost"
+	KeyPasswordRehashOnLogin ParameterKey = "auth.password.rehash_on_login"
+
+	// KeySchedulingFastLaneReserved is the fast-lane floor of the check
+	// scheduler's lane reservation (spec 2026-07-01-03 D3): slow-lane checks
+	// may never occupy more than pool_size − this many runner slots, so a
+	// burst of slow probes cannot starve due fast checks. Applied at startup
+	// like the worker pool sizes (the worker clamps it to [0, pool_size−1]).
+	KeySchedulingFastLaneReserved ParameterKey = "scheduling.fast_lane_reserved"
 )
 
 // ParameterDefinition defines a system parameter with its env var mapping.
@@ -113,6 +134,21 @@ func getKnownParameters() []ParameterDefinition {
 					cfg.Server.CheckWorker.Nb = int(v)
 				} else if v, ok := value.(int); ok {
 					cfg.Server.CheckWorker.Nb = v
+				}
+			},
+		},
+		{
+			Key:    KeySchedulingFastLaneReserved,
+			EnvVar: "SP_SCHEDULING_FAST_LANE_RESERVED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Numeric parameters arrive as float64 from encoding/json.
+				// 0 is a valid value (no reserved fast floor); negatives are
+				// left to the worker's [0, pool_size−1] clamp.
+				if v, ok := value.(float64); ok {
+					cfg.Server.Scheduling.FastLaneReserved = int(v)
+				} else if v, ok := value.(int); ok {
+					cfg.Server.Scheduling.FastLaneReserved = v
 				}
 			},
 		},
@@ -343,6 +379,22 @@ func getKnownParameters() []ParameterDefinition {
 			},
 		},
 		{
+			// Tenant ID is part of the public Microsoft authorize/token URL, not a
+			// credential -> Secret:false so it round-trips through GET /system/parameters
+			// as plain text. Empty means the "common" multi-tenant default, which the
+			// URL builders substitute (handlers/auth/microsoft.go, microsoft_service.go).
+			// Trim surrounding whitespace so a stray space in a pasted GUID can't
+			// silently corrupt the endpoint URL.
+			Key:    KeyMicrosoftTenantID,
+			EnvVar: "SP_MICROSOFT_TENANT_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.Microsoft.TenantID = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
 			Key:    KeySlackAppID,
 			EnvVar: "SP_SLACK_APP_ID",
 			Secret: false,
@@ -518,6 +570,84 @@ func getKnownParameters() []ParameterDefinition {
 				}
 			},
 		},
+		{
+			Key:    KeyPasswordAlgorithm,
+			EnvVar: "SP_AUTH_PASSWORD_ALGORITHM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok && v != "" {
+					cfg.Auth.Password.Algorithm = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2Memory,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_MEMORY",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseUint32(value); ok {
+					cfg.Auth.Password.Argon2.Memory = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2Time,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_TIME",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseUint32(value); ok {
+					cfg.Auth.Password.Argon2.Time = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2Threads,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_THREADS",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseUint8(value); ok {
+					cfg.Auth.Password.Argon2.Threads = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2KeyLen,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_KEY_LENGTH",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseUint32(value); ok {
+					cfg.Auth.Password.Argon2.KeyLength = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordArgon2SaltLen,
+			EnvVar: "SP_AUTH_PASSWORD_ARGON2_SALT_LENGTH",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseUint32(value); ok {
+					cfg.Auth.Password.Argon2.SaltLength = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordBcryptCost,
+			EnvVar: "SP_AUTH_PASSWORD_BCRYPT_COST",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := parseInt(value); ok {
+					cfg.Auth.Password.Bcrypt.Cost = v
+				}
+			},
+		},
+		{
+			Key:    KeyPasswordRehashOnLogin,
+			EnvVar: "SP_AUTH_PASSWORD_REHASH_ON_LOGIN",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.Auth.Password.RehashOnLogin = parseBool(value, cfg.Auth.Password.RehashOnLogin)
+			},
+		},
 	}
 }
 
@@ -537,6 +667,30 @@ func parseInt(value any) (int, bool) {
 	}
 
 	return 0, false
+}
+
+// parseUint32 coerces a config value to uint32 for the argon2 cost parameters.
+// Accepts native int / float64 / numeric string. Negative or out-of-range values
+// are rejected (ok=false) so the caller keeps its default. Write-time validation
+// already enforces the real bounds; this only guards the coercion.
+func parseUint32(value any) (uint32, bool) {
+	n, ok := parseInt(value)
+	if !ok || n < 0 || int64(n) > int64(^uint32(0)) {
+		return 0, false
+	}
+
+	return uint32(n), true
+}
+
+// parseUint8 coerces a config value to uint8 for argon2 threads. Accepts native
+// int / float64 / numeric string in [0,255]; rejects anything else.
+func parseUint8(value any) (uint8, bool) {
+	n, ok := parseInt(value)
+	if !ok || n < 0 || n > 255 {
+		return 0, false
+	}
+
+	return uint8(n), true
 }
 
 const (
@@ -599,7 +753,17 @@ func (s *Service) Initialize(ctx context.Context) error {
 
 	knownParameters := getKnownParameters()
 
-	// Apply parameters with precedence: env > db > defaults
+	// Apply parameters with precedence: env > db > defaults.
+	//
+	// This is the AUTHORITATIVE overlay for every system parameter, including the
+	// auth.password.* keys. For those keys it intentionally overlaps the early
+	// env-only bootstrap in config.applyPasswordHashingEnv (see that function's
+	// doc comment): config.Load applies env before the DB is up so an env-only
+	// deployment still hashes correctly at boot, while this overlay is the only
+	// place a DB-stored auth.password.* value can win. Env stays highest in both
+	// paths, so the overlap is idempotent for env and additive for DB. After this
+	// loop mutates cfg.Auth.Password.*, the caller (app.InitializeSystemConfig)
+	// re-resolves and re-installs the hashing policy from the overlaid config.
 	for i := range knownParameters {
 		def := &knownParameters[i]
 		// Check environment variable first (highest priority)

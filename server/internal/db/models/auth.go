@@ -199,9 +199,16 @@ const (
 	TokenTypePAT TokenType = "pat"
 	// TokenTypeRefresh represents a refresh token for session management.
 	TokenTypeRefresh TokenType = "refresh"
+	// TokenTypeOAuthRefresh represents a rotating OAuth 2.1 refresh grant for
+	// the MCP resource (spec 2026-06-20-03). The grant's client_id, scope, and
+	// resource bindings ride in Properties; revocation is the row's soft
+	// delete. Each redemption endpoint validates its own type, so the three
+	// types can never be exchanged for one another.
+	TokenTypeOAuthRefresh TokenType = "oauth_refresh"
 )
 
-// UserToken represents an authentication token (PAT or refresh token).
+// UserToken represents an authentication token (PAT, session refresh token,
+// or OAuth refresh grant).
 type UserToken struct {
 	UID             string     `bun:"uid,pk,type:varchar(36)"`
 	UserUID         string     `bun:"user_uid,notnull"`

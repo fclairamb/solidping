@@ -29,6 +29,39 @@ type CheckJob struct {
 	LeaseStarts       int                `bun:"lease_starts,notnull,default:0"`
 	UpdatedAt         time.Time          `bun:"updated_at,notnull,default:current_timestamp"`
 
+	// Cost-aware, plan-weighted scheduling (spec 2026-06-30-09).
+	//
+	// CostEWMAMs is an exponentially-weighted moving average of execution
+	// duration in milliseconds, updated in the post-exec write (ReleaseLease).
+	// Timeouts pin it to the ceiling. Drives slow-lane classification and the
+	// cost-aware execution timeout. 0 until the job's first run.
+	CostEWMAMs float64 `bun:"cost_ewma_ms,notnull,default:0"`
+	// DelayEWMAMs is an EWMA of how late the job actually started relative to
+	// its real scheduled_at (probe start − scheduled_at, floored at 0), updated
+	// in the post-exec write. Pure telemetry (spec 2026-07-01-02): it feeds the
+	// cost-distribution endpoint and the lane-split go/no-go but never the claim
+	// order — delay is a victim signal, and folding it into the offset punished
+	// starved checks and spiraled unboundedly under overload. 0 until the job's
+	// first run. Added by migration 007.
+	DelayEWMAMs float64 `bun:"delay_ewma_ms,notnull,default:0"`
+	// PlanWeight is the denormalized plan tier copied from org_entitlements
+	// (0 = free; higher = more protected). Reserved capacity + deadline credit
+	// for paid orgs. Refreshed on entitlement change and reconcile.
+	PlanWeight int `bun:"plan_weight,notnull,default:0"`
+	// EffectiveScheduledAt is scheduled_at + cost_ewma×CostOffsetWeight −
+	// tier_credit, with the offset clamped to MaxDeprioritizeOffset (60s). The
+	// claim SELECT gates on scheduled_at but orders by this column, so
+	// de-prioritization only bites under contention (D2/Option A). Backfilled to
+	// scheduled_at by migration 006; delay-era offsets healed by migration 008.
+	EffectiveScheduledAt *time.Time `bun:"effective_scheduled_at"`
+	// Lane is the scheduling class (spec 2026-07-01-03): 0 = fast, 1 = slow
+	// (scheduling.LaneFast / LaneSlow). Classified from the cost EWMA with
+	// hysteresis in the post-exec write; new rows start fast (first run is
+	// FIFO; one execution reclassifies). The claim runs two lane-filtered
+	// SELECTs so slow jobs can never occupy more than pool_size −
+	// fast_lane_reserved slots on a worker. Added by migration 009.
+	Lane uint8 `bun:"lane,notnull,default:0"`
+
 	// Check is the check this job executes, populated at claim time by
 	// ClaimJobs / ClaimJobsForCheck so the incident hot path can skip a
 	// per-result GetCheck round-trip. Transient: never persisted (bun:"-").
@@ -47,7 +80,13 @@ func NewCheckJob(orgUID string, checkUID string, period timeutils.Duration) *Che
 		Period:          period,
 		Config:          make(JSONMap),
 		ScheduledAt:     &now,
-		UpdatedAt:       now,
+		// Anchor the WFQ ordering key to scheduled_at on creation; the
+		// post-exec write refines it once a cost signal exists.
+		EffectiveScheduledAt: &now,
+		// New jobs start in the fast lane (Lane zero value = 0): the first run
+		// is FIFO and the post-exec write reclassifies from the measured cost.
+		Lane:      0,
+		UpdatedAt: now,
 	}
 }
 

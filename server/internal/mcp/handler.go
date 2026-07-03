@@ -28,6 +28,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
 	"github.com/fclairamb/solidping/server/internal/middleware"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/realtime"
 	"github.com/fclairamb/solidping/server/internal/utils/clock"
 )
 
@@ -94,7 +95,8 @@ type Handler struct {
 
 type toolFunc func(ctx context.Context, orgSlug string, args map[string]any) ToolCallResult
 
-// NewHandler creates a new MCP handler.
+// NewHandler creates a new MCP handler. rt may be nil (realtime disabled) —
+// hint publishing is a nil-safe no-op then.
 func NewHandler(
 	dbService db.Service,
 	eventNotifier notifier.EventNotifier,
@@ -102,12 +104,13 @@ func NewHandler(
 	checkTypesSvc *checktypes.Service,
 	creds credentials.Service,
 	entSvc *entcore.Service,
+	rtPub *realtime.Publisher,
 ) *Handler {
 	handler := &Handler{
 		checksSvc:      checks.NewService(dbService, eventNotifier, creds, entSvc),
 		checkTypesSvc:  checkTypesSvc,
 		resultsSvc:     results.NewService(dbService),
-		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}),
+		incidentsSvc:   incidents.NewService(dbService, jobSvc, clock.Real{}, rtPub),
 		eventsSvc:      events.NewService(dbService),
 		statusPagesSvc: statuspages.NewService(dbService),
 		maintenanceSvc: maintenancewindows.NewService(dbService),

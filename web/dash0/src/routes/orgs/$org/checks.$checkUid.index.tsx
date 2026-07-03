@@ -3,6 +3,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
 import type { IncidentDetail } from "@/api/hooks";
 import {
+  AlertTriangle,
   ArrowLeft,
   BadgeCheck,
   Check as CheckIcon,
@@ -27,6 +28,12 @@ import {
   useRegions,
 } from "@/api/hooks";
 import { useEmailAddressDomain, emailCheckAddress } from "@/api/email-inbox";
+import {
+  stretchWhileLive,
+  useLiveSubscription,
+  useScopeLive,
+} from "@/contexts/LiveEventsContext";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -56,6 +63,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-dot";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
@@ -278,7 +286,6 @@ function CheckDetailPage() {
   const [editingSlug, setEditingSlug] = useState(false);
   const [slugValue, setSlugValue] = useState("");
   const slugInputRef = useRef<HTMLInputElement>(null);
-  const chartRef = useRef<HTMLDivElement>(null);
 
   const {
     data: check,
@@ -293,10 +300,20 @@ function CheckDetailPage() {
     [check?.period]
   );
 
+  // Watch this check (status/results) and the org's incidents collection —
+  // an open/resolved incident for this check must reflect live too.
+  useLiveSubscription({ entity: "check", uid: checkUid });
+  useLiveSubscription({ entity: "incidents" });
+  const checkLive = useScopeLive({ entity: "check", uid: checkUid });
+
   // While the very first result is still the "created" placeholder, poll
   // fast enough that a freshly-created check shows its first real status
   // without making the user wait for a full check period. Cap the fast
   // phase so a stuck worker can't trigger runaway polling at 1.5 s.
+  // When this check's live subscription is acked, the first result arrives
+  // as a hint-driven invalidation, so the hot poll is skipped entirely and
+  // the regular interval stretches to the lazy safety net.
+  const isLive = checkLive;
   const fastPollMs = 1500;
   const fastPollWindowMs = 30_000;
   const isPendingFirstRun = check?.lastResult?.status === "created";
@@ -306,8 +323,11 @@ function CheckDetailPage() {
     return () => clearTimeout(id);
   }, []);
 
-  const refetchInterval =
-    isPendingFirstRun && withinFastWindow ? fastPollMs : periodMs;
+  const refetchInterval = isLive
+    ? stretchWhileLive(periodMs ?? 0, isLive)
+    : isPendingFirstRun && withinFastWindow
+      ? fastPollMs
+      : periodMs;
 
   // Re-fetch check (with lastResult) at the same interval
   useCheck(org, checkUid, {
@@ -437,20 +457,17 @@ function CheckDetailPage() {
   }
 
   const headerStatus = check.status ?? check.lastResult?.status;
-  const statusColor =
-    headerStatus === "up"
-      ? "bg-green-500"
-      : headerStatus === "down" || headerStatus === "error"
-        ? "bg-red-500"
-        : headerStatus === "validating" || headerStatus === "timeout"
-          ? "bg-yellow-500"
-          : "bg-muted-foreground";
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-3" data-testid="check-detail-header">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <div className={`h-3 w-3 shrink-0 rounded-full ${statusColor}`} />
+          <StatusDot
+            status={headerStatus}
+            enabled={check.enabled}
+            className="h-3 w-3"
+            title={check.enabled === false ? t("checks:detail.disabled") : undefined}
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
               <h1 className="truncate text-2xl font-bold tracking-tight sm:text-3xl">
@@ -666,6 +683,26 @@ function CheckDetailPage() {
         </div>
       </div>
 
+      {/* Duty-cycle warning (spec 2026-07-01-04 D3): the check's execution
+          cost eats >= 50% of a runner slot — nudge toward a longer period. */}
+      {check.scheduling && check.scheduling.dutyCyclePct >= 50 && (
+        <Alert variant="warning" data-testid="duty-cycle-warning">
+          <AlertTriangle />
+          <AlertTitle>
+            {t("checks:detail.dutyCycle.title", {
+              duty: check.scheduling.dutyCyclePct,
+            })}
+          </AlertTitle>
+          <AlertDescription>
+            {t("checks:detail.dutyCycle.description", {
+              cost: formatDuration(check.scheduling.costEwmaMs),
+              period: periodMs ? formatDuration(periodMs) : (check.period ?? ""),
+              duty: check.scheduling.dutyCyclePct,
+            })}
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Summary cards */}
       <CheckSummaryCards
         check={check}
@@ -673,47 +710,29 @@ function CheckDetailPage() {
       />
 
       {/* Response time chart */}
-      <div ref={chartRef}>
-        <ResponseTimeChart
-          org={org}
-          checkUid={checkUid}
-          periodMs={periodMs}
-          initialPeriod={graphPeriod}
-          initialFullRange={graphFull}
-          onSettingsChange={(period, full) =>
-            navigate({
-              to: ".",
-              search: {
-                graphPeriod: period !== "day" ? period : undefined,
-                graphFull: full ? true : undefined,
-              },
-              replace: true,
-            })
-          }
-        />
-      </div>
+      <ResponseTimeChart
+        org={org}
+        checkUid={checkUid}
+        periodMs={periodMs}
+        initialPeriod={graphPeriod}
+        initialFullRange={graphFull}
+        onSettingsChange={(period, full) =>
+          navigate({
+            to: ".",
+            search: {
+              graphPeriod: period !== "day" ? period : undefined,
+              graphFull: full ? true : undefined,
+            },
+            replace: true,
+          })
+        }
+      />
 
       {/* Availability table */}
       <AvailabilityTable
         org={org}
         checkUid={checkUid}
         refetchInterval={refetchInterval}
-        onPeriodSelect={(period) => {
-          navigate({
-            to: ".",
-            search: {
-              graphPeriod: period === "day" ? undefined : period,
-              graphFull: undefined,
-            },
-            replace: true,
-          });
-          requestAnimationFrame(() => {
-            chartRef.current?.scrollIntoView({
-              behavior: "smooth",
-              block: "start",
-            });
-          });
-        }}
       />
 
       <div className="grid gap-6 md:grid-cols-2">
@@ -981,12 +1000,24 @@ function CheckDetailPage() {
                   <TableHead>{t("checks:detail.incidents.started")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.state")}</TableHead>
                   <TableHead>{t("checks:detail.incidents.duration")}</TableHead>
-                  <TableHead></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {incidents.data.map((incident) => (
-                  <TableRow key={incident.uid}>
+                  <TableRow
+                    key={incident.uid}
+                    className={
+                      incident.uid ? "cursor-pointer hover:bg-muted/50" : ""
+                    }
+                    data-testid={`incident-row-${incident.uid}`}
+                    onClick={() => {
+                      if (!incident.uid) return;
+                      navigate({
+                        to: "/orgs/$org/incidents/$incidentUid",
+                        params: { org, incidentUid: incident.uid },
+                      });
+                    }}
+                  >
                     <TableCell className="text-sm">
                       {incident.startedAt
                         ? formatResultTime(incident.startedAt)
@@ -1012,16 +1043,6 @@ function CheckDetailPage() {
                     </TableCell>
                     <TableCell className="text-sm">
                       <IncidentDuration incident={incident} />
-                    </TableCell>
-                    <TableCell>
-                      <Link
-                        to="/orgs/$org/incidents/$incidentUid"
-                        params={{ org, incidentUid: incident.uid! }}
-                      >
-                        <Button variant="ghost" size="sm">
-                          {t("checks:detail.viewButton")}
-                        </Button>
-                      </Link>
                     </TableCell>
                   </TableRow>
                 ))}

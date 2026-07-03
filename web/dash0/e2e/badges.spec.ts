@@ -33,6 +33,21 @@ async function createCheck(
   return resp.json();
 }
 
+// Create `count` extra checks so they sort AHEAD of an already-created target
+// check. The list endpoint orders by created_at DESC, so checks created later
+// appear earlier; creating >20 newer checks pushes an earlier check past the
+// first page (limit=20) of GET /checks.
+async function createExtraChecks(
+  page: Page,
+  token: string,
+  prefix: string,
+  count: number
+): Promise<void> {
+  for (let i = 0; i < count; i++) {
+    await createCheck(page, token, `${prefix} filler ${i}`);
+  }
+}
+
 test.describe("Badges", () => {
   test.describe.configure({ mode: "serial" });
 
@@ -540,5 +555,91 @@ test.describe("Badges", () => {
     await page.getByTestId("badge-download-svg").click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toContain(".svg");
+  });
+
+  test("deep-link by slug resolves a check beyond the first list page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    // Create the target FIRST, then 25 newer checks so the target sorts past
+    // index 20 (created_at DESC) and is absent from the first list page (20).
+    const targetName = `Badge OOP Slug ${Date.now()}`;
+    const target = await createCheck(page, token, targetName);
+    await createExtraChecks(page, token, `OOP Slug ${Date.now()}`, 25);
+
+    // Deep-link by slug to the out-of-page check.
+    await page.goto(`/dash0/orgs/test/badges?check=${target.slug}`);
+    await page.waitForLoadState("networkidle");
+
+    // The preview + embed URL render — the "select a check" prompt is NOT shown.
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByTestId("badge-embed-url")).toBeVisible();
+    await expect(
+      page.getByText("Select a check to preview and generate badges")
+    ).not.toBeVisible();
+    await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
+
+    // The embed URL points at the target check's identifier.
+    const urlText = await page.getByTestId("badge-embed-url").textContent();
+    expect(urlText).toContain(`/checks/${target.slug}/badges/`);
+
+    // The dropdown trigger shows the deep-linked check's name (merge path:
+    // it isn't in the first list page but is merged into the options).
+    await expect(page.getByTestId("badge-check-select")).toContainText(
+      targetName,
+      { timeout: 5000 }
+    );
+  });
+
+  test("deep-link by uid resolves a check beyond the first list page", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const targetName = `Badge OOP Uid ${Date.now()}`;
+    const target = await createCheck(page, token, targetName);
+    await createExtraChecks(page, token, `OOP Uid ${Date.now()}`, 25);
+
+    // Deep-link by uid resolves identically to the slug case.
+    await page.goto(`/dash0/orgs/test/badges?check=${target.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("badge-preview-img")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(
+      page.getByText("Select a check to preview and generate badges")
+    ).not.toBeVisible();
+    await expect(page.getByTestId("badge-check-not-found")).toHaveCount(0);
+
+    // Dropdown trigger shows the resolved check's name.
+    await expect(page.getByTestId("badge-check-select")).toContainText(
+      targetName,
+      { timeout: 5000 }
+    );
+  });
+
+  test("unknown check param shows a not-found notice, not a blank pane", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto(`/dash0/orgs/test/badges?check=does-not-exist-${Date.now()}`);
+    await page.waitForLoadState("networkidle");
+
+    // The not-found alert is shown; no preview and no redirect away from /badges.
+    await expect(page.getByTestId("badge-check-not-found")).toBeVisible({
+      timeout: 10000,
+    });
+    await expect(page.getByTestId("badge-preview-img")).toHaveCount(0);
+    await expect(
+      page.getByText("Select a check to preview and generate badges")
+    ).not.toBeVisible();
+    expect(new URL(page.url()).pathname).toBe("/dash0/orgs/test/badges");
   });
 });

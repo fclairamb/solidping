@@ -105,7 +105,7 @@ func Validate(
 	// the delete error — even if it fails the entry's TTL will eventually
 	// expire it; the worst case is a brief replay window for a state we
 	// already validated.
-	_ = dbService.DeleteStateEntry(ctx, nil, storageKey)
+	_, _ = dbService.DeleteStateEntry(ctx, nil, storageKey)
 
 	if stateEntry.Value == nil {
 		return nil, ErrInvalidState

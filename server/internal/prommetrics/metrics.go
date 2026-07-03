@@ -19,6 +19,16 @@ const (
 	labelRoute        = "route"
 	labelOutcome      = "outcome"
 	labelJobType      = "job_type"
+	labelLane         = "lane"
+	labelMessageType  = "type"
+)
+
+// Lane label values for CheckLaneClaims (spec 2026-07-01-03).
+const (
+	// LaneLabelFast is the lane label for fast-lane (lane 0) claims.
+	LaneLabelFast = "fast"
+	// LaneLabelSlow is the lane label for slow-lane (lane 1) claims.
+	LaneLabelSlow = "slow"
 )
 
 //nolint:gochecknoglobals // Prometheus metrics are conventionally package-level vars
@@ -217,6 +227,20 @@ var (
 		[]string{labelOutcome},
 	)
 
+	// CheckLaneClaims counts claimed check jobs by lane (fast | slow), the
+	// per-lane companion to ClaimJobsResult (spec 2026-07-01-03 D6). A slow
+	// lane pinned at zero while slow work is due means the reservation budget
+	// is saturated (busySlow == pool − fast_lane_reserved) — the intended,
+	// contained failure mode where slow checks degrade to best-effort while
+	// fast checks stay on time.
+	CheckLaneClaims = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_check_lane_claims_total",
+			Help: "Check jobs claimed by the pool fetcher, by lane (fast, slow)",
+		},
+		[]string{labelLane},
+	)
+
 	// JobsProcessed counts background-jobs processed by the job worker,
 	// labeled by job_type and terminal outcome (success | retried | failed).
 	// job_type is bounded by the jobdef enum; never use job_uid, org, or error
@@ -288,6 +312,64 @@ var (
 		[]string{labelJobType},
 	)
 
+	// RealtimeConnections tracks currently open realtime hint WebSocket
+	// connections. Global gauge — no per-org label so cardinality stays bounded.
+	RealtimeConnections = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_realtime_connections",
+			Help: "Currently open realtime hint stream connections",
+		},
+	)
+
+	// RealtimeHintsPublished counts org hint events published to the notifier
+	// bus (after coalescing).
+	RealtimeHintsPublished = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_published_total",
+			Help: "Total org hint events published to the notifier bus",
+		},
+	)
+
+	// RealtimeHintsCoalesced counts hint publications absorbed by the
+	// leading-edge coalescer (merged into a pending per-org dirty set instead
+	// of producing an immediate bus publish).
+	RealtimeHintsCoalesced = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_coalesced_total",
+			Help: "Total hint publications merged by the coalescer instead of published immediately",
+		},
+	)
+
+	// RealtimeHintsDelivered counts hint deliveries to local stream
+	// subscribers (one increment per subscriber that received a hint).
+	RealtimeHintsDelivered = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_hints_delivered_total",
+			Help: "Total hint events delivered to local realtime stream subscribers",
+		},
+	)
+
+	// RealtimeSubscriptions tracks currently active per-connection scope
+	// subscriptions (sum across every open connection). Global gauge — no
+	// per-org label so cardinality stays bounded.
+	RealtimeSubscriptions = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_realtime_subscriptions",
+			Help: "Currently active realtime scope subscriptions across all connections",
+		},
+	)
+
+	// RealtimeMessagesReceived counts client->server WebSocket messages
+	// processed by the realtime handler, labeled by message type (auth,
+	// subscribe, unsubscribe, and unknown/malformed).
+	RealtimeMessagesReceived = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_realtime_messages_received_total",
+			Help: "Total client->server realtime WebSocket messages processed, by type",
+		},
+		[]string{labelMessageType},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -297,15 +379,22 @@ var (
 		HTTPRateLimited,
 		HTTPRequestDuration, HTTPRequestsTotal,
 		DBQueryDuration, DBBusyRetries,
-		CheckStageDuration, ClaimJobsResult,
+		CheckStageDuration, ClaimJobsResult, CheckLaneClaims,
 		JobsProcessed, JobDuration, JobSchedulingDelay, JobsQueueDepth,
 		JobsReaped, JobsLeaseLost,
+		RealtimeConnections, RealtimeHintsPublished,
+		RealtimeHintsCoalesced, RealtimeHintsDelivered,
+		RealtimeSubscriptions, RealtimeMessagesReceived,
 	}
 )
 
-// Register registers all SolidPing metrics with the given registerer.
+// Register registers all SolidPing metrics with the given registerer, plus the
+// Go runtime and process collectors (heap/RSS/goroutine/GC time series) that
+// memory leak detection depends on. Called for every node role so the API
+// server and worker expose the same /metrics surface.
 func Register(reg prometheus.Registerer) {
 	for _, c := range allCollectors {
 		reg.MustRegister(c)
 	}
+	registerRuntimeCollectors(reg)
 }

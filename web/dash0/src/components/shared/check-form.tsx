@@ -5,6 +5,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { javascript } from "@codemirror/lang-javascript";
 import { useCheckValidation, getFieldError } from "@/hooks/use-check-validation";
 import { cn } from "@/lib/utils";
+import { describePeriod, formatDuration } from "@/lib/period-estimate";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -52,7 +53,7 @@ import { FreeboxLanDiscovery } from "@/components/shared/freebox-lan-discovery";
 import type { FreeboxLanHost } from "@/api/hooks";
 import { X } from "lucide-react";
 
-type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip";
+type CheckType = "http" | "tcp" | "icmp" | "dns" | "ssl" | "heartbeat" | "email" | "domain" | "smtp" | "udp" | "ssh" | "pop3" | "imap" | "websocket" | "postgresql" | "mysql" | "redis" | "mongodb" | "ftp" | "sftp" | "js" | "mssql" | "oracle" | "grpc" | "kafka" | "mqtt" | "a2s" | "minecraft" | "rabbitmq" | "snmp" | "docker" | "browser" | "freebox_line" | "dnsbl" | "sip" | "ntp" | "sleep";
 
 // Fallback defaults when API data isn't available
 const defaultPeriodSeconds: Record<string, number> = {
@@ -61,9 +62,11 @@ const defaultPeriodSeconds: Record<string, number> = {
   dns: 300,
 };
 const globalDefaultPeriodSeconds = 60;
-const globalMinPeriodSeconds = 5;
+// Server-enforced global floor (spec 2026-07-01-04): heavy types carry their
+// own minPeriodSeconds via the check-types API (browser 60s, js 30s).
+const globalMinPeriodSeconds = 10;
 
-const checkTypes: { value: CheckType; label: string; description: string }[] = [
+const checkTypes: { value: CheckType; label: string; description: string; synthetic?: boolean }[] = [
   { value: "http", label: "HTTP", description: "Monitor HTTP/HTTPS endpoints" },
   { value: "tcp", label: "TCP", description: "Check TCP port connectivity" },
   { value: "icmp", label: "ICMP", description: "Ping hosts using ICMP" },
@@ -99,6 +102,8 @@ const checkTypes: { value: CheckType; label: string; description: string }[] = [
   { value: "freebox_line", label: "Freebox Line", description: "Monitor xDSL/FTTH line quality via Freebox OS" },
   { value: "dnsbl", label: "DNSBL", description: "Check if an IP/domain is on DNS blocklists" },
   { value: "sip", label: "SIP", description: "Check SIP server reachability and registration" },
+  { value: "ntp", label: "NTP", description: "Monitor NTP time servers" },
+  { value: "sleep", label: "Sleep", description: "Sleep for a fixed duration (synthetic/testing, no network I/O)", synthetic: true },
 ];
 
 // isPassiveType reports whether a check type uses the "expected interval"
@@ -214,7 +219,9 @@ export interface CheckFormData {
   config?: Record<string, unknown>;
   regions?: string[];
   reopenCooldownMultiplier?: number | null;
-  maxAdaptiveIncrease?: number | null;
+  flappingWindowSeconds?: number | null;
+  flapBackoffFactor?: number | null;
+  maxRecoveryMultiplier?: number | null;
   confirmationPeriodSeconds?: number;
   recoveryPeriodSeconds?: number;
   labels?: Record<string, string>;
@@ -507,6 +514,29 @@ export function CheckForm({
     getConfigField(initialData?.config, "serverName") ||
       getConfigField(initialData?.config, "server_name"),
   );
+  // ntp state — host/port reuse the shared inputs. Version (3/4) plus the
+  // optional SSL-style offset warn/critical (ms) and max-stratum thresholds.
+  const [ntpVersion, setNtpVersion] = useState(
+    String(getConfigField(initialData?.config, "version") || "4"),
+  );
+  const [ntpOffsetWarnMs, setNtpOffsetWarnMs] = useState(
+    getConfigField(initialData?.config, "offset_warn_ms"),
+  );
+  const [ntpOffsetCritMs, setNtpOffsetCritMs] = useState(
+    getConfigField(initialData?.config, "offset_crit_ms"),
+  );
+  const [ntpMaxStratum, setNtpMaxStratum] = useState(
+    getConfigField(initialData?.config, "max_stratum"),
+  );
+  // sleep state — synthetic/testing checker, no network I/O. sleepStatus
+  // mirrors the snmpOperator/sipMode pattern: state defaults to the backend's
+  // implicit default ("up") and is only added to the submitted config when it
+  // differs, rather than round-tripping an empty string through a Select.
+  const [sleepMs, setSleepMs] = useState(getConfigField(initialData?.config, "sleep_ms"));
+  const [jitterMs, setJitterMs] = useState(getConfigField(initialData?.config, "jitter_ms"));
+  const [sleepStatus, setSleepStatus] = useState(
+    getConfigField(initialData?.config, "status") || "up",
+  );
   // secretHeaders: array of {key, value} rows for the HTTP secret headers form section
   const [secretHeaders, setSecretHeaders] = useState<{ key: string; value: string }[]>(() => {
     const raw = initialData?.config?.secretHeaders;
@@ -517,7 +547,9 @@ export function CheckForm({
   });
   const [selectedRegions, setSelectedRegions] = useState<string[]>(initialData?.regions ?? defaultRegions ?? []);
   const [reopenCooldownMultiplier, setReopenCooldownMultiplier] = useState(initialData?.reopenCooldownMultiplier?.toString() ?? "");
-  const [maxAdaptiveIncrease, setMaxAdaptiveIncrease] = useState(initialData?.maxAdaptiveIncrease?.toString() ?? "");
+  const [flappingWindowSeconds, setFlappingWindowSeconds] = useState(initialData?.flappingWindowSeconds?.toString() ?? "");
+  const [flapBackoffFactor, setFlapBackoffFactor] = useState(initialData?.flapBackoffFactor?.toString() ?? "");
+  const [maxRecoveryMultiplier, setMaxRecoveryMultiplier] = useState(initialData?.maxRecoveryMultiplier?.toString() ?? "");
   const [confirmationPeriodSeconds, setConfirmationPeriodSeconds] = useState(
     initialData?.confirmationPeriodSeconds?.toString() ?? "",
   );
@@ -562,6 +594,12 @@ export function CheckForm({
     return buildIntervalOptions(minSec, maxSec);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type, checkTypeInfoMap]);
+
+  // Live polling interval (seconds) used by the Confirmation / Recovery estimate
+  // lines. Active checks have a real cadence (the selected HMS interval); passive
+  // checks (heartbeat / email) have no real probe cadence, so we pass 0 and the
+  // estimate shows the duration only — never a probe count.
+  const estimateIntervalSeconds = isPassiveType(type) ? 0 : hmsToSeconds(period);
 
   // Apply sample config to form
   function applySample(sample: SampleConfig) {
@@ -620,6 +658,9 @@ export function CheckForm({
     setSipTransport(getConfigField(cfg, "transport") || "udp");
     setSipMode(getConfigField(cfg, "mode") || "options");
     setSipExpectStatus(getConfigField(cfg, "expect_status"));
+    setSleepMs(getConfigField(cfg, "sleep_ms"));
+    setJitterMs(getConfigField(cfg, "jitter_ms"));
+    setSleepStatus(getConfigField(cfg, "status") || "up");
   }
 
   const currentConfig = useMemo(() => {
@@ -653,6 +694,14 @@ export function CheckForm({
         if (serverName) cfg.serverName = serverName;
         if (criticalDays) cfg.criticalDays = parseInt(criticalDays, 10);
         if (warningDays) cfg.warningDays = parseInt(warningDays, 10);
+        break;
+      case "ntp":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (ntpVersion) cfg.version = parseInt(ntpVersion, 10);
+        if (ntpOffsetWarnMs) cfg.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
+        if (ntpOffsetCritMs) cfg.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
+        if (ntpMaxStratum) cfg.max_stratum = parseInt(ntpMaxStratum, 10);
         break;
       case "tcp":
       case "udp":
@@ -813,6 +862,11 @@ export function CheckForm({
         }
         if (sipMode === "options" && sipExpectStatus) cfg.expect_status = sipExpectStatus;
         break;
+      case "sleep":
+        if (sleepMs) cfg.sleep_ms = parseInt(sleepMs, 10);
+        if (jitterMs) cfg.jitter_ms = parseInt(jitterMs, 10);
+        if (sleepStatus && sleepStatus !== "up") cfg.status = sleepStatus;
+        break;
     }
     return cfg;
   }, [type, url, host, port, domain, method, expectedStatus, username, password, secretHeaders,
@@ -824,7 +878,9 @@ export function CheckForm({
     freeboxConnectionUid, freeboxLinkType, freeboxMinSyncRate, freeboxMinSnrDb,
     freeboxMaxAttnDb, freeboxMaxCrcErrors, freeboxMinRxMw, freeboxMaxRxMw,
     dnsblTarget, dnsblBlocklists, dnsblNameserver,
-    sipTransport, sipMode, sipExpectStatus]);
+    sipTransport, sipMode, sipExpectStatus,
+    ntpVersion, ntpOffsetWarnMs, ntpOffsetCritMs, ntpMaxStratum,
+    sleepMs, jitterMs, sleepStatus]);
 
   const fieldErrors = useCheckValidation(org, type, currentConfig, 300);
 
@@ -873,6 +929,15 @@ export function CheckForm({
         if (serverName) config.serverName = serverName;
         if (criticalDays) config.criticalDays = parseInt(criticalDays, 10);
         if (warningDays) config.warningDays = parseInt(warningDays, 10);
+        break;
+      case "ntp":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (ntpVersion) config.version = parseInt(ntpVersion, 10);
+        if (ntpOffsetWarnMs) config.offset_warn_ms = parseInt(ntpOffsetWarnMs, 10);
+        if (ntpOffsetCritMs) config.offset_crit_ms = parseInt(ntpOffsetCritMs, 10);
+        if (ntpMaxStratum) config.max_stratum = parseInt(ntpMaxStratum, 10);
         break;
       case "tcp":
       case "udp":
@@ -1063,6 +1128,12 @@ export function CheckForm({
           config.expect_status = sipExpectStatus;
         }
         break;
+      case "sleep":
+        if (!sleepMs) { setError("Sleep duration is required"); return; }
+        config.sleep_ms = parseInt(sleepMs, 10);
+        if (jitterMs) config.jitter_ms = parseInt(jitterMs, 10);
+        if (sleepStatus && sleepStatus !== "up") config.status = sleepStatus;
+        break;
       case "heartbeat":
       case "email":
         // No config fields needed - token is auto-generated by the backend
@@ -1099,7 +1170,9 @@ export function CheckForm({
         ...(isPassiveType(type) && mode === "edit" ? {} : { config }),
         ...(showRegions ? { regions: selectedRegions } : {}),
         reopenCooldownMultiplier: reopenCooldownMultiplier !== "" ? parseInt(reopenCooldownMultiplier, 10) : null,
-        maxAdaptiveIncrease: maxAdaptiveIncrease !== "" ? parseInt(maxAdaptiveIncrease, 10) : null,
+        ...(flappingWindowSeconds !== "" ? { flappingWindowSeconds: parseInt(flappingWindowSeconds, 10) } : {}),
+        ...(flapBackoffFactor !== "" ? { flapBackoffFactor: parseInt(flapBackoffFactor, 10) } : {}),
+        ...(maxRecoveryMultiplier !== "" ? { maxRecoveryMultiplier: parseInt(maxRecoveryMultiplier, 10) } : {}),
         ...(confirmationPeriodSeconds !== ""
           ? { confirmationPeriodSeconds: parseInt(confirmationPeriodSeconds, 10) }
           : {}),
@@ -1271,6 +1344,49 @@ export function CheckForm({
                 <Input id="warningDays" type="number" placeholder="30" value={warningDays} onChange={(e) => setWarningDays(e.target.value)} data-testid="check-warning-days-input" />
                 <p className="text-xs text-muted-foreground">Amber warning (no page) at or below this. Must be ≥ Critical.</p>
               </div>
+            </div>
+          </>
+        );
+      case "ntp":
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="pool.ntp.org" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder="123" value={port} onChange={(e) => setPort(e.target.value)}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="ntpVersion">Version</Label>
+              <Select value={ntpVersion} onValueChange={setNtpVersion}>
+                <SelectTrigger data-testid="check-ntp-version-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="4">4</SelectItem>
+                  <SelectItem value="3">3</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex gap-4">
+              <div className="space-y-2 w-40">
+                <Label htmlFor="ntpOffsetCritMs">Offset critical (ms)</Label>
+                <Input id="ntpOffsetCritMs" type="number" min={0} placeholder="off" value={ntpOffsetCritMs} onChange={(e) => setNtpOffsetCritMs(e.target.value)} data-testid="check-ntp-offset-crit-input" />
+                <p className="text-xs text-muted-foreground">Down (pages) when |offset| exceeds this. Worker-relative.</p>
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="ntpOffsetWarnMs">Offset warning (ms)</Label>
+                <Input id="ntpOffsetWarnMs" type="number" min={0} placeholder="off" value={ntpOffsetWarnMs} onChange={(e) => setNtpOffsetWarnMs(e.target.value)} data-testid="check-ntp-offset-warn-input" />
+                <p className="text-xs text-muted-foreground">Amber (no page) when |offset| exceeds this. Must be ≤ Critical.</p>
+              </div>
+            </div>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="ntpMaxStratum">Max stratum (optional)</Label>
+              <Input id="ntpMaxStratum" type="number" min={1} max={15} placeholder="off" value={ntpMaxStratum} onChange={(e) => setNtpMaxStratum(e.target.value)} data-testid="check-ntp-max-stratum-input" />
+              <p className="text-xs text-muted-foreground">Down when the server's stratum exceeds this (1–15).</p>
             </div>
           </>
         );
@@ -1957,6 +2073,44 @@ export function CheckForm({
             )}
           </>
         );
+      case "sleep":
+        return (
+          <>
+            <Alert>
+              <AlertDescription className="text-xs">
+                Synthetic checker — sleeps for the configured duration and performs no network I/O. Useful for testing scheduler/load behavior, not a real availability probe.
+              </AlertDescription>
+            </Alert>
+            <div className="flex gap-4">
+              <div className="space-y-2 w-40">
+                <Label htmlFor="sleepMs">Sleep duration (ms)</Label>
+                <Input id="sleepMs" type="number" min={1} placeholder="500" value={sleepMs} onChange={(e) => setSleepMs(e.target.value)}
+                  className={cn(getFieldError(fieldErrors, "sleep_ms") && "border-destructive")} data-testid="check-sleep-ms-input" />
+                {getFieldError(fieldErrors, "sleep_ms") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "sleep_ms")}</p>)}
+              </div>
+              <div className="space-y-2 w-40">
+                <Label htmlFor="jitterMs">Jitter (ms, optional)</Label>
+                <Input id="jitterMs" type="number" min={0} placeholder="0" value={jitterMs} onChange={(e) => setJitterMs(e.target.value)}
+                  className={cn(getFieldError(fieldErrors, "jitter_ms") && "border-destructive")} data-testid="check-jitter-ms-input" />
+                {getFieldError(fieldErrors, "jitter_ms") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "jitter_ms")}</p>)}
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">± random variation applied to the sleep duration. Must be less than the sleep duration itself.</p>
+            <div className="space-y-2 w-40">
+              <Label htmlFor="sleepStatus">Forced status (optional)</Label>
+              <Select value={sleepStatus} onValueChange={setSleepStatus}>
+                <SelectTrigger id="sleepStatus" data-testid="check-sleep-status-select"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="up">Up (default)</SelectItem>
+                  <SelectItem value="down">Down</SelectItem>
+                  <SelectItem value="timeout">Timeout</SelectItem>
+                  <SelectItem value="error">Error</SelectItem>
+                </SelectContent>
+              </Select>
+              {getFieldError(fieldErrors, "status") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "status")}</p>)}
+            </div>
+          </>
+        );
       case "heartbeat":
         return (
           <p className="text-sm text-muted-foreground">No additional configuration needed. A heartbeat URL will be generated after creation.</p>
@@ -2063,7 +2217,12 @@ export function CheckForm({
                             >
                               <Check className={cn("mt-0.5 h-4 w-4 shrink-0", type === ct.value ? "opacity-100" : "opacity-0")} />
                               <div>
-                                <div className="font-medium">{ct.label}</div>
+                                <div className="font-medium flex items-center gap-1.5">
+                                  {ct.label}
+                                  {ct.synthetic && (
+                                    <Badge variant="secondary" className="text-[10px] px-1 py-0 font-normal">synthetic</Badge>
+                                  )}
+                                </div>
                                 <div className="text-xs text-muted-foreground">{ct.description}</div>
                               </div>
                             </button>
@@ -2249,29 +2408,65 @@ export function CheckForm({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <Label htmlFor="confirmationPeriodSeconds" className="text-sm">{t("form.confirmationPeriod")}</Label>
-                  <Input id="confirmationPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
+                  <Input id="confirmationPeriodSeconds" data-testid="confirmation-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={confirmationPeriodSeconds} onChange={(e) => setConfirmationPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.confirmationPeriodHelp")}</p>
+                  {confirmationPeriodSeconds.trim() !== "" && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="confirmation-period-estimate">
+                      {describePeriod(
+                        parseInt(confirmationPeriodSeconds, 10) || 0,
+                        estimateIntervalSeconds,
+                        "confirmation",
+                        t,
+                      )}
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="recoveryPeriodSeconds" className="text-sm">{t("form.recoveryPeriod")}</Label>
-                  <Input id="recoveryPeriodSeconds" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
+                  <Input id="recoveryPeriodSeconds" data-testid="recovery-period-input" type="number" min={0} max={86400} placeholder="120 (default)" value={recoveryPeriodSeconds} onChange={(e) => setRecoveryPeriodSeconds(e.target.value)} />
                   <p className="text-xs text-muted-foreground">{t("form.recoveryPeriodHelp")}</p>
+                  {recoveryPeriodSeconds.trim() !== "" && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="recovery-period-estimate">
+                      {describePeriod(
+                        parseInt(recoveryPeriodSeconds, 10) || 0,
+                        estimateIntervalSeconds,
+                        "recovery",
+                        t,
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label className="text-base font-medium">Adaptive Resolution</Label>
-              <div className="grid grid-cols-2 gap-4">
+              <Label className="text-base font-medium">{t("form.flapping")}</Label>
+              <p className="text-xs text-muted-foreground">{t("form.flappingHelp")}</p>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-1">
-                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">Reopen cooldown multiplier</Label>
-                  <Input id="reopenCooldownMultiplier" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">How many check periods to wait before closing a resolved incident. 0 = never reopen.</p>
+                  <Label htmlFor="reopenCooldownMultiplier" className="text-sm">{t("form.reopenCooldown")}</Label>
+                  <Input id="reopenCooldownMultiplier" data-testid="reopen-cooldown-input" type="number" min={0} placeholder="5 (default)" value={reopenCooldownMultiplier} onChange={(e) => setReopenCooldownMultiplier(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.reopenCooldownHelp")}</p>
                 </div>
                 <div className="space-y-1">
-                  <Label htmlFor="maxAdaptiveIncrease" className="text-sm">Max adaptive increase</Label>
-                  <Input id="maxAdaptiveIncrease" type="number" min={0} placeholder="5 (default)" value={maxAdaptiveIncrease} onChange={(e) => setMaxAdaptiveIncrease(e.target.value)} />
-                  <p className="text-xs text-muted-foreground">Reserved for the reopen-cooldown calculation. 0 = no extra wait.</p>
+                  <Label htmlFor="flappingWindowSeconds" className="text-sm">{t("form.flappingWindow")}</Label>
+                  <Input id="flappingWindowSeconds" data-testid="flapping-window-input" type="number" min={0} placeholder="21600 (default)" value={flappingWindowSeconds} onChange={(e) => setFlappingWindowSeconds(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.flappingWindowHelp")}</p>
+                  {flappingWindowSeconds.trim() !== "" && (parseInt(flappingWindowSeconds, 10) || 0) > 0 && (
+                    <p className="text-xs text-muted-foreground break-words" data-testid="flapping-window-estimate">
+                      {t("form.periodEstimate", { duration: formatDuration(parseInt(flappingWindowSeconds, 10) || 0) })}
+                    </p>
+                  )}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="flapBackoffFactor" className="text-sm">{t("form.flapBackoffFactor")}</Label>
+                  <Input id="flapBackoffFactor" data-testid="flap-backoff-input" type="number" min={1} placeholder="2 (default)" value={flapBackoffFactor} onChange={(e) => setFlapBackoffFactor(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.flapBackoffFactorHelp")}</p>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="maxRecoveryMultiplier" className="text-sm">{t("form.maxRecoveryMultiplier")}</Label>
+                  <Input id="maxRecoveryMultiplier" data-testid="max-recovery-multiplier-input" type="number" min={1} placeholder="8 (default)" value={maxRecoveryMultiplier} onChange={(e) => setMaxRecoveryMultiplier(e.target.value)} />
+                  <p className="text-xs text-muted-foreground">{t("form.maxRecoveryMultiplierHelp")}</p>
                 </div>
               </div>
             </div>

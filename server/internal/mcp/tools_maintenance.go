@@ -20,10 +20,20 @@ const (
 	mwListMaxLimit     = 200
 )
 
+// recurrenceDoc is the canonical description of the recurrence enum, anchored to
+// startAt. iCalendar RRULE strings are NOT supported by the service.
+const recurrenceDoc = "One of \"none\", \"daily\", \"weekly\", or \"monthly\". The cadence is anchored " +
+	"to startAt: \"daily\" repeats startAt's time-of-day every day; \"weekly\" repeats on startAt's " +
+	"weekday; \"monthly\" repeats on startAt's day-of-month (clamped to the last day of shorter " +
+	"months). Each occurrence lasts endAt - startAt. Omit (or \"none\") for a one-off window. " +
+	"iCalendar RRULE strings are NOT supported."
+
 func listMaintenanceWindowsDef() ToolDefinition {
 	return ToolDefinition{
-		Name:        "list_maintenance_windows",
-		Description: "List maintenance windows for the organization, optionally filtered by status.",
+		Name: "list_maintenance_windows",
+		Description: "List maintenance windows for the organization, optionally filtered by status. " +
+			"Each window includes a server-computed status (active/upcoming/past) and " +
+			"nextOccurrences (the next concrete activations).",
 		InputSchema: objectSchema(map[string]any{
 			propStatus: stringProp(
 				"Filter by lifecycle: \"upcoming\", \"active\", or \"past\". Omit for all windows.",
@@ -55,7 +65,8 @@ func getMaintenanceWindowDef() ToolDefinition {
 	return ToolDefinition{
 		Name: "get_maintenance_window",
 		Description: "Get a single maintenance window by UID, including title, schedule, " +
-			"and recurrence rule.",
+			"recurrence rule, server-computed status (active/upcoming/past), and " +
+			"nextOccurrences (the next concrete activations).",
 		InputSchema: objectSchema(map[string]any{
 			propUID: stringProp("Maintenance window UID returned by list_maintenance_windows."),
 		}, []string{propUID}),
@@ -93,11 +104,7 @@ func createMaintenanceWindowDef() ToolDefinition {
 					"Must be later than startAt.",
 			),
 			schemaKeyDescription: stringProp("Optional free-text description of the work."),
-			propRecurrence: stringProp(
-				"iCalendar RRULE string for repeating windows. " +
-					"Examples: \"FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR\" for weekdays, " +
-					"\"FREQ=MONTHLY;BYMONTHDAY=1\" for the 1st of each month. Omit for one-off windows.",
-			),
+			propRecurrence:       stringProp(recurrenceDoc),
 			propRecurrenceEnd: stringProp(
 				"RFC3339 timestamp at which a recurring window stops repeating. " +
 					"Only meaningful when recurrence is set.",
@@ -189,10 +196,8 @@ func updateMaintenanceWindowDef() ToolDefinition {
 			propStartAt:          stringProp("New start (RFC3339, e.g. \"2026-05-03T22:00:00Z\")."),
 			propEndAt:            stringProp("New end (RFC3339, must be later than startAt)."),
 			schemaKeyDescription: stringProp("New free-text description shown in the UI."),
-			propRecurrence: stringProp(
-				"New iCalendar RRULE (e.g. \"FREQ=WEEKLY;BYDAY=MO\"). Pass empty string to clear.",
-			),
-			propRecurrenceEnd: stringProp("New RFC3339 recurrence end timestamp."),
+			propRecurrence:       stringProp(recurrenceDoc + " Pass an empty string to clear (make it one-off)."),
+			propRecurrenceEnd:    stringProp("New RFC3339 recurrence end timestamp."),
 		}, []string{propUID}),
 	}
 }

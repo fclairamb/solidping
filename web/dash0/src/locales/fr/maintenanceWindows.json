@@ -1,0 +1,116 @@
+{
+  "title": "Fenêtres de maintenance",
+  "subtitle": "Planifiez des maintenances pour supprimer les alertes d'incident",
+  "new": "Nouvelle fenêtre",
+  "empty": "Aucune fenêtre de maintenance planifiée",
+  "searchPlaceholder": "Rechercher des fenêtres de maintenance...",
+  "noMatch": "Aucune fenêtre de maintenance ne correspond à votre recherche",
+  "backToList": "Retour aux fenêtres de maintenance",
+  "edit": "Modifier",
+  "checksCount_one": "{{count}} contrôle",
+  "checksCount_other": "{{count}} contrôles",
+  "table": {
+    "title": "Titre",
+    "schedule": "Planification",
+    "recurrence": "Récurrence",
+    "status": "Statut",
+    "checks": "Contrôles"
+  },
+  "recurrence": {
+    "none": "Ponctuelle",
+    "daily": "Quotidienne",
+    "weekly": "Hebdomadaire",
+    "monthly": "Mensuelle"
+  },
+  "status": {
+    "active": "Active",
+    "upcoming": "À venir",
+    "past": "Passée"
+  },
+  "form": {
+    "createTitle": "Nouvelle fenêtre de maintenance",
+    "editTitle": "Modifier la fenêtre de maintenance",
+    "createDescription": "Planifiez une période de maintenance pendant laquelle les alertes d'incident sont supprimées pour les contrôles sélectionnés.",
+    "editDescription": "Mettez à jour la planification et les contrôles concernés de cette fenêtre de maintenance.",
+    "detailsTitle": "Détails",
+    "scheduleTitle": "Planification",
+    "affectedTitle": "Contrôles concernés",
+    "affectedDescription": "Les incidents de ces contrôles et groupes sont supprimés lorsque la fenêtre est active.",
+    "title": "Titre",
+    "titlePlaceholder": "Sauvegarde hebdomadaire de la base",
+    "description": "Description",
+    "descriptionPlaceholder": "Contexte optionnel affiché avec cette fenêtre",
+    "start": "Début",
+    "end": "Fin",
+    "startTime": "Heure de début",
+    "duration": "Durée",
+    "durationUnitMinutes": "minutes",
+    "durationUnitHours": "heures",
+    "firstDay": "Premier jour",
+    "repeatOn": "Répéter le",
+    "dayOfMonth": "Jour du mois",
+    "dayOfMonthHelp": "Les mois plus courts que le jour choisi s'exécutent leur dernier jour.",
+    "recurrence": "Récurrence",
+    "recurrenceEnd": "Fin de récurrence",
+    "until": "Jusqu'au",
+    "untilHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
+    "recurrenceEndHelp": "Optionnel. Après cette date, la fenêtre ne se répète plus.",
+    "utcNote": "Toutes les heures sont saisies et stockées en UTC.",
+    "checks": "Contrôles",
+    "groups": "Groupes de contrôles",
+    "submitCreate": "Créer la fenêtre",
+    "submitSave": "Enregistrer les modifications",
+    "cancel": "Annuler",
+    "errors": {
+      "titleRequired": "Le titre est obligatoire",
+      "endAfterStart": "L'heure de fin doit être postérieure à l'heure de début",
+      "recurrenceEndAfterStart": "La fin de récurrence doit être postérieure à l'heure de début",
+      "durationRequired": "La durée doit être supérieure à zéro",
+      "durationOverlapsWarning": "Cette durée est plus longue que l'intervalle de répétition ; les occurrences se chevauchent.",
+      "firstDayRequired": "Le premier jour est obligatoire",
+      "untilAfterFirstDay": "La date de fin doit être postérieure au premier jour"
+    }
+  },
+  "summary": {
+    "once": "Ponctuelle : {{start}} – {{end}}",
+    "daily": "Tous les jours, {{start}} – {{end}} ({{duration}})",
+    "weekly": "Tous les {{weekday}}, {{start}} – {{end}} ({{duration}})",
+    "monthly": "Le {{day}} de chaque mois, {{start}} – {{end}} ({{duration}})",
+    "until": " · jusqu'au {{date}}",
+    "noEnd": " · sans date de fin",
+    "alertsPaused": "Les alertes d'incident sont suspendues pour les contrôles concernés pendant chaque occurrence.",
+    "nextLabel": "Prochaines :",
+    "nextNone": "Aucune occurrence à venir"
+  },
+  "duration": {
+    "hoursShort": "h",
+    "minutesShort": "min",
+    "daysShort": "j"
+  },
+  "detail": {
+    "schedule": "Planification",
+    "summary": "Résumé",
+    "nextOccurrences": "Prochaines occurrences",
+    "noNextOccurrences": "Aucune occurrence à venir",
+    "affectedChecks": "Contrôles concernés",
+    "start": "Début",
+    "end": "Fin",
+    "recurrence": "Récurrence",
+    "recurrenceEnd": "Fin de récurrence",
+    "noAffected": "Aucun contrôle ni groupe n'est concerné par cette fenêtre.",
+    "createdBy": "Créé par",
+    "view": "Voir"
+  },
+  "toast": {
+    "created": "Fenêtre de maintenance créée",
+    "updated": "Fenêtre de maintenance mise à jour",
+    "deleted": "Fenêtre de maintenance supprimée",
+    "createFailed": "Échec de la création de la fenêtre de maintenance",
+    "updateFailed": "Échec de la mise à jour de la fenêtre de maintenance",
+    "deleteFailed": "Échec de la suppression de la fenêtre de maintenance"
+  },
+  "delete": {
+    "confirmTitle": "Supprimer la fenêtre de maintenance ?",
+    "confirmBody": "Êtes-vous sûr de vouloir supprimer cette fenêtre de maintenance ? Cette action est irréversible."
+  }
+}

@@ -41,6 +41,18 @@ func (s *SlackSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 		return fmt.Errorf("getting thread state entry: %w", err)
 	}
 
+	// Defense-in-depth: a resolved/reopened event with no stored thread state has
+	// no original message to update or thread under, so a standalone top-level
+	// "resolved"/"reopened" message is never the right output. Skip posting rather
+	// than falling through to postNewMessage, which would emit a context-free
+	// orphan message. This bounds the blast radius of any "resolved/reopened with
+	// no opened" path (e.g. a still-suppressed rolled-up child that recorded its
+	// event but was never paged on open).
+	if (payload.EventType == eventTypeIncidentResolved || payload.EventType == eventTypeIncidentReopened) &&
+		(threadEntry == nil || threadEntry.Value == nil) {
+		return nil
+	}
+
 	client := slack.NewClient(settings.AccessToken)
 
 	// Handle incident resolution - update the original message AND post a thread reply
@@ -380,7 +392,11 @@ func (s *SlackSender) buildIncidentActionButtons(incidentUID string) slack.Block
 	}
 }
 
-// buildIncidentResolvedThreadReply builds a simple thread reply for resolved incidents.
+// buildIncidentResolvedThreadReply builds a resolved-incident message. The status
+// line is rendered exactly once as the top-level Text — no attachment repeating it
+// (the previous shape duplicated the body and added a redundant green border). The
+// monitor is named and linked so the message is self-contained even when it is not
+// threaded under the original "New incident" message.
 func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.MessageResponse {
 	duration := ""
 	if payload.Incident.ResolvedAt != nil {
@@ -388,28 +404,14 @@ func (s *SlackSender) buildIncidentResolvedThreadReply(payload *Payload) *slack.
 		duration = formatDuration(d)
 	}
 
-	text := fmt.Sprintf(":white_check_mark: Incident resolved after %s.", duration)
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
+	text := fmt.Sprintf(
+		":white_check_mark: %s — incident resolved after %s.",
+		slackLink(checkURL, checkName), duration,
+	)
 
-	blocks := []slack.Block{
-		{
-			Type: slack.BlockTypeSection,
-			Text: &slack.Text{
-				Type: slack.BlockTypeMrkdwn,
-				Text: text,
-			},
-		},
-	}
-
-	return &slack.MessageResponse{
-		Text: text,
-		Attachments: []slack.Attachment{
-			{
-				Color:    colorSuccess,
-				Fallback: text,
-				Blocks:   blocks,
-			},
-		},
-	}
+	return &slack.MessageResponse{Text: text}
 }
 
 // buildIncidentEscalatedMessage builds a rich Block Kit message for escalation.
@@ -686,34 +688,20 @@ func (s *SlackSender) handleIncidentReopen(
 	return nil
 }
 
-// buildIncidentReopenedThreadReply builds a thread reply for reopened incidents.
+// buildIncidentReopenedThreadReply builds a reopened-incident message. Like the
+// resolved reply, the status line is rendered exactly once as the top-level Text
+// (no attachment duplicating it) and names + links the monitor so it is meaningful
+// even when read in isolation.
 func (s *SlackSender) buildIncidentReopenedThreadReply(payload *Payload) *slack.MessageResponse {
 	relapseCount := payload.Incident.RelapseCount
+	checkName := getCheckName(payload.Check)
+	checkURL := checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check)
 	text := fmt.Sprintf(
-		":warning: Incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
-		relapseCount, payload.Check.RecoveryPeriodSeconds,
+		":warning: %s — incident reopened (relapse #%d). Recovery requires the check to stay up for %d seconds.",
+		slackLink(checkURL, checkName), relapseCount, payload.Check.RecoveryPeriodSeconds,
 	)
 
-	blocks := []slack.Block{
-		{
-			Type: slack.BlockTypeSection,
-			Text: &slack.Text{
-				Type: slack.BlockTypeMrkdwn,
-				Text: text,
-			},
-		},
-	}
-
-	return &slack.MessageResponse{
-		Text: text,
-		Attachments: []slack.Attachment{
-			{
-				Color:    colorWarning,
-				Fallback: text,
-				Blocks:   blocks,
-			},
-		},
-	}
+	return &slack.MessageResponse{Text: text}
 }
 
 // buildReopenedUpdateMessage builds the message to update the original incident message

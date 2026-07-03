@@ -28,7 +28,7 @@ var (
 // isValidRecurrence checks if a recurrence value is valid.
 func isValidRecurrence(recurrence string) bool {
 	switch recurrence {
-	case "none", "daily", "weekly", "monthly":
+	case models.RecurrenceNone, models.RecurrenceDaily, models.RecurrenceWeekly, models.RecurrenceMonthly:
 		return true
 	default:
 		return false
@@ -57,7 +57,17 @@ type MaintenanceWindowResponse struct {
 	CreatedBy     *string    `json:"createdBy,omitempty"`
 	CreatedAt     time.Time  `json:"createdAt"`
 	UpdatedAt     time.Time  `json:"updatedAt"`
+	// Status is the canonical lifecycle of the window at response time:
+	// "active", "upcoming", or "past". Read-only, server-computed.
+	Status string `json:"status"`
+	// NextOccurrences lists up to the next few concrete activations (currently
+	// active one first). Read-only, server-computed.
+	NextOccurrences []models.Occurrence `json:"nextOccurrences"`
 }
+
+// nextOccurrencesCount is how many upcoming occurrences responses surface
+// (matches the frontend preview).
+const nextOccurrencesCount = 3
 
 // CreateRequest represents a request to create a new maintenance window.
 type CreateRequest struct {
@@ -111,9 +121,11 @@ func (s *Service) ListMaintenanceWindows(
 		return nil, err
 	}
 
+	now := time.Now().UTC()
+
 	responses := make([]MaintenanceWindowResponse, len(windows))
 	for i, window := range windows {
-		responses[i] = convertWindowToResponse(window)
+		responses[i] = convertWindowToResponse(window, now)
 	}
 
 	return responses, nil
@@ -144,7 +156,7 @@ func (s *Service) CreateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, err
 	}
 
-	return convertWindowToResponse(window), nil
+	return convertWindowToResponse(window, time.Now().UTC()), nil
 }
 
 // GetMaintenanceWindow retrieves a single maintenance window by UID.
@@ -165,7 +177,7 @@ func (s *Service) GetMaintenanceWindow(
 		return MaintenanceWindowResponse{}, err
 	}
 
-	return convertWindowToResponse(window), nil
+	return convertWindowToResponse(window, time.Now().UTC()), nil
 }
 
 // UpdateMaintenanceWindow updates an existing maintenance window.
@@ -225,7 +237,7 @@ func (s *Service) UpdateMaintenanceWindow(
 		return MaintenanceWindowResponse{}, errFetch
 	}
 
-	return convertWindowToResponse(updatedWindow), nil
+	return convertWindowToResponse(updatedWindow, time.Now().UTC()), nil
 }
 
 // DeleteMaintenanceWindow deletes a maintenance window by UID (soft delete).
@@ -321,17 +333,19 @@ func validateCreateRequest(req *CreateRequest) error {
 	return nil
 }
 
-func convertWindowToResponse(window *models.MaintenanceWindow) MaintenanceWindowResponse {
+func convertWindowToResponse(window *models.MaintenanceWindow, now time.Time) MaintenanceWindowResponse {
 	return MaintenanceWindowResponse{
-		UID:           window.UID,
-		Title:         window.Title,
-		Description:   window.Description,
-		StartAt:       window.StartAt,
-		EndAt:         window.EndAt,
-		Recurrence:    window.Recurrence,
-		RecurrenceEnd: window.RecurrenceEnd,
-		CreatedBy:     window.CreatedBy,
-		CreatedAt:     window.CreatedAt,
-		UpdatedAt:     window.UpdatedAt,
+		UID:             window.UID,
+		Title:           window.Title,
+		Description:     window.Description,
+		StartAt:         window.StartAt,
+		EndAt:           window.EndAt,
+		Recurrence:      window.Recurrence,
+		RecurrenceEnd:   window.RecurrenceEnd,
+		CreatedBy:       window.CreatedBy,
+		CreatedAt:       window.CreatedAt,
+		UpdatedAt:       window.UpdatedAt,
+		Status:          models.Status(window, now),
+		NextOccurrences: models.NextOccurrences(window, now, nextOccurrencesCount),
 	}
 }

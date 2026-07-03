@@ -140,10 +140,38 @@ func (s *Service) Set(
 	delete(s.limiters, orgUID)
 	s.limitersMu.Unlock()
 
+	// Propagate the (possibly changed) plan weight to the org's denormalized
+	// check_jobs so the cost-aware scheduler sees the new tier without waiting
+	// for a per-check reconcile (spec 2026-06-30-09). Best-effort: a failure
+	// here does not undo the entitlement write — the periodic reconcile path
+	// is the backstop — so it is logged, not returned.
+	s.denormalizePlanWeight(ctx, orgUID, input.Source)
+
 	slog.InfoContext(ctx, "entitlements written",
 		"orgUID", orgUID, "source", input.Source, "actor", actor)
 
 	return nil
+}
+
+// denormalizePlanWeight bulk-updates check_jobs.plan_weight for an org after an
+// entitlement change so paid/free tiering is reflected immediately in the
+// scheduler. Derived from the just-written source rather than re-resolving, so
+// the weight matches the row we just persisted.
+func (s *Service) denormalizePlanWeight(ctx context.Context, orgUID string, source models.EntitlementSource) {
+	weight := PlanWeightFree
+	if source == models.EntitlementSourceBilling || source == models.EntitlementSourceAdmin {
+		weight = PlanWeightPaid
+	}
+
+	if _, err := s.db.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("plan_weight = ?", weight).
+		Where("organization_uid = ?", orgUID).
+		Where("plan_weight <> ?", weight). // skip the write when nothing changes
+		Exec(ctx); err != nil {
+		slog.WarnContext(ctx, "failed to denormalize plan weight onto check_jobs; reconcile will backfill",
+			"orgUID", orgUID, "weight", weight, "error", err)
+	}
 }
 
 // CheckSSOMembership returns ErrEntitlementExceeded (wrapped in
@@ -217,6 +245,46 @@ func (s *Service) ReserveCheckExecution(ctx context.Context, orgUID string) erro
 	}
 
 	return nil
+}
+
+// Plan-weight tiers used by the cost-aware scheduler (spec 2026-06-30-09).
+// Higher weight = more protected (reserved capacity + deadline credit under
+// contention). Kept deliberately coarse: the OSS knows nothing about SKUs, so
+// "paid" is simply "provisioned beyond the in-code defaults".
+const (
+	// PlanWeightFree is the default tier for orgs on in-code defaults.
+	PlanWeightFree = 0
+	// PlanWeightPaid is granted to orgs whose entitlements were explicitly
+	// written by the billing service or an admin (i.e. a real plan).
+	PlanWeightPaid = 1
+)
+
+// PlanWeight resolves an org's scheduling plan weight from its entitlements.
+// An org whose resolved entitlement source is billing-service or admin counts
+// as paid (provisioned beyond defaults); everything else is free. Resolution
+// failures fall back to free so a transient DB hiccup never accidentally
+// promotes an org. nil receiver returns free (entitlements disabled).
+func (s *Service) PlanWeight(ctx context.Context, orgUID string) int {
+	if s == nil {
+		return PlanWeightFree
+	}
+
+	resolved, err := s.Resolve(ctx, orgUID)
+	if err != nil {
+		slog.WarnContext(ctx, "resolve entitlements for plan weight failed; defaulting to free",
+			"orgUID", orgUID, "error", err)
+
+		return PlanWeightFree
+	}
+
+	switch resolved.Source {
+	case models.EntitlementSourceBilling, models.EntitlementSourceAdmin:
+		return PlanWeightPaid
+	case models.EntitlementSourceDefault, models.EntitlementSourceSelfHosted:
+		return PlanWeightFree
+	default:
+		return PlanWeightFree
+	}
 }
 
 // limiterFor returns (creating if needed) the token bucket for orgUID.

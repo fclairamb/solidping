@@ -66,9 +66,23 @@ func (n *LocalEventNotifier) Listen(eventType string) <-chan string {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
-	ch := make(chan string, 1) // Buffered to avoid blocking
+	ch := make(chan string, ListenerBuffer) // buffered: see ListenerBuffer
 	n.listeners[eventType] = append(n.listeners[eventType], ch)
 	return ch
+}
+
+// ListenerCount returns the total number of registered listener channels across
+// all event types. Each Listen call appends a channel; a listener that is never
+// drained/deregistered leaks both the channel and its goroutine, so this count
+// is the memory-analysis signal for the event-listener hypothesis.
+func (n *LocalEventNotifier) ListenerCount() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	total := 0
+	for _, channels := range n.listeners {
+		total += len(channels)
+	}
+	return total
 }
 
 // Close closes all notification channels.

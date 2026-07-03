@@ -30,6 +30,7 @@ import {
   Server,
   User2,
   Workflow,
+  Wrench,
 } from "lucide-react";
 import {
   SidebarProvider,
@@ -48,6 +49,7 @@ import {
   useEscalationPolicy,
   useFeatures,
   useIncident,
+  useMaintenanceWindow,
   useOnCallSchedule,
   useOrgNotification,
   useResult,
@@ -57,6 +59,7 @@ import {
 import { FeedbackButton } from "@/components/feedback/FeedbackButton";
 import { FeedbackDialog } from "@/components/feedback/FeedbackDialog";
 import { useFeedback } from "@/components/feedback/useFeedback";
+import { LiveEventsProvider } from "@/contexts/LiveEventsContext";
 import { useTranslation } from "react-i18next";
 
 /** Parses the `?from=` search param used by the notification detail route. */
@@ -137,6 +140,16 @@ function Breadcrumbs({ org }: { org: string }) {
   const isJobs = matches.some((m) => m.routeId.startsWith("/orgs/$org/jobs"));
   const isCheckJobDetail = routeIds.has("/orgs/$org/jobs/check/$checkJobUid");
   const isBackgroundJobDetail = routeIds.has("/orgs/$org/jobs/$jobUid");
+  const isMaintenance = matches.some((m) =>
+    m.routeId.startsWith("/orgs/$org/maintenance-windows"),
+  );
+  const isMwNew = routeIds.has("/orgs/$org/maintenance-windows/new");
+  const isMwDetail = routeIds.has(
+    "/orgs/$org/maintenance-windows/$maintenanceWindowUid/",
+  );
+  const isMwEdit = routeIds.has(
+    "/orgs/$org/maintenance-windows/$maintenanceWindowUid/edit",
+  );
   const isNotifications = routeIds.has("/orgs/$org/me/notifications");
   const isNotificationDetail = routeIds.has("/orgs/$org/notifications/$notificationUid");
 
@@ -189,6 +202,11 @@ function Breadcrumbs({ org }: { org: string }) {
     org,
     isBackgroundJobDetail ? (params.jobUid ?? "") : "",
     { allOrgs: jobsAllOrgs },
+  );
+  // Maintenance windows section — fetch the leaf label only on detail/edit.
+  const { data: mw } = useMaintenanceWindow(
+    org,
+    isMwDetail || isMwEdit ? (params.maintenanceWindowUid ?? "") : "",
   );
 
   // Notification detail breadcrumb — subscribe to the same query the page uses
@@ -648,9 +666,6 @@ function Breadcrumbs({ org }: { org: string }) {
   if (isDiscovery) {
     const jobUid = params.jobUid;
     const isNew = routeIds.has("/orgs/$org/discovery/new");
-    const isPromote = routeIds.has(
-      "/orgs/$org/discovery/$jobUid/$hostUid/promote",
-    );
     const isRoot = !jobUid && !isNew;
 
     return (
@@ -669,19 +684,7 @@ function Breadcrumbs({ org }: { org: string }) {
         {jobUid && (
           <>
             <BreadcrumbSeparator />
-            {isPromote ? (
-              <Link to="/orgs/$org/discovery/$jobUid" params={{ org, jobUid }} className={linkClass}>
-                {jobUid.slice(0, 8)}
-              </Link>
-            ) : (
-              <span className={activeClass}>{jobUid.slice(0, 8)}</span>
-            )}
-          </>
-        )}
-        {isPromote && (
-          <>
-            <BreadcrumbSeparator />
-            <span className={activeClass}>{t("promote")}</span>
+            <span className={activeClass}>{jobUid.slice(0, 8)}</span>
           </>
         )}
       </>
@@ -718,6 +721,61 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             <span className={activeClass}>{leaf}</span>
+          </>
+        )}
+      </>
+    );
+  }
+
+  if (isMaintenance) {
+    const isDetailOrEdit = isMwDetail || isMwEdit;
+    const title = mw?.title || params.maintenanceWindowUid?.slice(0, 8);
+    return (
+      <>
+        {isMwNew || isDetailOrEdit ? (
+          <Link
+            to="/orgs/$org/maintenance-windows"
+            params={{ org }}
+            className={linkClass}
+          >
+            <Wrench className={iconClass} />
+            {t("maintenanceWindows")}
+          </Link>
+        ) : (
+          <span className={activeClass}>
+            <Wrench className={iconClass} />
+            {t("maintenanceWindows")}
+          </span>
+        )}
+        {isMwNew && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("new")}</span>
+          </>
+        )}
+        {isDetailOrEdit && (
+          <>
+            <BreadcrumbSeparator />
+            {isMwEdit ? (
+              <Link
+                to="/orgs/$org/maintenance-windows/$maintenanceWindowUid"
+                params={{
+                  org,
+                  maintenanceWindowUid: params.maintenanceWindowUid!,
+                }}
+                className={linkClass}
+              >
+                {title}
+              </Link>
+            ) : (
+              <span className={activeClass}>{title}</span>
+            )}
+          </>
+        )}
+        {isMwEdit && (
+          <>
+            <BreadcrumbSeparator />
+            <span className={activeClass}>{t("edit")}</span>
           </>
         )}
       </>
@@ -797,6 +855,7 @@ function OrgLayout() {
   }
 
   return (
+    <LiveEventsProvider org={org}>
     <SidebarProvider defaultOpen={true}>
       <AppSidebar />
       <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
@@ -826,5 +885,6 @@ function OrgLayout() {
         </div>
       </SidebarInset>
     </SidebarProvider>
+    </LiveEventsProvider>
   );
 }

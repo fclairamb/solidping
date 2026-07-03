@@ -510,3 +510,65 @@ func TestPayloadRoundTrip(t *testing.T) {
 
 	r.Equal(in.Limits, resolved.Limits)
 }
+
+func TestPlanWeightFreeByDefault(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, org, _ := setup(t)
+
+	// No entitlement row → defaults → free tier.
+	r.Equal(entitlements.PlanWeightFree, svc.PlanWeight(t.Context(), org.UID))
+}
+
+func TestPlanWeightPaidForBillingAndAdmin(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	for _, src := range []models.EntitlementSource{
+		models.EntitlementSourceBilling,
+		models.EntitlementSourceAdmin,
+	} {
+		svc, org, _ := setup(t)
+		r.NoError(svc.Set(t.Context(), org.UID, entitlements.Entitlements{
+			Limits: entitlements.Limits{MaxChecksPerMinute: entitlements.Int(60)},
+			Source: src,
+		}, "actor", "promote"))
+
+		r.Equal(entitlements.PlanWeightPaid, svc.PlanWeight(t.Context(), org.UID),
+			"source %s must resolve to the paid weight", src)
+	}
+}
+
+func TestPlanWeightNilReceiverIsFree(t *testing.T) {
+	t.Parallel()
+	var svc *entitlements.Service
+	require.Equal(t, entitlements.PlanWeightFree, svc.PlanWeight(t.Context(), "any-org"))
+}
+
+// TestSetDenormalizesPlanWeightOntoJobs verifies a billing upgrade propagates
+// the paid weight onto the org's existing check_jobs immediately.
+func TestSetDenormalizesPlanWeightOntoJobs(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+	svc, org, dbSvc := setup(t)
+	ctx := t.Context()
+
+	// A check (and its check_job) starts free (plan_weight 0).
+	check := models.NewCheck(org.UID, "weighted-check", "http")
+	r.NoError(dbSvc.CreateCheck(ctx, check))
+
+	var before models.CheckJob
+	r.NoError(dbSvc.DB().NewSelect().Model(&before).Where("check_uid = ?", check.UID).Scan(ctx))
+	r.Equal(0, before.PlanWeight, "new check_job starts at the free weight")
+
+	// Billing provisions the org → plan_weight propagates to its jobs.
+	r.NoError(svc.Set(ctx, org.UID, entitlements.Entitlements{
+		Limits: entitlements.Limits{MaxChecksPerMinute: entitlements.Int(60)},
+		Source: models.EntitlementSourceBilling,
+	}, "service:billing", "upgrade"))
+
+	var after models.CheckJob
+	r.NoError(dbSvc.DB().NewSelect().Model(&after).Where("check_uid = ?", check.UID).Scan(ctx))
+	r.Equal(entitlements.PlanWeightPaid, after.PlanWeight,
+		"billing upgrade must denormalize the paid weight onto existing jobs")
+}

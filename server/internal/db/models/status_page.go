@@ -6,6 +6,49 @@ import (
 	"github.com/google/uuid"
 )
 
+// StatusPagePeriod is the history window a status page renders. It mirrors the
+// badge uptime-bar vocabulary: 24h is hourly (24 one-hour buckets), the rest
+// are daily (N 24-hour buckets). It is the source of truth for bucketing;
+// HistoryDays is kept populated for one release for backward-compat.
+type StatusPagePeriod string
+
+// StatusPagePeriod values.
+const (
+	StatusPagePeriod24h StatusPagePeriod = "24h"
+	StatusPagePeriod7d  StatusPagePeriod = "7d"
+	StatusPagePeriod30d StatusPagePeriod = "30d"
+	StatusPagePeriod90d StatusPagePeriod = "90d"
+)
+
+// Valid reports whether the period is one of the four supported values.
+func (p StatusPagePeriod) Valid() bool {
+	switch p {
+	case StatusPagePeriod24h, StatusPagePeriod7d, StatusPagePeriod30d, StatusPagePeriod90d:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsHourly reports whether the period buckets by hour (only 24h does).
+func (p StatusPagePeriod) IsHourly() bool {
+	return p == StatusPagePeriod24h
+}
+
+// PeriodFromDays maps a legacy history_days count to the closest period enum,
+// used to backfill rows and to accept the deprecated historyDays input for one
+// release. 7→7d, 30→30d, everything else (including 90) →90d.
+func PeriodFromDays(days int) StatusPagePeriod {
+	switch days {
+	case 7:
+		return StatusPagePeriod7d
+	case 30:
+		return StatusPagePeriod30d
+	default:
+		return StatusPagePeriod90d
+	}
+}
+
 // StatusPage represents a public status page for an organization.
 type StatusPage struct {
 	UID              string     `bun:"uid,pk,type:varchar(36)"`
@@ -19,6 +62,7 @@ type StatusPage struct {
 	ShowAvailability bool       `bun:"show_availability,notnull,default:true"`
 	ShowResponseTime bool       `bun:"show_response_time,notnull,default:true"`
 	HistoryDays      int        `bun:"history_days,notnull,default:90"`
+	HistoryPeriod    string     `bun:"history_period,notnull,default:'90d'"`
 	Language         *string    `bun:"language"`
 	CreatedAt        time.Time  `bun:"created_at,notnull,default:current_timestamp"`
 	UpdatedAt        time.Time  `bun:"updated_at,notnull,default:current_timestamp"`
@@ -39,6 +83,7 @@ func NewStatusPage(orgUID, name, slug string) *StatusPage {
 		ShowAvailability: true,
 		ShowResponseTime: true,
 		HistoryDays:      90,
+		HistoryPeriod:    string(StatusPagePeriod90d),
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
@@ -55,6 +100,7 @@ type StatusPageUpdate struct {
 	ShowAvailability *bool
 	ShowResponseTime *bool
 	HistoryDays      *int
+	HistoryPeriod    *string
 	Language         *string
 }
 

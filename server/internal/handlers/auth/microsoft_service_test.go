@@ -361,6 +361,36 @@ func TestMicrosoftGetTokenURL(t *testing.T) {
 	})
 }
 
+// TestMicrosoftBuildAuthURL asserts the tenant configured on cfg.Microsoft.TenantID
+// (which the systemconfig overlay populates from env/DB/UI) is composed into the
+// authorize endpoint, and that an empty tenant falls back to "common". This is the
+// authorize-side mirror of TestMicrosoftGetTokenURL and guards the spec's core
+// requirement that a settable tenant reaches the Microsoft URL.
+func TestMicrosoftBuildAuthURL(t *testing.T) {
+	t.Parallel()
+
+	t.Run("with configured tenant", func(t *testing.T) {
+		t.Parallel()
+
+		svc, _ := setupMicrosoftTestService(t)
+		handler := NewMicrosoftOAuthHandler(svc, svc.cfg)
+
+		authURL := handler.buildMicrosoftAuthURL("state-123")
+		assert.Contains(t, authURL, "https://login.microsoftonline.com/test-tenant-id/oauth2/v2.0/authorize?")
+	})
+
+	t.Run("defaults to common tenant", func(t *testing.T) {
+		t.Parallel()
+
+		svc, _ := setupMicrosoftTestService(t)
+		svc.cfg.Microsoft.TenantID = ""
+		handler := NewMicrosoftOAuthHandler(svc, svc.cfg)
+
+		authURL := handler.buildMicrosoftAuthURL("state-123")
+		assert.Contains(t, authURL, "https://login.microsoftonline.com/common/oauth2/v2.0/authorize?")
+	})
+}
+
 // testMicrosoftCallbackWithMockServers is a helper to test the full callback flow with mocked servers.
 func testMicrosoftCallbackWithMockServers(
 	ctx context.Context,

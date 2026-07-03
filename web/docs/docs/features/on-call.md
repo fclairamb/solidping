@@ -52,19 +52,12 @@ A policy can **repeat** its whole sequence a configurable number of times, with 
 
 ## How It Fits Together
 
-```
-Incident created
-      │
-      ▼
-Escalation policy step 1  → notify on-call user (via schedule)
-      │ (wait, no ack)
-      ▼
-Escalation policy step 2  → notify backup user + Slack channel
-      │ (wait, no ack)
-      ▼
-Escalation policy step 3  → notify all admins
-      │
-   (repeat?)
+```mermaid
+flowchart TD
+    Created["Incident created"] --> S1["Escalation step 1<br/>notify on-call user (via schedule)"]
+    S1 -->|wait, no ack| S2["Escalation step 2<br/>notify backup user + Slack channel"]
+    S2 -->|wait, no ack| S3["Escalation step 3<br/>notify all admins"]
+    S3 -.->|repeat?| S1
 ```
 
 Acknowledging the incident stops the escalation. See [Incidents](/features/incidents#acknowledge-snooze-resolve) for acknowledgment, snooze, and resolution.

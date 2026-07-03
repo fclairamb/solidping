@@ -4,7 +4,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { DailyAvailabilityPoint } from "@/api/hooks";
+import type { AvailabilityPoint } from "@/api/hooks";
 import { statusStyle } from "@/lib/status-style";
 
 function getBarColor(status: string) {
@@ -15,17 +15,24 @@ function getBarColor(status: string) {
 }
 
 interface AvailabilityBarProps {
-  dailyAvailability: DailyAvailabilityPoint[];
+  dailyAvailability: AvailabilityPoint[];
   overallAvailabilityPct?: number;
   historyDays: number;
+  // bucketUnit is the per-segment granularity. "hour" renders the 24h view (24
+  // hourly segments, hour-formatted tooltips, "24h ago → now" axis); anything
+  // else renders the daily view unchanged.
+  bucketUnit?: "day" | "hour" | string;
 }
 
 export function AvailabilityBar({
   dailyAvailability,
   overallAvailabilityPct,
   historyDays,
+  bucketUnit,
 }: AvailabilityBarProps) {
   const { t, i18n } = useTranslation();
+
+  const isHourly = bucketUnit === "hour";
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr + "T00:00:00");
@@ -35,18 +42,32 @@ export function AvailabilityBar({
     });
   };
 
+  // Hourly tooltips show the bucket hour (date + HH:00) from the RFC3339 time.
+  const formatHour = (point: AvailabilityPoint) => {
+    const iso = point.time ?? `${point.date}T00:00:00Z`;
+    const date = new Date(iso);
+    return date.toLocaleString(i18n.language, {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
+
   return (
     <div className="mt-2">
       <div className="flex gap-px">
         {dailyAvailability.map((point) => (
-          <Tooltip key={point.date}>
+          <Tooltip key={point.time ?? point.date}>
             <TooltipTrigger asChild>
               <div
                 className={`h-7 flex-1 rounded-sm ${getBarColor(point.status)} transition-opacity hover:opacity-80`}
               />
             </TooltipTrigger>
             <TooltipContent>
-              <p className="font-medium">{formatDate(point.date)}</p>
+              <p className="font-medium">
+                {isHourly ? formatHour(point) : formatDate(point.date)}
+              </p>
               {point.status !== "noData" ? (
                 <p className="text-xs">
                   {point.availabilityPct.toFixed(2)}% {t("uptime")}
@@ -59,7 +80,11 @@ export function AvailabilityBar({
         ))}
       </div>
       <div className="mt-1 flex justify-between text-xs text-muted-foreground">
-        <span>{t("daysAgo", { count: historyDays })}</span>
+        <span>
+          {isHourly
+            ? t("hoursAgo", { count: 24 })
+            : t("daysAgo", { count: historyDays })}
+        </span>
         {overallAvailabilityPct != null && (
           <span className="font-medium text-foreground">
             {overallAvailabilityPct.toFixed(3)}% {t("uptime")}

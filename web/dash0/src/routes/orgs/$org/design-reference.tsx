@@ -22,6 +22,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  RefreshCw,
   RotateCw,
   Save,
   Search,
@@ -30,11 +31,14 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
 import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { StatusDot } from "@/components/shared/status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -126,9 +130,11 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
+  { id: "check-multi-picker", label: "Check multi-picker" },
   { id: "kpi-tiles", label: "KPI tiles" },
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
+  { id: "maintenance-schedule", label: "Maintenance schedule" },
 ];
 
 function DesignReferencePage() {
@@ -153,9 +159,11 @@ function DesignReferencePage() {
       <CollapsibleCodeSection />
       <FeedbackSection />
       <LabelFilterSection />
+      <CheckMultiPickerSection />
       <KpiTileSection />
       <UptimeStripSection />
       <JobsPrimitivesSection />
+      <MaintenanceScheduleSection />
     </div>
   );
 }
@@ -857,6 +865,36 @@ function ButtonsBadgesSection() {
           importLine={`<Button aria-label="Save">\n  <Save />\n  <span className="hidden sm:inline">Save</span>\n</Button>`}
         />
 
+        <h3 className="text-sm font-medium">Header refresh button (icon-only on mobile)</h3>
+        <p className="text-sm text-muted-foreground">
+          The canonical list/detail header refresh control. An{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">outline</code> button
+          wrapping{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">RefreshCw</code> that shows
+          the word <strong>Refresh</strong> from the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm</code> breakpoint up and
+          collapses to icon-only below it. Drop{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">size=&quot;icon&quot;</code>{" "}
+          so the button sizes to its content, put{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">sm:mr-2</code> on the icon so
+          the gap only appears with the label, and keep an{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">aria-label</code> for the
+          icon-only state. Add{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">animate-spin</code> while the
+          query is refetching. (Use the localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">common:refresh</code> string
+          on real pages.)
+        </p>
+        <ExampleRow
+          preview={
+            <Button variant="outline" aria-label="Refresh">
+              <RefreshCw className="h-4 w-4 sm:mr-2" />
+              <span className="hidden sm:inline">Refresh</span>
+            </Button>
+          }
+          importLine={`<Button variant="outline" onClick={() => void refetch()} disabled={isRefetching} aria-label={t("common:refresh")}>\n  <RefreshCw className={\`h-4 w-4 sm:mr-2 \${isRefetching ? "animate-spin" : ""}\`} />\n  <span className="hidden sm:inline">{t("common:refresh")}</span>\n</Button>`}
+        />
+
         <h3 className="text-sm font-medium">Badge variants</h3>
         <ExampleRow
           preview={
@@ -892,6 +930,43 @@ function ButtonsBadgesSection() {
             </Button>
           }
           importLine={`import { Button } from "@/components/ui/button";\nimport { Badge } from "@/components/ui/badge";\n\n<Button variant="outline" className="w-full">\n  <KeyRound className="mr-2 h-4 w-4" />\n  Sign in with passkey\n  <Badge variant="secondary" className="ml-2">Last used</Badge>\n</Button>`}
+        />
+
+        <h3 className="text-sm font-medium">Status dot</h3>
+        <p className="text-sm text-muted-foreground">
+          The small dot rendered beside a check name (listing) and the detail
+          header. Colours come from the single source of truth{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">statusStyle()</code>{" "}
+          so the dot always matches the{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">StatusBadge</code>{" "}
+          beside it. A <strong>disabled</strong> check (
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">enabled === false</code>)
+          renders a neutral grey dot that overrides the last/live status colour, so a
+          paused check no longer reads as "healthy & live". Pass a localized{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">title</code> (the
+          translated "Disabled") for the tooltip and accessible label.
+        </p>
+        <ExampleRow
+          preview={
+            <>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="up" /> Up
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="warning" /> Warning
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="down" /> Down
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="unknown" /> Unknown
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-sm">
+                <StatusDot status="up" enabled={false} title="Disabled" /> Disabled
+              </span>
+            </>
+          }
+          importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
         />
       </div>
     </Section>
@@ -1190,6 +1265,47 @@ function EmptyTable() {
   );
 }
 
+/** ClickableTable demonstrates the whole-row navigation pattern: the entire
+ * <TableRow> is the click/keyboard target (no nested link or button), so the
+ * row reads as a single `role="link"` to assistive tech. Used by list pages
+ * whose rows open a detail route (e.g. discovery scans). In real code `onClick`
+ * calls `navigate(...)`; here it's inert because the reference page has no live
+ * detail target. */
+function ClickableTable() {
+  return (
+    <div className="rounded-md border">
+      <Table>
+        <MockTableHeader />
+        <TableBody>
+          {MOCK_ROWS.slice(0, 3).map((row) => (
+            <TableRow
+              key={row.id}
+              className="cursor-pointer hover:bg-muted/50"
+              role="link"
+              tabIndex={0}
+              onClick={() => {
+                /* navigate({ to: "/…/$uid", params: { uid: row.id } }) */
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  /* navigate(...) */
+                }
+              }}
+            >
+              <TableCell className="font-medium">{row.name}</TableCell>
+              <TableCell>
+                <StatusBadge status={row.status} />
+              </TableCell>
+              <TableCell className="font-mono text-xs">{row.latency}</TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 function DataDisplaySection() {
   return (
     <Section
@@ -1213,6 +1329,23 @@ function DataDisplaySection() {
       </div>
       <CodeSnippet
         code={`import {\n  Table,\n  TableBody,\n  TableCell,\n  TableHead,\n  TableHeader,\n  TableRow,\n} from "@/components/ui/table";\nimport { Skeleton } from "@/components/ui/skeleton";\nimport { useDebounce } from "@/lib/use-debounce";`}
+      />
+
+      <div className="space-y-2 pt-2">
+        <h3 className="text-sm font-medium">Clickable rows</h3>
+        <p className="text-sm text-muted-foreground">
+          When a row opens a detail route, make the whole <code>TableRow</code>{" "}
+          the target — not a trailing "View" link. Add{" "}
+          <code>cursor-pointer hover:bg-muted/50</code> for affordance, and keep
+          it keyboard-accessible with <code>role="link"</code>,{" "}
+          <code>tabIndex=&#123;0&#125;</code>, and an Enter/Space{" "}
+          <code>onKeyDown</code>. The row must contain no nested links or buttons
+          so the click target is unambiguous.
+        </p>
+        <ClickableTable />
+      </div>
+      <CodeSnippet
+        code={`import { useNavigate } from "@tanstack/react-router";\n\nconst navigate = useNavigate();\nconst open = () =>\n  void navigate({ to: "/orgs/$org/widgets/$uid", params: { org, uid: row.uid } });\n\n<TableRow\n  className="cursor-pointer hover:bg-muted/50"\n  role="link"\n  tabIndex={0}\n  onClick={open}\n  onKeyDown={(e) => {\n    if (e.key === "Enter" || e.key === " ") {\n      e.preventDefault();\n      open();\n    }\n  }}\n>\n  {/* cells — no nested <Link>/<Button> */}\n</TableRow>`}
       />
     </Section>
   );
@@ -1746,6 +1879,34 @@ function ColorTokensSection() {
   );
 }
 
+function CheckMultiPickerSection() {
+  const { org } = Route.useParams();
+  const [checkUids, setCheckUids] = useState<string[]>([]);
+  const [groupUids, setGroupUids] = useState<string[]>([]);
+
+  return (
+    <Section
+      id="check-multi-picker"
+      title="Check multi-picker"
+      description="Multi-select for checks or check groups, parameterized by kind. Selected items render as removable Badge chips. Used by the maintenance-window form (which needs multiple checks and multiple groups). Mirrors the single-value CheckPicker."
+    >
+      <p className="text-xs text-muted-foreground">
+        import {"{ CheckMultiPicker }"} from "@/components/shared/check-multi-picker"
+      </p>
+      <div className="grid gap-4 sm:grid-cols-2 max-w-2xl">
+        <div className="space-y-2">
+          <Label>Checks</Label>
+          <CheckMultiPicker org={org} kind="checks" value={checkUids} onChange={setCheckUids} />
+        </div>
+        <div className="space-y-2">
+          <Label>Check groups</Label>
+          <CheckMultiPicker org={org} kind="groups" value={groupUids} onChange={setGroupUids} />
+        </div>
+      </div>
+    </Section>
+  );
+}
+
 function JobsPrimitivesSection() {
   const [tab, setTab] = useState("first");
 
@@ -1793,6 +1954,103 @@ function JobsPrimitivesSection() {
           import {"{ JsonViewer }"} from "@/components/shared/json-viewer"
         </p>
         <JsonViewer value={{ url: "https://example.com", timeout: 5000 }} />
+      </div>
+    </Section>
+  );
+}
+
+function MaintenanceScheduleSection() {
+  const [weekday, setWeekday] = useState(3); // Wed
+  const [durationValue, setDurationValue] = useState("1");
+  const [durationUnit, setDurationUnit] = useState("hours");
+
+  // Mon..Sun, labelled via Intl from a reference week (2024-01-01 is a Monday).
+  const weekdayOrder = [1, 2, 3, 4, 5, 6, 0];
+  const weekdayLabel = (dow: number) =>
+    new Date(2024, 0, 1 + ((dow - 1 + 7) % 7)).toLocaleDateString(undefined, {
+      weekday: "short",
+    });
+
+  // A sample weekly window for the summary panel preview. Computed once (the
+  // current date is read in an effect-free memo to avoid impure render calls).
+  const sampleWindow = useMemo(() => {
+    const now = new Date();
+    const sampleStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 22, 0),
+    );
+    return {
+      uid: "dr-sample",
+      title: "Weekly DB backup",
+      startAt: sampleStart.toISOString(),
+      endAt: new Date(sampleStart.getTime() + 3600000).toISOString(),
+      recurrence: "weekly" as const,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+    };
+  }, []);
+
+  return (
+    <Section
+      id="maintenance-schedule"
+      title="Maintenance schedule"
+      description="Recurrence-aware controls used by the maintenance-window form: a single-select weekday chip row, a number+unit duration input, and the plain-language schedule summary panel (which also previews the next occurrences)."
+    >
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Weekday chips (single-select)</h3>
+        <p className="text-xs text-muted-foreground">
+          Built from {"<Button>"} — variant "default" when selected, "outline"
+          otherwise, with aria-pressed.
+        </p>
+        <div className="flex flex-wrap gap-2" role="group">
+          {weekdayOrder.map((dow) => (
+            <Button
+              key={dow}
+              type="button"
+              size="sm"
+              variant={weekday === dow ? "default" : "outline"}
+              aria-pressed={weekday === dow}
+              onClick={() => setWeekday(dow)}
+            >
+              {weekdayLabel(dow)}
+            </Button>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Duration input (number + unit)</h3>
+        <p className="text-xs text-muted-foreground">
+          {"<Input type=\"number\">"} paired with a unit {"<Select>"}.
+        </p>
+        <div className="flex gap-2 max-w-xs">
+          <Input
+            type="number"
+            min={1}
+            step={1}
+            value={durationValue}
+            onChange={(e) => setDurationValue(e.target.value)}
+            className="max-w-[7rem]"
+          />
+          <Select value={durationUnit} onValueChange={setDurationUnit}>
+            <SelectTrigger className="flex-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="minutes">minutes</SelectItem>
+              <SelectItem value="hours">hours</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-2">
+        <h3 className="text-sm font-medium">Schedule summary panel</h3>
+        <p className="text-xs text-muted-foreground">
+          import{" "}
+          {"{ MaintenanceScheduleSummary }"} from
+          "@/components/shared/maintenance-schedule-summary"
+        </p>
+        <MaintenanceScheduleSummary window={sampleWindow} />
       </div>
     </Section>
   );
