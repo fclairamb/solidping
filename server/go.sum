@@ -120,6 +120,8 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59 h1:DjKLmvKK9u15djHZ88N8M0DhgnHVgJJ8bnEe0h7Lga8=
 github.com/dop251/goja v0.0.0-20260618133527-c9b2ea77db59/go.mod h1:Sc+QOu1WruvaaeT/cxFez/pXHpI9ZDjg/E8QNfSVveI=
+github.com/dop251/goja v0.0.0-20260701091749-b07b74453ea9 h1:q33zakIx+wEp1Ko5NpDyDBICuXL4JeHUaHbhPowcMEk=
+github.com/dop251/goja v0.0.0-20260701091749-b07b74453ea9/go.mod h1:Sc+QOu1WruvaaeT/cxFez/pXHpI9ZDjg/E8QNfSVveI=
 github.com/dprotaso/go-yit v0.0.0-20191028211022-135eb7262960/go.mod h1:9HQzr9D/0PGwMEbC3d5AB7oi67+h4TsQqItC1GVYG58=
 github.com/dprotaso/go-yit v0.0.0-20260505203253-b1e9c41b42c9 h1:bk/7BZZJzVXleFAd2d3k+ON5Lx7EgtnPdxrPwsYg0dw=
 github.com/dprotaso/go-yit v0.0.0-20260505203253-b1e9c41b42c9/go.mod h1:N9wtRAOYaB2BW9u04V5jFd3YC4czqMUnXPXcN+GvkO4=
