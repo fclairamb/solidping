@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.2.0](https://github.com/fclairamb/solidping/compare/v0.1.0...v0.2.0) (2026-07-04)
+
+
+### Bug Fixes
+
+* **deps:** update dependency recharts to v3.9.2 ([#97](https://github.com/fclairamb/solidping/issues/97)) ([c7917cc](https://github.com/fclairamb/solidping/commit/c7917ccd891e0e1c54d879183982333d1e8cceb4))
+* **deps:** update github.com/dop251/goja digest to b07b744 ([#90](https://github.com/fclairamb/solidping/issues/90)) ([3f33ee6](https://github.com/fclairamb/solidping/commit/3f33ee65bb13b0f3b81c8ddb72e347b311f8b0cc))
+* **deps:** update go dependencies (non-major) ([#92](https://github.com/fclairamb/solidping/issues/92)) ([138e3ae](https://github.com/fclairamb/solidping/commit/138e3ae58b99630331adf7033fe672a09268b7c3))
+
+
+### Miscellaneous Chores
+
+* retry release-as trailer for v0.2.0 ([#98](https://github.com/fclairamb/solidping/issues/98)) ([fb8e011](https://github.com/fclairamb/solidping/commit/fb8e0112f28833e53c52e5278634b6fbe01d1ce6))
+
 ## [0.1.0](https://github.com/fclairamb/solidping/compare/v0.0.0...v0.1.0) (2026-06-22)
 
 
