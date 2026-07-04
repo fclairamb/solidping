@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.2.0](https://github.com/fclairamb/solidping/compare/v0.1.0...v0.2.0) (2026-07-04)
+
+
+### Features
+
+* batch/2026-06-23 — realtime v2 (WebSocket transport with per-entity subscriptions, replacing SSE), scheduler fairness & fast/slow check lanes, heavy-check demand control, container/Kubernetes discovery, maintenance windows (recurrence + status badge), server-side availability-statistics API, NTP checker, configurable password hashing, memory runtime guardrails, Microsoft OAuth tenant ID setting ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+* **db:** consolidate migrations into a v0.2.0 baseline delta; collapse OAuth storage from three dedicated tables to reusing `state_entries`/`user_tokens` ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+
+
+### Bug Fixes
+
+* **deps:** update dependency recharts to v3.9.2 ([#97](https://github.com/fclairamb/solidping/issues/97)) ([c7917cc](https://github.com/fclairamb/solidping/commit/c7917ccd891e0e1c54d879183982333d1e8cceb4))
+* **deps:** update github.com/dop251/goja digest to b07b744 ([#90](https://github.com/fclairamb/solidping/issues/90)) ([3f33ee6](https://github.com/fclairamb/solidping/commit/3f33ee65bb13b0f3b81c8ddb72e347b311f8b0cc))
+* **deps:** update go dependencies (non-major) ([#92](https://github.com/fclairamb/solidping/issues/92)) ([138e3ae](https://github.com/fclairamb/solidping/commit/138e3ae58b99630331adf7033fe672a09268b7c3))
+* **realtime:** stale OAuth-consent `access_token` cookie fail-fast rejected the WS handshake instead of falling through to fresh in-band auth; plain result writes didn't invalidate the check/checks cache, drifting "last checked" stale ([#89](https://github.com/fclairamb/solidping/issues/89)) ([73ff047](https://github.com/fclairamb/solidping/commit/73ff04718b98d63855a6d40fd41e56caa6e0c8ed))
+
+
+### Miscellaneous Chores
+
+* retry release-as trailer for v0.2.0 ([#98](https://github.com/fclairamb/solidping/issues/98)) ([fb8e011](https://github.com/fclairamb/solidping/commit/fb8e0112f28833e53c52e5278634b6fbe01d1ce6))
+
 ## [0.1.0](https://github.com/fclairamb/solidping/compare/v0.0.0...v0.1.0) (2026-06-22)
 
 
