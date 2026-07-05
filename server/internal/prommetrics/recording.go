@@ -42,6 +42,13 @@ func SetWorkerFreeRunners(workerUID, region string, count float64) {
 	WorkerFreeRunners.WithLabelValues(workerUID, region).Set(count)
 }
 
+// SetCheckRunnerParked sets the number of runner slots for a worker currently
+// occupied by a claimed job sleeping until its scheduled time (spec
+// 2026-07-05-08 D5).
+func SetCheckRunnerParked(workerUID, region string, count float64) {
+	CheckRunnerParked.WithLabelValues(workerUID, region).Set(count)
+}
+
 // RecordWorkerJobClaimed increments the jobs claimed counter for a worker.
 func RecordWorkerJobClaimed(workerUID, region string) {
 	WorkerJobsClaimed.WithLabelValues(workerUID, region).Inc()

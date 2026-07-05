@@ -121,6 +121,17 @@ type CheckWorker struct {
 	jobsChan         chan *models.CheckJob // Fetcher → Runners
 	completionChan   chan struct{}         // Runners → Fetcher (wake-up signal)
 
+	// parked counts runners currently occupied by a claimed job that is
+	// sleeping until its scheduled_at (spec 2026-07-05-08 D5) — claimed but
+	// not yet actually probing. Incremented on entry to executeJob's
+	// pre-schedule sleep accounting and decremented once the sleep resolves
+	// (timer fires or is skipped because the job was already due), so it
+	// reflects "in the sleep window" rather than "holds a lease". Surfaced
+	// alongside freeRunners on the Processing stats log line and as the
+	// solidping_check_runner_parked gauge, giving visibility into how much
+	// of the pool D3's bounded claim-ahead window is currently occupying.
+	parked atomic.Int32
+
 	// Fast/slow lane reservation (spec 2026-07-01-03 D3/D4): slow-lane jobs in
 	// flight never exceed poolSize − fastLaneReserved on this worker, so a
 	// burst of slow probes can never occupy the whole pool and starve due fast
@@ -691,8 +702,15 @@ func (r *CheckWorker) executeJob(
 	// logged as if it had taken minutes to execute.
 	wait, delay := waitAndDelay(sleepTime)
 
-	// Wait for the check time to come
+	// Wait for the check time to come. Counted as "parked" for the duration
+	// of the sleep (D5): claimed but not yet actually due, so this runner
+	// slot isn't free but isn't doing real work either — visibility into how
+	// much of the pool D3's bounded claim-ahead window is occupying at any
+	// instant.
 	if sleepTime > 0 {
+		r.parked.Add(1)
+		defer r.parked.Add(-1)
+
 		timer := time.NewTimer(sleepTime)
 		select {
 		case <-ctx.Done():
@@ -1314,6 +1332,9 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 	r.stats.SetFreeRunnersFunc(func() float64 {
 		return float64(r.availableRunners.Load())
 	})
+	r.stats.SetParkedFunc(func() float64 {
+		return float64(r.parked.Load())
+	})
 
 	r.logger.InfoContext(ctx, "Self-stats reporting configured",
 		"internal_check_uid", r.internalCheckUID)
@@ -1388,11 +1409,20 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 		Metrics: models.JSONMap{
 			"job_runs":         reported.TotalChecks,
 			"free_runners":     reported.FreeRunners,
+			"parked":           reported.Parked,
 			"average_duration": reported.AverageDuration,
 			"average_delay":    reported.AverageDelay,
 		},
 		CreatedAt: time.Now(),
 	}
+
+	region := ""
+	if worker.Region != nil {
+		region = *worker.Region
+	}
+
+	prommetrics.SetWorkerFreeRunners(worker.UID, region, reported.FreeRunners)
+	prommetrics.SetCheckRunnerParked(worker.UID, region, reported.Parked)
 
 	if err := r.dbService.CreateResult(ctx, result); err != nil {
 		r.logger.Error("Failed to save self-stats result", "error", err)

@@ -1855,3 +1855,124 @@ func TestRunnerSurvivesPanicAndProcessesSubsequentJob(t *testing.T) {
 	nextJob := newHeartbeatJob(t, dbSvc, ctx, org.UID, worker.UID)
 	sendJobAndWaitForResult(t, dbSvc, ctx, runner.jobsChan, nextJob)
 }
+
+// instantConfig/instantChecker are a trivial non-passive checker that
+// returns immediately — used to drive executeJob's real sleep-accounting
+// path (D5) without a hanging/panicking stub or a real network check.
+type instantConfig struct{}
+
+func (instantConfig) FromMap(map[string]any) error { return nil }
+func (instantConfig) GetConfig() map[string]any    { return map[string]any{} }
+
+type instantChecker struct{}
+
+func (instantChecker) Type() checkerdef.CheckType           { return checkerdef.CheckType("test-instant") }
+func (instantChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (instantChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.Result, error) {
+	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
+}
+
+func instantResolvers() (
+	func(checkerdef.CheckType) (checkerdef.Checker, bool),
+	func(checkerdef.CheckType) (checkerdef.Config, bool),
+) {
+	const instantType = checkerdef.CheckType("test-instant")
+
+	getChecker := func(ct checkerdef.CheckType) (checkerdef.Checker, bool) {
+		if ct == instantType {
+			return instantChecker{}, true
+		}
+
+		return registry.GetChecker(ct)
+	}
+	parseConfig := func(ct checkerdef.CheckType) (checkerdef.Config, bool) {
+		if ct == instantType {
+			return instantConfig{}, true
+		}
+
+		return registry.ParseConfig(ct)
+	}
+
+	return getChecker, parseConfig
+}
+
+// TestExecuteJobParkedCountTracksPreScheduleSleep covers D5 (spec
+// 2026-07-05-08): a job claimed ahead of its scheduled_at bumps the parked
+// counter for the duration of the pre-schedule sleep and releases it back to
+// 0 once the sleep resolves — visibility into how much of the pool the
+// bounded claim-ahead window (D3) is occupying at any instant.
+//
+//nolint:paralleltest // shares runner/DB state via startTestRunnerLoop
+func TestExecuteJobParkedCountTracksPreScheduleSleep(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	runner.getChecker, runner.parseConfig = instantResolvers()
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	require.Zero(t, runner.parked.Load(), "parked must start at 0")
+
+	check := models.NewCheck(org.UID, "parked-"+uuid.New().String()[:8], "test-instant")
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	job := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+
+	// Claimed well ahead of its own scheduled_at (as D3's bounded window
+	// still allows for a short-period job) — executeJob must sleep before
+	// running the checker.
+	scheduledAt := time.Now().Add(300 * time.Millisecond)
+	_, err = dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", scheduledAt).
+		Where("uid = ?", job.UID).
+		Exec(ctx)
+	require.NoError(t, err)
+	job.ScheduledAt = &scheduledAt
+
+	claimJobForTest(t, dbSvc, ctx, job, worker.UID)
+
+	select {
+	case runner.jobsChan <- job:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the job")
+	}
+
+	// While the job is sleeping toward its scheduled_at, parked must read 1.
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 1
+	}, 250*time.Millisecond, 5*time.Millisecond, "parked must be 1 while executeJob sleeps toward scheduled_at")
+
+	// Once the checker actually runs and the job completes, parked must
+	// release back to 0 — proof the counter reflects "sleeping", not "holds
+	// a lease" (the lease is held for the whole executeJob call, but parked
+	// only for the sleep portion of it).
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 0
+	}, 2*time.Second, 10*time.Millisecond, "parked must release back to 0 once the sleep resolves")
+
+	// Confirm the job actually ran to completion (result saved, lease
+	// released) rather than parked staying 0 because the job was dropped.
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", check.UID).
+			Where("status = ?", int(models.ResultStatusUp)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 2*time.Second, 10*time.Millisecond, "the instant checker must have produced exactly one UP result")
+}
