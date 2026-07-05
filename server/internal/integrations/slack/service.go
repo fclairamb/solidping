@@ -417,13 +417,18 @@ func (s *Service) resolveOrganization(
 	return org, orgName, nil
 }
 
-// createOrUpdateConnection creates or updates an integration connection for the Slack team.
+// createOrUpdateConnection creates or updates an integration connection for
+// the Slack team, scoped to orgUID. A workspace already connected to another
+// org is untouched — the existing-connection lookup is org-scoped, so a
+// second org installing the same Slack workspace gets its own row instead of
+// silently taking over (or being redirected into) the first org's
+// connection.
 func (s *Service) createOrUpdateConnection(
 	ctx context.Context, orgUID string, oauthResp *OAuthResponse,
 ) (string, error) {
-	// Check if a connection already exists for this team
-	existingConn, err := s.db.GetChannelByProperty(
-		ctx, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
+	// Check if a connection already exists for this team IN THIS ORG.
+	existingConn, err := s.db.GetChannelByPropertyForOrg(
+		ctx, orgUID, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
