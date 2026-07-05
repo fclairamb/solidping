@@ -137,7 +137,7 @@ func (h *PasskeyHandler) LoginFinish(writer http.ResponseWriter, req bunrouter.R
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.FinishLogin(req.Context(), body.Session, body.Credential, body.Org, authContext)

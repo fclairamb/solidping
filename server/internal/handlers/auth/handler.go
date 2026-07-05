@@ -104,7 +104,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Login(req.Context(), loginReq.Org, loginReq.Email, loginReq.Password, authContext)
@@ -366,7 +366,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) e
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.SwitchOrg(req.Context(), claims.UserUID, switchReq.Org, authContext)
@@ -559,7 +559,7 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter
 		})
 	}
 
-	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, extractRemoteAddress(req))
+	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, base.ExtractRemoteAddr(req))
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {
 			return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
@@ -971,7 +971,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Verify2FA(req.Context(), tempToken, verifyReq.Code, authContext)
@@ -1012,7 +1012,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request)
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Recovery2FA(req.Context(), tempToken, recoveryReq.RecoveryCode, authContext)
@@ -1091,25 +1091,4 @@ func extractBearerToken(req bunrouter.Request) string {
 	}
 
 	return ""
-}
-
-func extractRemoteAddress(req bunrouter.Request) string {
-	// Try X-Forwarded-For header first (common in reverse proxy setups)
-	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
-		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Try X-Real-IP header
-	if xri := req.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr from the connection
-	if req.RemoteAddr != "" {
-		return req.RemoteAddr
-	}
-
-	return "unknown"
 }
