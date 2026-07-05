@@ -421,7 +421,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Heartbeat Endpoint",
-      "curl": "Sample curl command:"
+      "curl": "Sample curl command:",
+      "callerNote": "Each ping's User-Agent, source IP, and HTTP method are recorded and shown on that ping's result detail page."
     },
     "email": {
       "title": "Email Endpoint",

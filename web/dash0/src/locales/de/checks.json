@@ -376,7 +376,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Heartbeat-Endpunkt",
-      "curl": "Beispiel-Curl-Befehl:"
+      "curl": "Beispiel-Curl-Befehl:",
+      "callerNote": "User-Agent, Quell-IP und HTTP-Methode jedes Pings werden erfasst und auf der Detailseite des jeweiligen Ergebnisses angezeigt."
     },
     "email": {
       "title": "E-Mail-Endpunkt",
