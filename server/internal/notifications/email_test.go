@@ -50,13 +50,26 @@ func (f *fakeEmailSender) Send(_ context.Context, msg *email.Message) (*email.Se
 	}, nil
 }
 
+// newTestFormatter builds a real TemplateFormatter — these tests exercise the
+// actual rendering pipeline (D1: one pipeline for every email) rather than a
+// stub, so a formatter-wiring regression fails here, not just in
+// server/internal/email's own package tests.
+func newTestFormatter(t *testing.T) email.Formatter {
+	t.Helper()
+
+	f, err := email.NewFormatter()
+	require.NoError(t, err)
+
+	return f
+}
+
 // TestEmailSender_Send_RecipientResolution pins recipient resolution from the
 // canonical "to" settings key. The dashboard writes recipients under "to", so
 // the backend must read from "to" — never "recipients" (the historical bug).
 //
-// A non-ack event type is used so Send takes the single broadcast path (no
-// per-recipient ack-link personalization needed). The generic event type also
-// avoids the incident-specific email builders, so the assertion stays focused on
+// A non-modeled event type is used so Send takes the single broadcast path (no
+// per-recipient personalization needed). The generic event type also avoids
+// the incident-template rendering path, so the assertion stays focused on
 // recipient resolution and depends only on the Check (for the subject) and
 // Integration.Settings.
 func TestEmailSender_Send_RecipientResolution(t *testing.T) {
@@ -119,8 +132,9 @@ func TestEmailSender_Send_RecipientResolution(t *testing.T) {
 
 			s := &EmailSender{}
 			payload := &Payload{
-				// A generic (non-ack) event type takes the broadcast path and
-				// hits the default email builder, which reads no incident fields.
+				// A generic (non-modeled) event type takes the broadcast path
+				// and hits the fallback email builder, which reads no
+				// incident fields.
 				EventType: "incident.updated",
 				Check:     &models.Check{Name: &checkName, Type: "http"},
 				Integration: &models.Integration{
@@ -129,7 +143,7 @@ func TestEmailSender_Send_RecipientResolution(t *testing.T) {
 			}
 
 			jctx := &jobdef.JobContext{
-				Services: &services.Registry{EmailSender: sender},
+				Services: &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
 				Logger:   slog.Default(),
 			}
 
@@ -149,6 +163,38 @@ func TestEmailSender_Send_RecipientResolution(t *testing.T) {
 	}
 }
 
+// TestEmailSender_Send_MissingFormatterErrors pins that Send fails fast with
+// a clear sentinel when the email formatter service is not wired — every
+// modeled incident event now renders through the formatter (D1), so a nil
+// formatter must not silently skip rendering.
+func TestEmailSender_Send_MissingFormatterErrors(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	checkName := "API health"
+	sender := &fakeEmailSender{}
+	s := &EmailSender{}
+	payload := &Payload{
+		EventType: eventTypeIncidentCreated,
+		Check:     &models.Check{Name: &checkName, Type: "http"},
+		Incident:  &models.Incident{UID: "inc-1", StartedAt: time.Now()},
+		Integration: &models.Integration{
+			Settings: models.JSONMap{"to": []any{"a@x.test"}},
+		},
+	}
+
+	jctx := &jobdef.JobContext{
+		Services:  &services.Registry{EmailSender: sender}, // EmailFormatter deliberately nil
+		AppConfig: &config.Config{},
+		Logger:    slog.Default(),
+	}
+
+	err := s.Send(context.Background(), jctx, payload)
+	r.ErrorIs(err, ErrEmailFormatterNotConfigured)
+	r.Empty(sender.sent)
+}
+
 // TestEmailSender_Send_CapturesDeliveryArtifacts pins that a successful send
 // surfaces the SMTP Message-ID and per-recipient server response on the payload
 // so the notification audit row can prove the message was handed off.
@@ -165,7 +211,7 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		sender := &fakeEmailSender{}
 		s := &EmailSender{}
 		payload := &Payload{
-			EventType: "incident.updated", // non-ack → single broadcast send
+			EventType: "incident.updated", // non-modeled → single broadcast send
 			Check:     &models.Check{Name: &checkName, Type: "http"},
 			Integration: &models.Integration{
 				Settings: models.JSONMap{"to": []any{"a@x.test", "b@y.test"}},
@@ -173,7 +219,7 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		}
 
 		jctx := &jobdef.JobContext{
-			Services: &services.Registry{EmailSender: sender},
+			Services: &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
 			Logger:   slog.Default(),
 		}
 
@@ -194,7 +240,7 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		sender := &fakeEmailSender{}
 		s := &EmailSender{}
 		payload := &Payload{
-			EventType: eventTypeIncidentCreated, // ack event → one send per recipient
+			EventType: eventTypeIncidentCreated, // modeled event → one send per recipient
 			Check:     &models.Check{Name: &checkName, Type: "http"},
 			Incident:  &models.Incident{UID: "inc-1", StartedAt: time.Now()},
 			Integration: &models.Integration{
@@ -203,7 +249,7 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		}
 
 		jctx := &jobdef.JobContext{
-			Services:  &services.Registry{EmailSender: sender},
+			Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
 			AppConfig: &config.Config{},
 			Logger:    slog.Default(),
 		}
@@ -217,6 +263,39 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		// The transcript carries every recipient's own server response.
 		r.Contains(payload.DeliveryDetails.ResponseBody, "server: 250 2.0.0 Ok: queued as Q-a@x.test")
 		r.Contains(payload.DeliveryDetails.ResponseBody, "server: 250 2.0.0 Ok: queued as Q-b@y.test")
+	})
+
+	t.Run("resolved event also sends per recipient (needed for per-recipient unsubscribe tokens)", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+
+		sender := &fakeEmailSender{}
+		s := &EmailSender{}
+		resolvedAt := time.Now()
+		payload := &Payload{
+			EventType: eventTypeIncidentResolved,
+			Check:     &models.Check{Name: &checkName, Type: "http"},
+			Incident: &models.Incident{
+				UID: "inc-1", StartedAt: resolvedAt.Add(-time.Hour), ResolvedAt: &resolvedAt,
+			},
+			Integration: &models.Integration{
+				Settings: models.JSONMap{"to": []any{"a@x.test", "b@y.test"}},
+			},
+		}
+
+		jctx := &jobdef.JobContext{
+			Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+			AppConfig: &config.Config{},
+			Logger:    slog.Default(),
+		}
+
+		r.NoError(s.Send(context.Background(), jctx, payload))
+		r.Len(sender.sent, 2, "resolved must send one email per recipient, not one broadcast")
+
+		for _, msg := range sender.sent {
+			r.NotContains(msg.HTML, "Acknowledge incident", "resolved has nothing to ack")
+		}
 	})
 
 	t.Run("partial batch failure still records delivered recipients", func(t *testing.T) {
@@ -236,7 +315,7 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		}
 
 		jctx := &jobdef.JobContext{
-			Services:  &services.Registry{EmailSender: sender},
+			Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
 			AppConfig: &config.Config{},
 			Logger:    slog.Default(),
 		}
@@ -250,4 +329,82 @@ func TestEmailSender_Send_CapturesDeliveryArtifacts(t *testing.T) {
 		r.Contains(payload.DeliveryDetails.ResponseBody, "recipients: a@x.test")
 		r.NotContains(payload.DeliveryDetails.ResponseBody, "Q-b@y.test")
 	})
+}
+
+// TestEmailSender_Send_RendersIncidentTemplates is a focused integration test
+// (real formatter, fake sender) confirming each modeled incident event
+// renders through its dedicated template with the expected content — the
+// "View incident" / check-link URLs (D3) and the ack button (ackable events
+// only).
+func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
+	t.Parallel()
+
+	checkName := "Production API"
+	checkSlug := "prod-api"
+
+	cases := []struct {
+		name          string
+		eventType     string
+		wantSubjectIn string
+		wantAckButton bool
+	}{
+		{"created", eventTypeIncidentCreated, "[DOWN]", true},
+		{"resolved", eventTypeIncidentResolved, "[RECOVERED]", false},
+		{"escalated", eventTypeIncidentEscalated, "[ESCALATED]", true},
+		{"reopened", eventTypeIncidentReopened, "[REOPENED]", true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			sender := &fakeEmailSender{}
+			s := &EmailSender{}
+			startedAt := time.Now().Add(-time.Hour)
+			resolvedAt := time.Now()
+			payload := &Payload{
+				EventType: tc.eventType,
+				Check:     &models.Check{UID: "check-1", Name: &checkName, Slug: &checkSlug, Type: "http"},
+				Incident: &models.Incident{
+					UID: "inc-42", StartedAt: startedAt, ResolvedAt: &resolvedAt,
+					FailureCount: 3, RelapseCount: 1,
+				},
+				Integration: &models.Integration{
+					Settings: models.JSONMap{"to": []any{"a@x.test"}},
+				},
+				OrgSlug:    "acme",
+				AppBaseURL: "https://solidping.example",
+			}
+
+			jctx := &jobdef.JobContext{
+				Services: &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+				AppConfig: &config.Config{
+					Auth:   config.AuthConfig{JWTSecret: "test-secret"},
+					Server: config.ServerConfig{BaseURL: "https://solidping.example"},
+				},
+				Logger: slog.Default(),
+			}
+
+			r.NoError(s.Send(context.Background(), jctx, payload))
+			r.Len(sender.sent, 1)
+
+			msg := sender.sent[0]
+			r.Contains(msg.Subject, tc.wantSubjectIn)
+			r.Contains(msg.HTML, "https://solidping.example/dash0/orgs/acme/incidents/inc-42", "View incident URL (D3)")
+			r.Contains(msg.HTML, "https://solidping.example/dash0/orgs/acme/checks/prod-api", "check name link (D3)")
+			r.Contains(msg.HTML, "https://solidping.example/dash0", "footer dashboard link")
+			r.Contains(msg.HTML, "https://solidping.example/docs", "footer docs link")
+			r.NotContains(msg.HTML, "{{", "no unresolved template syntax")
+			r.NotEmpty(msg.Text, "text alternative must be populated")
+			r.Contains(msg.Text, "https://solidping.example/dash0/orgs/acme/incidents/inc-42")
+
+			if tc.wantAckButton {
+				r.Contains(msg.HTML, "Acknowledge incident")
+			} else {
+				r.NotContains(msg.HTML, "Acknowledge incident")
+			}
+		})
+	}
 }

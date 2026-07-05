@@ -249,15 +249,15 @@ func (m *mockSender) Send(ctx context.Context, msg *email.Message) (*email.SendR
 
 // mockFormatter is a test double for email.Formatter.
 type mockFormatter struct {
-	formatFunc func(templateName string, data any) (string, string, error)
+	formatFunc func(templateName string, data any) (string, string, string, error)
 }
 
-func (m *mockFormatter) Format(templateName string, data any) (string, string, error) {
+func (m *mockFormatter) Format(templateName string, data any) (string, string, string, error) {
 	if m.formatFunc != nil {
 		return m.formatFunc(templateName, data)
 	}
 
-	return "", "<html>formatted</html>", nil
+	return "", "<html>formatted</html>", "formatted text", nil
 }
 
 func TestEmailJobRun_Run(t *testing.T) {
@@ -310,9 +310,10 @@ func TestEmailJobRun_Run(t *testing.T) {
 				require.Len(t, sender.calls, 1)
 				msg := sender.calls[0]
 				assert.Equal(t, "<html>formatted</html>", msg.HTML)
-				// Templated mail no longer carries a plaintext alternative
-				// (auto-text dropped in the Gmail rendering fix).
-				assert.Empty(t, msg.Text)
+				// Templated mail now carries the plaintext alternative the
+				// formatter renders from the template's {{define "text"}}
+				// block (D1) — no more auto-text, but no longer empty either.
+				assert.Equal(t, "formatted text", msg.Text)
 			},
 		},
 		{
@@ -356,8 +357,8 @@ func TestEmailJobRun_Run(t *testing.T) {
 			},
 			sender: &mockSender{},
 			formatter: &mockFormatter{
-				formatFunc: func(_ string, _ any) (string, string, error) {
-					return "", "", errTemplateNotFound
+				formatFunc: func(_ string, _ any) (string, string, string, error) {
+					return "", "", "", errTemplateNotFound
 				},
 			},
 			wantErr: true,
