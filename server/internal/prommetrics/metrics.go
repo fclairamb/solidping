@@ -370,6 +370,33 @@ var (
 		[]string{labelMessageType},
 	)
 
+	// CheckRunnerAbandoned counts checker executions the watchdog gave up on
+	// because the checker did not honor its context deadline within
+	// execTimeout + abandonGrace (spec 2026-07-05-05 D1/D3). A lost runner
+	// goroutine is otherwise silent and cumulative; this is the loud signal.
+	CheckRunnerAbandoned = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "solidping_check_runner_abandoned_total",
+			Help: "Total checker executions abandoned by the watchdog because the checker ignored its context",
+		},
+		[]string{labelCheckType},
+	)
+
+	// CheckRunnerAbandonedActive gauges checker goroutines currently
+	// abandoned-but-still-running: incremented when the watchdog gives up on
+	// an execution, decremented by the child goroutine's own deferred
+	// cleanup if it ever returns (normally or via a late panic). Non-zero
+	// for longer than a few executions means leaked goroutines are
+	// accumulating (the exact failure mode from the 2026-07-04/05
+	// incident) — this is the direct "leaked goroutines right now" signal
+	// that was invisible then. No labels: a single fleet-wide count per D3.
+	CheckRunnerAbandonedActive = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "solidping_check_runner_abandoned_active",
+			Help: "Checker goroutines currently abandoned by the watchdog but still running (leaked)",
+		},
+	)
+
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
@@ -385,6 +412,7 @@ var (
 		RealtimeConnections, RealtimeHintsPublished,
 		RealtimeHintsCoalesced, RealtimeHintsDelivered,
 		RealtimeSubscriptions, RealtimeMessagesReceived,
+		CheckRunnerAbandoned, CheckRunnerAbandonedActive,
 	}
 )
 

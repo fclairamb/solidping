@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -41,6 +42,17 @@ var (
 	ErrFailedToParseConf  = errors.New("failed to parse config")
 	ErrFailedToFetchCheck = errors.New("failed to fetch check from database")
 	ErrNoCheckType        = errors.New("check job has no type set")
+
+	// ErrCheckerPanic wraps a recovered panic from inside a checker's
+	// Execute call (spec 2026-07-05-05 D2). The runner survives; the panic
+	// is converted into a StatusError result instead of crashing the
+	// process.
+	ErrCheckerPanic = errors.New("checker panicked")
+
+	// ErrCheckerAbandoned marks a checker execution the watchdog gave up
+	// on because the checker never observed its context deadline within
+	// execTimeout + abandonGrace (spec 2026-07-05-05 D1).
+	ErrCheckerAbandoned = errors.New("check execution abandoned: checker did not honor its context")
 )
 
 const (
@@ -50,7 +62,31 @@ const (
 	periodTypeRaw = "raw"
 
 	outputKeyMessage = "message"
+
+	// abandonGrace is how much extra time a checker gets past its
+	// execTimeout before the watchdog abandons it (spec 2026-07-05-05 D1).
+	// This gives well-behaved checkers room to observe ctx.Done() and
+	// return their own StatusTimeout first — the watchdog only fires for
+	// checkers that ignore the context entirely.
+	abandonGrace = 5 * time.Second
 )
+
+// abandonGraceOverride lets tests shrink abandonGrace so hang/panic watchdog
+// tests don't have to wait out the real 5s grace. Zero (the default) means
+// "use abandonGrace". Package-private; production code never sets it.
+//
+//nolint:gochecknoglobals // test-only override, never mutated outside _test.go files
+var abandonGraceOverride time.Duration
+
+// effectiveAbandonGrace returns abandonGraceOverride when a test has set one,
+// else the real abandonGrace constant.
+func effectiveAbandonGrace() time.Duration {
+	if abandonGraceOverride > 0 {
+		return abandonGraceOverride
+	}
+
+	return abandonGrace
+}
 
 // CheckWorker executes check jobs from the queue.
 type CheckWorker struct {
@@ -689,7 +725,7 @@ func (r *CheckWorker) executeJob(
 	defer cancel()
 
 	execStart := time.Now()
-	result, err := checker.Execute(execCtx, checkConfig)
+	result, err := r.runCheckerGuarded(execCtx, logger, checker, checkConfig, checkJob, execTimeout, startTime)
 	prommetrics.RecordCheckStage("execute", time.Since(execStart).Seconds())
 	if err != nil {
 		duration := time.Since(startTime)
@@ -781,6 +817,106 @@ func (r *CheckWorker) executeJob(
 		"duration_ms", duration.Milliseconds())
 
 	return nil
+}
+
+// execOutcome carries a checker's Execute result (or panic) from the child
+// goroutine to runCheckerGuarded's select (spec 2026-07-05-05 D1).
+type execOutcome struct {
+	result *checkerdef.Result
+	err    error
+}
+
+// runCheckerGuarded runs checker.Execute in a child goroutine and abandons it
+// if it does not return within execTimeout + abandonGrace (spec
+// 2026-07-05-05 D1). This bounds the blast radius of a checker that ignores
+// its context (or panics) to one goroutine instead of the runner that would
+// otherwise be lost for the process lifetime.
+//
+// On the happy path (checker returns, or honors ctx and returns its own
+// DeadlineExceeded/error within the grace window) this returns exactly what
+// checker.Execute returned, so executeJob's existing
+// errors.Is(err, context.DeadlineExceeded) / generic-error branches are
+// unchanged (D1: additive, not a replacement).
+//
+// On a recovered panic (D2), it returns (nil, error) wrapping
+// ErrCheckerPanic and the panic value/stack; executeJob's generic-error
+// branch turns that into a StatusError result exactly like any other
+// checker error.
+//
+// On abandonment (D3), it returns a fully-formed StatusTimeout result (nil
+// error) so executeJob's save+release-lease steps run unchanged — the check
+// surfaces as "timeout" instead of eternal "created". The child's eventual
+// send lands in the cap-1 buffer nobody reads and is garbage-collected with
+// the goroutine (D4): no double result, no double lease release.
+func (r *CheckWorker) runCheckerGuarded(
+	ctx context.Context,
+	logger *slog.Logger,
+	checker checkerdef.Checker,
+	checkConfig checkerdef.Config,
+	checkJob *models.CheckJob,
+	execTimeout time.Duration,
+	startTime time.Time,
+) (*checkerdef.Result, error) {
+	ch := make(chan execOutcome, 1) // cap 1: a late send from an abandoned child never blocks
+
+	abandoned := false // only decrement the gauge if we actually incremented it
+
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				ch <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
+			}
+
+			if abandoned {
+				prommetrics.DecCheckRunnerAbandonedActive()
+			}
+		}()
+
+		res, execErr := checker.Execute(ctx, checkConfig)
+		ch <- execOutcome{result: res, err: execErr}
+	}()
+
+	select {
+	case out := <-ch:
+		return out.result, out.err
+	case <-time.After(execTimeout + effectiveAbandonGrace()):
+		abandoned = true
+
+		return r.abandonCheckerExecution(ctx, logger, checkJob, time.Since(startTime))
+	}
+}
+
+// abandonCheckerExecution implements the D3 abandon branch: loud logging,
+// the two watchdog metrics, and a saved StatusTimeout result shaped exactly
+// like the spec's D3 output.
+func (r *CheckWorker) abandonCheckerExecution(
+	ctx context.Context,
+	logger *slog.Logger,
+	checkJob *models.CheckJob,
+	duration time.Duration,
+) (*checkerdef.Result, error) {
+	region := ""
+	if checkJob.Region != nil {
+		region = *checkJob.Region
+	}
+
+	prommetrics.RecordCheckRunnerAbandoned(checkJob.Type)
+	prommetrics.IncCheckRunnerAbandonedActive()
+
+	logger.ErrorContext(ctx, "Checker abandoned: did not honor context",
+		"check_uid", checkJob.CheckUID,
+		"check_type", checkJob.Type,
+		"org", checkJob.OrganizationUID,
+		"region", region,
+		"abandon_count", 1)
+
+	return &checkerdef.Result{
+		Status:   checkerdef.StatusTimeout,
+		Duration: duration,
+		Output: map[string]any{
+			checkerdef.OutputKeyError: ErrCheckerAbandoned.Error(),
+		},
+	}, nil
 }
 
 // costSampleMs derives the cost sample (ms) to fold into the EWMA from a result.

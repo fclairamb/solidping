@@ -153,3 +153,25 @@ func RecordJobReaped(outcome string, n int) {
 func RecordJobLeaseLost(jobType string) {
 	JobsLeaseLost.WithLabelValues(jobType).Inc()
 }
+
+// RecordCheckRunnerAbandoned increments the abandoned-execution counter for
+// the given check type. Called once per watchdog abandonment (spec
+// 2026-07-05-05 D3).
+func RecordCheckRunnerAbandoned(checkType string) {
+	CheckRunnerAbandoned.WithLabelValues(checkType).Inc()
+}
+
+// IncCheckRunnerAbandonedActive marks one more checker goroutine as
+// abandoned-but-still-running. Paired with DecCheckRunnerAbandonedActive when
+// (if) the child goroutine ever returns.
+func IncCheckRunnerAbandonedActive() {
+	CheckRunnerAbandonedActive.Inc()
+}
+
+// DecCheckRunnerAbandonedActive marks a previously-abandoned checker
+// goroutine as no longer outstanding (it finally returned, normally or via a
+// recovered panic). Must only be called after a matching
+// IncCheckRunnerAbandonedActive.
+func DecCheckRunnerAbandonedActive() {
+	CheckRunnerAbandonedActive.Dec()
+}
