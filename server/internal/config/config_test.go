@@ -597,9 +597,11 @@ func TestLoad_NodeRolePoolPrecedence(t *testing.T) {
 
 // TestLoad_NodeRoleAllKeepsAPIPool is the api/all-side companion to
 // TestLoad_NodeRolePoolPrecedence: confirms Load() with no SP_NODE_ROLE set
-// (defaults to "all") keeps the larger pool. Uses t.Setenv, which is
-// incompatible with t.Parallel.
+// (defaults to "all") keeps the larger pool. Unlike its sibling, this test
+// sets no env vars, so it can run in parallel.
 func TestLoad_NodeRoleAllKeepsAPIPool(t *testing.T) {
+	t.Parallel()
+
 	r := require.New(t)
 
 	cfg, err := Load()
