@@ -522,6 +522,109 @@ test.describe("Checks", () => {
     });
   });
 
+  test("IMAP check form auto-toggles TLS when port 993 is entered, and round-trips on edit", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Navigate to new check form
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Select IMAP type
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^IMAP /i }).click();
+
+    const checkName = `E2E IMAP ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("imap.example.com");
+
+    // TLS checkbox starts unchecked and the hint is not shown yet.
+    await expect(page.getByTestId("check-tls-checkbox")).not.toBeChecked();
+    await expect(page.getByText("Port 993 uses implicit TLS.")).not.toBeVisible();
+
+    // D2: entering the well-known implicit-TLS port auto-enables the TLS
+    // toggle and surfaces the hint (client-side affordance only — the
+    // server derives independently).
+    await page.getByTestId("check-port-input").fill("993");
+    await expect(page.getByTestId("check-tls-checkbox")).toBeChecked();
+    await expect(page.getByText("Port 993 uses implicit TLS.")).toBeVisible();
+
+    // Take screenshot before submit
+    await page.screenshot({
+      path: "test-results/screenshots/checks-imap-form-tls-autotoggle.png",
+      fullPage: true,
+    });
+
+    // Submit
+    await page.getByTestId("check-submit-button").click();
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Navigate to edit page to verify the auto-toggled tls:true persisted.
+    await page.getByRole("link", { name: /Edit/i }).click();
+    await page.waitForURL(/\/edit/);
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("check-host-input")).toHaveValue("imap.example.com");
+    await expect(page.getByTestId("check-port-input")).toHaveValue("993");
+    await expect(page.getByTestId("check-tls-checkbox")).toBeChecked();
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-imap-edit.png",
+      fullPage: true,
+    });
+  });
+
+  test("POP3 check form auto-toggles TLS when port 995 is entered", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Navigate to new check form
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    // Select POP3 type
+    await page.getByTestId("check-type-select").click();
+    await page.getByRole("option", { name: /^POP3 /i }).click();
+
+    const checkName = `E2E POP3 ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-host-input").fill("pop3.example.com");
+
+    await expect(page.getByTestId("check-tls-checkbox")).not.toBeChecked();
+
+    // D2: entering the well-known implicit-TLS port (995 for POP3) auto-
+    // enables the TLS toggle and surfaces the hint.
+    await page.getByTestId("check-port-input").fill("995");
+    await expect(page.getByTestId("check-tls-checkbox")).toBeChecked();
+    await expect(page.getByText("Port 995 uses implicit TLS.")).toBeVisible();
+
+    // Unchecking TLS keeps the typed port but restores the plaintext
+    // placeholder if the field is cleared (D2: placeholder-only reversal).
+    await page.getByTestId("check-tls-checkbox").click();
+    await expect(page.getByTestId("check-tls-checkbox")).not.toBeChecked();
+    await page.getByTestId("check-port-input").fill("");
+    await expect(page.getByTestId("check-port-input")).toHaveAttribute("placeholder", "110");
+
+    await page.screenshot({
+      path: "test-results/screenshots/checks-pop3-form-tls-autotoggle.png",
+      fullPage: true,
+    });
+  });
+
   test("disabled check shows a grey (data-disabled) status dot on the listing", async ({
     authenticatedPage,
   }) => {

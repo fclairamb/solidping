@@ -1042,6 +1042,24 @@ function FormsSection() {
 
         <ExampleRow
           preview={
+            <label className="flex items-center gap-2">
+              <Checkbox id="dr-checkbox-hint" />
+              <span className="text-sm">Use implicit TLS</span>
+            </label>
+          }
+          importLine={`<label className="flex items-center gap-2">\n  <Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} />\n  <span className="text-sm">Use implicit TLS</span>\n</label>\n<p className="text-xs text-muted-foreground">Port 993 uses implicit TLS.</p>`}
+        />
+        <p className="text-sm text-muted-foreground">
+          A hint line under a checkbox is a plain{" "}
+          <code className="rounded bg-muted px-1 py-0.5 text-xs">{'<p className="text-xs text-muted-foreground">'}</code>{" "}
+          immediately below the label row — no dedicated hint/description
+          component exists. Used e.g. by the IMAP/POP3 check form's
+          port&harr;TLS auto-toggle affordance to explain why the toggle just
+          flipped.
+        </p>
+
+        <ExampleRow
+          preview={
             <div className="flex items-center gap-2">
               <Switch id="dr-switch" />
               <Label htmlFor="dr-switch">Switch label</Label>

@@ -714,11 +714,18 @@ export function CheckForm({
         }
         break;
       case "ssh":
-      case "pop3":
-      case "imap":
       case "sftp":
         if (host) cfg.host = host;
         if (port) cfg.port = parseInt(port, 10);
+        if (username) cfg.username = username;
+        if (password) cfg.password = password;
+        break;
+      case "pop3":
+      case "imap":
+        if (host) cfg.host = host;
+        if (port) cfg.port = parseInt(port, 10);
+        if (tls) cfg.tls = true;
+        if (startTLS) cfg.starttls = true;
         if (username) cfg.username = username;
         if (password) cfg.password = password;
         break;
@@ -951,12 +958,20 @@ export function CheckForm({
         }
         break;
       case "ssh":
-      case "pop3":
-      case "imap":
       case "sftp":
         if (!host) { setError("Host is required"); return; }
         config.host = host;
         if (port) config.port = parseInt(port, 10);
+        if (username) config.username = username;
+        if (password) config.password = password;
+        break;
+      case "pop3":
+      case "imap":
+        if (!host) { setError("Host is required"); return; }
+        config.host = host;
+        if (port) config.port = parseInt(port, 10);
+        if (tls) config.tls = true;
+        if (startTLS) config.starttls = true;
         if (username) config.username = username;
         if (password) config.password = password;
         break;
@@ -1427,16 +1442,14 @@ export function CheckForm({
           </div>
         );
       case "ssh":
-      case "pop3":
-      case "imap":
         return (
           <>
             <div className="space-y-2">
               <Label>Host</Label>
               <div className="flex gap-2">
-                <Input id="host" type="text" placeholder={type === "ssh" ? "server.example.com" : "mail.example.com"} value={host} onChange={(e) => setHost(e.target.value)}
+                <Input id="host" type="text" placeholder="server.example.com" value={host} onChange={(e) => setHost(e.target.value)}
                   className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
-                <Input id="port" type="number" placeholder={type === "ssh" ? "22" : type === "pop3" ? "110" : "143"} value={port} onChange={(e) => setPort(e.target.value)}
+                <Input id="port" type="number" placeholder="22" value={port} onChange={(e) => setPort(e.target.value)}
                   className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
               </div>
               {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
@@ -1452,6 +1465,61 @@ export function CheckForm({
             </div>
           </>
         );
+      case "pop3":
+      case "imap": {
+        // D2: port <-> TLS auto-toggle affordance. Selecting the implicit-TLS
+        // well-known port (993 IMAP / 995 POP3) auto-checks the TLS toggle;
+        // unchecking TLS restores the plaintext port as the placeholder
+        // (never forced into the field, so it never fights a typed value).
+        // Purely client-side guidance — the server derives independently
+        // (checkimap/checkpop3 newExecParams) regardless of what the client
+        // sends.
+        const implicitTLSPort = type === "pop3" ? "995" : "993";
+        const plaintextPort = type === "pop3" ? "110" : "143";
+        return (
+          <>
+            <div className="space-y-2">
+              <Label>Host</Label>
+              <div className="flex gap-2">
+                <Input id="host" type="text" placeholder="mail.example.com" value={host} onChange={(e) => setHost(e.target.value)}
+                  className={cn("flex-1", getFieldError(fieldErrors, "host") && "border-destructive")} data-testid="check-host-input" />
+                <Input id="port" type="number" placeholder={tls ? implicitTLSPort : plaintextPort} value={port}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setPort(value);
+                    if (value === implicitTLSPort && !startTLS) setTls(true);
+                  }}
+                  className={cn("w-24", getFieldError(fieldErrors, "port") && "border-destructive")} data-testid="check-port-input" />
+              </div>
+              {getFieldError(fieldErrors, "host") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "host")}</p>)}
+              {getFieldError(fieldErrors, "port") && (<p className="text-xs text-destructive">{getFieldError(fieldErrors, "port")}</p>)}
+            </div>
+            <div className="space-y-2">
+              <label className="flex items-center gap-2">
+                <Checkbox checked={tls} onCheckedChange={(v) => setTls(v === true)} data-testid="check-tls-checkbox" />
+                <span className="text-sm">Use implicit TLS</span>
+              </label>
+              {(tls || port === implicitTLSPort) && (
+                <p className="text-xs text-muted-foreground">
+                  Port {implicitTLSPort} uses implicit TLS.
+                </p>
+              )}
+              <label className="flex items-center gap-2">
+                <Checkbox checked={startTLS} onCheckedChange={(v) => setStartTLS(v === true)} data-testid="check-starttls-checkbox" />
+                <span className="text-sm">Use STARTTLS</span>
+              </label>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username (optional)</Label>
+              <Input id="username" type="text" placeholder="user" value={username} onChange={(e) => setUsername(e.target.value)} data-testid="check-username-input" />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password (optional)</Label>
+              <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="check-password-input" />
+            </div>
+          </>
+        );
+      }
       case "ftp":
         return (
           <>
