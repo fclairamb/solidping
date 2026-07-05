@@ -13,6 +13,7 @@ import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   useCreateIntegration,
+  startSlackInstall,
   canNotify,
   canSource,
   type ConnectionType,
@@ -215,8 +216,11 @@ function NewIntegrationPage() {
           <Button
             type="button"
             onClick={() => {
-              window.location.href =
-                "/api/v1/integrations/slack/install?source=dashboard";
+              void startSlackInstall(org).catch(() => {
+                toast.error(
+                  t("form.slackInstallFailed", "Failed to start Slack install"),
+                );
+              });
             }}
             data-testid="slack-install"
           >

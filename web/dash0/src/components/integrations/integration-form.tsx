@@ -31,6 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type {
   Integration,
   ConnectionType,
@@ -40,6 +41,7 @@ import type {
 } from "@/api/hooks";
 import {
   useSlackDestinations,
+  startSlackInstall,
   useRotateWebhookSecret,
   useTestIntegration,
 } from "@/api/hooks";
@@ -1138,10 +1140,12 @@ function SlackDestinationPanel({ settings, onChange, org, channelUid }: SlackDes
         <Button
           type="button"
           onClick={() => {
-            const params = new URLSearchParams({ source: "dashboard" });
-            if (channelUid) params.set("channelUid", channelUid);
-            if (org) params.set("org", org);
-            window.location.href = `/api/v1/integrations/slack/install?${params.toString()}`;
+            if (!org) return;
+            void startSlackInstall(org, channelUid).catch(() => {
+              toast.error(
+                t("form.slackInstallFailed", "Failed to start Slack install"),
+              );
+            });
           }}
           data-testid="slack-install"
         >
