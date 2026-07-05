@@ -217,11 +217,17 @@ func testGetResultNeighborsAcrossBackend(ctx context.Context, t *testing.T, dbSv
 
 		// Filtered to eu: usMiddle itself is still resolved by UID (region
 		// filter never blocks fetching the row itself), but its neighbors
-		// jump across it directly from euOlder to euNewer.
-		filtered, err := svc.GetResult(ctx, regOrg.Slug, regCheck.UID, euOlder.UID, []string{"eu"})
+		// jump across it directly from euOlder to euNewer — checked in both
+		// directions for a full round-trip proof.
+		filteredFromOlder, err := svc.GetResult(ctx, regOrg.Slug, regCheck.UID, euOlder.UID, []string{"eu"})
 		r.NoError(err)
-		r.Empty(filtered.PreviousUID)
-		r.Equal(euNewer.UID, filtered.NextUID, "us row must be skipped when region=eu")
+		r.Empty(filteredFromOlder.PreviousUID)
+		r.Equal(euNewer.UID, filteredFromOlder.NextUID, "us row must be skipped forward when region=eu")
+
+		filteredFromNewer, err := svc.GetResult(ctx, regOrg.Slug, regCheck.UID, euNewer.UID, []string{"eu"})
+		r.NoError(err)
+		r.Equal(euOlder.UID, filteredFromNewer.PreviousUID, "us row must be skipped backward when region=eu")
+		r.Empty(filteredFromNewer.NextUID)
 	})
 
 	t.Run("SameTimestampTieBreak", func(t *testing.T) {
