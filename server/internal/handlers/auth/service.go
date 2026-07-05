@@ -979,6 +979,49 @@ func (s *Service) LogoutOtherSessions(ctx context.Context, userUID, currentRefre
 	}, nil
 }
 
+// roleForOrg resolves a user's role within orgUID: super admins bypass
+// membership entirely; everyone else must have a membership row, or
+// ErrUserNotFound is returned (matches the historical behavior of the
+// inline checks this factors out of Refresh/SwitchOrg-style flows).
+func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID string) (string, error) {
+	if user.SuperAdmin {
+		return RoleSuperAdmin, nil
+	}
+
+	membership, err := s.db.GetMemberByUserAndOrg(ctx, user.UID, orgUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return "", ErrUserNotFound
+		}
+
+		return "", err
+	}
+
+	return string(membership.Role), nil
+}
+
+// slideSessionExpiry extends a refresh-token row's expires_at to
+// now + refresh_token_expiry on activity, so an active session never hits
+// the idle TTL. Gated by the same hourly write granularity already used for
+// last_active_at elsewhere (ValidatePATToken) — no write amplification on
+// rapid-fire refreshes (e.g. several tabs refreshing close together).
+// Best-effort: a write failure is logged and swallowed, matching the
+// existing last_active_at update it replaces.
+func (s *Service) slideSessionExpiry(ctx context.Context, token *models.UserToken) {
+	now := time.Now()
+
+	if token.LastActiveAt != nil && now.Sub(*token.LastActiveAt) <= time.Hour {
+		return
+	}
+
+	newExpiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	update := models.UserTokenUpdate{LastActiveAt: &now, ExpiresAt: &newExpiresAt}
+
+	if updateErr := s.db.UpdateUserToken(ctx, token.UID, update); updateErr != nil {
+		slog.ErrorContext(ctx, "Failed to update token last_active_at/expires_at", "error", updateErr, "tokenUID", token.UID)
+	}
+}
+
 // Refresh generates a new access token using a valid refresh token.
 // The org is derived from the refresh token itself.
 func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*LoginResponse, error) {
@@ -1022,20 +1065,9 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 	}
 
 	// Get role from membership (super admins bypass)
-	var role string
-	if user.SuperAdmin {
-		role = RoleSuperAdmin
-	} else {
-		membership, memberErr := s.db.GetMemberByUserAndOrg(ctx, user.UID, org.UID)
-		if memberErr != nil {
-			if errors.Is(memberErr, sql.ErrNoRows) {
-				return nil, ErrUserNotFound
-			}
-
-			return nil, memberErr
-		}
-
-		role = string(membership.Role)
+	role, err := s.roleForOrg(ctx, user, org.UID)
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate new access token, bound to the refresh-token row that issued it.
@@ -1044,20 +1076,7 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		return nil, err
 	}
 
-	// Sliding expiry: extend the session on activity so an active user never
-	// hits the idle refresh-token TTL. Same hourly write granularity as the
-	// PAT last_active_at update above (ValidatePATToken) — no write
-	// amplification on rapid-fire refreshes (e.g. several tabs).
-	now := time.Now()
-
-	if token.LastActiveAt == nil || now.Sub(*token.LastActiveAt) > time.Hour {
-		newExpiresAt := now.Add(s.cfg.RefreshTokenExpiry)
-		update := models.UserTokenUpdate{LastActiveAt: &now, ExpiresAt: &newExpiresAt}
-
-		if updateErr := s.db.UpdateUserToken(ctx, token.UID, update); updateErr != nil {
-			slog.ErrorContext(ctx, "Failed to update token last_active_at/expires_at", "error", updateErr, "tokenUID", token.UID)
-		}
-	}
+	s.slideSessionExpiry(ctx, token)
 
 	return &LoginResponse{
 		AccessToken:  accessToken,

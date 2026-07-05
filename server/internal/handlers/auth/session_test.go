@@ -274,3 +274,160 @@ func TestSessionCapPrunesLeastRecentlyActive(t *testing.T) {
 		r.Nil(row.DeletedAt)
 	}
 }
+
+// TestLogoutOtherSessions verifies "sign out other sessions" deletes every
+// refresh-type row except the caller's own, reports the correct count, and
+// leaves the caller's own session fully usable afterwards.
+func TestLogoutOtherSessions(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("logout-others-org", "Logout Others Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	hash, err := passwords.Hash("testpass1234")
+	r.NoError(err)
+
+	user := models.NewUser("logout-others@example.com")
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+	r.NoError(dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
+
+	// Three independent "sessions" (separate logins, e.g. three devices).
+	current, err := svc.Login(ctx, "logout-others-org", "logout-others@example.com", "testpass1234", Context{})
+	r.NoError(err)
+	other1, err := svc.Login(ctx, "logout-others-org", "logout-others@example.com", "testpass1234", Context{})
+	r.NoError(err)
+	other2, err := svc.Login(ctx, "logout-others-org", "logout-others@example.com", "testpass1234", Context{})
+	r.NoError(err)
+
+	currentClaims, err := svc.ValidateToken(ctx, current.AccessToken)
+	r.NoError(err)
+	r.NotEmpty(currentClaims.RefreshUID)
+
+	resp, err := svc.LogoutOtherSessions(ctx, user.UID, currentClaims.RefreshUID)
+	r.NoError(err)
+	r.True(resp.Success)
+	r.Equal(2, resp.TokensDeleted, "must delete exactly the two other sessions")
+
+	// The caller's own session must survive and keep refreshing.
+	_, err = svc.Refresh(ctx, current.RefreshToken)
+	r.NoError(err, "the caller's own session must not be touched by sign-out-others")
+
+	// Both other sessions must be gone.
+	_, err = svc.Refresh(ctx, other1.RefreshToken)
+	r.ErrorIs(err, ErrInvalidToken)
+	_, err = svc.Refresh(ctx, other2.RefreshToken)
+	r.ErrorIs(err, ErrInvalidToken)
+
+	remaining, err := dbSvc.ListUserTokensByType(ctx, user.UID, models.TokenTypeRefresh)
+	r.NoError(err)
+	r.Len(remaining, 1)
+	r.Equal(currentClaims.RefreshUID, remaining[0].UID)
+}
+
+// TestGetUserTokensTypeFilterAndIsCurrent covers acceptance criteria 4/5/9:
+// the `type=refresh` filter returns only session rows (never PATs or
+// oauth_refresh grants), each carries createdWith metadata, and isCurrent
+// is flagged on exactly the caller's own row.
+func TestGetUserTokensTypeFilterAndIsCurrent(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("filter-org", "Filter Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	hash, err := passwords.Hash("testpass1234")
+	r.NoError(err)
+
+	user := models.NewUser("filter@example.com")
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+	r.NoError(dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
+
+	loginCtx := Context{UserAgent: "test-agent/1.0", RemoteAddr: "203.0.113.5"}
+	current, err := svc.Login(ctx, "filter-org", "filter@example.com", "testpass1234", loginCtx)
+	r.NoError(err)
+	// Second session, exercised only to prove the listing returns >1 row
+	// and that isCurrent distinguishes between them.
+	_, err = svc.Login(ctx, "filter-org", "filter@example.com", "testpass1234", Context{})
+	r.NoError(err)
+
+	_, err = svc.CreatePAT(ctx, "filter-org", user.UID, CreateTokenRequest{Name: "a-pat"})
+	r.NoError(err)
+
+	currentClaims, err := svc.ValidateToken(ctx, current.AccessToken)
+	r.NoError(err)
+
+	resp, err := svc.GetUserTokens(ctx, "filter-org", user.UID, "refresh", currentClaims.RefreshUID)
+	r.NoError(err)
+	r.Len(resp.Data, 2, "type=refresh must return only the two sessions, never the PAT")
+
+	var currentCount int
+
+	for _, tok := range resp.Data {
+		r.Equal("refresh", tok.Type)
+
+		if tok.UID == currentClaims.RefreshUID {
+			currentCount++
+			r.True(tok.IsCurrent, "the caller's own session row must be flagged isCurrent")
+			r.NotNil(tok.CreatedWith)
+			r.Equal("password", tok.CreatedWith.Method)
+			r.Equal("test-agent/1.0", tok.CreatedWith.UserAgent)
+			r.Equal("203.0.113.5", tok.CreatedWith.RemoteAddr)
+			r.NotNil(tok.LastActiveAt)
+		} else {
+			r.False(tok.IsCurrent, "a non-caller session must not be flagged isCurrent")
+		}
+	}
+
+	r.Equal(1, currentCount, "exactly one row must be isCurrent")
+
+	// type=pat must never include a refresh (session) row.
+	patResp, err := svc.GetUserTokens(ctx, "filter-org", user.UID, "pat", currentClaims.RefreshUID)
+	r.NoError(err)
+	r.Len(patResp.Data, 1)
+	r.Equal("pat", patResp.Data[0].Type)
+	r.False(patResp.Data[0].IsCurrent, "a PAT must never be flagged isCurrent")
+}
+
+// TestLogoutOtherSessionsEmptyRefreshUIDDeletesAll documents why the
+// handler must reject signOutOthers when claims.RefreshUID is empty (e.g. a
+// PAT hitting /logout) BEFORE calling into the service: LogoutOtherSessions
+// itself has no row to match uid == "" against, so an empty
+// currentRefreshUID spares nothing and deletes every session. The handler
+// validation (see Handler.Logout) is the only thing standing between this
+// and an accidental full sign-out.
+func TestLogoutOtherSessionsEmptyRefreshUIDDeletesAll(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("empty-refreshuid-org", "Empty RefreshUID Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	hash, err := passwords.Hash("testpass1234")
+	r.NoError(err)
+
+	user := models.NewUser("empty-refreshuid@example.com")
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+	r.NoError(dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
+
+	_, err = svc.Login(ctx, "empty-refreshuid-org", "empty-refreshuid@example.com", "testpass1234", Context{})
+	r.NoError(err)
+	_, err = svc.Login(ctx, "empty-refreshuid-org", "empty-refreshuid@example.com", "testpass1234", Context{})
+	r.NoError(err)
+
+	resp, err := svc.LogoutOtherSessions(ctx, user.UID, "")
+	r.NoError(err)
+	r.Equal(2, resp.TokensDeleted, "an empty currentRefreshUID spares nothing — the handler must reject this case before calling in")
+}
