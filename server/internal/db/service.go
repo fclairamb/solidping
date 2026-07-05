@@ -361,6 +361,13 @@ type Service interface {
 	GetChannelByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
 	) (*models.Integration, error)
+	// GetChannelByPropertyForOrg is the org-scoped variant of
+	// GetChannelByProperty. Used by the Slack install flow so a workspace
+	// (team_id) already connected to another org does not silently update
+	// that org's row — each org gets its own connection for the same team.
+	GetChannelByPropertyForOrg(
+		ctx context.Context, orgUID, connType, propertyName, propertyValue string,
+	) (*models.Integration, error)
 	ListChannels(
 		ctx context.Context, filter *models.ListIntegrationsFilter,
 	) ([]*models.Integration, error)

@@ -194,6 +194,32 @@ func (s *Service) BuildInstallURL(ctx context.Context, source, channelUID, orgSl
 	return "https://slack.com/oauth/v2/authorize?" + params.Encode(), nil
 }
 
+// BuildOrgInstallURL is the authenticated, org-scoped counterpart to
+// BuildInstallURL. orgUID/orgSlug come from the authenticated route context
+// (never from client-controlled input), so org targeting cannot be forged
+// the way the legacy `?org=` query param could. When channelUID is set, the
+// channel must exist, be a Slack integration, and belong to orgUID —
+// otherwise ErrConnectionNotFound is returned so the handler can respond
+// 404 instead of letting an install take over a channel in another org.
+func (s *Service) BuildOrgInstallURL(ctx context.Context, orgUID, orgSlug, channelUID string) (string, error) {
+	if channelUID != "" {
+		conn, err := s.db.GetChannel(ctx, channelUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", ErrConnectionNotFound
+			}
+
+			return "", fmt.Errorf("get channel: %w", err)
+		}
+
+		if conn.OrganizationUID != orgUID || conn.Type != models.ConnectionTypeSlack || conn.DeletedAt != nil {
+			return "", ErrConnectionNotFound
+		}
+	}
+
+	return s.BuildInstallURL(ctx, "dashboard", channelUID, orgSlug)
+}
+
 // IssueExchangeCode persists a single-use code that the dashboard will
 // trade in (server-to-server) for the freshly minted access/refresh tokens.
 // The 60-second TTL is intentionally tight — the dashboard hits the
@@ -215,6 +241,28 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 	}
 
 	return code, nil
+}
+
+// resolveResultChannelUID decides what OAuthResult.ChannelUID should be —
+// the channel/connection the frontend (auth.slack.complete.tsx) navigates to
+// after the exchange. For a channel-edit-page install (targetChannelUID
+// set) it's that specific channel, which was just updated in place. For a
+// dashboard-origin, org-scoped install with no specific channel (the
+// "Install Slack app" tile CTA — targetOrgSlug set, targetChannelUID empty),
+// it's connUID, the connection that was just created/updated in that org,
+// so the user lands on it instead of the org home page. Marketplace
+// installs (targetOrgSlug empty — no authenticated org context) return ""
+// and land on the org home page for onboarding.
+func resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID string) string {
+	if targetChannelUID != "" {
+		return targetChannelUID
+	}
+
+	if targetOrgSlug != "" {
+		return connUID
+	}
+
+	return ""
 }
 
 // HandleOAuthCallback handles the OAuth callback from Slack.
@@ -273,6 +321,8 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, err
 	}
 
+	resultChannelUID := resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID)
+
 	// Generate authentication tokens
 	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
 	if err != nil {
@@ -290,7 +340,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	return &OAuthResult{
 		ConnectionUID: connUID,
-		ChannelUID:    targetChannelUID,
+		ChannelUID:    resultChannelUID,
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
 		OrgSlug:       org.Slug,
@@ -417,13 +467,18 @@ func (s *Service) resolveOrganization(
 	return org, orgName, nil
 }
 
-// createOrUpdateConnection creates or updates an integration connection for the Slack team.
+// createOrUpdateConnection creates or updates an integration connection for
+// the Slack team, scoped to orgUID. A workspace already connected to another
+// org is untouched — the existing-connection lookup is org-scoped, so a
+// second org installing the same Slack workspace gets its own row instead of
+// silently taking over (or being redirected into) the first org's
+// connection.
 func (s *Service) createOrUpdateConnection(
 	ctx context.Context, orgUID string, oauthResp *OAuthResponse,
 ) (string, error) {
-	// Check if a connection already exists for this team
-	existingConn, err := s.db.GetChannelByProperty(
-		ctx, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
+	// Check if a connection already exists for this team IN THIS ORG.
+	existingConn, err := s.db.GetChannelByPropertyForOrg(
+		ctx, orgUID, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err

@@ -2927,6 +2927,31 @@ func (s *Service) GetChannelByProperty(
 	return conn, nil
 }
 
+// GetChannelByPropertyForOrg is the org-scoped variant of
+// GetChannelByProperty — same settings-property lookup, additionally
+// filtered to a single organization so a workspace connected to several
+// orgs resolves to that org's own row.
+func (s *Service) GetChannelByPropertyForOrg(
+	ctx context.Context, orgUID, connType, propertyName, propertyValue string,
+) (*models.Integration, error) {
+	conn := new(models.Integration)
+
+	jsonPath := "$." + propertyName
+
+	err := s.db.NewSelect().
+		Model(conn).
+		Where("organization_uid = ?", orgUID).
+		Where("type = ?", connType).
+		Where("json_extract(settings, ?) = ?", jsonPath, propertyValue).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}
+
 // ListChannels lists integration connections with optional filtering.
 func (s *Service) ListChannels(
 	ctx context.Context, filter *models.ListIntegrationsFilter,
