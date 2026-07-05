@@ -166,3 +166,81 @@ route's `region` search param so prev/next stepping stays in-region.
    disabled), steps back and forward again.
 4. OpenAPI schema updated; `make lint` and `make test` pass; all four
    locale files carry the new keys (no hardcoded English).
+
+## Implementation Plan
+
+Verified against `main` post-spec-13: `service.go` is 538 lines, `GetResult`
+at 418-475, `GetResultResponse` at 407-413, `findCoveringAggregation` at
+477-538 (unchanged shape from the spec's line citations, just shifted a few
+lines). `postgres.go`/`sqlite.go` `ListResults` bodies are byte-identical;
+cursor tie-break idiom at `postgres.go:1773-1774` /
+`sqlite.go:1684` exactly as cited.
+
+1. **`db.Service.GetResultNeighbors`** (`server/internal/db/service.go`,
+   grouped in the "Result operations" block right after `ListResults`):
+   ```go
+   GetResultNeighbors(
+       ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+       pivotStart time.Time, pivotUID string,
+   ) (prevUID, nextUID string, err error)
+   ```
+   `""` UID = no neighbor in that direction (boundary). Implemented
+   identically in `postgres.go`/`sqlite.go` (both bun, both dialect-agnostic
+   SQL — no per-backend divergence needed, matching every other Result
+   method in these two files): two scoped `SELECT uid` queries reusing the
+   `(period_start < ?) OR (period_start = ? AND uid < ?)` keyset idiom (DESC
+   for previous, mirrored ASC/`>` for next), each `.Where("region IN (?)",
+   ...)` only when `regions` is non-empty, `sql.ErrNoRows` mapped to `""`
+   rather than propagated.
+
+2. **Tests**: new `testGetResultNeighbors(ctx, t, svc db.Service)` helper in
+   `server/internal/db/service_test.go`, registered in `testService`'s
+   `t.Run` list — runs automatically against `TestPostgresService`
+   (embedded-postgres, `-short`-skipped), `TestSQLiteService`, and
+   `TestSQLiteServiceInMemory`. This is the repo's established dual-backend
+   pattern for new `db.Service` methods (no per-package
+   `_postgres_test.go`/mocks needed here — only `postgres.go` and
+   `sqlite.go` implement `db.Service`).
+
+3. **`GetResultResponse`**: add `PreviousUID`/`NextUID string
+   \`json:"previousUid,omitempty"\`` fields. `GetResult`
+   (`server/internal/handlers/results/service.go`) computes them after
+   resolving the effective row (direct hit or fallback aggregation) — same
+   org/check/periodType as that row, using its `PeriodStart`/`UID` as pivot.
+   Signature grows an optional `regions []string` parameter threaded from
+   the handler's new `region` query param.
+
+4. **Handler + OpenAPI**: `region` query param on `GetResult`
+   (`server/internal/handlers/results/handler.go`), comma-separated like the
+   list endpoint. OpenAPI has **no existing path entry at all** for
+   `GET .../checks/{check}/results/{uid}` (only the list endpoint
+   `/api/v1/orgs/{org}/results` is documented) — add a new path
+   `/api/v1/orgs/{org}/checks/{check}/results/{uid}` plus a
+   `GetOrgResultResponse` schema (extends `OrgResult` with `fallback`,
+   `previousUid`, `nextUid`), following the existing `/checks/{check}/
+   availability` path as a structural template.
+
+5. **Frontend**: `region?: string` on the detail route's `validateSearch`;
+   `useResult` gains an optional `region` param (URL + query key);
+   `OrgResultDetail` gains `previousUid?`/`nextUid?`. Header gets a
+   right-aligned ghost-icon `ChevronLeft`/`ChevronRight` pair (pattern
+   already in `design-reference.tsx`'s back-arrow example), each disabled
+   when its UID is absent, wrapped in `Tooltip`/`TooltipContent` (also
+   already cataloged) with new `checks:resultDetail.previousResult` /
+   `.nextResult` i18n keys in all 4 locales. The Recent Results row's
+   `onClick` in `checks.$checkUid.index.tsx` currently navigates with no
+   `search` at all — add `search: { region: resultsRegion }` so the active
+   filter carries into the detail page and back out through prev/next.
+
+6. **E2E**: new `web/dash0/e2e/check-result-detail-navigation.spec.ts`,
+   following `check-chart-point-preview.spec.ts`'s route-mocking convention
+   (mock the `/checks/*/results/{uid}` detail endpoint per-UID with
+   different `previousUid`/`nextUid`, rather than driving real aggregation)
+   — seeds a check, opens the newest result (Next disabled), steps back
+   (Previous still enabled if applicable) and forward again, and confirms
+   the `region` search param round-trips.
+
+Commit granularity: (1) DB method both backends — done; (2) service.go
+neighbor computation + handler region param + service tests; (3) OpenAPI;
+(4) frontend route/hook; (5) header buttons + i18n; (6) E2E + `make fmt`
+sweep; (7) all-checks-passing commit.

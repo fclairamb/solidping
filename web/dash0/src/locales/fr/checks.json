@@ -271,6 +271,8 @@
   "resultDetail": {
     "title": "Résultat",
     "back": "Retour au contrôle",
+    "previousResult": "Résultat précédent",
+    "nextResult": "Résultat suivant",
     "period": "Période",
     "region": "Région",
     "worker": "Worker",

@@ -226,6 +226,8 @@
   "resultDetail": {
     "title": "Resultado",
     "back": "Volver a la comprobación",
+    "previousResult": "Resultado anterior",
+    "nextResult": "Resultado siguiente",
     "period": "Periodo",
     "region": "Región",
     "worker": "Worker",

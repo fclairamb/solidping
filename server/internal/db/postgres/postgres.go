@@ -1792,6 +1792,69 @@ func (s *Service) ListResults(
 	}, nil
 }
 
+// GetResultNeighbors returns the next-older and next-newer UIDs relative to
+// the pivot, scoped to organization+check+periodType (and optionally
+// regions). See db.Service for the full contract.
+func (s *Service) GetResultNeighbors(
+	ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+	pivotStart time.Time, pivotUID string,
+) (string, string, error) {
+	prevUID, prevErr := s.resultNeighborUID(
+		ctx, orgUID, checkUID, periodType, regions,
+		"(period_start < ?) OR (period_start = ? AND uid < ?)", pivotStart, pivotUID,
+		"period_start DESC", "uid DESC")
+	if prevErr != nil {
+		return "", "", prevErr
+	}
+
+	nextUID, nextErr := s.resultNeighborUID(
+		ctx, orgUID, checkUID, periodType, regions,
+		"(period_start > ?) OR (period_start = ? AND uid > ?)", pivotStart, pivotUID,
+		"period_start ASC", "uid ASC")
+	if nextErr != nil {
+		return "", "", nextErr
+	}
+
+	return prevUID, nextUID, nil
+}
+
+// resultNeighborUID runs one directional (older or newer) neighbor lookup —
+// the shared half of GetResultNeighbors — and maps sql.ErrNoRows to an empty
+// UID (boundary reached) rather than propagating it.
+func (s *Service) resultNeighborUID(
+	ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+	sideCondition string, pivotStart time.Time, pivotUID string,
+	orderByStart, orderByUID string,
+) (string, error) {
+	query := s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		Column("uid").
+		Where("organization_uid = ?", orgUID).
+		Where("check_uid = ?", checkUID).
+		Where("period_type = ?", periodType).
+		Where(sideCondition, pivotStart, pivotStart, pivotUID).
+		Order(orderByStart).
+		Order(orderByUID).
+		Limit(1)
+
+	if len(regions) > 0 {
+		query = query.Where("region IN (?)", bun.List(regions))
+	}
+
+	var neighbor models.Result
+
+	err := query.Scan(ctx, &neighbor)
+
+	switch {
+	case err == nil:
+		return neighbor.UID, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil
+	default:
+		return "", err
+	}
+}
+
 func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error) {
 	if len(resultUIDs) == 0 {
 		return 0, nil

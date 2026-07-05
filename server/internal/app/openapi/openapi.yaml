@@ -939,6 +939,59 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/orgs/{org}/checks/{check}/results/{uid}:
+    get:
+      tags: [Results]
+      summary: Get a single result, with chronological neighbor UIDs
+      description: >
+        Returns one result row by UID. When the raw row has been rolled up
+        into an aggregation (see retention/aggregation), falls back to the
+        smallest-period aggregation covering the requested UID's embedded
+        UUIDv7 timestamp and includes a `fallback` block describing the
+        substitution. previousUid/nextUid identify the next-older/next-newer
+        row in the same check + periodType series (the covering
+        aggregation's series when a fallback applies), omitted at either
+        boundary. Two rows sharing periodStart are ordered by uid, so
+        stepping across them never skips or repeats.
+      operationId: getOrgResult
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/OrgPath"
+        - name: check
+          in: path
+          required: true
+          description: Check UID or slug
+          schema:
+            type: string
+        - name: uid
+          in: path
+          required: true
+          description: Result UID
+          schema:
+            type: string
+            format: uuid
+        - name: region
+          in: query
+          description: >
+            Narrows the previousUid/nextUid neighbor scope only
+            (comma-separated for multiple); the requested row is still
+            resolved by uid regardless of region. Omitted, neighbors are
+            chronological across all regions.
+          schema:
+            type: string
+      responses:
+        "200":
+          description: The result, with optional fallback and neighbor UIDs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GetOrgResultResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   # Incident APIs
   /api/v1/orgs/{org}/incidents:
     get:
@@ -2512,6 +2565,48 @@ components:
         availabilityPct:
           type: number
           description: Availability percentage for aggregated periods (with=availabilityPct)
+
+    GetOrgResultResponse:
+      description: >
+        Single-result detail response. Extends OrgResult with all optional
+        `with` fields always populated, plus fallback and neighbor UIDs.
+      allOf:
+        - $ref: "#/components/schemas/OrgResult"
+        - type: object
+          properties:
+            fallback:
+              $ref: "#/components/schemas/ResultFallbackInfo"
+            previousUid:
+              type: string
+              format: uuid
+              description: >
+                Next-older result in the same check + periodType series
+                (optionally narrowed by ?region=). Omitted when this is the
+                oldest result in scope.
+            nextUid:
+              type: string
+              format: uuid
+              description: >
+                Next-newer result in the same series. Omitted when this is
+                the newest result in scope.
+
+    ResultFallbackInfo:
+      type: object
+      description: >
+        Present when the requested raw result UID had already been rolled up
+        into an aggregation; describes the substitution.
+      properties:
+        requestedUid:
+          type: string
+          format: uuid
+          description: The originally requested (now-deleted) raw result UID.
+        requestedAt:
+          type: string
+          format: date-time
+          description: Timestamp embedded in the requested UUIDv7 UID.
+        reason:
+          type: string
+          enum: [rolled_up_to_hour, rolled_up_to_day, rolled_up_to_month]
 
     CursorPagination:
       type: object

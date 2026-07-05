@@ -283,6 +283,12 @@ func (m *mockDBService) ListResults(
 	panic("not implemented")
 }
 
+func (m *mockDBService) GetResultNeighbors(
+	_ context.Context, _, _, _ string, _ []string, _ time.Time, _ string,
+) (string, string, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) DeleteResults(_ context.Context, _ string, _ []string) (int64, error) {
 	panic("not implemented")
 }

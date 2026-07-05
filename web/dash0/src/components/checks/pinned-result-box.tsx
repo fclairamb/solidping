@@ -164,6 +164,7 @@ export function PinnedResultBox({
           <Link
             to="/orgs/$org/checks/$checkUid/results/$resultUid"
             params={{ org, checkUid, resultUid }}
+            search={{ region: undefined }}
           >
             {t("detail.resultBox.moreDetails")}
           </Link>
