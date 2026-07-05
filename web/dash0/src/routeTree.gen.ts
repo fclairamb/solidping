@@ -93,6 +93,7 @@ import { Route as OrgsOrgDiscoveryJobUidRouteImport } from './routes/orgs/$org/d
 import { Route as OrgsOrgChecksNewRouteImport } from './routes/orgs/$org/checks.new'
 import { Route as OrgsOrgChecksCheckUidRouteImport } from './routes/orgs/$org/checks.$checkUid'
 import { Route as OrgsOrgAccountTokensRouteImport } from './routes/orgs/$org/account.tokens'
+import { Route as OrgsOrgAccountSessionsRouteImport } from './routes/orgs/$org/account.sessions'
 import { Route as OrgsOrgAccountSecurityRouteImport } from './routes/orgs/$org/account.security'
 import { Route as OrgsOrgAccountProfileRouteImport } from './routes/orgs/$org/account.profile'
 import { Route as OrgsOrgAccountNotificationsRouteImport } from './routes/orgs/$org/account.notifications'
@@ -554,6 +555,11 @@ const OrgsOrgAccountTokensRoute = OrgsOrgAccountTokensRouteImport.update({
   path: '/tokens',
   getParentRoute: () => OrgsOrgAccountRoute,
 } as any)
+const OrgsOrgAccountSessionsRoute = OrgsOrgAccountSessionsRouteImport.update({
+  id: '/sessions',
+  path: '/sessions',
+  getParentRoute: () => OrgsOrgAccountRoute,
+} as any)
 const OrgsOrgAccountSecurityRoute = OrgsOrgAccountSecurityRouteImport.update({
   id: '/security',
   path: '/security',
@@ -681,6 +687,7 @@ export interface FileRoutesByFullPath {
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
+  '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
@@ -768,6 +775,7 @@ export interface FileRoutesByTo {
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
+  '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
   '/orgs/$org/discovery/new': typeof OrgsOrgDiscoveryNewRoute
@@ -866,6 +874,7 @@ export interface FileRoutesById {
   '/orgs/$org/account/notifications': typeof OrgsOrgAccountNotificationsRoute
   '/orgs/$org/account/profile': typeof OrgsOrgAccountProfileRoute
   '/orgs/$org/account/security': typeof OrgsOrgAccountSecurityRoute
+  '/orgs/$org/account/sessions': typeof OrgsOrgAccountSessionsRoute
   '/orgs/$org/account/tokens': typeof OrgsOrgAccountTokensRoute
   '/orgs/$org/checks/$checkUid': typeof OrgsOrgChecksCheckUidRouteWithChildren
   '/orgs/$org/checks/new': typeof OrgsOrgChecksNewRoute
@@ -970,6 +979,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
+    | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
@@ -1057,6 +1067,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
+    | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/new'
     | '/orgs/$org/discovery/new'
@@ -1154,6 +1165,7 @@ export interface FileRouteTypes {
     | '/orgs/$org/account/notifications'
     | '/orgs/$org/account/profile'
     | '/orgs/$org/account/security'
+    | '/orgs/$org/account/sessions'
     | '/orgs/$org/account/tokens'
     | '/orgs/$org/checks/$checkUid'
     | '/orgs/$org/checks/new'
@@ -1825,6 +1837,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof OrgsOrgAccountTokensRouteImport
       parentRoute: typeof OrgsOrgAccountRoute
     }
+    '/orgs/$org/account/sessions': {
+      id: '/orgs/$org/account/sessions'
+      path: '/sessions'
+      fullPath: '/orgs/$org/account/sessions'
+      preLoaderRoute: typeof OrgsOrgAccountSessionsRouteImport
+      parentRoute: typeof OrgsOrgAccountRoute
+    }
     '/orgs/$org/account/security': {
       id: '/orgs/$org/account/security'
       path: '/security'
@@ -1944,6 +1963,7 @@ interface OrgsOrgAccountRouteChildren {
   OrgsOrgAccountNotificationsRoute: typeof OrgsOrgAccountNotificationsRoute
   OrgsOrgAccountProfileRoute: typeof OrgsOrgAccountProfileRoute
   OrgsOrgAccountSecurityRoute: typeof OrgsOrgAccountSecurityRoute
+  OrgsOrgAccountSessionsRoute: typeof OrgsOrgAccountSessionsRoute
   OrgsOrgAccountTokensRoute: typeof OrgsOrgAccountTokensRoute
   OrgsOrgAccountIndexRoute: typeof OrgsOrgAccountIndexRoute
 }
@@ -1952,6 +1972,7 @@ const OrgsOrgAccountRouteChildren: OrgsOrgAccountRouteChildren = {
   OrgsOrgAccountNotificationsRoute: OrgsOrgAccountNotificationsRoute,
   OrgsOrgAccountProfileRoute: OrgsOrgAccountProfileRoute,
   OrgsOrgAccountSecurityRoute: OrgsOrgAccountSecurityRoute,
+  OrgsOrgAccountSessionsRoute: OrgsOrgAccountSessionsRoute,
   OrgsOrgAccountTokensRoute: OrgsOrgAccountTokensRoute,
   OrgsOrgAccountIndexRoute: OrgsOrgAccountIndexRoute,
 }

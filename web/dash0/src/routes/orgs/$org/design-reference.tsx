@@ -16,7 +16,9 @@ import {
   Eye,
   Info,
   KeyRound,
+  LogOut,
   Moon,
+  Monitor,
   Globe,
   MoreVertical,
   Palette,
@@ -989,6 +991,56 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
+        />
+
+        <h3 className="text-sm font-medium">Session card</h3>
+        <p className="text-sm text-muted-foreground">
+          The account Sessions page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/sessions</code>) lists
+          login/refresh-token sessions distinctly from API tokens. Each row: a device
+          icon from <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">parseUserAgent().device</code>{" "}
+          (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Smartphone</code> /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tablet</code> /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Monitor</code>), a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent
+          + &quot;Current session&quot; badge on the caller&apos;s own row, a login-method badge, the
+          raw user agent as muted mono text, and a destructive ghost icon revoke button. Static mock
+          below — the real page is data-driven via <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useSessions(org)</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-2">
+              <Card className="border-primary">
+                <CardContent className="flex items-start justify-between gap-3 p-4">
+                  <div className="flex gap-3">
+                    <Monitor className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">Chrome 128 on macOS</span>
+                        <Badge className="border-primary">Current session</Badge>
+                        <Badge variant="secondary">password</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Connected 3d ago · Last active just now · IP 203.0.113.5
+                      </div>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive" aria-label="Revoke">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+              <div className="flex justify-end">
+                <Button variant="destructive" size="sm">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out other sessions
+                </Button>
+              </div>
+            </div>
+          }
+          importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
         />
       </div>
     </Section>

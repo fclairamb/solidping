@@ -1172,8 +1172,24 @@ export interface TokenInfo {
   orgSlug?: string;
   createdAt: string;
   lastUsedAt?: string;
+  lastActiveAt?: string;
   expiresAt?: string;
+  // The following are populated for `refresh`-type rows (sessions) only —
+  // always undefined/false for PATs.
+  isCurrent?: boolean;
+  createdWith?: TokenCreatedWith;
 }
+
+export interface TokenCreatedWith {
+  method?: string;
+  userAgent?: string;
+  remoteAddr?: string;
+}
+
+// SessionInfo is TokenInfo narrowed to what the sessions page actually
+// renders — same wire shape (the backend returns TokenInfo for every token
+// type), but this alias documents the fields sessions specifically rely on.
+export type SessionInfo = TokenInfo;
 
 export interface CreateTokenRequest {
   name: string;
@@ -1189,6 +1205,8 @@ export interface CreateTokenResponse {
 }
 
 // Token hooks
+// PAT-only — sessions (type=refresh) must never be fetched through this
+// hook; use useSessions below instead.
 export function useTokens(org: string) {
   return useQuery({
     queryKey: ["tokens", org],
@@ -1227,6 +1245,56 @@ export function useRevokeToken() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tokens"] });
+    },
+  });
+}
+
+// Session hooks — sessions are `user_tokens` rows with type=refresh, listed
+// through the same endpoint as PATs (filtered by `?type=`) but surfaced as a
+// distinct page/nav entry (see account.sessions.tsx). Mirrors useTokens.
+export function useSessions(org: string) {
+  return useQuery({
+    queryKey: ["sessions", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SessionInfo[] }>(
+        `/api/v1/orgs/${org}/tokens?type=refresh`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useRevokeSession(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/auth/tokens/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", org] });
+    },
+  });
+}
+
+export interface SignOutOtherSessionsResponse {
+  success: boolean;
+  tokensDeleted: number;
+}
+
+export function useSignOutOtherSessions(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<SignOutOtherSessionsResponse>(`/api/v1/auth/logout`, {
+        method: "POST",
+        body: JSON.stringify({ signOutOthers: true }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", org] });
     },
   });
 }
