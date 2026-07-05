@@ -230,7 +230,7 @@ func TestSessionCapPrunesLeastRecentlyActive(t *testing.T) {
 	r.NoError(dbSvc.CreateOrganizationMember(ctx,
 		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
 
-	var refreshTokens []string
+	refreshTokens := make([]string, 0, maxActiveSessions)
 
 	for i := range maxActiveSessions {
 		resp, loginErr := svc.Login(ctx, "cap-org", "cap@example.com", "testpass1234", Context{})
@@ -429,5 +429,6 @@ func TestLogoutOtherSessionsEmptyRefreshUIDDeletesAll(t *testing.T) {
 
 	resp, err := svc.LogoutOtherSessions(ctx, user.UID, "")
 	r.NoError(err)
-	r.Equal(2, resp.TokensDeleted, "an empty currentRefreshUID spares nothing — the handler must reject this case before calling in")
+	r.Equal(2, resp.TokensDeleted,
+		"an empty currentRefreshUID spares nothing — the handler must reject this case before calling in")
 }

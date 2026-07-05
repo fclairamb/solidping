@@ -595,7 +595,7 @@ func (s *Service) completeLogin(
 		keyCreatedWith: createdWith,
 	}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, err
 	}
 
@@ -1381,26 +1381,39 @@ func tokenToInfo(tok *models.UserToken, orgSlug, callerRefreshUID string) TokenI
 		IsCurrent:    tok.Type == models.TokenTypeRefresh && callerRefreshUID != "" && tok.UID == callerRefreshUID,
 	}
 
-	if tok.Properties != nil {
-		if cw, ok := tok.Properties[keyCreatedWith].(map[string]any); ok {
-			createdWith := &TokenCreatedWith{}
-			if v, ok := cw[keyMethod].(string); ok {
-				createdWith.Method = v
-			}
-
-			if v, ok := cw["userAgent"].(string); ok {
-				createdWith.UserAgent = v
-			}
-
-			if v, ok := cw["remoteAddr"].(string); ok {
-				createdWith.RemoteAddr = v
-			}
-
-			info.CreatedWith = createdWith
-		}
-	}
+	info.CreatedWith = extractCreatedWith(tok.Properties)
 
 	return info
+}
+
+// extractCreatedWith projects a user_tokens row's properties.created_with
+// map (JSON-decoded to map[string]any) into the camelCase TokenCreatedWith
+// struct the API returns. Returns nil when the row has no such metadata
+// (predates this field, or is a token type that never recorded it).
+func extractCreatedWith(properties map[string]any) *TokenCreatedWith {
+	if properties == nil {
+		return nil
+	}
+
+	raw, ok := properties[keyCreatedWith].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	createdWith := &TokenCreatedWith{}
+	if method, ok := raw[keyMethod].(string); ok {
+		createdWith.Method = method
+	}
+
+	if userAgent, ok := raw["userAgent"].(string); ok {
+		createdWith.UserAgent = userAgent
+	}
+
+	if remoteAddr, ok := raw["remoteAddr"].(string); ok {
+		createdWith.RemoteAddr = remoteAddr
+	}
+
+	return createdWith
 }
 
 // GetUserTokens returns a list of tokens for a user, org-scoped.
@@ -1628,7 +1641,7 @@ func (s *Service) SwitchOrg(
 		keyCreatedWith: authContext.ToMap(),
 	}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, err
 	}
 
@@ -1663,7 +1676,9 @@ func (s *Service) SwitchOrg(
 // GetAllUserTokens returns all tokens for a user across all orgs (for
 // root-level listing). callerRefreshUID is the caller's own
 // Claims.RefreshUID (empty for PATs), used to flag isCurrent.
-func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType, callerRefreshUID string) (*TokenListResponse, error) {
+func (s *Service) GetAllUserTokens(
+	ctx context.Context, userUID, tokenType, callerRefreshUID string,
+) (*TokenListResponse, error) {
 	var tokens []*models.UserToken
 	var err error
 
@@ -1826,7 +1841,7 @@ func (s *Service) GenerateTokensForOAuth(
 		},
 	}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
@@ -2065,7 +2080,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
@@ -2818,7 +2833,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
 
-	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+	if err = s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
 	}
 
