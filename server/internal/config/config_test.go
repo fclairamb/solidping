@@ -595,6 +595,32 @@ func TestLoad_NodeRolePoolPrecedence(t *testing.T) {
 	r.Equal(3, cfg.Database.MaxIdleConns)
 }
 
+// TestLoad_NodeRoleAPIOverridePrecedence closes the "for any role" half of
+// acceptance criterion 1 for the api/all side specifically: an api node
+// keeps 25/10 by default, and SP_DB_MAX_OPEN_CONNS/SP_DB_MAX_IDLE_CONNS still
+// win even though applyNodeRolePoolDefaults never touches this role's pool at
+// all (unlike the checks/jobs case in TestLoad_NodeRolePoolPrecedence, where
+// the role default must first be overwritten and then overridden again).
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestLoad_NodeRoleAPIOverridePrecedence(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_NODE_ROLE", NodeRoleAPI)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(dbPoolMaxOpenConnsDefault, cfg.Database.MaxOpenConns)
+	r.Equal(dbPoolMaxIdleConnsDefault, cfg.Database.MaxIdleConns)
+
+	t.Setenv("SP_DB_MAX_OPEN_CONNS", "60")
+	t.Setenv("SP_DB_MAX_IDLE_CONNS", "20")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal(60, cfg.Database.MaxOpenConns)
+	r.Equal(20, cfg.Database.MaxIdleConns)
+}
+
 // TestLoad_NodeRoleAllKeepsAPIPool is the api/all-side companion to
 // TestLoad_NodeRolePoolPrecedence: confirms Load() with no SP_NODE_ROLE set
 // (defaults to "all") keeps the larger pool. Unlike its sibling, this test
