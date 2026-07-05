@@ -12,7 +12,7 @@ import {
   type MouseHandlerDataParam,
 } from "recharts";
 import { format, subDays, subHours, startOfMinute } from "date-fns";
-import { useAllResults } from "@/api/hooks";
+import { useAllResults, useRegions } from "@/api/hooks";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -31,7 +31,12 @@ interface ResponseTimeChartProps {
   periodMs?: number;
   initialPeriod?: TimeRange;
   initialFullRange?: boolean;
-  onSettingsChange?: (period: TimeRange, fullRange: boolean) => void;
+  initialRegion?: string;
+  onSettingsChange?: (
+    period: TimeRange,
+    fullRange: boolean,
+    region: string | null,
+  ) => void;
 }
 
 interface ChartPoint {
@@ -40,6 +45,7 @@ interface ChartPoint {
   status: string;
   uid?: string;
   periodType?: string;
+  region?: string;
 }
 
 interface GapRegion {
@@ -210,12 +216,18 @@ export function ResponseTimeChart({
   periodMs,
   initialPeriod,
   initialFullRange,
+  initialRegion,
   onSettingsChange,
 }: ResponseTimeChartProps) {
   const { t } = useTranslation("checks");
   const [timeRange, setTimeRange] = useState<TimeRange>(initialPeriod ?? "day");
   const [fullRange, setFullRange] = useState(initialFullRange ?? false);
+  const [selectedRegion, setSelectedRegion] = useState<string | null>(
+    initialRegion ?? null,
+  );
   const [selectedUid, setSelectedUid] = useState<string | null>(null);
+  // react-query dedupes with the page's own useRegions(org) call.
+  const { data: regionsData } = useRegions(org);
   const dotPositions = useRef<Record<string, { cx: number; cy: number }>>({});
   const observerRef = useRef<ResizeObserver | null>(null);
   const [chartWidth, setChartWidth] = useState(0);
@@ -243,12 +255,17 @@ export function ResponseTimeChart({
 
   const updateTimeRange = (range: TimeRange) => {
     setTimeRange(range);
-    onSettingsChange?.(range, fullRange);
+    onSettingsChange?.(range, fullRange, selectedRegion);
   };
 
   const updateFullRange = (full: boolean) => {
     setFullRange(full);
-    onSettingsChange?.(timeRange, full);
+    onSettingsChange?.(timeRange, full, selectedRegion);
+  };
+
+  const updateRegion = (region: string | null) => {
+    setSelectedRegion(region);
+    onSettingsChange?.(timeRange, fullRange, region);
   };
 
   const handleDotClick = (uid: string) => {
@@ -295,121 +312,161 @@ export function ResponseTimeChart({
     refetchInterval: chartRefetchInterval,
   });
 
-  const { chartData, regions, formatSpanMs, domainMin, domainMax, gaps } =
-    useMemo(() => {
-      const hasData = !!results?.data?.length;
+  const {
+    chartData,
+    regions,
+    formatSpanMs,
+    domainMin,
+    domainMax,
+    gaps,
+    effectiveRegion,
+  } = useMemo(() => {
+    const hasData = !!results?.data?.length;
 
-      if (!hasData && !fullRange)
+    if (!hasData && !fullRange)
+      return {
+        chartData: [] as ChartPoint[],
+        regions: [] as string[],
+        formatSpanMs: 0,
+        domainMin: 0,
+        domainMax: 0,
+        gaps: [] as GapRegion[],
+        effectiveRegion: null as string | null,
+      };
+
+    const regionSet = new Set<string>();
+    const sorted = [...(results?.data ?? [])].reverse();
+
+    const unfilteredData: ChartPoint[] = sorted
+      .filter((r) => r.periodStart)
+      .map((r) => {
+        if (r.region) regionSet.add(r.region);
         return {
-          chartData: [] as ChartPoint[],
-          regions: [] as string[],
-          formatSpanMs: 0,
-          domainMin: 0,
-          domainMax: 0,
-          gaps: [] as GapRegion[],
+          ts: new Date(r.periodStart!).getTime(),
+          durationMs: r.durationMs ?? 0,
+          status: r.status ?? "up",
+          uid: r.uid,
+          periodType: r.periodType,
+          region: r.region,
         };
+      });
 
-      const regionSet = new Set<string>();
-      const sorted = [...(results?.data ?? [])].reverse();
+    // Stale-selection guard: only apply the filter when the selected
+    // region is actually present in the unfiltered data. This keeps a
+    // stale `?graphRegion=` deep link (regions changed, older data aged
+    // out) from silently emptying the chart — it falls back to "All".
+    const effectiveRegion =
+      selectedRegion && regionSet.has(selectedRegion) ? selectedRegion : null;
 
-      const data: ChartPoint[] = sorted
-        .filter((r) => r.periodStart)
-        .map((r) => {
-          if (r.region) regionSet.add(r.region);
-          return {
-            ts: new Date(r.periodStart!).getTime(),
-            durationMs: r.durationMs ?? 0,
-            status: r.status ?? "up",
-            uid: r.uid,
-            periodType: r.periodType,
-          };
-        });
+    // Filter before gap detection, gradient stops, and domain/tick
+    // computation so all of those operate on a single region's steady
+    // cadence rather than the interleaved multi-region sawtooth. The chip
+    // list (regionSet, and `regions` below) stays derived from the
+    // unfiltered set so chips never vanish while a filter is applied.
+    const data: ChartPoint[] = effectiveRegion
+      ? unfilteredData.filter((d) => d.region === effectiveRegion)
+      : unfilteredData;
 
-      if (fullRange) {
-        const rangeStartMs = new Date(periodStartAfter).getTime();
-        const rangeEndMs = startOfMinute(new Date()).getTime();
-        const fullSpan = rangeEndMs - rangeStartMs;
+    if (fullRange) {
+      const rangeStartMs = new Date(periodStartAfter).getTime();
+      const rangeEndMs = startOfMinute(new Date()).getTime();
+      const fullSpan = rangeEndMs - rangeStartMs;
 
-        // Detect gaps in the real data
-        const detectedGaps = detectGaps(data, rangeStartMs, rangeEndMs);
+      // Detect gaps in the real data
+      const detectedGaps = detectGaps(data, rangeStartMs, rangeEndMs);
 
-        // Insert gap markers at detected boundaries
-        const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
-
-        // Build full-range points with boundary markers
-        const points: ChartPoint[] = [];
-
-        // Start boundary
-        points.push({ ts: rangeStartMs, durationMs: null, status: "up" });
-
-        if (dataWithGapMarkers.length > 0) {
-          // Gap marker just before first real point
-          const firstReal = dataWithGapMarkers.find(
-            (p) => p.durationMs != null,
-          );
-          if (firstReal && firstReal.ts - rangeStartMs > 1) {
-            points.push({
-              ts: firstReal.ts - 1,
-              durationMs: null,
-              status: "up",
-            });
-          }
-          // Real data (with gap markers already inserted)
-          points.push(...dataWithGapMarkers);
-          // Gap marker just after last real point
-          const lastReal = [...dataWithGapMarkers]
-            .reverse()
-            .find((p) => p.durationMs != null);
-          if (lastReal && rangeEndMs - lastReal.ts > 1) {
-            points.push({
-              ts: lastReal.ts + 1,
-              durationMs: null,
-              status: "up",
-            });
-          }
-        }
-
-        // End boundary
-        points.push({ ts: rangeEndMs, durationMs: null, status: "up" });
-
-        // Use actual data span for tick formatting (cluster-aware)
-        const dataTs = data.map((d) => d.ts);
-        const actualDataSpan =
-          dataTs.length > 1 ? Math.max(...dataTs) - Math.min(...dataTs) : 0;
-
-        return {
-          chartData: points,
-          regions: Array.from(regionSet),
-          formatSpanMs: actualDataSpan || fullSpan,
-          domainMin: rangeStartMs,
-          domainMax: rangeEndMs,
-          gaps: detectedGaps,
-        };
-      }
-
-      // Non-full-range: compute span from data + detect gaps
-      const tsList = data.map((d) => d.ts);
-      const min = tsList.length ? Math.min(...tsList) : 0;
-      const max = tsList.length ? Math.max(...tsList) : 0;
-      const span = max - min;
-
-      const detectedGaps = detectGaps(data, min, max);
+      // Insert gap markers at detected boundaries
       const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
 
+      // Build full-range points with boundary markers
+      const points: ChartPoint[] = [];
+
+      // Start boundary
+      points.push({ ts: rangeStartMs, durationMs: null, status: "up" });
+
+      if (dataWithGapMarkers.length > 0) {
+        // Gap marker just before first real point
+        const firstReal = dataWithGapMarkers.find(
+          (p) => p.durationMs != null,
+        );
+        if (firstReal && firstReal.ts - rangeStartMs > 1) {
+          points.push({
+            ts: firstReal.ts - 1,
+            durationMs: null,
+            status: "up",
+          });
+        }
+        // Real data (with gap markers already inserted)
+        points.push(...dataWithGapMarkers);
+        // Gap marker just after last real point
+        const lastReal = [...dataWithGapMarkers]
+          .reverse()
+          .find((p) => p.durationMs != null);
+        if (lastReal && rangeEndMs - lastReal.ts > 1) {
+          points.push({
+            ts: lastReal.ts + 1,
+            durationMs: null,
+            status: "up",
+          });
+        }
+      }
+
+      // End boundary
+      points.push({ ts: rangeEndMs, durationMs: null, status: "up" });
+
+      // Use actual data span for tick formatting (cluster-aware)
+      const dataTs = data.map((d) => d.ts);
+      const actualDataSpan =
+        dataTs.length > 1 ? Math.max(...dataTs) - Math.min(...dataTs) : 0;
+
       return {
-        chartData: dataWithGapMarkers,
+        chartData: points,
         regions: Array.from(regionSet),
-        formatSpanMs: span,
-        domainMin: min,
-        domainMax: max,
+        formatSpanMs: actualDataSpan || fullSpan,
+        domainMin: rangeStartMs,
+        domainMax: rangeEndMs,
         gaps: detectedGaps,
+        effectiveRegion,
       };
-    }, [results, fullRange, periodStartAfter]);
+    }
+
+    // Non-full-range: compute span from data + detect gaps
+    const tsList = data.map((d) => d.ts);
+    const min = tsList.length ? Math.min(...tsList) : 0;
+    const max = tsList.length ? Math.max(...tsList) : 0;
+    const span = max - min;
+
+    const detectedGaps = detectGaps(data, min, max);
+    const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
+
+    return {
+      chartData: dataWithGapMarkers,
+      regions: Array.from(regionSet),
+      formatSpanMs: span,
+      domainMin: min,
+      domainMax: max,
+      gaps: detectedGaps,
+      effectiveRegion,
+    };
+  }, [results, fullRange, periodStartAfter, selectedRegion]);
 
   const ticks = useMemo(
     () => computeTicks(domainMin, domainMax, chartData),
     [domainMin, domainMax, chartData],
   );
+
+  const regionBySlug = useMemo(() => {
+    const map = new Map<string, { emoji: string; name: string }>();
+    for (const def of regionsData?.regions ?? []) {
+      map.set(def.slug, { emoji: def.emoji, name: def.name });
+    }
+    return map;
+  }, [regionsData]);
+
+  const regionLabel = (slug: string) => {
+    const def = regionBySlug.get(slug);
+    return def ? `${def.emoji} ${def.name}` : slug;
+  };
 
   const COLOR_UP = "hsl(142, 76%, 36%)";
   const COLOR_DOWN = "hsl(0, 72%, 51%)";
@@ -499,8 +556,29 @@ export function ResponseTimeChart({
       </CardHeader>
       <CardContent>
         {regions.length > 1 && (
-          <div className="text-xs text-muted-foreground mb-2">
-            {t("detail.chart.showingAllRegions", { regions: regions.join(", ") })}
+          <div
+            className="flex flex-wrap items-center gap-1 mb-2"
+            data-testid="response-time-chart-region-filter"
+          >
+            <Button
+              variant={effectiveRegion === null ? "default" : "outline"}
+              size="sm"
+              onClick={() => updateRegion(null)}
+              className="px-2 text-xs"
+            >
+              {t("detail.chart.allRegions")}
+            </Button>
+            {regions.map((slug) => (
+              <Button
+                key={slug}
+                variant={effectiveRegion === slug ? "default" : "outline"}
+                size="sm"
+                onClick={() => updateRegion(slug)}
+                className="px-2 text-xs"
+              >
+                {regionLabel(slug)}
+              </Button>
+            ))}
           </div>
         )}
         {isLoading ? (

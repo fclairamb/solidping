@@ -92,7 +92,7 @@ function CheckEditPage() {
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: redirectToUid },
-          search: { graphPeriod: undefined, graphFull: undefined },
+          search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined },
         })
       }
       onSubmit={async (data) => {
@@ -134,7 +134,7 @@ function CheckEditPage() {
         navigate({
           to: "/orgs/$org/checks/$checkUid",
           params: { org, checkUid: redirectToUid },
-          search: { graphPeriod: undefined, graphFull: undefined },
+          search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined },
         });
       }}
     />
