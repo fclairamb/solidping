@@ -63,9 +63,13 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// LogoutRequest represents a logout request body.
+// LogoutRequest represents a logout request body. DeleteAllTokens and
+// SignOutOthers are mutually exclusive: the former ends every session
+// (including the caller's own — a full logout), the latter spares the
+// caller's own session (a "sign out other devices" action, not a logout).
 type LogoutRequest struct {
 	DeleteAllTokens bool `json:"deleteAllTokens"`
+	SignOutOthers   bool `json:"signOutOthers"`
 }
 
 // NewHandler creates a new authentication handler.
@@ -132,6 +136,12 @@ func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) erro
 		_ = json.NewDecoder(req.Body).Decode(&logoutReq) // Ignore errors, optional body
 	}
 
+	if logoutReq.DeleteAllTokens && logoutReq.SignOutOthers {
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "signOutOthers", Message: "deleteAllTokens and signOutOthers are mutually exclusive"},
+		})
+	}
+
 	if logoutReq.DeleteAllTokens {
 		resp, logoutErr := h.svc.LogoutUser(req.Context(), claims.UserUID)
 		if logoutErr != nil {
@@ -141,6 +151,24 @@ func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) erro
 		// Clear cookie
 		h.clearAuthCookie(writer)
 
+		return h.WriteJSON(writer, http.StatusOK, resp)
+	}
+
+	if logoutReq.SignOutOthers {
+		if claims.RefreshUID == "" {
+			// No current session row to spare (e.g. a PAT hitting /logout) —
+			// "sign out others" is meaningless without one.
+			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+				{Name: "signOutOthers", Message: "no current session to keep — this credential is not a session"},
+			})
+		}
+
+		resp, logoutErr := h.svc.LogoutOtherSessions(req.Context(), claims.UserUID, claims.RefreshUID)
+		if logoutErr != nil {
+			return h.handleLogoutError(writer, logoutErr)
+		}
+
+		// The caller's own session (and cookie) survive — this is not a logout.
 		return h.WriteJSON(writer, http.StatusOK, resp)
 	}
 
@@ -233,7 +261,7 @@ func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req bunrouter.Req
 	// Get optional token type filter
 	tokenType := req.URL.Query().Get("type")
 
-	resp, err := h.svc.GetAllUserTokens(req.Context(), claims.UserUID, tokenType)
+	resp, err := h.svc.GetAllUserTokens(req.Context(), claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
 		return h.handleTokenError(writer, err, http.StatusNotFound)
 	}
@@ -253,7 +281,7 @@ func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req bunrouter.Request
 	// Get optional token type filter
 	tokenType := req.URL.Query().Get("type")
 
-	resp, err := h.svc.GetUserTokens(req.Context(), orgSlug, claims.UserUID, tokenType)
+	resp, err := h.svc.GetUserTokens(req.Context(), orgSlug, claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
 		return h.handleTokenError(writer, err, http.StatusNotFound)
 	}

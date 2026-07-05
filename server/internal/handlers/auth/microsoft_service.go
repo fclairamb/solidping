@@ -55,6 +55,7 @@ type MicrosoftTokenResponse struct {
 type MicrosoftOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -192,6 +193,7 @@ func (s *MicrosoftOAuthService) HandleCallback(
 	return &MicrosoftOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil

@@ -311,14 +311,36 @@ type LogoutResponse struct {
 
 // TokenInfo represents a user token for listing.
 type TokenInfo struct {
-	UID        string                 `json:"uid"`
-	Name       string                 `json:"name,omitempty"`
-	Type       string                 `json:"type"`
-	OrgSlug    string                 `json:"orgSlug,omitempty"`
-	CreatedAt  time.Time              `json:"createdAt"`
-	LastUsedAt *time.Time             `json:"lastUsedAt,omitempty"`
-	ExpiresAt  *time.Time             `json:"expiresAt,omitempty"`
-	Properties map[string]interface{} `json:"properties,omitempty"`
+	UID       string    `json:"uid"`
+	Name      string    `json:"name,omitempty"`
+	Type      string    `json:"type"`
+	OrgSlug   string    `json:"orgSlug,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+	// LastUsedAt is kept for back-compat with existing PAT consumers.
+	// LastActiveAt duplicates the same value under the name the sessions UI
+	// expects; both are populated for every token type.
+	LastUsedAt   *time.Time `json:"lastUsedAt,omitempty"`
+	LastActiveAt *time.Time `json:"lastActiveAt,omitempty"`
+	ExpiresAt    *time.Time `json:"expiresAt,omitempty"`
+	// IsCurrent is set only on `refresh`-type rows (sessions): true when this
+	// row is the one that issued the caller's own access token (its uid
+	// matches the caller's Claims.RefreshUID). Always false for pat/
+	// oauth_refresh rows.
+	IsCurrent bool `json:"isCurrent,omitempty"`
+	// CreatedWith surfaces the login-method forensics recorded at token
+	// creation (properties.created_with) as camelCase fields. Nil when the
+	// row predates this metadata or carries none (e.g. PATs).
+	CreatedWith *TokenCreatedWith      `json:"createdWith,omitempty"`
+	Properties  map[string]interface{} `json:"properties,omitempty"`
+}
+
+// TokenCreatedWith is the camelCase projection of a user_tokens row's
+// properties.created_with metadata — the login method and request context
+// recorded when the token (session or PAT) was minted.
+type TokenCreatedWith struct {
+	Method     string `json:"method,omitempty"`
+	UserAgent  string `json:"userAgent,omitempty"`
+	RemoteAddr string `json:"remoteAddr,omitempty"`
 }
 
 // TokenListResponse contains a list of tokens.
@@ -913,6 +935,50 @@ func (s *Service) LogoutUser(ctx context.Context, userUID string) (*LogoutRespon
 	}, nil
 }
 
+// LogoutOtherSessions deletes every `refresh`-type session row for the user
+// EXCEPT the one identified by currentRefreshUID (the caller's own session).
+// Unlike LogoutUser, the caller's own session survives — this is a "sign out
+// other devices" action, not a logout, and the caller's access token remains
+// valid until it naturally expires (its own refresh-token row was never
+// touched).
+func (s *Service) LogoutOtherSessions(ctx context.Context, userUID, currentRefreshUID string) (*LogoutResponse, error) {
+	// Verify user exists
+	_, err := s.db.GetUser(ctx, userUID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, ErrUserNotFound
+		}
+
+		return nil, err
+	}
+
+	tokens, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	if err != nil {
+		return nil, err
+	}
+
+	deleted := 0
+
+	for _, token := range tokens {
+		if token.UID == currentRefreshUID {
+			continue // Spare the caller's own session.
+		}
+
+		if _, deleteErr := s.db.DeleteUserToken(ctx, token.UID); deleteErr != nil {
+			slog.ErrorContext(ctx, "Failed to delete other session", "error", deleteErr, "tokenUID", token.UID)
+
+			continue
+		}
+
+		deleted++
+	}
+
+	return &LogoutResponse{
+		Success:       true,
+		TokensDeleted: deleted,
+	}, nil
+}
+
 // Refresh generates a new access token using a valid refresh token.
 // The org is derived from the refresh token itself.
 func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*LoginResponse, error) {
@@ -1271,8 +1337,59 @@ func (s *Service) getOrganizationsForUser(ctx context.Context, userUID string) (
 	return orgs, nil
 }
 
-// GetUserTokens returns a list of tokens for a user.
-func (s *Service) GetUserTokens(ctx context.Context, orgSlug, userUID, tokenType string) (*TokenListResponse, error) {
+// tokenToInfo projects a models.UserToken into the API's TokenInfo shape.
+// callerRefreshUID is the requesting user's own Claims.RefreshUID (empty for
+// PAT-authenticated callers) — used to flag isCurrent on session (refresh)
+// rows; orgSlug is filled in by the caller when known (org-scoped listing
+// already has it in hand; the all-orgs listing resolves it per-token).
+func tokenToInfo(tok *models.UserToken, orgSlug, callerRefreshUID string) TokenInfo {
+	name := ""
+	if tok.Properties != nil {
+		if n, ok := tok.Properties[keyName].(string); ok {
+			name = n
+		}
+	}
+
+	info := TokenInfo{
+		UID:          tok.UID,
+		Name:         name,
+		Type:         string(tok.Type),
+		OrgSlug:      orgSlug,
+		CreatedAt:    tok.CreatedAt,
+		LastUsedAt:   tok.LastActiveAt,
+		LastActiveAt: tok.LastActiveAt,
+		ExpiresAt:    tok.ExpiresAt,
+		IsCurrent:    tok.Type == models.TokenTypeRefresh && callerRefreshUID != "" && tok.UID == callerRefreshUID,
+	}
+
+	if tok.Properties != nil {
+		if cw, ok := tok.Properties[keyCreatedWith].(map[string]any); ok {
+			createdWith := &TokenCreatedWith{}
+			if v, ok := cw[keyMethod].(string); ok {
+				createdWith.Method = v
+			}
+
+			if v, ok := cw["userAgent"].(string); ok {
+				createdWith.UserAgent = v
+			}
+
+			if v, ok := cw["remoteAddr"].(string); ok {
+				createdWith.RemoteAddr = v
+			}
+
+			info.CreatedWith = createdWith
+		}
+	}
+
+	return info
+}
+
+// GetUserTokens returns a list of tokens for a user, org-scoped.
+// callerRefreshUID is the caller's own Claims.RefreshUID (empty for PATs),
+// used to flag isCurrent on the caller's own session row.
+func (s *Service) GetUserTokens(
+	ctx context.Context, orgSlug, userUID, tokenType, callerRefreshUID string,
+) (*TokenListResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -1323,22 +1440,7 @@ func (s *Service) GetUserTokens(ctx context.Context, orgSlug, userUID, tokenType
 			continue // Skip expired tokens
 		}
 
-		name := ""
-
-		if tok.Properties != nil {
-			if n, ok := tok.Properties[keyName].(string); ok {
-				name = n
-			}
-		}
-
-		result = append(result, TokenInfo{
-			UID:        tok.UID,
-			Name:       name,
-			Type:       string(tok.Type),
-			CreatedAt:  tok.CreatedAt,
-			LastUsedAt: tok.LastActiveAt,
-			ExpiresAt:  tok.ExpiresAt,
-		})
+		result = append(result, tokenToInfo(tok, orgSlug, callerRefreshUID))
 	}
 
 	return &TokenListResponse{Data: result}, nil
@@ -1539,8 +1641,10 @@ func (s *Service) SwitchOrg(
 	}, nil
 }
 
-// GetAllUserTokens returns all tokens for a user across all orgs (for root-level listing).
-func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType string) (*TokenListResponse, error) {
+// GetAllUserTokens returns all tokens for a user across all orgs (for
+// root-level listing). callerRefreshUID is the caller's own
+// Claims.RefreshUID (empty for PATs), used to flag isCurrent.
+func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType, callerRefreshUID string) (*TokenListResponse, error) {
 	var tokens []*models.UserToken
 	var err error
 
@@ -1576,27 +1680,12 @@ func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType strin
 			continue // Skip expired tokens
 		}
 
-		name := ""
-		if tok.Properties != nil {
-			if n, ok := tok.Properties[keyName].(string); ok {
-				name = n
-			}
-		}
-
 		orgSlug := ""
 		if tok.OrganizationUID != nil {
 			orgSlug = orgSlugs[*tok.OrganizationUID]
 		}
 
-		result = append(result, TokenInfo{
-			UID:        tok.UID,
-			Name:       name,
-			Type:       string(tok.Type),
-			OrgSlug:    orgSlug,
-			CreatedAt:  tok.CreatedAt,
-			LastUsedAt: tok.LastActiveAt,
-			ExpiresAt:  tok.ExpiresAt,
-		})
+		result = append(result, tokenToInfo(tok, orgSlug, callerRefreshUID))
 	}
 
 	return &TokenListResponse{Data: result}, nil
