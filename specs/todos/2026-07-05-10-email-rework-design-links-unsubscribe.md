@@ -106,8 +106,9 @@ Every email links back into the interface, built from
   magic-link button stays alongside on ackable events.
 - Footer on all emails: link to the dashboard (`{base}/dash0`) and to the
   docs (`{base}/docs`).
-- When `SP_SERVER_BASE_URL` is unset/empty, link blocks are omitted cleanly
-  (no half-built `hrefs`), matching how ack links already degrade.
+- `SP_SERVER_BASE_URL` always resolves (koanf default
+  `http://localhost:4000`, `config.go:605`), so links render
+  unconditionally — no "unset base URL" degradation path.
 
 ### D4 — Per-recipient unsubscribe for check/incident emails
 
@@ -189,9 +190,8 @@ out — just 404 outside test mode, mirroring existing gating.
    with zero `<style>` blocks remaining in the body (fully inlined) and no
    unresolved template variables.
 3. Incident emails contain a working "View incident" URL and check link
-   derived from `SP_SERVER_BASE_URL`; with the base URL unset, no dangling
-   or relative links appear in either HTML or text parts. Ack behavior is
-   unchanged on ackable events.
+   derived from `SP_SERVER_BASE_URL` in both HTML and text parts. Ack
+   behavior is unchanged on ackable events.
 4. A recipient can one-click unsubscribe (RFC 8058 POST) and via the GET
    confirmation page; the suppression row is created with the right scope,
    and subsequent incident emails for that (org, email, check) are skipped

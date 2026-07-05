@@ -69,6 +69,11 @@ type Config struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
+	// ConnMaxIdleTime reaps connections that have sat idle this long, even if
+	// MaxIdleConns hasn't been reached. Without it, a quiet fleet pins
+	// MaxIdleConns × replica-count connections against the Postgres role's
+	// rolconnlimit indefinitely. See spec 2026-07-05-09 (D2).
+	ConnMaxIdleTime time.Duration
 }
 
 // applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
@@ -84,6 +89,54 @@ func applyPoolLimits(sqldb *sql.DB, cfg *Config) {
 	if cfg.ConnMaxLifetime > 0 {
 		sqldb.SetConnMaxLifetime(cfg.ConnMaxLifetime)
 	}
+	if cfg.ConnMaxIdleTime > 0 {
+		sqldb.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
+	}
+}
+
+// checkRoleConnLimitHeadroom warns, once at startup, when this process's
+// MaxOpenConns alone is enough to exhaust the connecting role's
+// rolconnlimit — before any other process sharing the role (other replicas,
+// migrations, a debugging session, a rolling-deploy surge pod) opens even one
+// connection. rolconnlimit <= 0 means unlimited, so no warning is possible or
+// needed. A single process cannot know the fleet size, so this is a signal,
+// not a hard failure: any query error (including permission errors on
+// pg_roles/pg_stat_activity, which some managed Postgres setups restrict) is
+// swallowed silently — this must never fail startup. See spec 2026-07-05-09
+// (D3).
+func checkRoleConnLimitHeadroom(ctx context.Context, bunDB *bun.DB, maxOpenConns int) {
+	if maxOpenConns <= 0 {
+		return // Unbounded pool: nothing to compare against rolconnlimit.
+	}
+
+	var rolConnLimit int
+	if err := bunDB.NewSelect().
+		ColumnExpr("rolconnlimit").
+		TableExpr("pg_roles").
+		Where("rolname = current_user").
+		Scan(ctx, &rolConnLimit); err != nil {
+		return // Permission error or transient failure: skip silently.
+	}
+
+	if rolConnLimit <= 0 || maxOpenConns < rolConnLimit {
+		return // Unlimited role, or this process's ceiling fits comfortably.
+	}
+
+	var currentUsage int
+	if err := bunDB.NewSelect().
+		ColumnExpr("count(*)").
+		TableExpr("pg_stat_activity").
+		Where("usename = current_user").
+		Scan(ctx, &currentUsage); err != nil {
+		return // Same fallback: never block startup on this diagnostic.
+	}
+
+	slog.WarnContext(ctx, roleConnLimitHeadroomWarning,
+		"maxOpenConns", maxOpenConns,
+		"rolConnLimit", rolConnLimit,
+		"currentUsage", currentUsage,
+		"hint", "rolconnlimit must cover every process sharing this role "+
+			"(API pods + region workers + migrations + rolling-deploy surge pods) plus operator headroom")
 }
 
 // Service implements db.Service for PostgreSQL.
@@ -93,6 +146,11 @@ type Service struct {
 	reset    bool   // Reset database before migrations
 	runMode  string // Run mode (test, demo, etc.)
 }
+
+// roleConnLimitHeadroomWarning is logged once at startup when the configured
+// pool ceiling for this process alone can already exhaust the shared Postgres
+// role's connection limit. See checkRoleConnLimitHeadroom.
+const roleConnLimitHeadroomWarning = "Postgres role connection limit may be too low for this pool size"
 
 // Compile-time assertion that Service implements db.Service.
 var _ db.Service = (*Service)(nil)
@@ -113,6 +171,11 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 
 	// Expose connection-pool stats via /metrics. Idempotent per backend.
 	prommetrics.RegisterDB(sqldb, backendLabel)
+
+	// Startup-only headroom check (D3, spec 2026-07-05-09): warn if this
+	// process's pool ceiling alone can exhaust the role's connection limit.
+	// Best-effort — never fails startup.
+	checkRoleConnLimitHeadroom(ctx, bunDB, cfg.MaxOpenConns)
 
 	return &Service{
 		db:      bunDB,
