@@ -122,6 +122,14 @@ function ResultDetailPage() {
 
   const isAggregate = data.periodType && data.periodType !== "raw";
 
+  // Caller metadata (heartbeat checks) gets its own "Caller" card below —
+  // strip those keys from the raw Output dump so nothing is duplicated.
+  const { userAgent, remoteAddr, httpMethod, ...remainingOutput } = data.output ?? {};
+  const callerUserAgent = typeof userAgent === "string" && userAgent ? userAgent : undefined;
+  const callerRemoteAddr = typeof remoteAddr === "string" && remoteAddr ? remoteAddr : undefined;
+  const callerHttpMethod = typeof httpMethod === "string" && httpMethod ? httpMethod : undefined;
+  const hasCallerInfo = Boolean(callerUserAgent || callerRemoteAddr || callerHttpMethod);
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-2">
@@ -243,14 +251,42 @@ function ResultDetailPage() {
         </Card>
       )}
 
-      {data.output && Object.keys(data.output).length > 0 && (
+      {hasCallerInfo && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">{t("checks:resultDetail.caller")}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {callerUserAgent && (
+              <div>
+                <span className="text-muted-foreground">{t("checks:resultDetail.callerUserAgent")}: </span>
+                <code className="font-mono break-all">{callerUserAgent}</code>
+              </div>
+            )}
+            {callerRemoteAddr && (
+              <div>
+                <span className="text-muted-foreground">{t("checks:resultDetail.callerRemoteAddr")}: </span>
+                <code className="font-mono">{callerRemoteAddr}</code>
+              </div>
+            )}
+            {callerHttpMethod && (
+              <div>
+                <span className="text-muted-foreground">{t("checks:resultDetail.callerHttpMethod")}: </span>
+                <code className="font-mono">{callerHttpMethod}</code>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {remainingOutput && Object.keys(remainingOutput).length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">{t("checks:resultDetail.output")}</CardTitle>
           </CardHeader>
           <CardContent>
             <pre className="max-h-96 overflow-auto rounded-md bg-muted p-3 text-xs">
-              {JSON.stringify(data.output, null, 2)}
+              {JSON.stringify(remainingOutput, null, 2)}
             </pre>
           </CardContent>
         </Card>

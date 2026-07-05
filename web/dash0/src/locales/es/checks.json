@@ -237,6 +237,10 @@
     "successfulChecks": "Comprobaciones correctas",
     "availability": "Disponibilidad",
     "metrics": "Métricas",
+    "caller": "Llamador",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "IP de origen",
+    "callerHttpMethod": "Método",
     "output": "Salida",
     "viewAll": "Ver todos los resultados de esta comprobación",
     "fallback": {
@@ -372,7 +376,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Endpoint de heartbeat",
-      "curl": "Comando curl de ejemplo:"
+      "curl": "Comando curl de ejemplo:",
+      "callerNote": "El User-Agent, la IP de origen y el método HTTP de cada ping se registran y se muestran en la página de detalle de ese resultado."
     },
     "email": {
       "title": "Endpoint de correo",

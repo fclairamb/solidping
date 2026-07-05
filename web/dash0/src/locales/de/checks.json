@@ -237,6 +237,10 @@
     "successfulChecks": "Erfolgreiche Prüfungen",
     "availability": "Verfügbarkeit",
     "metrics": "Metriken",
+    "caller": "Aufrufer",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "Quell-IP",
+    "callerHttpMethod": "Methode",
     "output": "Ausgabe",
     "viewAll": "Alle Ergebnisse dieser Prüfung anzeigen",
     "fallback": {
@@ -372,7 +376,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Heartbeat-Endpunkt",
-      "curl": "Beispiel-Curl-Befehl:"
+      "curl": "Beispiel-Curl-Befehl:",
+      "callerNote": "User-Agent, Quell-IP und HTTP-Methode jedes Pings werden erfasst und auf der Detailseite des jeweiligen Ergebnisses angezeigt."
     },
     "email": {
       "title": "E-Mail-Endpunkt",

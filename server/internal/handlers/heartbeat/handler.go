@@ -47,7 +47,16 @@ func (h *Handler) ReceiveHeartbeat(writer http.ResponseWriter, req bunrouter.Req
 		}
 	}
 
-	if err := h.svc.ReceiveHeartbeat(req.Context(), orgSlug, identifier, token, status, message); err != nil {
+	// Caller metadata, captured for forensics/display purposes only (which
+	// script/cron/proxy is actually pinging this check) — same helper and
+	// semantics as auth's session history, see base.ExtractRemoteAddr.
+	userAgent := req.Header.Get("User-Agent")
+	remoteAddr := base.ExtractRemoteAddr(req)
+	httpMethod := req.Method
+
+	if err := h.svc.ReceiveHeartbeat(
+		req.Context(), orgSlug, identifier, token, status, message, userAgent, remoteAddr, httpMethod,
+	); err != nil {
 		return h.handleError(writer, err)
 	}
 

@@ -282,6 +282,10 @@
     "successfulChecks": "Successful checks",
     "availability": "Availability",
     "metrics": "Metrics",
+    "caller": "Caller",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "Source IP",
+    "callerHttpMethod": "Method",
     "output": "Output",
     "viewAll": "View all results for this check",
     "fallback": {
@@ -417,7 +421,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Heartbeat Endpoint",
-      "curl": "Sample curl command:"
+      "curl": "Sample curl command:",
+      "callerNote": "Each ping's User-Agent, source IP, and HTTP method are recorded and shown on that ping's result detail page."
     },
     "email": {
       "title": "Email Endpoint",

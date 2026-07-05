@@ -180,6 +180,7 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
             </button>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">{t("endpoints.heartbeat.callerNote")}</p>
       </div>
     </div>
   );
