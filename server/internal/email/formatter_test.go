@@ -207,6 +207,92 @@ func TestFormatter_CSSInlining(t *testing.T) {
 	r.Contains(html, "color")
 }
 
+// TestFormatter_TextBlockRendering pins the D1 "text" block behavior added to
+// Formatter.Format: templates that define {{define "text"}} produce a
+// non-empty plaintext alternative built from that block (not an
+// auto-generated HTML-to-text conversion), and templates that do NOT define
+// one produce exactly "" so callers fall back to HTML-only, matching
+// pre-D1 behavior byte for byte.
+func TestFormatter_TextBlockRendering(t *testing.T) {
+	t.Parallel()
+
+	formatter, err := NewFormatter()
+	require.NoError(t, err)
+
+	t.Run("templates with a text block produce non-empty plaintext", func(t *testing.T) {
+		t.Parallel()
+
+		cases := []struct {
+			template string
+			data     map[string]any
+			want     []string
+		}{
+			{
+				"registration.html",
+				map[string]any{"ConfirmURL": "https://x.test/c"},
+				[]string{"https://x.test/c", "Confirm your SolidPing account", "3 days"},
+			},
+			{
+				"password-reset.html",
+				map[string]any{"ResetURL": "https://x.test/r"},
+				[]string{"https://x.test/r", "1 hour"},
+			},
+			{
+				"invitation.html",
+				map[string]any{
+					"OrgName": "Acme", "Role": "admin", "InviterName": "Alice", "InviteURL": "https://x.test/i",
+				},
+				[]string{"Acme", "admin", "Alice", "https://x.test/i", "7 days"},
+			},
+			{
+				"welcome.html",
+				map[string]any{"DashboardURL": "https://x.test/dash"},
+				[]string{"https://x.test/dash", "Welcome to SolidPing"},
+			},
+			{
+				"password-changed.html",
+				map[string]any{"ChangedAt": "Sun, 05 Jul 2026 10:00:00 UTC"},
+				[]string{"Sun, 05 Jul 2026 10:00:00 UTC"},
+			},
+			{
+				"membership_request_new.html",
+				map[string]any{
+					"OrgName": "Acme", "RequesterName": "Bob", "RequesterEmail": "bob@x.test",
+					"RequestsURL": "https://x.test/requests",
+				},
+				[]string{"Bob", "bob@x.test", "Acme", "https://x.test/requests"},
+			},
+			{
+				"membership_request_decision.html",
+				map[string]any{
+					"OrgName": "Acme", "Decision": "approved", "Role": "viewer", "DashboardURL": "https://x.test/dash",
+				},
+				[]string{"Acme", "approved", "viewer", "https://x.test/dash"},
+			},
+			{"incident-created.html", incidentViewModel(), []string{"is down", "Acknowledge this incident"}},
+			{"incident-resolved.html", incidentViewModel(), []string{"recovered"}},
+			{"incident-escalated.html", incidentViewModel(), []string{"escalated"}},
+			{"incident-reopened.html", incidentViewModel(), []string{"reopened"}},
+		}
+
+		for _, tc := range cases {
+			t.Run(tc.template, func(t *testing.T) {
+				t.Parallel()
+
+				r := require.New(t)
+
+				_, _, text, err := formatter.Format(tc.template, tc.data)
+				r.NoError(err)
+				r.NotEmpty(text, "template %s must produce a non-empty text alternative", tc.template)
+
+				for _, want := range tc.want {
+					r.Contains(text, want)
+				}
+			})
+		}
+	})
+}
+
 func TestFormatter_TransactionalTemplates(t *testing.T) {
 	t.Parallel()
 

@@ -6,7 +6,7 @@
     {{if eq .Decision "approved"}}
     <p>Your request to join <strong>{{.OrgName}}</strong> on SolidPing has been approved. You're now a member with role <strong>{{.Role}}</strong>.</p>
     {{if .DashboardURL}}
-    <p class="cta-wrap"><a href="{{.DashboardURL}}" class="cta cta-success">Open {{.OrgName}}</a></p>
+    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" (printf "Open %s" .OrgName) "Variant" "success"}}</p>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.DashboardURL}}</p>
     {{end}}
@@ -19,3 +19,16 @@
     <p class="meta">You can submit a new request after the cooldown period.</p>
     {{end}}
 {{end}}
+{{define "text"}}Membership request {{.Decision}}
+
+Hi,
+
+{{if eq .Decision "approved"}}Your request to join {{.OrgName}} on SolidPing has been approved. You're now a member with role {{.Role}}.
+{{if .DashboardURL}}
+Open {{.OrgName}}: {{.DashboardURL}}
+{{end}}{{else}}Your request to join {{.OrgName}} on SolidPing was rejected.
+{{if .Reason}}
+Reason from the admin: {{.Reason}}
+{{end}}
+You can submit a new request after the cooldown period.
+{{end}}{{end}}
