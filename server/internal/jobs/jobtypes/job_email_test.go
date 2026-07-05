@@ -71,7 +71,7 @@ func TestEmailJobDefinition_CreateJobRun(t *testing.T) {
 			config: EmailJobConfig{
 				To:           []string{"test@example.com"},
 				Subject:      "Test Subject",
-				Template:     "incident.html",
+				Template:     "incident-created.html",
 				TemplateData: map[string]any{"CheckName": "Test"},
 			},
 			wantErr: false,
@@ -122,7 +122,7 @@ func TestEmailJobDefinition_CreateJobRun(t *testing.T) {
 				To:       []string{"test@example.com"},
 				Subject:  "Test Subject",
 				HTML:     "<p>Hello</p>",
-				Template: "incident.html",
+				Template: "incident-created.html",
 			},
 			wantErr: true,
 			errMsg:  "cannot have both",
@@ -299,7 +299,7 @@ func TestEmailJobRun_Run(t *testing.T) {
 			config: EmailJobConfig{
 				To:           []string{"test@example.com"},
 				Subject:      "Test Subject",
-				Template:     "incident.html",
+				Template:     "incident-created.html",
 				TemplateData: map[string]any{"CheckName": "Test"},
 			},
 			sender:    &mockSender{},
@@ -515,7 +515,7 @@ func TestEmailJobRun_Run_NoFormatter(t *testing.T) {
 		config: EmailJobConfig{
 			To:       []string{"test@example.com"},
 			Subject:  "Test",
-			Template: "incident.html",
+			Template: "incident-created.html",
 		},
 	}
 

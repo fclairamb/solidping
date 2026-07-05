@@ -37,7 +37,7 @@ type EmailJobConfig struct {
 	Text    string `json:"text,omitempty"` // Raw plain text content
 
 	// Template-based content (alternative to raw HTML/Text)
-	Template     string `json:"template,omitempty"`     // Template name (e.g., "incident.html")
+	Template     string `json:"template,omitempty"`     // Template name (e.g., "incident-created.html")
 	TemplateData any    `json:"templateData,omitempty"` // Data to pass to template
 }
 
