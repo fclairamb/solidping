@@ -968,3 +968,57 @@ func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
 		assert.True(t, containsUID(jobs, job.UID), "a due-now job must always be claimed regardless of period")
 	})
 }
+
+// TestClaimJobsFleetScaleClampBoundsParkedCount is the aggregate/fleet-scale
+// counterpart of TestClaimJobsBoundedClaimAheadWindow, modeling AC4 directly:
+// with ~28 jobs on a short (3-minute, i.e. 1-minute base period split across
+// 3 regions) period spread evenly across their whole cycle and default
+// config (FetchMaxAhead=5m), only the jobs within their own 30s clamp window
+// are claimed at once — not all 28. Before D3 the flat 5-minute
+// FetchMaxAhead window would have admitted every one of them (they're all
+// "due within 5 minutes" of a 3-minute period), which is exactly the ~22-of-25
+// parked-runner behavior the spec's live incident observed.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimJobsFleetScaleClampBoundsParkedCount(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+	worker := createTestWorker(t, ctx, dbSvc, nil)
+
+	const (
+		fleetSize  = 28
+		jobPeriod  = 3 * time.Minute // 1-minute base period x 3 regions, matching the spec's incident
+		fetchAhead = 5 * time.Minute // default config
+	)
+
+	now := time.Now()
+
+	// Spread scheduled_at evenly across the whole 3-minute cycle, exactly
+	// like a real leveled fleet (spec D1) would look between waves — most
+	// jobs are NOT due imminently, only a poll-cadence-sized slice is.
+	for i := range fleetSize {
+		offset := time.Duration(i) * (jobPeriod / fleetSize)
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(offset), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, jobPeriod)
+	}
+
+	jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, fleetSize, fleetSize, fetchAhead)
+	require.NoError(t, err)
+
+	// jobPeriod/2 = 90s, which is above the 30s floor, so every job's own
+	// clamp is min(5m, 90s, 30s) = 30s. Only jobs scheduled within the next
+	// 30s should be claimed: roughly fleetSize * (30s / jobPeriod) ~= 4-5 of
+	// 28, a small fraction — nowhere near the flat-window ~22-of-25 the
+	// spec's incident observed.
+	assert.NotEmpty(t, jobs, "at least the immediately-due jobs must still be claimed")
+	assert.Less(t, len(jobs), fleetSize/2,
+		"the bounded clamp must admit only a small fraction of the fleet, not nearly all of it")
+
+	for _, j := range jobs {
+		assert.True(t, j.ScheduledAt.Before(now.Add(30*time.Second+time.Second)),
+			"every claimed job must be within its own 30s clamp window (with a 1s scheduling-jitter allowance)")
+	}
+}
