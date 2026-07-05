@@ -593,6 +593,30 @@ type Service interface {
 	// SetAppSetting creates or updates a key/value pair (upsert).
 	SetAppSetting(ctx context.Context, key, value string) error
 
+	// --- EmailSuppressions (spec 2026-07-05-10, D4) ---
+
+	// CreateEmailSuppression inserts a new suppression row.
+	CreateEmailSuppression(ctx context.Context, sup *models.EmailSuppression) error
+
+	// ListEmailSuppressions returns every suppression row for an org, newest
+	// first — backs the dashboard suppression list.
+	ListEmailSuppressions(ctx context.Context, orgUID string) ([]*models.EmailSuppression, error)
+
+	// GetEmailSuppression returns a single suppression row scoped to an org.
+	// Returns sql.ErrNoRows when it does not exist within the given org.
+	GetEmailSuppression(ctx context.Context, orgUID, uid string) (*models.EmailSuppression, error)
+
+	// DeleteEmailSuppression hard-deletes a suppression row by UID (the
+	// "re-subscribe" action). Callers scope by org first via
+	// GetEmailSuppression.
+	DeleteEmailSuppression(ctx context.Context, uid string) error
+
+	// IsEmailSuppressed reports whether (org, email) is currently suppressed
+	// for checkUID — checking both the check-specific row and the org-wide
+	// (check_uid IS NULL) row. checkUID may be "" to check only the org-wide
+	// row.
+	IsEmailSuppressed(ctx context.Context, orgUID, email, checkUID string) (bool, error)
+
 	// Close closes the database connection and cleans up resources
 	io.Closer
 }
