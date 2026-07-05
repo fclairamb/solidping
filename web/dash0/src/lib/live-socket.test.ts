@@ -232,6 +232,30 @@ describe("connectLiveSocket", () => {
     await vi.waitFor(() => expect(onDisabled).toHaveBeenCalledTimes(1));
   });
 
+  it("signals onDisconnected even for a close that never authenticated (failed attempt)", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    const onDisconnected = vi.fn();
+
+    connectLiveSocket("acme", noopCallbacks({ onDisconnected }), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    // No open(), no hello — the attempt never authenticated, e.g. the server
+    // was unreachable or closed before the handshake completed. A status
+    // consumer derived purely from onOpen/onDisconnected must still be told
+    // "still not connected", or it would show "connecting" forever while
+    // attempts fail in a loop.
+    sockets[0].serverClose(1006, "");
+    expect(onDisconnected).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(35_000);
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+  });
+
   it("reconnects with backoff on an ordinary disconnect (e.g. 4401 expiry)", async () => {
     const sockets: FakeSocket[] = [];
     const factory = (url: string) => {
