@@ -338,7 +338,7 @@ function CheckDetailPage() {
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
-    with: "durationMs",
+    with: "durationMs,region",
     refetchInterval,
   });
 
@@ -972,8 +972,24 @@ function CheckDetailPage() {
                         ? `${Math.round(result.durationMs)}ms`
                         : "-"}
                     </TableCell>
-                    <TableCell className="text-sm">
-                      {result.region || "-"}
+                    <TableCell
+                      className="text-sm"
+                      data-testid="result-region-cell"
+                    >
+                      {result.region ? (
+                        (() => {
+                          const region = regionsData?.regions?.find(
+                            (r) => r.slug === result.region,
+                          );
+                          return (
+                            <Badge variant="outline">
+                              {region ? `${region.emoji} ${region.name}` : result.region}
+                            </Badge>
+                          );
+                        })()
+                      ) : (
+                        "-"
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}

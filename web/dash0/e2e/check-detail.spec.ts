@@ -98,6 +98,45 @@ test.describe("Check Detail Page", () => {
     });
   });
 
+  test("Recent Results table shows the region a result ran from, not a dash", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check so a first result lands and populates Recent Results.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Region Column ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/region-column-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The check page polls every 1.5s for its first result (fast-poll window,
+    // up to 30s) — wait for the first Recent Results row to appear.
+    const firstRow = page.locator('[data-testid^="result-row-"]').first();
+    await expect(firstRow).toBeVisible({ timeout: 30000 });
+
+    // The Region cell must render the actual region the result ran from, not
+    // the "-" placeholder used only for legacy rows with no stored region.
+    // Single-worker local/e2e setups register under region "default", which
+    // has no configured region-definition system parameter, so it renders
+    // via the built-in fallback definition (📍 Default) as an outline Badge.
+    const regionCell = firstRow.getByTestId("result-region-cell");
+    await expect(regionCell).toBeVisible();
+    await expect(regionCell).not.toHaveText("-");
+    await expect(regionCell.getByText(/default/i)).toBeVisible();
+  });
+
   test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({
     authenticatedPage,
   }) => {
