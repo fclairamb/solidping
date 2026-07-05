@@ -857,7 +857,11 @@ paths:
             maximum: 100
         - name: with
           in: query
-          description: Comma-separated optional fields to include
+          description: >
+            Comma-separated optional fields to include. durationAvgMs and
+            durationP95Ms are populated on aggregated rollup rows (hour/day/
+            month) from the stored duration_avg/duration_p95 columns; both
+            are absent on raw rows, which don't store them.
           schema:
             type: string
           example: "metrics,output,durationMs,region"
@@ -2478,6 +2482,18 @@ components:
         durationMaxMs:
           type: number
           description: Maximum duration in milliseconds (with=durationMaxMs)
+        durationAvgMs:
+          type: number
+          description: >
+            Average duration in milliseconds, from the stored aggregate
+            (with=durationAvgMs). Populated on aggregated rollup rows
+            (hour/day/month); absent on raw rows, which don't store it.
+        durationP95Ms:
+          type: number
+          description: >
+            95th-percentile duration in milliseconds, from the stored
+            aggregate (with=durationP95Ms). Populated on aggregated rollup
+            rows (hour/day/month); absent on raw rows, which don't store it.
         region:
           type: string
           description: Region identifier (with=region)
