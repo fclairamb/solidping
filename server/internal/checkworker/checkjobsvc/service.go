@@ -14,6 +14,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/prommetrics"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 // ErrJobClaimedByAnother is returned when a job has been claimed by another worker.
@@ -321,10 +322,58 @@ func (s *serviceImpl) selectAvailableJobsForCheck(
 	return nil
 }
 
+// maxClaimAheadFloor is the hard ceiling on how far ahead of "now" a claimed
+// job may sleep in-runner before its scheduled_at (spec 2026-07-05-08 D3).
+// Claim-ahead is what makes firing punctual (a runner claims slightly early
+// and sleeps the remainder in-slot rather than missing the tick entirely),
+// but the historical flat FetchMaxAhead default (5 minutes) let it consume
+// most of the pool: with N jobs/region on a short split period, nearly every
+// job is "due within 5 minutes" at any instant, so claim-ahead alone parked
+// ~22 of 25 runners. Bounding it per job to at most half its own period (and
+// never more than this floor) keeps the parked count near actual poll churn.
+const maxClaimAheadFloor = 30 * time.Second
+
+// clampAhead returns the eligibility window for one job: the smaller of the
+// caller's maxAhead (the configured FetchMaxAhead), half the job's own
+// period, and maxClaimAheadFloor. A job with a short period (e.g. 1 minute,
+// split across 3 regions to 3 minutes) never parks for longer than it
+// actually needs to bridge between polls; a job with a long period (e.g. 1
+// hour) is still bounded by the flat floor so a single slow-period job can't
+// occupy a runner slot for minutes either.
+//
+// period <= 0 degrades to maxAhead unclamped (defensive only — check_jobs
+// always carries a positive period).
+func clampAhead(maxAhead time.Duration, period timeutils.Duration) time.Duration {
+	window := maxAhead
+	if window > maxClaimAheadFloor {
+		window = maxClaimAheadFloor
+	}
+
+	p := time.Duration(period)
+	if p > 0 && p/2 < window {
+		window = p / 2
+	}
+
+	return window
+}
+
 // selectAvailableJobs builds and executes the query to select available jobs
 // in one lane. The lane filter matches the partial-index predicates of
 // migration 009 (idx_check_jobs_claim_fast / _slow), so each lane's ordered
 // scan stays index-backed.
+//
+// The claim-ahead window is bounded per job (spec 2026-07-05-08 D3): period
+// is stored as a Postgres interval / SQLite text via timeutils.Duration, not
+// a plain numeric column, so an exact per-row SQL comparison against
+// min(maxAhead, period/2, 30s) would need dialect-specific interval
+// arithmetic on both backends. Instead the SQL gate uses the coarser
+// min(maxAhead, 30s) bound (tightening the historical flat 5-minute default
+// for the common case on its own), and a Go-side post-filter immediately
+// after Scan drops any row whose own tighter per-job clamp isn't satisfied
+// yet — those rows were only SELECTed (and, on Postgres, row-locked for the
+// transaction's duration by FOR UPDATE SKIP LOCKED) but are removed from the
+// slice before the caller leases anything, so they are never claimed; the
+// next poll picks them up once they're within their own window.
 func (s *serviceImpl) selectAvailableJobs(
 	ctx context.Context,
 	tx bun.Tx,
@@ -336,6 +385,11 @@ func (s *serviceImpl) selectAvailableJobs(
 	now time.Time,
 	isPostgres bool,
 ) error {
+	coarseAhead := maxAhead
+	if coarseAhead > maxClaimAheadFloor {
+		coarseAhead = maxClaimAheadFloor
+	}
+
 	query := tx.NewSelect().
 		Model(jobs).
 		// Cost-aware, plan-weighted claim (spec 2026-06-30-09 D2/Option A, gate
@@ -351,7 +405,7 @@ func (s *serviceImpl) selectAvailableJobs(
 		// applies within the lane; the lane split itself is hard isolation
 		// layered on top (spec 2026-07-01-03 D1).
 		Where("lane = ?", lane).
-		Where("scheduled_at <= ?", now.Add(maxAhead)).
+		Where("scheduled_at <= ?", now.Add(coarseAhead)).
 		WhereGroup(" AND ", func(q *bun.SelectQuery) *bun.SelectQuery {
 			return q.
 				WhereOr("lease_expires_at IS NULL").
@@ -381,6 +435,19 @@ func (s *serviceImpl) selectAvailableJobs(
 		}
 		return err
 	}
+
+	// Per-job clamp (D3): drop any row whose own bound (min(maxAhead,
+	// period/2, 30s)) is tighter than the coarse SQL gate just applied.
+	filtered := (*jobs)[:0]
+
+	for _, job := range *jobs {
+		window := clampAhead(maxAhead, job.Period)
+		if job.ScheduledAt == nil || !job.ScheduledAt.After(now.Add(window)) {
+			filtered = append(filtered, job)
+		}
+	}
+
+	*jobs = filtered
 
 	return nil
 }

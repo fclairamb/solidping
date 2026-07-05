@@ -13,6 +13,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
+	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
 func setupTestDB(t *testing.T) (*sqlite.Service, context.Context) {
@@ -838,5 +839,128 @@ func TestReleaseLease(t *testing.T) {
 		require.NoError(t, dbSvc.DB().NewSelect().Model(&dbJob).Where("uid = ?", job.UID).Scan(ctx))
 		assert.Equal(t, scheduling.LaneSlow, dbJob.Lane,
 			"ReleaseLease (no cost sample) must leave the lane unchanged")
+	})
+}
+
+// setTestCheckJobPeriod overwrites a test job's period column directly —
+// createTestCheckJob always creates the underlying check via models.NewCheck,
+// which defaults Period to 1 minute, so tests needing a different period patch
+// it in after creation the same way the helper already patches
+// scheduled_at/region.
+func setTestCheckJobPeriod(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, period time.Duration) { //nolint:revive // test helper, arg order matches sibling helpers
+	t.Helper()
+
+	_, err := svc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("period = ?", timeutils.Duration(period)).
+		Where("uid = ?", jobUID).
+		Exec(ctx)
+	require.NoError(t, err, "failed to set test check job period")
+}
+
+// TestClaimJobsBoundedClaimAheadWindow covers D3 (spec 2026-07-05-08): the
+// per-job eligibility window is clamped to min(FetchMaxAhead, period/2, 30s)
+// instead of the flat FetchMaxAhead, so a short-period job isn't claimed (and
+// left sleeping in-runner) minutes before it's actually due.
+//
+// Subtests share one DB (like the rest of this file) and each claims with a
+// generous limit, so a subtest's own unclaimed job can still be sitting in
+// the table when a later subtest runs with a looser maxAhead. Assertions
+// therefore check membership of this subtest's own job UID rather than the
+// exact claimed count, so they stay correct regardless of subtest order or
+// carried-over rows.
+//
+//nolint:paralleltest // Test shares database state
+func TestClaimJobsBoundedClaimAheadWindow(t *testing.T) {
+	dbSvc, ctx := setupTestDB(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	svc := checkjobsvc.NewService(dbSvc.DB())
+	org := createTestOrg(t, ctx, dbSvc)
+
+	containsUID := func(jobs []*models.CheckJob, uid string) bool {
+		for _, j := range jobs {
+			if j.UID == uid {
+				return true
+			}
+		}
+
+		return false
+	}
+
+	t.Run("ShortPeriodJobNotClaimedOutsideItsOwnWindow", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// 1-minute period -> clamp = min(FetchMaxAhead, 30s, 30s) = 30s.
+		// scheduled_at 40s out is outside that 30s window, even though the
+		// flat FetchMaxAhead (5 minutes) would have admitted it.
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(40*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.False(t, containsUID(jobs, job.UID),
+			"a 1-minute-period job 40s out must not be claimed (window clamps to 30s)")
+	})
+
+	t.Run("ShortPeriodJobClaimedInsideItsOwnWindow", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// Same 1-minute period, but scheduled_at only 10s out: inside the 30s
+		// clamp window, so it must still be claimed (claim-ahead still works
+		// for the common case, just bounded).
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.True(t, containsUID(jobs, job.UID), "a 1-minute-period job 10s out is inside its own 30s window")
+	})
+
+	t.Run("LongPeriodJobClaimedWellWithinHalfPeriodBound", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// 10-minute period -> period/2 = 5 minutes, well above the 30s floor,
+		// so the clamp for this job is min(FetchMaxAhead, 5m, 30s) = 30s (the
+		// flat floor still applies) — scheduled_at 20s out is well inside it.
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(20*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, 10*time.Minute)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.True(t, containsUID(jobs, job.UID), "a 10-minute-period job 20s out is inside the 30s floor")
+	})
+
+	t.Run("SmallFetchMaxAheadOverrideStillWins", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// An operator override tighter than the per-job clamp must still be
+		// respected: FetchMaxAhead=5s beats the 1-minute-period job's own 30s
+		// clamp, so a job 10s out is NOT claimed.
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(10*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Second)
+		require.NoError(t, err)
+		assert.False(t, containsUID(jobs, job.UID), "a small FetchMaxAhead override must still be respected")
+	})
+
+	t.Run("DueNowJobAlwaysClaimedRegardlessOfPeriod", func(t *testing.T) { //nolint:paralleltest // shares DB
+		worker := createTestWorker(t, ctx, dbSvc, nil)
+		now := time.Now()
+
+		// scheduled_at in the past: due now, must be claimed regardless of
+		// the clamp (the clamp only bounds how far AHEAD a job may be
+		// claimed, never how overdue one may be).
+		job := createTestCheckJob(t, ctx, dbSvc, org.UID, now.Add(-5*time.Second), nil)
+		setTestCheckJobPeriod(t, ctx, dbSvc, job.UID, time.Minute)
+
+		jobs, err := svc.ClaimJobs(ctx, worker.UID, nil, 10, 10, 5*time.Minute)
+		require.NoError(t, err)
+		assert.True(t, containsUID(jobs, job.UID), "a due-now job must always be claimed regardless of period")
 	})
 }
