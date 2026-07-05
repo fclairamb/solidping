@@ -972,7 +972,10 @@ function CheckDetailPage() {
                         ? `${Math.round(result.durationMs)}ms`
                         : "-"}
                     </TableCell>
-                    <TableCell className="text-sm">
+                    <TableCell
+                      className="text-sm"
+                      data-testid="result-region-cell"
+                    >
                       {result.region ? (
                         (() => {
                           const region = regionsData?.regions?.find(
