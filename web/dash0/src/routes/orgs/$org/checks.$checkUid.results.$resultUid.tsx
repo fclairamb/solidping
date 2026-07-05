@@ -132,7 +132,7 @@ function ResultDetailPage() {
             navigate({
               to: "/orgs/$org/checks/$checkUid",
               params: { org, checkUid },
-              search: { graphPeriod: undefined, graphFull: undefined },
+              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined },
             })
           }
         >

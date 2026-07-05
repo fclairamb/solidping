@@ -521,7 +521,7 @@ function ResourceRow({
       <Link
         to="/orgs/$org/checks/$checkUid"
         params={{ org, checkUid: resource.checkUid }}
-        search={{ graphPeriod: undefined, graphFull: undefined }}
+        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
       >
         <Button variant="ghost" size="icon" className="h-7 w-7">
           <Eye className="h-3 w-3" />

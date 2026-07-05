@@ -3208,6 +3208,32 @@ export function useSlackDestinations(
   });
 }
 
+interface SlackInstallURLResponse {
+  url: string;
+}
+
+/**
+ * Mints an org-scoped Slack OAuth install URL via the authenticated
+ * install-url endpoint and navigates the browser there. Used by both Slack
+ * "Install app" CTAs (new-integration tile and the unconnected-channel edit
+ * page) instead of the legacy unauthenticated
+ * `/api/v1/integrations/slack/install?org=...&channelUid=...` link — the org
+ * now comes from the authenticated session, not a forgeable query param.
+ */
+export async function startSlackInstall(
+  org: string,
+  channelUid?: string,
+): Promise<void> {
+  const { url } = await apiFetch<SlackInstallURLResponse>(
+    `/api/v1/orgs/${org}/integrations/slack/install-url`,
+    {
+      method: "POST",
+      body: JSON.stringify(channelUid ? { channelUid } : {}),
+    },
+  );
+  window.location.href = url;
+}
+
 // --- Status Update types and hooks ---
 
 export interface StatusUpdate {

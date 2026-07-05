@@ -2927,7 +2927,60 @@ func (s *Service) GetChannelByProperty(
 	return conn, nil
 }
 
-// ListChannels lists integration connections with optional filtering.
+// GetChannelByPropertyForOrg is the org-scoped variant of
+// GetChannelByProperty — same settings-property lookup, additionally
+// filtered to a single organization so a workspace connected to several
+// orgs resolves to that org's own row.
+func (s *Service) GetChannelByPropertyForOrg(
+	ctx context.Context, orgUID, connType, propertyName, propertyValue string,
+) (*models.Integration, error) {
+	conn := new(models.Integration)
+
+	jsonPath := "$." + propertyName
+
+	err := s.db.NewSelect().
+		Model(conn).
+		Where("organization_uid = ?", orgUID).
+		Where("type = ?", connType).
+		Where("json_extract(settings, ?) = ?", jsonPath, propertyValue).
+		Where("deleted_at IS NULL").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return conn, nil
+}
+
+// ListChannelsByProperty returns every non-deleted connection matching a
+// settings property, across ALL organizations, ordered created_at ASC
+// (oldest first). See db.Service for the callers (uninstall fan-out and the
+// inbound-routing deterministic fallback).
+func (s *Service) ListChannelsByProperty(
+	ctx context.Context, connType, propertyName, propertyValue string,
+) ([]*models.Integration, error) {
+	conns := make([]*models.Integration, 0)
+
+	jsonPath := "$." + propertyName
+
+	err := s.db.NewSelect().
+		Model(&conns).
+		Where("type = ?", connType).
+		Where("json_extract(settings, ?) = ?", jsonPath, propertyValue).
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return conns, nil
+}
+
+// ListChannels lists integration connections with optional filtering. An
+// empty filter.OrganizationUID lists across ALL organizations — used by
+// CountInstalledTeams, which needs a global view of Slack connections.
+// Every other caller passes a real org UID, so this is a no-op for them.
 func (s *Service) ListChannels(
 	ctx context.Context, filter *models.ListIntegrationsFilter,
 ) ([]*models.Integration, error) {
@@ -2935,9 +2988,12 @@ func (s *Service) ListChannels(
 
 	query := s.db.NewSelect().
 		Model(&connections).
-		Where("organization_uid = ?", filter.OrganizationUID).
 		Where("deleted_at IS NULL").
 		Order("created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+	}
 
 	if filter.Type != nil {
 		query = query.Where("type = ?", *filter.Type)

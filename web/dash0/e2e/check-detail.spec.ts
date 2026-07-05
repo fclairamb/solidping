@@ -98,6 +98,225 @@ test.describe("Check Detail Page", () => {
     });
   });
 
+  test("Recent Results table shows the region a result ran from, not a dash", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check so a first result lands and populates Recent Results.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("check-name-input")).toBeVisible();
+
+    const checkName = `E2E Region Column ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/region-column-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // The check page polls every 1.5s for its first result (fast-poll window,
+    // up to 30s) — wait for the first Recent Results row to appear.
+    const firstRow = page.locator('[data-testid^="result-row-"]').first();
+    await expect(firstRow).toBeVisible({ timeout: 30000 });
+
+    // The Region cell must render the actual region the result ran from, not
+    // the "-" placeholder used only for legacy rows with no stored region.
+    // Single-worker local/e2e setups register under region "default", which
+    // has no configured region-definition system parameter, so it renders
+    // via the built-in fallback definition (📍 Default) as an outline Badge.
+    const regionCell = firstRow.getByTestId("result-region-cell");
+    await expect(regionCell).toBeVisible();
+    await expect(regionCell).not.toHaveText("-");
+    await expect(regionCell.getByText(/default/i)).toBeVisible();
+  });
+
+  test("Response Times chart: region chips filter to a single region's points", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+
+    // Mock a multi-region results response: a low-latency "us-1" cluster and
+    // a high-latency "eu-1" cluster, interleaved in time — the exact shape
+    // that renders as a cross-region sawtooth without the filter.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      const points = [];
+      for (let i = 0; i < 8; i++) {
+        const ts = now - (16 - i * 2) * 60_000;
+        points.push({
+          uid: `us1-${i}`,
+          durationMs: 55 + (i % 2) * 5,
+          status: "up",
+          region: "us-1",
+          periodStart: new Date(ts).toISOString(),
+          periodType: "raw",
+        });
+        points.push({
+          uid: `eu1-${i}`,
+          durationMs: 650 + (i % 2) * 10,
+          status: "up",
+          region: "eu-1",
+          periodStart: new Date(ts + 30_000).toISOString(),
+          periodType: "raw",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: points,
+          pagination: { total: points.length, size: points.length },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/regions*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            { slug: "us-1", emoji: "🇺🇸", name: "US East" },
+            { slug: "eu-1", emoji: "🇪🇺", name: "EU West" },
+          ],
+          defaultRegions: ["us-1"],
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    // Create a check and navigate to its detail page.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Region Filter ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/region-filter-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // Both region chips render (emoji + name), plus "All regions". "All" is
+    // selected by default.
+    const filterRow = page.getByTestId("response-time-chart-region-filter");
+    await expect(filterRow).toBeVisible({ timeout: 15000 });
+    const allChip = filterRow.getByRole("button", { name: "All regions" });
+    const usChip = filterRow.getByRole("button", { name: /US East/ });
+    const euChip = filterRow.getByRole("button", { name: /EU West/ });
+    await expect(allChip).toBeVisible();
+    await expect(usChip).toBeVisible();
+    await expect(euChip).toBeVisible();
+
+    await expect(page.locator(".recharts-wrapper")).toBeVisible();
+    const allDotCount = await page.locator(".recharts-wrapper circle").count();
+
+    // Selecting the US chip narrows the chart to fewer points (only the
+    // us-1 cluster) and writes ?graphRegion=us-1 into the URL.
+    await usChip.click();
+    await page.waitForURL(/graphRegion=us-1/);
+    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
+      allDotCount / 2,
+    );
+
+    // Switching to the EU chip updates the URL and keeps a single-region
+    // point count (same size class as the US selection, different region).
+    await euChip.click();
+    await page.waitForURL(/graphRegion=eu-1/);
+    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
+      allDotCount / 2,
+    );
+
+    // Back to "All regions" restores every point and clears the param.
+    await allChip.click();
+    await expect(page.locator(".recharts-wrapper circle")).toHaveCount(
+      allDotCount,
+    );
+    expect(page.url()).not.toContain("graphRegion");
+  });
+
+  test("Response Times chart: single-region check shows no region chips", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+
+    // Mock a single-region results response — the chip row must stay hidden,
+    // matching today's behavior (no passive subtitle either).
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            {
+              uid: "single-region-1",
+              durationMs: 42,
+              status: "up",
+              region: "us-1",
+              periodStart: new Date(now - 5 * 60_000).toISOString(),
+              periodType: "raw",
+            },
+          ],
+          pagination: { total: 1, size: 1 },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Single Region ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/single-region-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
+
+    await expect(
+      page.getByTestId("response-time-chart-region-filter"),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "All regions" }),
+    ).toHaveCount(0);
+  });
+
   test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({
     authenticatedPage,
   }) => {

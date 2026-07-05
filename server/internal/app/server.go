@@ -1075,6 +1075,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	slackOrgRoutes := api.NewGroup("/orgs/:org/channels/:uid/slack").Use(authMiddleware.RequireAuth)
 	slackOrgRoutes.GET("/destinations", slackHandler.GetDestinations)
 
+	// Org-scoped install-URL minting (spec 2026-07-05-01): the org comes from
+	// the authenticated route context (RequireOrgAccess), never from a query
+	// param, so a workspace already connected to another org can be installed
+	// again here without landing the user in — or joining them to — that
+	// other org.
+	slackOrgIntegrationRoutes := api.NewGroup("/orgs/:org/integrations/slack").
+		Use(authMiddleware.RequireAuth, authMiddleware.RequireOrgAccess)
+	slackOrgIntegrationRoutes.POST("/install-url", slackHandler.BuildInstallURLForOrg)
+
 	// Incident events (authentication required)
 	orgIncidents.GET("/:uid/events", eventsHandler.ListIncidentEvents)
 

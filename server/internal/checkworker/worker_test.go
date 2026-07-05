@@ -8,18 +8,21 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
+	"github.com/fclairamb/solidping/server/internal/checkers/registry"
 	"github.com/fclairamb/solidping/server/internal/checkworker/checkjobsvc"
 	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/notifier"
+	"github.com/fclairamb/solidping/server/internal/prommetrics"
 	"github.com/fclairamb/solidping/server/internal/utils/timeutils"
 )
 
@@ -1074,4 +1077,614 @@ func TestGracefulShutdown(t *testing.T) {
 		Scan(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, dbWorker.LastActiveAt, "worker should have last_active_at timestamp")
+}
+
+// --- Watchdog tests (spec 2026-07-05-05) ---
+//
+// The checker registry (registry.GetChecker) is a hardcoded switch keyed on
+// check type, so there is no seam to inject a stub checker through it. The
+// spec's own runCheckerGuarded(ctx, checker, cfg, execTimeout) signature
+// already takes a checkerdef.Checker value directly, so these tests build
+// hand-rolled stub checkers and pass them straight into runCheckerGuarded —
+// no registry changes needed. The well-behaved (ctx-honoring) case reuses the
+// real, registered checksleep.SleepChecker.
+
+// metricDelta is the tolerance used with assert/require.InDelta when
+// comparing prommetrics counter/gauge float64 values (testutil.ToFloat64):
+// these are always integer-valued in these tests, so a tiny epsilon is
+// exact-equivalent while satisfying the testifylint float-compare rule.
+const metricDelta = 0.001
+
+// hangingConfig is a no-op checkerdef.Config for the stub checkers below —
+// they don't read any config fields.
+type hangingConfig struct{}
+
+func (hangingConfig) FromMap(map[string]any) error { return nil }
+func (hangingConfig) GetConfig() map[string]any    { return map[string]any{} }
+
+// hangingChecker's Execute blocks forever on a never-closed channel and
+// completely ignores ctx — the exact failure mode from the 2026-07-04/05
+// incident (mail checkers with unbounded socket reads).
+type hangingChecker struct {
+	// unblock, when non-nil, is closed by the test to let a previously
+	// abandoned Execute call finally return (proves D4: late finish is
+	// discarded).
+	unblock chan struct{}
+	started chan struct{} // closed once Execute has actually started running
+}
+
+func (c *hangingChecker) Type() checkerdef.CheckType           { return checkerdef.CheckType("test-hanging") }
+func (c *hangingChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (c *hangingChecker) Execute(_ context.Context, _ checkerdef.Config) (*checkerdef.Result, error) {
+	if c.started != nil {
+		close(c.started)
+	}
+
+	<-c.unblock // block until the test says "go" — ignores ctx entirely, exactly like the incident
+
+	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
+}
+
+// newHangingChecker returns a hangingChecker whose Execute blocks until the
+// test unblocks it. The unblock channel is always closed via t.Cleanup, so
+// the child goroutine spawned by runCheckerGuarded eventually exits even
+// though the test itself proceeds as soon as the watchdog abandons it —
+// otherwise the goroutine would leak for the lifetime of the whole test
+// binary and trip the package's goleak.VerifyTestMain (leak_test.go).
+func newHangingChecker(t *testing.T) *hangingChecker {
+	t.Helper()
+
+	unblock := make(chan struct{})
+	t.Cleanup(func() { close(unblock) })
+
+	return &hangingChecker{unblock: unblock}
+}
+
+// panickingChecker's Execute panics immediately (spec D2).
+type panickingChecker struct{}
+
+func (panickingChecker) Type() checkerdef.CheckType           { return checkerdef.CheckType("test-panicking") }
+func (panickingChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (panickingChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.Result, error) {
+	panic("simulated checker panic")
+}
+
+// withShortAbandonGrace overrides abandonGrace for the duration of the test
+// so hang/panic watchdog tests don't have to wait out the real 5s grace.
+func withShortAbandonGrace(t *testing.T, grace time.Duration) {
+	t.Helper()
+	abandonGraceOverride = grace
+	t.Cleanup(func() { abandonGraceOverride = 0 })
+}
+
+func testCheckJob(checkType string) *models.CheckJob {
+	return &models.CheckJob{
+		UID:             uuid.New().String(),
+		OrganizationUID: "test-org",
+		CheckUID:        uuid.New().String(),
+		Type:            checkType,
+	}
+}
+
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_HangingChecker_Abandoned(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	region := "eu2"
+	checkJob := testCheckJob("test-hanging")
+	checkJob.Region = &region
+
+	before := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+
+	execTimeout := 20 * time.Millisecond
+	start := time.Now()
+	result, err := runner.runCheckerGuarded(
+		ctx, runner.logger, newHangingChecker(t), hangingConfig{}, checkJob, execTimeout, start,
+	)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err, "abandonment returns a ready-made result, not an error")
+	require.NotNil(t, result)
+	assert.Equal(t, checkerdef.StatusTimeout, result.Status)
+	assert.Contains(t, result.Output[checkerdef.OutputKeyError], "abandoned")
+
+	// Returned within execTimeout + grace + a small epsilon — proves the
+	// watchdog actually fired instead of hanging forever.
+	assert.Less(t, elapsed, execTimeout+50*time.Millisecond+500*time.Millisecond)
+
+	after := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	assert.InDelta(t, before+1, after, metricDelta, "abandoned counter must increment")
+
+	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	assert.InDelta(t, gaugeBefore+1, gaugeAfter, metricDelta,
+		"abandoned-active gauge must increment (checker never finished)")
+}
+
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_LateFinish_DiscardedAndGaugeDecrements(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkJob := testCheckJob("test-hanging-late")
+	unblock := make(chan struct{})
+	started := make(chan struct{})
+	checker := &hangingChecker{unblock: unblock, started: started}
+
+	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+
+	execTimeout := 20 * time.Millisecond
+	result, err := runner.runCheckerGuarded(
+		ctx, runner.logger, checker, hangingConfig{}, checkJob, execTimeout, time.Now(),
+	)
+	require.NoError(t, err)
+	require.Equal(t, checkerdef.StatusTimeout, result.Status, "watchdog result wins (D4)")
+
+	gaugeDuringAbandon := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	assert.InDelta(t, gaugeBefore+1, gaugeDuringAbandon, metricDelta,
+		"gauge incremented while the child is still outstanding")
+
+	// Now let the previously-abandoned child finally finish. Its send lands
+	// in the cap-1 buffer that nobody reads (D4) — no double result is
+	// produced by runCheckerGuarded itself (it already returned above), and
+	// the deferred cleanup must decrement the gauge back down.
+	close(unblock)
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive) == gaugeBefore
+	}, 2*time.Second, 10*time.Millisecond, "gauge must decrement once the late child actually returns")
+}
+
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_PanickingChecker_ReturnsErrorNotCrash(t *testing.T) {
+	withShortAbandonGrace(t, 5*time.Second) // grace must not matter: panic returns immediately
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkJob := testCheckJob("test-panicking")
+
+	start := time.Now()
+	result, err := runner.runCheckerGuarded(
+		ctx, runner.logger, panickingChecker{}, hangingConfig{}, checkJob, time.Second, start,
+	)
+	elapsed := time.Since(start)
+
+	// The mere fact this line runs (in the same test binary) proves the
+	// panic did not crash the process — recover() contained it (D2).
+	require.Error(t, err)
+	require.ErrorIs(t, err, ErrCheckerPanic)
+	assert.Contains(t, err.Error(), "simulated checker panic")
+	assert.Nil(t, result, "panic path returns (nil, error); executeJob's generic-error branch builds the result")
+	assert.Less(t, elapsed, time.Second, "panic must be reported immediately, not after the grace window")
+}
+
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *testing.T) {
+	withShortAbandonGrace(t, 200*time.Millisecond)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkJob := testCheckJob(string(checkerdef.CheckTypeSleep))
+
+	// checksleep.SleepChecker already honors ctx (proven independently by
+	// TestSleepChecker_Execute_ContextTimeout in the checksleep package): a
+	// context deadline shorter than sleep_ms interrupts the sleep and
+	// returns its own StatusTimeout well before the watchdog's grace window.
+	checker, ok := registry.GetChecker(checkerdef.CheckTypeSleep)
+	require.True(t, ok, "checksleep.SleepChecker must be registered")
+
+	cfg, ok := registry.ParseConfig(checkerdef.CheckTypeSleep)
+	require.True(t, ok)
+	require.NoError(t, cfg.FromMap(map[string]any{"sleep_ms": 5000, "jitter_ms": 0}))
+
+	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	abandonedBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+
+	// execCtx must actually carry a deadline for the checker to observe —
+	// runCheckerGuarded passes ctx straight through to checker.Execute.
+	execTimeout := 30 * time.Millisecond
+	execCtx, cancel := context.WithTimeout(ctx, execTimeout)
+	defer cancel()
+
+	start := time.Now()
+	result, err := runner.runCheckerGuarded(execCtx, runner.logger, checker, cfg, checkJob, execTimeout, start)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	assert.Equal(t, checkerdef.StatusTimeout, result.Status, "the checker's own ctx-driven timeout, not the watchdog's")
+	// Returns promptly on the checker's own deadline — well under the 200ms
+	// grace — proving the watchdog's 5s/grace path never engaged.
+	assert.Less(t, elapsed, 200*time.Millisecond)
+
+	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	assert.InDelta(t, gaugeBefore, gaugeAfter, metricDelta, "watchdog must not fire for a ctx-honoring checker")
+
+	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
+	assert.InDelta(t, abandonedBefore, abandonedAfter, metricDelta, "abandoned counter must not move")
+}
+
+// stubResolvers builds getChecker/parseConfig overrides that resolve exactly
+// one synthetic check type to the given stub checker, and fall through to
+// the real registry for everything else (so a subsequent heartbeat/sleep job
+// on the same runner still resolves normally). This is the seam
+// (CheckWorker.getChecker/parseConfig) that lets the integration tests below
+// drive the real jobsChan -> runnerLoop -> executeJob path — the same path
+// production traffic takes — with a checker that deliberately hangs or
+// panics, which the hardcoded registry switch has no way to express.
+func stubResolvers(checkType checkerdef.CheckType, checker checkerdef.Checker) (
+	func(checkerdef.CheckType) (checkerdef.Checker, bool),
+	func(checkerdef.CheckType) (checkerdef.Config, bool),
+) {
+	getChecker := func(ct checkerdef.CheckType) (checkerdef.Checker, bool) {
+		if ct == checkType {
+			return checker, true
+		}
+
+		return registry.GetChecker(ct)
+	}
+	parseConfig := func(ct checkerdef.CheckType) (checkerdef.Config, bool) {
+		if ct == checkType {
+			return hangingConfig{}, true
+		}
+
+		return registry.ParseConfig(ct)
+	}
+
+	return getChecker, parseConfig
+}
+
+// startTestRunnerLoop starts one real runnerLoop goroutine against a fresh
+// jobsChan, isolated from the rest of the worker (Run() is not started), so
+// tests drive exactly the pool machinery under test (availableRunners,
+// jobsChan, executeJob) without unrelated fetcher/express activity. Returns
+// a cleanup that cancels the loop and waits for it to exit.
+// claimJobForTest stamps the given job as leased by workerUID, both in the DB
+// (so releaseLease's `WHERE lease_worker_uid = ?` matches, exactly like a
+// real ClaimJobs would have left it) and on the in-memory job struct handed
+// to jobsChan. Mirrors the lease-setup already used by
+// TestExecuteHeartbeatJob_RunningStatus elsewhere in this file.
+func claimJobForTest(
+	t *testing.T, dbSvc *sqlite.Service, ctx context.Context, job *models.CheckJob, workerUID string, //nolint:revive
+) {
+	t.Helper()
+
+	leaseExpiry := time.Now().Add(60 * time.Second)
+	_, err := dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("lease_worker_uid = ?", workerUID).
+		Set("lease_expires_at = ?", leaseExpiry).
+		Set("lease_starts = ?", 1).
+		Where("uid = ?", job.UID).
+		Exec(ctx)
+	require.NoError(t, err)
+
+	job.LeaseWorkerUID = &workerUID
+	job.LeaseExpiresAt = &leaseExpiry
+	job.LeaseStarts = 1
+}
+
+func startTestRunnerLoop(
+	t *testing.T, runner *CheckWorker, ctx context.Context, //nolint:revive
+) {
+	t.Helper()
+
+	runner.jobsChan = make(chan *models.CheckJob)
+	runnerDone := make(chan struct{})
+	runner.wg.Add(1)
+
+	loopCtx, cancelLoop := context.WithCancel(ctx)
+
+	go func() {
+		defer close(runnerDone)
+		runner.runnerLoop(loopCtx, 0)
+	}()
+
+	t.Cleanup(func() {
+		cancelLoop()
+		select {
+		case <-runnerDone:
+		case <-time.After(2 * time.Second):
+			t.Fatal("runnerLoop did not exit after context cancellation")
+		}
+	})
+}
+
+// sendJobAndWaitForResult pushes a job onto the runner's jobsChan (as the
+// fetcher normally would) and waits for a non-"created" result row to appear
+// for its check — i.e. for the *same* runnerLoop goroutine to pick it up,
+// execute it, and complete. Used to prove the runner survived a prior
+// abandonment/panic: a lost goroutine would never drain jobsChan again and
+// this would time out.
+func sendJobAndWaitForResult(
+	t *testing.T, dbSvc *sqlite.Service,
+	ctx context.Context, //nolint:revive
+	jobsChan chan *models.CheckJob, job *models.CheckJob,
+) {
+	t.Helper()
+
+	select {
+	case jobsChan <- job:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop did not accept a subsequent job — the goroutine was lost")
+	}
+
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", job.CheckUID).
+			Where("status != ?", int(models.ResultStatusCreated)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n > 0
+	}, 3*time.Second, 20*time.Millisecond, "runnerLoop must process the subsequent job — proving it survived")
+}
+
+// newHeartbeatJob creates a real heartbeat check (routes through
+// executePassiveJob, no outbound I/O), claims its job for workerUID (so
+// releaseLease succeeds exactly as it would for a normally-claimed job), and
+// returns the job row — used as the innocuous "subsequent job" that proves
+// the runner survived.
+func newHeartbeatJob(
+	t *testing.T, dbSvc *sqlite.Service, ctx context.Context, orgUID, workerUID string, //nolint:revive
+) *models.CheckJob {
+	t.Helper()
+
+	check := models.NewCheck(orgUID, "watchdog-next-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+	check.Config = models.JSONMap{"token": "watchdog-next-token"}
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	job := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, job, workerUID)
+
+	return job
+}
+
+// fastExecTimeoutCostEWMAMs is the seeded cost EWMA (ms) that, combined with
+// useFastExecTimeout's schedParams, makes executeJob compute a ~20ms
+// execTimeout instead of the flat 30s DefaultExecutionTimeout. Without this,
+// the watchdog tests would have to wait out a real 30s + abandonGrace before
+// the runnerLoop-driven select fires.
+const fastExecTimeoutCostEWMAMs = 20.0
+
+// useFastExecTimeout configures the runner's cost-aware scheduling so
+// executeJob derives a short execTimeout (~fastExecTimeoutCostEWMAMs ms)
+// instead of the flat 30s default, and stamps the same cost onto the given
+// job row. This only shrinks execTimeout — the watchdog's grace window is
+// separately shrunk via withShortAbandonGrace.
+func useFastExecTimeout(runner *CheckWorker, job *models.CheckJob) {
+	runner.schedParams.CostTimeoutFactor = 1
+	runner.schedParams.CostTimeoutFloor = time.Duration(fastExecTimeoutCostEWMAMs) * time.Millisecond
+	job.CostEWMAMs = fastExecTimeoutCostEWMAMs
+}
+
+// TestRunnerSurvivesAbandonmentAndProcessesSubsequentJob is the spec's core
+// thesis test: "a lost runner is silent, cumulative, and fleet-fatal" — a
+// watchdog that only produces a correct result for the hung job but never
+// proves the runner goroutine is still alive to pick up more work would miss
+// the whole point. This drives one real runnerLoop goroutine, through the
+// exact production path (jobsChan -> runnerLoop -> executeJob ->
+// runCheckerGuarded), with a hanging job followed immediately by a normal
+// job, and asserts the second job completes.
+//
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunnerSurvivesAbandonmentAndProcessesSubsequentJob(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const hangType = checkerdef.CheckType("test-hanging")
+	runner.getChecker, runner.parseConfig = stubResolvers(hangType, newHangingChecker(t))
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	hangCheck := models.NewCheck(org.UID, "watchdog-hang-"+uuid.New().String()[:8], string(hangType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, hangCheck))
+	hangJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(hangJob).Where("check_uid = ?", hangCheck.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, hangJob, worker.UID)
+	useFastExecTimeout(runner, hangJob)
+
+	abandonedBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(string(hangType)))
+	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+
+	select {
+	case runner.jobsChan <- hangJob:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the hanging job")
+	}
+
+	// Wait for exactly one timeout result to land for the hung check —
+	// proof the watchdog fired and executeJob's save+release path ran.
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", hangCheck.UID).
+			Where("status = ?", int(models.ResultStatusTimeout)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 3*time.Second, 20*time.Millisecond, "watchdog must abandon the hanging job and save a timeout result")
+
+	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(string(hangType)))
+	assert.InDelta(t, abandonedBefore+1, abandonedAfter, metricDelta)
+	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	assert.InDelta(t, gaugeBefore+1, gaugeAfter, metricDelta, "the hung goroutine is still leaked at this point")
+
+	// The actual point of the spec: the SAME runnerLoop goroutine (id 0,
+	// still looping — no new goroutine was started) must be back at
+	// `case job, ok = <-r.jobsChan` ready for more work. Send it a normal
+	// heartbeat job and confirm it completes.
+	nextJob := newHeartbeatJob(t, dbSvc, ctx, org.UID, worker.UID)
+	sendJobAndWaitForResult(t, dbSvc, ctx, runner.jobsChan, nextJob)
+}
+
+// TestLateFinishAfterAbandonmentViaRunner drives the D4 discard guarantee
+// through the same real jobsChan -> runnerLoop -> executeJob path: the
+// abandoned checker eventually unblocks and returns, and that must not
+// produce a second result row for the check nor block anything.
+//
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestLateFinishAfterAbandonmentViaRunner(t *testing.T) {
+	withShortAbandonGrace(t, 50*time.Millisecond)
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const hangType = checkerdef.CheckType("test-hanging-late")
+	unblock := make(chan struct{})
+	stub := &hangingChecker{unblock: unblock}
+	runner.getChecker, runner.parseConfig = stubResolvers(hangType, stub)
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	hangCheck := models.NewCheck(org.UID, "watchdog-late-"+uuid.New().String()[:8], string(hangType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, hangCheck))
+	hangJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(hangJob).Where("check_uid = ?", hangCheck.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, hangJob, worker.UID)
+	useFastExecTimeout(runner, hangJob)
+
+	gaugeBefore := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+
+	select {
+	case runner.jobsChan <- hangJob:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the hanging job")
+	}
+
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", hangCheck.UID).
+			Where("status = ?", int(models.ResultStatusTimeout)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 3*time.Second, 20*time.Millisecond, "watchdog must abandon and save exactly one timeout result")
+
+	gaugeDuringAbandon := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
+	require.InDelta(t, gaugeBefore+1, gaugeDuringAbandon, metricDelta)
+
+	// Now let the abandoned goroutine finally return. Its send lands in the
+	// cap-1 buffer that runCheckerGuarded already stopped reading from (D4).
+	close(unblock)
+
+	require.Eventually(t, func() bool {
+		return testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive) == gaugeBefore
+	}, 2*time.Second, 10*time.Millisecond, "gauge must decrement once the late child actually returns")
+
+	// No second result must have been written for the check.
+	var n int
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("count(*)").
+		Where("check_uid = ?", hangCheck.UID).
+		Where("status != ?", int(models.ResultStatusCreated)).
+		Scan(ctx, &n))
+	assert.Equal(t, 1, n, "the late finish must not produce a second result row (D4)")
+}
+
+// TestRunnerSurvivesPanicAndProcessesSubsequentJob mirrors the abandonment
+// test for D2: a checker panic must not crash the runnerLoop goroutine (or
+// the process), and that same goroutine must keep processing jobs.
+//
+//nolint:paralleltest // mutates the package-level abandonGraceOverride
+func TestRunnerSurvivesPanicAndProcessesSubsequentJob(t *testing.T) {
+	withShortAbandonGrace(t, 5*time.Second) // grace must not matter: panic returns immediately
+
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	const panicType = checkerdef.CheckType("test-panicking")
+	runner.getChecker, runner.parseConfig = stubResolvers(panicType, panickingChecker{})
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	panicCheck := models.NewCheck(org.UID, "watchdog-panic-"+uuid.New().String()[:8], string(panicType))
+	require.NoError(t, dbSvc.CreateCheck(ctx, panicCheck))
+	panicJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(panicJob).Where("check_uid = ?", panicCheck.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, panicJob, worker.UID)
+
+	select {
+	case runner.jobsChan <- panicJob:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the panicking job")
+	}
+
+	// The mere fact this Eventually succeeds (in the same test binary) is
+	// itself part of the D2 proof: if recover() had not contained the
+	// panic, the whole go test process would have crashed instead of
+	// reaching this assertion.
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", panicCheck.UID).
+			Where("status = ?", int(models.ResultStatusError)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 3*time.Second, 20*time.Millisecond, "the panic must produce exactly one error result")
+
+	var errorResults []*models.Result
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model(&errorResults).
+		Where("check_uid = ?", panicCheck.UID).
+		Where("status = ?", int(models.ResultStatusError)).
+		Scan(ctx))
+	require.Len(t, errorResults, 1)
+	assert.Contains(t, errorResults[0].Output[checkerdef.OutputKeyError], "simulated checker panic")
+
+	// The point of the spec: the SAME runnerLoop goroutine survives a
+	// checker panic and keeps pulling from jobsChan.
+	nextJob := newHeartbeatJob(t, dbSvc, ctx, org.UID, worker.UID)
+	sendJobAndWaitForResult(t, dbSvc, ctx, runner.jobsChan, nextJob)
 }

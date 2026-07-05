@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net"
 	"net/textproto"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -151,7 +152,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	code, greeting, err := textConn.ReadResponse(220)
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 			return timeoutResult(start), nil
 		}
 
@@ -190,7 +191,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 	caps, err := c.sendEHLO(textConn, params.ehloDomain)
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 			return timeoutResult(start), nil
 		}
 
@@ -216,7 +217,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 		tlsConn, err := c.doSTARTTLS(ctx, textConn, conn, params.serverName, cfg.TLSVerify, caps)
 		if err != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 				return timeoutResult(start), nil
 			}
 
@@ -255,7 +256,7 @@ func (c *SMTPChecker) Execute(ctx context.Context, config checkerdef.Config) (*c
 
 		authErr := c.doAUTH(textConn, cfg.Username, cfg.Password)
 		if authErr != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(authErr, os.ErrDeadlineExceeded) {
 				return timeoutResult(start), nil
 			}
 
@@ -436,6 +437,10 @@ func (c *SMTPChecker) dial(
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return nil, time.Since(connectStart), err
+	}
+
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
 	}
 
 	if implicitTLS {

@@ -1,9 +1,17 @@
 import { test, expect } from "./fixtures";
 
 // Slack channels are install-only: the New Channel form must offer an Install
-// CTA (full-page redirect to the OAuth install flow) instead of a create form,
-// and the edit page of an unconnected (tokenless) Slack channel must show a
-// not-connected CTA without ever calling the /slack/destinations endpoint.
+// CTA instead of a create form, and the edit page of an unconnected
+// (tokenless) Slack channel must show a not-connected CTA without ever
+// calling the /slack/destinations endpoint. Both CTAs mint their OAuth
+// authorize URL via the authenticated, org-scoped
+// POST /orgs/:org/integrations/slack/install-url endpoint (spec
+// 2026-07-05-01) rather than the legacy unauthenticated
+// GET /api/v1/integrations/slack/install?org=...&channelUid=... link, then
+// navigate the browser there.
+const FAKE_AUTHORIZE_URL =
+  "https://slack.com/oauth/v2/authorize?client_id=fake&state=fake-state";
+
 test.describe("Slack install-only channel", () => {
   test("New Channel → Slack shows Install CTA, no create form", async ({
     authenticatedPage,
@@ -26,22 +34,38 @@ test.describe("Slack install-only channel", () => {
       page.getByRole("button", { name: /create integration/i }),
     ).toHaveCount(0);
 
-    // Clicking Install triggers a navigation to the install endpoint. Stub it
-    // so we can assert the target without leaving the app.
-    let installRequested = false;
+    // Clicking Install POSTs to the org-scoped install-url endpoint (no
+    // channelUid — this is the new-integration tile, not a channel edit
+    // page), then navigates to the returned authorize URL. Stub both legs.
+    let installUrlRequested = false;
     await page.route(
-      "**/api/v1/integrations/slack/install*",
+      "**/api/v1/orgs/test/integrations/slack/install-url",
       async (route) => {
-        installRequested = true;
-        const url = route.request().url();
-        expect(url).toContain("/api/v1/integrations/slack/install");
-        expect(url).toContain("source=dashboard");
-        await route.fulfill({ status: 204, body: "" });
+        expect(route.request().method()).toBe("POST");
+        const body = route.request().postDataJSON() as Record<
+          string,
+          unknown
+        >;
+        expect(body.channelUid).toBeUndefined();
+        installUrlRequested = true;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ url: FAKE_AUTHORIZE_URL }),
+        });
       },
     );
+    await page.route("https://slack.com/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<html><body>fake slack authorize page</body></html>",
+      });
+    });
 
     await installButton.click();
-    await expect.poll(() => installRequested).toBe(true);
+    await expect.poll(() => installUrlRequested).toBe(true);
+    await page.waitForURL(FAKE_AUTHORIZE_URL);
   });
 
   test("Unconnected Slack edit page shows CTA, no destinations call", async ({
@@ -111,5 +135,36 @@ test.describe("Slack install-only channel", () => {
 
     // And the destinations endpoint was never hit (gated hook).
     expect(destinationsCalled).toBe(false);
+
+    // Clicking Install POSTs to the org-scoped install-url endpoint WITH
+    // this channel's UID (so the callback updates this specific channel
+    // instead of creating a new one), then navigates to the authorize URL.
+    let installUrlBody: Record<string, unknown> = {};
+    await page.route(
+      "**/api/v1/orgs/test/integrations/slack/install-url",
+      async (route) => {
+        expect(route.request().method()).toBe("POST");
+        installUrlBody = route.request().postDataJSON() as Record<
+          string,
+          unknown
+        >;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ url: FAKE_AUTHORIZE_URL }),
+        });
+      },
+    );
+    await page.route("https://slack.com/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: "<html><body>fake slack authorize page</body></html>",
+      });
+    });
+
+    await installButton.click();
+    await expect.poll(() => installUrlBody.channelUid).toBe(channelUid);
+    await page.waitForURL(FAKE_AUTHORIZE_URL);
   });
 });

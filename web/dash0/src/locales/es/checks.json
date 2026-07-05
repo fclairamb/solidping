@@ -273,6 +273,7 @@
       "noDataAvailable": "No hay datos disponibles",
       "noData": "Sin datos",
       "showingAllRegions": "Mostrando todas las regiones ({{regions}})",
+      "allRegions": "Todas las regiones",
       "tooltipClickPoint": "Haga clic en un punto para ver detalles",
       "dotClickForDetails": "Haga clic para ver detalles",
       "dotClickToClose": "Haga clic para cerrar"

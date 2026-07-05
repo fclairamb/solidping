@@ -7,10 +7,11 @@ import (
 )
 
 const (
-	defaultPort     = 143
-	defaultTimeout  = 10 * time.Second
-	maxTimeout      = 60 * time.Second
-	implicitTLSPort = 993
+	defaultPort       = 143
+	defaultTimeout    = 10 * time.Second
+	maxTimeout        = 60 * time.Second
+	implicitTLSPort   = 993
+	configKeyPassword = "password"
 )
 
 // IMAPConfig holds the configuration for IMAP server checks.
@@ -92,10 +93,10 @@ func (c *IMAPConfig) FromMap(configMap map[string]any) error {
 		return checkerdef.NewConfigError("username", "must be a string")
 	}
 
-	if password, ok := configMap["password"].(string); ok {
+	if password, ok := configMap[configKeyPassword].(string); ok {
 		c.Password = password
-	} else if configMap["password"] != nil {
-		return checkerdef.NewConfigError("password", "must be a string")
+	} else if configMap[configKeyPassword] != nil {
+		return checkerdef.NewConfigError(configKeyPassword, "must be a string")
 	}
 
 	return nil
@@ -140,7 +141,7 @@ func (c *IMAPConfig) GetConfig() map[string]any {
 	}
 
 	if c.Password != "" {
-		cfg["password"] = c.Password
+		cfg[configKeyPassword] = c.Password
 	}
 
 	return cfg

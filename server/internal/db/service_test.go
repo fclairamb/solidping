@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -95,6 +96,14 @@ func testService(t *testing.T, svc db.Service) {
 
 	t.Run("OAuthRepos", func(t *testing.T) {
 		testOAuthRepos(ctx, t, svc)
+	})
+
+	t.Run("ChannelByPropertyForOrg", func(t *testing.T) {
+		testChannelByPropertyForOrg(ctx, t, svc)
+	})
+
+	t.Run("ListChannelsByProperty", func(t *testing.T) {
+		testListChannelsByProperty(ctx, t, svc)
 	})
 }
 
@@ -1671,5 +1680,150 @@ func testAppSettings(ctx context.Context, t *testing.T, svc db.Service) {
 		val, err := svc.GetAppSetting(ctx, key)
 		r.NoError(err)
 		r.Equal("second", val, "upsert should overwrite with new value")
+	})
+}
+
+// testChannelByPropertyForOrg covers the org-scoped connection lookup added
+// for spec 2026-07-05-01: a Slack workspace (team_id) connected to two
+// different orgs must resolve to each org's own row, never the other org's,
+// and a soft-deleted row must not be returned.
+func testChannelByPropertyForOrg(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	orgA := models.NewOrganization("cbpfo-org-a", "")
+	r.NoError(svc.CreateOrganization(ctx, orgA))
+
+	orgB := models.NewOrganization("cbpfo-org-b", "")
+	r.NoError(svc.CreateOrganization(ctx, orgB))
+
+	const teamID = "T-SHARED-WORKSPACE"
+
+	connA := models.NewIntegration(orgA.UID, models.ConnectionTypeSlack, "Workspace (org A)")
+	connA.Settings["team_id"] = teamID
+	r.NoError(svc.CreateChannel(ctx, connA))
+
+	connB := models.NewIntegration(orgB.UID, models.ConnectionTypeSlack, "Workspace (org B)")
+	connB.Settings["team_id"] = teamID
+	r.NoError(svc.CreateChannel(ctx, connB))
+
+	t.Run("ResolvesEachOrgsOwnRow", func(_ *testing.T) {
+		gotA, err := svc.GetChannelByPropertyForOrg(
+			ctx, orgA.UID, string(models.ConnectionTypeSlack), "team_id", teamID)
+		r.NoError(err)
+		r.Equal(connA.UID, gotA.UID)
+
+		gotB, err := svc.GetChannelByPropertyForOrg(
+			ctx, orgB.UID, string(models.ConnectionTypeSlack), "team_id", teamID)
+		r.NoError(err)
+		r.Equal(connB.UID, gotB.UID)
+
+		r.NotEqual(gotA.UID, gotB.UID, "each org must have its own connection row")
+	})
+
+	t.Run("NoRowInQueriedOrg", func(_ *testing.T) {
+		orgC := models.NewOrganization("cbpfo-org-c", "")
+		r.NoError(svc.CreateOrganization(ctx, orgC))
+
+		_, err := svc.GetChannelByPropertyForOrg(
+			ctx, orgC.UID, string(models.ConnectionTypeSlack), "team_id", teamID)
+		r.ErrorIs(err, sql.ErrNoRows)
+	})
+
+	t.Run("ExcludesSoftDeletedRow", func(_ *testing.T) {
+		orgD := models.NewOrganization("cbpfo-org-d", "")
+		r.NoError(svc.CreateOrganization(ctx, orgD))
+
+		connD := models.NewIntegration(orgD.UID, models.ConnectionTypeSlack, "Workspace (org D)")
+		connD.Settings["team_id"] = "T-DELETED-WORKSPACE"
+		r.NoError(svc.CreateChannel(ctx, connD))
+		r.NoError(svc.DeleteChannel(ctx, connD.UID))
+
+		_, err := svc.GetChannelByPropertyForOrg(
+			ctx, orgD.UID, string(models.ConnectionTypeSlack), "team_id", "T-DELETED-WORKSPACE")
+		r.ErrorIs(err, sql.ErrNoRows)
+	})
+}
+
+// testListChannelsByProperty covers the cross-org listing added for spec
+// 2026-07-05-02: uninstall fan-out and the inbound-routing deterministic
+// fallback both need every connection for a team_id, oldest first, across
+// every org — not scoped to one org like GetChannelByPropertyForOrg.
+func testListChannelsByProperty(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	orgA := models.NewOrganization("lcbp-org-a", "")
+	r.NoError(svc.CreateOrganization(ctx, orgA))
+
+	orgB := models.NewOrganization("lcbp-org-b", "")
+	r.NoError(svc.CreateOrganization(ctx, orgB))
+
+	const teamID = "T-LCBP-SHARED"
+
+	connA := models.NewIntegration(orgA.UID, models.ConnectionTypeSlack, "Workspace (org A, first)")
+	connA.Settings["team_id"] = teamID
+	r.NoError(svc.CreateChannel(ctx, connA))
+
+	// Ensure a distinguishable created_at ordering across engines: some
+	// backends/columns have second-level timestamp resolution, so a same-
+	// instant insert could tie. A short sleep keeps the ASC-order assertion
+	// meaningful without relying on sub-millisecond precision.
+	time.Sleep(10 * time.Millisecond)
+
+	connB := models.NewIntegration(orgB.UID, models.ConnectionTypeSlack, "Workspace (org B, second)")
+	connB.Settings["team_id"] = teamID
+	r.NoError(svc.CreateChannel(ctx, connB))
+
+	t.Run("ReturnsAllOrgsOldestFirst", func(_ *testing.T) {
+		conns, err := svc.ListChannelsByProperty(
+			ctx, string(models.ConnectionTypeSlack), "team_id", teamID)
+		r.NoError(err)
+		r.Len(conns, 2)
+		r.Equal(connA.UID, conns[0].UID, "oldest connection (org A) must be first")
+		r.Equal(connB.UID, conns[1].UID, "newer connection (org B) must be second")
+	})
+
+	t.Run("EmptySliceWhenNoMatch", func(_ *testing.T) {
+		conns, err := svc.ListChannelsByProperty(
+			ctx, string(models.ConnectionTypeSlack), "team_id", "T-LCBP-NO-SUCH-TEAM")
+		r.NoError(err, "no matches should not be an error")
+		r.Empty(conns)
+	})
+
+	t.Run("ExcludesSoftDeletedRows", func(_ *testing.T) {
+		orgC := models.NewOrganization("lcbp-org-c", "")
+		r.NoError(svc.CreateOrganization(ctx, orgC))
+
+		const deletedTeamID = "T-LCBP-DELETED"
+
+		connC := models.NewIntegration(orgC.UID, models.ConnectionTypeSlack, "Workspace (org C, deleted)")
+		connC.Settings["team_id"] = deletedTeamID
+		r.NoError(svc.CreateChannel(ctx, connC))
+		r.NoError(svc.DeleteChannel(ctx, connC.UID))
+
+		conns, err := svc.ListChannelsByProperty(
+			ctx, string(models.ConnectionTypeSlack), "team_id", deletedTeamID)
+		r.NoError(err)
+		r.Empty(conns)
+	})
+
+	t.Run("DoesNotLeakOtherConnTypesOrProperties", func(_ *testing.T) {
+		orgD := models.NewOrganization("lcbp-org-d", "")
+		r.NoError(svc.CreateOrganization(ctx, orgD))
+
+		connD := models.NewIntegration(orgD.UID, models.ConnectionTypeDiscord, "Discord (org D)")
+		connD.Settings["team_id"] = teamID
+		r.NoError(svc.CreateChannel(ctx, connD))
+
+		conns, err := svc.ListChannelsByProperty(
+			ctx, string(models.ConnectionTypeSlack), "team_id", teamID)
+		r.NoError(err)
+
+		for _, c := range conns {
+			r.NotEqual(connD.UID, c.UID, "a discord connection must not be returned for a slack-typed lookup")
+		}
 	})
 }

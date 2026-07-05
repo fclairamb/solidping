@@ -306,10 +306,22 @@ type fakeSMTPOpts struct {
 	rejectEHLO     bool
 	supportAuth    bool
 	authMechanisms string
+	silent         bool // accept but never write anything
+	silentAfter    bool // write greeting, then go silent
 }
 
 func handleFakeSMTP(conn net.Conn, opts fakeSMTPOpts) {
 	defer func() { _ = conn.Close() }()
+
+	if opts.silent {
+		// Accept the connection and hold it open, never writing a byte.
+		buf := make([]byte, 1024)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	}
 
 	greeting := opts.greeting
 	if greeting == "" {
@@ -323,6 +335,17 @@ func handleFakeSMTP(conn net.Conn, opts fakeSMTPOpts) {
 	}
 
 	_, _ = fmt.Fprintf(conn, "220 %s\r\n", greeting)
+
+	if opts.silentAfter {
+		// Greeting sent; now hold the conn open without responding to
+		// anything the client sends (e.g. EHLO never gets a reply).
+		buf := make([]byte, 1024)
+		for {
+			if _, err := conn.Read(buf); err != nil {
+				return
+			}
+		}
+	}
 
 	buf := make([]byte, 1024)
 
@@ -518,6 +541,89 @@ func TestSMTPChecker_Execute(t *testing.T) {
 				tt.checkOutput(t, result.Output)
 			}
 		})
+	}
+}
+
+// TestSMTPChecker_Execute_SilentListener is the regression test for a
+// silent server (e.g. an implicit-TLS port hit without TLS enabled, so the
+// server silently waits for a ClientHello that never comes — the o365
+// STARTTLS control case). Without the SetDeadline fix, the greeting
+// ReadResponse blocks forever and this test hangs; with the fix it must
+// return StatusTimeout within ~1.5s.
+func TestSMTPChecker_Execute_SilentListener(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	host, port := startFakeSMTPServer(t, fakeSMTPOpts{silent: true})
+
+	cfg := &SMTPConfig{
+		Host:    host,
+		Port:    port,
+		Timeout: 1 * time.Second,
+	}
+
+	done := make(chan struct {
+		result *checkerdef.Result
+		err    error
+	}, 1)
+
+	checker := &SMTPChecker{}
+
+	go func() {
+		result, err := checker.Execute(context.Background(), cfg)
+		done <- struct {
+			result *checkerdef.Result
+			err    error
+		}{result, err}
+	}()
+
+	select {
+	case out := <-done:
+		r.NoError(out.err)
+		r.NotNil(out.result)
+		r.Equal(checkerdef.StatusTimeout, out.result.Status, "output: %v", out.result.Output)
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("Execute did not return within 1.5s of a 1s timeout against a silent listener")
+	}
+}
+
+// TestSMTPChecker_Execute_MidProtocolSilence covers silence that starts
+// after a valid greeting: the EHLO response read must also time out
+// rather than hang forever.
+func TestSMTPChecker_Execute_MidProtocolSilence(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	host, port := startFakeSMTPServer(t, fakeSMTPOpts{silentAfter: true})
+
+	cfg := &SMTPConfig{
+		Host:    host,
+		Port:    port,
+		Timeout: 1 * time.Second,
+	}
+
+	done := make(chan struct {
+		result *checkerdef.Result
+		err    error
+	}, 1)
+
+	checker := &SMTPChecker{}
+
+	go func() {
+		result, err := checker.Execute(context.Background(), cfg)
+		done <- struct {
+			result *checkerdef.Result
+			err    error
+		}{result, err}
+	}()
+
+	select {
+	case out := <-done:
+		r.NoError(out.err)
+		r.NotNil(out.result)
+		r.Equal(checkerdef.StatusTimeout, out.result.Status, "output: %v", out.result.Output)
+	case <-time.After(1500 * time.Millisecond):
+		t.Fatal("Execute did not return within 1.5s of a 1s timeout against mid-protocol silence")
 	}
 }
 

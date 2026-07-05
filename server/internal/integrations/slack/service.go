@@ -143,20 +143,67 @@ func NewService(
 	}
 }
 
-// GetConnectionByTeamID retrieves a Slack connection by team ID.
+// GetConnectionByTeamID retrieves the Slack connection that inbound
+// commands/events/interactions for a workspace (team_id) should operate on.
+//
+// A workspace can be connected to several orgs (one connection row per
+// org — see spec 2026-07-05-01), so this is the single choke point that
+// decides which one is authoritative for inbound routing:
+//
+//  1. Home org: the org recorded in organization_providers for
+//     (slack, team_id) — first install wins, same org Marketplace installs
+//     and Sign-in-with-Slack already land in. If that org has its own
+//     connection, use it.
+//  2. Deterministic fallback (no provider row, or the home org's own
+//     connection was deleted): the oldest connection for the team
+//     (created_at ASC) across all orgs. A warning is logged when more than
+//     one connection exists, since routing is then ambiguous.
+//
+// Callers are unchanged — every inbound handler already goes through this
+// method or GetClient (which calls it), so fixing it here fixes routing
+// everywhere.
 func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.Integration, error) {
-	conn, err := s.db.GetChannelByProperty(
-		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrConnectionNotFound
+	if provider, err := s.db.GetOrganizationProviderByProviderID(
+		ctx, models.ProviderTypeSlack, teamID,
+	); err == nil {
+		conn, connErr := s.db.GetChannelByPropertyForOrg(
+			ctx, provider.OrganizationUID, string(models.ConnectionTypeSlack), "team_id", teamID,
+		)
+		if connErr == nil {
+			return conn, nil
 		}
 
+		if !errors.Is(connErr, sql.ErrNoRows) {
+			return nil, connErr
+		}
+		// Home org has no connection of its own (e.g. deleted) — fall
+		// through to the deterministic fallback below.
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	return conn, nil
+	conns, err := s.db.ListChannelsByProperty(
+		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(conns) == 0 {
+		return nil, ErrConnectionNotFound
+	}
+
+	if len(conns) > 1 {
+		slog.WarnContext(ctx, "Slack team resolves to multiple connections with no home org — "+
+			"routing to the oldest one; ambiguous until a home org is recorded",
+			"team_id", teamID,
+			"connection_count", len(conns),
+			"resolved_connection_uid", conns[0].UID,
+			"resolved_org_uid", conns[0].OrganizationUID,
+		)
+	}
+
+	return conns[0], nil
 }
 
 // BuildInstallURL mints a fresh CSRF state and returns the Slack OAuth
@@ -194,6 +241,32 @@ func (s *Service) BuildInstallURL(ctx context.Context, source, channelUID, orgSl
 	return "https://slack.com/oauth/v2/authorize?" + params.Encode(), nil
 }
 
+// BuildOrgInstallURL is the authenticated, org-scoped counterpart to
+// BuildInstallURL. orgUID/orgSlug come from the authenticated route context
+// (never from client-controlled input), so org targeting cannot be forged
+// the way the legacy `?org=` query param could. When channelUID is set, the
+// channel must exist, be a Slack integration, and belong to orgUID —
+// otherwise ErrConnectionNotFound is returned so the handler can respond
+// 404 instead of letting an install take over a channel in another org.
+func (s *Service) BuildOrgInstallURL(ctx context.Context, orgUID, orgSlug, channelUID string) (string, error) {
+	if channelUID != "" {
+		conn, err := s.db.GetChannel(ctx, channelUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", ErrConnectionNotFound
+			}
+
+			return "", fmt.Errorf("get channel: %w", err)
+		}
+
+		if conn.OrganizationUID != orgUID || conn.Type != models.ConnectionTypeSlack || conn.DeletedAt != nil {
+			return "", ErrConnectionNotFound
+		}
+	}
+
+	return s.BuildInstallURL(ctx, "dashboard", channelUID, orgSlug)
+}
+
 // IssueExchangeCode persists a single-use code that the dashboard will
 // trade in (server-to-server) for the freshly minted access/refresh tokens.
 // The 60-second TTL is intentionally tight — the dashboard hits the
@@ -215,6 +288,28 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 	}
 
 	return code, nil
+}
+
+// resolveResultChannelUID decides what OAuthResult.ChannelUID should be —
+// the channel/connection the frontend (auth.slack.complete.tsx) navigates to
+// after the exchange. For a channel-edit-page install (targetChannelUID
+// set) it's that specific channel, which was just updated in place. For a
+// dashboard-origin, org-scoped install with no specific channel (the
+// "Install Slack app" tile CTA — targetOrgSlug set, targetChannelUID empty),
+// it's connUID, the connection that was just created/updated in that org,
+// so the user lands on it instead of the org home page. Marketplace
+// installs (targetOrgSlug empty — no authenticated org context) return ""
+// and land on the org home page for onboarding.
+func resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID string) string {
+	if targetChannelUID != "" {
+		return targetChannelUID
+	}
+
+	if targetOrgSlug != "" {
+		return connUID
+	}
+
+	return ""
 }
 
 // HandleOAuthCallback handles the OAuth callback from Slack.
@@ -273,6 +368,8 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, err
 	}
 
+	resultChannelUID := resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID)
+
 	// Generate authentication tokens
 	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
 	if err != nil {
@@ -290,7 +387,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	return &OAuthResult{
 		ConnectionUID: connUID,
-		ChannelUID:    targetChannelUID,
+		ChannelUID:    resultChannelUID,
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
 		OrgSlug:       org.Slug,
@@ -417,13 +514,18 @@ func (s *Service) resolveOrganization(
 	return org, orgName, nil
 }
 
-// createOrUpdateConnection creates or updates an integration connection for the Slack team.
+// createOrUpdateConnection creates or updates an integration connection for
+// the Slack team, scoped to orgUID. A workspace already connected to another
+// org is untouched — the existing-connection lookup is org-scoped, so a
+// second org installing the same Slack workspace gets its own row instead of
+// silently taking over (or being redirected into) the first org's
+// connection.
 func (s *Service) createOrUpdateConnection(
 	ctx context.Context, orgUID string, oauthResp *OAuthResponse,
 ) (string, error) {
-	// Check if a connection already exists for this team
-	existingConn, err := s.db.GetChannelByProperty(
-		ctx, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
+	// Check if a connection already exists for this team IN THIS ORG.
+	existingConn, err := s.db.GetChannelByPropertyForOrg(
+		ctx, orgUID, string(models.ConnectionTypeSlack), "team_id", oauthResp.Team.ID,
 	)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return "", err
@@ -638,12 +740,18 @@ func (s *Service) ensureOrganizationMembership(
 	return member, nil
 }
 
-// CountInstalledTeams returns the number of distinct organizations that
-// currently have a Slack integration connection. Used by the Socket Mode
-// supervisor's status snapshot. Best-effort: returns (0, err) on failure.
+// CountInstalledTeams returns the number of distinct Slack workspaces
+// (team_id) that currently have at least one integration connection —
+// NOT the number of connection rows, since one workspace can now have a
+// connection in several orgs (spec 2026-07-05-01). Used by the Socket Mode
+// supervisor's status snapshot. Best-effort: returns (0, err) on failure;
+// connections whose settings fail to parse are skipped rather than failing
+// the whole count.
 func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 	slackType := models.ConnectionTypeSlack
 
+	// Empty OrganizationUID lists across ALL orgs — this is a genuinely
+	// global count, not scoped to one org.
 	channels, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{
 		Type: &slackType,
 	})
@@ -651,31 +759,53 @@ func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("list slack channels: %w", err)
 	}
 
-	return len(channels), nil
+	teamIDs := make(map[string]struct{}, len(channels))
+
+	for _, ch := range channels {
+		settings, parseErr := models.SlackSettingsFromJSONMap(ch.Settings)
+		if parseErr != nil {
+			slog.WarnContext(ctx, "Skipping Slack channel with unparseable settings in team count",
+				"connection_uid", ch.UID,
+				"error", parseErr,
+			)
+
+			continue
+		}
+
+		if settings.TeamID == "" {
+			continue
+		}
+
+		teamIDs[settings.TeamID] = struct{}{}
+	}
+
+	return len(teamIDs), nil
 }
 
-// HandleAppUninstalled handles the app_uninstalled event.
+// HandleAppUninstalled handles the app_uninstalled event. Uninstalling the
+// app in Slack revokes the bot token for the ENTIRE workspace, so every
+// org's connection for this team_id shares the same now-dead credentials —
+// all of them must be cleaned up, not just one, or the other orgs keep
+// rendering a stale "connected" integration.
 func (s *Service) HandleAppUninstalled(ctx context.Context, teamID string) error {
-	conn, err := s.db.GetChannelByProperty(
+	conns, err := s.db.ListChannelsByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// Connection already deleted, ignore
-			return nil
-		}
-
 		return err
 	}
 
-	if err := s.db.DeleteChannel(ctx, conn.UID); err != nil {
-		return fmt.Errorf("failed to delete connection: %w", err)
-	}
+	for _, conn := range conns {
+		if err := s.db.DeleteChannel(ctx, conn.UID); err != nil {
+			return fmt.Errorf("failed to delete connection %s: %w", conn.UID, err)
+		}
 
-	slog.InfoContext(ctx, "Deleted Slack connection due to app_uninstalled",
-		"team_id", teamID,
-		"connection_uid", conn.UID,
-	)
+		slog.InfoContext(ctx, "Deleted Slack connection due to app_uninstalled",
+			"team_id", teamID,
+			"connection_uid", conn.UID,
+			"org_uid", conn.OrganizationUID,
+		)
+	}
 
 	return nil
 }

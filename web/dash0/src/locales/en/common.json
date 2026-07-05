@@ -51,5 +51,11 @@
   "description": "Description",
   "actions": "Actions",
   "viewDetails": "View Details",
-  "searchPlaceholder": "Search..."
+  "searchPlaceholder": "Search...",
+  "liveStatus": {
+    "live": "Live updates active",
+    "connecting": "Connecting…",
+    "reconnecting": "Reconnecting…",
+    "unavailable": "Live updates unavailable"
+  }
 }

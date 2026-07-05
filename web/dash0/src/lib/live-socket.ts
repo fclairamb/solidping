@@ -225,7 +225,6 @@ function connectOnce(
 ): Promise<ConnectOutcome> {
   return new Promise((resolve) => {
     let settled = false;
-    let authenticated = false;
 
     const finish = (outcome: ConnectOutcome) => {
       if (settled) return;
@@ -252,11 +251,17 @@ function connectOnce(
     };
 
     sock.onclose = (ev) => {
-      if (authenticated) callbacks.onDisconnected();
       if (ev.code === CLOSE_FORBIDDEN || ev.code === CLOSE_DISABLED) {
         finish("disabled");
         return;
       }
+      // Signal every non-permanent close, including a failed attempt that
+      // never authenticated (server unreachable, close before `hello`) — a
+      // connection-status consumer derived purely from onOpen/onDisconnected
+      // would otherwise show "connecting" forever while attempts fail in a
+      // loop. The registry is the only consumer and treats a repeat
+      // "still down" notification as an idempotent no-op.
+      callbacks.onDisconnected();
       finish("disconnected");
     };
 
@@ -270,7 +275,6 @@ function connectOnce(
 
       switch (msg.type) {
         case "hello":
-          authenticated = true;
           callbacks.onOpen();
           break;
         case "subscribed":

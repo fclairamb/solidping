@@ -315,7 +315,16 @@ imaps://hostname:993  # With SSL
 |--------|-------------|---------|
 | Host | IMAP server | `imap.example.com` |
 | Port | IMAP port | `143`, `993` |
+| TLS | Use implicit TLS | `true` / `false` |
+| STARTTLS | Enable STARTTLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+
+:::tip Port 993 always means implicit TLS
+When creating the check as a JSON config rather than a URL, set `"tls": true`
+explicitly alongside `"port": 993` — SolidPing also derives implicit TLS
+automatically from port 993 if `tls`/`starttls` are both left unset, but
+spelling it out keeps a copy-pasted config unambiguous.
+:::
 
 ### POP3
 
@@ -331,7 +340,16 @@ pop3s://hostname:995  # With SSL
 |--------|-------------|---------|
 | Host | POP3 server | `pop3.example.com` |
 | Port | POP3 port | `110`, `995` |
+| TLS | Use implicit TLS | `true` / `false` |
+| STARTTLS | Enable STARTTLS | `true` / `false` |
 | Timeout | Connection timeout | `10s` |
+
+:::tip Port 995 always means implicit TLS
+When creating the check as a JSON config rather than a URL, set `"tls": true`
+explicitly alongside `"port": 995` — SolidPing also derives implicit TLS
+automatically from port 995 if `tls`/`starttls` are both left unset, but
+spelling it out keeps a copy-pasted config unambiguous.
+:::
 
 ### Email Reception (Passive Inbox)
 
