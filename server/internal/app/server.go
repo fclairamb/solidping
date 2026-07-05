@@ -53,6 +53,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
+	"github.com/fclairamb/solidping/server/internal/handlers/emailsuppressions"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
@@ -990,6 +991,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Freebox so the dashboard can pre-fill ICMP checks without typing.
 	// Requires a `granted` integration — see Service.ListFreeboxLanHosts.
 	orgFreebox.GET("/:uid/lan-hosts", integrationsHandler.LanHostsHandler)
+
+	// Email unsubscribe list (spec 2026-07-05-10, D4). Read+delete only —
+	// creation is always recipient-initiated via the public
+	// handlers/unsubscribe surface, never through this authenticated API.
+	emailSuppressionsService := emailsuppressions.NewService(s.dbService)
+	emailSuppressionsHandler := emailsuppressions.NewHandler(emailSuppressionsService, s.config)
+	orgEmailSuppressions := api.NewGroup("/orgs/:org/email-suppressions").Use(authMiddleware.RequireAuth)
+	orgEmailSuppressions.GET("", emailSuppressionsHandler.ListSuppressions)
+	orgEmailSuppressions.DELETE("/:uid", emailSuppressionsHandler.DeleteSuppression)
 
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
