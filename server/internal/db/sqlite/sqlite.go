@@ -1709,59 +1709,61 @@ func (s *Service) ListResults(
 func (s *Service) GetResultNeighbors(
 	ctx context.Context, orgUID, checkUID, periodType string, regions []string,
 	pivotStart time.Time, pivotUID string,
-) (prevUID, nextUID string, err error) {
-	baseQuery := func() *bun.SelectQuery {
-		q := s.db.NewSelect().
-			Model((*models.Result)(nil)).
-			Column("uid").
-			Where("organization_uid = ?", orgUID).
-			Where("check_uid = ?", checkUID).
-			Where("period_type = ?", periodType)
-
-		if len(regions) > 0 {
-			q = q.Where("region IN (?)", bun.List(regions))
-		}
-
-		return q
-	}
-
-	var prevResult models.Result
-
-	prevErr := baseQuery().
-		Where("(period_start < ?) OR (period_start = ? AND uid < ?)", pivotStart, pivotStart, pivotUID).
-		Order("period_start DESC").
-		Order("uid DESC").
-		Limit(1).
-		Scan(ctx, &prevResult)
-
-	switch {
-	case prevErr == nil:
-		prevUID = prevResult.UID
-	case errors.Is(prevErr, sql.ErrNoRows):
-		// No older neighbor — leave prevUID empty.
-	default:
+) (string, string, error) {
+	prevUID, prevErr := s.resultNeighborUID(
+		ctx, orgUID, checkUID, periodType, regions,
+		"(period_start < ?) OR (period_start = ? AND uid < ?)", pivotStart, pivotUID,
+		"period_start DESC", "uid DESC")
+	if prevErr != nil {
 		return "", "", prevErr
 	}
 
-	var nextResult models.Result
-
-	nextErr := baseQuery().
-		Where("(period_start > ?) OR (period_start = ? AND uid > ?)", pivotStart, pivotStart, pivotUID).
-		Order("period_start ASC").
-		Order("uid ASC").
-		Limit(1).
-		Scan(ctx, &nextResult)
-
-	switch {
-	case nextErr == nil:
-		nextUID = nextResult.UID
-	case errors.Is(nextErr, sql.ErrNoRows):
-		// No newer neighbor — leave nextUID empty.
-	default:
+	nextUID, nextErr := s.resultNeighborUID(
+		ctx, orgUID, checkUID, periodType, regions,
+		"(period_start > ?) OR (period_start = ? AND uid > ?)", pivotStart, pivotUID,
+		"period_start ASC", "uid ASC")
+	if nextErr != nil {
 		return "", "", nextErr
 	}
 
 	return prevUID, nextUID, nil
+}
+
+// resultNeighborUID runs one directional (older or newer) neighbor lookup —
+// the shared half of GetResultNeighbors — and maps sql.ErrNoRows to an empty
+// UID (boundary reached) rather than propagating it.
+func (s *Service) resultNeighborUID(
+	ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+	sideCondition string, pivotStart time.Time, pivotUID string,
+	orderByStart, orderByUID string,
+) (string, error) {
+	query := s.db.NewSelect().
+		Model((*models.Result)(nil)).
+		Column("uid").
+		Where("organization_uid = ?", orgUID).
+		Where("check_uid = ?", checkUID).
+		Where("period_type = ?", periodType).
+		Where(sideCondition, pivotStart, pivotStart, pivotUID).
+		Order(orderByStart).
+		Order(orderByUID).
+		Limit(1)
+
+	if len(regions) > 0 {
+		query = query.Where("region IN (?)", bun.List(regions))
+	}
+
+	var neighbor models.Result
+
+	err := query.Scan(ctx, &neighbor)
+
+	switch {
+	case err == nil:
+		return neighbor.UID, nil
+	case errors.Is(err, sql.ErrNoRows):
+		return "", nil
+	default:
+		return "", err
+	}
 }
 
 func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error) {
