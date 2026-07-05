@@ -62,7 +62,7 @@ require (
 	github.com/uptrace/bunrouter v1.0.23
 	github.com/urfave/cli/v3 v3.10.1
 	github.com/vanng822/go-premailer v1.34.0
-	github.com/wneessen/go-mail v0.7.3
+	github.com/wneessen/go-mail v0.8.0
 	github.com/xdg-go/scram v1.2.0
 	go.mongodb.org/mongo-driver/v2 v2.7.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.19.0
