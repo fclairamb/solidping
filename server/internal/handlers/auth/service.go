@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -62,6 +63,13 @@ const (
 	jwtIssuer       = "solidping"
 	durationLabel24 = "24h"
 	appNameDash0    = "dash0"
+
+	// maxActiveSessions caps the number of active `refresh`-type user_tokens
+	// rows (dashboard sessions) per user. Enforced at every refresh-token
+	// mint site (password/OAuth/passkey/2FA login, registration, invite
+	// acceptance, switch-org) — required hygiene now that sliding expiry
+	// means an active session never dies on its own.
+	maxActiveSessions = 10
 )
 
 // Service errors.
@@ -143,6 +151,12 @@ type Claims struct {
 	// Populated values gate access to specific subsystems; see e.g. the
 	// "mcp" / "mcp:read" scopes consumed by the MCP handler.
 	Scopes []string `json:"scopes,omitempty"`
+	// RefreshUID is the user_tokens.uid of the refresh-token row that issued
+	// this access token. Set on login and refresh so the sessions listing can
+	// flag the caller's own row (isCurrent) and "sign out other sessions" can
+	// spare it. Empty for PAT-validated claims and 2FA temp tokens — neither
+	// is minted from a refresh-token row.
+	RefreshUID string `json:"refreshUid,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -525,7 +539,7 @@ func (s *Service) completeLogin(
 	}
 
 	if resolvedOrg == nil {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -538,11 +552,6 @@ func (s *Service) completeLogin(
 			Organizations: orgSummaries,
 			LoginAction:   loginAction,
 		}, nil
-	}
-
-	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role)
-	if err != nil {
-		return nil, err
 	}
 
 	refreshTokenValue, err := s.generateRefreshToken()
@@ -568,6 +577,13 @@ func (s *Service) completeLogin(
 		return nil, err
 	}
 
+	s.enforceSessionCap(ctx, user.UID)
+
+	accessToken, err := s.generateAccessToken(user.UID, resolvedOrg.Slug, role, refreshToken.UID)
+	if err != nil {
+		return nil, err
+	}
+
 	return &LoginResponse{
 		AccessToken:  accessToken,
 		RefreshToken: refreshTokenValue,
@@ -582,6 +598,50 @@ func (s *Service) completeLogin(
 		Organizations: orgSummaries,
 		LoginAction:   loginAction,
 	}, nil
+}
+
+// enforceSessionCap prunes the user's active `refresh`-type sessions down to
+// maxActiveSessions, soft-deleting the least-recently-active rows beyond the
+// cap. Called after a new refresh-token row is created at every login-style
+// path (password, OAuth, passkey, 2FA, registration, invite, switch-org).
+//
+// Best-effort: a listing or delete error is logged and swallowed. The user
+// is already authenticated via the row just created, so failing the whole
+// login over a cap-enforcement hiccup would be worse than temporarily
+// exceeding the cap by one.
+func (s *Service) enforceSessionCap(ctx context.Context, userUID string) {
+	sessions, err := s.db.ListUserTokensByType(ctx, userUID, models.TokenTypeRefresh)
+	if err != nil {
+		slog.ErrorContext(ctx, "Failed to list sessions for cap enforcement", "error", err, "userUID", userUID)
+
+		return
+	}
+
+	if len(sessions) <= maxActiveSessions {
+		return
+	}
+
+	// Sort ascending by "activity" (LastActiveAt, falling back to CreatedAt
+	// for a session that was minted but never refreshed) so the least
+	// recently active rows are pruned first.
+	activityOf := func(tok *models.UserToken) time.Time {
+		if tok.LastActiveAt != nil {
+			return *tok.LastActiveAt
+		}
+
+		return tok.CreatedAt
+	}
+
+	sort.Slice(sessions, func(i, j int) bool {
+		return activityOf(sessions[i]).Before(activityOf(sessions[j]))
+	})
+
+	excess := len(sessions) - maxActiveSessions
+	for _, tok := range sessions[:excess] {
+		if _, delErr := s.db.DeleteUserToken(ctx, tok.UID); delErr != nil {
+			slog.ErrorContext(ctx, "Failed to prune session over cap", "error", delErr, "tokenUID", tok.UID)
+		}
+	}
 }
 
 // resolveOrgPreference resolves the organization for login, treating orgSlug as a preference.
@@ -912,17 +972,25 @@ func (s *Service) Refresh(ctx context.Context, refreshTokenValue string) (*Login
 		role = string(membership.Role)
 	}
 
-	// Generate new access token
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role)
+	// Generate new access token, bound to the refresh-token row that issued it.
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, token.UID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Update last used timestamp
+	// Sliding expiry: extend the session on activity so an active user never
+	// hits the idle refresh-token TTL. Same hourly write granularity as the
+	// PAT last_active_at update above (ValidatePATToken) — no write
+	// amplification on rapid-fire refreshes (e.g. several tabs).
 	now := time.Now()
 
-	if updateErr := s.db.UpdateUserToken(ctx, token.UID, models.UserTokenUpdate{LastActiveAt: &now}); updateErr != nil {
-		slog.ErrorContext(ctx, "Failed to update token last_active_at", "error", updateErr, "tokenUID", token.UID)
+	if token.LastActiveAt == nil || now.Sub(*token.LastActiveAt) > time.Hour {
+		newExpiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+		update := models.UserTokenUpdate{LastActiveAt: &now, ExpiresAt: &newExpiresAt}
+
+		if updateErr := s.db.UpdateUserToken(ctx, token.UID, update); updateErr != nil {
+			slog.ErrorContext(ctx, "Failed to update token last_active_at/expires_at", "error", updateErr, "tokenUID", token.UID)
+		}
 	}
 
 	return &LoginResponse{
@@ -1417,13 +1485,12 @@ func (s *Service) SwitchOrg(
 		role = string(membership.Role)
 	}
 
-	// Generate access token
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role)
-	if err != nil {
-		return nil, err
-	}
-
-	// Generate refresh token
+	// Generate refresh token, scoped to the target org. Minting a fresh
+	// refresh-token row (rather than mutating the caller's existing one) is
+	// the switch-org fix from the spec: a subsequent background refresh
+	// reads whichever refresh token the client is holding, and once the
+	// client persists this new one it reproduces the switched-to org rather
+	// than silently flipping back to the login-time org.
 	now := time.Now()
 
 	refreshTokenValue, err := s.generateRefreshToken()
@@ -1441,6 +1508,14 @@ func (s *Service) SwitchOrg(
 	}
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
+		return nil, err
+	}
+
+	s.enforceSessionCap(ctx, user.UID)
+
+	// Generate access token, bound to the new refresh-token row.
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1527,12 +1602,17 @@ func (s *Service) GetAllUserTokens(ctx context.Context, userUID, tokenType strin
 	return &TokenListResponse{Data: result}, nil
 }
 
-func (s *Service) generateAccessToken(userUID, orgSlug, role string) (string, error) {
+// generateAccessToken mints an access-token JWT. refreshUID is the
+// user_tokens.uid of the refresh-token row this access token is bound to —
+// pass "" when there is no such row (no-org login, PAT validation, 2FA temp
+// tokens).
+func (s *Service) generateAccessToken(userUID, orgSlug, role, refreshUID string) (string, error) {
 	now := time.Now()
 	claims := &Claims{
-		UserUID: userUID,
-		OrgSlug: orgSlug,
-		Role:    role,
+		UserUID:    userUID,
+		OrgSlug:    orgSlug,
+		Role:       role,
+		RefreshUID: refreshUID,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(now.Add(s.cfg.AccessTokenExpiry)),
 			IssuedAt:  jwt.NewNumericDate(now),
@@ -1620,12 +1700,6 @@ func (s *Service) GenerateTokensForOAuth(
 	org *models.Organization,
 	role string,
 ) (*OAuthLoginResponse, error) {
-	// Generate access token
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role)
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate access token: %w", err)
-	}
-
 	// Generate refresh token
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
@@ -1646,6 +1720,14 @@ func (s *Service) GenerateTokensForOAuth(
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
+	s.enforceSessionCap(ctx, user.UID)
+
+	// Generate access token, bound to the new refresh-token row.
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate access token: %w", err)
 	}
 
 	// Update user last active timestamp
@@ -1864,11 +1946,6 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	role := string(members[0].Role)
 
 	// Generate tokens
-	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role)
-	if err != nil {
-		return nil, err
-	}
-
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
 		return nil, err
@@ -1882,6 +1959,13 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
+	s.enforceSessionCap(ctx, user.UID)
+
+	accessToken, err := s.generateAccessToken(user.UID, org.Slug, role, refreshToken.UID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &LoginResponse{
@@ -2615,11 +2699,6 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	role := string(membership.Role)
 
 	// Generate tokens
-	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role)
-	if err != nil {
-		return nil, err
-	}
-
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
 		return nil, err
@@ -2633,6 +2712,13 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 
 	if err := s.db.CreateUserToken(ctx, refreshToken); err != nil {
 		return nil, fmt.Errorf("failed to store refresh token: %w", err)
+	}
+
+	s.enforceSessionCap(ctx, user.UID)
+
+	accessToken, err := s.generateAccessToken(user.UID, matchedOrg.Slug, role, refreshToken.UID)
+	if err != nil {
+		return nil, err
 	}
 
 	orgSummaries, errOrgs := s.getOrganizationsForUser(ctx, user.UID)
@@ -3084,7 +3170,7 @@ func (s *Service) completeLoginAfter2FA(
 
 	// No org case
 	if orgSlug == "" {
-		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role)
+		accessToken, tokenErr := s.generateAccessToken(user.UID, "", role, "")
 		if tokenErr != nil {
 			return nil, tokenErr
 		}
@@ -3107,11 +3193,6 @@ func (s *Service) completeLoginAfter2FA(
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role)
-	if err != nil {
-		return nil, err
-	}
-
 	refreshTokenValue, err := s.generateRefreshToken()
 	if err != nil {
 		return nil, err
@@ -3127,6 +3208,13 @@ func (s *Service) completeLoginAfter2FA(
 
 	if createErr := s.db.CreateUserToken(ctx, refreshToken); createErr != nil {
 		return nil, createErr
+	}
+
+	s.enforceSessionCap(ctx, user.UID)
+
+	accessToken, err := s.generateAccessToken(user.UID, orgSlug, role, refreshToken.UID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &LoginResponse{
