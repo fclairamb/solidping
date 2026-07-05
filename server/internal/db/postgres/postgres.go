@@ -2975,7 +2975,33 @@ func (s *Service) GetChannelByPropertyForOrg(
 	return conn, nil
 }
 
-// ListChannels lists integration connections with optional filtering.
+// ListChannelsByProperty returns every non-deleted connection matching a
+// settings property, across ALL organizations, ordered created_at ASC
+// (oldest first). See db.Service for the callers (uninstall fan-out and the
+// inbound-routing deterministic fallback).
+func (s *Service) ListChannelsByProperty(
+	ctx context.Context, connType, propertyName, propertyValue string,
+) ([]*models.Integration, error) {
+	conns := make([]*models.Integration, 0)
+
+	err := s.db.NewSelect().
+		Model(&conns).
+		Where("type = ?", connType).
+		Where("settings->>? = ?", propertyName, propertyValue).
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return conns, nil
+}
+
+// ListChannels lists integration connections with optional filtering. An
+// empty filter.OrganizationUID lists across ALL organizations — used by
+// CountInstalledTeams, which needs a global view of Slack connections.
+// Every other caller passes a real org UID, so this is a no-op for them.
 func (s *Service) ListChannels(
 	ctx context.Context, filter *models.ListIntegrationsFilter,
 ) ([]*models.Integration, error) {
@@ -2983,9 +3009,12 @@ func (s *Service) ListChannels(
 
 	query := s.db.NewSelect().
 		Model(&connections).
-		Where("organization_uid = ?", filter.OrganizationUID).
 		Where("deleted_at IS NULL").
 		Order("created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+	}
 
 	if filter.Type != nil {
 		query = query.Where("type = ?", *filter.Type)

@@ -839,6 +839,12 @@ func (m *mockDBService) GetChannelByPropertyForOrg(
 	panic("not implemented")
 }
 
+func (m *mockDBService) ListChannelsByProperty(
+	_ context.Context, _, _, _ string,
+) ([]*models.Integration, error) {
+	panic("not implemented")
+}
+
 func (m *mockDBService) CreateStatusPage(_ context.Context, _ *models.StatusPage) error {
 	panic("not implemented")
 }
