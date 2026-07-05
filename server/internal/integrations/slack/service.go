@@ -143,20 +143,67 @@ func NewService(
 	}
 }
 
-// GetConnectionByTeamID retrieves a Slack connection by team ID.
+// GetConnectionByTeamID retrieves the Slack connection that inbound
+// commands/events/interactions for a workspace (team_id) should operate on.
+//
+// A workspace can be connected to several orgs (one connection row per
+// org — see spec 2026-07-05-01), so this is the single choke point that
+// decides which one is authoritative for inbound routing:
+//
+//  1. Home org: the org recorded in organization_providers for
+//     (slack, team_id) — first install wins, same org Marketplace installs
+//     and Sign-in-with-Slack already land in. If that org has its own
+//     connection, use it.
+//  2. Deterministic fallback (no provider row, or the home org's own
+//     connection was deleted): the oldest connection for the team
+//     (created_at ASC) across all orgs. A warning is logged when more than
+//     one connection exists, since routing is then ambiguous.
+//
+// Callers are unchanged — every inbound handler already goes through this
+// method or GetClient (which calls it), so fixing it here fixes routing
+// everywhere.
 func (s *Service) GetConnectionByTeamID(ctx context.Context, teamID string) (*models.Integration, error) {
-	conn, err := s.db.GetChannelByProperty(
-		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, ErrConnectionNotFound
+	if provider, err := s.db.GetOrganizationProviderByProviderID(
+		ctx, models.ProviderTypeSlack, teamID,
+	); err == nil {
+		conn, connErr := s.db.GetChannelByPropertyForOrg(
+			ctx, provider.OrganizationUID, string(models.ConnectionTypeSlack), "team_id", teamID,
+		)
+		if connErr == nil {
+			return conn, nil
 		}
 
+		if !errors.Is(connErr, sql.ErrNoRows) {
+			return nil, connErr
+		}
+		// Home org has no connection of its own (e.g. deleted) — fall
+		// through to the deterministic fallback below.
+	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
 
-	return conn, nil
+	conns, err := s.db.ListChannelsByProperty(
+		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(conns) == 0 {
+		return nil, ErrConnectionNotFound
+	}
+
+	if len(conns) > 1 {
+		slog.WarnContext(ctx, "Slack team resolves to multiple connections with no home org — "+
+			"routing to the oldest one; ambiguous until a home org is recorded",
+			"team_id", teamID,
+			"connection_count", len(conns),
+			"resolved_connection_uid", conns[0].UID,
+			"resolved_org_uid", conns[0].OrganizationUID,
+		)
+	}
+
+	return conns[0], nil
 }
 
 // BuildInstallURL mints a fresh CSRF state and returns the Slack OAuth
