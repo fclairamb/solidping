@@ -105,6 +105,16 @@ type CheckWorker struct {
 	wg          sync.WaitGroup
 	stats       stats.ProcessingStats
 
+	// getChecker/parseConfig default to registry.GetChecker/registry.ParseConfig
+	// (set by NewCheckWorker) and are only ever overridden in tests, to drive
+	// executeJob/runnerLoop end-to-end with a stub checkerdef.Checker that
+	// deliberately hangs or panics — registry.GetChecker itself is a hardcoded
+	// switch with no such seam. Production behavior is unchanged: the default
+	// wiring calls the exact same registry functions executeJob called before
+	// this field existed.
+	getChecker  func(checkerdef.CheckType) (checkerdef.Checker, bool)
+	parseConfig func(checkerdef.CheckType) (checkerdef.Config, bool)
+
 	// Channel-based architecture fields
 	poolSize         int                   // Number of runner goroutines
 	availableRunners atomic.Int32          // Runners waiting for jobs
@@ -181,6 +191,8 @@ func NewCheckWorker(
 		incidentSvc: incidents.NewService(dbService, svc.Jobs, clock.Real{}, svc.Realtime),
 		logger:      logger,
 		stats:       stats.NewProcessingStats(time.Minute, time.Minute, logger),
+		getChecker:  registry.GetChecker,
+		parseConfig: registry.ParseConfig,
 		// Channel-based architecture
 		poolSize:         poolSize,
 		fastLaneReserved: fastLaneReserved,
@@ -650,7 +662,7 @@ func (r *CheckWorker) executeJob(
 	var checkConfig checkerdef.Config
 
 	// Parse config from check_jobs.config
-	config, ok := registry.ParseConfig(checkerdef.CheckType(checkType))
+	config, ok := r.parseConfig(checkerdef.CheckType(checkType))
 	if !ok {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrUnknownCheckType, checkType))
 	}
@@ -662,7 +674,7 @@ func (r *CheckWorker) executeJob(
 	checkConfig = config
 
 	// 3. Get checker from registry
-	checker, ok := registry.GetChecker(checkerdef.CheckType(checkType))
+	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
 	}
