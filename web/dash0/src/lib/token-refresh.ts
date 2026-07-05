@@ -65,3 +65,24 @@ export function refreshAccessToken(): Promise<string | null> {
   }
   return inFlight;
 }
+
+/**
+ * Proactive-refresh scheduling decision, extracted as a pure function so it
+ * can be unit tested without mounting AuthProvider (this codebase has no
+ * jsdom/testing-library setup — see live-socket.ts's exported backoffDelay
+ * for the same pattern). Refreshes once less than 1/3 of the access token's
+ * original lifetime remains until `expiresAt`. Both `expiresAt` and
+ * `expiresInSeconds` are null together (a session predating this field, or
+ * no session at all) — in that case there's nothing to schedule against.
+ */
+export function shouldRefreshNow(
+  expiresAt: number | null,
+  expiresInSeconds: number | null,
+  now: number = Date.now()
+): boolean {
+  if (expiresAt === null || expiresInSeconds === null) return false;
+
+  const remainingMs = expiresAt - now;
+  const thresholdMs = (expiresInSeconds * 1000) / 3;
+  return remainingMs < thresholdMs;
+}

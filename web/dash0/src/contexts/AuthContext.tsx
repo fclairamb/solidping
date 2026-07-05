@@ -15,7 +15,7 @@ import {
   getExpiresAt,
   getExpiresInSeconds,
 } from "@/api/client";
-import { refreshAccessToken } from "@/lib/token-refresh";
+import { refreshAccessToken, shouldRefreshNow } from "@/lib/token-refresh";
 
 interface User {
   email: string;
@@ -190,13 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // (tab was fully suspended, laptop asleep, etc.).
   useEffect(() => {
     const interval = setInterval(() => {
-      const expiresAt = getExpiresAt();
-      const expiresInSeconds = getExpiresInSeconds();
-      if (expiresAt === null || expiresInSeconds === null) return;
-
-      const remainingMs = expiresAt - Date.now();
-      const thresholdMs = (expiresInSeconds * 1000) / 3;
-      if (remainingMs < thresholdMs) {
+      if (shouldRefreshNow(getExpiresAt(), getExpiresInSeconds())) {
         void refreshAccessToken();
       }
     }, 60_000);
