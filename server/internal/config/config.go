@@ -27,6 +27,18 @@ const (
 	NodeRoleChecks = "checks"
 )
 
+// Database connection-pool defaults. api/all nodes serve HTTP traffic and need
+// the larger pool; checks/jobs nodes only run batched polling loops (ClaimJobs,
+// result writes) and are typically deployed as several replicas sharing one
+// Postgres role, so an API-sized pool per replica quickly saturates the role's
+// rolconnlimit even at idle. See spec 2026-07-05-09.
+const (
+	dbPoolMaxOpenConnsDefault       = 25
+	dbPoolMaxIdleConnsDefault       = 10
+	dbPoolMaxOpenConnsChecksDefault = 8
+	dbPoolMaxIdleConnsChecksDefault = 2
+)
+
 // Database type constants.
 const (
 	DatabaseTypePostgres         = "postgres"
@@ -574,9 +586,10 @@ type DatabaseConfig struct {
 	// pool unbounded (default MaxOpenConns = 0 = unlimited), so a burst can open
 	// arbitrarily many connections — each with its own buffers client- and
 	// server-side. SQLite ignores these (it is pinned to a single writer).
-	MaxOpenConns    int           `koanf:"max_open_conns"`    // 0 = driver default (unlimited)
-	MaxIdleConns    int           `koanf:"max_idle_conns"`    // 0 = driver default (2)
-	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"` // 0 = no expiry
+	MaxOpenConns    int           `koanf:"max_open_conns"`     // 0 = driver default (unlimited)
+	MaxIdleConns    int           `koanf:"max_idle_conns"`     // 0 = driver default (2)
+	ConnMaxLifetime time.Duration `koanf:"conn_max_lifetime"`  // 0 = no expiry
+	ConnMaxIdleTime time.Duration `koanf:"conn_max_idle_time"` // 0 = no reap; idle conns held forever
 }
 
 // Load reads configuration from defaults, config file, and environment variables.
@@ -645,9 +658,10 @@ func Load() (*Config, error) {
 		Database: DatabaseConfig{
 			Type:            DatabaseTypeSQLite,
 			Dir:             ".",
-			MaxOpenConns:    25,
-			MaxIdleConns:    10,
+			MaxOpenConns:    dbPoolMaxOpenConnsDefault,
+			MaxIdleConns:    dbPoolMaxIdleConnsDefault,
 			ConnMaxLifetime: time.Hour,
+			ConnMaxIdleTime: 5 * time.Minute,
 		},
 		Auth: AuthConfig{
 			JWTSecret:          "change-me-in-production",
@@ -831,6 +845,11 @@ func Load() (*Config, error) {
 	if dbReset := os.Getenv("SP_DB_RESET"); dbReset == envTrue || dbReset == "1" {
 		cfg.Database.Reset = true
 	}
+
+	// cfg.Node.Role is only known now (post-unmarshal), so the role-aware pool
+	// default must run here — after config.yml/config.local.yml overrides are
+	// already folded into cfg.Database, before the SP_DB_* env overrides below.
+	applyNodeRolePoolDefaults(&cfg.Database, cfg.Node.Role)
 
 	applyDatabasePoolEnv(&cfg.Database)
 
@@ -1073,9 +1092,34 @@ func applyProfilerEnv(cfg *ProfilerConfig) {
 	}
 }
 
-// applyDatabasePoolEnv reads the multi-word SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
-// knobs koanf's env loader cannot bind (it would collapse the underscores to dots
-// and miss the snake_case koanf tags). See project_koanf_env_quirk.
+// applyNodeRolePoolDefaults swaps in a smaller pool ceiling for checks/jobs
+// nodes, unless config.yml or config.local.yml already set an explicit value
+// (detected by the pool fields no longer matching the api/all struct-literal
+// defaults). Must run after cfg is unmarshaled (cfg.Node.Role is only known
+// then) and before applyDatabasePoolEnv, so SP_DB_MAX_OPEN_CONNS /
+// SP_DB_MAX_IDLE_CONNS still win over the role default for any role. See
+// spec 2026-07-05-09 (D1): a checks/jobs node only runs batched polling loops
+// and is typically deployed as several replicas sharing one Postgres role, so
+// an API-sized pool per replica saturates the role's connection limit fast.
+func applyNodeRolePoolDefaults(cfg *DatabaseConfig, nodeRole string) {
+	if nodeRole != NodeRoleChecks && nodeRole != NodeRoleJobs {
+		return
+	}
+
+	if cfg.MaxOpenConns == dbPoolMaxOpenConnsDefault {
+		cfg.MaxOpenConns = dbPoolMaxOpenConnsChecksDefault
+	}
+
+	if cfg.MaxIdleConns == dbPoolMaxIdleConnsDefault {
+		cfg.MaxIdleConns = dbPoolMaxIdleConnsChecksDefault
+	}
+}
+
+// applyDatabasePoolEnv reads the multi-word SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME /
+// SP_DB_CONN_MAX_IDLE_TIME knobs koanf's env loader cannot bind (it would collapse
+// the underscores to dots and miss the snake_case koanf tags). See
+// project_koanf_env_quirk. Runs after applyNodeRolePoolDefaults so these always
+// take precedence over the role-based default, for any node role.
 func applyDatabasePoolEnv(cfg *DatabaseConfig) {
 	if v := os.Getenv("SP_DB_MAX_OPEN_CONNS"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {

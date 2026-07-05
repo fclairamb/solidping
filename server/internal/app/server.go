@@ -185,6 +185,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			MaxOpenConns:    cfg.Database.MaxOpenConns,
 			MaxIdleConns:    cfg.Database.MaxIdleConns,
 			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+			ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)

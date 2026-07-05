@@ -69,6 +69,11 @@ type Config struct {
 	MaxOpenConns    int
 	MaxIdleConns    int
 	ConnMaxLifetime time.Duration
+	// ConnMaxIdleTime reaps connections that have sat idle this long, even if
+	// MaxIdleConns hasn't been reached. Without it, a quiet fleet pins
+	// MaxIdleConns × replica-count connections against the Postgres role's
+	// rolconnlimit indefinitely. See spec 2026-07-05-09 (D2).
+	ConnMaxIdleTime time.Duration
 }
 
 // applyPoolLimits bounds the connection pool. Left unbounded, a burst can open
@@ -83,6 +88,9 @@ func applyPoolLimits(sqldb *sql.DB, cfg *Config) {
 	}
 	if cfg.ConnMaxLifetime > 0 {
 		sqldb.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+	}
+	if cfg.ConnMaxIdleTime > 0 {
+		sqldb.SetConnMaxIdleTime(cfg.ConnMaxIdleTime)
 	}
 }
 
