@@ -116,8 +116,9 @@ func (e *installURLTestEnv) do(t *testing.T, orgSlug, token string, body any) *h
 		r.NoError(err)
 	}
 
-	req := httptest.NewRequest(
-		http.MethodPost, "/api/v1/orgs/"+orgSlug+"/integrations/slack/install-url", bytes.NewBuffer(bodyBytes))
+	req := httptest.NewRequestWithContext(
+		t.Context(), http.MethodPost,
+		"/api/v1/orgs/"+orgSlug+"/integrations/slack/install-url", bytes.NewBuffer(bodyBytes))
 	req.Header.Set("Content-Type", "application/json")
 
 	if token != "" {
@@ -180,14 +181,17 @@ func TestBuildInstallURLForOrg_UnknownOrgNotFound(t *testing.T) {
 }
 
 // TestBuildInstallURLForOrg_MemberSucceeds asserts a member of the org gets
-// a 200 with a Slack authorize URL when no channelUid is given.
+// a 200 with a Slack authorize URL when no channelUid is given. Uses a
+// viewer role deliberately: RequireOrgAccess gates on membership only, not
+// role, so even the least-privileged member must be able to mint an
+// install URL for their own org.
 func TestBuildInstallURLForOrg_MemberSucceeds(t *testing.T) {
 	t.Parallel()
 
 	r := require.New(t)
 	env := newInstallURLTestEnv(t)
 
-	token := env.mintToken(t, env.orgA, models.MemberRoleUser)
+	token := env.mintToken(t, env.orgA, models.MemberRoleViewer)
 
 	rec := env.do(t, env.orgA.Slug, token, map[string]string{})
 	r.Equal(http.StatusOK, rec.Code)
@@ -237,7 +241,7 @@ func TestBuildInstallURLForOrg_ChannelInSameOrgSucceeds(t *testing.T) {
 	channelInOrgA := models.NewIntegration(env.orgA.UID, models.ConnectionTypeSlack, "Org A channel")
 	r.NoError(env.db.CreateChannel(ctx, channelInOrgA))
 
-	token := env.mintToken(t, env.orgA, models.MemberRoleUser)
+	token := env.mintToken(t, env.orgA, models.MemberRoleAdmin)
 
 	rec := env.do(t, env.orgA.Slug, token, map[string]string{"channelUid": channelInOrgA.UID})
 	r.Equal(http.StatusOK, rec.Code)
@@ -287,7 +291,7 @@ func TestInstall_IgnoresOrgAndChannelUIDQueryParams(t *testing.T) {
 	target := "/api/v1/integrations/slack/install?source=marketplace&org=" + victimOrg.Slug +
 		"&channelUid=" + victimChannel.UID
 
-	req := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, target, http.NoBody)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
