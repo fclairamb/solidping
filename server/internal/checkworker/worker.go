@@ -1258,7 +1258,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 // ever non-zero; sleepTime == 0 returns (0, 0) (fires exactly on schedule).
 // Pure function so the D4 wait/delay separation is unit-testable without
 // driving executeJob end-to-end.
-func waitAndDelay(sleepTime time.Duration) (wait, delay time.Duration) {
+func waitAndDelay(sleepTime time.Duration) (time.Duration, time.Duration) {
 	switch {
 	case sleepTime > 0:
 		return sleepTime, 0

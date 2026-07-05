@@ -41,7 +41,7 @@ func JitterFor(checkUID string, basePeriod time.Duration) time.Duration {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte(checkUID)) // fnv.Write never errors
 
-	return time.Duration(h.Sum64() % uint64(basePeriod)) //nolint:gosec // non-cryptographic spreading hash
+	return time.Duration(h.Sum64() % uint64(basePeriod))
 }
 
 // RegionIndex returns the index of region within a sorted copy of regions,

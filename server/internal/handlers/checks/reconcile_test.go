@@ -52,7 +52,7 @@ func jobsByRegion(t *testing.T, jobs []*models.CheckJob) map[string]*models.Chec
 	return out
 }
 
-// Note on scope: check *creation* (db/sqlite's and db/postgres's
+// Scope boundary: check *creation* (db/sqlite's and db/postgres's
 // createCheckJobs, which materializes the first job per region) is NOT
 // touched by this spec and is NOT phase-aligned by D1/D2 — it deliberately
 // keeps pinning region 0's very first scheduled_at to literal time.Now() so

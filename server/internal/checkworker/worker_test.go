@@ -259,7 +259,7 @@ func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
 		assert.LessOrEqual(t, got.Sub(now), basePeriod)
 	})
 
-	t.Run("JitterDeterminism_DifferentChecksGetDifferentPhases", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
+	t.Run("JitterDeterminism_DiffChecksGetDiffPhases", func(t *testing.T) { //nolint:paralleltest // shares runner
 		now := time.Now()
 		basePeriod := time.Minute
 		scheduledAt := now.Add(-1 * time.Second)

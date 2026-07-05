@@ -847,7 +847,11 @@ func TestReleaseLease(t *testing.T) {
 // which defaults Period to 1 minute, so tests needing a different period patch
 // it in after creation the same way the helper already patches
 // scheduled_at/region.
-func setTestCheckJobPeriod(t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, period time.Duration) { //nolint:revive // test helper, arg order matches sibling helpers
+//
+//nolint:revive // Test helper function, context parameter order is acceptable
+func setTestCheckJobPeriod(
+	t *testing.T, ctx context.Context, svc *sqlite.Service, jobUID string, period time.Duration,
+) {
 	t.Helper()
 
 	_, err := svc.DB().NewUpdate().
