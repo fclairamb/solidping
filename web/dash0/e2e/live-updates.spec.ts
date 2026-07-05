@@ -249,4 +249,79 @@ test.describe("Live dashboard updates", () => {
       await deleteCheck(page, token, check.uid);
     }
   });
+
+  test("sidebar live-status dot shows green once the dashboard is streaming", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    const subscribedPromise = waitForLiveSubscribed(page);
+    await page.goto("orgs/test");
+    await subscribedPromise;
+
+    const dot = page.getByTestId("live-status-dot");
+    await expect(dot).toBeVisible();
+    await expect(dot).toHaveAttribute("data-status", "live", { timeout: 4000 });
+  });
+
+  test("sidebar live-status dot turns red on drop and green again after the automatic reconnect", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Same pass-through proxy pattern as the reconnect-replay test above:
+    // let the real backend do all the auth/subscribe work, only intercept
+    // frames to force-close the first connection right after it's live.
+    // Each connection is only ever force-closed once (guarded by
+    // `closed`) — the backend acks all three dashboard scopes
+    // (checks/incidents/events) in quick succession, and closing on the
+    // very first ack must not re-trigger on the next two.
+    let connections = 0;
+    let closed = false;
+    await page.routeWebSocket(/\/events\/ws/, (clientWS) => {
+      const connectionIndex = connections++;
+      const serverWS = clientWS.connectToServer();
+
+      serverWS.onMessage((message) => {
+        clientWS.send(message);
+        const text = typeof message === "string" ? message : "";
+        if (connectionIndex === 0 && !closed && text.includes('"type":"subscribed"')) {
+          closed = true;
+          void clientWS.close({ code: 4401, reason: "e2e forced reconnect" });
+        }
+      });
+      clientWS.onMessage((message) => serverWS.send(message));
+    });
+
+    const dot = page.getByTestId("live-status-dot");
+
+    // Arm the "reconnecting" watch before navigating, in parallel with (not
+    // after) the initial connect/close/reconnect cycle: on localhost the
+    // whole cycle — forced close, ~1-2.6s backoff, redial, hello, ack — can
+    // complete in well under a second, faster than a sequential
+    // wait-for-live-then-poll-for-red could ever observe. waitForFunction
+    // evaluates immediately and keeps re-checking, so it catches the
+    // transient red state no matter how quickly it passes; a sequential
+    // check armed only after confirming "live" first would already be too
+    // late to see it on a fast enough machine.
+    const sawReconnecting = page.waitForFunction(
+      () =>
+        document.querySelector('[data-testid="live-status-dot"]')?.getAttribute("data-status") ===
+        "reconnecting",
+      { timeout: 8000 },
+    );
+
+    const firstSubscribed = waitForLiveSubscribed(page);
+    await page.goto("orgs/test");
+    await firstSubscribed;
+
+    // The forced close must flip the dot to red (reconnecting) before the
+    // automatic reconnect brings it back to green — never straight back to
+    // gray, which would hide that something actually broke.
+    await sawReconnecting;
+
+    // The automatic reconnect brings it back to green.
+    await expect(dot).toHaveAttribute("data-status", "live", { timeout: 10000 });
+    expect(connections).toBeGreaterThanOrEqual(2);
+  });
 });

@@ -48,6 +48,7 @@ import { useTranslation } from "react-i18next";
 import { LanguageSwitcher } from "@/components/shared/language-switcher";
 import { Logo } from "@/components/ui/logo";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { LiveStatusDot } from "@/components/layout/live-status-dot";
 
 const navItems = [
   {
@@ -268,6 +269,7 @@ export function AppSidebar() {
             <div className="flex items-center justify-around gap-1 px-2 py-1">
               <LanguageSwitcher />
               <ThemeToggle />
+              <LiveStatusDot />
             </div>
           </SidebarMenuItem>
           <SidebarMenuItem>

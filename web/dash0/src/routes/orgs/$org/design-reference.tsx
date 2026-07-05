@@ -39,6 +39,7 @@ import { PageHeader } from "@/components/shared/page-header";
 import { StatTile } from "@/components/shared/stat-tile";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { StatusDot } from "@/components/shared/status-dot";
+import { LiveStatusDot } from "@/components/layout/live-status-dot";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -967,6 +968,27 @@ function ButtonsBadgesSection() {
             </>
           }
           importLine={`import { StatusDot } from "@/components/shared/status-dot";\n\n<StatusDot\n  status={check.status ?? check.lastResult?.status}\n  enabled={check.enabled}\n  title={check.enabled === false ? t("checks:detail.disabled") : undefined}\n/>`}
+        />
+
+        <h3 className="text-sm font-medium">Live connection status dot</h3>
+        <p className="text-sm text-muted-foreground">
+          Passive indicator for the org live-updates WebSocket, mounted in the sidebar
+          footer utility row alongside <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LanguageSwitcher</code>{" "}
+          and <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">ThemeToggle</code>. Reads{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useLiveConnectionStatus()</code>{" "}
+          from <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">LiveEventsContext</code> — green
+          while streaming, red while dropped/retrying, grey while connecting or when
+          realtime is disabled/forbidden server-side (never red for a by-design
+          non-live state). Purely informational: no click action, no popover. The dot
+          below reflects this page's actual live connection.
+        </p>
+        <ExampleRow
+          preview={
+            <span className="inline-flex items-center gap-1.5 text-sm">
+              <LiveStatusDot /> Hover for the current state
+            </span>
+          }
+          importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
         />
       </div>
     </Section>

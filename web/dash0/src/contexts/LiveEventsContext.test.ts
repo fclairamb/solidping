@@ -319,6 +319,82 @@ describe("LiveRegistry poll-stretch gating (per-scope live)", () => {
   });
 });
 
+describe("LiveRegistry connection status (sidebar dot)", () => {
+  it("starts at 'connecting' before the socket opens", () => {
+    const { registry } = setup();
+    expect(registry.getStatus()).toBe("connecting");
+    registry.start();
+    // start() itself doesn't open the socket — still connecting until onOpen.
+    expect(registry.getStatus()).toBe("connecting");
+  });
+
+  it("walks the full lifecycle: connecting -> live -> drop -> reconnecting -> reconnect -> live", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    expect(registry.getStatus()).toBe("connecting");
+
+    conn.open();
+    expect(registry.getStatus()).toBe("live");
+    expect(registry.getGlobalLive()).toBe(true);
+
+    conn.disconnectedByServer();
+    expect(registry.getStatus()).toBe("reconnecting");
+    expect(registry.getGlobalLive()).toBe(false);
+
+    conn.open(); // automatic reconnect succeeds
+    expect(registry.getStatus()).toBe("live");
+    expect(registry.getGlobalLive()).toBe(true);
+  });
+
+  it("'disabled' is terminal and reports gray-equivalent (not live)", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+    expect(registry.getStatus()).toBe("live");
+
+    conn.disabled();
+    expect(registry.getStatus()).toBe("disabled");
+    expect(registry.getGlobalLive()).toBe(false);
+
+    // Disabled must never bounce back to reconnecting/live — the socket
+    // loop has exited server-side (feature off / forbidden).
+    conn.disconnectedByServer();
+    expect(registry.getStatus()).toBe("disabled");
+  });
+
+  it("notifies global listeners on every status transition", () => {
+    const { conn, registry } = setup();
+    const listener = vi.fn();
+    registry.subscribeGlobal(listener);
+    registry.start();
+
+    conn.open();
+    expect(listener).toHaveBeenCalledTimes(1); // connecting -> live
+
+    conn.disconnectedByServer();
+    expect(listener).toHaveBeenCalledTimes(2); // live -> reconnecting
+
+    conn.open();
+    expect(listener).toHaveBeenCalledTimes(3); // reconnecting -> live
+  });
+
+  it("does not notify listeners for a same-status repeat (idempotent no-op)", () => {
+    const { conn, registry } = setup();
+    registry.start();
+    conn.open();
+
+    const listener = vi.fn();
+    registry.subscribeGlobal(listener);
+
+    conn.disconnectedByServer();
+    expect(listener).toHaveBeenCalledTimes(1);
+    // A second "still down" notification (e.g. a failed reconnect attempt
+    // before the next one starts) must not re-fire listeners.
+    conn.disconnectedByServer();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("LiveRegistry.stop", () => {
   it("disconnects the underlying socket", () => {
     const { conn, registry } = setup();
