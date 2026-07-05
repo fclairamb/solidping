@@ -168,6 +168,16 @@ type Service interface {
 	CreateResult(ctx context.Context, result *models.Result) error
 	GetResult(ctx context.Context, uid string) (*models.Result, error)
 	ListResults(ctx context.Context, filter *models.ListResultsFilter) (*models.ListResultsResponse, error)
+	// GetResultNeighbors returns the UID of the next-older (prevUID) and
+	// next-newer (nextUID) row in the same organization+check+periodType
+	// series (optionally narrowed to regions), relative to the pivot
+	// (pivotStart, pivotUID). Either UID is "" when no such neighbor exists
+	// (the pivot is the oldest/newest row in scope). Ties on period_start are
+	// broken by uid so same-timestamp rows get a stable total order.
+	GetResultNeighbors(
+		ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+		pivotStart time.Time, pivotUID string,
+	) (prevUID, nextUID string, err error)
 	GetLastResultForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.Result, error)
 	GetLastStatusChangeForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.LastStatusChange, error)
 	DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error)

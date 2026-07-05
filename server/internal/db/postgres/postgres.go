@@ -1792,6 +1792,67 @@ func (s *Service) ListResults(
 	}, nil
 }
 
+// GetResultNeighbors returns the next-older and next-newer UIDs relative to
+// the pivot, scoped to organization+check+periodType (and optionally
+// regions). See db.Service for the full contract.
+func (s *Service) GetResultNeighbors(
+	ctx context.Context, orgUID, checkUID, periodType string, regions []string,
+	pivotStart time.Time, pivotUID string,
+) (prevUID, nextUID string, err error) {
+	baseQuery := func() *bun.SelectQuery {
+		q := s.db.NewSelect().
+			Model((*models.Result)(nil)).
+			Column("uid").
+			Where("organization_uid = ?", orgUID).
+			Where("check_uid = ?", checkUID).
+			Where("period_type = ?", periodType)
+
+		if len(regions) > 0 {
+			q = q.Where("region IN (?)", bun.List(regions))
+		}
+
+		return q
+	}
+
+	var prevResult models.Result
+
+	prevErr := baseQuery().
+		Where("(period_start < ?) OR (period_start = ? AND uid < ?)", pivotStart, pivotStart, pivotUID).
+		Order("period_start DESC").
+		Order("uid DESC").
+		Limit(1).
+		Scan(ctx, &prevResult)
+
+	switch {
+	case prevErr == nil:
+		prevUID = prevResult.UID
+	case errors.Is(prevErr, sql.ErrNoRows):
+		// No older neighbor — leave prevUID empty.
+	default:
+		return "", "", prevErr
+	}
+
+	var nextResult models.Result
+
+	nextErr := baseQuery().
+		Where("(period_start > ?) OR (period_start = ? AND uid > ?)", pivotStart, pivotStart, pivotUID).
+		Order("period_start ASC").
+		Order("uid ASC").
+		Limit(1).
+		Scan(ctx, &nextResult)
+
+	switch {
+	case nextErr == nil:
+		nextUID = nextResult.UID
+	case errors.Is(nextErr, sql.ErrNoRows):
+		// No newer neighbor — leave nextUID empty.
+	default:
+		return "", "", nextErr
+	}
+
+	return prevUID, nextUID, nil
+}
+
 func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs []string) (int64, error) {
 	if len(resultUIDs) == 0 {
 		return 0, nil
