@@ -871,7 +871,11 @@ func (r *CheckWorker) runCheckerGuarded(
 ) (*checkerdef.Result, error) {
 	outcomeCh := make(chan execOutcome, 1) // cap 1: a late send from an abandoned child never blocks
 
-	abandoned := false // only decrement the gauge if we actually incremented it
+	// abandoned is read by the child goroutine's deferred cleanup and written
+	// by the select below — two different goroutines, no channel or lock
+	// between the write and that read, so a plain bool would be a data race.
+	// atomic.Bool makes the write/read pair safe without adding a mutex.
+	var abandoned atomic.Bool
 
 	go func() {
 		defer func() {
@@ -879,7 +883,7 @@ func (r *CheckWorker) runCheckerGuarded(
 				outcomeCh <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
 			}
 
-			if abandoned {
+			if abandoned.Load() {
 				prommetrics.DecCheckRunnerAbandonedActive()
 			}
 		}()
@@ -892,7 +896,7 @@ func (r *CheckWorker) runCheckerGuarded(
 	case out := <-outcomeCh:
 		return out.result, out.err
 	case <-time.After(execTimeout + effectiveAbandonGrace()):
-		abandoned = true
+		abandoned.Store(true)
 
 		return r.abandonCheckerExecution(ctx, logger, checkJob, time.Since(startTime))
 	}
