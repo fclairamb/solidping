@@ -23,3 +23,6 @@ dist/
 
 # Bun
 bun.lockb
+
+# E2E test server
+.test-server.pid
