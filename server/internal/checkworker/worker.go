@@ -869,14 +869,14 @@ func (r *CheckWorker) runCheckerGuarded(
 	execTimeout time.Duration,
 	startTime time.Time,
 ) (*checkerdef.Result, error) {
-	ch := make(chan execOutcome, 1) // cap 1: a late send from an abandoned child never blocks
+	outcomeCh := make(chan execOutcome, 1) // cap 1: a late send from an abandoned child never blocks
 
 	abandoned := false // only decrement the gauge if we actually incremented it
 
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
-				ch <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
+				outcomeCh <- execOutcome{err: fmt.Errorf("%w: %v\n%s", ErrCheckerPanic, p, debug.Stack())}
 			}
 
 			if abandoned {
@@ -885,11 +885,11 @@ func (r *CheckWorker) runCheckerGuarded(
 		}()
 
 		res, execErr := checker.Execute(ctx, checkConfig)
-		ch <- execOutcome{result: res, err: execErr}
+		outcomeCh <- execOutcome{result: res, err: execErr}
 	}()
 
 	select {
-	case out := <-ch:
+	case out := <-outcomeCh:
 		return out.result, out.err
 	case <-time.After(execTimeout + effectiveAbandonGrace()):
 		abandoned = true

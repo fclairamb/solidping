@@ -1089,6 +1089,12 @@ func TestGracefulShutdown(t *testing.T) {
 // no registry changes needed. The well-behaved (ctx-honoring) case reuses the
 // real, registered checksleep.SleepChecker.
 
+// metricDelta is the tolerance used with assert/require.InDelta when
+// comparing prommetrics counter/gauge float64 values (testutil.ToFloat64):
+// these are always integer-valued in these tests, so a tiny epsilon is
+// exact-equivalent while satisfying the testifylint float-compare rule.
+const metricDelta = 0.001
+
 // hangingConfig is a no-op checkerdef.Config for the stub checkers below —
 // they don't read any config fields.
 type hangingConfig struct{}
@@ -1153,10 +1159,10 @@ func withShortAbandonGrace(t *testing.T, grace time.Duration) {
 	t.Cleanup(func() { abandonGraceOverride = 0 })
 }
 
-func testCheckJob(orgUID, checkType string) *models.CheckJob {
+func testCheckJob(checkType string) *models.CheckJob {
 	return &models.CheckJob{
 		UID:             uuid.New().String(),
-		OrganizationUID: orgUID,
+		OrganizationUID: "test-org",
 		CheckUID:        uuid.New().String(),
 		Type:            checkType,
 	}
@@ -1170,7 +1176,7 @@ func TestRunCheckerGuarded_HangingChecker_Abandoned(t *testing.T) {
 	defer func() { _ = dbSvc.Close() }()
 
 	region := "eu2"
-	checkJob := testCheckJob("test-org", "test-hanging")
+	checkJob := testCheckJob("test-hanging")
 	checkJob.Region = &region
 
 	before := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
@@ -1193,10 +1199,11 @@ func TestRunCheckerGuarded_HangingChecker_Abandoned(t *testing.T) {
 	assert.Less(t, elapsed, execTimeout+50*time.Millisecond+500*time.Millisecond)
 
 	after := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
-	assert.Equal(t, before+1, after, "abandoned counter must increment")
+	assert.InDelta(t, before+1, after, metricDelta, "abandoned counter must increment")
 
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	assert.Equal(t, gaugeBefore+1, gaugeAfter, "abandoned-active gauge must increment (checker never finished)")
+	assert.InDelta(t, gaugeBefore+1, gaugeAfter, metricDelta,
+		"abandoned-active gauge must increment (checker never finished)")
 }
 
 //nolint:paralleltest // mutates the package-level abandonGraceOverride
@@ -1206,7 +1213,7 @@ func TestRunCheckerGuarded_LateFinish_DiscardedAndGaugeDecrements(t *testing.T) 
 	runner, dbSvc, ctx := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
-	checkJob := testCheckJob("test-org", "test-hanging-late")
+	checkJob := testCheckJob("test-hanging-late")
 	unblock := make(chan struct{})
 	started := make(chan struct{})
 	checker := &hangingChecker{unblock: unblock, started: started}
@@ -1221,7 +1228,8 @@ func TestRunCheckerGuarded_LateFinish_DiscardedAndGaugeDecrements(t *testing.T) 
 	require.Equal(t, checkerdef.StatusTimeout, result.Status, "watchdog result wins (D4)")
 
 	gaugeDuringAbandon := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	assert.Equal(t, gaugeBefore+1, gaugeDuringAbandon, "gauge incremented while the child is still outstanding")
+	assert.InDelta(t, gaugeBefore+1, gaugeDuringAbandon, metricDelta,
+		"gauge incremented while the child is still outstanding")
 
 	// Now let the previously-abandoned child finally finish. Its send lands
 	// in the cap-1 buffer that nobody reads (D4) — no double result is
@@ -1241,7 +1249,7 @@ func TestRunCheckerGuarded_PanickingChecker_ReturnsErrorNotCrash(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
-	checkJob := testCheckJob("test-org", "test-panicking")
+	checkJob := testCheckJob("test-panicking")
 
 	start := time.Now()
 	result, err := runner.runCheckerGuarded(
@@ -1265,7 +1273,7 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 	runner, dbSvc, ctx := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
-	checkJob := testCheckJob("test-org", string(checkerdef.CheckTypeSleep))
+	checkJob := testCheckJob(string(checkerdef.CheckTypeSleep))
 
 	// checksleep.SleepChecker already honors ctx (proven independently by
 	// TestSleepChecker_Execute_ContextTimeout in the checksleep package): a
@@ -1299,10 +1307,10 @@ func TestRunCheckerGuarded_WellBehavedCtxHonoringChecker_WatchdogDoesNotFire(t *
 	assert.Less(t, elapsed, 200*time.Millisecond)
 
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	assert.Equal(t, gaugeBefore, gaugeAfter, "watchdog must not fire for a ctx-honoring checker")
+	assert.InDelta(t, gaugeBefore, gaugeAfter, metricDelta, "watchdog must not fire for a ctx-honoring checker")
 
 	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(checkJob.Type))
-	assert.Equal(t, abandonedBefore, abandonedAfter, "abandoned counter must not move")
+	assert.InDelta(t, abandonedBefore, abandonedAfter, metricDelta, "abandoned counter must not move")
 }
 
 // stubResolvers builds getChecker/parseConfig overrides that resolve exactly
@@ -1345,7 +1353,9 @@ func stubResolvers(checkType checkerdef.CheckType, checker checkerdef.Checker) (
 // real ClaimJobs would have left it) and on the in-memory job struct handed
 // to jobsChan. Mirrors the lease-setup already used by
 // TestExecuteHeartbeatJob_RunningStatus elsewhere in this file.
-func claimJobForTest(t *testing.T, dbSvc *sqlite.Service, ctx context.Context, job *models.CheckJob, workerUID string) { //nolint:revive // matches package test-helper style
+func claimJobForTest(
+	t *testing.T, dbSvc *sqlite.Service, ctx context.Context, job *models.CheckJob, workerUID string, //nolint:revive
+) {
 	t.Helper()
 
 	leaseExpiry := time.Now().Add(60 * time.Second)
@@ -1363,7 +1373,9 @@ func claimJobForTest(t *testing.T, dbSvc *sqlite.Service, ctx context.Context, j
 	job.LeaseStarts = 1
 }
 
-func startTestRunnerLoop(t *testing.T, runner *CheckWorker, ctx context.Context) { //nolint:revive // ctx-after-non-ctx matches call site clarity here
+func startTestRunnerLoop(
+	t *testing.T, runner *CheckWorker, ctx context.Context, //nolint:revive
+) {
 	t.Helper()
 
 	runner.jobsChan = make(chan *models.CheckJob)
@@ -1393,7 +1405,11 @@ func startTestRunnerLoop(t *testing.T, runner *CheckWorker, ctx context.Context)
 // execute it, and complete. Used to prove the runner survived a prior
 // abandonment/panic: a lost goroutine would never drain jobsChan again and
 // this would time out.
-func sendJobAndWaitForResult(t *testing.T, dbSvc *sqlite.Service, ctx context.Context, jobsChan chan *models.CheckJob, job *models.CheckJob) { //nolint:revive // matches package test-helper style
+func sendJobAndWaitForResult(
+	t *testing.T, dbSvc *sqlite.Service,
+	ctx context.Context, //nolint:revive
+	jobsChan chan *models.CheckJob, job *models.CheckJob,
+) {
 	t.Helper()
 
 	select {
@@ -1421,7 +1437,9 @@ func sendJobAndWaitForResult(t *testing.T, dbSvc *sqlite.Service, ctx context.Co
 // releaseLease succeeds exactly as it would for a normally-claimed job), and
 // returns the job row — used as the innocuous "subsequent job" that proves
 // the runner survived.
-func newHeartbeatJob(t *testing.T, dbSvc *sqlite.Service, ctx context.Context, orgUID, workerUID string) *models.CheckJob { //nolint:revive // matches package test-helper style
+func newHeartbeatJob(
+	t *testing.T, dbSvc *sqlite.Service, ctx context.Context, orgUID, workerUID string, //nolint:revive
+) *models.CheckJob {
 	t.Helper()
 
 	check := models.NewCheck(orgUID, "watchdog-next-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
@@ -1514,9 +1532,9 @@ func TestRunnerSurvivesAbandonmentAndProcessesSubsequentJob(t *testing.T) {
 	}, 3*time.Second, 20*time.Millisecond, "watchdog must abandon the hanging job and save a timeout result")
 
 	abandonedAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandoned.WithLabelValues(string(hangType)))
-	assert.Equal(t, abandonedBefore+1, abandonedAfter)
+	assert.InDelta(t, abandonedBefore+1, abandonedAfter, metricDelta)
 	gaugeAfter := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	assert.Equal(t, gaugeBefore+1, gaugeAfter, "the hung goroutine is still leaked at this point")
+	assert.InDelta(t, gaugeBefore+1, gaugeAfter, metricDelta, "the hung goroutine is still leaked at this point")
 
 	// The actual point of the spec: the SAME runnerLoop goroutine (id 0,
 	// still looping — no new goroutine was started) must be back at
@@ -1582,7 +1600,7 @@ func TestLateFinishAfterAbandonmentViaRunner(t *testing.T) {
 	}, 3*time.Second, 20*time.Millisecond, "watchdog must abandon and save exactly one timeout result")
 
 	gaugeDuringAbandon := testutil.ToFloat64(prommetrics.CheckRunnerAbandonedActive)
-	require.Equal(t, gaugeBefore+1, gaugeDuringAbandon)
+	require.InDelta(t, gaugeBefore+1, gaugeDuringAbandon, metricDelta)
 
 	// Now let the abandoned goroutine finally return. Its send lands in the
 	// cap-1 buffer that runCheckerGuarded already stopped reading from (D4).
