@@ -170,7 +170,9 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.handleRefreshError(writer, err)
 	}
 
-	// Update access token cookie
+	// Re-set the access token cookie exactly like Login does — without this,
+	// cookie-authenticated surfaces silently lapse after the first hour even
+	// though the bearer-token session keeps refreshing.
 	http.SetCookie(writer, &http.Cookie{
 		Name:   CookieAuthToken,
 		Value:  resp.AccessToken,
