@@ -681,10 +681,15 @@ func (r *CheckWorker) executeJob(
 
 	sleepTime := checkJob.ScheduledAt.Sub(startTime)
 
-	delay := time.Duration(0)
-	if sleepTime < 0 {
-		delay = -sleepTime
-	}
+	// wait is the pre-schedule sleep actually observed (claimed ahead of
+	// scheduled_at, e.g. by D3's bounded claim-ahead window); delay is how
+	// far past-due the job was at dispatch (claimed late). Exactly one of
+	// the two is ever non-zero. Reported as separate fields on the
+	// completion log (D4) instead of being folded into duration_ms, which
+	// previously conflated wait + exec + save/release overhead into one
+	// number — a healthy sub-second check claimed minutes ahead of schedule
+	// logged as if it had taken minutes to execute.
+	wait, delay := waitAndDelay(sleepTime)
 
 	// Wait for the check time to come
 	if sleepTime > 0 {
@@ -823,10 +828,18 @@ func (r *CheckWorker) executeJob(
 		return fmt.Errorf("failed to release lease: %w", releaseErr)
 	}
 
-	duration := time.Since(startTime)
+	// duration_ms is the actual exec duration (D4) — previously this logged
+	// time.Since(startTime), which conflated the pre-schedule sleep (wait_ms)
+	// and the past-due dispatch delay (delay_ms) into the same number as the
+	// probe's real cost. That conflation is what made
+	// "duration_ms≈179000" for a genuinely sub-second check read as a hung
+	// checker during live incident triage (see spec 2026-07-05-08 context).
+	execDuration := time.Since(execStart)
 	logger.InfoContext(ctx, "Check job completed",
 		"status", result.Status,
-		"duration_ms", duration.Milliseconds())
+		"duration_ms", execDuration.Milliseconds(),
+		"wait_ms", wait.Milliseconds(),
+		"delay_ms", delay.Milliseconds())
 
 	return nil
 }
@@ -1219,6 +1232,23 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 		"check_uid", checkJob.CheckUID)
 
 	return nil
+}
+
+// waitAndDelay splits a job's sleepTime (scheduled_at − dispatch time) into
+// the pre-schedule wait (claimed ahead of schedule, sleepTime > 0) and the
+// past-due delay (claimed late, sleepTime < 0). Exactly one return value is
+// ever non-zero; sleepTime == 0 returns (0, 0) (fires exactly on schedule).
+// Pure function so the D4 wait/delay separation is unit-testable without
+// driving executeJob end-to-end.
+func waitAndDelay(sleepTime time.Duration) (wait, delay time.Duration) {
+	switch {
+	case sleepTime > 0:
+		return sleepTime, 0
+	case sleepTime < 0:
+		return 0, -sleepTime
+	default:
+		return 0, 0
+	}
 }
 
 // calculateNextScheduledAt calculates the next scheduled time for a check job.

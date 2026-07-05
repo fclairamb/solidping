@@ -340,6 +340,39 @@ func TestDelaySampleMs(t *testing.T) {
 	})
 }
 
+// TestWaitAndDelay covers the D4 wait/delay separation (spec
+// 2026-07-05-08): the "Check job completed" log line must report
+// duration_ms as the actual exec time, with the pre-schedule sleep and the
+// past-due dispatch delay broken out into their own fields instead of all
+// three being folded into one conflated number.
+func TestWaitAndDelay(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ClaimedAheadOfSchedule_YieldsWaitOnly", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(45 * time.Second)
+		assert.Equal(t, 45*time.Second, wait, "positive sleepTime is the observed pre-schedule wait")
+		assert.Zero(t, delay)
+	})
+
+	t.Run("ClaimedLate_YieldsDelayOnly", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(-7 * time.Second)
+		assert.Zero(t, wait)
+		assert.Equal(t, 7*time.Second, delay, "negative sleepTime becomes a positive past-due delay")
+	})
+
+	t.Run("ExactlyOnSchedule_YieldsNeither", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(0)
+		assert.Zero(t, wait)
+		assert.Zero(t, delay)
+	})
+}
+
 func TestFormatISO8601Duration(t *testing.T) {
 	t.Parallel()
 
