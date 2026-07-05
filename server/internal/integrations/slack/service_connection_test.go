@@ -110,3 +110,50 @@ func TestCreateOrUpdateConnection_SameOrgReinstall(t *testing.T) {
 	r.NoError(err)
 	r.Equal("xoxb-refreshed-token", settings.AccessToken)
 }
+
+// TestResolveResultChannelUID covers the "land the user where they started"
+// requirement (spec proposal #3) directly: a full OAuth exchange can't be
+// faked in tests (it calls the real Slack API), so this pins the pure
+// decision logic HandleOAuthCallback delegates to instead.
+func TestResolveResultChannelUID(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		targetChannelUID  string
+		targetOrgSlug     string
+		connUID           string
+		wantResultChannel string
+	}{
+		{
+			name:              "channel-edit-page install lands on that channel",
+			targetChannelUID:  "channel-uid-1",
+			targetOrgSlug:     "acme",
+			connUID:           "conn-uid-1",
+			wantResultChannel: "channel-uid-1",
+		},
+		{
+			name:              "org-scoped dashboard install with no channel lands on the created connection",
+			targetChannelUID:  "",
+			targetOrgSlug:     "acme",
+			connUID:           "conn-uid-2",
+			wantResultChannel: "conn-uid-2",
+		},
+		{
+			name:              "marketplace install (no org in state) lands on org home",
+			targetChannelUID:  "",
+			targetOrgSlug:     "",
+			connUID:           "conn-uid-3",
+			wantResultChannel: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := resolveResultChannelUID(tt.targetChannelUID, tt.targetOrgSlug, tt.connUID)
+			require.Equal(t, tt.wantResultChannel, got)
+		})
+	}
+}

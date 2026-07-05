@@ -243,6 +243,28 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 	return code, nil
 }
 
+// resolveResultChannelUID decides what OAuthResult.ChannelUID should be —
+// the channel/connection the frontend (auth.slack.complete.tsx) navigates to
+// after the exchange. For a channel-edit-page install (targetChannelUID
+// set) it's that specific channel, which was just updated in place. For a
+// dashboard-origin, org-scoped install with no specific channel (the
+// "Install Slack app" tile CTA — targetOrgSlug set, targetChannelUID empty),
+// it's connUID, the connection that was just created/updated in that org,
+// so the user lands on it instead of the org home page. Marketplace
+// installs (targetOrgSlug empty — no authenticated org context) return ""
+// and land on the org home page for onboarding.
+func resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID string) string {
+	if targetChannelUID != "" {
+		return targetChannelUID
+	}
+
+	if targetOrgSlug != "" {
+		return connUID
+	}
+
+	return ""
+}
+
 // HandleOAuthCallback handles the OAuth callback from Slack.
 // It validates the CSRF state up front, then creates/updates the integration
 // connection and creates user and organization if needed.
@@ -299,18 +321,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, err
 	}
 
-	// resultChannelUID is what the frontend navigates to after the exchange
-	// (auth.slack.complete.tsx). For a channel-edit-page install it's the
-	// specific channel that was updated. For a dashboard-origin, org-scoped
-	// install with no specific channel (the "Install Slack app" tile CTA),
-	// it's the connection that was just created/updated in that org, so the
-	// user lands on it instead of the org home page. Marketplace installs
-	// (targetOrgSlug empty — no authenticated org context) keep this empty
-	// and land on the org home page for onboarding.
-	resultChannelUID := targetChannelUID
-	if resultChannelUID == "" && targetOrgSlug != "" {
-		resultChannelUID = connUID
-	}
+	resultChannelUID := resolveResultChannelUID(targetChannelUID, targetOrgSlug, connUID)
 
 	// Generate authentication tokens
 	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
