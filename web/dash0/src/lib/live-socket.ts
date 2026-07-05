@@ -6,6 +6,7 @@
 // over the normal REST API.
 
 import { getToken, msSinceLastApiActivity } from "@/api/client";
+import { refreshAccessToken } from "@/lib/token-refresh";
 
 /** Scopes the client can subscribe to. `check` is the only per-uid entity;
  * the rest are org-collection scopes (the org is implied by the socket). */
@@ -119,6 +120,11 @@ async function waitForApiQuiet(signal: AbortSignal): Promise<void> {
  * generic 1006 a browser reports for network drops) reconnects with backoff. */
 const CLOSE_FORBIDDEN = 4403;
 const CLOSE_DISABLED = 4404;
+/** The server closes the socket with this code when the access token used
+ * to authenticate it has expired. Refresh before reconnecting so the next
+ * attempt's getToken() read (in the run() loop) picks up a live token
+ * instead of looping on the same dead one with backoff. */
+const CLOSE_TOKEN_EXPIRED = 4401;
 
 /** Minimal shape of the WebSocket constructor this client depends on —
  * lets tests inject a fake implementation without a browser/jsdom runtime. */
@@ -255,6 +261,7 @@ function connectOnce(
         finish("disabled");
         return;
       }
+
       // Signal every non-permanent close, including a failed attempt that
       // never authenticated (server unreachable, close before `hello`) — a
       // connection-status consumer derived purely from onOpen/onDisconnected
@@ -262,6 +269,18 @@ function connectOnce(
       // loop. The registry is the only consumer and treats a repeat
       // "still down" notification as an idempotent no-op.
       callbacks.onDisconnected();
+
+      if (ev.code === CLOSE_TOKEN_EXPIRED) {
+        // Best-effort: refresh before the run() loop's next getToken() read.
+        // If the refresh itself fails (no refresh token, revoked session),
+        // the loop simply reconnects with the same dead token and the
+        // server will 4401 it again — no worse than today, and the
+        // reactive apiFetch 401 path elsewhere will already be steering the
+        // user to login by then.
+        void refreshAccessToken().finally(() => finish("disconnected"));
+        return;
+      }
+
       finish("disconnected");
     };
 
