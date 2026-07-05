@@ -80,6 +80,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
@@ -757,6 +758,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Magic-link ack — public route (the signed token authenticates).
 	// Returns text/html so it renders in a browser opened from a mail client.
 	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
+
+	// Per-recipient email unsubscribe (spec 2026-07-05-10, D4) — public,
+	// top-level routes (not under /api/v1: these are browser pages and a
+	// mail-client-submitted one-click POST, not JSON API calls). The signed
+	// unsubscribe token authenticates; org is embedded in the token, not the
+	// URL path, since a recipient's unsubscribe link has no other org
+	// context to carry it in.
+	unsubscribeService := unsubscribe.NewService(s.dbService, []byte(s.config.Auth.JWTSecret))
+	unsubscribeHandler := unsubscribe.NewHandler(unsubscribeService, s.config)
+	mainGroup.POST("/unsubscribe", unsubscribeHandler.OneClickUnsubscribe)
+	mainGroup.GET("/unsubscribe", unsubscribeHandler.ConfirmationPage)
+	mainGroup.GET("/unsubscribe/undo", unsubscribeHandler.Undo)
 
 	// Incident notifications read API (authentication required)
 	incidentNotifService := incidentnotifications.NewService(s.dbService)
