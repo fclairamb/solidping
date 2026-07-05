@@ -652,24 +652,37 @@ export function ResponseTimeChart({
   // Multi-series mode can't reuse that index lookup: each region's Area has
   // its own `data` array (different length once gap markers are inserted
   // per-region), so a single activeTooltipIndex doesn't address any one of
-  // them safely. Instead, each region's Area uses a distinct dataKey
-  // (regionDataKey(slug)) — state.activeDataKey names which line was
-  // actually clicked, and state.activeLabel is the shared x-axis ts value,
-  // so the matching point is found by ts within that region's own series.
+  // them safely. state.activeDataKey looks like the obvious way to name which
+  // line was clicked, but recharts' chart-level click middleware
+  // (mouseEventsMiddleware.js, axisInteraction path) hardcodes
+  // activeDataKey: undefined for every chart-wide click — it's only ever
+  // populated by an item's own hover/click listeners, which multi-series
+  // Area doesn't wire up here. So instead: activeLabel (the shared x-axis ts)
+  // narrows to the set of regions with a real point at that ts, and
+  // activeCoordinate.y (pixel space) picks whichever of those candidates'
+  // cached dot position (dotPositions, populated by every series' own
+  // dot/activeDot renderer) sits closest to the click — i.e. the line the
+  // user actually clicked on screen.
   const handleChartClick = (state: MouseHandlerDataParam) => {
     if (isMultiSeries) {
-      const clickedKey =
-        typeof state?.activeDataKey === "string" ? state.activeDataKey : undefined;
-      const slug = clickedKey ? dataKeyToRegion.get(clickedKey) : undefined;
       const label = state?.activeLabel;
       const ts = typeof label === "number" ? label : Number(label);
-      const series = slug ? seriesByRegion[slug] : undefined;
-      const point =
-        series && Number.isFinite(ts)
-          ? series.find((p) => p.ts === ts)
-          : undefined;
-      if (point?.uid) {
-        handleDotClick(point.uid);
+      const clickY = state?.activeCoordinate?.y;
+      let best: { uid: string; distance: number } | undefined;
+      if (Number.isFinite(ts) && typeof clickY === "number") {
+        for (const slug of regions) {
+          const point = seriesByRegion[slug]?.find((p) => p.ts === ts);
+          if (!point?.uid) continue;
+          const cy = dotPositions.current[point.uid]?.cy;
+          if (cy == null) continue;
+          const distance = Math.abs(cy - clickY);
+          if (!best || distance < best.distance) {
+            best = { uid: point.uid, distance };
+          }
+        }
+      }
+      if (best) {
+        handleDotClick(best.uid);
       } else {
         setSelectedUid(null);
       }
