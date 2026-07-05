@@ -104,7 +104,21 @@ var (
 			Name: "solidping_worker_free_runners",
 			Help: "Available runner slots per worker",
 		},
-		[]string{"worker_uid", labelRegion},
+		[]string{labelWorkerUID, labelRegion},
+	)
+
+	// CheckRunnerParked tracks runner slots per worker currently occupied by
+	// a claimed job sleeping until its scheduled_at — claimed but not yet
+	// due (spec 2026-07-05-08 D5). Visibility into how much of the pool the
+	// bounded claim-ahead window (D3) is occupying; alongside
+	// WorkerFreeRunners this distinguishes "idle" from "parked" instead of
+	// both looking like "not free".
+	CheckRunnerParked = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "solidping_check_runner_parked",
+			Help: "Runner slots currently occupied by a claimed job sleeping until its scheduled time",
+		},
+		[]string{labelWorkerUID, labelRegion},
 	)
 
 	// WorkerJobsClaimed counts total jobs claimed by each worker.
@@ -113,7 +127,7 @@ var (
 			Name: "solidping_worker_jobs_claimed_total",
 			Help: "Total jobs claimed by worker",
 		},
-		[]string{"worker_uid", labelRegion},
+		[]string{labelWorkerUID, labelRegion},
 	)
 
 	// IncidentsActive tracks currently open incidents.
@@ -400,7 +414,7 @@ var (
 	allCollectors = []prometheus.Collector{
 		CheckExecutions, CheckDuration, SchedulingDelay,
 		CheckUp, CheckStatusStreak, ChecksConfigured,
-		WorkersActive, WorkerFreeRunners, WorkerJobsClaimed,
+		WorkersActive, WorkerFreeRunners, CheckRunnerParked, WorkerJobsClaimed,
 		IncidentsActive, IncidentsTotal,
 		ChecksRateLimited,
 		HTTPRateLimited,

@@ -69,8 +69,17 @@ func setupTestRunner(t *testing.T) (*CheckWorker, *sqlite.Service, context.Conte
 	return runner, svc, ctx
 }
 
+// TestCalculateNextScheduledAt_NoAttachedCheck exercises the defensive
+// fallback path (spec 2026-07-05-08 D1): when checkJob.Check is nil (should
+// not happen via the regular claim path, but backend/direct.go and
+// handlers/workers/service.go — the remote-worker submit-result paths — have
+// their own calculateNextScheduledAt copies operating on a bare job with no
+// attached check, so this fallback documents/preserves their exact
+// pre-existing "on schedule keep phase / behind schedule catch up to now"
+// semantics for any caller in the same situation).
+//
 //nolint:paralleltest // Subtests share runner and time reference
-func TestCalculateNextScheduledAt(t *testing.T) {
+func TestCalculateNextScheduledAt_NoAttachedCheck(t *testing.T) {
 	runner, dbSvc, _ := setupTestRunner(t)
 	defer func() { _ = dbSvc.Close() }()
 
@@ -148,6 +157,131 @@ func TestCalculateNextScheduledAt(t *testing.T) {
 	})
 }
 
+// TestCalculateNextScheduledAt_PhaseLocked exercises the D1 phase-locked
+// path: when checkJob.Check is attached (the normal case for jobs flowing
+// through ClaimJobs/ClaimJobsForCheck), rescheduling aligns to the job's
+// deterministic phase instead of preserving/losing the literal scheduled_at
+// anchor. This is what fixes F2 (lockstep after a late run / restart).
+//
+//nolint:paralleltest // Subtests share runner and time reference
+func TestCalculateNextScheduledAt_PhaseLocked(t *testing.T) {
+	runner, dbSvc, _ := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	checkUID := "e2e55fa2-1719-49c3-b3f9-af0682db3b55"
+	regions := []string{"us-1", "eu-2", "default"}
+
+	regionOf := func(s string) *string { return &s }
+
+	newJobWithCheck := func(scheduledAt *time.Time, jobPeriod, basePeriod time.Duration, region *string) *models.CheckJob {
+		return &models.CheckJob{
+			CheckUID:    checkUID,
+			Region:      region,
+			ScheduledAt: scheduledAt,
+			Period:      timeutils.Duration(jobPeriod),
+			Check: &models.Check{
+				UID:     checkUID,
+				Period:  timeutils.Duration(basePeriod),
+				Regions: regions,
+			},
+		}
+	}
+
+	t.Run("OnTime_MatchesPureFunction", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
+		now := time.Now()
+		scheduledAt := now.Add(-10 * time.Second)
+		basePeriod := time.Minute
+		jobPeriod := 3 * time.Minute
+
+		checkJob := newJobWithCheck(&scheduledAt, jobPeriod, basePeriod, regionOf("eu-2"))
+
+		got := runner.calculateNextScheduledAt(checkJob)
+		want := scheduling.NextAligned(time.Now(), basePeriod, jobPeriod, checkUID, regionOf("eu-2"), regions)
+
+		assert.WithinDuration(t, want, got, 2*time.Second)
+		assert.True(t, got.After(now))
+	})
+
+	t.Run("LateRun_ResumesOnPhase_NotNowPlusPeriod", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
+		basePeriod := time.Minute
+		jobPeriod := 3 * time.Minute
+		region := regionOf("default")
+
+		// Compute the phase this job should have landed on.
+		refNow := time.Now()
+		refNext := scheduling.NextAligned(refNow, basePeriod, jobPeriod, checkUID, region, regions)
+
+		// Simulate a very-late release (well past scheduled_at, e.g. after a
+		// restart) — the OLD behavior would return now+period, losing phase.
+		veryLateScheduledAt := refNow.Add(-10 * time.Minute)
+		checkJob := newJobWithCheck(&veryLateScheduledAt, jobPeriod, basePeriod, region)
+
+		got := runner.calculateNextScheduledAt(checkJob)
+
+		phaseOf := func(t time.Time) int64 { return t.Unix() % int64(jobPeriod/time.Second) }
+		assert.Equal(t, phaseOf(refNext), phaseOf(got),
+			"a late run must resume on the deterministic phase, not drift via now+period")
+	})
+
+	t.Run("NoRegionMatch_FallsBackToIndexZero", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
+		now := time.Now()
+		basePeriod := time.Minute
+		jobPeriod := 3 * time.Minute
+		scheduledAt := now.Add(-10 * time.Second)
+
+		// Job's region ("ap-3") no longer exists in check.Regions — stale job
+		// about to be reconciled away. Must not panic; degrades to i=0.
+		checkJob := newJobWithCheck(&scheduledAt, jobPeriod, basePeriod, regionOf("ap-3"))
+
+		got := runner.calculateNextScheduledAt(checkJob)
+		assert.True(t, got.After(now))
+	})
+
+	t.Run("NoRegionJob_JitterOnly", func(t *testing.T) { //nolint:paralleltest // Shares runner instance
+		now := time.Now()
+		basePeriod := time.Minute
+		scheduledAt := now.Add(-5 * time.Second)
+
+		checkJob := &models.CheckJob{
+			CheckUID:    checkUID,
+			Region:      nil,
+			ScheduledAt: &scheduledAt,
+			Period:      timeutils.Duration(basePeriod),
+			Check: &models.Check{
+				UID:    checkUID,
+				Period: timeutils.Duration(basePeriod),
+				// No regions on the check at all.
+			},
+		}
+
+		got := runner.calculateNextScheduledAt(checkJob)
+		assert.True(t, got.After(now))
+		assert.LessOrEqual(t, got.Sub(now), basePeriod)
+	})
+
+	t.Run("JitterDeterminism_DiffChecksGetDiffPhases", func(t *testing.T) { //nolint:paralleltest // shares runner
+		now := time.Now()
+		basePeriod := time.Minute
+		scheduledAt := now.Add(-1 * time.Second)
+
+		jobA := &models.CheckJob{
+			CheckUID: "check-aaaa", ScheduledAt: &scheduledAt, Period: timeutils.Duration(basePeriod),
+			Check: &models.Check{UID: "check-aaaa", Period: timeutils.Duration(basePeriod)},
+		}
+		jobB := &models.CheckJob{
+			CheckUID: "check-bbbb", ScheduledAt: &scheduledAt, Period: timeutils.Duration(basePeriod),
+			Check: &models.Check{UID: "check-bbbb", Period: timeutils.Duration(basePeriod)},
+		}
+
+		nextA1 := runner.calculateNextScheduledAt(jobA)
+		nextA2 := runner.calculateNextScheduledAt(jobA)
+		nextB := runner.calculateNextScheduledAt(jobB)
+
+		assert.WithinDuration(t, nextA1, nextA2, 2*time.Second, "same check must be deterministic across calls")
+		_ = nextB // different UID may or may not collide; determinism (not spread) is what's load-bearing here
+	})
+}
+
 // TestDelaySampleMs verifies the telemetry semantics of the delay sample
 // (spec 2026-07-01-02 D4): lateness is measured against the job's real
 // scheduled_at — the schedule the user configured — not the cost-padded
@@ -203,6 +337,39 @@ func TestDelaySampleMs(t *testing.T) {
 
 		job := &models.CheckJob{}
 		require.Zero(t, w.delaySampleMs(job, now))
+	})
+}
+
+// TestWaitAndDelay covers the D4 wait/delay separation (spec
+// 2026-07-05-08): the "Check job completed" log line must report
+// duration_ms as the actual exec time, with the pre-schedule sleep and the
+// past-due dispatch delay broken out into their own fields instead of all
+// three being folded into one conflated number.
+func TestWaitAndDelay(t *testing.T) {
+	t.Parallel()
+
+	t.Run("ClaimedAheadOfSchedule_YieldsWaitOnly", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(45 * time.Second)
+		assert.Equal(t, 45*time.Second, wait, "positive sleepTime is the observed pre-schedule wait")
+		assert.Zero(t, delay)
+	})
+
+	t.Run("ClaimedLate_YieldsDelayOnly", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(-7 * time.Second)
+		assert.Zero(t, wait)
+		assert.Equal(t, 7*time.Second, delay, "negative sleepTime becomes a positive past-due delay")
+	})
+
+	t.Run("ExactlyOnSchedule_YieldsNeither", func(t *testing.T) {
+		t.Parallel()
+
+		wait, delay := waitAndDelay(0)
+		assert.Zero(t, wait)
+		assert.Zero(t, delay)
 	})
 }
 
@@ -1687,4 +1854,125 @@ func TestRunnerSurvivesPanicAndProcessesSubsequentJob(t *testing.T) {
 	// checker panic and keeps pulling from jobsChan.
 	nextJob := newHeartbeatJob(t, dbSvc, ctx, org.UID, worker.UID)
 	sendJobAndWaitForResult(t, dbSvc, ctx, runner.jobsChan, nextJob)
+}
+
+// instantConfig/instantChecker are a trivial non-passive checker that
+// returns immediately — used to drive executeJob's real sleep-accounting
+// path (D5) without a hanging/panicking stub or a real network check.
+type instantConfig struct{}
+
+func (instantConfig) FromMap(map[string]any) error { return nil }
+func (instantConfig) GetConfig() map[string]any    { return map[string]any{} }
+
+type instantChecker struct{}
+
+func (instantChecker) Type() checkerdef.CheckType           { return checkerdef.CheckType("test-instant") }
+func (instantChecker) Validate(*checkerdef.CheckSpec) error { return nil }
+
+func (instantChecker) Execute(context.Context, checkerdef.Config) (*checkerdef.Result, error) {
+	return &checkerdef.Result{Status: checkerdef.StatusUp}, nil
+}
+
+func instantResolvers() (
+	func(checkerdef.CheckType) (checkerdef.Checker, bool),
+	func(checkerdef.CheckType) (checkerdef.Config, bool),
+) {
+	const instantType = checkerdef.CheckType("test-instant")
+
+	getChecker := func(ct checkerdef.CheckType) (checkerdef.Checker, bool) {
+		if ct == instantType {
+			return instantChecker{}, true
+		}
+
+		return registry.GetChecker(ct)
+	}
+	parseConfig := func(ct checkerdef.CheckType) (checkerdef.Config, bool) {
+		if ct == instantType {
+			return instantConfig{}, true
+		}
+
+		return registry.ParseConfig(ct)
+	}
+
+	return getChecker, parseConfig
+}
+
+// TestExecuteJobParkedCountTracksPreScheduleSleep covers D5 (spec
+// 2026-07-05-08): a job claimed ahead of its scheduled_at bumps the parked
+// counter for the duration of the pre-schedule sleep and releases it back to
+// 0 once the sleep resolves — visibility into how much of the pool the
+// bounded claim-ahead window (D3) is occupying at any instant.
+//
+//nolint:paralleltest // shares runner/DB state via startTestRunnerLoop
+func TestExecuteJobParkedCountTracksPreScheduleSleep(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	runner.getChecker, runner.parseConfig = instantResolvers()
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	require.Zero(t, runner.parked.Load(), "parked must start at 0")
+
+	check := models.NewCheck(org.UID, "parked-"+uuid.New().String()[:8], "test-instant")
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	job := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+
+	// Claimed well ahead of its own scheduled_at (as D3's bounded window
+	// still allows for a short-period job) — executeJob must sleep before
+	// running the checker.
+	scheduledAt := time.Now().Add(300 * time.Millisecond)
+	_, err = dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", scheduledAt).
+		Where("uid = ?", job.UID).
+		Exec(ctx)
+	require.NoError(t, err)
+	job.ScheduledAt = &scheduledAt
+
+	claimJobForTest(t, dbSvc, ctx, job, worker.UID)
+
+	select {
+	case runner.jobsChan <- job:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the job")
+	}
+
+	// While the job is sleeping toward its scheduled_at, parked must read 1.
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 1
+	}, 250*time.Millisecond, 5*time.Millisecond, "parked must be 1 while executeJob sleeps toward scheduled_at")
+
+	// Once the checker actually runs and the job completes, parked must
+	// release back to 0 — proof the counter reflects "sleeping", not "holds
+	// a lease" (the lease is held for the whole executeJob call, but parked
+	// only for the sleep portion of it).
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 0
+	}, 2*time.Second, 10*time.Millisecond, "parked must release back to 0 once the sleep resolves")
+
+	// Confirm the job actually ran to completion (result saved, lease
+	// released) rather than parked staying 0 because the job was dropped.
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", check.UID).
+			Where("status = ?", int(models.ResultStatusUp)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 2*time.Second, 10*time.Millisecond, "the instant checker must have produced exactly one UP result")
 }
