@@ -86,6 +86,7 @@ type DiscordTokenResponse struct {
 type DiscordOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -236,6 +237,7 @@ func (s *DiscordOAuthService) HandleCallback(
 	return &DiscordOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil

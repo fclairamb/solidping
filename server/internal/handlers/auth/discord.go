@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 
 	"github.com/uptrace/bunrouter"
 
@@ -115,6 +116,7 @@ func (h *DiscordOAuthHandler) buildSuccessRedirect(
 	query := parsedURL.Query()
 	query.Set("access_token", result.AccessToken)
 	query.Set("refresh_token", result.RefreshToken)
+	query.Set("expires_in", strconv.Itoa(result.ExpiresIn))
 	query.Set("org", result.OrgSlug)
 	parsedURL.RawQuery = query.Encode()
 

@@ -6,7 +6,16 @@ import {
   useCallback,
   type ReactNode,
 } from "react";
-import { ApiError, apiFetch, setToken, clearToken, getToken } from "@/api/client";
+import {
+  ApiError,
+  apiFetch,
+  setSession,
+  clearToken,
+  getToken,
+  getExpiresAt,
+  getExpiresInSeconds,
+} from "@/api/client";
+import { refreshAccessToken, shouldRefreshNow } from "@/lib/token-refresh";
 
 interface User {
   email: string;
@@ -41,7 +50,12 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (org: string, email: string, password: string) => Promise<LoginResult>;
-  loginWithOAuth: (accessToken: string, orgSlug: string) => Promise<void>;
+  loginWithOAuth: (
+    accessToken: string,
+    orgSlug: string,
+    refreshToken?: string,
+    expiresIn?: number
+  ) => Promise<void>;
   acceptInviteSession: (response: AuthResponse) => void;
   logout: () => Promise<void>;
   switchOrg: (orgSlug: string) => Promise<void>;
@@ -61,6 +75,11 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 interface AuthResponse {
   accessToken: string;
+  // Present on every login-shaped response (password, 2FA, passkey,
+  // accept-invite, switch-org) — captured alongside the access token so the
+  // client can silently refresh instead of hard-logging-out on expiry.
+  refreshToken?: string;
+  expiresIn?: number;
   user: {
     email: string;
     name?: string;
@@ -163,6 +182,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     validateSession();
   }, [validateSession]);
 
+  // Proactive refresh: every 60s, check whether less than 1/3 of the
+  // access-token lifetime remains; if so, refresh silently. This is what
+  // keeps a merely-idle-in-the-background tab (no 401 to react to yet)
+  // from ever reaching expiry in the first place — the reactive 401 path
+  // in apiFetch is the fallback for when this timer didn't get there first
+  // (tab was fully suspended, laptop asleep, etc.).
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (shouldRefreshNow(getExpiresAt(), getExpiresInSeconds())) {
+        void refreshAccessToken();
+      }
+    }, 60_000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   const applyLoginResponse = async (data: AuthResponse): Promise<LoginResult> => {
     if (data.requires2Fa && data.tempToken) {
       return {
@@ -176,7 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const loginAction = data.loginAction || "";
     const resolvedOrg = data.organization?.slug;
 
-    setToken(data.accessToken);
+    setSession(data.accessToken, data.refreshToken, data.expiresIn);
 
     if (resolvedOrg) {
       setStoredOrg(resolvedOrg);
@@ -239,7 +274,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const acceptInviteSession = (data: AuthResponse) => {
-    setToken(data.accessToken);
+    setSession(data.accessToken, data.refreshToken, data.expiresIn);
     if (data.organization?.slug) {
       setStoredOrg(data.organization.slug);
       setOrg(data.organization.slug);
@@ -255,8 +290,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setOrganizations(data.organizations || []);
   };
 
-  const loginWithOAuth = async (accessToken: string, orgSlug: string) => {
-    setToken(accessToken);
+  const loginWithOAuth = async (
+    accessToken: string,
+    orgSlug: string,
+    refreshToken?: string,
+    expiresIn?: number
+  ) => {
+    setSession(accessToken, refreshToken, expiresIn);
     setStoredOrg(orgSlug);
     setOrg(orgSlug);
 
@@ -280,7 +320,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ org: orgSlug }),
     });
-    setToken(data.accessToken);
+    // switch-org mints a NEW refresh token scoped to the target org — the
+    // client must overwrite (not merge/keep) the old one, or a subsequent
+    // background refresh would silently flip back to the login-time org.
+    setSession(data.accessToken, data.refreshToken, data.expiresIn);
     const resolvedOrg = data.organization?.slug || orgSlug;
     setStoredOrg(resolvedOrg);
     setOrg(resolvedOrg);

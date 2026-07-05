@@ -60,6 +60,7 @@ type GitLabTokenResponse struct {
 type GitLabOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -195,6 +196,7 @@ func (s *GitLabOAuthService) HandleCallback(
 	return &GitLabOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil
