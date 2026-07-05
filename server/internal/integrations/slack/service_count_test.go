@@ -48,6 +48,37 @@ func TestCountInstalledTeams_CountsDistinctTeamsNotRows(t *testing.T) {
 	r.Equal(2, count, "3 connection rows across 2 distinct team_ids must count as 2, not 3")
 }
 
+// TestCountInstalledTeams_TwoOrgWorkspaceCountsAsOne pins the acceptance
+// criterion's exact wording: "Socket Mode status reports 1 installed team
+// for a two-org workspace" — a single Slack workspace connected to two orgs
+// and nothing else must report exactly 1, not 2.
+func TestCountInstalledTeams_TwoOrgWorkspaceCountsAsOne(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	ctx, svc := setupSlackService(t)
+
+	orgA := models.NewOrganization("count-two-org-a", "")
+	r.NoError(svc.db.CreateOrganization(ctx, orgA))
+
+	orgB := models.NewOrganization("count-two-org-b", "")
+	r.NoError(svc.db.CreateOrganization(ctx, orgB))
+
+	const teamID = "T-TWO-ORG-WORKSPACE"
+
+	connA := models.NewIntegration(orgA.UID, models.ConnectionTypeSlack, "Two-org workspace (A)")
+	connA.Settings["team_id"] = teamID
+	r.NoError(svc.db.CreateChannel(ctx, connA))
+
+	connB := models.NewIntegration(orgB.UID, models.ConnectionTypeSlack, "Two-org workspace (B)")
+	connB.Settings["team_id"] = teamID
+	r.NoError(svc.db.CreateChannel(ctx, connB))
+
+	count, err := svc.CountInstalledTeams(ctx)
+	r.NoError(err)
+	r.Equal(1, count)
+}
+
 // TestCountInstalledTeams_ExcludesNonSlackAndDeleted covers that the count
 // is scoped to type=slack and live rows only.
 func TestCountInstalledTeams_ExcludesNonSlackAndDeleted(t *testing.T) {
