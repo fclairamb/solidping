@@ -226,6 +226,8 @@
   "resultDetail": {
     "title": "Ergebnis",
     "back": "Zurück zur Prüfung",
+    "previousResult": "Vorheriges Ergebnis",
+    "nextResult": "Nächstes Ergebnis",
     "period": "Zeitraum",
     "region": "Region",
     "worker": "Worker",

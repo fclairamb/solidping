@@ -156,6 +156,10 @@ export interface ResultFallbackInfo {
 
 export interface OrgResultDetail extends OrgResult {
   fallback?: ResultFallbackInfo;
+  /** Next-older result in the same check + periodType series; absent at the oldest boundary. */
+  previousUid?: string;
+  /** Next-newer result in the same series; absent at the newest boundary. */
+  nextUid?: string;
 }
 
 export interface IncidentDetail {
@@ -690,13 +694,23 @@ export function useResults(
   });
 }
 
-export function useResult(org: string, checkUid: string, resultUid: string) {
+export function useResult(
+  org: string,
+  checkUid: string,
+  resultUid: string,
+  options?: { region?: string }
+) {
+  const region = options?.region;
   return useQuery<OrgResultDetail>({
-    queryKey: ["result", org, checkUid, resultUid],
-    queryFn: () =>
-      apiFetch<OrgResultDetail>(
-        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}`,
-      ),
+    queryKey: ["result", org, checkUid, resultUid, region],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (region) params.set("region", region);
+      const query = params.toString();
+      return apiFetch<OrgResultDetail>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}${query ? `?${query}` : ""}`,
+      );
+    },
     enabled: !!org && !!checkUid && !!resultUid,
     staleTime: Infinity,
   });

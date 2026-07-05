@@ -1,6 +1,6 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, AlertTriangle } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -11,12 +11,19 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { QueryErrorView } from "@/components/shared/error-views";
 import { useResult, type OrgResultDetail, type ResultFallbackInfo } from "@/api/hooks";
 
 export const Route = createFileRoute(
   "/orgs/$org/checks/$checkUid/results/$resultUid",
 )({
+  validateSearch: (search: Record<string, unknown>) => ({
+    // Narrows the previous/next neighbor scope to match the region the
+    // Recent Results table was filtered to (resultsRegion) when the row was
+    // clicked; preserved across prev/next so stepping stays in-region.
+    region: typeof search.region === "string" ? search.region : undefined,
+  }),
   component: ResultDetailPage,
 });
 
@@ -90,7 +97,8 @@ function ResultDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const navigate = useNavigate();
   const { org, checkUid, resultUid } = Route.useParams();
-  const { data, isLoading, error, refetch } = useResult(org, checkUid, resultUid);
+  const { region } = Route.useSearch();
+  const { data, isLoading, error, refetch } = useResult(org, checkUid, resultUid, { region });
 
   if (isLoading) {
     return (
@@ -130,6 +138,13 @@ function ResultDetailPage() {
   const callerHttpMethod = typeof httpMethod === "string" && httpMethod ? httpMethod : undefined;
   const hasCallerInfo = Boolean(callerUserAgent || callerRemoteAddr || callerHttpMethod);
 
+  const goToResult = (targetResultUid: string) =>
+    navigate({
+      to: "/orgs/$org/checks/$checkUid/results/$resultUid",
+      params: { org, checkUid, resultUid: targetResultUid },
+      search: { region },
+    });
+
   return (
     <div className="space-y-6 max-w-3xl">
       <div className="flex items-center gap-2">
@@ -155,6 +170,38 @@ function ResultDetailPage() {
         {data.periodType && (
           <Badge variant="outline">{data.periodType}</Badge>
         )}
+        <div className="ml-auto flex gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("checks:resultDetail.previousResult")}
+                disabled={!data.previousUid}
+                data-testid="result-nav-previous"
+                onClick={() => data.previousUid && goToResult(data.previousUid)}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("checks:resultDetail.previousResult")}</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={t("checks:resultDetail.nextResult")}
+                disabled={!data.nextUid}
+                data-testid="result-nav-next"
+                onClick={() => data.nextUid && goToResult(data.nextUid)}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t("checks:resultDetail.nextResult")}</TooltipContent>
+          </Tooltip>
+        </div>
       </div>
 
       {data.fallback && <FallbackBanner fallback={data.fallback} data={data} t={t} />}

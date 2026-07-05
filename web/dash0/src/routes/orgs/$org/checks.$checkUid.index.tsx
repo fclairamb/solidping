@@ -1204,6 +1204,7 @@ function CheckDetailPage() {
                       navigate({
                         to: "/orgs/$org/checks/$checkUid/results/$resultUid",
                         params: { org, checkUid, resultUid: result.uid },
+                        search: { region: effectiveResultsRegion },
                       });
                     }}
                   >
