@@ -216,3 +216,322 @@ out — just 404 outside test mode, mirroring existing gating.
 - Whether the GET unsubscribe page should offer "all checks" scope
   immediately or ship check-only first (D4 leans: offer both, the table
   models it already).
+
+## Implementation Plan
+
+*(added 2026-07-05, resolving both open questions from the actual codebase)*
+
+### Open questions — resolved
+
+1. **Dash0 incident/check routes.** Confirmed by reading
+   `web/dash0/src/routes/orgs/$org/` (TanStack Router file-based routing):
+   `incidents.$incidentUid.tsx` → `/dash0/orgs/{org}/incidents/{uid}`, and
+   `checks.$checkUid.index.tsx` → `/dash0/orgs/{org}/checks/{slug}` (check
+   pages resolve by slug, not uid — see `checkDashURL` below). The spec's
+   assumed shape was exactly right. Better still: `server/internal/notifications/slack.go:174-189`
+   already has `checkDashURL(baseURL, orgSlug, check) string` and
+   `incidentDashURL(baseURL, orgSlug, incident) string` helpers in the *same*
+   `notifications` package that produce these exact URLs (used for Slack
+   hyperlinks today). D3 reuses these two helpers verbatim from
+   `notifications/email.go` — no new URL-building code, no risk of the two
+   channels drifting.
+2. **GET unsubscribe scope.** Ship both scopes immediately (per the spec's
+   lean) — "this check only" and "all alert emails for this org" as two
+   buttons/options on the same confirmation page. The `email_suppressions`
+   table already models both via nullable `check_uid`, so there's no
+   incremental cost to shipping both at once, and a check-only-first release
+   would just require a second round of UI work later for no benefit.
+
+### Architecture findings that shape the plan
+
+- **Formatter interface must change.** `email.Formatter.Format` currently
+  returns `(subject, html string, err error)` with an explicit doc-comment
+  that plaintext is intentionally not produced. D1 needs a text alternative
+  for incident emails (multipart ordering test must stay green), so the
+  interface grows to `Format(name string, data any) (subject, html, text string, err error)`.
+  `text` is rendered from an optional `{{define "text"}}` block; when a
+  template has no such block (all the current auth templates), `text` is
+  `""` and callers behave exactly as before (HTML-only send). This keeps
+  `job_email.go`'s template-driven path backward compatible.
+- **Job dispatch architecture (traced through `job_notification.go`).**
+  `NotificationJobRun.Run` loads connection/incident/check, builds
+  `notifications.Payload`, and calls `sendAndAudit` →
+  `sender.Send(ctx, jctx, payload)` (this is `EmailSender.Send`) → on
+  success/failure updates the **job-level** audit row via
+  `jctx.DBService.MarkIncidentNotificationSentByJob` /
+  `MarkIncidentNotificationFailedByJob`. Critically, `jctx.DBService` (type
+  `db.Service`, dual-backend-implemented) is reachable from inside
+  `EmailSender.Send` itself (it already receives `jctx`), and
+  `db.Service.CreateIncidentNotification(ctx, *models.IncidentNotification) error`
+  is a real interface method implemented on both
+  `internal/db/postgres/incident_notification.go` and
+  `internal/db/sqlite/incident_notification.go`. So: per-recipient `skipped`
+  rows for suppressed addresses are inserted **directly by
+  `EmailSender.Send`** via `jctx.DBService.CreateIncidentNotification(ctx,
+  models.NewSkippedIncidentNotification(orgUID, incidentUID, eventType,
+  models.IncidentNotificationSourceCheckConnection, "suppressed: <email>
+  (scope)", nil, nil))` — one extra row per suppressed recipient, alongside
+  (not instead of) the existing job-level sent/failed row that
+  `sendAndAudit` still writes for the overall dispatch. No changes needed to
+  `job_notification.go` itself.
+- **Route registration pattern for public (unauthenticated) endpoints.**
+  Confirmed in `server/internal/app/server.go`: `api := mainGroup.NewGroup("/api/v1")`
+  is itself unauthenticated; sub-groups like `orgIncidents := api.NewGroup(...).Use(authMiddleware.RequireAuth)`
+  opt INTO auth. The existing magic-link ack endpoint is registered directly
+  on `api` (not on `orgIncidents`) at server.go:758:
+  `api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)`.
+  The new `POST /unsubscribe` and `GET /unsubscribe` (RFC 8058 + confirmation
+  page) follow the identical pattern: registered directly on `mainGroup`
+  (top-level, alongside `/docs`, `/openapi`, `/status0`) since they're
+  cross-org (org is embedded in the token, not the URL path) — no bearer
+  auth, no CORS/org-scoping needed. The email-preview dev route
+  (`GET /api/mgmt/email-preview/{template}`) is gated exactly like the
+  existing `/api/test/*` cluster at server.go:1136:
+  `if s.config.RunMode == "test" { ... }`, registered on `api` (also
+  unauthenticated — matches other test-mode surfaces which have no auth
+  requirement either).
+- **Migration versioning.** `002_v0_2_0` already shipped (CHANGELOG.md /
+  `.release-please-manifest.json` both show `0.2.0` released 2026-07-04, one
+  day before this build) — it is a frozen, released consolidated migration
+  and must not be edited. The new `email_suppressions` table goes into a
+  fresh pair: `003_v0_2_1.up.sql` / `003_v0_2_1.down.sql` on both backends
+  (migration discovery is `migrate.NewMigrations().Discover(migrationsFS)`
+  via `//go:embed migrations/*.sql` in both `postgres.go` and `sqlite.go` —
+  pure filename-glob discovery, so any correctly-numbered new pair is picked
+  up automatically; the actual release version is decided later by
+  release-please and does not need to match the filename literally, it's
+  just a sequential label like the existing files).
+- **DDL conventions confirmed from `002_v0_2_0.up.sql`/`.down.sql` (both
+  backends), using the `discovered_checks` table added there as the most
+  recent "new table" precedent**:
+  - Postgres: `uid uuid primary key default gen_random_uuid()`,
+    `organization_uid uuid not null references organizations(uid)`,
+    `created_at timestamptz not null default now()`, JSON columns as
+    `jsonb`, `comment on table/column` for documentation, partial unique
+    indexes with `where deleted_at is null` (not applicable here — no soft
+    delete on suppressions, they're just deleted on unsubscribe-undo).
+  - SQLite: `uid text primary key` (uid generated in Go via `uuid.New()`,
+    no DB-side default), `organization_uid text not null references organizations(uid)`,
+    `created_at text not null default (datetime('now'))`, JSON columns as
+    plain `text`, inline `--` comments (no `comment on`) since SQLite has no
+    such statement.
+  - Both backends: `create unique index ... on email_suppressions (organization_uid, email, check_uid)`.
+    Note Postgres NULL semantics: a plain unique index treats each NULL
+    `check_uid` as distinct, so two org-wide (`check_uid IS NULL`) rows for
+    the same email would NOT collide under a naive unique index — need
+    either (a) a partial unique index split in two (`... where check_uid is
+    not null` plus a second `... where check_uid is null`), or (b) a
+    sentinel non-null value. Going with (a): two unique indexes,
+    `email_suppressions_check_scope_idx` (`organization_uid, email,
+    check_uid) where check_uid is not null` and
+    `email_suppressions_org_scope_idx` (`organization_uid, email) where
+    check_uid is null`. SQLite unique indexes also treat NULL as distinct
+    per-row (same underlying issue), so the same two-partial-index split is
+    used on both backends for consistency (SQLite supports partial indexes
+    via `WHERE` since 3.8.0, well within the bundled engine's version).
+- **Bun model + db.Service methods needed**: new
+  `server/internal/db/models/email_suppression.go` (`EmailSuppression`
+  struct, `NewEmailSuppression` constructor, `EmailSuppressionSource*`
+  consts for `link|header|dashboard`), plus `db.Service` interface additions
+  `CreateEmailSuppression`, `ListEmailSuppressions(orgUID)`,
+  `DeleteEmailSuppression(orgUID, uid)`, `IsEmailSuppressed(ctx, orgUID,
+  email, checkUID *string) (bool, error)` (checks both the check-specific
+  row and the org-wide NULL-check_uid row — a single query with `check_uid =
+  ? OR check_uid IS NULL`), implemented in both
+  `internal/db/postgres/email_suppression.go` and
+  `internal/db/sqlite/email_suppression.go`, mirroring the existing
+  `incident_notification.go` pair's structure exactly.
+- **Recipient filtering enforcement point**: `EmailSender.Send` (in
+  `notifications/email.go`) already resolves `emailAddresses` via
+  `extractRecipients`. Insert filtering right after that resolution, before
+  `sendPerRecipient`/broadcast branch: for each candidate address, call
+  `jctx.DBService.IsEmailSuppressed(ctx, orgUID, addr, &checkUID)` (org UID
+  and check UID come from `payload.Integration.OrganizationUID` /
+  `payload.Check.UID`); suppressed addresses are removed from the send list
+  and get a `skipped` audit row each (per the point above); if the filtered
+  list is empty, `Send` returns nil (not `ErrNoValidRecipients` — that error
+  is reserved for "nothing was ever configured", not "everyone
+  unsubscribed"; the audit trail already explains why nothing went out).
+  Transactional email paths (`job_email.go`'s `EmailJobRun`, and
+  `auth/service.go`'s `enqueueEmail`) are untouched — they never call
+  `EmailSender.Send`'s incident path, so suppression simply never applies to
+  them, satisfying acceptance criterion 6 by construction (no filter to
+  bypass, because there's no shared code path).
+- **Per-recipient send for "resolved" events.** Today only
+  created/escalated/reopened use `sendPerRecipient` (`canAckEvent`); resolved
+  broadcasts once. D4 requires per-recipient List-Unsubscribe tokens even
+  for resolved, so `canAckEvent`'s result is no longer the switch for
+  "personalize per recipient" — a new `needsPerRecipientSend` concept
+  (effectively: always true for the four incident event types, since all now
+  need a per-recipient unsubscribe token; ack button rendering still gated
+  separately by `canAckEvent` inside the per-recipient body-building step).
+  Concretely: `Send` always calls a per-recipient path for the four incident
+  event types; the ack button block is included only when `canAckEvent` is
+  also true. The unrecognized-event `default` case in `buildEmailContent`
+  stays broadcast (it's not one of the four modeled events and carries no
+  unsubscribe semantics either — dead code path today, kept as a fallback).
+- **Purpose-tagged signed links.** Generalize `incidentlinks` package: keep
+  `Sign`/`Verify` names but add a `purpose` parameter (or, more minimally,
+  fold the purpose into the payload as the FIRST field so the shape becomes
+  `<purpose>|<rest>`) — going with a `SignWithPurpose(secret, purpose,
+  parts... string, exp time.Time) string` / `VerifyWithPurpose(secret,
+  expectedPurpose string, parts ...matcher, token string)` generalization is
+  overkill for two call shapes (ack: incident+email; unsub: org+email+check),
+  so instead: add explicit purpose constants `PurposeAck = "ack"`,
+  `PurposeUnsubscribe = "unsub"`, keep `Sign`/`Verify` for ack (re-minting
+  its payload as `ack|incident_uid|email|exp` — a strict superset of the
+  purpose-tagging requirement, achieved by prefixing the existing payload
+  string before hashing) and add sibling `SignUnsubscribe`/`VerifyUnsubscribe`
+  for `unsub|org_slug|email|check_uid|exp` (`check_uid` empty string = org-wide).
+  Both verifiers check the leading segment matches their expected purpose
+  literal and reject (new `ErrPurposeMismatch` sentinel) otherwise — this is
+  what makes cross-purpose replay impossible (test both directions per
+  acceptance criterion 5). No dual-verification deprecation window — ack
+  tokens are 7-day TTL, so re-minting with the new prefix in this release is
+  safe per the spec's own preference (old un-prefixed tokens outstanding at
+  deploy time will fail to verify, which is an acceptable, tiny blast radius
+  consistent with the existing "rotating JWT secret invalidates everything"
+  threat model already documented in the package).
+- **Frontend placement for D4 dashboard surface.** The existing email
+  integration edit page (`web/dash0/src/routes/orgs/$org/integrations.$integrationUid.tsx`)
+  already has a `RecentNotificationsSection` card pattern (fetch + Table +
+  loading/empty/error states) — but suppressions are **org-scoped**, not
+  integration-scoped (a suppression has no `integration_uid`, only
+  `organization_uid` + `email` + optional `check_uid`), so a single email
+  integration's edit page is the wrong home for an org-wide list — an org can
+  have multiple email integrations. Per the "use your judgment on minimal
+  correct placement, must be reachable from UI" clause: add a
+  `SuppressionsSection` card to the email integration's detail page
+  (`integrations.$integrationUid.tsx`, gated on `integration.type ===
+  "email"`) showing ALL org suppressions (not just ones tied to this
+  integration's recipients) — reachable, minimal, no new route, and
+  contextually the only place a user configuring email alerts would look for
+  "who's opted out." Table columns: email, scope (check name or "All
+  checks"), created date, and a `Trash2` destructive icon-button per row
+  (re-subscribe) — mirrors the `RecentNotificationsSection` component
+  structure and the design-reference destructive-row pattern (ghost icon
+  button + inline delete, no confirmation dialog needed since re-subscribing
+  is low-risk and reversible — consistent with the spec calling the
+  unsubscribe action itself "low-risk and reversible"). New hooks
+  `useEmailSuppressions(org)` / `useDeleteEmailSuppression(org)` added to
+  `web/dash0/src/api/hooks.ts`, modeled directly on the existing
+  `useTokens(org)` / token-delete pair (`{"data": [...]}` unwrap, simple
+  `DELETE /api/v1/orgs/:org/email-suppressions/:uid`).
+- **D5 dev preview route** lives alongside the existing `testapi` handler
+  cluster (`internal/handlers/testapi/handler.go` already has a
+  `"welcome.html", true` style template-name mapping used by
+  `GenerateData`) — new handler renders any of the 9 (soon 12, minus the
+  incident.html stub = 12 total: 4 incident + registration + password-reset
+  + invitation + welcome + password-changed + membership_request_new +
+  membership_request_decision + base itself is not directly renderable)
+  shipped templates with a fixture-data table keyed by template name,
+  formats via `format=html|text` query param using the same
+  `email.Formatter.Format` the real send path uses (so the preview is
+  provably identical rendering, not a reimplementation), 404s via
+  `base.WriteError(w, http.StatusNotFound, ...)` when `RunMode != "test"`.
+
+### File-by-file plan
+
+**Backend — D1/D2/D3 (templates + view-model, can be built and visually
+iterated using D5 without SMTP):**
+- `server/internal/email/email.go`: widen `Formatter` interface to also
+  return `text string`.
+- `server/internal/email/formatter.go`: add `renderText` mirroring
+  `renderSubject` (looks up `{{define "text"}}`, executes with data,
+  returns `""` on no-block — NOT an error).
+- `server/internal/email/templates/base.html`: full redesign — branded
+  header, card body, muted footer with org name + dashboard/docs links,
+  `{{block "statusbanner" .}}{{end}}` full-width color bar
+  (red/green/amber), `{{define "button"}}`-style table-based button
+  partial parameterized by href/label/variant, kept in a `<style>` block
+  (premailer inlines unchanged). 480px media query preserved and extended.
+- New `server/internal/email/templates/incident-created.html`,
+  `incident-resolved.html`, `incident-escalated.html`,
+  `incident-reopened.html` — each defines `subject`, `content` (banner +
+  check-name-as-link + details table + optional ack button + optional
+  unsubscribe footer line), and `text`. Delete `incident.html` stub.
+- Restyle `registration.html`, `password-reset.html`, `invitation.html`,
+  `welcome.html`, `password-changed.html`, `membership_request_new.html`,
+  `membership_request_decision.html` onto the new base blocks (button
+  partial, footer). Add `{{define "text"}}` to each (currently HTML-only —
+  extending them costs nothing and is consistent with "all emails").
+- `server/internal/notifications/email.go`: delete all `buildIncident*HTML/Text`
+  functions (lines ~278-503); `buildEmailContent` becomes a view-model
+  builder that calls `jctx.Services.EmailFormatter.Format(templateName,
+  viewModel)` — needs `EmailFormatter` threaded into `EmailSender` (it's
+  already on `jctx.Services`, just wire the call). View-model includes:
+  check name/type, `checkDashURL(...)` link, incident times (formatted),
+  duration (resolved), relapse/failure counts, ack URL (existing
+  `buildAckURL`, re-minted with `PurposeAck`), `incidentDashURL(...)`,
+  dashboard root + docs footer links (`{base}/dash0`, `{base}/docs`),
+  unsubscribe URL + List-Unsubscribe header value (D4).
+- `server/internal/notifications/sender.go` / SMTP path: thread
+  `List-Unsubscribe` / `List-Unsubscribe-Post` headers through
+  `email.Message` (new fields) → `SMTPSender.buildMessage` sets them via
+  `mailMsg.SetGenHeader`.
+
+**Backend — D4 (sequenced after D1-D3 land and are green):**
+- `server/internal/db/postgres/migrations/003_v0_2_1.{up,down}.sql` and
+  `server/internal/db/sqlite/migrations/003_v0_2_1.{up,down}.sql`:
+  `email_suppressions` table per the DDL conventions above.
+- `server/internal/db/models/email_suppression.go`: model + constructor +
+  source consts.
+- `server/internal/db/postgres/email_suppression.go` +
+  `server/internal/db/sqlite/email_suppression.go`: Create/List/Delete/
+  IsSuppressed, added to the `db.Service` interface in
+  `server/internal/db/service.go`.
+- `server/internal/incidentlinks/magiclink.go`: add `Purpose` consts,
+  re-mint `Sign`/`Verify` payload with the `ack|` prefix, add
+  `SignUnsubscribe`/`VerifyUnsubscribe` + `ErrPurposeMismatch`. Update
+  `server/internal/handlers/incidents/magiclink.go` re-exports if the
+  signature changes.
+- New `server/internal/handlers/unsubscribe/` (handler+service, mirrors the
+  smallest existing simple handler+service pair): `POST /unsubscribe`
+  (one-click, idempotent insert-or-noop), `GET /unsubscribe` (renders a
+  minimal static-style HTML confirmation page à la
+  `incidents/ack_html.go`'s `renderAckPage` pattern, offering both scope
+  buttons + a re-subscribe undo form). Registered on `mainGroup` directly
+  (server.go), not `api`, not org-scoped in the URL (org comes from the
+  token).
+- `server/internal/notifications/email.go`: suppression filter step (see
+  above) + skipped-audit-row insertion.
+- New `server/internal/handlers/emailsuppressions/` (handler+service):
+  `GET /api/v1/orgs/:org/email-suppressions`, `DELETE
+  /api/v1/orgs/:org/email-suppressions/:uid`, registered on an
+  authenticated `api.NewGroup("/orgs/:org/email-suppressions").Use(authMiddleware.RequireAuth)`
+  group in server.go, `{"data": [...]}` wrapping.
+
+**Backend — D5:**
+- New `server/internal/handlers/testapi/` addition (or sibling small
+  handler): `GET /api/mgmt/email-preview/{template}?format=html|text`,
+  gated `if s.config.RunMode == "test"` alongside the existing test-route
+  cluster at server.go:1136, fixture-data table keyed by template name,
+  calls the real `email.Formatter.Format`.
+
+**Frontend — D4 dashboard surface:**
+- `web/dash0/src/api/hooks.ts`: `useEmailSuppressions(org)` +
+  `useDeleteEmailSuppression(org)`, modeled on `useTokens`/token-delete.
+- `web/dash0/src/routes/orgs/$org/integrations.$integrationUid.tsx`: new
+  `SuppressionsSection` card (gated on `integration.type === "email"`),
+  `Table` + per-row `Trash2` destructive icon button, empty/loading/error
+  states mirroring `RecentNotificationsSection`.
+- `web/dash0/e2e/`: new Playwright spec covering list + delete
+  (re-subscribe) for the suppression section, following existing
+  integration-page E2E conventions.
+
+### Sequencing
+
+1. D1 (formatter text path + delete string-builders + new incident
+   templates) — commit per template.
+2. D2 (base.html redesign + restyle auth templates) — can be developed
+   visually via D5 preview route, built early to unblock iteration.
+3. D3 (dashboard links via `checkDashURL`/`incidentDashURL` reuse in the
+   view-model).
+4. D5 preview route (useful throughout D1-D3, but written as its own
+   commit once the template set stabilizes enough to have fixture data for
+   all of them).
+5. D4 last, in the order: migration → model → db.Service methods →
+   magiclink purpose-tagging (with both-direction tests) → per-recipient
+   resolved-event send + List-Unsubscribe headers → unsubscribe
+   endpoints → recipient-filtering enforcement + skipped audit rows →
+   REST CRUD + frontend section + E2E.
