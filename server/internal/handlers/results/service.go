@@ -410,13 +410,22 @@ type FallbackInfo struct {
 type GetResultResponse struct {
 	ResultResponse
 	Fallback *FallbackInfo `json:"fallback,omitempty"`
+	// PreviousUID is the next-older result in the same org+check+periodType
+	// series (optionally narrowed by region); omitted when the effective row
+	// is the oldest in scope.
+	PreviousUID string `json:"previousUid,omitempty"`
+	// NextUID is the next-newer result in the same series; omitted when the
+	// effective row is the newest in scope.
+	NextUID string `json:"nextUid,omitempty"`
 }
 
 // GetResult fetches a single result by UID, falling back to the smallest-period
 // aggregation that covers the UID's embedded UUIDv7 timestamp when the raw
-// row has been rolled up. checkIdent may be the check UID or slug.
+// row has been rolled up. checkIdent may be the check UID or slug. regions
+// (optional) narrows the previous/next neighbor scope only — the row itself
+// is still resolved by UID regardless of region.
 func (s *Service) GetResult(
-	ctx context.Context, orgSlug, checkIdent, resultUID string,
+	ctx context.Context, orgSlug, checkIdent, resultUID string, regions []string,
 ) (*GetResultResponse, error) {
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -434,7 +443,13 @@ func (s *Service) GetResult(
 		if direct.OrganizationUID == org.UID && direct.CheckUID == check.UID {
 			resp := s.convertResultToResponse(direct, withAll)
 
-			return &GetResultResponse{ResultResponse: resp}, nil
+			prevUID, nextUID, neighborErr := s.db.GetResultNeighbors(
+				ctx, org.UID, check.UID, resp.PeriodType, regions, resp.PeriodStart, resp.UID)
+			if neighborErr != nil {
+				return nil, neighborErr
+			}
+
+			return &GetResultResponse{ResultResponse: resp, PreviousUID: prevUID, NextUID: nextUID}, nil
 		}
 	}
 
@@ -461,6 +476,15 @@ func (s *Service) GetResult(
 
 		resp := s.convertResultToResponse(row, withAll)
 
+		// Neighbors are computed from the covering aggregation's own series
+		// (same periodType as the effective row), not the requested raw UID —
+		// every step then lands on a real row with no fallback banner.
+		prevUID, nextUID, neighborErr := s.db.GetResultNeighbors(
+			ctx, org.UID, check.UID, resp.PeriodType, regions, resp.PeriodStart, resp.UID)
+		if neighborErr != nil {
+			return nil, neighborErr
+		}
+
 		return &GetResultResponse{
 			ResultResponse: resp,
 			Fallback: &FallbackInfo{
@@ -468,6 +492,8 @@ func (s *Service) GetResult(
 				RequestedAt:  requestedAt,
 				Reason:       "rolled_up_to_" + level,
 			},
+			PreviousUID: prevUID,
+			NextUID:     nextUID,
 		}, nil
 	}
 
