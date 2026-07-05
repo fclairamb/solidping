@@ -1,4 +1,4 @@
-# Header live-connection status dot (green/gray/red)
+# Sidebar live-connection status dot (green/gray/red)
 
 ## Problem
 
@@ -32,17 +32,22 @@ Facts about the current plumbing:
 - The first connect is deliberately delayed until REST traffic has been
   quiet (up to ~5s, `live-socket.ts:94-115`) — a short non-green period on
   every page load is *normal*, not an error.
-- The header's top-right slot is
-  `<div className="ml-auto flex items-center gap-1">` holding
-  `FeedbackButton` and `CommandMenuTrigger` (`$org.tsx:867-872`), rendered
-  inside `LiveEventsProvider`, on every org page (the login/register pages
-  return before the header, `:832-834`).
+- The left sidebar (`web/dash0/src/components/layout/AppSidebar.tsx`) is
+  rendered inside `LiveEventsProvider` (`$org.tsx:858-860`) on every org
+  page (login/register return before the layout, `:832-834`). Its footer
+  already has a utility row holding `LanguageSwitcher` and `ThemeToggle`
+  (`AppSidebar.tsx:265-272`) — the natural low-noise home for a passive
+  indicator, keeping the main page header uncluttered.
 
 ## Product decision
 
-- A small **status dot** at the top right of the header (inside the
-  `ml-auto` group, left of the feedback / command-menu buttons), visible on
-  every org page, on mobile too (it is only a dot).
+- A small **status dot** in the **left sidebar**, not in the main page
+  header — the header stays uncluttered. It joins the footer utility row
+  next to `LanguageSwitcher` / `ThemeToggle` (`AppSidebar.tsx:268-271`),
+  visible on every org page whenever the sidebar is open.
+- On mobile (and with the sidebar collapsed) the sidebar is off-canvas, so
+  the dot is only visible when the menu is opened — an accepted tradeoff
+  of not overloading the main page.
 - Three colors:
   - **green** — connected: `hello` acked, hints streaming.
   - **red** — broken: the connection dropped or a connect attempt failed;
@@ -84,7 +89,9 @@ Facts about the current plumbing:
    primitive, `data-testid="live-status-dot"` +
    `data-status={status}` for tests. Per frontend conventions, check the
    design reference first and add the pattern there as part of this change.
-4. **Mount** in the header slot (`$org.tsx:867`), before `FeedbackButton`.
+4. **Mount** in the sidebar footer utility row (`AppSidebar.tsx:268-271`),
+   alongside `LanguageSwitcher` and `ThemeToggle`. Nothing is added to the
+   main page header (`$org.tsx:863-873`).
 5. **i18n**: new keys (e.g. `liveStatus.live`, `liveStatus.connecting`,
    `liveStatus.reconnecting`, `liveStatus.unavailable`) in **all four
    locales** (`src/locales/{en,fr,de,es}`).
@@ -92,7 +99,7 @@ Facts about the current plumbing:
    - Initial load: gray→green within a few seconds is expected (API-quiet
      delay); red must not appear before the first attempt actually fails.
    - Org switch remounts the provider → dot resets to gray, then green.
-   - Login/register pages: no header, no dot (already the case).
+   - Login/register pages: no sidebar, no dot (already the case).
    - `disabled` (4404/4403): dot stays gray with the "unavailable" tooltip
      — truthful and low-noise rather than hiding the indicator.
 
@@ -106,9 +113,10 @@ Facts about the current plumbing:
 
 ## Acceptance criteria
 
-- Dot renders at the top right of the header on all org pages (desktop and
-  mobile): green while the socket is live, gray while connecting, red after
-  a drop or failed attempt, green again after the automatic reconnect.
+- Dot renders in the sidebar footer utility row on all org pages: green
+  while the socket is live, gray while connecting, red after a drop or
+  failed attempt, green again after the automatic reconnect. The main page
+  header is unchanged.
 - With realtime disabled server-side (close 4404), the dot is gray with the
   "unavailable" tooltip and never turns red.
 - Tooltip and `aria-label` localized in en/fr/de/es.
@@ -129,8 +137,8 @@ Facts about the current plumbing:
 - [ ] `LiveEventsContext.tsx`: `LiveConnectionStatus` state machine,
       derived `getGlobalLive`, new `useLiveConnectionStatus` hook; unit
       tests for transitions.
-- [ ] `live-status-dot.tsx` component + header mount in `$org.tsx`;
-      add pattern to the design reference.
+- [ ] `live-status-dot.tsx` component + mount in the `AppSidebar` footer
+      utility row; add pattern to the design reference.
 - [ ] i18n keys in en/fr/de/es.
 - [ ] Playwright coverage in `e2e/live-updates.spec.ts`.
 - [ ] Run `make lint` + `make test-dash`.
