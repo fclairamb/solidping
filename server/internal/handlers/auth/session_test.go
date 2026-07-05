@@ -1,11 +1,17 @@
 package auth
 
 import (
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/uptrace/bunrouter"
 
+	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
@@ -431,4 +437,56 @@ func TestLogoutOtherSessionsEmptyRefreshUIDDeletesAll(t *testing.T) {
 	r.NoError(err)
 	r.Equal(2, resp.TokensDeleted,
 		"an empty currentRefreshUID spares nothing — the handler must reject this case before calling in")
+}
+
+// TestRefreshHandlerResetsAccessTokenCookie verifies the HTTP handler for
+// POST /auth/refresh re-sets the access_token cookie exactly like Login does
+// (acceptance criterion 3) — without this, cookie-authenticated surfaces
+// would silently lapse after the first hour even though the bearer-token
+// session keeps refreshing via the JSON response body alone.
+func TestRefreshHandlerResetsAccessTokenCookie(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("cookie-org", "Cookie Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	hash, err := passwords.Hash("testpass1234")
+	r.NoError(err)
+
+	user := models.NewUser("cookie@example.com")
+	user.PasswordHash = &hash
+	r.NoError(dbSvc.CreateUser(ctx, user))
+	r.NoError(dbSvc.CreateOrganizationMember(ctx,
+		models.NewOrganizationMember(org.UID, user.UID, models.MemberRoleAdmin)))
+
+	loginResp, err := svc.Login(ctx, "cookie-org", "cookie@example.com", "testpass1234", Context{})
+	r.NoError(err)
+
+	handler := NewHandler(svc, &config.Config{})
+
+	body := `{"refreshToken":"` + loginResp.RefreshToken + `"}`
+	httpReq := httptest.NewRequestWithContext(ctx, http.MethodPost, "/api/v1/auth/refresh", strings.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	r.NoError(handler.Refresh(rec, bunrouter.Request{Request: httpReq}))
+	r.Equal(http.StatusOK, rec.Code)
+
+	result := rec.Result()
+	defer func() { _ = result.Body.Close() }()
+
+	cookies := result.Cookies()
+	r.Len(cookies, 1, "the refresh response must set exactly one cookie")
+	r.Equal(CookieAuthToken, cookies[0].Name)
+	r.NotEmpty(cookies[0].Value, "the cookie must carry the freshly minted access token")
+	r.Equal("/", cookies[0].Path)
+	r.Positive(cookies[0].MaxAge, "MaxAge must reflect the access-token TTL, not be left unset")
+
+	var jsonBody struct {
+		AccessToken string `json:"accessToken"`
+	}
+	r.NoError(json.NewDecoder(result.Body).Decode(&jsonBody))
+	r.Equal(jsonBody.AccessToken, cookies[0].Value, "the cookie must carry the same access token as the JSON body")
 }
