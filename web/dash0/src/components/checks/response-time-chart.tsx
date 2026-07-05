@@ -97,7 +97,9 @@ function adaptiveFormat(tsMs: number, spanMs: number): string {
   return format(date, "MMM d");
 }
 
-function formatMs(value: number): string {
+/** Shared ms/s duration formatting convention — also used by the Recent
+ * Results stats strip so both surfaces render durations identically. */
+export function formatMs(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
   return `${Math.round(value)}ms`;
 }
