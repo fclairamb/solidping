@@ -2952,6 +2952,31 @@ func (s *Service) GetChannelByPropertyForOrg(
 	return conn, nil
 }
 
+// ListChannelsByProperty returns every non-deleted connection matching a
+// settings property, across ALL organizations, ordered created_at ASC
+// (oldest first). See db.Service for the callers (uninstall fan-out and the
+// inbound-routing deterministic fallback).
+func (s *Service) ListChannelsByProperty(
+	ctx context.Context, connType, propertyName, propertyValue string,
+) ([]*models.Integration, error) {
+	conns := make([]*models.Integration, 0)
+
+	jsonPath := "$." + propertyName
+
+	err := s.db.NewSelect().
+		Model(&conns).
+		Where("type = ?", connType).
+		Where("json_extract(settings, ?) = ?", jsonPath, propertyValue).
+		Where("deleted_at IS NULL").
+		Order("created_at ASC").
+		Scan(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return conns, nil
+}
+
 // ListChannels lists integration connections with optional filtering.
 func (s *Service) ListChannels(
 	ctx context.Context, filter *models.ListIntegrationsFilter,

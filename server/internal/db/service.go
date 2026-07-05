@@ -368,6 +368,16 @@ type Service interface {
 	GetChannelByPropertyForOrg(
 		ctx context.Context, orgUID, connType, propertyName, propertyValue string,
 	) (*models.Integration, error)
+	// ListChannelsByProperty returns every non-deleted connection matching
+	// (connType, propertyName, propertyValue) ACROSS ALL ORGS, ordered
+	// created_at ASC (oldest first). Used by the Slack inbound-routing
+	// deterministic fallback (oldest connection wins when no home org is
+	// recorded) and by app_uninstalled fan-out (every org's connection for a
+	// team_id must be cleaned up, since they all share the same revoked bot
+	// token). Returns an empty slice, not an error, when nothing matches.
+	ListChannelsByProperty(
+		ctx context.Context, connType, propertyName, propertyValue string,
+	) ([]*models.Integration, error)
 	ListChannels(
 		ctx context.Context, filter *models.ListIntegrationsFilter,
 	) ([]*models.Integration, error)
