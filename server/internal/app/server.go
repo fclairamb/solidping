@@ -52,6 +52,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
@@ -1139,6 +1140,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		api.DELETE("/test/checks/bulk", testHandler.BulkDeleteChecks)
 		api.POST("/test/generate-data", testHandler.GenerateData)
 		api.DELETE("/test/checks/all", testHandler.DeleteAllChecks)
+
+		// Email design preview (spec D5): renders any shipped template with
+		// fixture data through the real formatter, so the design can be
+		// iterated on in a browser without round-tripping through SMTP.
+		// Not compiled out — just 404s outside test mode, like the routes
+		// above.
+		emailPreviewHandler := emailpreview.NewHandler(s.services.EmailFormatter, s.config)
+		mgmt.GET("/email-preview/:template", emailPreviewHandler.Preview)
 	}
 
 	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from
