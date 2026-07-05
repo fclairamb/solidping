@@ -51,5 +51,11 @@
   "actions": "Aktionen",
   "viewDetails": "Details anzeigen",
   "searchPlaceholder": "Suchen...",
-  "rename": "Umbenennen"
+  "rename": "Umbenennen",
+  "liveStatus": {
+    "live": "Live-Updates aktiv",
+    "connecting": "Verbindung wird hergestellt…",
+    "reconnecting": "Wiederverbindung…",
+    "unavailable": "Live-Updates nicht verfügbar"
+  }
 }

@@ -51,5 +51,11 @@
   "actions": "Acciones",
   "viewDetails": "Ver detalles",
   "searchPlaceholder": "Buscar...",
-  "rename": "Renombrar"
+  "rename": "Renombrar",
+  "liveStatus": {
+    "live": "Actualizaciones en vivo activas",
+    "connecting": "Conectando…",
+    "reconnecting": "Reconectando…",
+    "unavailable": "Actualizaciones en vivo no disponibles"
+  }
 }

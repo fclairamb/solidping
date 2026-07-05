@@ -51,5 +51,11 @@
   "actions": "Actions",
   "viewDetails": "Voir les détails",
   "searchPlaceholder": "Rechercher...",
-  "rename": "Renommer"
+  "rename": "Renommer",
+  "liveStatus": {
+    "live": "Mises à jour en direct actives",
+    "connecting": "Connexion…",
+    "reconnecting": "Reconnexion…",
+    "unavailable": "Mises à jour en direct indisponibles"
+  }
 }
