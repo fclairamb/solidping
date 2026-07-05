@@ -46,6 +46,11 @@ interface ChartPoint {
   uid?: string;
   periodType?: string;
   region?: string;
+  durationMinMs?: number;
+  durationMaxMs?: number;
+  durationAvgMs?: number;
+  durationP95Ms?: number;
+  totalChecks?: number;
 }
 
 interface GapRegion {
@@ -83,6 +88,55 @@ function adaptiveFormat(tsMs: number, spanMs: number): string {
 function formatMs(value: number): string {
   if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
   return `${Math.round(value)}ms`;
+}
+
+/** Fields fetched for the chart window — extended with stored aggregate stats
+ * (durationMinMs/MaxMs/AvgMs/P95Ms, totalChecks) so the Recent Results stats
+ * strip can compute tier-aware min/avg/max/p95 from this same dataset without
+ * an extra HTTP request. Raw rows simply omit the aggregate-only fields. */
+export const CHART_WITH_FIELDS =
+  "durationMs,region,durationMinMs,durationMaxMs,durationAvgMs,durationP95Ms,totalChecks";
+
+export interface ChartFetchParams {
+  periodStartAfter: string;
+  periodType: string;
+  with: string;
+  size: number;
+}
+
+/** Builds the exact `useAllResults` query params for the chart's current
+ * window (time range + check period). Exported so the results-list route can
+ * issue an identical query (same react-query key) to derive the observed
+ * region set and duration stats from the chart's already-fetched window,
+ * with zero extra HTTP requests. */
+export function chartFetchParams(
+  timeRange: TimeRange,
+  periodMs: number | undefined,
+): ChartFetchParams {
+  const periodStartAfter = getStartFor(timeRange);
+
+  // Include raw as a co-tier so the current open bucket (which the aggregator
+  // never rolls up until it closes) is always represented. The aggregator
+  // deletes source rows after rollup, so raw + hour + day are disjoint in
+  // time — no duplicates. detectGaps() already handles tier transitions.
+  const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
+  const periodType =
+    timeRange === "month"
+      ? "raw,hour,day"
+      : timeRange === "week"
+        ? "raw,hour"
+        : timeRange === "day"
+          ? denseEnoughForHourly
+            ? "raw,hour"
+            : "raw"
+          : "raw";
+
+  return {
+    periodStartAfter,
+    periodType,
+    with: CHART_WITH_FIELDS,
+    size: 1000,
+  };
 }
 
 /** Compute median of a sorted array of numbers */
@@ -276,23 +330,8 @@ export function ResponseTimeChart({
     setSelectedUid(uid);
   };
 
-  const periodStartAfter = useMemo(() => getStartFor(timeRange), [timeRange]);
-
-  // Include raw as a co-tier so the current open bucket (which the aggregator
-  // never rolls up until it closes) is always represented. The aggregator
-  // deletes source rows after rollup, so raw + hour + day are disjoint in
-  // time — no duplicates. detectGaps() already handles tier transitions.
-  const denseEnoughForHourly = (periodMs ?? 60_000) < 5 * 60_000;
-  const periodType =
-    timeRange === "month"
-      ? "raw,hour,day"
-      : timeRange === "week"
-        ? "raw,hour"
-        : timeRange === "day"
-          ? denseEnoughForHourly
-            ? "raw,hour"
-            : "raw"
-          : "raw";
+  const { periodStartAfter, periodType, with: chartWith, size: chartSize } =
+    useMemo(() => chartFetchParams(timeRange, periodMs), [timeRange, periodMs]);
 
   // Derive a chart-specific refetch floor: 30s for hour/day, 5min for
   // week/month. The user just wants the line to move within a minute or two
@@ -307,8 +346,8 @@ export function ResponseTimeChart({
     checkUid,
     periodStartAfter,
     periodType,
-    with: "durationMs,region",
-    size: 1000,
+    with: chartWith,
+    size: chartSize,
     refetchInterval: chartRefetchInterval,
   });
 
@@ -348,6 +387,11 @@ export function ResponseTimeChart({
           uid: r.uid,
           periodType: r.periodType,
           region: r.region,
+          durationMinMs: r.durationMinMs,
+          durationMaxMs: r.durationMaxMs,
+          durationAvgMs: r.durationAvgMs,
+          durationP95Ms: r.durationP95Ms,
+          totalChecks: r.totalChecks,
         };
       });
 
