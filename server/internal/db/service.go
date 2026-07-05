@@ -378,6 +378,10 @@ type Service interface {
 	ListChannelsByProperty(
 		ctx context.Context, connType, propertyName, propertyValue string,
 	) ([]*models.Integration, error)
+	// ListChannels lists connections matching filter. An empty
+	// filter.OrganizationUID lists across ALL organizations — every other
+	// field (Type, Enabled) still applies. Used with an empty org UID by
+	// CountInstalledTeams for its global distinct-team-id count.
 	ListChannels(
 		ctx context.Context, filter *models.ListIntegrationsFilter,
 	) ([]*models.Integration, error)

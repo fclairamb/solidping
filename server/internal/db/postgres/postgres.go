@@ -2998,7 +2998,10 @@ func (s *Service) ListChannelsByProperty(
 	return conns, nil
 }
 
-// ListChannels lists integration connections with optional filtering.
+// ListChannels lists integration connections with optional filtering. An
+// empty filter.OrganizationUID lists across ALL organizations — used by
+// CountInstalledTeams, which needs a global view of Slack connections.
+// Every other caller passes a real org UID, so this is a no-op for them.
 func (s *Service) ListChannels(
 	ctx context.Context, filter *models.ListIntegrationsFilter,
 ) ([]*models.Integration, error) {
@@ -3006,9 +3009,12 @@ func (s *Service) ListChannels(
 
 	query := s.db.NewSelect().
 		Model(&connections).
-		Where("organization_uid = ?", filter.OrganizationUID).
 		Where("deleted_at IS NULL").
 		Order("created_at DESC")
+
+	if filter.OrganizationUID != "" {
+		query = query.Where("organization_uid = ?", filter.OrganizationUID)
+	}
 
 	if filter.Type != nil {
 		query = query.Where("type = ?", *filter.Type)

@@ -740,12 +740,18 @@ func (s *Service) ensureOrganizationMembership(
 	return member, nil
 }
 
-// CountInstalledTeams returns the number of distinct organizations that
-// currently have a Slack integration connection. Used by the Socket Mode
-// supervisor's status snapshot. Best-effort: returns (0, err) on failure.
+// CountInstalledTeams returns the number of distinct Slack workspaces
+// (team_id) that currently have at least one integration connection —
+// NOT the number of connection rows, since one workspace can now have a
+// connection in several orgs (spec 2026-07-05-01). Used by the Socket Mode
+// supervisor's status snapshot. Best-effort: returns (0, err) on failure;
+// connections whose settings fail to parse are skipped rather than failing
+// the whole count.
 func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 	slackType := models.ConnectionTypeSlack
 
+	// Empty OrganizationUID lists across ALL orgs — this is a genuinely
+	// global count, not scoped to one org.
 	channels, err := s.db.ListChannels(ctx, &models.ListIntegrationsFilter{
 		Type: &slackType,
 	})
@@ -753,7 +759,27 @@ func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 		return 0, fmt.Errorf("list slack channels: %w", err)
 	}
 
-	return len(channels), nil
+	teamIDs := make(map[string]struct{}, len(channels))
+
+	for _, ch := range channels {
+		settings, parseErr := models.SlackSettingsFromJSONMap(ch.Settings)
+		if parseErr != nil {
+			slog.WarnContext(ctx, "Skipping Slack channel with unparseable settings in team count",
+				"connection_uid", ch.UID,
+				"error", parseErr,
+			)
+
+			continue
+		}
+
+		if settings.TeamID == "" {
+			continue
+		}
+
+		teamIDs[settings.TeamID] = struct{}{}
+	}
+
+	return len(teamIDs), nil
 }
 
 // HandleAppUninstalled handles the app_uninstalled event. Uninstalling the
