@@ -282,6 +282,10 @@
     "successfulChecks": "Successful checks",
     "availability": "Availability",
     "metrics": "Metrics",
+    "caller": "Caller",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "Source IP",
+    "callerHttpMethod": "Method",
     "output": "Output",
     "viewAll": "View all results for this check",
     "fallback": {

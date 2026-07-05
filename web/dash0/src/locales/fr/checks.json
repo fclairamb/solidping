@@ -282,6 +282,10 @@
     "successfulChecks": "Contrôles réussis",
     "availability": "Disponibilité",
     "metrics": "Métriques",
+    "caller": "Appelant",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "IP source",
+    "callerHttpMethod": "Méthode",
     "output": "Sortie",
     "viewAll": "Voir tous les résultats de ce contrôle",
     "fallback": {

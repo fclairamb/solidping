@@ -237,6 +237,10 @@
     "successfulChecks": "Comprobaciones correctas",
     "availability": "Disponibilidad",
     "metrics": "Métricas",
+    "caller": "Llamador",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "IP de origen",
+    "callerHttpMethod": "Método",
     "output": "Salida",
     "viewAll": "Ver todos los resultados de esta comprobación",
     "fallback": {
