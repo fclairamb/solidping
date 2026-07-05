@@ -210,7 +210,7 @@ function DependsOnRow({ org, checkUid, edge }: DependsOnRowProps) {
       <Link
         to="/orgs/$org/checks/$checkUid"
         params={{ org, checkUid: edge.parentCheck.uid }}
-        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
         className="font-medium hover:underline"
       >
         {edge.parentCheck.name || edge.parentCheck.slug}
@@ -412,7 +412,7 @@ function DependedOnBySection({
             <Link
               to="/orgs/$org/checks/$checkUid"
               params={{ org, checkUid: edge.childCheck.uid }}
-              search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+              search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
               className="font-medium hover:underline"
             >
               {edge.childCheck.name || edge.childCheck.slug}

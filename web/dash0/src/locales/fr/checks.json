@@ -363,7 +363,27 @@
     },
     "configuration": "Configuration",
     "configurationDescription": "Paramètres et options du contrôle",
-    "results": "Résultats",
+    "results": {
+      "time": "Heure",
+      "status": "Statut",
+      "duration": "Durée",
+      "region": "Région",
+      "filterAll": "Toutes",
+      "stats": {
+        "min": "Min",
+        "avg": "Moy",
+        "max": "Max",
+        "p95": "P95",
+        "samples": "Échantillons",
+        "window": "{{period}}",
+        "windowPeriod": {
+          "hour": "Dernière heure",
+          "day": "Dernier jour",
+          "week": "Dernière semaine",
+          "month": "Dernier mois"
+        }
+      }
+    },
     "period": "Période",
     "lastChecked": "Dernière vérification",
     "uptime": "Disponibilité",

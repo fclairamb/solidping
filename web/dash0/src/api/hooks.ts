@@ -135,6 +135,8 @@ export interface OrgResult {
   durationMs?: number;
   durationMinMs?: number;
   durationMaxMs?: number;
+  durationAvgMs?: number;
+  durationP95Ms?: number;
   availabilityPct?: number;
   totalChecks?: number;
   successfulChecks?: number;
@@ -651,6 +653,7 @@ export function useResults(
     periodType?: string;
     periodStartAfter?: string;
     periodEndBefore?: string;
+    region?: string;
     with?: string;
     cursor?: string;
     size?: number;
@@ -666,6 +669,7 @@ export function useResults(
       if (options?.periodType) params.set("periodType", options.periodType);
       if (options?.periodStartAfter) params.set("periodStartAfter", options.periodStartAfter);
       if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
+      if (options?.region) params.set("region", options.region);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
       if (options?.size) params.set("limit", options.size.toString());
