@@ -182,7 +182,7 @@ func Sign(secret []byte, incidentUID, recipientEmail string, exp time.Time) stri
 // well-formed, correctly-signed unsubscribe token — so the failure mode is
 // distinguishable from a corrupted token.
 func Verify(secret []byte, expectedIncidentUID, token string) (*AckTokenPayload, error) {
-	fields, err := verify(secret, token, PurposeAck, 4) //nolint:mnd // ack|incident|email|exp
+	fields, err := verify(secret, token, PurposeAck, 4) // ack|incident|email|exp
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +223,7 @@ func SignUnsubscribe(secret []byte, orgSlug, email, checkUID string, exp time.Ti
 // endpoint (spec acceptance criterion 5, the reverse direction of Verify's
 // guarantee above).
 func VerifyUnsubscribe(secret []byte, token string) (*UnsubscribeTokenPayload, error) {
-	fields, err := verify(secret, token, PurposeUnsubscribe, 5) //nolint:mnd // unsub|org|email|check|exp
+	fields, err := verify(secret, token, PurposeUnsubscribe, 5) // unsub|org|email|check|exp
 	if err != nil {
 		return nil, err
 	}

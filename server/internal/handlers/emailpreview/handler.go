@@ -7,7 +7,6 @@
 package emailpreview
 
 import (
-	"errors"
 	"net/http"
 
 	"github.com/uptrace/bunrouter"
@@ -16,10 +15,6 @@ import (
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
 )
-
-// ErrUnknownTemplate is returned when the {template} path param does not
-// match one of the fixture-data entries below.
-var ErrUnknownTemplate = errors.New("unknown template")
 
 // Handler serves GET /api/mgmt/email-preview/{template}.
 type Handler struct {
@@ -39,18 +34,18 @@ func NewHandler(formatter email.Formatter, cfg *config.Config) *Handler {
 
 // Preview renders a template with fixture data.
 // GET /api/mgmt/email-preview/{template}?format=html|text (default html).
-func (h *Handler) Preview(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Preview(writer http.ResponseWriter, req bunrouter.Request) error {
 	templateName := req.Param("template")
 
 	data, ok := fixtureFor(templateName)
 	if !ok {
-		return h.WriteError(w, http.StatusNotFound, base.ErrorCodeNotFound,
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeNotFound,
 			"Unknown template '"+templateName+"'. See emailpreview.fixtures for the supported list.")
 	}
 
 	subject, html, text, err := h.formatter.Format(templateName, data)
 	if err != nil {
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
 	format := req.URL.Query().Get("format")
@@ -60,27 +55,27 @@ func (h *Handler) Preview(w http.ResponseWriter, req bunrouter.Request) error {
 
 	switch format {
 	case "html":
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusOK)
-		_, writeErr := w.Write([]byte(html))
+		writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.WriteHeader(http.StatusOK)
+		_, writeErr := writer.Write([]byte(html))
 
 		return writeErr
 	case "text":
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Cache-Control", "no-store")
-		w.WriteHeader(http.StatusOK)
+		writer.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writer.Header().Set("Cache-Control", "no-store")
+		writer.WriteHeader(http.StatusOK)
 
 		body := text
 		if body == "" {
 			body = "(this template defines no {{define \"text\"}} block — subject would be: " + subject + ")"
 		}
 
-		_, writeErr := w.Write([]byte(body))
+		_, writeErr := writer.Write([]byte(body))
 
 		return writeErr
 	default:
-		return h.WriteError(w, http.StatusBadRequest, base.ErrorCodeValidationError,
+		return h.WriteError(writer, http.StatusBadRequest, base.ErrorCodeValidationError,
 			"format must be 'html' or 'text'")
 	}
 }

@@ -80,13 +80,13 @@ func NewService(dbService db.Service, secret []byte) *Service {
 // falls back to the token's own scope.
 func (s *Service) resolve(
 	ctx context.Context, token string, scope Scope,
-) (org *models.Organization, email, checkUID string, err error) {
+) (*models.Organization, string, string, error) {
 	payload, verr := incidentlinks.VerifyUnsubscribe(s.secret, token)
 	if verr != nil {
 		return nil, "", "", ErrTokenInvalid
 	}
 
-	org, err = s.dbService.GetOrganizationBySlug(ctx, payload.OrgSlug)
+	org, err := s.dbService.GetOrganizationBySlug(ctx, payload.OrgSlug)
 	if err != nil {
 		return nil, "", "", ErrOrgNotFound
 	}

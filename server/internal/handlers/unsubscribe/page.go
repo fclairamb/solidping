@@ -31,13 +31,13 @@ func renderPage(title, body string) string {
 // Errors writing to the client are ignored — the connection is likely
 // already gone in that case, and there's nothing useful to do beyond log
 // (mirrors handlers/incidents/ack_html.go's writeAckHTML).
-func writePage(w http.ResponseWriter, status int, title, body string) {
+func writePage(writer http.ResponseWriter, status int, title, body string) {
 	page := renderPage(title, body)
 
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.WriteHeader(status)
-	_, _ = w.Write([]byte(page))
+	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	writer.Header().Set("Cache-Control", "no-store")
+	writer.WriteHeader(status)
+	_, _ = writer.Write([]byte(page))
 }
 
 // choiceBody renders the pre-unsubscribe scope-choice page: two buttons,

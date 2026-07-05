@@ -38,10 +38,10 @@ func NewHandler(svc *Service, cfg *config.Config) *Handler {
 // without the recipient seeing any page, so the response body is minimal —
 // what matters is the status code and that repeated submissions are
 // harmless. No auth: the signed token IS the authentication.
-func (h *Handler) OneClickUnsubscribe(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) OneClickUnsubscribe(writer http.ResponseWriter, req bunrouter.Request) error {
 	token := req.URL.Query().Get("token")
 	if token == "" {
-		w.WriteHeader(http.StatusBadRequest)
+		writer.WriteHeader(http.StatusBadRequest)
 
 		return nil
 	}
@@ -53,15 +53,15 @@ func (h *Handler) OneClickUnsubscribe(w http.ResponseWriter, req bunrouter.Reque
 		// tampered/expired/replayed token gets the same flat rejection as
 		// any other invalid request. No suppression is created either way.
 		if errors.Is(err, ErrTokenInvalid) || errors.Is(err, ErrOrgNotFound) {
-			w.WriteHeader(http.StatusBadRequest)
+			writer.WriteHeader(http.StatusBadRequest)
 
 			return nil
 		}
 
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
-	w.WriteHeader(http.StatusOK)
+	writer.WriteHeader(http.StatusOK)
 
 	return nil
 }
@@ -74,10 +74,10 @@ func (h *Handler) OneClickUnsubscribe(w http.ResponseWriter, req bunrouter.Reque
 // below are plain <a> links with the scope baked into the href — no POST
 // needed from the browser since GET here has no side effect until a scope
 // is chosen, and choosing IS the confirmation).
-func (h *Handler) ConfirmationPage(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) ConfirmationPage(writer http.ResponseWriter, req bunrouter.Request) error {
 	token := req.URL.Query().Get("token")
 	if token == "" {
-		writePage(w, http.StatusBadRequest, "Missing token", missingTokenBody())
+		writePage(writer, http.StatusBadRequest, "Missing token", missingTokenBody())
 
 		return nil
 	}
@@ -85,15 +85,15 @@ func (h *Handler) ConfirmationPage(w http.ResponseWriter, req bunrouter.Request)
 	scope := Scope(req.URL.Query().Get("scope"))
 
 	if scope == ScopeFromToken {
-		return h.renderChoicePage(w, req, token)
+		return h.renderChoicePage(writer, req, token)
 	}
 
 	result, err := h.svc.Unsubscribe(req.Context(), token, scope, models.EmailSuppressionSourceLink)
 	if err != nil {
-		return h.renderErrorPage(w, err)
+		return h.renderErrorPage(writer, err)
 	}
 
-	writePage(w, http.StatusOK, "Unsubscribed", successBody(token, result))
+	writePage(writer, http.StatusOK, "Unsubscribed", successBody(token, result))
 
 	return nil
 }
@@ -101,10 +101,10 @@ func (h *Handler) ConfirmationPage(w http.ResponseWriter, req bunrouter.Request)
 // renderChoicePage shows the two scope buttons without unsubscribing yet.
 // It still needs to verify the token (to show the check name and reject a
 // bad token up front) but performs no write.
-func (h *Handler) renderChoicePage(w http.ResponseWriter, req bunrouter.Request, token string) error {
+func (h *Handler) renderChoicePage(writer http.ResponseWriter, req bunrouter.Request, token string) error {
 	org, email, checkUID, err := h.svc.resolve(req.Context(), token, ScopeFromToken)
 	if err != nil {
-		return h.renderErrorPage(w, err)
+		return h.renderErrorPage(writer, err)
 	}
 
 	checkName := ""
@@ -118,7 +118,7 @@ func (h *Handler) renderChoicePage(w http.ResponseWriter, req bunrouter.Request,
 		}
 	}
 
-	writePage(w, http.StatusOK, "Unsubscribe from SolidPing alerts", choiceBody(token, email, checkUID, checkName))
+	writePage(writer, http.StatusOK, "Unsubscribe from SolidPing alerts", choiceBody(token, email, checkUID, checkName))
 
 	return nil
 }
@@ -127,34 +127,34 @@ func (h *Handler) renderChoicePage(w http.ResponseWriter, req bunrouter.Request,
 // from the outcome page's undo link. Re-verifies the token server-side
 // (Service.ResubscribeByUID) rather than trusting the uid alone, so an
 // expired/forged undo link can't delete an arbitrary suppression row.
-func (h *Handler) Undo(w http.ResponseWriter, req bunrouter.Request) error {
+func (h *Handler) Undo(writer http.ResponseWriter, req bunrouter.Request) error {
 	token := req.URL.Query().Get("token")
 	uid := req.URL.Query().Get("uid")
 
 	if token == "" || uid == "" {
-		writePage(w, http.StatusBadRequest, "Missing parameters", missingTokenBody())
+		writePage(writer, http.StatusBadRequest, "Missing parameters", missingTokenBody())
 
 		return nil
 	}
 
 	if err := h.svc.ResubscribeByUID(req.Context(), token, uid); err != nil {
-		return h.renderErrorPage(w, err)
+		return h.renderErrorPage(writer, err)
 	}
 
-	writePage(w, http.StatusOK, "Re-subscribed", resubscribedBody())
+	writePage(writer, http.StatusOK, "Re-subscribed", resubscribedBody())
 
 	return nil
 }
 
 // renderErrorPage maps a Service error to the right status/page.
-func (h *Handler) renderErrorPage(w http.ResponseWriter, err error) error {
+func (h *Handler) renderErrorPage(writer http.ResponseWriter, err error) error {
 	switch {
 	case errors.Is(err, ErrTokenInvalid):
-		writePage(w, http.StatusBadRequest, "Invalid or expired link", invalidTokenBody())
+		writePage(writer, http.StatusBadRequest, "Invalid or expired link", invalidTokenBody())
 	case errors.Is(err, ErrOrgNotFound):
-		writePage(w, http.StatusNotFound, "Organization not found", orgNotFoundBody())
+		writePage(writer, http.StatusNotFound, "Organization not found", orgNotFoundBody())
 	default:
-		return h.WriteInternalError(w, err)
+		return h.WriteInternalError(writer, err)
 	}
 
 	return nil

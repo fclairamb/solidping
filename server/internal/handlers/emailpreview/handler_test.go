@@ -18,18 +18,20 @@ import (
 // discrepancy here — a template with no route coverage, or a route entry for
 // a deleted template — fails TestPreview_AllShippedTemplatesRender below,
 // which is the intended tripwire).
-var shippedTemplates = []string{
-	"incident-created.html",
-	"incident-resolved.html",
-	"incident-escalated.html",
-	"incident-reopened.html",
-	"registration.html",
-	"password-reset.html",
-	"invitation.html",
-	"welcome.html",
-	"password-changed.html",
-	"membership_request_new.html",
-	"membership_request_decision.html",
+func shippedTemplates() []string {
+	return []string{
+		"incident-created.html",
+		"incident-resolved.html",
+		"incident-escalated.html",
+		"incident-reopened.html",
+		"registration.html",
+		"password-reset.html",
+		"invitation.html",
+		"welcome.html",
+		"password-changed.html",
+		"membership_request_new.html",
+		"membership_request_decision.html",
+	}
 }
 
 func newTestRouter(t *testing.T) *bunrouter.Router {
@@ -49,7 +51,7 @@ func newTestRouter(t *testing.T) *bunrouter.Router {
 func doGet(t *testing.T, router *bunrouter.Router, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(http.MethodGet, path, nil)
+	req := httptest.NewRequestWithContext(t.Context(), http.MethodGet, path, nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
@@ -66,7 +68,7 @@ func TestPreview_AllShippedTemplatesRender(t *testing.T) {
 
 	router := newTestRouter(t)
 
-	for _, tmpl := range shippedTemplates {
+	for _, tmpl := range shippedTemplates() {
 		t.Run(tmpl, func(t *testing.T) {
 			t.Parallel()
 

@@ -1,13 +1,24 @@
 package emailpreview
 
+// Fixture constants shared across multiple templates below — pulled out
+// once a literal repeats within this file (goconst). keyOrgName/keyDashboardURL
+// are the map KEYS (not just the values), which repeat across several of the
+// view-models below since multiple templates share field names.
+const (
+	fixtureOrgName      = "Acme Corp"
+	fixtureDashboardURL = "https://solidping.example/dash0"
+	fixtureIncidentUID  = "8f14e45f-ceea-467e-adde-3f4edd1a5b22"
+
+	keyOrgName      = "OrgName"
+	keyDashboardURL = "DashboardURL"
+)
+
 // fixtureFor returns the preview fixture data for a shipped template, and
 // whether the name was recognized. Kept as one table so the supported list
 // is discoverable by reading the source rather than probing at runtime — and
 // so a template that ships without a fixture here is a build-time-obvious
-// omission (caught by TestAllShippedTemplatesHaveFixtures in the server
-// package, which enumerates the embedded templates/ directory).
-//
-//nolint:mnd // fixture data literals, not magic numbers
+// omission (caught by TestPreview_AllShippedTemplatesRender in this
+// package's handler_test.go, which enumerates the shipped template list).
 func fixtureFor(templateName string) (map[string]any, bool) {
 	switch templateName {
 	case "incident-created.html", "incident-escalated.html", "incident-reopened.html":
@@ -24,14 +35,14 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 		}, true
 	case "invitation.html":
 		return map[string]any{
-			"OrgName":     "Acme Corp",
+			keyOrgName:    fixtureOrgName,
 			"Role":        "admin",
 			"InviterName": "Alice Admin",
 			"InviteURL":   "https://solidping.example/dash0/invitations/preview-token",
 		}, true
 	case "welcome.html":
 		return map[string]any{
-			"DashboardURL": "https://solidping.example/dash0",
+			keyDashboardURL: fixtureDashboardURL,
 		}, true
 	case "password-changed.html":
 		return map[string]any{
@@ -39,7 +50,7 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 		}, true
 	case "membership_request_new.html":
 		return map[string]any{
-			"OrgName":        "Acme Corp",
+			keyOrgName:       fixtureOrgName,
 			"RequesterName":  "Bob Builder",
 			"RequesterEmail": "bob@example.com",
 			"Message":        "I'd like to help monitor our new services.",
@@ -47,10 +58,10 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 		}, true
 	case "membership_request_decision.html":
 		return map[string]any{
-			"OrgName":      "Acme Corp",
-			"Decision":     "approved",
-			"Role":         "viewer",
-			"DashboardURL": "https://solidping.example/dash0/orgs/acme",
+			keyOrgName:      fixtureOrgName,
+			"Decision":      "approved",
+			"Role":          "viewer",
+			keyDashboardURL: fixtureDashboardURL + "/orgs/acme",
 		}, true
 	default:
 		return nil, false
@@ -61,17 +72,21 @@ func fixtureFor(templateName string) (map[string]any, bool) {
 // same field set (ResolvedAt/Duration are simply ignored by templates that
 // don't reference them).
 func incidentFixture() map[string]any {
+	incidentURL := "https://solidping.example/dash0/orgs/acme/incidents/" + fixtureIncidentUID
+	ackURL := "https://solidping.example/api/v1/orgs/acme/incidents/" +
+		fixtureIncidentUID + "/ack?token=preview-token"
+
 	return map[string]any{
 		"CheckName":            "Production API",
 		"CheckType":            "http",
 		"CheckURL":             "https://solidping.example/dash0/orgs/acme/checks/prod-api",
 		"StartedAt":            "2026-07-05 10:00:00",
-		"IncidentUID":          "8f14e45f-ceea-467e-adde-3f4edd1a5b22",
-		"IncidentURL":          "https://solidping.example/dash0/orgs/acme/incidents/8f14e45f-ceea-467e-adde-3f4edd1a5b22",
-		"AckURL":               "https://solidping.example/api/v1/orgs/acme/incidents/8f14e45f-ceea-467e-adde-3f4edd1a5b22/ack?token=preview-token",
+		"IncidentUID":          fixtureIncidentUID,
+		"IncidentURL":          incidentURL,
+		"AckURL":               ackURL,
 		"FailureCount":         3,
 		"RelapseCount":         1,
-		"DashboardURL":         "https://solidping.example/dash0",
+		keyDashboardURL:        fixtureDashboardURL,
 		"DocsURL":              "https://solidping.example/docs",
 		"UnsubscribeURL":       "https://solidping.example/unsubscribe?token=preview-unsub-token",
 		"UnsubscribeCheckName": "Production API",

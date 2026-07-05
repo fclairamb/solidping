@@ -49,7 +49,7 @@ func dict(args ...any) (map[string]any, error) {
 		return nil, errOddDictArgs
 	}
 
-	m := make(map[string]any, len(args)/2) //nolint:mnd // half the arg count, not a magic number
+	result := make(map[string]any, len(args)/2) // half the arg count
 
 	for i := 0; i < len(args); i += 2 {
 		key, ok := args[i].(string)
@@ -57,10 +57,10 @@ func dict(args ...any) (map[string]any, error) {
 			return nil, fmt.Errorf("%w: got %T", errDictKeyNotString, args[i])
 		}
 
-		m[key] = args[i+1]
+		result[key] = args[i+1]
 	}
 
-	return m, nil
+	return result, nil
 }
 
 // parseTemplate parses a specific template with the base template.

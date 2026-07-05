@@ -371,7 +371,8 @@ func (s *EmailSender) isRecipientSuppressed(
 		return false, nil
 	}
 
-	suppressed, err := jctx.DBService.IsEmailSuppressed(ctx, payload.Integration.OrganizationUID, recipient, payload.Check.UID)
+	suppressed, err := jctx.DBService.IsEmailSuppressed(
+		ctx, payload.Integration.OrganizationUID, recipient, payload.Check.UID)
 	if err != nil {
 		return false, fmt.Errorf("is email suppressed: %w", err)
 	}
@@ -462,7 +463,7 @@ func (s *EmailSender) buildEmailContent(
 func (s *EmailSender) buildIncidentViewModel(
 	checkName string, payload *Payload, ackURL, unsubURL string,
 ) map[string]any {
-	vm := map[string]any{
+	viewModel := map[string]any{
 		"CheckName":    checkName,
 		"CheckType":    payload.Check.Type,
 		"CheckURL":     checkDashURL(payload.AppBaseURL, payload.OrgSlug, payload.Check),
@@ -477,16 +478,16 @@ func (s *EmailSender) buildIncidentViewModel(
 	}
 
 	if payload.Incident.ResolvedAt != nil {
-		vm["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
-		vm["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
+		viewModel["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
+		viewModel["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
 	}
 
 	if unsubURL != "" {
-		vm["UnsubscribeURL"] = unsubURL
-		vm["UnsubscribeCheckName"] = checkName
+		viewModel["UnsubscribeURL"] = unsubURL
+		viewModel["UnsubscribeCheckName"] = checkName
 	}
 
-	return vm
+	return viewModel
 }
 
 // dashboardRootURL returns the dash0 root URL for the email footer link.

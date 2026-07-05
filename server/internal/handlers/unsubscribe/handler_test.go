@@ -31,7 +31,7 @@ func newTestRouter(t *testing.T, f *testFixture) *bunrouter.Router {
 func doRequest(t *testing.T, router *bunrouter.Router, method, path string) *httptest.ResponseRecorder {
 	t.Helper()
 
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequestWithContext(t.Context(), method, path, nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 

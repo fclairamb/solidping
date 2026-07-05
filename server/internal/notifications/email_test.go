@@ -350,10 +350,10 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 		wantSubjectIn string
 		wantAckButton bool
 	}{
-		{"created", eventTypeIncidentCreated, "[DOWN]", true},
-		{"resolved", eventTypeIncidentResolved, "[RECOVERED]", false},
-		{"escalated", eventTypeIncidentEscalated, "[ESCALATED]", true},
-		{"reopened", eventTypeIncidentReopened, "[REOPENED]", true},
+		{"created event", eventTypeIncidentCreated, "[DOWN]", true},
+		{"resolved event", eventTypeIncidentResolved, "[RECOVERED]", false},
+		{"escalated event", eventTypeIncidentEscalated, "[ESCALATED]", true},
+		{"reopened event", eventTypeIncidentReopened, "[REOPENED]", true},
 	}
 
 	for _, tc := range cases {
