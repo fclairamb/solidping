@@ -318,7 +318,27 @@
     },
     "configuration": "Konfiguration",
     "configurationDescription": "Einstellungen und Parameter der Prüfung",
-    "results": "Ergebnisse",
+    "results": {
+      "time": "Zeit",
+      "status": "Status",
+      "duration": "Dauer",
+      "region": "Region",
+      "filterAll": "Alle",
+      "stats": {
+        "min": "Min",
+        "avg": "Durchschn.",
+        "max": "Max",
+        "p95": "P95",
+        "samples": "Stichproben",
+        "window": "{{period}}",
+        "windowPeriod": {
+          "hour": "Letzte Stunde",
+          "day": "Letzter Tag",
+          "week": "Letzte Woche",
+          "month": "Letzter Monat"
+        }
+      }
+    },
     "period": "Zeitraum",
     "lastChecked": "Zuletzt geprüft",
     "uptime": "Verfügbarkeit",

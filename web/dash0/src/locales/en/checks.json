@@ -363,7 +363,27 @@
     },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
-    "results": "Results",
+    "results": {
+      "time": "Time",
+      "status": "Status",
+      "duration": "Duration",
+      "region": "Region",
+      "filterAll": "All",
+      "stats": {
+        "min": "Min",
+        "avg": "Avg",
+        "max": "Max",
+        "p95": "P95",
+        "samples": "Samples",
+        "window": "{{period}}",
+        "windowPeriod": {
+          "hour": "Last hour",
+          "day": "Last day",
+          "week": "Last week",
+          "month": "Last month"
+        }
+      }
+    },
     "period": "Period",
     "lastChecked": "Last Checked",
     "uptime": "Uptime",
