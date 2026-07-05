@@ -169,6 +169,19 @@ interface ScopeEntry {
 }
 
 /**
+ * Connection status for the sidebar indicator dot (see
+ * live-status-dot.tsx). Distinct from the per-scope `live` flag:
+ * - "connecting" — initial state, or between (re)connect attempts; not an
+ *   error (e.g. the API-quiet delay before the first connect).
+ * - "live" — `hello` acked, hints streaming.
+ * - "reconnecting" — the socket dropped or an attempt failed; retrying with
+ *   backoff.
+ * - "disabled" — terminal: the socket loop exited (feature off, close 4404,
+ *   or access denied, close 4403). Never reported as an error.
+ */
+export type LiveConnectionStatus = "connecting" | "live" | "reconnecting" | "disabled";
+
+/**
  * LiveRegistry is the external store backing the provider: it owns the
  * socket connection, the refcounted scope map, and per-scope + global live
  * flags. A single instance is created per LiveEventsProvider mount (one per
@@ -180,7 +193,7 @@ export class LiveRegistry {
   private scopes = new Map<string, ScopeEntry>();
   private globalListeners = new Set<() => void>();
   private socketHandle: ReturnType<typeof connectLiveSocket> | null = null;
-  private globalLive = false;
+  private status: LiveConnectionStatus = "connecting";
 
   readonly org: string;
 
@@ -195,7 +208,7 @@ export class LiveRegistry {
   start(): void {
     this.socketHandle = this.connect(this.org, {
       onOpen: () => {
-        this.setGlobalLive(true);
+        this.setStatus("live");
         // Replay every active scope after a (re)connect — the previous
         // socket's subscriptions are gone server-side, and this also covers
         // first connect. Scope-accurate: no more whole-org invalidation.
@@ -223,11 +236,11 @@ export class LiveRegistry {
         }
       },
       onDisconnected: () => {
-        this.setGlobalLive(false);
+        this.setStatus("reconnecting");
         this.markAllScopesNotLive();
       },
       onDisabled: () => {
-        this.setGlobalLive(false);
+        this.setStatus("disabled");
         this.markAllScopesNotLive();
       },
     });
@@ -289,15 +302,26 @@ export class LiveRegistry {
     };
   }
 
-  getGlobalLive = (): boolean => this.globalLive;
+  /** Derived from status: true only while `"live"`. Keeps
+   * useLiveStatus/useScopeLive and poll stretching semantics unchanged. */
+  getGlobalLive = (): boolean => this.status === "live";
+
+  getStatus = (): LiveConnectionStatus => this.status;
 
   getScopeLiveSnapshot(scope: LiveScope): () => boolean {
     return () => this.isScopeLive(scope);
   }
 
-  private setGlobalLive(value: boolean): void {
-    if (this.globalLive === value) return;
-    this.globalLive = value;
+  private setStatus(value: LiveConnectionStatus): void {
+    // "disabled" is terminal (the socket loop has exited) — never let a
+    // stray/late notification bounce it back to reconnecting or live. In
+    // practice connectLiveSocket's run() loop already guarantees this (it
+    // returns immediately after onDisabled), but pinning it here too means
+    // the state machine's own "terminal" contract can't be violated by a
+    // future caller.
+    if (this.status === "disabled") return;
+    if (this.status === value) return;
+    this.status = value;
     for (const listener of this.globalListeners) listener();
   }
 
@@ -361,6 +385,20 @@ export function useLiveStatus(): { isLive: boolean } {
     () => false,
   );
   return { isLive };
+}
+
+/**
+ * The four-state connection status for the sidebar indicator dot (see
+ * live-status-dot.tsx). Outside the provider, always reports "connecting"
+ * — the dot simply isn't rendered there (login/register have no sidebar).
+ */
+export function useLiveConnectionStatus(): LiveConnectionStatus {
+  const registry = useRegistry();
+  return useSyncExternalStore(
+    (listener) => registry?.subscribeGlobal(listener) ?? (() => {}),
+    () => registry?.getStatus() ?? "connecting",
+    () => "connecting",
+  );
 }
 
 /**
