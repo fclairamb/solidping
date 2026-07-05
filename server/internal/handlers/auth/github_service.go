@@ -65,6 +65,7 @@ type GitHubTokenResponse struct {
 type GitHubOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -204,6 +205,7 @@ func (s *GitHubOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	return &GitHubOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil

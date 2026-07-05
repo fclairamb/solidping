@@ -59,6 +59,7 @@ type GoogleTokenResponse struct {
 type GoogleOAuthResult struct {
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -188,6 +189,7 @@ func (s *GoogleOAuthService) HandleCallback(ctx context.Context, code, orgSlug s
 	return &GoogleOAuthResult{
 		AccessToken:  tokens.AccessToken,
 		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
 		OrgSlug:      org.Slug,
 		UserUID:      user.UID,
 	}, nil

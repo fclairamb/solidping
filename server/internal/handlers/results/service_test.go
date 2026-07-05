@@ -269,6 +269,138 @@ func intPtr(i int) *int {
 	return &i
 }
 
+// float32Ptr is a helper to create float32 pointers for testing.
+func float32Ptr(f float32) *float32 {
+	return &f
+}
+
+func TestApplyDurationFields(t *testing.T) {
+	t.Parallel()
+
+	s := &Service{}
+
+	tests := []struct {
+		name           string
+		result         *models.Result
+		with           []string
+		wantDurationMs *float32
+		wantMinMs      *float32
+		wantMaxMs      *float32
+		wantAvgMs      *float32
+		wantP95Ms      *float32
+	}{
+		{
+			name: "aggregated row requesting avg and p95 returns both",
+			result: &models.Result{
+				DurationAvg: float32Ptr(123.4),
+				DurationP95: float32Ptr(456.7),
+			},
+			with:      []string{"durationAvgMs", "durationP95Ms"},
+			wantAvgMs: float32Ptr(123.4),
+			wantP95Ms: float32Ptr(456.7),
+		},
+		{
+			name: "raw row has nil DurationAvg/DurationP95 so fields stay absent even when requested",
+			result: &models.Result{
+				Duration:    float32Ptr(50),
+				DurationAvg: nil,
+				DurationP95: nil,
+			},
+			with:           []string{"durationMs", "durationAvgMs", "durationP95Ms"},
+			wantDurationMs: float32Ptr(50),
+			wantAvgMs:      nil,
+			wantP95Ms:      nil,
+		},
+		{
+			name: "aggregated row not requesting avg/p95 leaves them absent",
+			result: &models.Result{
+				DurationAvg: float32Ptr(123.4),
+				DurationP95: float32Ptr(456.7),
+			},
+			with:      []string{},
+			wantAvgMs: nil,
+			wantP95Ms: nil,
+		},
+		{
+			name: "existing durationMinMs/durationMaxMs tokens still work alongside new fields",
+			result: &models.Result{
+				DurationMin: float32Ptr(10),
+				DurationMax: float32Ptr(999),
+				DurationAvg: float32Ptr(200),
+				DurationP95: float32Ptr(800),
+			},
+			with:      []string{"durationMinMs", "durationMaxMs", "durationAvgMs", "durationP95Ms"},
+			wantMinMs: float32Ptr(10),
+			wantMaxMs: float32Ptr(999),
+			wantAvgMs: float32Ptr(200),
+			wantP95Ms: float32Ptr(800),
+		},
+		{
+			name: "case-insensitive with tokens",
+			result: &models.Result{
+				DurationAvg: float32Ptr(1),
+				DurationP95: float32Ptr(2),
+			},
+			with:      []string{"DURATIONAVGMS", "DurationP95Ms"},
+			wantAvgMs: float32Ptr(1),
+			wantP95Ms: float32Ptr(2),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			resp := &ResultResponse{}
+			withSet := buildWithSet(tc.with)
+			s.applyDurationFields(resp, tc.result, withSet)
+
+			r.Equal(tc.wantDurationMs, resp.DurationMs)
+			r.Equal(tc.wantMinMs, resp.DurationMinMs)
+			r.Equal(tc.wantMaxMs, resp.DurationMaxMs)
+			r.Equal(tc.wantAvgMs, resp.DurationAvgMs)
+			r.Equal(tc.wantP95Ms, resp.DurationP95Ms)
+		})
+	}
+}
+
+func TestConvertResultToResponse_DurationAvgP95(t *testing.T) {
+	t.Parallel()
+
+	s := &Service{}
+	r := require.New(t)
+
+	aggregated := &models.Result{
+		UID:         "agg-1",
+		CheckUID:    "check-1",
+		PeriodType:  "hour",
+		PeriodStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		DurationAvg: float32Ptr(111),
+		DurationP95: float32Ptr(222),
+	}
+	respAgg := s.convertResultToResponse(aggregated, []string{"durationAvgMs", "durationP95Ms"})
+	r.Equal(float32Ptr(111), respAgg.DurationAvgMs)
+	r.Equal(float32Ptr(222), respAgg.DurationP95Ms)
+
+	raw := &models.Result{
+		UID:         "raw-1",
+		CheckUID:    "check-1",
+		PeriodType:  "raw",
+		PeriodStart: time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+		Duration:    float32Ptr(42),
+		DurationAvg: nil,
+		DurationP95: nil,
+	}
+	respRaw := s.convertResultToResponse(raw, []string{"durationAvgMs", "durationP95Ms"})
+	r.Nil(respRaw.DurationAvgMs)
+	r.Nil(respRaw.DurationP95Ms)
+
+	respNotRequested := s.convertResultToResponse(aggregated, []string{})
+	r.Nil(respNotRequested.DurationAvgMs)
+	r.Nil(respNotRequested.DurationP95Ms)
+}
+
 func TestNeedsCheckInfo(t *testing.T) {
 	t.Parallel()
 

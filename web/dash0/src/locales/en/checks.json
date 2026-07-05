@@ -271,6 +271,8 @@
   "resultDetail": {
     "title": "Result",
     "back": "Back to check",
+    "previousResult": "Previous result",
+    "nextResult": "Next result",
     "period": "Period",
     "region": "Region",
     "worker": "Worker",
@@ -282,6 +284,10 @@
     "successfulChecks": "Successful checks",
     "availability": "Availability",
     "metrics": "Metrics",
+    "caller": "Caller",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "Source IP",
+    "callerHttpMethod": "Method",
     "output": "Output",
     "viewAll": "View all results for this check",
     "fallback": {
@@ -359,7 +365,27 @@
     },
     "configuration": "Configuration",
     "configurationDescription": "Check settings and parameters",
-    "results": "Results",
+    "results": {
+      "time": "Time",
+      "status": "Status",
+      "duration": "Duration",
+      "region": "Region",
+      "filterAll": "All",
+      "stats": {
+        "min": "Min",
+        "avg": "Avg",
+        "max": "Max",
+        "p95": "P95",
+        "samples": "Samples",
+        "window": "{{period}}",
+        "windowPeriod": {
+          "hour": "Last hour",
+          "day": "Last day",
+          "week": "Last week",
+          "month": "Last month"
+        }
+      }
+    },
     "period": "Period",
     "lastChecked": "Last Checked",
     "uptime": "Uptime",
@@ -417,7 +443,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Heartbeat Endpoint",
-      "curl": "Sample curl command:"
+      "curl": "Sample curl command:",
+      "callerNote": "Each ping's User-Agent, source IP, and HTTP method are recorded and shown on that ping's result detail page."
     },
     "email": {
       "title": "Email Endpoint",

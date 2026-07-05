@@ -337,7 +337,7 @@ function Breadcrumbs({ org }: { org: string }) {
           <>
             <BreadcrumbSeparator />
             {isCheckEdit || isCheckResult ? (
-              <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }} className={linkClass}>
+              <Link to="/orgs/$org/checks/$checkUid" params={{ org, checkUid }} search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }} className={linkClass}>
                 {checkName}
               </Link>
             ) : (
@@ -391,14 +391,17 @@ function Breadcrumbs({ org }: { org: string }) {
   if (isAccount) {
     const isProfile = routeIds.has("/orgs/$org/account/profile");
     const isTokens = routeIds.has("/orgs/$org/account/tokens");
+    const isSessions = routeIds.has("/orgs/$org/account/sessions");
     const isSecurity = routeIds.has("/orgs/$org/account/security");
     const subLabel = isProfile
       ? t("profile")
       : isTokens
         ? t("tokens")
-        : isSecurity
-          ? t("security")
-          : null;
+        : isSessions
+          ? t("sessions")
+          : isSecurity
+            ? t("security")
+            : null;
     return (
       <>
         {subLabel ? (
@@ -810,12 +813,15 @@ function OrgLayout() {
     const params = new URLSearchParams(window.location.search);
     const accessToken = params.get("access_token");
     const oauthOrg = params.get("org") || org;
+    const refreshToken = params.get("refresh_token") || undefined;
+    const expiresInParam = params.get("expires_in");
+    const expiresIn = expiresInParam ? parseInt(expiresInParam, 10) : undefined;
 
     if (!accessToken) return;
 
     setOauthProcessing(true);
     auth
-      .loginWithOAuth(accessToken, oauthOrg)
+      .loginWithOAuth(accessToken, oauthOrg, refreshToken, expiresIn)
       .then(() => {
         // Hard navigation: forces a clean reload so URL/org context is in sync
         // before any child routes fire org-scoped API calls.

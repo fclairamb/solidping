@@ -16,7 +16,9 @@ import {
   Eye,
   Info,
   KeyRound,
+  LogOut,
   Moon,
+  Monitor,
   Globe,
   MoreVertical,
   Palette,
@@ -136,6 +138,8 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "uptime-strip", label: "Uptime strip" },
   { id: "jobs-primitives", label: "Jobs primitives" },
   { id: "maintenance-schedule", label: "Maintenance schedule" },
+  { id: "stats-strip", label: "Stats strip" },
+  { id: "swatch-legend-chips", label: "Swatch-legend chips" },
 ];
 
 function DesignReferencePage() {
@@ -165,6 +169,8 @@ function DesignReferencePage() {
       <UptimeStripSection />
       <JobsPrimitivesSection />
       <MaintenanceScheduleSection />
+      <StatsStripSection />
+      <SwatchLegendChipsSection />
     </div>
   );
 }
@@ -989,6 +995,56 @@ function ButtonsBadgesSection() {
             </span>
           }
           importLine={`import { LiveStatusDot } from "@/components/layout/live-status-dot";\n\n<LiveStatusDot />`}
+        />
+
+        <h3 className="text-sm font-medium">Session card</h3>
+        <p className="text-sm text-muted-foreground">
+          The account Sessions page (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">/orgs/$org/account/sessions</code>) lists
+          login/refresh-token sessions distinctly from API tokens. Each row: a device
+          icon from <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">parseUserAgent().device</code>{" "}
+          (<code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Smartphone</code> /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Tablet</code> /{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">Monitor</code>), a{" "}
+          <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">border-primary</code> accent
+          + &quot;Current session&quot; badge on the caller&apos;s own row, a login-method badge, the
+          raw user agent as muted mono text, and a destructive ghost icon revoke button. Static mock
+          below — the real page is data-driven via <code className="mx-1 rounded bg-muted px-1 py-0.5 text-xs">useSessions(org)</code>.
+        </p>
+        <ExampleRow
+          preview={
+            <div className="w-full space-y-2">
+              <Card className="border-primary">
+                <CardContent className="flex items-start justify-between gap-3 p-4">
+                  <div className="flex gap-3">
+                    <Monitor className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
+                    <div className="space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium">Chrome 128 on macOS</span>
+                        <Badge className="border-primary">Current session</Badge>
+                        <Badge variant="secondary">password</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground font-mono">
+                        Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)...
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Connected 3d ago · Last active just now · IP 203.0.113.5
+                      </div>
+                    </div>
+                  </div>
+                  <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 text-destructive hover:text-destructive" aria-label="Revoke">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </CardContent>
+              </Card>
+              <div className="flex justify-end">
+                <Button variant="destructive" size="sm">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  Sign out other sessions
+                </Button>
+              </div>
+            </div>
+          }
+          importLine={`import { Card, CardContent } from "@/components/ui/card";\nimport { Badge } from "@/components/ui/badge";\nimport { parseUserAgent } from "@/lib/user-agent";\n\n<Card className={session.isCurrent ? "border-primary" : undefined}>\n  <CardContent className="flex items-start justify-between gap-3 p-4">\n    {/* device icon + browser/OS + badges + revoke button */}\n  </CardContent>\n</Card>`}
         />
       </div>
     </Section>
@@ -2092,6 +2148,128 @@ function MaintenanceScheduleSection() {
         </p>
         <MaintenanceScheduleSummary window={sampleWindow} />
       </div>
+    </Section>
+  );
+}
+
+function StatsStripSection() {
+  const snippet = `// Compact wrapping row of labeled min/avg/max/p95(+count) numbers, scoped
+// to a selected facet (e.g. one region) over the page's current time window.
+// Renders ONLY when a specific facet is selected — never for an "All" state,
+// since a combined-facet number is usually meaningless. Values combined
+// client-side from an already-fetched dataset (no dedicated stats endpoint)
+// get a "~" prefix on any estimated (non-exact) figure — e.g. when the
+// window mixes raw rows with aggregated rollups, avg/p95 become weighted
+// combinations rather than exact values; min/max stay exact either way.
+<div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+  <span className="text-xs text-muted-foreground">Last week</span>
+  <span><span className="text-muted-foreground">Min: </span><span className="font-medium">42ms</span></span>
+  <span><span className="text-muted-foreground">Avg: </span><span className="font-medium">~108ms</span></span>
+  <span><span className="text-muted-foreground">Max: </span><span className="font-medium">891ms</span></span>
+  <span><span className="text-muted-foreground">P95: </span><span className="font-medium">~340ms</span></span>
+  <span><span className="text-muted-foreground">Samples: </span><span className="font-medium">1,204</span></span>
+</div>`;
+  return (
+    <Section
+      id="stats-strip"
+      title="Stats strip"
+      description="A compact, mobile-friendly summary row for min/avg/max/p95(+count)-style numbers scoped to one selected facet — used by the check-detail Recent Results card once a region is selected. Only render it for a specific selection, never for an unfiltered/'All' state. Prefix any client-combined (non-exact) figure with a plain '~' so it reads as an estimate, not a precise measurement."
+    >
+      <ExampleRow
+        preview={
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm">
+            <span className="text-xs text-muted-foreground">Last week</span>
+            <span>
+              <span className="text-muted-foreground">Min: </span>
+              <span className="font-medium">42ms</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">Avg: </span>
+              <span className="font-medium">~108ms</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">Max: </span>
+              <span className="font-medium">891ms</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">P95: </span>
+              <span className="font-medium">~340ms</span>
+            </span>
+            <span>
+              <span className="text-muted-foreground">Samples: </span>
+              <span className="font-medium">1,204</span>
+            </span>
+          </div>
+        }
+        importLine={snippet}
+      />
+      <p className="text-xs text-muted-foreground">
+        Resize your viewport — the row wraps to multiple lines rather than
+        overflowing or shrinking its text.
+      </p>
+    </Section>
+  );
+}
+
+function SwatchLegendChipsSection() {
+  const regions = [
+    { slug: "eu-west", label: "🇪🇺 EU West", color: "var(--chart-1)" },
+    { slug: "us-east", label: "🇺🇸 US East", color: "var(--chart-2)" },
+    { slug: "ap-south", label: "🇸🇬 AP South", color: "var(--chart-3)" },
+  ];
+  const [selected, setSelected] = useState<string | null>(null);
+  const snippet = `// Segmented Button filter chips that double as a multi-series chart legend:
+// each chip gets a small leading color swatch matching its line's stroke
+// color. The "All" chip (no single facet selected) gets NO swatch — it
+// doesn't correspond to any one line. Only add swatches when there truly
+// are multiple simultaneously-rendered series to key against; a single
+// selected facet (or a single-series chart) goes back to plain chips.
+<Button variant={selected === null ? "default" : "outline"} size="sm" onClick={() => setSelected(null)}>
+  All regions
+</Button>
+{regions.map((r) => (
+  <Button key={r.slug} variant={selected === r.slug ? "default" : "outline"} size="sm" className="gap-1.5" onClick={() => setSelected(r.slug)}>
+    <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm" style={{ backgroundColor: r.color }} aria-hidden="true" />
+    {r.label}
+  </Button>
+))}`;
+  return (
+    <Section
+      id="swatch-legend-chips"
+      title="Swatch-legend chips"
+      description="Region/facet filter chips (the segmented-Button pattern) that double as a legend when a chart renders more than one simultaneous colored series — each chip gains a small leading color swatch matching that series' stroke color. Used by the check-detail response-time chart's multi-region 'All regions' view. The 'All' chip itself never gets a swatch (it isn't one line); selecting a single facet goes back to plain chips with no swatch, since there's only one line left to describe."
+    >
+      <ExampleRow
+        preview={
+          <div className="flex flex-wrap items-center gap-1" role="group">
+            <Button
+              variant={selected === null ? "default" : "outline"}
+              size="sm"
+              className="px-2 text-xs"
+              onClick={() => setSelected(null)}
+            >
+              All regions
+            </Button>
+            {regions.map((r) => (
+              <Button
+                key={r.slug}
+                variant={selected === r.slug ? "default" : "outline"}
+                size="sm"
+                className="gap-1.5 px-2 text-xs"
+                onClick={() => setSelected(r.slug)}
+              >
+                <span
+                  className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                  style={{ backgroundColor: r.color }}
+                  aria-hidden="true"
+                />
+                {r.label}
+              </Button>
+            ))}
+          </div>
+        }
+        importLine={snippet}
+      />
     </Section>
   );
 }

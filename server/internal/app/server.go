@@ -52,6 +52,8 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/checktypes"
 	"github.com/fclairamb/solidping/server/internal/handlers/discovery"
 	"github.com/fclairamb/solidping/server/internal/handlers/emailcheck"
+	"github.com/fclairamb/solidping/server/internal/handlers/emailpreview"
+	"github.com/fclairamb/solidping/server/internal/handlers/emailsuppressions"
 	"github.com/fclairamb/solidping/server/internal/handlers/entitlements"
 	"github.com/fclairamb/solidping/server/internal/handlers/escalationpolicies"
 	"github.com/fclairamb/solidping/server/internal/handlers/events"
@@ -79,6 +81,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/handlers/statusupdates"
 	"github.com/fclairamb/solidping/server/internal/handlers/system"
 	"github.com/fclairamb/solidping/server/internal/handlers/testapi"
+	"github.com/fclairamb/solidping/server/internal/handlers/unsubscribe"
 	"github.com/fclairamb/solidping/server/internal/handlers/usernotifications"
 	webpushhandler "github.com/fclairamb/solidping/server/internal/handlers/webpush"
 	"github.com/fclairamb/solidping/server/internal/handlers/workers"
@@ -185,6 +188,7 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 			MaxOpenConns:    cfg.Database.MaxOpenConns,
 			MaxIdleConns:    cfg.Database.MaxIdleConns,
 			ConnMaxLifetime: cfg.Database.ConnMaxLifetime,
+			ConnMaxIdleTime: cfg.Database.ConnMaxIdleTime,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create PostgreSQL service: %w", err)
@@ -756,6 +760,18 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Returns text/html so it renders in a browser opened from a mail client.
 	api.GET("/orgs/:org/incidents/:uid/ack", incidentsHandler.AcknowledgeIncidentByLink)
 
+	// Per-recipient email unsubscribe (spec 2026-07-05-10, D4) — public,
+	// top-level routes (not under /api/v1: these are browser pages and a
+	// mail-client-submitted one-click POST, not JSON API calls). The signed
+	// unsubscribe token authenticates; org is embedded in the token, not the
+	// URL path, since a recipient's unsubscribe link has no other org
+	// context to carry it in.
+	unsubscribeService := unsubscribe.NewService(s.dbService, []byte(s.config.Auth.JWTSecret))
+	unsubscribeHandler := unsubscribe.NewHandler(unsubscribeService, s.config)
+	mainGroup.POST("/unsubscribe", unsubscribeHandler.OneClickUnsubscribe)
+	mainGroup.GET("/unsubscribe", unsubscribeHandler.ConfirmationPage)
+	mainGroup.GET("/unsubscribe/undo", unsubscribeHandler.Undo)
+
 	// Incident notifications read API (authentication required)
 	incidentNotifService := incidentnotifications.NewService(s.dbService)
 	incidentNotifHandler := incidentnotifications.NewHandler(incidentNotifService, s.config)
@@ -976,6 +992,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 	// Requires a `granted` integration — see Service.ListFreeboxLanHosts.
 	orgFreebox.GET("/:uid/lan-hosts", integrationsHandler.LanHostsHandler)
 
+	// Email unsubscribe list (spec 2026-07-05-10, D4). Read+delete only —
+	// creation is always recipient-initiated via the public
+	// handlers/unsubscribe surface, never through this authenticated API.
+	emailSuppressionsService := emailsuppressions.NewService(s.dbService)
+	emailSuppressionsHandler := emailsuppressions.NewHandler(emailSuppressionsService, s.config)
+	orgEmailSuppressions := api.NewGroup("/orgs/:org/email-suppressions").Use(authMiddleware.RequireAuth)
+	orgEmailSuppressions.GET("", emailSuppressionsHandler.ListSuppressions)
+	orgEmailSuppressions.DELETE("/:uid", emailSuppressionsHandler.DeleteSuppression)
+
 	// Status updates routes (authentication required)
 	statusUpdatesService := statusupdates.NewService(s.dbService)
 	// Fan published status updates out to confirmed status-page subscribers by
@@ -1138,6 +1163,14 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		api.DELETE("/test/checks/bulk", testHandler.BulkDeleteChecks)
 		api.POST("/test/generate-data", testHandler.GenerateData)
 		api.DELETE("/test/checks/all", testHandler.DeleteAllChecks)
+
+		// Email design preview (spec D5): renders any shipped template with
+		// fixture data through the real formatter, so the design can be
+		// iterated on in a browser without round-tripping through SMTP.
+		// Not compiled out — just 404s outside test mode, like the routes
+		// above.
+		emailPreviewHandler := emailpreview.NewHandler(s.services.EmailFormatter, s.config)
+		mgmt.GET("/email-preview/:template", emailPreviewHandler.Preview)
 	}
 
 	// OpenAPI schema + interactive (Swagger) explorer. The explorer moved from

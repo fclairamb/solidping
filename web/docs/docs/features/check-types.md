@@ -675,6 +675,10 @@ Passive monitoring that expects incoming pings at regular intervals. Instead of 
 - Batch process health checks
 - IoT device connectivity
 
+Each ping's caller metadata (User-Agent header, source IP, and HTTP method)
+is recorded and shown on that ping's result detail page — useful for
+confirming which script or host is actually pinging the check.
+
 ### JavaScript
 
 Custom monitoring scripts with arbitrary logic. Write JavaScript code that runs on each check cycle.

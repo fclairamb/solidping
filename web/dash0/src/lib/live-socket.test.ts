@@ -10,6 +10,15 @@ vi.mock("@/api/client", () => ({
   msSinceLastApiActivity: () => Number.MAX_SAFE_INTEGER,
 }));
 
+// token-refresh.ts is mocked separately (not through @/api/client) so most
+// tests here don't need to care about refresh-token plumbing at all; the
+// dedicated "4401" describe block below overrides this mock to assert the
+// refresh call actually happens before reconnecting.
+const refreshAccessTokenMock = vi.fn<() => Promise<string | null>>(() => Promise.resolve(null));
+vi.mock("@/lib/token-refresh", () => ({
+  refreshAccessToken: () => refreshAccessTokenMock(),
+}));
+
 import {
   backoffDelay,
   connectLiveSocket,
@@ -85,6 +94,8 @@ describe("connectLiveSocket", () => {
 
   beforeEach(() => {
     currentToken = "test-token";
+    refreshAccessTokenMock.mockClear();
+    refreshAccessTokenMock.mockResolvedValue(null);
     vi.useFakeTimers();
   });
 
@@ -273,6 +284,38 @@ describe("connectLiveSocket", () => {
     sockets[0].serverClose(4401, "token expired");
     expect(onDisconnected).toHaveBeenCalledTimes(1);
 
+    await vi.advanceTimersByTimeAsync(35_000);
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+  });
+
+  it("asks the single-flight helper to refresh before reconnecting on a 4401 close", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+    let resolveRefresh: (token: string | null) => void = () => {};
+    refreshAccessTokenMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveRefresh = resolve;
+      })
+    );
+
+    connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    sockets[0].serverClose(4401, "token expired");
+    expect(refreshAccessTokenMock).toHaveBeenCalledTimes(1);
+
+    // The reconnect loop must wait for the refresh to settle before it opens
+    // a second socket — otherwise the second attempt races the refresh and
+    // can carry the same dead token.
+    await Promise.resolve();
+    expect(sockets).toHaveLength(1);
+
+    resolveRefresh("fresh-token");
     await vi.advanceTimersByTimeAsync(35_000);
     await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
   });

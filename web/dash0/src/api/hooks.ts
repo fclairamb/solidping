@@ -135,6 +135,8 @@ export interface OrgResult {
   durationMs?: number;
   durationMinMs?: number;
   durationMaxMs?: number;
+  durationAvgMs?: number;
+  durationP95Ms?: number;
   availabilityPct?: number;
   totalChecks?: number;
   successfulChecks?: number;
@@ -154,6 +156,10 @@ export interface ResultFallbackInfo {
 
 export interface OrgResultDetail extends OrgResult {
   fallback?: ResultFallbackInfo;
+  /** Next-older result in the same check + periodType series; absent at the oldest boundary. */
+  previousUid?: string;
+  /** Next-newer result in the same series; absent at the newest boundary. */
+  nextUid?: string;
 }
 
 export interface IncidentDetail {
@@ -651,6 +657,7 @@ export function useResults(
     periodType?: string;
     periodStartAfter?: string;
     periodEndBefore?: string;
+    region?: string;
     with?: string;
     cursor?: string;
     size?: number;
@@ -666,6 +673,7 @@ export function useResults(
       if (options?.periodType) params.set("periodType", options.periodType);
       if (options?.periodStartAfter) params.set("periodStartAfter", options.periodStartAfter);
       if (options?.periodEndBefore) params.set("periodEndBefore", options.periodEndBefore);
+      if (options?.region) params.set("region", options.region);
       if (options?.with) params.set("with", options.with);
       if (options?.cursor) params.set("cursor", options.cursor);
       if (options?.size) params.set("limit", options.size.toString());
@@ -686,13 +694,23 @@ export function useResults(
   });
 }
 
-export function useResult(org: string, checkUid: string, resultUid: string) {
+export function useResult(
+  org: string,
+  checkUid: string,
+  resultUid: string,
+  options?: { region?: string }
+) {
+  const region = options?.region;
   return useQuery<OrgResultDetail>({
-    queryKey: ["result", org, checkUid, resultUid],
-    queryFn: () =>
-      apiFetch<OrgResultDetail>(
-        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}`,
-      ),
+    queryKey: ["result", org, checkUid, resultUid, region],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (region) params.set("region", region);
+      const query = params.toString();
+      return apiFetch<OrgResultDetail>(
+        `/api/v1/orgs/${org}/checks/${checkUid}/results/${resultUid}${query ? `?${query}` : ""}`,
+      );
+    },
     enabled: !!org && !!checkUid && !!resultUid,
     staleTime: Infinity,
   });
@@ -1096,6 +1114,50 @@ export function useIntegrationNotifications(
   });
 }
 
+// Email suppressions (spec 2026-07-05-10, D4) — per-recipient unsubscribe
+// list for an org's alert emails. Creation is always recipient-initiated
+// (the public /unsubscribe page), so there is no create hook — only
+// list + delete (re-subscribe).
+export interface EmailSuppression {
+  uid: string;
+  email: string;
+  checkUid?: string; // absent = org-wide (suppresses every check)
+  checkName?: string;
+  source: "link" | "header" | "dashboard";
+  createdAt: string;
+}
+
+/** List current email suppressions for an org.
+ * Calls GET /api/v1/orgs/:org/email-suppressions */
+export function useEmailSuppressions(org: string) {
+  return useQuery({
+    queryKey: ["emailSuppressions", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: EmailSuppression[] }>(
+        `/api/v1/orgs/${org}/email-suppressions`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+/** Delete (re-subscribe) an email suppression.
+ * Calls DELETE /api/v1/orgs/:org/email-suppressions/:uid */
+export function useDeleteEmailSuppression(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/email-suppressions/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["emailSuppressions", org] });
+    },
+  });
+}
+
 export function useMyNotifications(
   org: string,
   options?: {
@@ -1128,8 +1190,24 @@ export interface TokenInfo {
   orgSlug?: string;
   createdAt: string;
   lastUsedAt?: string;
+  lastActiveAt?: string;
   expiresAt?: string;
+  // The following are populated for `refresh`-type rows (sessions) only —
+  // always undefined/false for PATs.
+  isCurrent?: boolean;
+  createdWith?: TokenCreatedWith;
 }
+
+export interface TokenCreatedWith {
+  method?: string;
+  userAgent?: string;
+  remoteAddr?: string;
+}
+
+// SessionInfo is TokenInfo narrowed to what the sessions page actually
+// renders — same wire shape (the backend returns TokenInfo for every token
+// type), but this alias documents the fields sessions specifically rely on.
+export type SessionInfo = TokenInfo;
 
 export interface CreateTokenRequest {
   name: string;
@@ -1145,6 +1223,8 @@ export interface CreateTokenResponse {
 }
 
 // Token hooks
+// PAT-only — sessions (type=refresh) must never be fetched through this
+// hook; use useSessions below instead.
 export function useTokens(org: string) {
   return useQuery({
     queryKey: ["tokens", org],
@@ -1183,6 +1263,56 @@ export function useRevokeToken() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tokens"] });
+    },
+  });
+}
+
+// Session hooks — sessions are `user_tokens` rows with type=refresh, listed
+// through the same endpoint as PATs (filtered by `?type=`) but surfaced as a
+// distinct page/nav entry (see account.sessions.tsx). Mirrors useTokens.
+export function useSessions(org: string) {
+  return useQuery({
+    queryKey: ["sessions", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: SessionInfo[] }>(
+        `/api/v1/orgs/${org}/tokens?type=refresh`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+export function useRevokeSession(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/auth/tokens/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", org] });
+    },
+  });
+}
+
+export interface SignOutOtherSessionsResponse {
+  success: boolean;
+  tokensDeleted: number;
+}
+
+export function useSignOutOtherSessions(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiFetch<SignOutOtherSessionsResponse>(`/api/v1/auth/logout`, {
+        method: "POST",
+        body: JSON.stringify({ signOutOthers: true }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["sessions", org] });
     },
   });
 }

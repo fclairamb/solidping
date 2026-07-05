@@ -121,6 +121,17 @@ type CheckWorker struct {
 	jobsChan         chan *models.CheckJob // Fetcher → Runners
 	completionChan   chan struct{}         // Runners → Fetcher (wake-up signal)
 
+	// parked counts runners currently occupied by a claimed job that is
+	// sleeping until its scheduled_at (spec 2026-07-05-08 D5) — claimed but
+	// not yet actually probing. Incremented on entry to executeJob's
+	// pre-schedule sleep accounting and decremented once the sleep resolves
+	// (timer fires or is skipped because the job was already due), so it
+	// reflects "in the sleep window" rather than "holds a lease". Surfaced
+	// alongside freeRunners on the Processing stats log line and as the
+	// solidping_check_runner_parked gauge, giving visibility into how much
+	// of the pool D3's bounded claim-ahead window is currently occupying.
+	parked atomic.Int32
+
 	// Fast/slow lane reservation (spec 2026-07-01-03 D3/D4): slow-lane jobs in
 	// flight never exceed poolSize − fastLaneReserved on this worker, so a
 	// burst of slow probes can never occupy the whole pool and starve due fast
@@ -681,13 +692,25 @@ func (r *CheckWorker) executeJob(
 
 	sleepTime := checkJob.ScheduledAt.Sub(startTime)
 
-	delay := time.Duration(0)
-	if sleepTime < 0 {
-		delay = -sleepTime
-	}
+	// wait is the pre-schedule sleep actually observed (claimed ahead of
+	// scheduled_at, e.g. by D3's bounded claim-ahead window); delay is how
+	// far past-due the job was at dispatch (claimed late). Exactly one of
+	// the two is ever non-zero. Reported as separate fields on the
+	// completion log (D4) instead of being folded into duration_ms, which
+	// previously conflated wait + exec + save/release overhead into one
+	// number — a healthy sub-second check claimed minutes ahead of schedule
+	// logged as if it had taken minutes to execute.
+	wait, delay := waitAndDelay(sleepTime)
 
-	// Wait for the check time to come
+	// Wait for the check time to come. Counted as "parked" for the duration
+	// of the sleep (D5): claimed but not yet actually due, so this runner
+	// slot isn't free but isn't doing real work either — visibility into how
+	// much of the pool D3's bounded claim-ahead window is occupying at any
+	// instant.
 	if sleepTime > 0 {
+		r.parked.Add(1)
+		defer r.parked.Add(-1)
+
 		timer := time.NewTimer(sleepTime)
 		select {
 		case <-ctx.Done():
@@ -823,10 +846,18 @@ func (r *CheckWorker) executeJob(
 		return fmt.Errorf("failed to release lease: %w", releaseErr)
 	}
 
-	duration := time.Since(startTime)
+	// duration_ms is the actual exec duration (D4) — previously this logged
+	// time.Since(startTime), which conflated the pre-schedule sleep (wait_ms)
+	// and the past-due dispatch delay (delay_ms) into the same number as the
+	// probe's real cost. That conflation is what made
+	// "duration_ms≈179000" for a genuinely sub-second check read as a hung
+	// checker during live incident triage (see spec 2026-07-05-08 context).
+	execDuration := time.Since(execStart)
 	logger.InfoContext(ctx, "Check job completed",
 		"status", result.Status,
-		"duration_ms", duration.Milliseconds())
+		"duration_ms", execDuration.Milliseconds(),
+		"wait_ms", wait.Milliseconds(),
+		"delay_ms", delay.Milliseconds())
 
 	return nil
 }
@@ -1221,21 +1252,57 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	return nil
 }
 
-// calculateNextScheduledAt calculates the next scheduled time for a check job.
-// If scheduled_at + period > now, use scheduled_at + period (we're on schedule).
-// Otherwise, use now + period (we're behind schedule).
-func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.Time {
-	// Convert Period to time.Duration
-	intervalDuration := time.Duration(checkJob.Period)
+// waitAndDelay splits a job's sleepTime (scheduled_at − dispatch time) into
+// the pre-schedule wait (claimed ahead of schedule, sleepTime > 0) and the
+// past-due delay (claimed late, sleepTime < 0). Exactly one return value is
+// ever non-zero; sleepTime == 0 returns (0, 0) (fires exactly on schedule).
+// Pure function so the D4 wait/delay separation is unit-testable without
+// driving executeJob end-to-end.
+func waitAndDelay(sleepTime time.Duration) (time.Duration, time.Duration) {
+	switch {
+	case sleepTime > 0:
+		return sleepTime, 0
+	case sleepTime < 0:
+		return 0, -sleepTime
+	default:
+		return 0, 0
+	}
+}
 
+// calculateNextScheduledAt calculates the next scheduled time for a check job.
+//
+// Phase-locked rescheduling (spec 2026-07-05-08 D1): when the job's check is
+// attached (populated at claim time by ClaimJobs/ClaimJobsForCheck — always
+// true for jobs flowing through the regular runner pool), the next tick is
+// aligned to the job's deterministic phase (scheduling.NextAligned) rather
+// than computed as "scheduled_at + period" or "now + period". This makes
+// rescheduling immune to lateness: a late or missed run resumes at the next
+// phase-aligned tick instead of re-anchoring to the claim-batch timestamp,
+// which is what previously made every job in a cohort lock-step onto the
+// same tick after a restart (F2).
+//
+// Falls back to the old anchor-preserving/catch-up logic when there is no
+// attached check (defensive only — the regular claim path always attaches
+// one) or when either period is non-positive.
+func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.Time {
 	now := time.Now()
+	jobPeriod := time.Duration(checkJob.Period)
+
+	if checkJob.Check != nil {
+		basePeriod := time.Duration(checkJob.Check.Period)
+		if basePeriod > 0 && jobPeriod > 0 {
+			return scheduling.NextAligned(
+				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions,
+			)
+		}
+	}
 
 	if checkJob.ScheduledAt == nil {
 		// No scheduled_at, schedule for now + period
-		return now.Add(intervalDuration)
+		return now.Add(jobPeriod)
 	}
 
-	nextScheduled := checkJob.ScheduledAt.Add(intervalDuration)
+	nextScheduled := checkJob.ScheduledAt.Add(jobPeriod)
 
 	if nextScheduled.After(now) {
 		// We're on schedule
@@ -1243,7 +1310,7 @@ func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.T
 	}
 
 	// We're behind schedule, catch up
-	return now.Add(intervalDuration)
+	return now.Add(jobPeriod)
 }
 
 // setupSelfStats configures self-stats reporting for the worker.
@@ -1264,6 +1331,9 @@ func (r *CheckWorker) setupSelfStats(ctx context.Context) error {
 	r.stats.SetReporter(r.reportStats)
 	r.stats.SetFreeRunnersFunc(func() float64 {
 		return float64(r.availableRunners.Load())
+	})
+	r.stats.SetParkedFunc(func() float64 {
+		return float64(r.parked.Load())
 	})
 
 	r.logger.InfoContext(ctx, "Self-stats reporting configured",
@@ -1339,11 +1409,20 @@ func (r *CheckWorker) reportStats(reported stats.ReportedStats) {
 		Metrics: models.JSONMap{
 			"job_runs":         reported.TotalChecks,
 			"free_runners":     reported.FreeRunners,
+			"parked":           reported.Parked,
 			"average_duration": reported.AverageDuration,
 			"average_delay":    reported.AverageDelay,
 		},
 		CreatedAt: time.Now(),
 	}
+
+	region := ""
+	if worker.Region != nil {
+		region = *worker.Region
+	}
+
+	prommetrics.SetWorkerFreeRunners(worker.UID, region, reported.FreeRunners)
+	prommetrics.SetCheckRunnerParked(worker.UID, region, reported.Parked)
 
 	if err := r.dbService.CreateResult(ctx, result); err != nil {
 		r.logger.Error("Failed to save self-stats result", "error", err)

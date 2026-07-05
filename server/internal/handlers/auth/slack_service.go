@@ -124,8 +124,13 @@ func NewSlackOAuthService(dbService db.Service, cfg *config.Config, authService 
 type SlackExchangeResult struct {
 	AccessToken  string `json:"accessToken"`
 	RefreshToken string `json:"refreshToken"`
-	OrgSlug      string `json:"orgSlug"`
-	UserUID      string `json:"userUid"`
+	// ExpiresIn is the access token's lifetime in seconds, so the dashboard
+	// can compute an absolute expiry exactly like every other login path
+	// (see auth.slack.complete.tsx) instead of assuming the configured
+	// default.
+	ExpiresIn int    `json:"expiresIn"`
+	OrgSlug   string `json:"orgSlug"`
+	UserUID   string `json:"userUid"`
 	// ChannelUID is set when the install was triggered from a channel edit page.
 	// The dashboard uses it to navigate back to that channel after login.
 	ChannelUID string `json:"channelUid,omitempty"`
@@ -156,10 +161,15 @@ func (s *SlackOAuthService) ExchangeSlackInstallCode(
 	}
 
 	channelUID, _ := entry.Payload["channelUid"].(string)
+	// Payload round-trips through JSON (oauthstate persists it as JSON text),
+	// so the int stored by IssueExchangeCode comes back as float64 — assert
+	// accordingly rather than int (which would silently zero via the ,_ discard).
+	expiresIn, _ := entry.Payload["expiresIn"].(float64)
 
 	return &SlackExchangeResult{
 		AccessToken:  access,
 		RefreshToken: refresh,
+		ExpiresIn:    int(expiresIn),
 		OrgSlug:      orgSlug,
 		UserUID:      userUID,
 		ChannelUID:   channelUID,

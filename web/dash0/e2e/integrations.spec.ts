@@ -525,3 +525,142 @@ test.describe("Notification Channels", () => {
     await deleteConnection(page, token, integration.uid);
   });
 });
+
+// Suppressions section on the email integration edit page (spec
+// 2026-07-05-10, D4). Creation is always recipient-initiated via the public
+// /unsubscribe page (never through this authenticated API), so there is no
+// way to seed a real suppression row through the UI/API surface this test
+// can reach — the GET/DELETE responses are mocked instead, matching the
+// existing pattern used above for the Slack destination picker. This still
+// exercises the real rendering, empty-state, and delete-then-refetch wiring
+// of SuppressionsSection; only the two HTTP responses are fixtures.
+test.describe("Email suppressions section", () => {
+  test("lists suppressions and re-subscribes (deletes) one", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const emailName = `E2E Email Integration ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/integrations`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "email",
+          name: emailName,
+          settings: { to: ["ops@example.com"] },
+        },
+      },
+    );
+    const integration = await createResp.json();
+
+    const suppressionUid = "22222222-2222-2222-2222-222222222222";
+    let suppressions = [
+      {
+        uid: suppressionUid,
+        email: "unsubscribed@example.com",
+        checkUid: "33333333-3333-3333-3333-333333333333",
+        checkName: "Production API",
+        source: "link",
+        createdAt: new Date().toISOString(),
+      },
+      {
+        uid: "44444444-4444-4444-4444-444444444444",
+        email: "org-wide-unsub@example.com",
+        source: "header",
+        createdAt: new Date().toISOString(),
+      },
+    ];
+
+    await page.route(
+      `**/api/v1/orgs/test/email-suppressions`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: suppressions }),
+        });
+      },
+    );
+
+    await page.route(
+      `**/api/v1/orgs/test/email-suppressions/${suppressionUid}`,
+      async (route) => {
+        if (route.request().method() === "DELETE") {
+          suppressions = suppressions.filter((s) => s.uid !== suppressionUid);
+          await route.fulfill({ status: 204, body: "" });
+
+          return;
+        }
+
+        await route.continue();
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${integration.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    // Both rows render: the check-scoped one with its resolved check name,
+    // and the org-wide one labeled "All checks".
+    await expect(page.getByText("unsubscribed@example.com")).toBeVisible();
+    await expect(page.getByText("Production API")).toBeVisible();
+    await expect(page.getByText("org-wide-unsub@example.com")).toBeVisible();
+    await expect(page.getByText("All checks")).toBeVisible();
+
+    // Re-subscribe (delete) the check-scoped row via its ghost Trash2 button.
+    await page
+      .getByRole("button", { name: /re-subscribe unsubscribed@example.com/i })
+      .click();
+
+    // The row disappears once the list is refetched after the mutation.
+    await expect(page.getByText("unsubscribed@example.com")).toHaveCount(0, {
+      timeout: 15000,
+    });
+    // The other recipient is unaffected.
+    await expect(page.getByText("org-wide-unsub@example.com")).toBeVisible();
+
+    await deleteConnection(page, token, integration.uid);
+  });
+
+  test("shows an empty state when no one has unsubscribed", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const token = await getAuthToken(page);
+
+    const emailName = `E2E Email Integration Empty ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/integrations`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "email",
+          name: emailName,
+          settings: { to: ["ops@example.com"] },
+        },
+      },
+    );
+    const integration = await createResp.json();
+
+    await page.route(
+      `**/api/v1/orgs/test/email-suppressions`,
+      async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({ data: [] }),
+        });
+      },
+    );
+
+    await page.goto(`orgs/test/integrations/${integration.uid}`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByText(/no one has unsubscribed/i),
+    ).toBeVisible();
+
+    await deleteConnection(page, token, integration.uid);
+  });
+});

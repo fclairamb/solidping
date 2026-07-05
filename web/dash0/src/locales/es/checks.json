@@ -226,6 +226,8 @@
   "resultDetail": {
     "title": "Resultado",
     "back": "Volver a la comprobación",
+    "previousResult": "Resultado anterior",
+    "nextResult": "Resultado siguiente",
     "period": "Periodo",
     "region": "Región",
     "worker": "Worker",
@@ -237,6 +239,10 @@
     "successfulChecks": "Comprobaciones correctas",
     "availability": "Disponibilidad",
     "metrics": "Métricas",
+    "caller": "Llamador",
+    "callerUserAgent": "User-Agent",
+    "callerRemoteAddr": "IP de origen",
+    "callerHttpMethod": "Método",
     "output": "Salida",
     "viewAll": "Ver todos los resultados de esta comprobación",
     "fallback": {
@@ -314,7 +320,27 @@
     },
     "configuration": "Configuración",
     "configurationDescription": "Ajustes y parámetros de la comprobación",
-    "results": "Resultados",
+    "results": {
+      "time": "Hora",
+      "status": "Estado",
+      "duration": "Duración",
+      "region": "Región",
+      "filterAll": "Todas",
+      "stats": {
+        "min": "Mín",
+        "avg": "Media",
+        "max": "Máx",
+        "p95": "P95",
+        "samples": "Muestras",
+        "window": "{{period}}",
+        "windowPeriod": {
+          "hour": "Última hora",
+          "day": "Último día",
+          "week": "Última semana",
+          "month": "Último mes"
+        }
+      }
+    },
     "period": "Período",
     "lastChecked": "Última comprobación",
     "uptime": "Disponibilidad",
@@ -372,7 +398,8 @@
   "endpoints": {
     "heartbeat": {
       "title": "Endpoint de heartbeat",
-      "curl": "Comando curl de ejemplo:"
+      "curl": "Comando curl de ejemplo:",
+      "callerNote": "El User-Agent, la IP de origen y el método HTTP de cada ping se registran y se muestran en la página de detalle de ese resultado."
     },
     "email": {
       "title": "Endpoint de correo",

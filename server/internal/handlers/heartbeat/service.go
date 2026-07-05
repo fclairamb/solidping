@@ -48,6 +48,28 @@ func defaultOutputMessage(status string) string {
 	}
 }
 
+// buildHeartbeatOutput assembles the per-ping Output map: the resolved
+// message plus best-effort caller metadata. Keys the caller didn't send are
+// omitted entirely rather than persisted as empty strings (e.g. no
+// User-Agent header on the ping).
+func buildHeartbeatOutput(message, userAgent, remoteAddr, httpMethod string) models.JSONMap {
+	output := models.JSONMap{"message": message}
+
+	if userAgent != "" {
+		output["userAgent"] = userAgent
+	}
+
+	if remoteAddr != "" {
+		output["remoteAddr"] = remoteAddr
+	}
+
+	if httpMethod != "" {
+		output["httpMethod"] = httpMethod
+	}
+
+	return output
+}
+
 // parseHeartbeatStatus maps a status string to a checkerdef.Status.
 func parseHeartbeatStatus(status string) (checkerdef.Status, bool) {
 	switch status {
@@ -81,8 +103,12 @@ func NewService(dbService db.Service, jobSvc jobsvc.Service, rt *realtime.Publis
 	}
 }
 
-// ReceiveHeartbeat processes an incoming heartbeat ping.
-func (s *Service) ReceiveHeartbeat(ctx context.Context, orgSlug, identifier, token, statusStr, message string) error {
+// ReceiveHeartbeat processes an incoming heartbeat ping. userAgent, remoteAddr,
+// and httpMethod are caller metadata (display-only forensics, not used for any
+// security decision) persisted alongside the ping's message.
+func (s *Service) ReceiveHeartbeat(
+	ctx context.Context, orgSlug, identifier, token, statusStr, message, userAgent, remoteAddr, httpMethod string,
+) error {
 	// Look up organization
 	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
 	if err != nil {
@@ -147,7 +173,7 @@ func (s *Service) ReceiveHeartbeat(ctx context.Context, orgSlug, identifier, tok
 		Status:          &status,
 		Duration:        &durationMs,
 		Metrics:         make(models.JSONMap),
-		Output:          models.JSONMap{"message": outputMessage},
+		Output:          buildHeartbeatOutput(outputMessage, userAgent, remoteAddr, httpMethod),
 		CreatedAt:       time.Now(),
 		LastForStatus:   &lastForStatus,
 	}

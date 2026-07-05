@@ -1,0 +1,41 @@
+{{define "subject"}}{{if .SubjectPrefix}}{{.SubjectPrefix}} {{end}}[ESCALATED] {{.CheckName}} incident escalated{{end}}
+{{template "base.html" .}}
+{{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "escalated" "Label" "Escalated"}}{{end}}
+{{define "content"}}
+    <h1>{{.CheckName}} incident escalated</h1>
+    <p>The incident for <strong>{{if .CheckURL}}<a href="{{.CheckURL}}">{{.CheckName}}</a>{{else}}{{.CheckName}}{{end}}</strong> has been escalated.</p>
+    <table class="details-table" role="presentation" cellpadding="0" cellspacing="0">
+        <tr><td class="label">Check</td><td class="value">{{.CheckName}}</td></tr>
+        <tr><td class="label">Type</td><td class="value">{{.CheckType}}</td></tr>
+        <tr><td class="label">Started at</td><td class="value">{{.StartedAt}}</td></tr>
+        <tr><td class="label">Failure count</td><td class="value">{{.FailureCount}}</td></tr>
+        <tr><td class="label">Incident ID</td><td class="value">{{.IncidentUID}}</td></tr>
+    </table>
+    {{if .IncidentURL}}
+    <p class="cta-wrap">{{template "button" dict "URL" .IncidentURL "Label" "View incident" "Variant" "primary"}}</p>
+    {{end}}
+    {{if .AckURL}}
+    <p class="cta-wrap">{{template "button" dict "URL" .AckURL "Label" "Acknowledge incident" "Variant" "secondary"}}</p>
+    <p class="meta">This link is valid for 7 days. Following it confirms you have seen the incident.</p>
+    {{end}}
+{{end}}
+{{define "text"}}{{.CheckName}} incident escalated
+
+The incident for {{.CheckName}} has been escalated.
+
+Check: {{.CheckName}}
+Type: {{.CheckType}}
+Started at: {{.StartedAt}}
+Failure count: {{.FailureCount}}
+Incident ID: {{.IncidentUID}}
+{{if .IncidentURL}}
+View incident: {{.IncidentURL}}
+{{end}}{{if .AckURL}}
+Acknowledge this incident: {{.AckURL}}
+(link valid for 7 days)
+{{end}}
+This is an automated notification from SolidPing.
+{{if .DashboardURL}}Dashboard: {{.DashboardURL}}{{end}}{{if .DocsURL}}
+Docs: {{.DocsURL}}{{end}}{{if .UnsubscribeURL}}
+Unsubscribe from alerts{{if .UnsubscribeCheckName}} for {{.UnsubscribeCheckName}}{{end}}: {{.UnsubscribeURL}}{{end}}
+{{end}}

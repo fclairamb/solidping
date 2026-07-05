@@ -315,6 +315,388 @@ test.describe("Check Detail Page", () => {
     await expect(
       page.getByRole("button", { name: "All regions" }),
     ).toHaveCount(0);
+
+    // Single-region checks also show no Recent Results filter chips, no
+    // swatch legend, and no stats strip (spec 2026-07-05-13, criterion 2).
+    await expect(page.getByTestId("results-region-filter")).toHaveCount(0);
+    await expect(page.getByTestId("results-duration-stats")).toHaveCount(0);
+    await expect(
+      page.locator('[data-testid^="response-time-chart-region-swatch-"]'),
+    ).toHaveCount(0);
+  });
+
+  test("Response Times chart: All-regions view renders one distinct-colored line per region", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+
+    // Mock a two-region results response — a near cluster and a far cluster,
+    // interleaved in time, exactly the shape spec 2026-07-05-13 requires one
+    // line per region for.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      const points = [];
+      for (let i = 0; i < 8; i++) {
+        const ts = now - (16 - i * 2) * 60_000;
+        points.push({
+          uid: `us1-${i}`,
+          durationMs: 55 + (i % 2) * 5,
+          status: "up",
+          region: "us-1",
+          periodStart: new Date(ts).toISOString(),
+          periodType: "raw",
+        });
+        points.push({
+          uid: `eu1-${i}`,
+          durationMs: 650 + (i % 2) * 10,
+          status: "up",
+          region: "eu-1",
+          periodStart: new Date(ts + 30_000).toISOString(),
+          periodType: "raw",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: points,
+          pagination: { total: points.length, size: points.length },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/regions*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            { slug: "us-1", emoji: "🇺🇸", name: "US East" },
+            { slug: "eu-1", emoji: "🇪🇺", name: "EU West" },
+          ],
+          defaultRegions: ["us-1"],
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Multi Series ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/multi-series-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // "All regions" is selected by default: both chips carry a color swatch
+    // (they double as the legend), the "All regions" chip does not.
+    const filterRow = page.getByTestId("response-time-chart-region-filter");
+    await expect(filterRow).toBeVisible({ timeout: 15000 });
+    await expect(page.locator(".recharts-wrapper")).toBeVisible();
+
+    const usSwatch = page.getByTestId("response-time-chart-region-swatch-us-1");
+    const euSwatch = page.getByTestId("response-time-chart-region-swatch-eu-1");
+    await expect(usSwatch).toBeVisible();
+    await expect(euSwatch).toBeVisible();
+    await expect(
+      filterRow
+        .getByRole("button", { name: "All regions" })
+        .locator('[data-testid^="response-time-chart-region-swatch-"]'),
+    ).toHaveCount(0);
+
+    // The two chip swatches carry distinct background colors (--chart-1 vs
+    // --chart-2), and the actual chart lines (recharts Area path elements)
+    // render with two distinct, non-empty stroke colors — proving one visibly
+    // distinct line per region rather than a single merged series.
+    const usSwatchColor = await usSwatch.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    const euSwatchColor = await euSwatch.evaluate(
+      (el) => getComputedStyle(el).backgroundColor,
+    );
+    expect(usSwatchColor).toBeTruthy();
+    expect(euSwatchColor).toBeTruthy();
+    expect(usSwatchColor).not.toBe(euSwatchColor);
+
+    const areaStrokes = await page
+      .locator(".recharts-area-curve")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("stroke")));
+    const distinctStrokes = new Set(areaStrokes.filter(Boolean));
+    expect(areaStrokes.length).toBeGreaterThanOrEqual(2);
+    expect(distinctStrokes.size).toBeGreaterThanOrEqual(2);
+
+    // Hovering a dot shows the region (emoji+name) in the tooltip.
+    const dots = page.locator(".recharts-wrapper circle");
+    await expect(dots.first()).toBeVisible();
+    await dots.first().hover({ force: true });
+    await expect(
+      page.getByText(/🇺🇸 US East|🇪🇺 EU West/).first(),
+    ).toBeVisible({ timeout: 5000 });
+
+    // Clicking a dot still pins a result (dot-click resolution works in
+    // multi-series mode via the per-region dataKey, not a stale shared index).
+    await dots.first().click({ force: true });
+    await expect(page.getByTestId("pinned-result-box")).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
+  test("Recent Results: region filter narrows the list server-side and a row badge click selects that region", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+    const requestedRegionParams: (string | null)[] = [];
+
+    // Mock a two-region results response for both the chart window (used to
+    // derive the observed-region set) and the Recent Results list itself —
+    // the list mock echoes back whatever `region=` it received so the test
+    // can assert the param actually reached the API.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = new URL(route.request().url());
+      if (!url.pathname.includes("/results")) return route.continue();
+      requestedRegionParams.push(url.searchParams.get("region"));
+
+      const region = url.searchParams.get("region");
+      const allPoints = [
+        {
+          uid: "us1-result",
+          durationMs: 55,
+          status: "up",
+          region: "us-1",
+          periodStart: new Date(now - 5 * 60_000).toISOString(),
+          periodType: "raw",
+        },
+        {
+          uid: "eu1-result",
+          durationMs: 650,
+          status: "up",
+          region: "eu-1",
+          periodStart: new Date(now - 3 * 60_000).toISOString(),
+          periodType: "raw",
+        },
+      ];
+      const filtered = region
+        ? allPoints.filter((p) => p.region === region)
+        : allPoints;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: filtered,
+          pagination: { total: filtered.length, size: filtered.length },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/regions*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            { slug: "us-1", emoji: "🇺🇸", name: "US East" },
+            { slug: "eu-1", emoji: "🇪🇺", name: "EU West" },
+          ],
+          defaultRegions: ["us-1"],
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Results Filter ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/results-filter-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    const resultsFilter = page.getByTestId("results-region-filter");
+    await expect(resultsFilter).toBeVisible({ timeout: 15000 });
+
+    // Both rows visible under "All" (no region= param sent).
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
+
+    // Selecting the US chip narrows the list to one row and writes
+    // ?resultsRegion=us-1 — independent from the chart's own ?graphRegion.
+    await resultsFilter.getByRole("button", { name: /US East/ }).click();
+    await page.waitForURL(/resultsRegion=us-1/);
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
+    expect(page.url()).not.toContain("graphRegion");
+
+    // The narrowed request actually carried region=us-1 to the API.
+    expect(requestedRegionParams).toContain("us-1");
+
+    // Back to "All" restores both rows and clears the param.
+    await resultsFilter.getByRole("button", { name: "All" }).click();
+    await page.waitForURL((url) => !url.search.includes("resultsRegion"));
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(2);
+
+    // Clicking a row's own region Badge selects that region too.
+    const euRow = page.locator('[data-testid^="result-row-"]', {
+      hasText: "EU West",
+    });
+    await euRow.getByTestId(/result-region-badge-/).click();
+    await page.waitForURL(/resultsRegion=eu-1/);
+    await expect(page.locator('[data-testid^="result-row-"]')).toHaveCount(1);
+    // The badge click must not also trigger the row's own navigate-to-detail
+    // onClick (stopPropagation) — still on the check detail page, not a
+    // result detail page.
+    expect(page.url()).not.toContain("/results/");
+  });
+
+  test("Recent Results: duration stats strip shows exact values over raw windows and ~-prefixed values when rollup rows are present", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+
+    // Chart-window results (raw only, hour graphPeriod default: "day" tier is
+    // raw+hour so use graphPeriod=hour to guarantee an all-raw window) feed
+    // both the chart and the shared stats computation.
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = new URL(route.request().url());
+      if (!url.pathname.includes("/results")) return route.continue();
+      const periodTypeParam = url.searchParams.get("periodType") ?? "";
+      const region = url.searchParams.get("region");
+
+      // Raw-only points: durations 40, 60, 80, 100 for us-1 (min 40, max 100,
+      // avg 70, p95 = 4th of 4 sorted -> 100 by the same nearest-rank method
+      // the aggregator uses: index = floor(4*0.95) = 3 -> last element).
+      const rawPoints = [40, 60, 80, 100].map((d, i) => ({
+        uid: `us1-raw-${i}`,
+        durationMs: d,
+        status: "up",
+        region: "us-1",
+        periodStart: new Date(now - (10 - i) * 60_000).toISOString(),
+        periodType: "raw",
+      }));
+
+      if (!periodTypeParam.includes("hour") && !periodTypeParam.includes("day")) {
+        // Recent Results list call (no periodType filter) — used for the
+        // table itself, independent of the stats computation.
+        const filtered = region
+          ? rawPoints.filter((p) => p.region === region)
+          : rawPoints;
+        return route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            data: filtered,
+            pagination: { total: filtered.length, size: filtered.length },
+          }),
+        });
+      }
+
+      // Chart-window call (periodType includes hour/day): raw points plus one
+      // rollup ("hour") row lacking durationAvgMs entirely, to exercise the
+      // durationMs fallback path for the weighted avg.
+      const rollupRow = {
+        uid: "us1-rollup-1",
+        durationMs: 200, // plotted value, used as the avg/p95 fallback
+        durationMinMs: 150,
+        durationMaxMs: 250,
+        totalChecks: 5,
+        status: "up",
+        region: "us-1",
+        periodStart: new Date(now - 3600_000).toISOString(),
+        periodType: "hour",
+      };
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [...rawPoints, rollupRow],
+          pagination: { total: rawPoints.length + 1, size: rawPoints.length + 1 },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/regions*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [{ slug: "us-1", emoji: "🇺🇸", name: "US East" }],
+          defaultRegions: ["us-1"],
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Stats Strip ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/stats-strip-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+
+    // No region observed yet in the mock's single-region set means the
+    // Recent Results header shows no filter row (only >1 region shows it) —
+    // this test drives the strip via the URL directly instead, since a
+    // single-region "select region" affordance isn't the point under test.
+    await page.goto(`${page.url()}?resultsRegion=us-1&graphPeriod=week`);
+    await page.waitForLoadState("networkidle");
+
+    const stats = page.getByTestId("results-duration-stats");
+    await expect(stats).toBeVisible({ timeout: 15000 });
+
+    // Rollup row present in the window -> avg and p95 are ~-prefixed
+    // estimates; min/max stay exact (min-of-mins/max-of-maxes: raw min 40 vs
+    // rollup min 150 -> 40; raw max 100 vs rollup max 250 -> 250).
+    await expect(stats).toContainText("40ms");
+    await expect(stats).toContainText("250ms");
+    await expect(stats.getByText(/~\d/)).toHaveCount(2);
+    // Sample count sums raw rows (1 each) + the rollup's totalChecks: 4 + 5 = 9.
+    await expect(stats).toContainText("9");
+    // Window label reflects the current graphPeriod (week -> "Last week").
+    await expect(stats).toContainText(/last week/i);
   });
 
   test("header shows full labels on desktop and shrinks to icon-only on mobile (never collapses to a menu)", async ({

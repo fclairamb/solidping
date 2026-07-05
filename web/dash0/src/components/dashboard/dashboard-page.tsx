@@ -715,7 +715,7 @@ function ChecksGlanceList({
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
-                    search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+                    search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                     className={`flex items-center gap-3 py-3 hover:bg-accent/50 -mx-2 px-2 rounded transition-colors ${
                       isDisabled ? "opacity-60" : ""
                     }`}
@@ -902,7 +902,7 @@ function RecentActivityList({
                           <Link
                             to="/orgs/$org/checks/$checkUid"
                             params={{ org, checkUid: event.checkUid }}
-                            search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+                            search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                             className="text-primary hover:underline"
                           >
                             {checkName}

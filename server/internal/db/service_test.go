@@ -105,6 +105,10 @@ func testService(t *testing.T, svc db.Service) {
 	t.Run("ListChannelsByProperty", func(t *testing.T) {
 		testListChannelsByProperty(ctx, t, svc)
 	})
+
+	t.Run("EmailSuppressions", func(t *testing.T) {
+		testEmailSuppressions(ctx, t, svc)
+	})
 }
 
 // testUpdateCheckStatusAndClocksTriState is the cross-engine parity guard for
@@ -1825,5 +1829,166 @@ func testListChannelsByProperty(ctx context.Context, t *testing.T, svc db.Servic
 		for _, c := range conns {
 			r.NotEqual(connD.UID, c.UID, "a discord connection must not be returned for a slack-typed lookup")
 		}
+	})
+}
+
+// testEmailSuppressions is the cross-engine parity guard for the D4
+// suppression subsystem (spec 2026-07-05-10): create/list/get/delete and the
+// two-scope IsEmailSuppressed lookup (check-specific row OR org-wide
+// check_uid-IS-NULL row) must behave identically on Postgres and SQLite,
+// including the partial-unique-index enforcement of "one row per (org,
+// email, check_uid)" for each scope independently.
+func testEmailSuppressions(ctx context.Context, t *testing.T, svc db.Service) {
+	t.Helper()
+
+	r := require.New(t)
+
+	org := models.NewOrganization("email-supp-org", "")
+	r.NoError(svc.CreateOrganization(ctx, org))
+
+	check := models.NewCheck(org.UID, "email-supp-check", "http")
+	r.NoError(svc.CreateCheck(ctx, check))
+
+	otherCheck := models.NewCheck(org.UID, "email-supp-other-check", "http")
+	r.NoError(svc.CreateCheck(ctx, otherCheck))
+
+	t.Run("CreateListGetDelete", func(t *testing.T) {
+		r := require.New(t)
+
+		sup := models.NewEmailSuppression(org.UID, "create-list@x.test", &check.UID, models.EmailSuppressionSourceLink)
+		r.NoError(svc.CreateEmailSuppression(ctx, sup))
+
+		got, err := svc.GetEmailSuppression(ctx, org.UID, sup.UID)
+		r.NoError(err)
+		r.Equal(sup.Email, got.Email)
+		r.Equal(check.UID, *got.CheckUID)
+		r.Equal(models.EmailSuppressionSourceLink, got.Source)
+
+		list, err := svc.ListEmailSuppressions(ctx, org.UID)
+		r.NoError(err)
+
+		found := false
+
+		for _, row := range list {
+			if row.UID == sup.UID {
+				found = true
+			}
+		}
+
+		r.True(found, "created suppression must appear in the org's list")
+
+		r.NoError(svc.DeleteEmailSuppression(ctx, sup.UID))
+
+		_, err = svc.GetEmailSuppression(ctx, org.UID, sup.UID)
+		r.ErrorIs(err, sql.ErrNoRows, "deleted suppression must no longer be gettable")
+	})
+
+	t.Run("GetScopedToOrg", func(t *testing.T) {
+		r := require.New(t)
+
+		otherOrg := models.NewOrganization("email-supp-other-org", "")
+		r.NoError(svc.CreateOrganization(ctx, otherOrg))
+
+		sup := models.NewEmailSuppression(org.UID, "scoped@x.test", nil, models.EmailSuppressionSourceLink)
+		r.NoError(svc.CreateEmailSuppression(ctx, sup))
+
+		_, err := svc.GetEmailSuppression(ctx, otherOrg.UID, sup.UID)
+		r.Error(err, "a suppression must not be gettable from a different org")
+
+		got, err := svc.GetEmailSuppression(ctx, org.UID, sup.UID)
+		r.NoError(err)
+		r.Equal(sup.UID, got.UID)
+	})
+
+	t.Run("UniquePerCheckScope", func(t *testing.T) {
+		r := require.New(t)
+
+		email := "unique-check-scope@x.test"
+		first := models.NewEmailSuppression(org.UID, email, &check.UID, models.EmailSuppressionSourceLink)
+		r.NoError(svc.CreateEmailSuppression(ctx, first))
+
+		// Same (org, email, check) again must violate the partial unique index.
+		dup := models.NewEmailSuppression(org.UID, email, &check.UID, models.EmailSuppressionSourceLink)
+		r.Error(svc.CreateEmailSuppression(ctx, dup),
+			"a second suppression for the same (org, email, check_uid) must be rejected")
+
+		// The SAME email suppressed for a DIFFERENT check must be allowed —
+		// check-scoped suppressions are independent per check.
+		otherCheckSup := models.NewEmailSuppression(org.UID, email, &otherCheck.UID, models.EmailSuppressionSourceLink)
+		r.NoError(svc.CreateEmailSuppression(ctx, otherCheckSup),
+			"the same email suppressed for a different check must be a distinct row")
+	})
+
+	t.Run("UniquePerOrgScope", func(t *testing.T) {
+		r := require.New(t)
+
+		email := "unique-org-scope@x.test"
+		first := models.NewEmailSuppression(org.UID, email, nil, models.EmailSuppressionSourceLink)
+		r.NoError(svc.CreateEmailSuppression(ctx, first))
+
+		// A second org-wide (check_uid NULL) suppression for the same email
+		// must violate the partial unique index — this is the property that
+		// motivated splitting into two partial indexes rather than one plain
+		// unique index (a plain index treats every NULL as distinct).
+		dup := models.NewEmailSuppression(org.UID, email, nil, models.EmailSuppressionSourceLink)
+		r.Error(svc.CreateEmailSuppression(ctx, dup),
+			"a second org-wide suppression for the same (org, email) must be rejected")
+	})
+
+	t.Run("IsEmailSuppressed", func(t *testing.T) {
+		r := require.New(t)
+
+		checkScoped := models.NewCheck(org.UID, "email-supp-ies-check", "http")
+		r.NoError(svc.CreateCheck(ctx, checkScoped))
+
+		unrelatedCheck := models.NewCheck(org.UID, "email-supp-ies-unrelated-check", "http")
+		r.NoError(svc.CreateCheck(ctx, unrelatedCheck))
+
+		t.Run("NotSuppressedByDefault", func(_ *testing.T) {
+			suppressed, err := svc.IsEmailSuppressed(ctx, org.UID, "never-suppressed@x.test", checkScoped.UID)
+			r.NoError(err)
+			r.False(suppressed)
+		})
+
+		t.Run("CheckSpecificSuppressionOnlyAppliesToThatCheck", func(_ *testing.T) {
+			email := "check-specific@x.test"
+			sup := models.NewEmailSuppression(org.UID, email, &checkScoped.UID, models.EmailSuppressionSourceLink)
+			r.NoError(svc.CreateEmailSuppression(ctx, sup))
+
+			suppressed, err := svc.IsEmailSuppressed(ctx, org.UID, email, checkScoped.UID)
+			r.NoError(err)
+			r.True(suppressed, "must be suppressed for the check it was scoped to")
+
+			suppressed, err = svc.IsEmailSuppressed(ctx, org.UID, email, unrelatedCheck.UID)
+			r.NoError(err)
+			r.False(suppressed, "must NOT be suppressed for an unrelated check")
+		})
+
+		t.Run("OrgWideSuppressionAppliesToEveryCheck", func(_ *testing.T) {
+			email := "org-wide@x.test"
+			sup := models.NewEmailSuppression(org.UID, email, nil, models.EmailSuppressionSourceLink)
+			r.NoError(svc.CreateEmailSuppression(ctx, sup))
+
+			suppressed, err := svc.IsEmailSuppressed(ctx, org.UID, email, checkScoped.UID)
+			r.NoError(err)
+			r.True(suppressed, "org-wide suppression must apply to any check")
+
+			suppressed, err = svc.IsEmailSuppressed(ctx, org.UID, email, unrelatedCheck.UID)
+			r.NoError(err)
+			r.True(suppressed, "org-wide suppression must apply to every check, including ones added later")
+		})
+
+		t.Run("DoesNotLeakAcrossOrgs", func(_ *testing.T) {
+			otherOrg := models.NewOrganization("email-supp-ies-other", "")
+			r.NoError(svc.CreateOrganization(ctx, otherOrg))
+
+			email := "cross-org@x.test"
+			sup := models.NewEmailSuppression(org.UID, email, nil, models.EmailSuppressionSourceLink)
+			r.NoError(svc.CreateEmailSuppression(ctx, sup))
+
+			suppressed, err := svc.IsEmailSuppressed(ctx, otherOrg.UID, email, "")
+			r.NoError(err)
+			r.False(suppressed, "a suppression in one org must not suppress the same email in another org")
+		})
 	})
 }

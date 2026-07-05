@@ -19,6 +19,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/activation"
 	"github.com/fclairamb/solidping/server/internal/checkers/checkerdef"
 	"github.com/fclairamb/solidping/server/internal/checkers/registry"
+	"github.com/fclairamb/solidping/server/internal/checkworker/scheduling"
 	"github.com/fclairamb/solidping/server/internal/crypto/credentials"
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -1854,11 +1855,21 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		return nil
 	}
 
-	targetRegions := check.Regions
+	// Sort a copy of the target regions so index i is stable and matches
+	// scheduling.RegionIndex's own sort (spec 2026-07-05-08 D2) — both must
+	// agree on the same region ordering for the phase formula to level
+	// correctly. RegionIndex re-sorting this already-sorted slice internally
+	// is a cheap no-op, not a mismatch.
+	targetRegions := make([]string, len(check.Regions))
+	copy(targetRegions, check.Regions)
+	sort.Strings(targetRegions)
+
 	basePeriod := time.Duration(check.Period)
 	n := len(targetRegions)
 
-	// No regions: ensure exactly one job without a region
+	// No regions: ensure exactly one job without a region. Still jitters the
+	// single job (NextAligned with region=nil) so identical checks don't
+	// herd on creation (D1's "single/no-region jobs get jitter-only phase").
 	if n == 0 {
 		// Delete all existing jobs and create one without region
 		for _, job := range existingJobs {
@@ -1867,11 +1878,12 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 			}
 		}
 
-		now := time.Now()
+		scheduledAt := scheduling.NextAligned(time.Now(), basePeriod, basePeriod, check.UID, nil, nil)
 		job := models.NewCheckJob(check.OrganizationUID, check.UID, check.Period)
 		job.Type = check.Type
 		job.Config = check.Config
-		job.ScheduledAt = &now
+		job.ScheduledAt = &scheduledAt
+		job.EffectiveScheduledAt = &scheduledAt
 		job.PlanWeight = planWeight
 
 		return s.db.CreateCheckJob(ctx, job)
@@ -1890,6 +1902,22 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 		targetSet[r] = true
 	}
 
+	// Region-set change (add/remove of a sibling region) shifts every
+	// survivor's index even when nothing else about the job changed, so it
+	// must also force re-leveling (D2). Compare the existing job region set
+	// to the target set; a mismatch in either direction (removed or added)
+	// counts as changed.
+	regionSetChanged := len(existingByRegion) != n
+	if !regionSetChanged {
+		for existingRegion := range existingByRegion {
+			if !targetSet[existingRegion] {
+				regionSetChanged = true
+
+				break
+			}
+		}
+	}
+
 	// Delete jobs for removed regions (and any null-region jobs)
 	for _, job := range existingJobs {
 		if job.Region == nil || !targetSet[*job.Region] {
@@ -1902,21 +1930,32 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 	// Create jobs for new regions, update period for existing
 	splitPeriod := timeutils.Duration(basePeriod * time.Duration(n))
 
-	for i, region := range targetRegions {
+	for _, region := range targetRegions {
 		if existing, ok := existingByRegion[region]; ok {
-			// Update period, config, type, and plan weight if changed
+			// Update period, config, type, and plan weight if changed, or if
+			// the region set changed (an add/remove elsewhere shifts this
+			// job's own index even though nothing on this row directly
+			// changed) — D2.
 			needsUpdate := existing.Period != splitPeriod ||
 				existing.Type != check.Type ||
 				existing.PlanWeight != planWeight ||
-				!configEqual(existing.Config, check.Config)
+				!configEqual(existing.Config, check.Config) ||
+				regionSetChanged
 
 			if needsUpdate {
+				regionCopy := region
+				scheduledAt := scheduling.NextAligned(
+					time.Now(), basePeriod, time.Duration(splitPeriod), check.UID, &regionCopy, targetRegions,
+				)
+
 				if _, err := s.db.DB().NewUpdate().
 					Model((*models.CheckJob)(nil)).
 					Set("period = ?", splitPeriod).
 					Set("type = ?", check.Type).
 					Set("config = ?", check.Config).
 					Set("plan_weight = ?", planWeight).
+					Set("scheduled_at = ?", scheduledAt).
+					Set("effective_scheduled_at = ?", scheduledAt).
 					Set("updated_at = ?", time.Now()).
 					Where("uid = ?", existing.UID).
 					Exec(ctx); err != nil {
@@ -1924,15 +1963,20 @@ func (s *Service) reconcileCheckJobs(ctx context.Context, check *models.Check) e
 				}
 			}
 		} else {
-			// Create new job
-			scheduledAt := time.Now().Add(basePeriod * time.Duration(i))
+			// Create new job, phase-aligned per D1 (replaces the old one-shot
+			// time.Now().Add(basePeriod * i) stagger, which was never
+			// maintained after creation — F1).
 			regionCopy := region
+			scheduledAt := scheduling.NextAligned(
+				time.Now(), basePeriod, time.Duration(splitPeriod), check.UID, &regionCopy, targetRegions,
+			)
 
 			job := models.NewCheckJob(check.OrganizationUID, check.UID, splitPeriod)
 			job.Type = check.Type
 			job.Config = check.Config
 			job.Region = &regionCopy
 			job.ScheduledAt = &scheduledAt
+			job.EffectiveScheduledAt = &scheduledAt
 			job.PlanWeight = planWeight
 
 			if err := s.db.CreateCheckJob(ctx, job); err != nil {

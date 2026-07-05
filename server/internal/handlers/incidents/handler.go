@@ -213,7 +213,13 @@ func (h *Handler) AcknowledgeIncidentByLink(writer http.ResponseWriter, req bunr
 			writeAckHTML(writer, http.StatusGone, ackHTMLExpired)
 		case errors.Is(err, ErrAckTokenSignature),
 			errors.Is(err, ErrAckTokenIncidentMismatch),
-			errors.Is(err, ErrAckTokenMalformed):
+			errors.Is(err, ErrAckTokenMalformed),
+			errors.Is(err, ErrAckTokenPurposeMismatch):
+			// PurposeMismatch covers a well-formed, correctly-signed token
+			// presented here whose purpose isn't "ack" — e.g. an unsubscribe
+			// token pasted into an ack URL. Same "invalid" bucket as a
+			// tampered token: both are client errors, not server errors, and
+			// telling them apart would leak which failure mode succeeded.
 			writeAckHTML(writer, http.StatusBadRequest, ackHTMLInvalid)
 		default:
 			writeAckHTML(writer, http.StatusInternalServerError, ackHTMLError)

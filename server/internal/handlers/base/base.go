@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"runtime"
+	"strings"
 
 	"github.com/getsentry/sentry-go"
+	"github.com/uptrace/bunrouter"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 )
@@ -205,4 +207,34 @@ func (h *HandlerBase) WriteInternalErrorR(w http.ResponseWriter, r *http.Request
 	}
 
 	return h.WriteInternalError(w, err)
+}
+
+// ExtractRemoteAddr extracts the caller's IP address from a request for
+// display/forensics purposes (e.g. auth session history, heartbeat caller
+// metadata). It follows X-Forwarded-For -> X-Real-IP -> RemoteAddr, trusting
+// proxy headers unconditionally.
+//
+// This is NOT suitable for security-sensitive decisions (e.g. rate limiting)
+// since any client can spoof these headers unless a trusted proxy strips or
+// overwrites them first. See middleware/ratelimit.go's extractIP for the
+// proxy-trust-gated variant used there.
+func ExtractRemoteAddr(req bunrouter.Request) string {
+	// Try X-Forwarded-For header first (common in reverse proxy setups)
+	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
+		if ips := strings.Split(xff, ","); len(ips) > 0 {
+			return strings.TrimSpace(ips[0])
+		}
+	}
+
+	// Try X-Real-IP header
+	if xri := req.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fall back to RemoteAddr from the connection
+	if req.RemoteAddr != "" {
+		return req.RemoteAddr
+	}
+
+	return "unknown"
 }

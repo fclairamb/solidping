@@ -113,7 +113,7 @@ function TemplatesTab() {
             navigate({
               to: "/orgs/$org/checks/$checkUid",
               params: { org, checkUid: check.uid },
-              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined },
+              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined },
             }),
         },
       });
@@ -167,7 +167,7 @@ function TemplatesTab() {
             navigate({
               to: "/orgs/$org/checks/$checkUid",
               params: { org, checkUid: check.uid },
-              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined },
+              search: { graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined },
             }),
         },
       });

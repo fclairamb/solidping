@@ -134,7 +134,7 @@ function DependenciesIndexPage() {
                       <Link
                         to="/orgs/$org/checks/$checkUid"
                         params={{ org, checkUid: r.parent.uid }}
-                        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+                        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                         className="hover:underline"
                       >
                         {r.parent.name || r.parent.slug}
@@ -149,7 +149,7 @@ function DependenciesIndexPage() {
                       <Link
                         to="/orgs/$org/checks/$checkUid"
                         params={{ org, checkUid: r.child.uid }}
-                        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+                        search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                         className="hover:underline"
                       >
                         {r.child.name || r.child.slug}

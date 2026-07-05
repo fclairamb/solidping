@@ -8,9 +8,21 @@
     <p class="fallback">{{.Message}}</p>
     {{end}}
     {{if .RequestsURL}}
-    <p class="cta-wrap"><a href="{{.RequestsURL}}" class="cta">Review pending requests</a></p>
+    <p class="cta-wrap">{{template "button" dict "URL" .RequestsURL "Label" "Review pending requests" "Variant" "primary"}}</p>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.RequestsURL}}</p>
     {{end}}
     <p class="meta">You're receiving this because you're an admin of {{.OrgName}}.</p>
+{{end}}
+{{define "text"}}New membership request
+
+Hi,
+
+{{.RequesterName}} ({{.RequesterEmail}}) has asked to join {{.OrgName}} on SolidPing.
+{{if .Message}}
+"{{.Message}}"
+{{end}}{{if .RequestsURL}}
+Review pending requests: {{.RequestsURL}}
+{{end}}
+You're receiving this because you're an admin of {{.OrgName}}.
 {{end}}

@@ -132,13 +132,20 @@ func (h *Handler) handleListError(writer http.ResponseWriter, err error) error {
 
 // GetResult handles GET /api/v1/orgs/:org/checks/:check/results/:uid.
 // Returns the result row, falling back to the smallest covering aggregation
-// when the raw row has been rolled up.
+// when the raw row has been rolled up. An optional comma-separated ?region=
+// narrows the previous/next neighbor scope only — the row itself is always
+// resolved by UID regardless of region.
 func (h *Handler) GetResult(writer http.ResponseWriter, req bunrouter.Request) error {
 	orgSlug := req.Param("org")
 	checkIdent := req.Param("check")
 	resultUID := req.Param("uid")
 
-	resp, err := h.svc.GetResult(req.Context(), orgSlug, checkIdent, resultUID)
+	var regions []string
+	if regionParam := req.URL.Query().Get("region"); regionParam != "" {
+		regions = strings.Split(regionParam, ",")
+	}
+
+	resp, err := h.svc.GetResult(req.Context(), orgSlug, checkIdent, resultUID, regions)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrOrganizationNotFound):

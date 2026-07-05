@@ -122,7 +122,7 @@ function CheckJobDetailPage() {
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: row.checkUid }}
-                search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
+                search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined, resultsRegion: undefined }}
                 className="hover:underline"
               >
                 {row.checkName ?? row.checkUid}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { Trans, useTranslation } from "react-i18next";
-import type { IncidentDetail } from "@/api/hooks";
+import type { IncidentDetail, OrgResult } from "@/api/hooks";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -24,6 +24,7 @@ import {
   useDeleteCheck,
   useUpdateCheck,
   useResults,
+  useAllResults,
   useIncidents,
   useRegions,
 } from "@/api/hooks";
@@ -35,7 +36,8 @@ import {
 } from "@/contexts/LiveEventsContext";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { Badge, badgeVariants } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Card,
@@ -68,7 +70,7 @@ import { QueryErrorView } from "@/components/shared/error-views";
 import { CheckSummaryCards } from "@/components/checks/check-summary-cards";
 import { SslChainCard } from "@/components/checks/ssl-chain-card";
 import { DockerRestartLoopCard } from "@/components/checks/docker-restart-loop-card";
-import { ResponseTimeChart } from "@/components/checks/response-time-chart";
+import { ResponseTimeChart, chartFetchParams, formatMs } from "@/components/checks/response-time-chart";
 import { AvailabilityTable } from "@/components/checks/availability-table";
 import { DependenciesCard } from "@/components/checks/dependencies-card";
 
@@ -80,6 +82,11 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
     graphFull: search.graphFull === "true" ? true : undefined,
     graphRegion:
       typeof search.graphRegion === "string" ? search.graphRegion : undefined,
+    // Independent from graphRegion: the chart isolates a region's view, the
+    // Recent Results table narrows its own list. Coupling them is a possible
+    // follow-up, not assumed here (see spec 2026-07-05-13).
+    resultsRegion:
+      typeof search.resultsRegion === "string" ? search.resultsRegion : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -127,6 +134,106 @@ function formatResultTime(iso: string): string {
     d.getMonth() === now.getMonth() &&
     d.getDate() === now.getDate();
   return sameDay ? d.toLocaleTimeString() : d.toLocaleString();
+}
+
+interface DurationStats {
+  min: number;
+  max: number;
+  avg: number;
+  p95: number;
+  count: number;
+  /** True when the window includes any rollup (non-raw) row, so avg/p95 are
+   * combined estimates rather than exact values (display with a `~` prefix). */
+  isEstimate: boolean;
+}
+
+/**
+ * Tier-aware min/avg/max/p95 + sample count for one region (or all regions
+ * when `region` is undefined — used internally by chart color-swatch code,
+ * not by the stats strip, which only renders for a specific region) over the
+ * given result set. Mirrors the combination method
+ * server/internal/jobs/jobtypes/job_aggregation.go actually uses for
+ * combining child buckets:
+ *   - min/max: exact min-of-mins / max-of-maxes across all contributing rows
+ *     (raw rows contribute their own durationMs as both min and max).
+ *   - avg: totalChecks-weighted mean of each rollup row's durationAvgMs
+ *     (falling back to its plotted durationMs when durationAvgMs is missing —
+ *     e.g. a rollup row that predates this field), each raw row contributing
+ *     its own durationMs with weight 1.
+ *   - p95: an unweighted average of each row's own p95 — rollup rows
+ *     contribute their stored durationP95Ms (falling back to durationMs when
+ *     absent), raw rows contribute their own durationMs as a degenerate
+ *     single-sample p95. This mirrors calculateAggregatedMetrics's plain
+ *     p95Sum / p95Count combination (NOT totalChecks-weighted — the
+ *     aggregator does not weight p95 by count when combining buckets).
+ * Returns null when there is no duration data for the region in this window.
+ */
+function computeDurationStats(
+  allPoints: OrgResult[],
+  region: string | undefined,
+): DurationStats | null {
+  const points = region
+    ? allPoints.filter((p) => p.region === region)
+    : allPoints;
+  if (points.length === 0) return null;
+
+  let min = Infinity;
+  let max = -Infinity;
+  let count = 0;
+  let avgWeightedSum = 0;
+  let avgWeight = 0;
+  let p95Sum = 0;
+  let p95Count = 0;
+  let isEstimate = false;
+
+  for (const p of points) {
+    const isRaw = p.periodType === "raw" || !p.periodType;
+
+    if (isRaw) {
+      if (p.durationMs == null) continue;
+      min = Math.min(min, p.durationMs);
+      max = Math.max(max, p.durationMs);
+      count += 1;
+      avgWeightedSum += p.durationMs;
+      avgWeight += 1;
+      p95Sum += p.durationMs;
+      p95Count += 1;
+      continue;
+    }
+
+    // Rollup row (hour/day/month) — combined stats become estimates.
+    isEstimate = true;
+    const weight = p.totalChecks ?? 1;
+    count += weight;
+
+    if (p.durationMinMs != null) min = Math.min(min, p.durationMinMs);
+    if (p.durationMaxMs != null) max = Math.max(max, p.durationMaxMs);
+
+    const avgFallback = p.durationAvgMs ?? p.durationMs;
+    if (avgFallback != null) {
+      avgWeightedSum += avgFallback * weight;
+      avgWeight += weight;
+    }
+
+    const p95Fallback = p.durationP95Ms ?? p.durationMs;
+    if (p95Fallback != null) {
+      p95Sum += p95Fallback;
+      p95Count += 1;
+    }
+  }
+
+  if (!Number.isFinite(min) || !Number.isFinite(max) || avgWeight === 0 || p95Count === 0) {
+    return null;
+  }
+
+  return {
+    min,
+    max,
+    avg: avgWeightedSum / avgWeight,
+    p95: p95Sum / p95Count,
+    count,
+    isEstimate,
+  };
 }
 
 /** Parse HH:MM:SS period string to milliseconds */
@@ -180,6 +287,7 @@ function HeartbeatEndpoint({ org, check }: { org: string; check: { slug?: string
             </button>
           </div>
         </div>
+        <p className="text-xs text-muted-foreground">{t("endpoints.heartbeat.callerNote")}</p>
       </div>
     </div>
   );
@@ -282,7 +390,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
 function CheckDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
-  const { graphPeriod, graphFull, graphRegion } = Route.useSearch();
+  const { graphPeriod, graphFull, graphRegion, resultsRegion } = Route.useSearch();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingSlug, setEditingSlug] = useState(false);
@@ -337,9 +445,56 @@ function CheckDetailPage() {
     refetchInterval,
   });
 
+  // Same react-query key as ResponseTimeChart's own useAllResults call (see
+  // chartFetchParams) so this is a cache hit, not a second HTTP request. Used
+  // to derive the observed-region set for the results filter and the
+  // tier-aware duration stats strip, both scoped to the chart's current
+  // graphPeriod window — one page, one time window, per the spec.
+  const graphTimeRange = graphPeriod ?? "day";
+  const chartWindowParams = useMemo(
+    () => chartFetchParams(graphTimeRange, periodMs),
+    [graphTimeRange, periodMs],
+  );
+  const { data: chartWindowResults } = useAllResults(org, {
+    checkUid,
+    ...chartWindowParams,
+    refetchInterval,
+  });
+
+  const observedRegions = useMemo(() => {
+    const set = new Set<string>();
+    for (const r of chartWindowResults?.data ?? []) {
+      if (r.region) set.add(r.region);
+    }
+    return Array.from(set).sort();
+  }, [chartWindowResults]);
+
+  // Stale-selection guard, mirroring the chart's own effectiveRegion: only
+  // honor ?resultsRegion= when that slug is actually present in the current
+  // window's observed regions. A stale deep link (regions changed, data aged
+  // out) falls back to "All" instead of silently emptying the table.
+  const effectiveResultsRegion =
+    resultsRegion && observedRegions.includes(resultsRegion)
+      ? resultsRegion
+      : undefined;
+
+  const setResultsRegion = (region: string | undefined) => {
+    navigate({
+      to: ".",
+      search: (prev) => ({ ...prev, resultsRegion: region }),
+      replace: true,
+    });
+  };
+
+  const durationStats = useMemo(
+    () => computeDurationStats(chartWindowResults?.data ?? [], effectiveResultsRegion),
+    [chartWindowResults, effectiveResultsRegion],
+  );
+
   const { data: results } = useResults(org, {
     checkUid,
     size: 10,
+    region: effectiveResultsRegion,
     with: "durationMs,region",
     refetchInterval,
   });
@@ -374,6 +529,7 @@ function CheckDetailPage() {
           graphPeriod: undefined,
           graphFull: undefined,
           graphRegion: undefined,
+          resultsRegion: undefined,
         },
         replace: true,
       });
@@ -502,6 +658,7 @@ function CheckDetailPage() {
                       graphPeriod: undefined,
                       graphFull: undefined,
                       graphRegion: undefined,
+                      resultsRegion: undefined,
                     }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -558,6 +715,7 @@ function CheckDetailPage() {
                       graphPeriod: undefined,
                       graphFull: undefined,
                       graphRegion: undefined,
+                      resultsRegion: undefined,
                     }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
@@ -734,11 +892,15 @@ function CheckDetailPage() {
         onSettingsChange={(period, full, region) =>
           navigate({
             to: ".",
-            search: {
+            // Functional form so the independent resultsRegion param (Recent
+            // Results' own filter) survives chart period/range/region changes
+            // instead of being wiped by this literal-object search.
+            search: (prev) => ({
+              ...prev,
               graphPeriod: period !== "day" ? period : undefined,
               graphFull: full ? true : undefined,
               graphRegion: region ?? undefined,
-            },
+            }),
             replace: true,
           })
         }
@@ -946,11 +1108,81 @@ function CheckDetailPage() {
       <DependenciesCard org={org} checkUid={checkUid} />
 
       <Card>
-        <CardHeader>
-          <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
-          <CardDescription>{t("checks:detail.recentResultsDescription")}</CardDescription>
+        <CardHeader className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between space-y-0">
+          <div>
+            <CardTitle>{t("checks:detail.recentResults")}</CardTitle>
+            <CardDescription>{t("checks:detail.recentResultsDescription")}</CardDescription>
+          </div>
+          {observedRegions.length > 1 && (
+            <div
+              className="flex flex-wrap items-center gap-1"
+              data-testid="results-region-filter"
+            >
+              <Button
+                variant={effectiveResultsRegion === undefined ? "default" : "outline"}
+                size="sm"
+                onClick={() => setResultsRegion(undefined)}
+                className="px-2 text-xs"
+              >
+                {t("checks:detail.results.filterAll")}
+              </Button>
+              {observedRegions.map((slug) => {
+                const region = regionsData?.regions?.find((r) => r.slug === slug);
+                return (
+                  <Button
+                    key={slug}
+                    variant={effectiveResultsRegion === slug ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setResultsRegion(slug)}
+                    className="px-2 text-xs"
+                    data-testid={`results-region-chip-${slug}`}
+                  >
+                    {region ? `${region.emoji} ${region.name}` : slug}
+                  </Button>
+                );
+              })}
+            </div>
+          )}
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {effectiveResultsRegion && durationStats && (
+            <div
+              className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-md border bg-muted/30 px-3 py-2 text-sm"
+              data-testid="results-duration-stats"
+            >
+              <span className="text-xs text-muted-foreground">
+                {t("checks:detail.results.stats.window", {
+                  period: t(`checks:detail.results.stats.windowPeriod.${graphTimeRange}`),
+                })}
+              </span>
+              <span>
+                <span className="text-muted-foreground">{t("checks:detail.results.stats.min")}: </span>
+                <span className="font-medium">{formatMs(durationStats.min)}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{t("checks:detail.results.stats.avg")}: </span>
+                <span className="font-medium">
+                  {durationStats.isEstimate ? "~" : ""}
+                  {formatMs(durationStats.avg)}
+                </span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{t("checks:detail.results.stats.max")}: </span>
+                <span className="font-medium">{formatMs(durationStats.max)}</span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{t("checks:detail.results.stats.p95")}: </span>
+                <span className="font-medium">
+                  {durationStats.isEstimate ? "~" : ""}
+                  {formatMs(durationStats.p95)}
+                </span>
+              </span>
+              <span>
+                <span className="text-muted-foreground">{t("checks:detail.results.stats.samples")}: </span>
+                <span className="font-medium">{durationStats.count}</span>
+              </span>
+            </div>
+          )}
           {results?.data && results.data.length > 0 ? (
             <Table>
               <TableHeader>
@@ -972,6 +1204,7 @@ function CheckDetailPage() {
                       navigate({
                         to: "/orgs/$org/checks/$checkUid/results/$resultUid",
                         params: { org, checkUid, resultUid: result.uid },
+                        search: { region: effectiveResultsRegion },
                       });
                     }}
                   >
@@ -997,10 +1230,27 @@ function CheckDetailPage() {
                           const region = regionsData?.regions?.find(
                             (r) => r.slug === result.region,
                           );
+                          const slug = result.region;
                           return (
-                            <Badge variant="outline">
-                              {region ? `${region.emoji} ${region.name}` : result.region}
-                            </Badge>
+                            // A real <button> styled with badgeVariants (not
+                            // <Badge>, which renders a plain <div> with no
+                            // asChild/Slot support) — keeps the Badge look
+                            // while being a genuine interactive element, with
+                            // a hover/focus affordance signaling it's clickable.
+                            <button
+                              type="button"
+                              className={cn(
+                                badgeVariants({ variant: "outline" }),
+                                "cursor-pointer transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                              )}
+                              data-testid={`result-region-badge-${result.uid}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setResultsRegion(slug);
+                              }}
+                            >
+                              {region ? `${region.emoji} ${region.name}` : slug}
+                            </button>
                           );
                         })()
                       ) : (

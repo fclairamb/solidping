@@ -63,9 +63,13 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
-// LogoutRequest represents a logout request body.
+// LogoutRequest represents a logout request body. DeleteAllTokens and
+// SignOutOthers are mutually exclusive: the former ends every session
+// (including the caller's own — a full logout), the latter spares the
+// caller's own session (a "sign out other devices" action, not a logout).
 type LogoutRequest struct {
 	DeleteAllTokens bool `json:"deleteAllTokens"`
+	SignOutOthers   bool `json:"signOutOthers"`
 }
 
 // NewHandler creates a new authentication handler.
@@ -100,7 +104,7 @@ func (h *Handler) Login(writer http.ResponseWriter, req bunrouter.Request) error
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Login(req.Context(), loginReq.Org, loginReq.Email, loginReq.Password, authContext)
@@ -132,6 +136,12 @@ func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) erro
 		_ = json.NewDecoder(req.Body).Decode(&logoutReq) // Ignore errors, optional body
 	}
 
+	if logoutReq.DeleteAllTokens && logoutReq.SignOutOthers {
+		return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+			{Name: "signOutOthers", Message: "deleteAllTokens and signOutOthers are mutually exclusive"},
+		})
+	}
+
 	if logoutReq.DeleteAllTokens {
 		resp, logoutErr := h.svc.LogoutUser(req.Context(), claims.UserUID)
 		if logoutErr != nil {
@@ -141,6 +151,24 @@ func (h *Handler) Logout(writer http.ResponseWriter, req bunrouter.Request) erro
 		// Clear cookie
 		h.clearAuthCookie(writer)
 
+		return h.WriteJSON(writer, http.StatusOK, resp)
+	}
+
+	if logoutReq.SignOutOthers {
+		if claims.RefreshUID == "" {
+			// No current session row to spare (e.g. a PAT hitting /logout) —
+			// "sign out others" is meaningless without one.
+			return h.WriteValidationError(writer, "Validation error", []base.ValidationErrorField{
+				{Name: "signOutOthers", Message: "no current session to keep — this credential is not a session"},
+			})
+		}
+
+		resp, logoutErr := h.svc.LogoutOtherSessions(req.Context(), claims.UserUID, claims.RefreshUID)
+		if logoutErr != nil {
+			return h.handleLogoutError(writer, logoutErr)
+		}
+
+		// The caller's own session (and cookie) survive — this is not a logout.
 		return h.WriteJSON(writer, http.StatusOK, resp)
 	}
 
@@ -170,7 +198,9 @@ func (h *Handler) Refresh(writer http.ResponseWriter, req bunrouter.Request) err
 		return h.handleRefreshError(writer, err)
 	}
 
-	// Update access token cookie
+	// Re-set the access token cookie exactly like Login does — without this,
+	// cookie-authenticated surfaces silently lapse after the first hour even
+	// though the bearer-token session keeps refreshing.
 	http.SetCookie(writer, &http.Cookie{
 		Name:   CookieAuthToken,
 		Value:  resp.AccessToken,
@@ -231,7 +261,7 @@ func (h *Handler) GetAllUserTokens(writer http.ResponseWriter, req bunrouter.Req
 	// Get optional token type filter
 	tokenType := req.URL.Query().Get("type")
 
-	resp, err := h.svc.GetAllUserTokens(req.Context(), claims.UserUID, tokenType)
+	resp, err := h.svc.GetAllUserTokens(req.Context(), claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
 		return h.handleTokenError(writer, err, http.StatusNotFound)
 	}
@@ -251,7 +281,7 @@ func (h *Handler) GetOrgTokens(writer http.ResponseWriter, req bunrouter.Request
 	// Get optional token type filter
 	tokenType := req.URL.Query().Get("type")
 
-	resp, err := h.svc.GetUserTokens(req.Context(), orgSlug, claims.UserUID, tokenType)
+	resp, err := h.svc.GetUserTokens(req.Context(), orgSlug, claims.UserUID, tokenType, claims.RefreshUID)
 	if err != nil {
 		return h.handleTokenError(writer, err, http.StatusNotFound)
 	}
@@ -336,7 +366,7 @@ func (h *Handler) SwitchOrg(writer http.ResponseWriter, req bunrouter.Request) e
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.SwitchOrg(req.Context(), claims.UserUID, switchReq.Org, authContext)
@@ -529,7 +559,7 @@ func (h *Handler) RequestPasswordReset(writer http.ResponseWriter, req bunrouter
 		})
 	}
 
-	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, extractRemoteAddress(req))
+	resp, err := h.svc.RequestPasswordReset(req.Context(), resetReq, base.ExtractRemoteAddr(req))
 	if err != nil {
 		if errors.Is(err, ErrRateLimited) {
 			return h.WriteError(writer, http.StatusTooManyRequests, base.ErrorCodeRateLimited,
@@ -941,7 +971,7 @@ func (h *Handler) Verify2FA(writer http.ResponseWriter, req bunrouter.Request) e
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Verify2FA(req.Context(), tempToken, verifyReq.Code, authContext)
@@ -982,7 +1012,7 @@ func (h *Handler) Recovery2FA(writer http.ResponseWriter, req bunrouter.Request)
 
 	authContext := Context{
 		UserAgent:  req.Header.Get("User-Agent"),
-		RemoteAddr: extractRemoteAddress(req),
+		RemoteAddr: base.ExtractRemoteAddr(req),
 	}
 
 	resp, err := h.svc.Recovery2FA(req.Context(), tempToken, recoveryReq.RecoveryCode, authContext)
@@ -1061,25 +1091,4 @@ func extractBearerToken(req bunrouter.Request) string {
 	}
 
 	return ""
-}
-
-func extractRemoteAddress(req bunrouter.Request) string {
-	// Try X-Forwarded-For header first (common in reverse proxy setups)
-	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
-		if ips := strings.Split(xff, ","); len(ips) > 0 {
-			return strings.TrimSpace(ips[0])
-		}
-	}
-
-	// Try X-Real-IP header
-	if xri := req.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fall back to RemoteAddr from the connection
-	if req.RemoteAddr != "" {
-		return req.RemoteAddr
-	}
-
-	return "unknown"
 }
