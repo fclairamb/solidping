@@ -17,6 +17,11 @@ import (
 // incident start. Kept short enough to limit the impact of a leaked email.
 const ackTokenTTL = 7 * 24 * time.Hour
 
+// unsubscribeTokenTTL is the spec's 90-day TTL for unsubscribe links —
+// longer than ack's 7 days because these get clicked long after delivery
+// (a recipient may only notice and act on a flood of alerts weeks later).
+const unsubscribeTokenTTL = 90 * 24 * time.Hour
+
 // canAckEvent reports whether the event type produces an actionable incident
 // in the dashboard — only those events get a magic-link "acknowledge" button
 // in the email body. A resolved incident has nothing to ack.
@@ -57,6 +62,25 @@ func buildAckURL(baseURL, orgSlug, incidentUID, recipientEmail string, secret []
 
 	return fmt.Sprintf("%s/api/v1/orgs/%s/incidents/%s/ack?token=%s",
 		baseURL, orgSlug, incidentUID, token)
+}
+
+// buildUnsubscribeURL composes the per-recipient unsubscribe URL (D4).
+// checkUID scopes the token to one check — every incident email is
+// check-scoped by construction, since it always concerns one specific
+// check's incident; the org-wide "all alerts" scope is only reachable by
+// widening from the confirmation page (unsubscribe.ScopeOrg), not from the
+// token an email carries. Returns "" when any required input is missing, so
+// the caller can omit both the footer link and the List-Unsubscribe header
+// rather than rendering/sending a broken one.
+func buildUnsubscribeURL(baseURL, orgSlug, recipientEmail, checkUID string, secret []byte, exp time.Time) string {
+	baseURL = strings.TrimRight(baseURL, "/")
+	if baseURL == "" || orgSlug == "" || recipientEmail == "" || checkUID == "" || len(secret) == 0 {
+		return ""
+	}
+
+	token := incidentlinks.SignUnsubscribe(secret, orgSlug, recipientEmail, checkUID, exp)
+
+	return fmt.Sprintf("%s/unsubscribe?token=%s", baseURL, token)
 }
 
 // Event type constants.
@@ -261,12 +285,19 @@ func (s *EmailSender) Send(ctx context.Context, jctx *jobdef.JobContext, payload
 }
 
 // sendPerRecipient sends one email per recipient with a personalized magic-
-// link ack URL (ackable events only) and unsubscribe token (D4, wired in a
-// follow-up commit). The first send error short-circuits — the job runner
-// will retry the whole batch, which is fine because email delivery itself is
-// idempotent at the recipient level (worst case: a duplicate notification).
-// Each send's outcome is recorded into del before a failure short-circuits, so
-// the audit row still reflects the recipients that were delivered.
+// link ack URL (ackable events only) and a per-recipient signed unsubscribe
+// link (D4). Suppressed (org, email, check) combinations are filtered out
+// before sending — each gets a `skipped` incident_notifications audit row
+// instead (spec acceptance criterion 4) — so a recipient who unsubscribed
+// never receives another alert for that check, while the rest of the
+// recipient list is unaffected.
+//
+// The first send error to a NON-suppressed recipient short-circuits — the
+// job runner will retry the whole batch, which is fine because email
+// delivery itself is idempotent at the recipient level (worst case: a
+// duplicate notification). Each send's outcome is recorded into del before a
+// failure short-circuits, so the audit row still reflects the recipients
+// that were delivered.
 func (s *EmailSender) sendPerRecipient(
 	ctx context.Context,
 	jctx *jobdef.JobContext,
@@ -275,17 +306,31 @@ func (s *EmailSender) sendPerRecipient(
 	prefix string,
 	del *emailDelivery,
 ) error {
-	exp := payload.Incident.StartedAt.Add(ackTokenTTL)
+	ackExp := payload.Incident.StartedAt.Add(ackTokenTTL)
+	unsubExp := payload.Incident.StartedAt.Add(unsubscribeTokenTTL)
 	secret := []byte(jctx.AppConfig.Auth.JWTSecret)
 	baseURL := jctx.AppConfig.Server.BaseURL
 
 	for _, recipient := range recipients {
-		var ackURL string
-		if canAckEvent(payload.EventType) {
-			ackURL = buildAckURL(baseURL, payload.OrgSlug, payload.Incident.UID, recipient, secret, exp)
+		suppressed, err := s.isRecipientSuppressed(ctx, jctx, payload, recipient)
+		if err != nil {
+			return fmt.Errorf("checking suppression for %s: %w", recipient, err)
 		}
 
-		content, err := s.buildEmailContent(jctx, payload, ackURL, recipient)
+		if suppressed {
+			s.recordSkippedForSuppression(ctx, jctx, payload, recipient)
+
+			continue
+		}
+
+		var ackURL string
+		if canAckEvent(payload.EventType) {
+			ackURL = buildAckURL(baseURL, payload.OrgSlug, payload.Incident.UID, recipient, secret, ackExp)
+		}
+
+		unsubURL := buildUnsubscribeURL(baseURL, payload.OrgSlug, recipient, payload.Check.UID, secret, unsubExp)
+
+		content, err := s.buildEmailContent(jctx, payload, ackURL, unsubURL)
 		if err != nil {
 			return fmt.Errorf("building email content for %s: %w", recipient, err)
 		}
@@ -295,10 +340,12 @@ func (s *EmailSender) sendPerRecipient(
 		}
 
 		msg := &email.Message{
-			Recipients: email.Recipients{To: []string{recipient}},
-			Subject:    content.subject,
-			HTML:       content.htmlBody,
-			Text:       content.textBody,
+			Recipients:                  email.Recipients{To: []string{recipient}},
+			Subject:                     content.subject,
+			HTML:                        content.htmlBody,
+			Text:                        content.textBody,
+			ListUnsubscribeURL:          unsubURL,
+			ListUnsubscribePostOneClick: unsubURL != "",
 		}
 
 		res, sendErr := jctx.Services.EmailSender.Send(ctx, msg)
@@ -312,6 +359,56 @@ func (s *EmailSender) sendPerRecipient(
 	return nil
 }
 
+// isRecipientSuppressed reports whether recipient has unsubscribed from
+// alerts for this check (either a check-specific or an org-wide
+// suppression). Returns false, nil when jctx.DBService is nil (test doubles
+// that don't wire a DB service) so existing tests without suppression
+// fixtures keep sending — production always has a DBService.
+func (s *EmailSender) isRecipientSuppressed(
+	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, recipient string,
+) (bool, error) {
+	if jctx.DBService == nil {
+		return false, nil
+	}
+
+	suppressed, err := jctx.DBService.IsEmailSuppressed(ctx, payload.Integration.OrganizationUID, recipient, payload.Check.UID)
+	if err != nil {
+		return false, fmt.Errorf("is email suppressed: %w", err)
+	}
+
+	return suppressed, nil
+}
+
+// recordSkippedForSuppression inserts a `skipped` incident_notifications
+// audit row naming the suppression, so the dashboard's notification history
+// explains why this recipient didn't get an email (spec acceptance
+// criterion 4). Best-effort: a failure to write the audit row logs but does
+// not fail the overall send — the recipient is still correctly skipped
+// either way, and an audit-row write failure shouldn't block delivery to
+// the remaining recipients.
+func (s *EmailSender) recordSkippedForSuppression(
+	ctx context.Context, jctx *jobdef.JobContext, payload *Payload, recipient string,
+) {
+	if jctx.DBService == nil {
+		return
+	}
+
+	skipReason := fmt.Sprintf("suppressed: %s unsubscribed from alerts for this check", recipient)
+	row := models.NewSkippedIncidentNotification(
+		payload.Integration.OrganizationUID,
+		payload.Incident.UID,
+		payload.EventType,
+		models.IncidentNotificationSourceCheckConnection,
+		skipReason,
+		nil, nil,
+	)
+
+	if err := jctx.DBService.CreateIncidentNotification(ctx, row); err != nil {
+		jctx.Logger.WarnContext(ctx, "failed to record skipped-for-suppression audit row",
+			"recipient", recipient, "incidentUid", payload.Incident.UID, "error", err)
+	}
+}
+
 type emailContent struct {
 	subject  string
 	htmlBody string
@@ -320,10 +417,10 @@ type emailContent struct {
 
 // buildEmailContent assembles the view-model for one recipient and renders it
 // through the shared formatter — the one rendering pipeline for every email
-// (D1). recipientEmail is only used for future unsubscribe-token generation
-// (D4); it may be "" for the broadcast (non-modeled-event) path.
+// (D1). unsubURL is "" for the broadcast (non-modeled-event) path, which has
+// no per-recipient token to offer.
 func (s *EmailSender) buildEmailContent(
-	jctx *jobdef.JobContext, payload *Payload, ackURL, recipientEmail string,
+	jctx *jobdef.JobContext, payload *Payload, ackURL, unsubURL string,
 ) (emailContent, error) {
 	checkName := "Unknown check"
 	if payload.Check.Name != nil {
@@ -346,7 +443,7 @@ func (s *EmailSender) buildEmailContent(
 		}, nil
 	}
 
-	viewModel := s.buildIncidentViewModel(checkName, payload, ackURL, recipientEmail)
+	viewModel := s.buildIncidentViewModel(checkName, payload, ackURL, unsubURL)
 
 	subject, html, text, err := jctx.Services.EmailFormatter.Format(templateName, viewModel)
 	if err != nil {
@@ -357,16 +454,14 @@ func (s *EmailSender) buildEmailContent(
 }
 
 // buildIncidentViewModel builds the data map passed to the incident-*.html
-// templates: check/incident details, dashboard deep links (D3), and the ack
-// URL (when the event is ackable). recipientEmail and the unsubscribe fields
-// are threaded through for D4 (wired in a follow-up commit); left as zero
-// values here has no visible effect since the templates render their
-// unsubscribe block conditionally on UnsubscribeURL being non-empty.
+// templates: check/incident details, dashboard deep links (D3), the ack URL
+// (when the event is ackable), and the unsubscribe footer link (D4).
+// unsubURL is "" for the broadcast (non-modeled-event) path — the templates
+// render their unsubscribe footer line conditionally on UnsubscribeURL being
+// non-empty, so an empty string simply omits that line.
 func (s *EmailSender) buildIncidentViewModel(
-	checkName string, payload *Payload, ackURL, recipientEmail string,
+	checkName string, payload *Payload, ackURL, unsubURL string,
 ) map[string]any {
-	_ = recipientEmail // used once D4's unsubscribe-token wiring lands
-
 	vm := map[string]any{
 		"CheckName":    checkName,
 		"CheckType":    payload.Check.Type,
@@ -384,6 +479,11 @@ func (s *EmailSender) buildIncidentViewModel(
 	if payload.Incident.ResolvedAt != nil {
 		vm["ResolvedAt"] = payload.Incident.ResolvedAt.Format("2006-01-02 15:04:05")
 		vm["Duration"] = payload.Incident.ResolvedAt.Sub(payload.Incident.StartedAt).Round(time.Second).String()
+	}
+
+	if unsubURL != "" {
+		vm["UnsubscribeURL"] = unsubURL
+		vm["UnsubscribeCheckName"] = checkName
 	}
 
 	return vm

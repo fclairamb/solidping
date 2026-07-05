@@ -90,8 +90,27 @@ func (s *SMTPSender) buildMessage(msg *Message) (*mail.Msg, error) {
 
 	mailMsg.Subject(msg.Subject)
 	s.setBody(mailMsg, msg)
+	setListUnsubscribeHeaders(mailMsg, msg)
 
 	return mailMsg, nil
+}
+
+// setListUnsubscribeHeaders sets RFC 2369 List-Unsubscribe and RFC 8058
+// List-Unsubscribe-Post per spec 2026-07-05-10 (D4). Only incident/alert
+// emails populate msg.ListUnsubscribeURL — transactional emails
+// (registration, reset, invitation, password-changed) never set it, so this
+// is a no-op for them and they carry no List-Unsubscribe headers at all
+// (spec acceptance criterion 6).
+func setListUnsubscribeHeaders(mailMsg *mail.Msg, msg *Message) {
+	if msg.ListUnsubscribeURL == "" {
+		return
+	}
+
+	mailMsg.SetGenHeader(mail.HeaderListUnsubscribe, "<"+msg.ListUnsubscribeURL+">")
+
+	if msg.ListUnsubscribePostOneClick {
+		mailMsg.SetGenHeader(mail.HeaderListUnsubscribePost, "List-Unsubscribe=One-Click")
+	}
 }
 
 // setFrom sets the sender address on the message, defaulting the display

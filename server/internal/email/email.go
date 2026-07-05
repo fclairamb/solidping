@@ -17,6 +17,19 @@ type Message struct {
 	Subject    string     // Email subject
 	HTML       string     // HTML body
 	Text       string     // Plain text body (fallback)
+	// ListUnsubscribeURL, when non-empty, sets the RFC 2369 List-Unsubscribe
+	// header to <URL> — the per-recipient unsubscribe link (spec
+	// 2026-07-05-10, D4). Only incident/alert emails set this; transactional
+	// emails (registration, reset, invitation, password-changed) leave it
+	// empty and carry no List-Unsubscribe headers at all (spec acceptance
+	// criterion 6).
+	ListUnsubscribeURL string
+	// ListUnsubscribePostOneClick, when true alongside a non-empty
+	// ListUnsubscribeURL, sets List-Unsubscribe-Post: List-Unsubscribe=One-Click
+	// (RFC 8058) — tells compliant mail clients (Gmail, Apple Mail, etc.) to
+	// offer a one-click unsubscribe button that POSTs to ListUnsubscribeURL
+	// with no user-visible page.
+	ListUnsubscribePostOneClick bool
 }
 
 // Sender handles email delivery.

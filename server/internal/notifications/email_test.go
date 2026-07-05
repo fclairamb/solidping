@@ -12,7 +12,9 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/app/services"
 	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
+	"github.com/fclairamb/solidping/server/internal/db/sqlite"
 	"github.com/fclairamb/solidping/server/internal/email"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 )
@@ -407,4 +409,315 @@ func TestEmailSender_Send_RendersIncidentTemplates(t *testing.T) {
 			}
 		})
 	}
+}
+
+// --- Suppression filtering (spec 2026-07-05-10, D4, acceptance criteria 4 & 7) ---
+
+// suppressionTestFixture bundles a real in-memory db.Service with an org and
+// two checks, so suppression tests can create real EmailSuppression rows and
+// assert against real IsEmailSuppressed / CreateIncidentNotification
+// behavior — not a mock that could silently diverge from the actual
+// enforcement query.
+type suppressionTestFixture struct {
+	dbSvc db.Service
+	org   *models.Organization
+	check *models.Check
+}
+
+func newSuppressionTestFixture(t *testing.T) *suppressionTestFixture {
+	t.Helper()
+
+	r := require.New(t)
+
+	dbSvc, err := sqlite.New(t.Context(), sqlite.Config{InMemory: true})
+	r.NoError(err)
+	t.Cleanup(func() { _ = dbSvc.Close() })
+	r.NoError(dbSvc.Initialize(t.Context()))
+
+	org := models.NewOrganization("email-supp-send-org", "")
+	r.NoError(dbSvc.CreateOrganization(t.Context(), org))
+
+	check := models.NewCheck(org.UID, "email-supp-send-check", "http")
+	r.NoError(dbSvc.CreateCheck(t.Context(), check))
+
+	return &suppressionTestFixture{dbSvc: dbSvc, org: org, check: check}
+}
+
+// newIncident creates and persists a real incident row for checkUID — the
+// skipped-audit-row insert has a foreign key on incident_uid, so a
+// suppression test needs a real row, not just an in-memory *models.Incident
+// literal (production always has one: job_notification.go loads it via
+// jctx.DBService.GetIncident before Send is ever called).
+func (f *suppressionTestFixture) newIncident(t *testing.T, checkUID string) *models.Incident {
+	t.Helper()
+
+	r := require.New(t)
+
+	incident := models.NewIncident(f.org.UID, checkUID, time.Now(), "test incident")
+	r.NoError(f.dbSvc.CreateIncident(t.Context(), incident))
+
+	return incident
+}
+
+// TestEmailSender_Send_SuppressionFiltering is the table-driven guard for
+// recipient-resolution suppression enforcement: a suppressed recipient must
+// not receive the email and must get a `skipped` audit row; a
+// non-suppressed recipient in the SAME send must still receive theirs.
+func TestEmailSender_Send_SuppressionFiltering(t *testing.T) {
+	t.Parallel()
+
+	checkName := "API health"
+
+	tests := []struct {
+		name           string
+		suppressScope  string // "none", "check", "org"
+		wantSuppressed bool
+	}{
+		{name: "not suppressed sends normally", suppressScope: "none", wantSuppressed: false},
+		{name: "check-specific suppression blocks delivery", suppressScope: "check", wantSuppressed: true},
+		{name: "org-wide suppression blocks delivery", suppressScope: "org", wantSuppressed: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+			f := newSuppressionTestFixture(t)
+
+			const suppressedEmail = "suppressed@x.test"
+
+			switch tt.suppressScope {
+			case "check":
+				sup := models.NewEmailSuppression(f.org.UID, suppressedEmail, &f.check.UID, models.EmailSuppressionSourceLink)
+				r.NoError(f.dbSvc.CreateEmailSuppression(t.Context(), sup))
+			case "org":
+				sup := models.NewEmailSuppression(f.org.UID, suppressedEmail, nil, models.EmailSuppressionSourceLink)
+				r.NoError(f.dbSvc.CreateEmailSuppression(t.Context(), sup))
+			}
+
+			incident := f.newIncident(t, f.check.UID)
+
+			sender := &fakeEmailSender{}
+			s := &EmailSender{}
+			payload := &Payload{
+				EventType: eventTypeIncidentCreated,
+				Check:     &models.Check{UID: f.check.UID, Name: &checkName, Type: "http"},
+				Incident:  incident,
+				Integration: &models.Integration{
+					OrganizationUID: f.org.UID,
+					Settings:        models.JSONMap{"to": []any{suppressedEmail}},
+				},
+			}
+
+			jctx := &jobdef.JobContext{
+				Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+				AppConfig: &config.Config{Auth: config.AuthConfig{JWTSecret: "test-secret"}},
+				DBService: f.dbSvc,
+				Logger:    slog.Default(),
+			}
+
+			r.NoError(s.Send(context.Background(), jctx, payload))
+
+			if tt.wantSuppressed {
+				r.Empty(sender.sent, "a suppressed recipient must not receive an email")
+
+				rows, err := f.dbSvc.ListIncidentNotifications(context.Background(), f.org.UID, db.ListIncidentNotificationsFilter{
+					IncidentUID: incident.UID,
+				})
+				r.NoError(err)
+				r.Len(rows, 1, "exactly one skipped audit row must be created")
+				r.Equal(models.IncidentNotificationStatusSkipped, rows[0].Status)
+				r.NotNil(rows[0].SkipReason)
+				r.Contains(*rows[0].SkipReason, suppressedEmail)
+			} else {
+				r.Len(sender.sent, 1, "a non-suppressed recipient must receive the email")
+			}
+		})
+	}
+}
+
+// TestEmailSender_Send_SuppressionFiltering_MixedRecipients confirms that
+// suppressing ONE recipient in a multi-recipient send does not affect
+// delivery to the others — the filtering is per-recipient, not
+// all-or-nothing for the notification.
+func TestEmailSender_Send_SuppressionFiltering_MixedRecipients(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newSuppressionTestFixture(t)
+	checkName := "API health"
+
+	const (
+		suppressedEmail = "suppressed@x.test"
+		normalEmail     = "normal@x.test"
+	)
+
+	sup := models.NewEmailSuppression(f.org.UID, suppressedEmail, &f.check.UID, models.EmailSuppressionSourceLink)
+	r.NoError(f.dbSvc.CreateEmailSuppression(t.Context(), sup))
+
+	incident := f.newIncident(t, f.check.UID)
+
+	sender := &fakeEmailSender{}
+	s := &EmailSender{}
+	payload := &Payload{
+		EventType: eventTypeIncidentCreated,
+		Check:     &models.Check{UID: f.check.UID, Name: &checkName, Type: "http"},
+		Incident:  incident,
+		Integration: &models.Integration{
+			OrganizationUID: f.org.UID,
+			Settings:        models.JSONMap{"to": []any{suppressedEmail, normalEmail}},
+		},
+	}
+
+	jctx := &jobdef.JobContext{
+		Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+		AppConfig: &config.Config{Auth: config.AuthConfig{JWTSecret: "test-secret"}},
+		DBService: f.dbSvc,
+		Logger:    slog.Default(),
+	}
+
+	r.NoError(s.Send(context.Background(), jctx, payload))
+
+	r.Len(sender.sent, 1, "only the non-suppressed recipient must receive an email")
+	r.Equal([]string{normalEmail}, sender.sent[0].Recipients.To)
+
+	rows, err := f.dbSvc.ListIncidentNotifications(context.Background(), f.org.UID, db.ListIncidentNotificationsFilter{
+		IncidentUID: incident.UID,
+	})
+	r.NoError(err)
+	r.Len(rows, 1, "exactly one skipped audit row, for the suppressed recipient only")
+	r.Contains(*rows[0].SkipReason, suppressedEmail)
+}
+
+// TestEmailSender_Send_SuppressionScopeIsolation confirms a check-specific
+// suppression does NOT block delivery for a DIFFERENT check — suppression
+// is per-check unless the row is explicitly org-wide (check_uid NULL).
+func TestEmailSender_Send_SuppressionScopeIsolation(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newSuppressionTestFixture(t)
+	checkName := "API health"
+
+	otherCheck := models.NewCheck(f.org.UID, "email-supp-send-other-check", "http")
+	r.NoError(f.dbSvc.CreateCheck(t.Context(), otherCheck))
+
+	const email = "scoped@x.test"
+
+	// Suppress for f.check only.
+	sup := models.NewEmailSuppression(f.org.UID, email, &f.check.UID, models.EmailSuppressionSourceLink)
+	r.NoError(f.dbSvc.CreateEmailSuppression(t.Context(), sup))
+
+	sender := &fakeEmailSender{}
+	s := &EmailSender{}
+	payload := &Payload{
+		EventType: eventTypeIncidentCreated,
+		// Incident is for the OTHER check, not the suppressed one.
+		Check:    &models.Check{UID: otherCheck.UID, Name: &checkName, Type: "http"},
+		Incident: &models.Incident{UID: "inc-other-check", StartedAt: time.Now()},
+		Integration: &models.Integration{
+			OrganizationUID: f.org.UID,
+			Settings:        models.JSONMap{"to": []any{email}},
+		},
+	}
+
+	jctx := &jobdef.JobContext{
+		Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+		AppConfig: &config.Config{Auth: config.AuthConfig{JWTSecret: "test-secret"}},
+		DBService: f.dbSvc,
+		Logger:    slog.Default(),
+	}
+
+	r.NoError(s.Send(context.Background(), jctx, payload))
+	r.Len(sender.sent, 1, "a suppression scoped to a different check must not block this one")
+}
+
+// TestEmailSender_Send_TransactionalPathNeverConsultsSuppression documents
+// (spec acceptance criterion 6) that suppression filtering lives entirely
+// inside sendPerRecipient, reached only via isModeledIncidentEvent. The
+// transactional email paths (registration/reset/invitation/password-changed,
+// sent through jobtypes.EmailJobRun via the generic email job, never through
+// notifications.EmailSender) do not call this code at all — there is no
+// shared function to bypass. This test pins that a non-modeled event type
+// (the shape used by the generic/legacy broadcast path) does not consult
+// suppression either, since it never reaches sendPerRecipient.
+func TestEmailSender_Send_TransactionalPathNeverConsultsSuppression(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newSuppressionTestFixture(t)
+	checkName := "API health"
+
+	const email = "would-be-suppressed@x.test"
+
+	sup := models.NewEmailSuppression(f.org.UID, email, nil, models.EmailSuppressionSourceLink) // org-wide
+	r.NoError(f.dbSvc.CreateEmailSuppression(t.Context(), sup))
+
+	sender := &fakeEmailSender{}
+	s := &EmailSender{}
+	payload := &Payload{
+		EventType: "incident.updated", // non-modeled → broadcast path, never calls sendPerRecipient
+		Check:     &models.Check{UID: f.check.UID, Name: &checkName, Type: "http"},
+		Integration: &models.Integration{
+			OrganizationUID: f.org.UID,
+			Settings:        models.JSONMap{"to": []any{email}},
+		},
+	}
+
+	jctx := &jobdef.JobContext{
+		Services:  &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+		AppConfig: &config.Config{Auth: config.AuthConfig{JWTSecret: "test-secret"}},
+		DBService: f.dbSvc,
+		Logger:    slog.Default(),
+	}
+
+	r.NoError(s.Send(context.Background(), jctx, payload))
+	r.Len(sender.sent, 1, "the broadcast path does not consult suppression at all")
+}
+
+// TestEmailSender_Send_ListUnsubscribeHeadersOnlyOnModeledEvents confirms
+// the SMTP message carries List-Unsubscribe headers for a modeled incident
+// event (which always has a per-recipient token) and omits them on the
+// non-modeled broadcast path (which has none) — the email-level companion
+// to TestBuildMessage_ListUnsubscribeHeaders in the email package.
+func TestEmailSender_Send_ListUnsubscribeHeadersOnlyOnModeledEvents(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+	f := newSuppressionTestFixture(t)
+	checkName := "API health"
+	checkSlug := "email-supp-send-check"
+
+	sender := &fakeEmailSender{}
+	s := &EmailSender{}
+	payload := &Payload{
+		EventType: eventTypeIncidentCreated,
+		Check:     &models.Check{UID: f.check.UID, Name: &checkName, Slug: &checkSlug, Type: "http"},
+		Incident:  &models.Incident{UID: "inc-headers", StartedAt: time.Now()},
+		Integration: &models.Integration{
+			OrganizationUID: f.org.UID,
+			Settings:        models.JSONMap{"to": []any{"headers@x.test"}},
+		},
+		OrgSlug:    f.org.Slug,
+		AppBaseURL: "https://solidping.example",
+	}
+
+	jctx := &jobdef.JobContext{
+		Services: &services.Registry{EmailSender: sender, EmailFormatter: newTestFormatter(t)},
+		AppConfig: &config.Config{
+			Auth:   config.AuthConfig{JWTSecret: "test-secret"},
+			Server: config.ServerConfig{BaseURL: "https://solidping.example"},
+		},
+		DBService: f.dbSvc,
+		Logger:    slog.Default(),
+	}
+
+	r.NoError(s.Send(context.Background(), jctx, payload))
+	r.Len(sender.sent, 1)
+
+	msg := sender.sent[0]
+	r.NotEmpty(msg.ListUnsubscribeURL, "a modeled incident event must set a per-recipient unsubscribe URL")
+	r.True(msg.ListUnsubscribePostOneClick)
+	r.Contains(msg.ListUnsubscribeURL, "/unsubscribe?token=")
 }
