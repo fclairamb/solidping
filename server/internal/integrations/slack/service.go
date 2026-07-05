@@ -756,28 +756,30 @@ func (s *Service) CountInstalledTeams(ctx context.Context) (int, error) {
 	return len(channels), nil
 }
 
-// HandleAppUninstalled handles the app_uninstalled event.
+// HandleAppUninstalled handles the app_uninstalled event. Uninstalling the
+// app in Slack revokes the bot token for the ENTIRE workspace, so every
+// org's connection for this team_id shares the same now-dead credentials —
+// all of them must be cleaned up, not just one, or the other orgs keep
+// rendering a stale "connected" integration.
 func (s *Service) HandleAppUninstalled(ctx context.Context, teamID string) error {
-	conn, err := s.db.GetChannelByProperty(
+	conns, err := s.db.ListChannelsByProperty(
 		ctx, string(models.ConnectionTypeSlack), "team_id", teamID,
 	)
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			// Connection already deleted, ignore
-			return nil
-		}
-
 		return err
 	}
 
-	if err := s.db.DeleteChannel(ctx, conn.UID); err != nil {
-		return fmt.Errorf("failed to delete connection: %w", err)
-	}
+	for _, conn := range conns {
+		if err := s.db.DeleteChannel(ctx, conn.UID); err != nil {
+			return fmt.Errorf("failed to delete connection %s: %w", conn.UID, err)
+		}
 
-	slog.InfoContext(ctx, "Deleted Slack connection due to app_uninstalled",
-		"team_id", teamID,
-		"connection_uid", conn.UID,
-	)
+		slog.InfoContext(ctx, "Deleted Slack connection due to app_uninstalled",
+			"team_id", teamID,
+			"connection_uid", conn.UID,
+			"org_uid", conn.OrganizationUID,
+		)
+	}
 
 	return nil
 }
