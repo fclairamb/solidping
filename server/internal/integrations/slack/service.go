@@ -194,6 +194,32 @@ func (s *Service) BuildInstallURL(ctx context.Context, source, channelUID, orgSl
 	return "https://slack.com/oauth/v2/authorize?" + params.Encode(), nil
 }
 
+// BuildOrgInstallURL is the authenticated, org-scoped counterpart to
+// BuildInstallURL. orgUID/orgSlug come from the authenticated route context
+// (never from client-controlled input), so org targeting cannot be forged
+// the way the legacy `?org=` query param could. When channelUID is set, the
+// channel must exist, be a Slack integration, and belong to orgUID —
+// otherwise ErrConnectionNotFound is returned so the handler can respond
+// 404 instead of letting an install take over a channel in another org.
+func (s *Service) BuildOrgInstallURL(ctx context.Context, orgUID, orgSlug, channelUID string) (string, error) {
+	if channelUID != "" {
+		conn, err := s.db.GetChannel(ctx, channelUID)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return "", ErrConnectionNotFound
+			}
+
+			return "", fmt.Errorf("get channel: %w", err)
+		}
+
+		if conn.OrganizationUID != orgUID || conn.Type != models.ConnectionTypeSlack || conn.DeletedAt != nil {
+			return "", ErrConnectionNotFound
+		}
+	}
+
+	return s.BuildInstallURL(ctx, "dashboard", channelUID, orgSlug)
+}
+
 // IssueExchangeCode persists a single-use code that the dashboard will
 // trade in (server-to-server) for the freshly minted access/refresh tokens.
 // The 60-second TTL is intentionally tight — the dashboard hits the
@@ -273,6 +299,19 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		return nil, err
 	}
 
+	// resultChannelUID is what the frontend navigates to after the exchange
+	// (auth.slack.complete.tsx). For a channel-edit-page install it's the
+	// specific channel that was updated. For a dashboard-origin, org-scoped
+	// install with no specific channel (the "Install Slack app" tile CTA),
+	// it's the connection that was just created/updated in that org, so the
+	// user lands on it instead of the org home page. Marketplace installs
+	// (targetOrgSlug empty — no authenticated org context) keep this empty
+	// and land on the org home page for onboarding.
+	resultChannelUID := targetChannelUID
+	if resultChannelUID == "" && targetOrgSlug != "" {
+		resultChannelUID = connUID
+	}
+
 	// Generate authentication tokens
 	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
 	if err != nil {
@@ -290,7 +329,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 
 	return &OAuthResult{
 		ConnectionUID: connUID,
-		ChannelUID:    targetChannelUID,
+		ChannelUID:    resultChannelUID,
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
 		OrgSlug:       org.Slug,

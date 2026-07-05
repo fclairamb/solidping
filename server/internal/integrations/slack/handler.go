@@ -3,6 +3,7 @@ package slack
 import (
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/handlers/base"
+	mw "github.com/fclairamb/solidping/server/internal/middleware"
 )
 
 // GetDestinations returns the list of Slack channels and DM targets available
@@ -88,14 +90,20 @@ const installErrorPage = "https://www.solidping.io/saas/install-error"
 // fresh CSRF state and 302s to Slack. No auth required — Slack hits this
 // URL with no session.
 //
-// GET /api/v1/integrations/slack/install[?source=marketplace&channelUid=<uid>&org=<slug>].
+// It intentionally does NOT honor `org` or `channelUid` query params — this
+// endpoint is unauthenticated, so trusting caller-supplied org/channel
+// targeting here would let anyone auto-join themselves into an arbitrary org
+// or overwrite an arbitrary channel's Slack credentials by completing OAuth
+// with their own workspace (see spec 2026-07-05-01, "Security problem").
+// Org-scoped installs must go through the authenticated
+// POST /orgs/:org/integrations/slack/install-url endpoint instead
+// (BuildInstallURLForOrg below), which takes the org from the session.
+//
+// GET /api/v1/integrations/slack/install[?source=marketplace].
 func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) error {
-	q := req.URL.Query()
-	source := q.Get("source")
-	channelUID := q.Get("channelUid")
-	orgSlug := q.Get("org")
+	source := req.URL.Query().Get("source")
 
-	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, channelUID, orgSlug)
+	authorizeURL, err := h.svc.BuildInstallURL(req.Context(), source, "", "")
 	if err != nil {
 		slog.ErrorContext(req.Context(), "Failed to build Slack install URL", "error", err)
 		h.redirectInstallError(writer, req, "unknown")
@@ -106,6 +114,53 @@ func (h *Handler) Install(writer http.ResponseWriter, req bunrouter.Request) err
 	http.Redirect(writer, req.Request, authorizeURL, http.StatusFound)
 
 	return nil
+}
+
+// installURLRequest is the optional JSON body for BuildInstallURLForOrg.
+type installURLRequest struct {
+	ChannelUID string `json:"channelUid"`
+}
+
+// installURLResponse is returned by BuildInstallURLForOrg.
+type installURLResponse struct {
+	URL string `json:"url"`
+}
+
+// BuildInstallURLForOrg mints a Slack OAuth authorization URL scoped to the
+// authenticated caller's organization. Unlike Install, this endpoint sits
+// behind the normal org-auth chain (RequireAuth + RequireOrgAccess), so the
+// org comes from the verified route context — never from client input — and
+// RequireOrgAccess already rejects non-members before this handler runs.
+//
+// POST /api/v1/orgs/:org/integrations/slack/install-url
+// Body (optional): { "channelUid": "<uid>" }.
+func (h *Handler) BuildInstallURLForOrg(writer http.ResponseWriter, req bunrouter.Request) error {
+	org, ok := mw.GetOrganizationFromContext(req.Context())
+	if !ok || org == nil {
+		return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeOrganizationNotFound,
+			"Organization not found")
+	}
+
+	var body installURLRequest
+	if err := json.NewDecoder(req.Body).Decode(&body); err != nil && !errors.Is(err, io.EOF) {
+		return h.WriteValidationError(writer, "Invalid JSON", []base.ValidationErrorField{
+			{Name: "body", Message: "Invalid JSON format"},
+		})
+	}
+
+	authorizeURL, err := h.svc.BuildOrgInstallURL(req.Context(), org.UID, org.Slug, body.ChannelUID)
+	if err != nil {
+		if errors.Is(err, ErrConnectionNotFound) {
+			return h.WriteError(writer, http.StatusNotFound, base.ErrorCodeIntegrationNotFound,
+				"Channel not found")
+		}
+
+		slog.ErrorContext(req.Context(), "Failed to build org-scoped Slack install URL", "error", err)
+
+		return h.WriteInternalError(writer, err)
+	}
+
+	return h.WriteJSON(writer, http.StatusOK, installURLResponse{URL: authorizeURL})
 }
 
 // OAuthCallback handles the OAuth callback from Slack.
