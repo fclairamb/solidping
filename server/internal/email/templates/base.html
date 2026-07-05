@@ -11,19 +11,48 @@
         .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
         .header { background-color: #1a1a2e; padding: 24px 32px; text-align: left; }
         .header-logo { color: #ffffff; font-size: 20px; font-weight: 600; letter-spacing: -0.01em; text-decoration: none; }
+        /* Status banner — a full-width background bar, not just colored text,
+           so the state is legible even with images/CSS partially stripped. */
+        .status-banner { padding: 14px 32px; text-align: left; font-size: 14px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+        .status-banner a { color: inherit; text-decoration: underline; }
+        .status-down { background-color: #d32f2f; color: #ffffff !important; }
+        .status-recovered { background-color: #16a34a; color: #ffffff !important; }
+        .status-escalated { background-color: #b45309; color: #ffffff !important; }
+        .status-reopened { background-color: #b45309; color: #ffffff !important; }
         .content { padding: 32px; color: #2d3748; font-size: 16px; }
         .content h1 { margin: 0 0 16px; font-size: 22px; font-weight: 600; color: #1a1a2e; }
+        .content h2 { margin: 0 0 16px; font-size: 19px; font-weight: 600; color: #1a1a2e; }
         .content p { margin: 0 0 16px; }
+        .content a { color: #2563eb; }
         .cta-wrap { padding: 8px 0 4px; }
+        /* Bulletproof table-based button — renders correctly in Outlook's Word
+           rendering engine, which ignores padding/border-radius on <a>. */
+        .btn-table { border-collapse: separate; }
+        .btn-table td { border-radius: 6px; text-align: center; }
+        .btn { display: inline-block; padding: 12px 28px; color: #ffffff !important; text-decoration: none; font-weight: 600; font-size: 15px; border-radius: 6px; }
+        .btn-primary td { background-color: #2563eb; }
+        .btn-success td { background-color: #16a34a; }
+        .btn-secondary td { background-color: #64748b; }
+        /* Legacy single-<a> CTA classes — kept for templates authored before
+           the table-based button partial existed. New content should prefer
+           the "button" partial (see bottom of this file) for Outlook-safe
+           rendering. */
         .cta { display: inline-block; padding: 12px 28px; background-color: #2563eb; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 15px; }
         .cta-success { background-color: #16a34a; }
+        .details-table { width: 100%; margin: 4px 0 20px; border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; }
+        .details-table td { padding: 10px 14px; font-size: 14px; border-bottom: 1px solid #edf2f7; }
+        .details-table tr:last-child td { border-bottom: none; }
+        .details-table td.label { color: #718096; width: 40%; }
+        .details-table td.value { color: #2d3748; font-weight: 500; }
         .fallback { font-size: 13px; color: #4a5568; word-break: break-all; padding: 8px 12px; background-color: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px; font-family: 'SF Mono', Menlo, Consolas, monospace; }
         .meta { font-size: 13px; color: #718096; margin-top: 24px; }
         .footer { padding: 20px 32px 28px; background-color: #f7fafc; color: #718096; font-size: 12px; text-align: center; border-top: 1px solid #edf2f7; }
         .footer a { color: #4a5568; text-decoration: underline; }
+        .footer p { margin: 0 0 8px; }
         @media (max-width: 480px) {
             .content { padding: 24px 20px; }
             .header { padding: 20px; }
+            .status-banner { padding: 12px 20px; }
             .footer { padding: 16px 20px 20px; }
         }
     </style>
@@ -38,6 +67,7 @@
                             <span class="header-logo">SolidPing</span>
                         </td>
                     </tr>
+                    {{block "statusbanner" .}}{{end}}
                     <tr>
                         <td class="content">
                             {{block "content" .}}{{end}}
@@ -45,8 +75,18 @@
                     </tr>
                     <tr>
                         <td class="footer">
-                            You received this email because someone used your address with SolidPing.<br>
-                            If this wasn't you, you can safely ignore it.
+                            {{if .OrgName}}<p>{{.OrgName}} — sent by SolidPing</p>{{end}}
+                            <p>
+                                {{if .DashboardURL}}<a href="{{.DashboardURL}}">Dashboard</a>{{end}}
+                                {{if and .DashboardURL .DocsURL}} &middot; {{end}}
+                                {{if .DocsURL}}<a href="{{.DocsURL}}">Docs</a>{{end}}
+                            </p>
+                            {{if .UnsubscribeURL}}
+                            <p><a href="{{.UnsubscribeURL}}">{{if .UnsubscribeCheckName}}Unsubscribe from alerts for {{.UnsubscribeCheckName}}{{else}}Unsubscribe from alerts{{end}}</a></p>
+                            {{else}}
+                            <p>You received this email because someone used your address with SolidPing.<br>
+                            If this wasn't you, you can safely ignore it.</p>
+                            {{end}}
                         </td>
                     </tr>
                 </table>
@@ -55,3 +95,25 @@
     </table>
 </body>
 </html>
+{{/* button renders a bulletproof, table-based CTA button. Params: URL,
+     Label, Variant ("primary" | "success" | "secondary", defaults to
+     primary when empty/unrecognized). Usable from any template via
+     {{template "button" dict "URL" .SomeURL "Label" "Click me" "Variant" "success"}} —
+     templates build the param map with the local "dict" helper below. */}}
+{{define "button"}}
+<table class="btn-table {{if eq .Variant "success"}}btn-success{{else if eq .Variant "secondary"}}btn-secondary{{else}}btn-primary{{end}}" role="presentation" cellpadding="0" cellspacing="0" border="0">
+    <tr>
+        <td><a href="{{.URL}}" class="btn">{{.Label}}</a></td>
+    </tr>
+</table>
+{{end}}
+{{/* statusbanner renders the full-width colored bar used by incident
+     templates. Params: Variant ("down" | "recovered" | "escalated" |
+     "reopened") and Label (the uppercase text shown, e.g. "DOWN"). A
+     template overrides base.html's {{block "statusbanner" .}}{{end}} by
+     invoking this partial: {{define "statusbanner"}}{{template "statusbanner-render" dict "Variant" "down" "Label" "Down"}}{{end}} */}}
+{{define "statusbanner-render"}}
+<tr>
+    <td class="status-banner status-{{.Variant}}">{{.Label}}</td>
+</tr>
+{{end}}

@@ -157,13 +157,14 @@ func TestSendEmail_Integration(t *testing.T) {
 	r.NoError(err)
 
 	data := map[string]any{
-		"CheckName":    "Integration Test Check",
-		"Status":       "down",
-		"Message":      "This is an integration test email.",
-		"DashboardURL": "https://solidping.com/dashboard",
+		"CheckName":   "Integration Test Check",
+		"CheckType":   "http",
+		"StartedAt":   "2026-07-05 10:00:00",
+		"IncidentUID": "inc-integration-test",
+		"IncidentURL": "https://solidping.com/dash0/orgs/default/incidents/inc-integration-test",
 	}
 
-	_, html, err := formatter.Format("incident.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
 
 	result, err := sender.Send(context.Background(), &Message{
@@ -252,4 +253,92 @@ func TestSetBody_HTMLOnly(t *testing.T) {
 		"HTML-only message must not include a plaintext alternative")
 	r.NotContains(wire, "multipart/alternative",
 		"HTML-only message must not be wrapped in multipart/alternative")
+}
+
+// TestBuildMessage_ListUnsubscribeHeaders pins the D4 List-Unsubscribe /
+// List-Unsubscribe-Post wiring (spec 2026-07-05-10, acceptance criteria 4
+// and 6): incident/alert emails that set ListUnsubscribeURL get both
+// headers; a message that leaves it empty (every transactional email) gets
+// neither header at all.
+func TestBuildMessage_ListUnsubscribeHeaders(t *testing.T) {
+	t.Parallel()
+
+	cfg := &config.EmailConfig{
+		Enabled: true, Host: "localhost", Port: 587, From: "noreply@example.com",
+	}
+
+	t.Run("incident email with unsubscribe URL gets both headers", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		sender := NewSender(cfg, slog.Default())
+
+		mailMsg, err := sender.buildMessage(&Message{
+			Recipients:                  Recipients{To: []string{"to@example.com"}},
+			Subject:                     "Hello",
+			HTML:                        "<p>Hi there</p>",
+			ListUnsubscribeURL:          "https://solidping.example/unsubscribe?token=abc",
+			ListUnsubscribePostOneClick: true,
+		})
+		r.NoError(err)
+
+		var buf bytes.Buffer
+		_, err = mailMsg.WriteTo(&buf)
+		r.NoError(err)
+
+		wire := buf.String()
+		r.Contains(wire, "List-Unsubscribe: <https://solidping.example/unsubscribe?token=abc>")
+		r.Contains(wire, "List-Unsubscribe-Post: List-Unsubscribe=One-Click")
+	})
+
+	t.Run("transactional email without unsubscribe URL gets no List-Unsubscribe headers", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		sender := NewSender(cfg, slog.Default())
+
+		mailMsg, err := sender.buildMessage(&Message{
+			Recipients: Recipients{To: []string{"to@example.com"}},
+			Subject:    "Confirm your account",
+			HTML:       "<p>Click to confirm</p>",
+			// ListUnsubscribeURL deliberately left empty — this is the
+			// shape every transactional send (registration, reset,
+			// invitation, password-changed) uses.
+		})
+		r.NoError(err)
+
+		var buf bytes.Buffer
+		_, err = mailMsg.WriteTo(&buf)
+		r.NoError(err)
+
+		wire := buf.String()
+		r.NotContains(wire, "List-Unsubscribe:",
+			"transactional emails must never carry a List-Unsubscribe header")
+		r.NotContains(wire, "List-Unsubscribe-Post:",
+			"transactional emails must never carry a List-Unsubscribe-Post header")
+	})
+
+	t.Run("unsubscribe URL without one-click flag omits List-Unsubscribe-Post", func(t *testing.T) {
+		t.Parallel()
+
+		r := require.New(t)
+		sender := NewSender(cfg, slog.Default())
+
+		mailMsg, err := sender.buildMessage(&Message{
+			Recipients:         Recipients{To: []string{"to@example.com"}},
+			Subject:            "Hello",
+			HTML:               "<p>Hi there</p>",
+			ListUnsubscribeURL: "https://solidping.example/unsubscribe?token=abc",
+			// ListUnsubscribePostOneClick left false.
+		})
+		r.NoError(err)
+
+		var buf bytes.Buffer
+		_, err = mailMsg.WriteTo(&buf)
+		r.NoError(err)
+
+		wire := buf.String()
+		r.Contains(wire, "List-Unsubscribe:")
+		r.NotContains(wire, "List-Unsubscribe-Post:")
+	})
 }

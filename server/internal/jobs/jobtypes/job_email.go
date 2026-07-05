@@ -37,7 +37,7 @@ type EmailJobConfig struct {
 	Text    string `json:"text,omitempty"` // Raw plain text content
 
 	// Template-based content (alternative to raw HTML/Text)
-	Template     string `json:"template,omitempty"`     // Template name (e.g., "incident.html")
+	Template     string `json:"template,omitempty"`     // Template name (e.g., "incident-created.html")
 	TemplateData any    `json:"templateData,omitempty"` // Data to pass to template
 }
 
@@ -175,13 +175,14 @@ func (r *EmailJobRun) buildMessage(jctx *jobdef.JobContext) (*email.Message, err
 			return nil, ErrEmailFormatterMissing
 		}
 
-		subject, html, err := jctx.Services.EmailFormatter.Format(
+		subject, html, text, err := jctx.Services.EmailFormatter.Format(
 			r.config.Template, r.config.TemplateData)
 		if err != nil {
 			return nil, fmt.Errorf("formatting template %s: %w", r.config.Template, err)
 		}
 
 		msg.HTML = html
+		msg.Text = text
 		// Caller-supplied subject overrides the template's; otherwise use
 		// what the template defined.
 		if msg.Subject == "" {

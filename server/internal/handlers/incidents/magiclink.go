@@ -21,6 +21,10 @@ var (
 	ErrAckTokenExpired = incidentlinks.ErrExpired
 	// ErrAckTokenIncidentMismatch mirrors incidentlinks.ErrIncidentMismatch.
 	ErrAckTokenIncidentMismatch = incidentlinks.ErrIncidentMismatch
+	// ErrAckTokenPurposeMismatch mirrors incidentlinks.ErrPurposeMismatch —
+	// returned when a well-formed, correctly-signed token is presented here
+	// but its purpose segment isn't "ack" (e.g. an unsubscribe token).
+	ErrAckTokenPurposeMismatch = incidentlinks.ErrPurposeMismatch
 )
 
 // AckTokenPayload re-exports the verified payload type.

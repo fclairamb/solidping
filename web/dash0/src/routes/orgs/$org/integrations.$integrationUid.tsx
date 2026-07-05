@@ -19,6 +19,8 @@ import {
   useUpdateIntegration,
   useDeleteIntegration,
   useIntegrationNotifications,
+  useEmailSuppressions,
+  useDeleteEmailSuppression,
   type IncidentNotification,
 } from "@/api/hooks";
 import { integrationIconComponent } from "@/components/integrations/integration-icon";
@@ -152,6 +154,103 @@ function RecentNotificationsSection({
   );
 }
 
+/** Per-recipient email unsubscribe list for the org (spec 2026-07-05-10,
+ * D4). Org-scoped, not integration-scoped — a suppression has no
+ * integration_uid, only organization_uid + email + optional check_uid — so
+ * this shows every suppression in the org, not just ones tied to this
+ * integration's own recipients. Shown only on email-type integrations,
+ * since that's the natural place a user configuring email alerts would
+ * look for "who's opted out." */
+function SuppressionsSection({ org }: { org: string }) {
+  const { data: rows, isLoading, error } = useEmailSuppressions(org);
+  const deleteSuppression = useDeleteEmailSuppression(org);
+
+  const handleResubscribe = async (uid: string, email: string) => {
+    try {
+      await deleteSuppression.mutateAsync(uid);
+      toast.success(`${email} re-subscribed`);
+    } catch {
+      toast.error("Failed to re-subscribe");
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Unsubscribed recipients</CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading && (
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-full" />
+            <Skeleton className="h-8 w-full" />
+          </div>
+        )}
+        {!isLoading && error && (
+          <p className="text-sm text-destructive py-4 text-center">
+            Failed to load unsubscribed recipients.
+          </p>
+        )}
+        {!isLoading && !error && (!rows || rows.length === 0) && (
+          <p className="text-sm text-muted-foreground py-4 text-center">
+            No one has unsubscribed from alert emails in this organization.
+          </p>
+        )}
+        {!isLoading && !error && rows && rows.length > 0 && (
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Scope</TableHead>
+                  <TableHead>Unsubscribed</TableHead>
+                  <TableHead className="w-10" />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.map((row) => (
+                  <TableRow key={row.uid}>
+                    <TableCell className="font-medium break-all">
+                      {row.email}
+                    </TableCell>
+                    <TableCell className="text-sm">
+                      {row.checkUid ? (
+                        row.checkName || row.checkUid
+                      ) : (
+                        <span className="text-muted-foreground">
+                          All checks
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell
+                      className="text-sm whitespace-nowrap text-muted-foreground"
+                      title={row.createdAt}
+                    >
+                      {new Date(row.createdAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="text-destructive hover:text-destructive"
+                        aria-label={`Re-subscribe ${row.email}`}
+                        disabled={deleteSuppression.isPending}
+                        onClick={() => handleResubscribe(row.uid, row.email)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 function IntegrationDetailPage() {
   const { t } = useTranslation("integrations");
   const { org, integrationUid } = Route.useParams();
@@ -278,6 +377,8 @@ function IntegrationDetailPage() {
       </div>
 
       <RecentNotificationsSection org={org} integrationUid={integrationUid} />
+
+      {integration.type === "email" && <SuppressionsSection org={org} />}
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>

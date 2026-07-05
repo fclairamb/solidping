@@ -9,9 +9,19 @@
     <p>Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.</p>
     {{end}}
     {{if .DashboardURL}}
-    <p class="cta-wrap"><a href="{{.DashboardURL}}" class="cta cta-success">Open your dashboard</a></p>
+    <p class="cta-wrap">{{template "button" dict "URL" .DashboardURL "Label" "Open your dashboard" "Variant" "success"}}</p>
     <p>Or paste this link into your browser:</p>
     <p class="fallback">{{.DashboardURL}}</p>
     {{end}}
     <p class="meta">Need help getting started? Just reply to this email.</p>
+{{end}}
+{{define "text"}}Welcome to SolidPing
+
+Hi,
+
+{{if .message}}{{.message}}{{else}}Thanks for joining SolidPing. We'll help you keep your services healthy and let you know the moment something goes wrong.{{end}}
+{{if .DashboardURL}}
+Open your dashboard: {{.DashboardURL}}
+{{end}}
+Need help getting started? Just reply to this email.
 {{end}}

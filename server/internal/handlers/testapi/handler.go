@@ -83,13 +83,17 @@ type EmailJobRequest struct {
 	Params map[string]any `json:"params"`
 }
 
-// getTemplateForType returns the template file for an email type.
+// getTemplateForType returns the template file for an email type. "incident"
+// maps to incident-created.html — the string-builder incident.html stub is
+// gone (D1: all four incident events render through dedicated templates via
+// the formatter); "incident" here is a generic smoke-test alias, not tied to
+// a specific event, so created is the reasonable default.
 func getTemplateForType(emailType string) (string, bool) {
 	switch emailType {
 	case "welcome":
 		return "welcome.html", true
 	case "incident":
-		return "incident.html", true
+		return "incident-created.html", true
 	default:
 		return "", false
 	}

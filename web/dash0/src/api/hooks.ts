@@ -1096,6 +1096,50 @@ export function useIntegrationNotifications(
   });
 }
 
+// Email suppressions (spec 2026-07-05-10, D4) — per-recipient unsubscribe
+// list for an org's alert emails. Creation is always recipient-initiated
+// (the public /unsubscribe page), so there is no create hook — only
+// list + delete (re-subscribe).
+export interface EmailSuppression {
+  uid: string;
+  email: string;
+  checkUid?: string; // absent = org-wide (suppresses every check)
+  checkName?: string;
+  source: "link" | "header" | "dashboard";
+  createdAt: string;
+}
+
+/** List current email suppressions for an org.
+ * Calls GET /api/v1/orgs/:org/email-suppressions */
+export function useEmailSuppressions(org: string) {
+  return useQuery({
+    queryKey: ["emailSuppressions", org],
+    queryFn: async () => {
+      const response = await apiFetch<{ data?: EmailSuppression[] }>(
+        `/api/v1/orgs/${org}/email-suppressions`
+      );
+      return response.data || [];
+    },
+    enabled: !!org,
+  });
+}
+
+/** Delete (re-subscribe) an email suppression.
+ * Calls DELETE /api/v1/orgs/:org/email-suppressions/:uid */
+export function useDeleteEmailSuppression(org: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (uid: string) =>
+      apiFetch<void>(`/api/v1/orgs/${org}/email-suppressions/${uid}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["emailSuppressions", org] });
+    },
+  });
+}
+
 export function useMyNotifications(
   org: string,
   options?: {
