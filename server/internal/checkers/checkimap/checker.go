@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"net/textproto"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -149,7 +150,7 @@ func (c *IMAPChecker) Execute(
 
 	greeting, err := textConn.ReadLine()
 	if err != nil {
-		if ctx.Err() != nil {
+		if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 			return timeoutResult(start), nil
 		}
 
@@ -206,7 +207,7 @@ func (c *IMAPChecker) Execute(
 			ctx, textConn, conn, params.serverName, cfg.TLSVerify,
 		)
 		if err != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 				return timeoutResult(start), nil
 			}
 
@@ -235,7 +236,7 @@ func (c *IMAPChecker) Execute(
 		loginStart := time.Now()
 
 		if err := c.doLogin(ctx, textConn, cfg); err != nil {
-			if ctx.Err() != nil {
+			if ctx.Err() != nil || errors.Is(err, os.ErrDeadlineExceeded) {
 				return timeoutResult(start), nil
 			}
 
@@ -335,6 +336,10 @@ func (c *IMAPChecker) dial(
 	conn, err := dialer.DialContext(ctx, "tcp", target)
 	if err != nil {
 		return nil, time.Since(connectStart), err
+	}
+
+	if dl, ok := ctx.Deadline(); ok {
+		_ = conn.SetDeadline(dl)
 	}
 
 	if implicitTLS {
