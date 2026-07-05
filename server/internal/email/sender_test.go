@@ -157,13 +157,14 @@ func TestSendEmail_Integration(t *testing.T) {
 	r.NoError(err)
 
 	data := map[string]any{
-		"CheckName":    "Integration Test Check",
-		"Status":       "down",
-		"Message":      "This is an integration test email.",
-		"DashboardURL": "https://solidping.com/dashboard",
+		"CheckName":   "Integration Test Check",
+		"CheckType":   "http",
+		"StartedAt":   "2026-07-05 10:00:00",
+		"IncidentUID": "inc-integration-test",
+		"IncidentURL": "https://solidping.com/dash0/orgs/default/incidents/inc-integration-test",
 	}
 
-	_, html, err := formatter.Format("incident.html", data)
+	_, html, _, err := formatter.Format("incident-created.html", data)
 	r.NoError(err)
 
 	result, err := sender.Send(context.Background(), &Message{
