@@ -78,6 +78,8 @@ export const Route = createFileRoute("/orgs/$org/checks/$checkUid/")({
       ? search.graphPeriod
       : undefined) as "hour" | "day" | "week" | "month" | undefined,
     graphFull: search.graphFull === "true" ? true : undefined,
+    graphRegion:
+      typeof search.graphRegion === "string" ? search.graphRegion : undefined,
   }),
   component: CheckDetailPage,
 });
@@ -280,7 +282,7 @@ function EmailEndpoint({ check }: { check: { config?: Record<string, unknown> } 
 function CheckDetailPage() {
   const { t } = useTranslation(["checks", "common"]);
   const { org, checkUid } = Route.useParams();
-  const { graphPeriod, graphFull } = Route.useSearch();
+  const { graphPeriod, graphFull, graphRegion } = Route.useSearch();
   const navigate = useNavigate();
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editingSlug, setEditingSlug] = useState(false);
@@ -368,7 +370,11 @@ function CheckDetailPage() {
       navigate({
         to: "/orgs/$org/checks/$checkUid",
         params: { org, checkUid: trimmed },
-        search: { graphPeriod: undefined, graphFull: undefined },
+        search: {
+          graphPeriod: undefined,
+          graphFull: undefined,
+          graphRegion: undefined,
+        },
         replace: true,
       });
     } catch {
@@ -492,7 +498,11 @@ function CheckDetailPage() {
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.slug }}
-                    search={{ graphPeriod: undefined, graphFull: undefined }}
+                    search={{
+                      graphPeriod: undefined,
+                      graphFull: undefined,
+                      graphRegion: undefined,
+                    }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <span>🔗</span>
@@ -544,7 +554,11 @@ function CheckDetailPage() {
                   <Link
                     to="/orgs/$org/checks/$checkUid"
                     params={{ org, checkUid: check.uid }}
-                    search={{ graphPeriod: undefined, graphFull: undefined }}
+                    search={{
+                      graphPeriod: undefined,
+                      graphFull: undefined,
+                      graphRegion: undefined,
+                    }}
                     className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-0.5 text-xs font-mono text-muted-foreground hover:text-foreground transition-colors"
                   >
                     uid: {check.uid.slice(0, 8)}...
@@ -716,12 +730,14 @@ function CheckDetailPage() {
         periodMs={periodMs}
         initialPeriod={graphPeriod}
         initialFullRange={graphFull}
-        onSettingsChange={(period, full) =>
+        initialRegion={graphRegion}
+        onSettingsChange={(period, full, region) =>
           navigate({
             to: ".",
             search: {
               graphPeriod: period !== "day" ? period : undefined,
               graphFull: full ? true : undefined,
+              graphRegion: region ?? undefined,
             },
             replace: true,
           })

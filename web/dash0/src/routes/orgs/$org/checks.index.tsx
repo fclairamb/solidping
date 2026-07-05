@@ -150,7 +150,7 @@ function CheckRow({
         <Link
           to="/orgs/$org/checks/$checkUid"
           params={{ org, checkUid: check.uid }}
-          search={{ graphPeriod: undefined, graphFull: undefined }}
+          search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
           className="flex items-center gap-2 hover:underline font-medium"
         >
           <StatusDot
@@ -196,7 +196,7 @@ function CheckRow({
               <Link
                 to="/orgs/$org/checks/$checkUid"
                 params={{ org, checkUid: check.uid }}
-                search={{ graphPeriod: undefined, graphFull: undefined }}
+                search={{ graphPeriod: undefined, graphFull: undefined, graphRegion: undefined }}
               >
                 <Eye className="mr-2 h-4 w-4" />
                 {t("menu.viewDetails")}
