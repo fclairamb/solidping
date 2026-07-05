@@ -1222,20 +1222,39 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 }
 
 // calculateNextScheduledAt calculates the next scheduled time for a check job.
-// If scheduled_at + period > now, use scheduled_at + period (we're on schedule).
-// Otherwise, use now + period (we're behind schedule).
+//
+// Phase-locked rescheduling (spec 2026-07-05-08 D1): when the job's check is
+// attached (populated at claim time by ClaimJobs/ClaimJobsForCheck — always
+// true for jobs flowing through the regular runner pool), the next tick is
+// aligned to the job's deterministic phase (scheduling.NextAligned) rather
+// than computed as "scheduled_at + period" or "now + period". This makes
+// rescheduling immune to lateness: a late or missed run resumes at the next
+// phase-aligned tick instead of re-anchoring to the claim-batch timestamp,
+// which is what previously made every job in a cohort lock-step onto the
+// same tick after a restart (F2).
+//
+// Falls back to the old anchor-preserving/catch-up logic when there is no
+// attached check (defensive only — the regular claim path always attaches
+// one) or when either period is non-positive.
 func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.Time {
-	// Convert Period to time.Duration
-	intervalDuration := time.Duration(checkJob.Period)
-
 	now := time.Now()
+	jobPeriod := time.Duration(checkJob.Period)
+
+	if checkJob.Check != nil {
+		basePeriod := time.Duration(checkJob.Check.Period)
+		if basePeriod > 0 && jobPeriod > 0 {
+			return scheduling.NextAligned(
+				now, basePeriod, jobPeriod, checkJob.CheckUID, checkJob.Region, checkJob.Check.Regions,
+			)
+		}
+	}
 
 	if checkJob.ScheduledAt == nil {
 		// No scheduled_at, schedule for now + period
-		return now.Add(intervalDuration)
+		return now.Add(jobPeriod)
 	}
 
-	nextScheduled := checkJob.ScheduledAt.Add(intervalDuration)
+	nextScheduled := checkJob.ScheduledAt.Add(jobPeriod)
 
 	if nextScheduled.After(now) {
 		// We're on schedule
@@ -1243,7 +1262,7 @@ func (r *CheckWorker) calculateNextScheduledAt(checkJob *models.CheckJob) time.T
 	}
 
 	// We're behind schedule, catch up
-	return now.Add(intervalDuration)
+	return now.Add(jobPeriod)
 }
 
 // setupSelfStats configures self-stats reporting for the worker.
