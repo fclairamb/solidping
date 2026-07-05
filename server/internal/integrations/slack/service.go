@@ -61,6 +61,7 @@ type OAuthResult struct {
 	ChannelUID   string
 	AccessToken  string
 	RefreshToken string
+	ExpiresIn    int
 	OrgSlug      string
 	UserUID      string
 }
@@ -81,6 +82,7 @@ const (
 const (
 	payloadKeyAccessToken  = "accessToken"
 	payloadKeyRefreshToken = "refreshToken"
+	payloadKeyExpiresIn    = "expiresIn"
 	payloadKeyOrgSlug      = "orgSlug"
 	payloadKeyUserUID      = "userUID"
 	payloadKeySource       = "source"
@@ -275,6 +277,7 @@ func (s *Service) IssueExchangeCode(ctx context.Context, result *OAuthResult) (s
 	payload := map[string]any{
 		payloadKeyAccessToken:  result.AccessToken,
 		payloadKeyRefreshToken: result.RefreshToken,
+		payloadKeyExpiresIn:    result.ExpiresIn,
 		payloadKeyOrgSlug:      result.OrgSlug,
 		payloadKeyUserUID:      result.UserUID,
 	}
@@ -390,6 +393,7 @@ func (s *Service) HandleOAuthCallback(ctx context.Context, code, state string) (
 		ChannelUID:    resultChannelUID,
 		AccessToken:   tokens.AccessToken,
 		RefreshToken:  tokens.RefreshToken,
+		ExpiresIn:     tokens.ExpiresIn,
 		OrgSlug:       org.Slug,
 		UserUID:       user.UID,
 	}, nil

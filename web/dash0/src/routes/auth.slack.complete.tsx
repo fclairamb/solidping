@@ -19,6 +19,7 @@ export const Route = createFileRoute("/auth/slack/complete")({
 interface ExchangeResponse {
   accessToken: string;
   refreshToken: string;
+  expiresIn?: number;
   orgSlug: string;
   userUid: string;
   channelUid?: string;
@@ -53,7 +54,7 @@ function SlackInstallComplete() {
           }
         );
 
-        await loginWithOAuth(data.accessToken, data.orgSlug);
+        await loginWithOAuth(data.accessToken, data.orgSlug, data.refreshToken, data.expiresIn);
 
         if (data.channelUid) {
           navigate({
