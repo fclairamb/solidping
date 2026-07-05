@@ -51,6 +51,18 @@ interface ChartPoint {
   durationAvgMs?: number;
   durationP95Ms?: number;
   totalChecks?: number;
+  // Multi-series mode only: each region's own Area uses a distinct dataKey
+  // (regionDataKey(slug)) so a chart-level click's activeDataKey identifies
+  // which region's line was clicked — recharts synchronizes activeTooltipIndex
+  // across series sharing one XAxis, so a plain index lookup (single-series
+  // approach) can't disambiguate once there's more than one data array.
+  [regionDataKey: `durationMs:${string}`]: number | null | undefined;
+}
+
+/** Builds the per-region dataKey name used for multi-series Area/click
+ * resolution (see ChartPoint's index signature above). */
+function regionDataKey(slug: string): `durationMs:${string}` {
+  return `durationMs:${slug}`;
 }
 
 interface GapRegion {
@@ -224,6 +236,50 @@ function insertGapMarkers(
   return result;
 }
 
+/** Runs gap detection + gap-marker insertion on `data`, then (when
+ * `fullRange`) wraps the result with domain-boundary null markers so the
+ * series always spans the full requested window rather than just its own
+ * data's min/max. Shared by the combined series and by each per-region
+ * series in multi-series mode so both behave identically. */
+function buildSeriesForRange(
+  data: ChartPoint[],
+  fullRange: boolean,
+  rangeStartMs: number,
+  rangeEndMs: number,
+): { series: ChartPoint[]; gaps: GapRegion[] } {
+  if (!fullRange) {
+    const tsList = data.map((d) => d.ts);
+    const min = tsList.length ? Math.min(...tsList) : 0;
+    const max = tsList.length ? Math.max(...tsList) : 0;
+    const detectedGaps = detectGaps(data, min, max);
+    return { series: insertGapMarkers(data, detectedGaps), gaps: detectedGaps };
+  }
+
+  const detectedGaps = detectGaps(data, rangeStartMs, rangeEndMs);
+  const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
+
+  const points: ChartPoint[] = [];
+  points.push({ ts: rangeStartMs, durationMs: null, status: "up" });
+
+  if (dataWithGapMarkers.length > 0) {
+    const firstReal = dataWithGapMarkers.find((p) => p.durationMs != null);
+    if (firstReal && firstReal.ts - rangeStartMs > 1) {
+      points.push({ ts: firstReal.ts - 1, durationMs: null, status: "up" });
+    }
+    points.push(...dataWithGapMarkers);
+    const lastReal = [...dataWithGapMarkers]
+      .reverse()
+      .find((p) => p.durationMs != null);
+    if (lastReal && rangeEndMs - lastReal.ts > 1) {
+      points.push({ ts: lastReal.ts + 1, durationMs: null, status: "up" });
+    }
+  }
+
+  points.push({ ts: rangeEndMs, durationMs: null, status: "up" });
+
+  return { series: points, gaps: detectedGaps };
+}
+
 /** Compute smart x-axis ticks based on data density */
 function computeTicks(
   domainMin: number,
@@ -359,6 +415,7 @@ export function ResponseTimeChart({
     domainMax,
     gaps,
     effectiveRegion,
+    seriesByRegion,
   } = useMemo(() => {
     const hasData = !!results?.data?.length;
 
@@ -371,6 +428,7 @@ export function ResponseTimeChart({
         domainMax: 0,
         gaps: [] as GapRegion[],
         effectiveRegion: null as string | null,
+        seriesByRegion: {} as Record<string, ChartPoint[]>,
       };
 
     const regionSet = new Set<string>();
@@ -411,52 +469,48 @@ export function ResponseTimeChart({
       ? unfilteredData.filter((d) => d.region === effectiveRegion)
       : unfilteredData;
 
+    // Per-region series for the multi-series "All regions" view: run gap
+    // detection/insertion (and, in full-range mode, boundary clamping)
+    // independently per region via the same buildSeriesForRange() helper
+    // used for the combined series, so one region's outage renders a gap
+    // only on that region's own line, never bridged by another region's
+    // points. Computed unconditionally (cheap relative to the fetch) —
+    // only rendered when effectiveRegion === null && regionSet.size > 1.
+    const rangeStartMsForRegions = fullRange
+      ? new Date(periodStartAfter).getTime()
+      : 0;
+    const rangeEndMsForRegions = fullRange
+      ? startOfMinute(new Date()).getTime()
+      : 0;
+    const seriesByRegion: Record<string, ChartPoint[]> = {};
+    for (const slug of regionSet) {
+      const regionData = unfilteredData.filter((d) => d.region === slug);
+      const key = regionDataKey(slug);
+      const built = buildSeriesForRange(
+        regionData,
+        fullRange,
+        rangeStartMsForRegions,
+        rangeEndMsForRegions,
+      ).series;
+      // Mirror durationMs (including synthetic gap/boundary nulls inserted by
+      // buildSeriesForRange) onto the region-specific key so this region's
+      // <Area dataKey={key}> plots real values and breaks on nulls exactly
+      // like the combined series does. The click handler then maps a clicked
+      // activeDataKey straight back to its region slug.
+      seriesByRegion[slug] = built.map((p) => ({ ...p, [key]: p.durationMs }));
+    }
+
     if (fullRange) {
-      const rangeStartMs = new Date(periodStartAfter).getTime();
-      const rangeEndMs = startOfMinute(new Date()).getTime();
+      const rangeStartMs = rangeStartMsForRegions;
+      const rangeEndMs = rangeEndMsForRegions;
       const fullSpan = rangeEndMs - rangeStartMs;
 
-      // Detect gaps in the real data
-      const detectedGaps = detectGaps(data, rangeStartMs, rangeEndMs);
-
-      // Insert gap markers at detected boundaries
-      const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
-
-      // Build full-range points with boundary markers
-      const points: ChartPoint[] = [];
-
-      // Start boundary
-      points.push({ ts: rangeStartMs, durationMs: null, status: "up" });
-
-      if (dataWithGapMarkers.length > 0) {
-        // Gap marker just before first real point
-        const firstReal = dataWithGapMarkers.find(
-          (p) => p.durationMs != null,
-        );
-        if (firstReal && firstReal.ts - rangeStartMs > 1) {
-          points.push({
-            ts: firstReal.ts - 1,
-            durationMs: null,
-            status: "up",
-          });
-        }
-        // Real data (with gap markers already inserted)
-        points.push(...dataWithGapMarkers);
-        // Gap marker just after last real point
-        const lastReal = [...dataWithGapMarkers]
-          .reverse()
-          .find((p) => p.durationMs != null);
-        if (lastReal && rangeEndMs - lastReal.ts > 1) {
-          points.push({
-            ts: lastReal.ts + 1,
-            durationMs: null,
-            status: "up",
-          });
-        }
-      }
-
-      // End boundary
-      points.push({ ts: rangeEndMs, durationMs: null, status: "up" });
+      const { series: points, gaps: detectedGaps } = buildSeriesForRange(
+        data,
+        true,
+        rangeStartMs,
+        rangeEndMs,
+      );
 
       // Use actual data span for tick formatting (cluster-aware)
       const dataTs = data.map((d) => d.ts);
@@ -471,6 +525,7 @@ export function ResponseTimeChart({
         domainMax: rangeEndMs,
         gaps: detectedGaps,
         effectiveRegion,
+        seriesByRegion,
       };
     }
 
@@ -480,8 +535,8 @@ export function ResponseTimeChart({
     const max = tsList.length ? Math.max(...tsList) : 0;
     const span = max - min;
 
-    const detectedGaps = detectGaps(data, min, max);
-    const dataWithGapMarkers = insertGapMarkers(data, detectedGaps);
+    const { series: dataWithGapMarkers, gaps: detectedGaps } =
+      buildSeriesForRange(data, false, 0, 0);
 
     return {
       chartData: dataWithGapMarkers,
@@ -491,6 +546,7 @@ export function ResponseTimeChart({
       domainMax: max,
       gaps: detectedGaps,
       effectiveRegion,
+      seriesByRegion,
     };
   }, [results, fullRange, periodStartAfter, selectedRegion]);
 
@@ -511,6 +567,43 @@ export function ResponseTimeChart({
     const def = regionBySlug.get(slug);
     return def ? `${def.emoji} ${def.name}` : slug;
   };
+
+  // Multi-series "All regions" view: only when no single region is selected
+  // AND more than one region is actually observed. Selecting one region (or
+  // a single-region check) always takes the existing single-series path
+  // below, unchanged.
+  const isMultiSeries = effectiveRegion === null && regions.length > 1;
+
+  // Stable per-region stroke color, cycling through the 5-color chart
+  // palette in sorted slug order so the same region always gets the same
+  // color across renders/reloads regardless of fetch order.
+  const sortedRegionsForColor = useMemo(
+    () => [...regions].sort(),
+    [regions],
+  );
+  const colorByRegion = useMemo(() => {
+    const map = new Map<string, string>();
+    sortedRegionsForColor.forEach((slug, i) => {
+      map.set(slug, `var(--chart-${(i % 5) + 1})`);
+    });
+    return map;
+  }, [sortedRegionsForColor]);
+
+  // Reverse lookup for click resolution — see handleChartClick below.
+  const dataKeyToRegion = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const slug of regions) map.set(regionDataKey(slug), slug);
+    return map;
+  }, [regions]);
+
+  // Dot-density threshold (dots only render when count <= 150) applies to
+  // the TOTAL point count across every series combined, not per-series —
+  // otherwise splitting one dense combined series into several per-region
+  // series would make dots reappear on each one individually.
+  const totalPointCount = isMultiSeries
+    ? Object.values(seriesByRegion).reduce((sum, series) => sum + series.length, 0)
+    : chartData.length;
+  const dotsEnabled = totalPointCount <= 150;
 
   const COLOR_UP = "hsl(142, 76%, 36%)";
   const COLOR_DOWN = "hsl(0, 72%, 51%)";
@@ -553,7 +646,34 @@ export function ResponseTimeChart({
   // Recharts v3 routes all pointer events through a single top-level surface,
   // so per-dot onClick handlers never fire. Handle clicks at the chart level
   // and resolve the active point via activeTooltipIndex into chartData.
+  //
+  // Multi-series mode can't reuse that index lookup: each region's Area has
+  // its own `data` array (different length once gap markers are inserted
+  // per-region), so a single activeTooltipIndex doesn't address any one of
+  // them safely. Instead, each region's Area uses a distinct dataKey
+  // (regionDataKey(slug)) — state.activeDataKey names which line was
+  // actually clicked, and state.activeLabel is the shared x-axis ts value,
+  // so the matching point is found by ts within that region's own series.
   const handleChartClick = (state: MouseHandlerDataParam) => {
+    if (isMultiSeries) {
+      const clickedKey =
+        typeof state?.activeDataKey === "string" ? state.activeDataKey : undefined;
+      const slug = clickedKey ? dataKeyToRegion.get(clickedKey) : undefined;
+      const label = state?.activeLabel;
+      const ts = typeof label === "number" ? label : Number(label);
+      const series = slug ? seriesByRegion[slug] : undefined;
+      const point =
+        series && Number.isFinite(ts)
+          ? series.find((p) => p.ts === ts)
+          : undefined;
+      if (point?.uid) {
+        handleDotClick(point.uid);
+      } else {
+        setSelectedUid(null);
+      }
+      return;
+    }
+
     // activeTooltipIndex is `number | string | null` across recharts versions.
     const raw = state?.activeTooltipIndex;
     const idx = typeof raw === "number" ? raw : raw != null ? Number(raw) : NaN;
@@ -618,8 +738,17 @@ export function ResponseTimeChart({
                 variant={effectiveRegion === slug ? "default" : "outline"}
                 size="sm"
                 onClick={() => updateRegion(slug)}
-                className="px-2 text-xs"
+                className="px-2 text-xs gap-1.5"
+                data-testid={`response-time-chart-region-chip-${slug}`}
               >
+                {isMultiSeries && (
+                  <span
+                    className="inline-block h-2.5 w-2.5 shrink-0 rounded-sm"
+                    style={{ backgroundColor: colorByRegion.get(slug) }}
+                    aria-hidden="true"
+                    data-testid={`response-time-chart-region-swatch-${slug}`}
+                  />
+                )}
                 {regionLabel(slug)}
               </Button>
             ))}
@@ -634,36 +763,38 @@ export function ResponseTimeChart({
         ) : (
           <div ref={chartWrapperRef} className="relative">
           <ResponsiveContainer width="100%" height={300}>
-            <AreaChart data={chartData} onClick={handleChartClick}>
-              <defs>
-                <linearGradient
-                  id={`strokeGradient-${checkUid}`}
-                  x1="0"
-                  y1="0"
-                  x2="1"
-                  y2="0"
-                >
-                  {gradientStops.map((s, i) => (
-                    <stop key={i} offset={s.offset} stopColor={s.color} />
-                  ))}
-                </linearGradient>
-                <linearGradient
-                  id={`fillGradient-${checkUid}`}
-                  x1="0"
-                  y1="0"
-                  x2="1"
-                  y2="0"
-                >
-                  {gradientStops.map((s, i) => (
-                    <stop
-                      key={i}
-                      offset={s.offset}
-                      stopColor={s.color}
-                      stopOpacity={0.15}
-                    />
-                  ))}
-                </linearGradient>
-              </defs>
+            <AreaChart data={isMultiSeries ? undefined : chartData} onClick={handleChartClick}>
+              {!isMultiSeries && (
+                <defs>
+                  <linearGradient
+                    id={`strokeGradient-${checkUid}`}
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="0"
+                  >
+                    {gradientStops.map((s, i) => (
+                      <stop key={i} offset={s.offset} stopColor={s.color} />
+                    ))}
+                  </linearGradient>
+                  <linearGradient
+                    id={`fillGradient-${checkUid}`}
+                    x1="0"
+                    y1="0"
+                    x2="1"
+                    y2="0"
+                  >
+                    {gradientStops.map((s, i) => (
+                      <stop
+                        key={i}
+                        offset={s.offset}
+                        stopColor={s.color}
+                        stopOpacity={0.15}
+                      />
+                    ))}
+                  </linearGradient>
+                </defs>
+              )}
               <CartesianGrid
                 strokeDasharray="3 3"
                 className="stroke-muted"
@@ -688,6 +819,58 @@ export function ResponseTimeChart({
               <Tooltip
                 content={({ active, payload }) => {
                   if (!active || !payload?.length) return null;
+
+                  if (isMultiSeries) {
+                    // payload has one entry per region series at this x
+                    // position; most are null (sparse per-region data) —
+                    // find the one with a real value.
+                    const entry = payload.find((p) => {
+                      const key =
+                        typeof p.dataKey === "string" ? p.dataKey : undefined;
+                      const point = p.payload as ChartPoint | undefined;
+                      return (
+                        key && point && point[key as `durationMs:${string}`] != null
+                      );
+                    });
+                    if (!entry) return null;
+                    const data = entry.payload as ChartPoint;
+                    if (data.durationMs == null) return null;
+                    if (data.uid && data.uid === selectedUid) return null;
+                    const key =
+                      typeof entry.dataKey === "string" ? entry.dataKey : undefined;
+                    const slug = key ? dataKeyToRegion.get(key) : undefined;
+                    return (
+                      <div className="rounded-md border bg-popover p-2 text-sm shadow-md">
+                        {slug && (
+                          <p
+                            className="flex items-center gap-1.5 font-medium"
+                          >
+                            <span
+                              className="inline-block h-2 w-2 shrink-0 rounded-sm"
+                              style={{ backgroundColor: colorByRegion.get(slug) }}
+                              aria-hidden="true"
+                            />
+                            {regionLabel(slug)}
+                          </p>
+                        )}
+                        <p className="text-muted-foreground">
+                          {format(new Date(data.ts), "MMM d, HH:mm:ss")}
+                        </p>
+                        <p className="font-medium">{formatMs(data.durationMs)}</p>
+                        {data.status && data.status !== "up" && (
+                          <p className="text-xs font-medium text-red-500 capitalize">
+                            {data.status}
+                          </p>
+                        )}
+                        {data.uid && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {t("detail.chart.tooltipClickPoint")}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  }
+
                   const data = payload[0].payload as ChartPoint;
                   if (data.durationMs == null) return null;
                   if (data.uid && data.uid === selectedUid) return null;
@@ -713,25 +896,34 @@ export function ResponseTimeChart({
                   );
                 }}
               />
-              {gaps.map((gap, i) => (
-                <ReferenceArea
-                  key={`gap-${i}`}
-                  x1={gap.x1}
-                  x2={gap.x2}
-                  fill="var(--muted)"
-                  fillOpacity={0.3}
-                  label={
-                    gap.showLabel
-                      ? {
-                          value: t("detail.chart.noData"),
-                          position: "center",
-                          fill: "var(--muted-foreground)",
-                          fontSize: 11,
-                        }
-                      : undefined
-                  }
-                />
-              ))}
+              {/* Shaded "no data" gap bands reflect the combined-series gap
+                  detection, which mixes all regions together — showing them
+                  in multi-series mode would misleadingly shade a region's
+                  window even when another region has data there. The
+                  per-series null markers already break each line at its own
+                  gaps (criterion: gap renders only on that region's line);
+                  the shared band is single-series-only. */}
+              {!isMultiSeries &&
+                gaps.map((gap, i) => (
+                  <ReferenceArea
+                    key={`gap-${i}`}
+                    x1={gap.x1}
+                    x2={gap.x2}
+                    fill="var(--muted)"
+                    fillOpacity={0.3}
+                    label={
+                      gap.showLabel
+                        ? {
+                            value: t("detail.chart.noData"),
+                            position: "center",
+                            fill: "var(--muted-foreground)",
+                            fontSize: 11,
+                          }
+                        : undefined
+                    }
+                  />
+                ))}
+              {!isMultiSeries && (
               <Area
                 type="monotone"
                 dataKey="durationMs"
@@ -744,7 +936,7 @@ export function ResponseTimeChart({
                   // Dense data → skip per-point circles entirely. activeDot
                   // still renders the hover/selected dot and caches the anchor
                   // so the pinned-result box can find it.
-                  chartData.length > 150
+                  !dotsEnabled
                     ? false
                     : (props) => {
                         const dotProps = props as {
@@ -824,6 +1016,106 @@ export function ResponseTimeChart({
                   );
                 }}
               />
+              )}
+              {isMultiSeries &&
+                regions.map((slug) => {
+                  const seriesData = seriesByRegion[slug] ?? [];
+                  const key = regionDataKey(slug);
+                  const color = colorByRegion.get(slug) ?? COLOR_UP;
+                  return (
+                    <Area
+                      key={slug}
+                      data={seriesData}
+                      type="monotone"
+                      dataKey={key}
+                      stroke={color}
+                      fill={color}
+                      fillOpacity={0.08}
+                      strokeWidth={2}
+                      connectNulls={false}
+                      isAnimationActive={false}
+                      dot={
+                        // Same combined-total dot-density threshold as
+                        // single-series mode (totalPointCount / dotsEnabled).
+                        !dotsEnabled
+                          ? false
+                          : (props) => {
+                              const dotProps = props as {
+                                cx?: number;
+                                cy?: number;
+                                payload?: ChartPoint;
+                                key?: React.Key | null;
+                              };
+                              const { cx, cy, payload, key: reactKeyRaw } = dotProps;
+                              const reactKey =
+                                reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
+                              if (cx == null || cy == null || !payload?.uid) {
+                                return <g key={reactKey} />;
+                              }
+                              const uid = payload.uid;
+                              dotPositions.current[uid] = { cx, cy };
+                              // Down results stay visible as red dots on
+                              // their line even though the line itself uses
+                              // the region color, not the status gradient.
+                              const fill =
+                                payload.status === "unknown" ||
+                                statusStyle(payload.status).isDown
+                                  ? COLOR_DOWN
+                                  : color;
+                              const isSelected = selectedUid === uid;
+                              return (
+                                <circle
+                                  key={reactKey}
+                                  cx={cx}
+                                  cy={cy}
+                                  r={isSelected ? 5 : 3.5}
+                                  fill={fill}
+                                  stroke={isSelected ? "var(--primary)" : undefined}
+                                  strokeWidth={isSelected ? 2 : 0}
+                                  style={{ cursor: "pointer" }}
+                                >
+                                  <title>
+                                    {isSelected
+                                      ? t("detail.chart.dotClickToClose")
+                                      : t("detail.chart.dotClickForDetails")}
+                                  </title>
+                                </circle>
+                              );
+                            }
+                      }
+                      activeDot={(props) => {
+                        const dotProps = props as {
+                          cx?: number;
+                          cy?: number;
+                          payload?: ChartPoint;
+                          key?: React.Key | null;
+                        };
+                        const { cx, cy, payload, key: reactKeyRaw } = dotProps;
+                        const reactKey =
+                          reactKeyRaw == null ? undefined : (reactKeyRaw as React.Key);
+                        if (cx == null || cy == null || !payload?.uid) {
+                          return <g key={reactKey} />;
+                        }
+                        const uid = payload.uid;
+                        dotPositions.current[uid] = { cx, cy };
+                        const fill =
+                          payload.status === "down" || payload.status === "unknown"
+                            ? COLOR_DOWN
+                            : color;
+                        return (
+                          <circle
+                            key={reactKey}
+                            cx={cx}
+                            cy={cy}
+                            r={5}
+                            fill={fill}
+                            style={{ cursor: "pointer" }}
+                          />
+                        );
+                      }}
+                    />
+                  );
+                })}
             </AreaChart>
           </ResponsiveContainer>
           {selectedUid && (
