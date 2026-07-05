@@ -361,7 +361,7 @@ func handleFakeIMAP(conn net.Conn, opts fakeIMAPOpts) {
 		line := strings.TrimSpace(string(buf[:bytesRead]))
 		fields := strings.SplitN(line, " ", 2)
 
-		if len(fields) < 2 { //nolint:mnd // tag + command
+		if len(fields) < 2 { // tag + command
 			_, _ = fmt.Fprintf(conn, "%s BAD unknown command\r\n", fields[0])
 
 			continue
