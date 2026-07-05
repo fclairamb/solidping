@@ -462,22 +462,150 @@ func TestValidateLaneThresholds(t *testing.T) {
 	}
 }
 
-// TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME
-// pool knobs land on the snake_case-tagged DatabaseConfig fields. Uses t.Setenv,
-// which is incompatible with t.Parallel.
+// TestApplyDatabasePoolEnv confirms the SP_DB_*_CONNS / SP_DB_CONN_MAX_LIFETIME /
+// SP_DB_CONN_MAX_IDLE_TIME pool knobs land on the snake_case-tagged
+// DatabaseConfig fields. Uses t.Setenv, which is incompatible with t.Parallel.
 func TestApplyDatabasePoolEnv(t *testing.T) {
 	r := require.New(t)
 
 	t.Setenv("SP_DB_MAX_OPEN_CONNS", "40")
 	t.Setenv("SP_DB_MAX_IDLE_CONNS", "8")
 	t.Setenv("SP_DB_CONN_MAX_LIFETIME", "90m")
+	t.Setenv("SP_DB_CONN_MAX_IDLE_TIME", "2m")
 
-	cfg := DatabaseConfig{MaxOpenConns: 25, MaxIdleConns: 10, ConnMaxLifetime: time.Hour}
+	cfg := DatabaseConfig{
+		MaxOpenConns:    25,
+		MaxIdleConns:    10,
+		ConnMaxLifetime: time.Hour,
+		ConnMaxIdleTime: 5 * time.Minute,
+	}
 	applyDatabasePoolEnv(&cfg)
 
 	r.Equal(40, cfg.MaxOpenConns)
 	r.Equal(8, cfg.MaxIdleConns)
 	r.Equal(90*time.Minute, cfg.ConnMaxLifetime)
+	r.Equal(2*time.Minute, cfg.ConnMaxIdleTime)
+}
+
+// TestApplyDatabasePoolEnv_InvalidConnMaxIdleTimeKeepsExisting confirms an
+// unparsable SP_DB_CONN_MAX_IDLE_TIME leaves the existing value untouched,
+// matching the fail-open pattern of the other duration knobs.
+func TestApplyDatabasePoolEnv_InvalidConnMaxIdleTimeKeepsExisting(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_DB_CONN_MAX_IDLE_TIME", "not-a-duration")
+
+	cfg := DatabaseConfig{ConnMaxIdleTime: 5 * time.Minute}
+	applyDatabasePoolEnv(&cfg)
+
+	r.Equal(5*time.Minute, cfg.ConnMaxIdleTime)
+}
+
+// TestApplyNodeRolePoolDefaults covers D1 (spec 2026-07-05-09): checks/jobs
+// nodes get the smaller 8/2 pool, api/all/unknown roles keep 25/10, and a
+// pool value that no longer matches the api/all struct-literal default (as
+// if config.yml already set it explicitly) is left alone even for a
+// checks/jobs role.
+func TestApplyNodeRolePoolDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		nodeRole         string
+		maxOpenConns     int
+		maxIdleConns     int
+		wantMaxOpenConns int
+		wantMaxIdleConns int
+	}{
+		{
+			name: "all role keeps api-sized pool", nodeRole: NodeRoleAll,
+			maxOpenConns: 25, maxIdleConns: 10,
+			wantMaxOpenConns: 25, wantMaxIdleConns: 10,
+		},
+		{
+			name: "api role keeps api-sized pool", nodeRole: NodeRoleAPI,
+			maxOpenConns: 25, maxIdleConns: 10,
+			wantMaxOpenConns: 25, wantMaxIdleConns: 10,
+		},
+		{
+			name: "checks role shrinks to worker-sized pool", nodeRole: NodeRoleChecks,
+			maxOpenConns: 25, maxIdleConns: 10,
+			wantMaxOpenConns: 8, wantMaxIdleConns: 2,
+		},
+		{
+			name: "jobs role shrinks to worker-sized pool", nodeRole: NodeRoleJobs,
+			maxOpenConns: 25, maxIdleConns: 10,
+			wantMaxOpenConns: 8, wantMaxIdleConns: 2,
+		},
+		{
+			name: "unknown role is left alone (validated elsewhere)", nodeRole: "bogus",
+			maxOpenConns: 25, maxIdleConns: 10,
+			wantMaxOpenConns: 25, wantMaxIdleConns: 10,
+		},
+		{
+			name:         "checks role with pre-set MaxOpenConns override is left alone",
+			nodeRole:     NodeRoleChecks,
+			maxOpenConns: 40, maxIdleConns: 10, // 40 simulates a config.yml override
+			wantMaxOpenConns: 40, wantMaxIdleConns: 2, // MaxIdleConns still at default, so it shrinks
+		},
+		{
+			name:         "checks role with pre-set MaxIdleConns override is left alone",
+			nodeRole:     NodeRoleChecks,
+			maxOpenConns: 25, maxIdleConns: 6, // 6 simulates a config.yml override
+			wantMaxOpenConns: 8, wantMaxIdleConns: 6,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := DatabaseConfig{MaxOpenConns: tt.maxOpenConns, MaxIdleConns: tt.maxIdleConns}
+			applyNodeRolePoolDefaults(&cfg, tt.nodeRole)
+
+			r := require.New(t)
+			r.Equal(tt.wantMaxOpenConns, cfg.MaxOpenConns)
+			r.Equal(tt.wantMaxIdleConns, cfg.MaxIdleConns)
+		})
+	}
+}
+
+// TestLoad_NodeRolePoolPrecedence is an end-to-end test of D1 through the real
+// Load() entry point: a checks node with no overrides gets the 8/2 pool, and
+// explicit SP_DB_MAX_OPEN_CONNS/SP_DB_MAX_IDLE_CONNS still win over the role
+// default. Uses t.Setenv, which is incompatible with t.Parallel.
+func TestLoad_NodeRolePoolPrecedence(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_NODE_ROLE", NodeRoleChecks)
+	t.Setenv("SP_NODE_REGION", "eu") // required by Validate() for the checks role
+	t.Setenv("SP_REGION", "eu")
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(dbPoolMaxOpenConnsChecksDefault, cfg.Database.MaxOpenConns)
+	r.Equal(dbPoolMaxIdleConnsChecksDefault, cfg.Database.MaxIdleConns)
+
+	t.Setenv("SP_DB_MAX_OPEN_CONNS", "17")
+	t.Setenv("SP_DB_MAX_IDLE_CONNS", "3")
+
+	cfg, err = Load()
+	r.NoError(err)
+	r.Equal(17, cfg.Database.MaxOpenConns)
+	r.Equal(3, cfg.Database.MaxIdleConns)
+}
+
+// TestLoad_NodeRoleAllKeepsAPIPool is the api/all-side companion to
+// TestLoad_NodeRolePoolPrecedence: confirms Load() with no SP_NODE_ROLE set
+// (defaults to "all") keeps the larger pool. Uses t.Setenv, which is
+// incompatible with t.Parallel.
+func TestLoad_NodeRoleAllKeepsAPIPool(t *testing.T) {
+	r := require.New(t)
+
+	cfg, err := Load()
+	r.NoError(err)
+	r.Equal(dbPoolMaxOpenConnsDefault, cfg.Database.MaxOpenConns)
+	r.Equal(dbPoolMaxIdleConnsDefault, cfg.Database.MaxIdleConns)
 }
 
 // TestApplyJobsEnv confirms SP_JOBS_* durations land on the snake_case-tagged

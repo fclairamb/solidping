@@ -1136,6 +1136,11 @@ func applyDatabasePoolEnv(cfg *DatabaseConfig) {
 			cfg.ConnMaxLifetime = d
 		}
 	}
+	if v := os.Getenv("SP_DB_CONN_MAX_IDLE_TIME"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.ConnMaxIdleTime = d
+		}
+	}
 }
 
 // applyRuntimeEnv reads the multi-word SP_RUNTIME_* knobs koanf's env loader
