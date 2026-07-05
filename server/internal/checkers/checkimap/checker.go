@@ -56,10 +56,11 @@ func (c *IMAPChecker) Validate(spec *checkerdef.CheckSpec) error {
 
 // execParams holds resolved execution parameters with defaults applied.
 type execParams struct {
-	host       string
-	port       int
-	timeout    time.Duration
-	serverName string
+	host           string
+	port           int
+	timeout        time.Duration
+	serverName     string
+	useImplicitTLS bool
 }
 
 func newExecParams(cfg *IMAPConfig) execParams {
@@ -76,6 +77,12 @@ func newExecParams(cfg *IMAPConfig) execParams {
 			params.port = defaultPort
 		}
 	}
+
+	// Derive implicit TLS from the well-known port when neither tls nor
+	// starttls is explicitly set (mirrors checksmtp/checker.go:120). An
+	// explicit tls:true is always honored regardless of port; an explicit
+	// starttls:true wins over the port-derived default.
+	params.useImplicitTLS = cfg.TLS || (params.port == implicitTLSPort && !cfg.StartTLS)
 
 	params.timeout = cfg.Timeout
 	if params.timeout == 0 {
@@ -125,7 +132,7 @@ func (c *IMAPChecker) Execute(
 	}
 
 	// Establish connection
-	conn, connTime, err := c.dial(ctx, target, params.serverName, cfg.TLS, cfg.TLSVerify)
+	conn, connTime, err := c.dial(ctx, target, params.serverName, params.useImplicitTLS, cfg.TLSVerify)
 	if err != nil {
 		return handleDialError(ctx, err, start), nil
 	}
@@ -134,7 +141,7 @@ func (c *IMAPChecker) Execute(
 
 	metrics["connection_time_ms"] = durationMs(connTime)
 
-	if cfg.TLS {
+	if params.useImplicitTLS {
 		if tlsConn, ok := conn.(*tls.Conn); ok {
 			state := tlsConn.ConnectionState()
 			output["tls_version"] = tlsVersionString(state.Version)

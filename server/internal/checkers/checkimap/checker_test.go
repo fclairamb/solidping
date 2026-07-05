@@ -2,7 +2,13 @@ package checkimap
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
+	"math/big"
 	"net"
 	"strings"
 	"testing"
@@ -272,6 +278,148 @@ func TestIMAPConfig_GetConfig_Minimal(t *testing.T) {
 	r.Nil(result["port"])
 	r.Nil(result["timeout"])
 	r.Nil(result["tls"])
+}
+
+// TestNewExecParams_ImplicitTLSDerivation covers the D1 port->TLS derivation:
+// port 993 with neither tls nor starttls set implies implicit TLS (mirrors
+// checksmtp/checker.go:120), an explicit starttls:true on 993 wins over the
+// port-derived default, a plain port (143) stays plaintext, and an explicit
+// tls:true is preserved even off the well-known port.
+func TestNewExecParams_ImplicitTLSDerivation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		config      IMAPConfig
+		wantImplTLS bool
+	}{
+		{
+			name:        "port 993, tls and starttls unset -> implicit TLS",
+			config:      IMAPConfig{Host: "x", Port: implicitTLSPort},
+			wantImplTLS: true,
+		},
+		{
+			name:        "port 993, starttls explicit -> explicit starttls wins",
+			config:      IMAPConfig{Host: "x", Port: implicitTLSPort, StartTLS: true},
+			wantImplTLS: false,
+		},
+		{
+			name:        "port 143 (plaintext default) -> unchanged",
+			config:      IMAPConfig{Host: "x", Port: defaultPort},
+			wantImplTLS: false,
+		},
+		{
+			name:        "explicit tls:true at a non-standard port is preserved",
+			config:      IMAPConfig{Host: "x", Port: defaultPort, TLS: true},
+			wantImplTLS: true,
+		},
+		{
+			name:        "port unset, tls:true -> defaults port to 993 and implies TLS",
+			config:      IMAPConfig{Host: "x", TLS: true},
+			wantImplTLS: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			params := newExecParams(&tt.config)
+			require.Equal(t, tt.wantImplTLS, params.useImplicitTLS)
+		})
+	}
+}
+
+// makeTestCertificate mints a self-signed key+cert pair for a loopback TLS
+// listener used only to exercise the implicit-TLS dial/consumption path in
+// Execute; trust is irrelevant since checks run with tls_verify unset
+// (InsecureSkipVerify).
+func makeTestCertificate(t *testing.T) tls.Certificate {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err)
+
+	tmpl := &x509.Certificate{
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
+		Subject:      pkix.Name{CommonName: "127.0.0.1"},
+		NotBefore:    time.Now().Add(-time.Hour),
+		NotAfter:     time.Now().Add(time.Hour),
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+	}
+
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	require.NoError(t, err)
+
+	return tls.Certificate{
+		Certificate: [][]byte{der},
+		PrivateKey:  key,
+	}
+}
+
+// startFakeIMAPTLSServer wraps startFakeIMAPServer's protocol handling behind
+// a real TLS listener, so Execute must complete an actual handshake — this
+// exercises the params.useImplicitTLS consumption path (dial + tls_version/
+// tls_cipher output), complementing the port-993-trigger unit test above.
+func startFakeIMAPTLSServer(t *testing.T, opts fakeIMAPOpts) (string, int) {
+	t.Helper()
+
+	cert := makeTestCertificate(t)
+	tlsCfg := &tls.Config{Certificates: []tls.Certificate{cert}}
+
+	lc := &net.ListenConfig{}
+
+	rawListener, err := lc.Listen(context.Background(), "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	listener := tls.NewListener(rawListener, tlsCfg)
+
+	_, portStr, _ := net.SplitHostPort(rawListener.Addr().String())
+
+	var port int
+
+	_, _ = fmt.Sscanf(portStr, "%d", &port)
+
+	t.Cleanup(func() { _ = listener.Close() })
+
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+
+			go handleFakeIMAP(conn, opts)
+		}
+	}()
+
+	return "127.0.0.1", port
+}
+
+// TestIMAPChecker_Execute_ImplicitTLSDial proves the useImplicitTLS flag (once
+// derived) is actually consumed by dial()/Execute: connecting to a real TLS
+// listener with tls:true set completes a handshake and reports tls_version/
+// tls_cipher, exactly as an unset-flag port-993 check would after derivation.
+func TestIMAPChecker_Execute_ImplicitTLSDial(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	host, port := startFakeIMAPTLSServer(t, fakeIMAPOpts{})
+
+	cfg := &IMAPConfig{
+		Host:    host,
+		Port:    port,
+		TLS:     true,
+		Timeout: 2 * time.Second,
+	}
+
+	checker := &IMAPChecker{}
+	result, err := checker.Execute(context.Background(), cfg)
+	r.NoError(err)
+	r.NotNil(result)
+	r.Equal(checkerdef.StatusUp, result.Status, "output: %v", result.Output)
+	r.NotEmpty(result.Output["tls_version"])
+	r.NotEmpty(result.Output["tls_cipher"])
 }
 
 // startFakeIMAPServer starts a simple IMAP server for testing.
