@@ -400,7 +400,11 @@ func (s *Service) CreateIntegration(
 
 	activation.Emit(ctx, s.db, org.UID,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
-		activation.SourceAPI, "")
+		activation.SourceAPI, "", models.JSONMap{
+			"channel_uid":  conn.UID,
+			"channel_name": conn.Name,
+			"channel_type": string(conn.Type),
+		})
 
 	resp := toResponse(conn, true)
 
@@ -651,7 +655,11 @@ func (s *Service) StartFreeboxPairing(
 
 	activation.Emit(ctx, s.db, org.UID,
 		models.EventTypeOrgActivationFirstNotificationConfigured,
-		activation.SourceAPI, "")
+		activation.SourceAPI, "", models.JSONMap{
+			"channel_uid":  conn.UID,
+			"channel_name": conn.Name,
+			"channel_type": string(conn.Type),
+		})
 
 	return &FreeboxPairingResponse{
 		ConnectionUID: conn.UID,

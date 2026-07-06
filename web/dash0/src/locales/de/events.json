@@ -24,13 +24,28 @@
     "incident.opened": "Vorfall eröffnet",
     "incident.resolved": "Vorfall gelöst",
     "incident.escalated": "Vorfall eskaliert",
+    "incident.escalation_failed": "Eskalation fehlgeschlagen",
     "incident.acknowledged": "Vorfall bestätigt",
+    "incident.unacknowledged": "Bestätigung aufgehoben",
+    "incident.reopened": "Vorfall wiedereröffnet",
+    "incident.snoozed": "Vorfall stummgeschaltet",
+    "incident.unsnoozed": "Stummschaltung aufgehoben",
+    "status_update.created": "Statusupdate veröffentlicht",
+    "status_update.updated": "Statusupdate bearbeitet",
+    "status_update.deleted": "Statusupdate entfernt",
+    "org.activation.signup_completed": "Registrierung abgeschlossen",
     "org.activation.first_check_created": "Erste Prüfung erstellt",
-    "org.activation.first_notification_configured": "Erste Benachrichtigung konfiguriert"
+    "org.activation.first_result_received": "Erstes Ergebnis erhalten",
+    "org.activation.first_notification_configured": "Erste Benachrichtigung konfiguriert",
+    "org.activation.first_incident_paged": "Erster Vorfall gemeldet"
   },
   "descriptions": {
+    "org.activation.signup_completed": "Ihre Organisation ist eingerichtet und einsatzbereit.",
     "org.activation.first_check_created": "Ihre erste Verfügbarkeitsprüfung ist aktiv und überwacht.",
-    "org.activation.first_notification_configured": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet."
+    "org.activation.first_result_received": "Ihr erstes Prüfergebnis ist eingetroffen.",
+    "org.activation.first_notification_configured": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet.",
+    "first_notification_configured_prefix": "Sie haben Ihren ersten Benachrichtigungskanal eingerichtet:",
+    "org.activation.first_incident_paged": "Ihre erste Vorfallbenachrichtigung wurde zugestellt."
   },
   "links": {
     "check": "Prüfung",

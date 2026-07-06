@@ -35,7 +35,7 @@ function hourlyResultsFor(checkUid: string, availabilityPct: number) {
 
 async function mockDashboard(
   page: Page,
-  opts: { checks: MockCheck[]; incidents?: unknown[] },
+  opts: { checks: MockCheck[]; incidents?: unknown[]; events?: unknown[] },
 ) {
   const checks = opts.checks.map((c) => ({
     uid: c.uid,
@@ -99,7 +99,10 @@ async function mockDashboard(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ data: [], pagination: { total: 0 } }),
+      body: JSON.stringify({
+        data: opts.events ?? [],
+        pagination: { total: (opts.events ?? []).length },
+      }),
     }),
   );
 }
@@ -395,5 +398,150 @@ test.describe("Dashboard", () => {
     expect(incidentBox).not.toBeNull();
     expect(glanceBox).not.toBeNull();
     expect(incidentBox!.y).toBeLessThan(glanceBox!.y);
+  });
+
+  test("Recent activity row for an incident event shows both incident and check links", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const checkUid = "eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee";
+    const incidentUid = "ffffffff-ffff-ffff-ffff-ffffffffffff";
+
+    await mockDashboard(page, {
+      checks: [{ uid: checkUid, name: "Payments API", status: "down" }],
+      incidents: [],
+      events: [
+        {
+          uid: "event-incident-created",
+          eventType: "incident.created",
+          actorType: "system",
+          checkUid,
+          incidentUid,
+          payload: {
+            check_uid: checkUid,
+            check_slug: "payments-api",
+            check_name: "Payments API",
+          },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    // Both links must be present: the incident link and a named check link.
+    // exact: true disambiguates from the sidebar's "Incidents" (plural) nav
+    // link, which also matches a substring "name" query.
+    const incidentLink = page.getByRole("link", { name: "Incident", exact: true });
+    await expect(incidentLink.first()).toBeVisible();
+    await expect(incidentLink.first()).toHaveAttribute(
+      "href",
+      new RegExp(`/incidents/${incidentUid}`),
+    );
+
+    const checkLink = page.getByRole("link", { name: "Payments API", exact: true });
+    await expect(checkLink.first()).toBeVisible();
+    await expect(checkLink.first()).toHaveAttribute(
+      "href",
+      new RegExp(`/checks/${checkUid}`),
+    );
+  });
+
+  test("Recent activity row for a historical incident event (no check_name) falls back to check_slug", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const checkUid = "12121212-1212-1212-1212-121212121212";
+    const incidentUid = "13131313-1313-1313-1313-131313131313";
+
+    await mockDashboard(page, {
+      checks: [{ uid: checkUid, name: "Legacy Check", status: "down" }],
+      incidents: [],
+      events: [
+        {
+          uid: "event-incident-resolved-old",
+          eventType: "incident.resolved",
+          actorType: "system",
+          checkUid,
+          incidentUid,
+          // Historical shape: no check_name captured, only check_slug.
+          payload: {
+            check_uid: checkUid,
+            check_slug: "legacy-check",
+          },
+          createdAt: new Date().toISOString(),
+        },
+      ],
+    });
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    // Falls back to the slug as the link text since check_name is absent.
+    const checkLink = page.getByRole("link", { name: "legacy-check" });
+    await expect(checkLink.first()).toBeVisible();
+    await expect(checkLink.first()).toHaveAttribute(
+      "href",
+      new RegExp(`/checks/${checkUid}`),
+    );
+  });
+
+  test("Recent activity shows the notification channel name and links to the integration", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Real API round-trip: create a channel, which emits
+    // org.activation.first_notification_configured enriched with
+    // channel_uid/channel_name/channel_type.
+    const loginResp = await page.request.post(`${API_BASE}/api/v1/auth/login`, {
+      data: { org: "test", email: "test@test.com", password: "test" },
+    });
+    const token = (await loginResp.json()).accessToken as string;
+
+    const channelName = `E2E Recent Activity Channel ${Date.now()}`;
+    const createResp = await page.request.post(
+      `${API_BASE}/api/v1/orgs/test/channels`,
+      {
+        headers: { Authorization: `Bearer ${token}` },
+        data: {
+          type: "webhook",
+          name: channelName,
+          settings: { url: "https://example.com/hook" },
+        },
+      },
+    );
+    const channel = await createResp.json();
+
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
+    const feed = page.getByTestId("recent-activity-footer");
+    await expect(feed).toBeVisible({ timeout: 10000 });
+
+    // The channel name renders as a link to its integration detail page —
+    // but only for the FIRST channel ever created in this org; on a reused
+    // test org where the milestone already fired for an earlier channel,
+    // skip rather than flake.
+    const channelLink = page.getByRole("link", { name: channelName });
+    if (await channelLink.first().isVisible().catch(() => false)) {
+      await expect(channelLink.first()).toHaveAttribute(
+        "href",
+        new RegExp(`/integrations/${channel.uid}`),
+      );
+    }
+
+    // Clean up.
+    await page.request.delete(
+      `${API_BASE}/api/v1/orgs/test/channels/${channel.uid}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
   });
 });

@@ -53,6 +53,7 @@ const viaWeb = "web"
 const (
 	keyCheckUID                   = "check_uid"
 	keyCheckSlug                  = "check_slug"
+	keyCheckName                  = "check_name"
 	keyStartedAt                  = "started_at"
 	keyResultUID                  = "result_uid"
 	keyResolvedAt                 = "resolved_at"
@@ -456,6 +457,9 @@ func (s *Service) handleFailure(
 		update.EscalatedAt = &now
 		// Emit escalation event
 		if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
+			keyCheckUID:            check.UID,
+			keyCheckSlug:           check.Slug,
+			keyCheckName:           check.Name,
 			keyFailureCount:        newFailureCount,
 			keyEscalationThreshold: check.EscalationThreshold,
 		}); err != nil {
@@ -622,6 +626,7 @@ func (s *Service) createIncident(ctx context.Context, check *models.Check, resul
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
 		keyCheckUID:  check.UID,
 		keyCheckSlug: check.Slug,
+		keyCheckName: check.Name,
 		keyStartedAt: result.PeriodStart,
 		keyResultUID: result.UID,
 	}); err != nil {
@@ -654,6 +659,7 @@ func (s *Service) resolveIncident(
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
 		keyCheckUID:        check.UID,
 		keyCheckSlug:       check.Slug,
+		keyCheckName:       check.Name,
 		keyResolvedAt:      resolvedAt,
 		keyDurationSeconds: durationSeconds,
 		keyTotalFailures:   incident.FailureCount,
@@ -815,6 +821,7 @@ func (s *Service) reopenIncident(
 	if err := s.emitEvent(ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
 		keyCheckUID:                   check.UID,
 		keyCheckSlug:                  check.Slug,
+		keyCheckName:                  check.Name,
 		keyRelapseCount:               newRelapseCount,
 		keyResultUID:                  result.UID,
 		keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
@@ -946,6 +953,7 @@ func (s *Service) updateGroupMemberOnFailure(
 			ctx, check.OrganizationUID, models.EventTypeIncidentEscalated, incident, models.JSONMap{
 				keyCheckUID:            check.UID,
 				keyCheckSlug:           check.Slug,
+				keyCheckName:           check.Name,
 				keyFailureCount:        newFailureCount,
 				keyEscalationThreshold: check.EscalationThreshold,
 			}); err != nil {
@@ -1056,6 +1064,7 @@ func (s *Service) createGroupIncident(
 		ctx, check.OrganizationUID, models.EventTypeIncidentCreated, incident, models.JSONMap{
 			keyCheckUID:  check.UID,
 			keyCheckSlug: check.Slug,
+			keyCheckName: check.Name,
 			keyStartedAt: result.PeriodStart,
 			keyResultUID: result.UID,
 		}); err != nil {
@@ -1119,6 +1128,7 @@ func (s *Service) reopenGroupIncident(
 		ctx, check.OrganizationUID, models.EventTypeIncidentReopened, incident, models.JSONMap{
 			keyCheckUID:                   check.UID,
 			keyCheckSlug:                  check.Slug,
+			keyCheckName:                  check.Name,
 			keyRelapseCount:               newRelapseCount,
 			keyResultUID:                  result.UID,
 			keyEffectiveRecoveryThreshold: effectiveRecoveryPeriodSeconds(check),
@@ -1213,6 +1223,7 @@ func (s *Service) resolveGroupIncident(
 		ctx, check.OrganizationUID, models.EventTypeIncidentResolved, incident, models.JSONMap{
 			keyCheckUID:        check.UID,
 			keyCheckSlug:       check.Slug,
+			keyCheckName:       check.Name,
 			keyResolvedAt:      resolvedAt,
 			keyDurationSeconds: durationSeconds,
 			keyTotalFailures:   incident.FailureCount,
@@ -1252,6 +1263,7 @@ func (s *Service) emitEvent(
 
 	event := models.NewEvent(orgUID, eventType, actorType)
 	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
 	event.ActorUID = actorUID
 	event.Payload = payload
 
@@ -1953,11 +1965,19 @@ func (s *Service) acknowledgeIncidentByOrgUID(
 	// Create acknowledgment event
 	event := models.NewEvent(orgUID, models.EventTypeIncidentAcknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
 	event.Payload = models.JSONMap{
 		payloadKeyVia:    req.Via,
 		"slack_user_id":  req.SlackUserID,
 		"slack_username": req.SlackUsername,
 		"note":           req.Note,
+		keyCheckUID:      incident.CheckUID,
+	}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the acknowledgment over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
 	}
 	// Magic-link acks come in with the recipient email even when the
 	// recipient is not a known platform user — record it on the payload so
@@ -2072,7 +2092,14 @@ func (s *Service) unacknowledgeIncidentByOrgUID(
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentUnacknowledged, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
-	event.Payload = models.JSONMap{payloadKeyVia: via}
+	event.CheckUID = &incident.CheckUID
+	event.Payload = models.JSONMap{payloadKeyVia: via, keyCheckUID: incident.CheckUID}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the unacknowledge over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
+	}
 
 	if actorUID != "" {
 		event.ActorUID = &actorUID
@@ -2162,10 +2189,18 @@ func (s *Service) snoozeIncidentByOrgUID(
 
 	event := models.NewEvent(orgUID, models.EventTypeIncidentSnoozed, models.ActorTypeUser)
 	event.IncidentUID = &incident.UID
+	event.CheckUID = &incident.CheckUID
 	event.Payload = models.JSONMap{
 		"until":       until.Format(time.RFC3339),
 		"reason":      req.Reason,
 		payloadKeyVia: req.Via,
+		keyCheckUID:   incident.CheckUID,
+	}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the snooze over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
 	}
 
 	if req.ActorUID != "" {
@@ -2259,7 +2294,14 @@ func (s *Service) unsnoozeIncidentByOrgUID(
 	}
 
 	event.IncidentUID = &incident.UID
-	event.Payload = models.JSONMap{payloadKeyVia: via}
+	event.CheckUID = &incident.CheckUID
+	event.Payload = models.JSONMap{payloadKeyVia: via, keyCheckUID: incident.CheckUID}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the unsnooze over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload[keyCheckSlug] = check.Slug
+		event.Payload[keyCheckName] = check.Name
+	}
 
 	if actorUID != "" {
 		event.ActorUID = &actorUID
@@ -2349,6 +2391,12 @@ func (s *Service) resolveIncidentByOrgUID(
 		"note":            req.Note,
 		"resolution_type": resolutionType,
 		keyCheckUID:       incident.CheckUID,
+	}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the resolve over a missing slug/name.
+	if check, chkErr := s.db.GetCheck(ctx, orgUID, incident.CheckUID); chkErr == nil && check != nil {
+		payload[keyCheckSlug] = check.Slug
+		payload[keyCheckName] = check.Name
 	}
 	if req.ActorUID != "" {
 		payload[payloadKeyActorUID] = req.ActorUID
