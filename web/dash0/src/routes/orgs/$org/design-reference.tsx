@@ -33,7 +33,11 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
-import { CollapsibleCode, CopyableCode } from "@/components/shared/copyable-code";
+import {
+  CollapsibleCode,
+  CopyableCode,
+  CopyableInline,
+} from "@/components/shared/copyable-code";
 import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
@@ -132,6 +136,7 @@ const SECTIONS: { id: string; label: string }[] = [
   { id: "forms", label: "Forms" },
   { id: "data-display", label: "Data display" },
   { id: "copyable-code", label: "Copyable code" },
+  { id: "copyable-inline", label: "Copyable inline" },
   { id: "collapsible-code", label: "Collapsible code" },
   { id: "feedback", label: "Feedback" },
   { id: "label-filter", label: "Label filter" },
@@ -164,6 +169,7 @@ function DesignReferencePage() {
       <FormsSection />
       <DataDisplaySection />
       <CopyableCodeSection />
+      <CopyableInlineSection />
       <CollapsibleCodeSection />
       <FeedbackSection />
       <LabelFilterSection />
@@ -1464,6 +1470,42 @@ function CopyableCodeSection() {
         </div>
         <CodeSnippet
           code={`import { CopyableCode } from "@/components/shared/copyable-code";\n\n<CopyableCode code="https://monitoring.example.com/api/v1/mcp" />`}
+        />
+      </div>
+    </Section>
+  );
+}
+
+function CopyableInlineSection() {
+  return (
+    <Section
+      id="copyable-inline"
+      title="Copyable inline"
+      description="A copy-to-clipboard icon button for a value shown elsewhere on the page — a form-field-style ID/URL row (inline, the default) or a bare button next to a caller-rendered value block, e.g. a <pre> error box (inline={false}). For a boxed, always-visible code block use Copyable code above; for a collapsible block use Collapsible code below. Lives on the notification delivery detail page."
+    >
+      <div className="grid gap-3 rounded-md border bg-card p-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] md:items-start">
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <div className="text-muted-foreground text-xs">Request URL</div>
+            <CopyableInline
+              value="https://hooks.example.com/incoming/018e"
+              label="request URL"
+            />
+          </div>
+          <div className="flex items-start gap-2">
+            <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-xs text-destructive">
+              connect ECONNREFUSED
+            </pre>
+            <CopyableInline
+              value="connect ECONNREFUSED"
+              label="error"
+              inline={false}
+              size="md"
+            />
+          </div>
+        </div>
+        <CodeSnippet
+          code={`import { CopyableInline } from "@/components/shared/copyable-code";\n\n// Form-field-style row (inline, default)\n<CopyableInline value={url} label="request URL" />\n\n// Bare button next to a caller-rendered value block\n<CopyableInline value={error} label="error" inline={false} size="md" />`}
         />
       </div>
     </Section>

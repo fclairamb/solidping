@@ -48,6 +48,63 @@ export function CopyableCode({ code }: { code: string }) {
 }
 
 /**
+ * A copy-to-clipboard icon button for a value the caller already displays
+ * elsewhere on the page. Set `inline` (default `true`) to also render the
+ * value itself as a plain unboxed `<code>` next to the button — e.g. an ID
+ * or URL in a form-field-style row. Pass `inline={false}` when the caller
+ * renders its own styled value block alongside the button instead (e.g. a
+ * `<pre>` error block) and only the bare button is needed. For a boxed,
+ * always-visible block use `CopyableCode`; for a collapsible block use
+ * `CollapsibleCode`.
+ */
+export function CopyableInline({
+  value,
+  label,
+  inline = true,
+  size = "sm",
+}: {
+  value: string;
+  label?: string;
+  inline?: boolean;
+  size?: "sm" | "md";
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = () =>
+    void copyToClipboard(value, () => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), COPIED_RESET_MS);
+    });
+
+  const buttonSizeClass = size === "md" ? "h-7 w-7" : "h-6 w-6";
+  const iconSizeClass = size === "md" ? "h-4 w-4" : "h-3.5 w-3.5";
+
+  const button = (
+    <button
+      type="button"
+      onClick={onCopy}
+      aria-label={copied ? "Copied" : `Copy ${label ?? "value"}`}
+      className={`inline-flex ${buttonSizeClass} shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground`}
+    >
+      {copied ? (
+        <Check className={iconSizeClass} />
+      ) : (
+        <Copy className={iconSizeClass} />
+      )}
+    </button>
+  );
+
+  if (!inline) return button;
+
+  return (
+    <div className="flex items-start gap-2">
+      <code className="min-w-0 break-all font-mono text-sm">{value}</code>
+      {button}
+    </div>
+  );
+}
+
+/**
  * A collapsible monospace block with a copy-to-clipboard affordance —
  * native `<details>`/`<summary>`, keyboard-accessible, no JS-driven layout.
  * Use for long or optional payloads (raw JSON, request/response bodies)

@@ -1,10 +1,7 @@
-import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { z } from "zod";
 import {
   ArrowLeft,
-  Check,
-  Copy,
   Ban,
   CheckCircle2,
   Clock,
@@ -21,7 +18,10 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
-import { CollapsibleCode } from "@/components/shared/copyable-code";
+import {
+  CollapsibleCode,
+  CopyableInline,
+} from "@/components/shared/copyable-code";
 import {
   useOrgNotification,
   type IncidentNotification,
@@ -84,35 +84,6 @@ function formatElapsed(fromIso?: string, toIso?: string): string | null {
   const hours = Math.floor(minutes / 60);
   if (hours > 0) return `${hours}h ${minutes % 60}m`;
   return `${minutes}m ${totalSeconds % 60}s`;
-}
-
-/** Inline copyable value: monospace text plus a copy-to-clipboard button. */
-function CopyableValue({ value, label }: { value: string; label?: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard requires a secure context; the value stays visible to copy by hand.
-    }
-  };
-
-  return (
-    <div className="flex items-start gap-2">
-      <code className="min-w-0 break-all font-mono text-sm">{value}</code>
-      <button
-        type="button"
-        onClick={onCopy}
-        aria-label={copied ? "Copied" : `Copy ${label ?? "value"}`}
-        className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-      >
-        {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-      </button>
-    </div>
-  );
 }
 
 /** A single timeline entry. Returns null when the timestamp is absent. */
@@ -240,7 +211,7 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
         {d.requestUrl && (
           <div className="space-y-1">
             <div className="text-muted-foreground text-xs">Request URL</div>
-            <CopyableValue value={d.requestUrl} label="request URL" />
+            <CopyableInline value={d.requestUrl} label="request URL" />
           </div>
         )}
 
@@ -278,31 +249,6 @@ function DeliverySection({ notif }: { notif: IncidentNotification }) {
         )}
       </CardContent>
     </Card>
-  );
-}
-
-function CopyErrorButton({ value }: { value: string }) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard requires a secure context; the error stays visible to copy by hand.
-    }
-  };
-
-  return (
-    <button
-      type="button"
-      onClick={onCopy}
-      aria-label={copied ? "Copied" : "Copy error"}
-      className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-    >
-      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-    </button>
   );
 }
 
@@ -483,13 +429,13 @@ function NotificationDetailPage() {
             {data.messageId && (
               <div className="space-y-1">
                 <div className="text-muted-foreground text-xs">Message ID</div>
-                <CopyableValue value={data.messageId} label="message ID" />
+                <CopyableInline value={data.messageId} label="message ID" />
               </div>
             )}
             {data.jobUid && (
               <div className="space-y-1">
                 <div className="text-muted-foreground text-xs">Job UID</div>
-                <CopyableValue value={data.jobUid} label="job UID" />
+                <CopyableInline value={data.jobUid} label="job UID" />
               </div>
             )}
           </CardContent>
@@ -506,7 +452,12 @@ function NotificationDetailPage() {
               <pre className="min-w-0 flex-1 overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-muted p-3 font-mono text-xs text-destructive">
                 {data.error}
               </pre>
-              <CopyErrorButton value={data.error} />
+              <CopyableInline
+                value={data.error}
+                label="error"
+                inline={false}
+                size="md"
+              />
             </div>
           </CardContent>
         </Card>
