@@ -29,6 +29,50 @@
     "upgrade": "Mettre à niveau",
     "loadError": "Impossible de charger l'utilisation."
   },
+  "ai": {
+    "title": "Assistants IA",
+    "description": "Connectez Claude, Cursor, VS Code ou tout client compatible MCP aux données de supervision de cette organisation.",
+    "mcpUrl": "URL du serveur MCP",
+    "claude": {
+      "title": "Claude (web / bureau)",
+      "description": "Collez l'URL en tant que connecteur personnalisé — aucun jeton manuel requis.",
+      "step1": "Paramètres → Connecteurs → Ajouter un connecteur personnalisé",
+      "step2": "Collez l'URL ci-dessus",
+      "step3": "Connectez-vous et approuvez la portée demandée"
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "description": "Exécutez cette commande dans votre terminal."
+    },
+    "cursor": {
+      "title": "Cursor",
+      "description": "Installation en un clic — ouvre Cursor avec le serveur pré-rempli.",
+      "button": "Ajouter à Cursor"
+    },
+    "vscode": {
+      "title": "VS Code",
+      "description": "Installation en un clic — ouvre VS Code avec le serveur pré-rempli.",
+      "button": "Ajouter à VS Code",
+      "insiders": "Variante Insiders"
+    },
+    "generic": {
+      "title": "Autres clients",
+      "description": "Tout client MCP acceptant une configuration JSON.",
+      "urlOnly": "URL seule (OAuth)",
+      "withToken": "URL + jeton porteur"
+    },
+    "readOnly": {
+      "title": "Accès en lecture seule",
+      "oauth": "Pour accorder à un assistant un accès en lecture seule, approuvez l'écran de consentement avec la portée mcp:read lors de la connexion.",
+      "pat": "Pour les jetons créés par script ou CLI, la portée mcp:read est également disponible via l'API. Gérez vos jetons sur la",
+      "tokensLink": "page des jetons API"
+    },
+    "selfHosted": {
+      "title": "Auto-hébergé ou local uniquement ?",
+      "description": "Les clients hébergés (claude.ai) ne peuvent atteindre que des instances accessibles publiquement en HTTPS. Si cette instance est locale ou accessible uniquement via VPN, utilisez plutôt Claude Code, Cursor ou VS Code — ils se connectent depuis votre propre machine."
+    },
+    "docsLink": "Lire la documentation complète du MCP"
+  },
   "requests": {
     "title": "Demandes d'adhésion",
     "description": "Approuver ou rejeter les utilisateurs souhaitant rejoindre.",
