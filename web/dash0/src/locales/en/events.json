@@ -24,13 +24,28 @@
     "incident.opened": "Incident Opened",
     "incident.resolved": "Incident Resolved",
     "incident.escalated": "Incident Escalated",
+    "incident.escalation_failed": "Escalation Failed",
     "incident.acknowledged": "Incident Acknowledged",
+    "incident.unacknowledged": "Incident Unacknowledged",
+    "incident.reopened": "Incident Reopened",
+    "incident.snoozed": "Incident Snoozed",
+    "incident.unsnoozed": "Incident Unsnoozed",
+    "status_update.created": "Status Update Posted",
+    "status_update.updated": "Status Update Edited",
+    "status_update.deleted": "Status Update Removed",
+    "org.activation.signup_completed": "Signup Completed",
     "org.activation.first_check_created": "First Check Created",
-    "org.activation.first_notification_configured": "First Notification Configured"
+    "org.activation.first_result_received": "First Result Received",
+    "org.activation.first_notification_configured": "First Notification Configured",
+    "org.activation.first_incident_paged": "First Incident Paged"
   },
   "descriptions": {
+    "org.activation.signup_completed": "Your organization is set up and ready to go.",
     "org.activation.first_check_created": "Your first uptime check is live and monitoring.",
-    "org.activation.first_notification_configured": "You have set up your first notification channel."
+    "org.activation.first_result_received": "Your first check result has come in.",
+    "org.activation.first_notification_configured": "You have set up your first notification channel.",
+    "first_notification_configured_prefix": "You have set up your first notification channel:",
+    "org.activation.first_incident_paged": "Your first incident notification was delivered."
   },
   "links": {
     "check": "Check",
