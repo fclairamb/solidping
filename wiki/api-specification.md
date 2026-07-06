@@ -274,6 +274,13 @@ Query parameters:
 - `cursor` - pagination cursor
 - `limit` - page size (default 20, max 100)
 
+With `with=last_result`, each item's `lastResult` is the **slim** shape —
+`{uid, status, timestamp, durationMs}`, no `output`/`metrics` — since no list
+consumer (checks table, org dashboard, status dashboard) reads those fields
+and they can be large (SSL cert chains, DNSBL details). The detail endpoint
+(`GET /checks/:checkUid`) keeps the full `lastResult` including
+`output`/`metrics`.
+
 ### POST /api/v1/orgs/:org/checks
 Create a new check. Type can be inferred from the config URL. Name and slug are auto-generated if omitted. Auth: required
 
@@ -395,6 +402,12 @@ Get a single check by UID or slug. Auth: required
 
 Query parameters:
 - `with` - comma-separated optional includes (e.g., `last_result`)
+
+With `with=last_result`, `lastResult` is the **full** shape (`uid`, `status`,
+`timestamp`, `durationMs`, `output`, `metrics`) — the detail page renders
+Output, Metrics, and the SSL-chain card from it. Contrast with the list
+endpoint (`GET /checks`), which returns a slim `lastResult` without
+`output`/`metrics`.
 
 ### PUT /api/v1/orgs/:org/checks/:slug
 Upsert a check by slug (create if not exists, update if exists). Auth: required
