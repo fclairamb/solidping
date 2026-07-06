@@ -734,8 +734,15 @@ func (r *EscalationStepJobRun) emitEscalationFailed(
 	event.IncidentUID = &incident.UID
 	event.CheckUID = &incident.CheckUID
 	event.Payload = models.JSONMap{
-		"reason": reason,
-		"detail": detail,
+		"reason":    reason,
+		"detail":    detail,
+		"check_uid": incident.CheckUID,
+	}
+	// Best-effort: the check may have been deleted since the incident opened;
+	// don't fail the escalation-failure record over a missing slug/name.
+	if check, chkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); chkErr == nil && check != nil {
+		event.Payload["check_slug"] = check.Slug
+		event.Payload["check_name"] = check.Name
 	}
 	_ = jctx.DBService.CreateEvent(ctx, event)
 }
