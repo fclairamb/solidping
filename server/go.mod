@@ -42,7 +42,7 @@ require (
 	github.com/microsoft/go-mssqldb v1.10.0
 	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
 	github.com/oapi-codegen/runtime v1.4.2
-	github.com/ohler55/ojg v1.28.1
+	github.com/ohler55/ojg v1.28.2
 	github.com/pkg/sftp v1.13.10
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.23.2
