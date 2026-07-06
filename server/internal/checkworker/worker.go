@@ -1183,7 +1183,7 @@ func (r *CheckWorker) executePassiveJob(ctx context.Context, logger *slog.Logger
 	noun := passiveSignalNoun(checkerdef.CheckType(checkJob.Type))
 
 	// Get the latest result for this check
-	lastResults, err := r.dbService.GetLastResultForChecks(ctx, []string{checkJob.CheckUID})
+	lastResults, err := r.dbService.GetLastResultForChecks(ctx, checkJob.OrganizationUID, []string{checkJob.CheckUID})
 	if err != nil {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("failed to get last result: %w", err))
 	}

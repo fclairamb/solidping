@@ -53,7 +53,7 @@ func newHeartbeatSetup(t *testing.T) *heartbeatSetup {
 func (s *heartbeatSetup) lastOutput(t *testing.T) models.JSONMap {
 	t.Helper()
 
-	results, err := s.dbSvc.GetLastResultForChecks(t.Context(), []string{s.check.UID})
+	results, err := s.dbSvc.GetLastResultForChecks(t.Context(), s.org.UID, []string{s.check.UID})
 	require.NoError(t, err)
 	require.Contains(t, results, s.check.UID)
 

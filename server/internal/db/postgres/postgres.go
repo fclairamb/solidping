@@ -1872,16 +1872,24 @@ func (s *Service) DeleteResults(ctx context.Context, orgUID string, resultUIDs [
 	return result.RowsAffected()
 }
 
-func (s *Service) GetLastResultForChecks(ctx context.Context, checkUIDs []string) (map[string]*models.Result, error) {
+func (s *Service) GetLastResultForChecks(
+	ctx context.Context, orgUID string, checkUIDs []string,
+) (map[string]*models.Result, error) {
 	if len(checkUIDs) == 0 {
 		return make(map[string]*models.Result), nil
 	}
 
 	var results []*models.Result
 
-	// Use DISTINCT ON to get the latest result per check_uid
+	// DISTINCT ON (check_uid) returns exactly one row per check_uid: the
+	// first row in each check_uid group per the ORDER BY, i.e. the newest
+	// by period_start. The organization_uid predicate rides the
+	// results_raw_idx partial index (organization_uid, check_uid,
+	// period_start desc) where period_type = 'raw'.
 	err := s.db.NewSelect().
 		Model(&results).
+		DistinctOn("check_uid").
+		Where("organization_uid = ?", orgUID).
 		Where("check_uid IN (?)", bun.List(checkUIDs)).
 		Where("period_type = ?", "raw").
 		Order("check_uid", "period_start DESC").
@@ -1890,13 +1898,11 @@ func (s *Service) GetLastResultForChecks(ctx context.Context, checkUIDs []string
 		return nil, err
 	}
 
-	// Convert to map for easy lookup
+	// Convert to map for easy lookup — DISTINCT ON already guarantees at
+	// most one row per check_uid.
 	resultMap := make(map[string]*models.Result)
 	for _, result := range results {
-		// Only keep the first (latest) result for each check_uid
-		if _, exists := resultMap[result.CheckUID]; !exists {
-			resultMap[result.CheckUID] = result
-		}
+		resultMap[result.CheckUID] = result
 	}
 
 	return resultMap, nil

@@ -771,7 +771,7 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 			checkUIDs[i] = check.UID
 		}
 
-		lastResults, err := s.db.GetLastResultForChecks(ctx, checkUIDs)
+		lastResults, err := s.db.GetLastResultForChecks(ctx, org.UID, checkUIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -1137,7 +1137,7 @@ func (s *Service) GetCheck(
 
 	// Fetch last result if requested
 	if opts.IncludeLastResult {
-		lastResults, err := s.db.GetLastResultForChecks(ctx, []string{check.UID})
+		lastResults, err := s.db.GetLastResultForChecks(ctx, org.UID, []string{check.UID})
 		if err != nil {
 			return CheckResponse{}, fmt.Errorf("failed to get last result: %w", err)
 		}
