@@ -143,7 +143,11 @@ function defaultFactory(url: string): WebSocketLike {
   return new WebSocket(url) as unknown as WebSocketLike;
 }
 
-/** A live connection's public send surface: subscribe/unsubscribe. */
+/** A live connection's public send surface: subscribe/unsubscribe. Frames
+ * are silently dropped unless the socket is authenticated (`hello`
+ * received) — safe because the caller replays every active scope in onOpen
+ * after each (re)connect, and an unsubscribe for a scope the connection
+ * never subscribed to needs no undoing server-side. */
 export interface LiveSocketHandle {
   send: (scope: LiveScope, action: "subscribe" | "unsubscribe") => void;
   /** Terminates the connection loop. */
@@ -166,10 +170,15 @@ export function connectLiveSocket(
   const controller = new AbortController();
   const { signal } = controller;
 
+  // Only ever set between `hello` and the close of that same socket — never
+  // while CONNECTING (WebSocket.send() throws "Still in CONNECTING state"
+  // there, and a registry-driven subscribe can land in exactly that window:
+  // a component mounting while the socket dials) and never before the server
+  // acked auth (its handshake expects `auth` as the first frame).
   let activeSocket: WebSocketLike | null = null;
 
   const send = (scope: LiveScope, action: "subscribe" | "unsubscribe") => {
-    if (!activeSocket) return;
+    if (!activeSocket) return; // not authenticated yet — drop; onOpen replays scopes
     const payload: Record<string, string> = { type: action, entity: scope.entity };
     if (scope.uid) payload.uid = scope.uid;
     activeSocket.send(JSON.stringify(payload));
@@ -220,14 +229,17 @@ type ConnectOutcome = "disconnected" | "disabled";
 /** Opens one socket attempt and resolves once it closes (or the caller
  * aborts). Resolves "disabled" only for a 4403/4404 close — every other
  * outcome (network drop, 4401 expiry, server restart 1012) is
- * "disconnected" and the caller reconnects with backoff. */
+ * "disconnected" and the caller reconnects with backoff.
+ *
+ * `onAuthenticated` fires when the server acks auth (`hello`), just before
+ * callbacks.onOpen — the earliest point the socket may carry caller frames. */
 function connectOnce(
   org: string,
   token: string,
   factory: WebSocketFactory,
   callbacks: LiveEventsCallbacks,
   signal: AbortSignal,
-  onSocket: (sock: WebSocketLike) => void,
+  onAuthenticated: (sock: WebSocketLike) => void,
 ): Promise<ConnectOutcome> {
   return new Promise((resolve) => {
     let settled = false;
@@ -241,7 +253,6 @@ function connectOnce(
 
     const url = wsURL(org);
     const sock = factory(url);
-    onSocket(sock);
 
     function onAbort() {
       sock.close();
@@ -294,6 +305,9 @@ function connectOnce(
 
       switch (msg.type) {
         case "hello":
+          // Ordering matters: expose the socket for sends first, so the
+          // onOpen subscription replay reaches an authenticated socket.
+          onAuthenticated(sock);
           callbacks.onOpen();
           break;
         case "subscribed":
