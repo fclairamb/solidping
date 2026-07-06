@@ -740,7 +740,8 @@ func (r *EscalationStepJobRun) emitEscalationFailed(
 	}
 	// Best-effort: the check may have been deleted since the incident opened;
 	// don't fail the escalation-failure record over a missing slug/name.
-	if check, chkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID); chkErr == nil && check != nil {
+	check, chkErr := jctx.DBService.GetCheck(ctx, incident.OrganizationUID, incident.CheckUID)
+	if chkErr == nil && check != nil {
 		event.Payload["check_slug"] = check.Slug
 		event.Payload["check_name"] = check.Name
 	}
