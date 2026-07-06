@@ -91,27 +91,34 @@ func Emit(
 	event.Payload = models.JSONMap{
 		"source": string(source),
 	}
-
-	for _, m := range extra {
-		for k, v := range m {
-			switch k {
-			case extraKeyIncidentUID:
-				if uid, ok := v.(string); ok && uid != "" {
-					event.IncidentUID = &uid
-				}
-			case extraKeyCheckUID:
-				if uid, ok := v.(string); ok && uid != "" {
-					event.CheckUID = &uid
-				}
-			default:
-				event.Payload[k] = v
-			}
-		}
-	}
+	applyExtra(event, extra)
 
 	if err := dbSvc.CreateEvent(ctx, event); err != nil {
 		slog.WarnContext(ctx, "activation: emit failed", "error", err,
 			"org_uid", orgUID, "milestone", string(milestone))
+	}
+}
+
+// applyExtra merges each map in extra into event.Payload, except for the two
+// reserved keys (extraKeyIncidentUID, extraKeyCheckUID) which set the row's
+// IncidentUID/CheckUID instead of being written into Payload. Pulled out of
+// Emit to keep its cyclomatic complexity down.
+func applyExtra(event *models.Event, extra []models.JSONMap) {
+	for _, m := range extra {
+		for key, value := range m {
+			switch key {
+			case extraKeyIncidentUID:
+				if uid, ok := value.(string); ok && uid != "" {
+					event.IncidentUID = &uid
+				}
+			case extraKeyCheckUID:
+				if uid, ok := value.(string); ok && uid != "" {
+					event.CheckUID = &uid
+				}
+			default:
+				event.Payload[key] = value
+			}
+		}
 	}
 }
 
