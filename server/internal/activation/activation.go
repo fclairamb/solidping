@@ -29,10 +29,30 @@ const (
 // org.activation.* type.
 var ErrInvalidMilestone = errors.New("activation: not an activation milestone")
 
+// extraKeyIncidentUID and extraKeyCheckUID are reserved keys a caller can
+// set in Emit's optional extra payload to have the resulting event row
+// linked to an incident/check (event.IncidentUID / event.CheckUID). They
+// are popped off before the map is merged into the stored Payload, so they
+// never appear twice (once as a row column, once as JSON).
+const (
+	extraKeyIncidentUID = "_incident_uid"
+	extraKeyCheckUID    = "_check_uid"
+)
+
 // Emit records a one-time activation milestone for org. If a row of the
 // same (organizationUID, milestone) already exists the call is a no-op.
 // Errors from the underlying store are logged but never returned — callers
 // in hot paths must not bubble activation failures up.
+//
+// extra optionally carries additional payload data merged on top of the
+// standard {"source": ...} payload (e.g. channel_uid/channel_name for
+// first_notification_configured, check_name for first_incident_paged).
+// Two reserved keys, extraKeyIncidentUID and extraKeyCheckUID, are read
+// from the merged extra and — when non-empty — set on the event row
+// (IncidentUID / CheckUID) instead of being written into Payload, so the
+// milestone can link to the resource that triggered it. Callers pass at
+// most one extra map; additional maps are accepted (variadic) purely so
+// callers can build it conditionally without an intermediate nil check.
 func Emit(
 	ctx context.Context,
 	dbSvc db.Service,
@@ -40,6 +60,7 @@ func Emit(
 	milestone models.EventType,
 	source SourceLabel,
 	actorUserUID string,
+	extra ...models.JSONMap,
 ) {
 	if !isActivationMilestone(milestone) {
 		slog.WarnContext(ctx, "activation: refusing to emit non-activation event",
@@ -69,6 +90,23 @@ func Emit(
 	}
 	event.Payload = models.JSONMap{
 		"source": string(source),
+	}
+
+	for _, m := range extra {
+		for k, v := range m {
+			switch k {
+			case extraKeyIncidentUID:
+				if uid, ok := v.(string); ok && uid != "" {
+					event.IncidentUID = &uid
+				}
+			case extraKeyCheckUID:
+				if uid, ok := v.(string); ok && uid != "" {
+					event.CheckUID = &uid
+				}
+			default:
+				event.Payload[k] = v
+			}
+		}
 	}
 
 	if err := dbSvc.CreateEvent(ctx, event); err != nil {
