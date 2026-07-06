@@ -29,6 +29,50 @@
     "upgrade": "Upgrade",
     "loadError": "Could not load usage."
   },
+  "ai": {
+    "title": "AI assistants",
+    "description": "Connect Claude, Cursor, VS Code, or any MCP-capable client to this organization's monitoring data.",
+    "mcpUrl": "MCP server URL",
+    "claude": {
+      "title": "Claude (web / desktop)",
+      "description": "Paste the URL as a custom connector — no manual token needed.",
+      "step1": "Settings → Connectors → Add custom connector",
+      "step2": "Paste the URL above",
+      "step3": "Log in and approve the requested scope"
+    },
+    "claudeCode": {
+      "title": "Claude Code",
+      "description": "Run this one-liner in your terminal."
+    },
+    "cursor": {
+      "title": "Cursor",
+      "description": "One-click install — opens Cursor with the server pre-filled.",
+      "button": "Add to Cursor"
+    },
+    "vscode": {
+      "title": "VS Code",
+      "description": "One-click install — opens VS Code with the server pre-filled.",
+      "button": "Add to VS Code",
+      "insiders": "Insiders variant"
+    },
+    "generic": {
+      "title": "Other clients",
+      "description": "Any MCP client that accepts a JSON config.",
+      "urlOnly": "URL only (OAuth)",
+      "withToken": "URL + bearer token"
+    },
+    "readOnly": {
+      "title": "Read-only access",
+      "oauth": "To grant an assistant read-only access, approve the consent screen with the mcp:read scope when it connects.",
+      "pat": "For scripted or CLI-created tokens, an mcp:read scope is also available via the API. Manage your tokens on the",
+      "tokensLink": "API tokens page"
+    },
+    "selfHosted": {
+      "title": "Self-hosted or local-only?",
+      "description": "Hosted clients (claude.ai) can only reach instances that are publicly accessible over HTTPS. If this instance is local or VPN-only, use Claude Code, Cursor, or VS Code instead — they connect from your own machine."
+    },
+    "docsLink": "Read the full MCP documentation"
+  },
   "requests": {
     "title": "Membership requests",
     "description": "Approve or reject users asking to join.",
