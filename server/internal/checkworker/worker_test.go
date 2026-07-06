@@ -1976,3 +1976,91 @@ func TestExecuteJobParkedCountTracksPreScheduleSleep(t *testing.T) {
 		return n == 1
 	}, 2*time.Second, 10*time.Millisecond, "the instant checker must have produced exactly one UP result")
 }
+
+// TestExecuteJobPassiveJobHonorsScheduledAtSleep is a regression test: passive
+// (heartbeat/email) jobs used to be dispatched to executePassiveJob before
+// the pre-schedule sleep that active checks already honored, so a job
+// re-claimed within D3's bounded claim-ahead window fired immediately on
+// every release instead of waiting out the window — thundering-herding the
+// pool with repeated executions (and repeated live-update hints) until the
+// phase-locked tick actually arrived. executeJob must now sleep toward
+// scheduled_at for passive jobs exactly like it does for active ones.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestExecuteJobPassiveJobHonorsScheduledAtSleep(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	worker := models.NewWorker("test-worker", "Test Worker")
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	startTestRunnerLoop(t, runner, ctx)
+
+	require.Zero(t, runner.parked.Load(), "parked must start at 0")
+
+	check := models.NewCheck(org.UID, "passive-parked-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+	check.Config = models.JSONMap{"token": "passive-parked-token"}
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	job := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(job).Where("check_uid = ?", check.UID).Scan(ctx))
+
+	// Claimed well ahead of its own scheduled_at, mirroring D3's bounded
+	// claim-ahead window on a real pool claim.
+	scheduledAt := time.Now().Add(300 * time.Millisecond)
+	_, err = dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("scheduled_at = ?", scheduledAt).
+		Where("uid = ?", job.UID).
+		Exec(ctx)
+	require.NoError(t, err)
+	job.ScheduledAt = &scheduledAt
+
+	claimJobForTest(t, dbSvc, ctx, job, worker.UID)
+
+	select {
+	case runner.jobsChan <- job:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runnerLoop never accepted the job")
+	}
+
+	// While the job is sleeping toward its scheduled_at, parked must read 1
+	// and no result must exist yet — proof the passive job didn't fire on claim.
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 1
+	}, 250*time.Millisecond, 5*time.Millisecond, "parked must be 1 while executeJob sleeps toward scheduled_at")
+
+	// The check's seeded placeholder ("created") result row exists from the
+	// moment it's created — only a real (non-"created") result proves the
+	// passive job actually ran.
+	var early int
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model((*models.Result)(nil)).
+		ColumnExpr("count(*)").
+		Where("check_uid = ?", check.UID).
+		Where("status != ?", int(models.ResultStatusCreated)).
+		Scan(ctx, &early))
+	require.Zero(t, early, "the passive job must not produce a result before its scheduled_at arrives")
+
+	require.Eventually(t, func() bool {
+		return runner.parked.Load() == 0
+	}, 2*time.Second, 10*time.Millisecond, "parked must release back to 0 once the sleep resolves")
+
+	require.Eventually(t, func() bool {
+		var n int
+		countErr := dbSvc.DB().NewSelect().
+			Model((*models.Result)(nil)).
+			ColumnExpr("count(*)").
+			Where("check_uid = ?", check.UID).
+			Where("status != ?", int(models.ResultStatusCreated)).
+			Scan(ctx, &n)
+		require.NoError(t, countErr)
+
+		return n == 1
+	}, 2*time.Second, 10*time.Millisecond, "the passive job must produce exactly one result once it actually runs")
+}

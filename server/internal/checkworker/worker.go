@@ -663,6 +663,45 @@ func (r *CheckWorker) executeJob(
 	}
 	checkType := checkJob.Type
 
+	sleepTime := checkJob.ScheduledAt.Sub(startTime)
+
+	// wait is the pre-schedule sleep actually observed (claimed ahead of
+	// scheduled_at, e.g. by D3's bounded claim-ahead window); delay is how
+	// far past-due the job was at dispatch (claimed late). Exactly one of
+	// the two is ever non-zero. Reported as separate fields on the
+	// completion log (D4) instead of being folded into duration_ms, which
+	// previously conflated wait + exec + save/release overhead into one
+	// number — a healthy sub-second check claimed minutes ahead of schedule
+	// logged as if it had taken minutes to execute.
+	wait, delay := waitAndDelay(sleepTime)
+
+	// Wait for the check time to come. Counted as "parked" for the duration
+	// of the sleep (D5): claimed but not yet actually due, so this runner
+	// slot isn't free but isn't doing real work either — visibility into how
+	// much of the pool D3's bounded claim-ahead window is occupying at any
+	// instant. Applies to passive jobs too (below): without this wait, a
+	// heartbeat/email job claimed ahead of its scheduled_at would re-fire
+	// immediately after every release instead of waiting out the claim-ahead
+	// window, thundering-herding the pool until the phase-locked tick
+	// actually arrives.
+	if sleepTime > 0 {
+		r.parked.Add(1)
+		defer r.parked.Add(-1)
+
+		timer := time.NewTimer(sleepTime)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			// Server is shutting down — don't save a result, let the lease expire
+			// so the job is picked up again on restart
+			logger.InfoContext(ctx, "Server shutting down during sleep, leaving job for next startup")
+
+			return nil
+		case <-timer.C:
+			// Scheduled time reached, continue with check execution
+		}
+	}
+
 	// Passive checks (heartbeat, email) don't make outbound requests — the
 	// worker just inspects whether a recent inbound signal arrived in time.
 	if isPassiveCheckType(checkerdef.CheckType(checkType)) {
@@ -688,41 +727,6 @@ func (r *CheckWorker) executeJob(
 	checker, ok := r.getChecker(checkerdef.CheckType(checkType))
 	if !ok {
 		return r.saveErrorResult(ctx, checkJob, fmt.Errorf("%w: %s", ErrCheckerNotFound, checkType))
-	}
-
-	sleepTime := checkJob.ScheduledAt.Sub(startTime)
-
-	// wait is the pre-schedule sleep actually observed (claimed ahead of
-	// scheduled_at, e.g. by D3's bounded claim-ahead window); delay is how
-	// far past-due the job was at dispatch (claimed late). Exactly one of
-	// the two is ever non-zero. Reported as separate fields on the
-	// completion log (D4) instead of being folded into duration_ms, which
-	// previously conflated wait + exec + save/release overhead into one
-	// number — a healthy sub-second check claimed minutes ahead of schedule
-	// logged as if it had taken minutes to execute.
-	wait, delay := waitAndDelay(sleepTime)
-
-	// Wait for the check time to come. Counted as "parked" for the duration
-	// of the sleep (D5): claimed but not yet actually due, so this runner
-	// slot isn't free but isn't doing real work either — visibility into how
-	// much of the pool D3's bounded claim-ahead window is occupying at any
-	// instant.
-	if sleepTime > 0 {
-		r.parked.Add(1)
-		defer r.parked.Add(-1)
-
-		timer := time.NewTimer(sleepTime)
-		select {
-		case <-ctx.Done():
-			timer.Stop()
-			// Server is shutting down — don't save a result, let the lease expire
-			// so the job is picked up again on restart
-			logger.InfoContext(ctx, "Server shutting down during sleep, leaving job for next startup")
-
-			return nil
-		case <-timer.C:
-			// Scheduled time reached, continue with check execution
-		}
 	}
 
 	// Per-org MaxChecksPerMinute gate. Drained buckets reschedule the
