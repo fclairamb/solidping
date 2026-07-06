@@ -7,7 +7,6 @@ import {
   Copy,
   Ban,
   CheckCircle2,
-  ChevronRight,
   Clock,
   Timer,
   XCircle,
@@ -22,6 +21,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryErrorView } from "@/components/shared/error-views";
+import { CollapsibleCode } from "@/components/shared/copyable-code";
 import {
   useOrgNotification,
   type IncidentNotification,
@@ -188,54 +188,6 @@ function statusCodeVariant(
   if (code >= 200 && code < 300) return "default";
   if (code >= 400) return "destructive";
   return "secondary";
-}
-
-/** A collapsible monospace block with a copy-to-clipboard affordance. */
-function CollapsibleCode({
-  label,
-  value,
-  defaultOpen = false,
-}: {
-  label: string;
-  value: string;
-  defaultOpen?: boolean;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  const onCopy = async () => {
-    try {
-      await navigator.clipboard.writeText(value);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard requires a secure context; the value stays visible to copy by hand.
-    }
-  };
-
-  return (
-    <details className="group rounded-md border" open={defaultOpen}>
-      <summary className="flex cursor-pointer list-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent">
-        <span className="flex min-w-0 items-center gap-2">
-          <ChevronRight className="h-4 w-4 shrink-0 transition-transform group-open:rotate-90" />
-          <span className="truncate font-medium">{label}</span>
-        </span>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.preventDefault();
-            void onCopy();
-          }}
-          aria-label={copied ? "Copied" : `Copy ${label}`}
-          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
-        >
-          {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-        </button>
-      </summary>
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words border-t bg-muted p-3 font-mono text-xs">
-        {value}
-      </pre>
-    </details>
-  );
 }
 
 /** Delivery section: HTTP status badge, duration, request URL, bodies. */
