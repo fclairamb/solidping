@@ -2160,6 +2160,14 @@ components:
 
     LastResult:
       type: object
+      description: >-
+        Full last-execution result. Present only on the check DETAIL response
+        (GET/POST/PUT/PATCH by uid/slug) — the detail page renders output,
+        metrics, and the SSL-chain card from these fields. List responses
+        (GET /checks) use the slimmer LastResultListItem instead, which omits
+        output/metrics: no list consumer (checks table, org dashboard, status
+        dashboard) reads them, and they can be large (SSL cert chains,
+        DNSBL details).
       properties:
         uid:
           type: string
@@ -2172,6 +2180,9 @@ components:
           type: string
           format: date-time
           description: When the check was executed
+        durationMs:
+          type: number
+          description: Response time in milliseconds
         output:
           type: object
           description: Diagnostic output and error messages
@@ -2179,13 +2190,47 @@ components:
           type: object
           description: Performance metrics (e.g., response time, DNS time)
 
+    LastResultListItem:
+      type: object
+      description: >-
+        Slim last-execution result used on list responses (GET /checks) —
+        {uid, status, timestamp, durationMs} only. See LastResult for the
+        full detail-response shape.
+      properties:
+        uid:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [up, down, timeout, error]
+          description: Result status
+        timestamp:
+          type: string
+          format: date-time
+          description: When the check was executed
+        durationMs:
+          type: number
+          description: Response time in milliseconds
+
+    CheckListItem:
+      description: >-
+        A check as it appears on the list endpoint (GET /checks) — identical
+        to Check except lastResult is the slim LastResultListItem shape and
+        scheduling is never present (detail-only, see CheckScheduling).
+      allOf:
+        - $ref: "#/components/schemas/Check"
+        - type: object
+          properties:
+            lastResult:
+              $ref: "#/components/schemas/LastResultListItem"
+
     CheckListResponse:
       type: object
       properties:
         data:
           type: array
           items:
-            $ref: "#/components/schemas/Check"
+            $ref: "#/components/schemas/CheckListItem"
 
     CreateCheckRequest:
       type: object

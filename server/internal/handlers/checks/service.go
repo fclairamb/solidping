@@ -771,15 +771,16 @@ func (s *Service) ListChecks(ctx context.Context, orgSlug string, opts ListCheck
 			checkUIDs[i] = check.UID
 		}
 
-		lastResults, err := s.db.GetLastResultForChecks(ctx, checkUIDs)
+		lastResults, err := s.db.GetLastResultForChecks(ctx, org.UID, checkUIDs)
 		if err != nil {
 			return nil, err
 		}
 
-		// Attach last results to responses
+		// Attach last results to responses — slim shape (no output/metrics):
+		// list consumers only read status/durationMs (spec 2026-07-06-01 Part B).
 		for i := range responses {
 			if result, ok := lastResults[checks[i].UID]; ok {
-				responses[i].LastResult = s.convertResultToLastResultResponse(result)
+				responses[i].LastResult = s.convertResultToLastResultResponseSlim(result)
 			}
 		}
 	}
@@ -1137,7 +1138,7 @@ func (s *Service) GetCheck(
 
 	// Fetch last result if requested
 	if opts.IncludeLastResult {
-		lastResults, err := s.db.GetLastResultForChecks(ctx, []string{check.UID})
+		lastResults, err := s.db.GetLastResultForChecks(ctx, org.UID, []string{check.UID})
 		if err != nil {
 			return CheckResponse{}, fmt.Errorf("failed to get last result: %w", err)
 		}
@@ -2084,13 +2085,10 @@ func (s *Service) attachSchedulingInfo(ctx context.Context, check *models.Check,
 	return nil
 }
 
-// convertResultToLastResultResponse converts a Result model to LastResultResponse.
-func (s *Service) convertResultToLastResultResponse(result *models.Result) *LastResultResponse {
-	if result == nil {
-		return nil
-	}
-
-	// Convert status int to string
+// resultStatusString converts a Result's raw status int to its string form,
+// shared by both the full (detail) and slim (list) LastResultResponse
+// conversions.
+func resultStatusString(result *models.Result) string {
 	statusStr := "unknown"
 	if result.Status != nil {
 		switch *result.Status {
@@ -2111,13 +2109,44 @@ func (s *Service) convertResultToLastResultResponse(result *models.Result) *Last
 		}
 	}
 
+	return statusStr
+}
+
+// convertResultToLastResultResponse converts a Result model to the full
+// LastResultResponse, including Output/Metrics. Detail responses
+// (GetCheck) only — the detail page renders Output, Metrics, and the
+// SSL-chain card from these fields.
+func (s *Service) convertResultToLastResultResponse(result *models.Result) *LastResultResponse {
+	if result == nil {
+		return nil
+	}
+
 	return &LastResultResponse{
 		UID:        result.UID,
-		Status:     statusStr,
+		Status:     resultStatusString(result),
 		Timestamp:  result.PeriodStart,
 		DurationMs: result.Duration,
 		Output:     result.Output,
 		Metrics:    result.Metrics,
+	}
+}
+
+// convertResultToLastResultResponseSlim converts a Result model to a slim
+// LastResultResponse for list responses (ListChecks): {uid, status,
+// timestamp, durationMs} only — Output/Metrics are omitted (spec
+// 2026-07-06-01 Part B). No list consumer (checks.index.tsx,
+// dashboard-page.tsx, status-dashboard.tsx) reads those fields; carrying
+// them made list payloads ~48% larger for data that's never rendered.
+func (s *Service) convertResultToLastResultResponseSlim(result *models.Result) *LastResultResponse {
+	if result == nil {
+		return nil
+	}
+
+	return &LastResultResponse{
+		UID:        result.UID,
+		Status:     resultStatusString(result),
+		Timestamp:  result.PeriodStart,
+		DurationMs: result.Duration,
 	}
 }
 
