@@ -33,6 +33,15 @@ import (
 // Postgres-flavored Prometheus metrics.
 const backendLabel = "postgres"
 
+// runModeTest is the RunMode value that permits a destructive database
+// reset (alongside runModeDemo) and, for embedded-Postgres tests in this
+// package, selects the test-oriented startup path.
+const runModeTest = "test"
+
+// runModeDemo is the RunMode value that permits a destructive database
+// reset alongside runModeTest.
+const runModeDemo = "demo"
+
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
@@ -234,7 +243,7 @@ func NewEmbedded(
 // Initialize sets up the database schema using migrations.
 func (s *Service) Initialize(ctx context.Context) error {
 	// Reset database if requested and in test/demo mode
-	if s.reset && (s.runMode == "test" || s.runMode == "demo") {
+	if s.reset && (s.runMode == runModeTest || s.runMode == runModeDemo) {
 		if err := s.resetDatabase(ctx); err != nil {
 			return fmt.Errorf("failed to reset database: %w", err)
 		}

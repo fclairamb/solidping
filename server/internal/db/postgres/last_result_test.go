@@ -46,7 +46,7 @@ func seedRawResults(t *testing.T, s *Service, orgUID, checkUID string, n int) *m
 // extras in a Go loop. Self-skips under -short / on embedded-startup error,
 // like every other embedded-postgres test in this package.
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's shared pwfile extraction) with its sibling below
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its sibling below
 func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
@@ -59,7 +59,7 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 		Embedded:    true,
 		EmbeddedDir: t.TempDir(),
 		Port:        portLastResult,
-		RunMode:     "test",
+		RunMode:     runModeTest,
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
@@ -101,7 +101,7 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 // (organization_uid, check_uid, period_start desc) requires the predicate
 // to be present to be ridden at all.
 //
-//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's shared pwfile extraction) with its sibling above
+//nolint:paralleltest // shares dev-machine resources (embedded-postgres-go's pwfile extraction) with its sibling above
 func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping embedded-postgres test in -short mode")
@@ -114,7 +114,7 @@ func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
 		Embedded:    true,
 		EmbeddedDir: t.TempDir(),
 		Port:        portLastResult + 1,
-		RunMode:     "test",
+		RunMode:     runModeTest,
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
