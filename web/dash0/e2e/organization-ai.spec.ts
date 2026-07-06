@@ -81,4 +81,30 @@ test.describe("AI assistants (MCP connector setup)", () => {
     const insidersConfig = JSON.parse(decodeURIComponent(insidersRest));
     expect(insidersConfig.url).toBe(expectedUrl);
   });
+
+  test("renders without horizontal overflow at mobile width", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    // Narrow the viewport below the Tailwind `sm` (640px) breakpoint so the
+    // client-card grid collapses to a single column.
+    await page.setViewportSize({ width: 375, height: 812 });
+
+    await page.goto("orgs/test/organization/ai");
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByRole("heading", { name: /ai assistants/i }),
+    ).toBeVisible();
+
+    // No fixed-width element should force the page wider than the viewport.
+    const hasHorizontalOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+    );
+    expect(hasHorizontalOverflow).toBe(false);
+
+    // The deep-link buttons stay visible/tappable at mobile width.
+    await expect(page.getByTestId("cursor-install-link")).toBeVisible();
+    await expect(page.getByTestId("vscode-install-link")).toBeVisible();
+  });
 });
