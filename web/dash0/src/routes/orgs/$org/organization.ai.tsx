@@ -1,7 +1,18 @@
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Bot, Eye, KeyRound, ExternalLink, AlertTriangle } from "lucide-react";
+import {
+  Bot,
+  Eye,
+  KeyRound,
+  ExternalLink,
+  AlertTriangle,
+  MessageSquare,
+  Terminal,
+  MousePointerClick,
+  Code2,
+  Puzzle,
+} from "lucide-react";
 import {
   Card,
   CardContent,
@@ -103,7 +114,10 @@ function AiAssistantsPage() {
                 copy-URL + paste-into-Settings instructions. */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("ai.claude.title")}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t("ai.claude.title")}</CardTitle>
+                </div>
                 <CardDescription>{t("ai.claude.description")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -119,7 +133,10 @@ function AiAssistantsPage() {
             {/* Claude Code: one-liner CLI command. */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("ai.claudeCode.title")}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Terminal className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t("ai.claudeCode.title")}</CardTitle>
+                </div>
                 <CardDescription>{t("ai.claudeCode.description")}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -130,7 +147,10 @@ function AiAssistantsPage() {
             {/* Cursor: true one-click deep link. */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("ai.cursor.title")}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <MousePointerClick className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t("ai.cursor.title")}</CardTitle>
+                </div>
                 <CardDescription>{t("ai.cursor.description")}</CardDescription>
               </CardHeader>
               <CardContent>
@@ -147,7 +167,10 @@ function AiAssistantsPage() {
             {/* VS Code: true one-click deep link (+ Insiders variant). */}
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">{t("ai.vscode.title")}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Code2 className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t("ai.vscode.title")}</CardTitle>
+                </div>
                 <CardDescription>{t("ai.vscode.description")}</CardDescription>
               </CardHeader>
               <CardContent className="flex flex-wrap items-center gap-2">
@@ -171,7 +194,10 @@ function AiAssistantsPage() {
             {/* Generic / other clients: collapsible JSON config, URL-only first. */}
             <Card className="sm:col-span-2 lg:col-span-1">
               <CardHeader>
-                <CardTitle className="text-base">{t("ai.generic.title")}</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Puzzle className="h-4 w-4 text-muted-foreground" />
+                  <CardTitle className="text-base">{t("ai.generic.title")}</CardTitle>
+                </div>
                 <CardDescription>{t("ai.generic.description")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-2">
