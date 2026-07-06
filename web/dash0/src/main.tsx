@@ -5,7 +5,7 @@ import { RouterProvider, createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
-import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { ErrorBoundary, RouteErrorFallback } from "@/components/shared/error-boundary";
 import { ApiError, NetworkError, setToken } from "@/api/client";
 import { installErrorCollector } from "@/components/feedback/errorCollector";
 import "@fontsource-variable/inter/index.css";
@@ -70,6 +70,10 @@ const router = createRouter({
   },
   defaultPreload: "intent",
   defaultPreloadStaleTime: 0,
+  // Contain render/loader errors at the route match that threw: parent
+  // layouts (sidebar, header) stay mounted and usable instead of the
+  // router's bare full-screen default ("Something went wrong! / Hide Error").
+  defaultErrorComponent: RouteErrorFallback,
   basepath: basepath || "/",
 });
 

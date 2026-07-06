@@ -36,11 +36,20 @@ class FakeSocket implements WebSocketLike {
   onerror: (() => void) | null = null;
   onmessage: ((ev: { data: string }) => void) | null = null;
   sent: string[] = [];
+  opened = false;
   closed = false;
 
   constructor(public url: string) {}
 
   send(data: string): void {
+    // Mimic the browser: send() while CONNECTING throws an InvalidStateError;
+    // after close it silently discards. This is what turned an early
+    // registry subscribe into a full app crash — keep the fake faithful so
+    // the guard in live-socket.ts stays regression-tested.
+    if (!this.opened) {
+      throw new Error("Failed to execute 'send' on 'WebSocket': Still in CONNECTING state.");
+    }
+    if (this.closed) return;
     this.sent.push(data);
   }
 
@@ -51,12 +60,14 @@ class FakeSocket implements WebSocketLike {
 
   // Test helpers.
   open(): void {
+    this.opened = true;
     this.onopen?.();
   }
   message(payload: unknown): void {
     this.onmessage?.({ data: JSON.stringify(payload) });
   }
   serverClose(code: number, reason = ""): void {
+    this.closed = true;
     this.onclose?.({ code, reason });
   }
 }
@@ -205,6 +216,83 @@ describe("connectLiveSocket", () => {
       JSON.stringify({ type: "auth", token: "test-token" }),
       JSON.stringify({ type: "subscribe", entity: "check", uid: "u1" }),
       JSON.stringify({ type: "unsubscribe", entity: "checks" }),
+    ]);
+  });
+
+  it("drops send() while the socket is still connecting instead of throwing", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+
+    const handle = connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+
+    // The socket exists but has not opened yet (CONNECTING). A component
+    // mounting right now sends a subscribe through the registry — this used
+    // to hit WebSocket.send() and crash the whole app with "Failed to
+    // execute 'send' on 'WebSocket': Still in CONNECTING state".
+    expect(() => handle.send({ entity: "checks" }, "subscribe")).not.toThrow();
+    expect(() => handle.send({ entity: "checks" }, "unsubscribe")).not.toThrow();
+
+    sockets[0].open();
+    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+  });
+
+  it("drops send() between open and hello (server not yet authenticated)", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+
+    const handle = connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+
+    // Open but pre-hello: the server's handshake expects `auth` as the
+    // first frame, so nothing else may be sent yet.
+    handle.send({ entity: "checks" }, "subscribe");
+    expect(sockets[0].sent).toEqual([JSON.stringify({ type: "auth", token: "test-token" })]);
+
+    sockets[0].message({ type: "hello", protocol: 2 });
+    handle.send({ entity: "checks" }, "subscribe");
+    expect(sockets[0].sent).toEqual([
+      JSON.stringify({ type: "auth", token: "test-token" }),
+      JSON.stringify({ type: "subscribe", entity: "checks" }),
+    ]);
+  });
+
+  it("drops send() during a reconnect attempt's connecting window, resumes after hello", async () => {
+    const sockets: FakeSocket[] = [];
+    const factory = (url: string) => {
+      const s = new FakeSocket(url);
+      sockets.push(s);
+      return s;
+    };
+
+    const handle = connectLiveSocket("acme", noopCallbacks(), factory);
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0].open();
+    sockets[0].message({ type: "hello", protocol: 2 });
+
+    sockets[0].serverClose(1006, "");
+    await vi.advanceTimersByTimeAsync(35_000);
+    await vi.waitFor(() => expect(sockets.length).toBeGreaterThanOrEqual(2));
+
+    // Attempt #2 is dialing (CONNECTING) — sends must be dropped, not crash.
+    expect(() => handle.send({ entity: "checks" }, "subscribe")).not.toThrow();
+    expect(sockets[1].sent).toEqual([]);
+
+    sockets[1].open();
+    sockets[1].message({ type: "hello", protocol: 2 });
+    handle.send({ entity: "checks" }, "subscribe");
+    expect(sockets[1].sent).toEqual([
+      JSON.stringify({ type: "auth", token: "test-token" }),
+      JSON.stringify({ type: "subscribe", entity: "checks" }),
     ]);
   });
 

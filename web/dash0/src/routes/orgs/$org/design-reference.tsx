@@ -34,6 +34,7 @@ import {
 import { toast } from "sonner";
 
 import { CheckMultiPicker } from "@/components/shared/check-multi-picker";
+import { ErrorFallbackCard } from "@/components/shared/error-boundary";
 import { MaintenanceScheduleSummary } from "@/components/shared/maintenance-schedule-summary";
 import { JsonViewer } from "@/components/shared/json-viewer";
 import { LabelFilter } from "@/components/shared/label-filter";
@@ -1703,6 +1704,17 @@ function FeedbackSection() {
             </DropdownMenu>
           }
           importLine={`import {\n  DropdownMenu,\n  DropdownMenuContent,\n  DropdownMenuItem,\n  DropdownMenuLabel,\n  DropdownMenuSeparator,\n  DropdownMenuTrigger,\n} from "@/components/ui/dropdown-menu";`}
+        />
+
+        <h3 className="text-sm font-medium">Error state (boundary fallback)</h3>
+        <ExampleRow
+          preview={
+            <ErrorFallbackCard
+              error={new Error("Example failure — shown inside a collapsible details block")}
+              onRetry={() => toast("Retry clicked")}
+            />
+          }
+          importLine={`import { ErrorFallbackCard, RouteErrorFallback } from "@/components/shared/error-boundary";\n// RouteErrorFallback is already wired as the router's defaultErrorComponent\n// (main.tsx): route errors render this card inside the layout, keeping the\n// sidebar usable. Reuse ErrorFallbackCard for any custom error surface.`}
         />
       </div>
     </Section>
