@@ -797,6 +797,153 @@ func TestLastForStatus(t *testing.T) {
 	})
 }
 
+// TestSaveResultFallsBackToWorkerRegion covers the fix for spec
+// 2026-07-07-04: a check job with no explicit region (checkJob.Region == nil,
+// i.e. no regions[] configured on the check — the common single-worker/
+// self-hosted case) must still get a non-nil Region on its saved result,
+// falling back to the executing worker's own registered region rather than
+// persisting NULL. Drives the real executeJob -> executePassiveJob ->
+// saveResult path via a heartbeat check (no outbound network I/O), exactly
+// like newHeartbeatJob elsewhere in this file.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestSaveResultFallsBackToWorkerRegion(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	testRegion := "eu-test-region"
+	worker := models.NewWorker("test-worker", "Test Worker")
+	worker.Region = &testRegion
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	check := models.NewCheck(org.UID, "region-fallback-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+	check.Config = models.JSONMap{"token": "region-fallback-token"}
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	require.Nil(t, checkJob.Region, "precondition: no explicit regions[] on the check means no region pinned on the job")
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	result := new(models.Result)
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model(result).
+		Where("check_uid = ?", check.UID).
+		Where("status != ?", int(models.ResultStatusCreated)).
+		Scan(ctx))
+	require.NotNil(t, result.Region, "result.Region must fall back to the worker's own region instead of staying NULL")
+	assert.Equal(t, testRegion, *result.Region)
+}
+
+// TestSaveErrorResultFallsBackToWorkerRegion is the saveErrorResult
+// counterpart of TestSaveResultFallsBackToWorkerRegion: a job with no type
+// set takes executeJob's generic-error branch straight to saveErrorResult
+// (ErrNoCheckType), which must also fall back to the worker's own region.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestSaveErrorResultFallsBackToWorkerRegion(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	testRegion := "eu-test-region"
+	worker := models.NewWorker("test-worker", "Test Worker")
+	worker.Region = &testRegion
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	check := models.NewCheck(org.UID, "region-fallback-err-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHTTP))
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	require.Nil(t, checkJob.Region, "precondition: no explicit regions[] on the check means no region pinned on the job")
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+	checkJob.Type = "" // forces executeJob's ErrNoCheckType -> saveErrorResult branch
+
+	// executeJob's return value here is saveErrorResult's own insertErr (the
+	// DB write outcome), not ErrNoCheckType itself — that triggering error is
+	// stored in the result's Output, so a nil return on success is expected.
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	result := new(models.Result)
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model(result).
+		Where("check_uid = ?", check.UID).
+		Where("status != ?", int(models.ResultStatusCreated)).
+		Scan(ctx))
+	require.NotNil(t, result.Status)
+	assert.Equal(t, int(checkerdef.StatusError), *result.Status,
+		"precondition: this must actually be the error-result branch")
+	require.NotNil(t, result.Region,
+		"error result.Region must fall back to the worker's own region instead of staying NULL")
+	assert.Equal(t, testRegion, *result.Region)
+}
+
+// TestSaveResultKeepsExplicitJobRegion is the multi-region counterpart: when
+// checkJob.Region is already pinned (as createCheckJobs does for checks with
+// explicit regions[]), the fallback introduced for spec 2026-07-07-04 must
+// NOT override it with the executing worker's own region, even when those
+// differ — the job's assigned region always takes priority.
+//
+//nolint:paralleltest // Test uses shared database state
+func TestSaveResultKeepsExplicitJobRegion(t *testing.T) {
+	runner, dbSvc, ctx := setupTestRunner(t)
+	defer func() { _ = dbSvc.Close() }()
+
+	org := models.NewOrganization("test-org", "")
+	require.NoError(t, dbSvc.CreateOrganization(ctx, org))
+
+	workerRegion := "eu-worker-region"
+	worker := models.NewWorker("test-worker", "Test Worker")
+	worker.Region = &workerRegion
+	_, err := dbSvc.DB().NewInsert().Model(worker).Exec(ctx)
+	require.NoError(t, err)
+	runner.setWorker(worker)
+
+	check := models.NewCheck(org.UID, "region-pinned-"+uuid.New().String()[:8], string(checkerdef.CheckTypeHeartbeat))
+	check.Config = models.JSONMap{"token": "region-pinned-token"}
+	require.NoError(t, dbSvc.CreateCheck(ctx, check))
+
+	checkJob := new(models.CheckJob)
+	require.NoError(t, dbSvc.DB().NewSelect().Model(checkJob).Where("check_uid = ?", check.UID).Scan(ctx))
+	claimJobForTest(t, dbSvc, ctx, checkJob, worker.UID)
+
+	// Simulate the multi-region assignment createCheckJobs would have done
+	// for a check with explicit regions[] — a region different from the
+	// worker's own, so the two are clearly distinguishable in the assertion.
+	assignedRegion := "us-assigned-region"
+	checkJob.Region = &assignedRegion
+	_, err = dbSvc.DB().NewUpdate().
+		Model((*models.CheckJob)(nil)).
+		Set("region = ?", assignedRegion).
+		Where("uid = ?", checkJob.UID).
+		Exec(ctx)
+	require.NoError(t, err)
+
+	require.NoError(t, runner.executeJob(ctx, runner.logger, checkJob))
+
+	result := new(models.Result)
+	require.NoError(t, dbSvc.DB().NewSelect().
+		Model(result).
+		Where("check_uid = ?", check.UID).
+		Where("status != ?", int(models.ResultStatusCreated)).
+		Scan(ctx))
+	require.NotNil(t, result.Region)
+	assert.Equal(t, assignedRegion, *result.Region,
+		"an explicitly assigned job region must win over the worker's own region")
+}
+
 //nolint:paralleltest // Test uses shared database state
 func TestExecuteHeartbeatJob_RunningStatus(t *testing.T) {
 	runner, dbSvc, ctx := setupTestRunner(t)
