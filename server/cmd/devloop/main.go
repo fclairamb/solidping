@@ -4,12 +4,20 @@
 // window on every save. devloop builds first, then signals the old child to
 // exit before starting the new one — the dead window is bounded by graceful
 // shutdown, not by build time.
+//
+// devloop is also the dev-time process supervisor: auxiliary children given
+// via -proc (the dash0/status0 `bun run dev` servers) run as children of this
+// foreground process and are reaped on shutdown, and every supervised stream
+// (devloop's own lines, build output, each child's combined stdout/stderr)
+// is mirrored to the terminal and to a size-rotated <name>.log under -log-dir.
 package main
 
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
 	"os"
@@ -17,7 +25,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -31,7 +38,16 @@ const (
 	nextBinPath    = "./tmp/solidping.next"
 	binArg         = "serve"
 	rootDir        = "."
+	backendName    = "backend"
 )
+
+// config carries the parsed command-line flags.
+type config struct {
+	logDir     string
+	logMaxSize int64
+	logBackups int
+	procs      []procSpec
+}
 
 func excludedDirNames() map[string]struct{} {
 	return map[string]struct{}{
@@ -49,9 +65,15 @@ func main() {
 	log.SetFlags(log.Ltime)
 	log.SetPrefix("[devloop] ")
 
+	cfg, err := parseFlags()
+	if err != nil {
+		log.Printf("%v", err)
+		os.Exit(2)
+	}
+
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 
-	err := run(ctx)
+	err = run(ctx, cfg)
 	cancel()
 	if err != nil {
 		log.Printf("%v", err)
@@ -59,19 +81,38 @@ func main() {
 	}
 }
 
-func run(ctx context.Context) error {
+func parseFlags() (config, error) {
+	var procs stringList
+	logDir := flag.String("log-dir", "", "directory for size-rotated log files; empty disables file logging")
+	logMaxSize := flag.Int64("log-max-size", defaultLogMaxSize, "max active log file size in bytes before rotation")
+	logBackups := flag.Int("log-backups", defaultLogBackups, "rotated backup files to keep per log")
+	flag.Var(&procs, "proc", "auxiliary process to supervise, as name:dir:command (repeatable)")
+	flag.Parse()
+
+	specs, err := parseProcSpecs(procs)
+	if err != nil {
+		return config{}, err
+	}
+	return config{logDir: *logDir, logMaxSize: *logMaxSize, logBackups: *logBackups, procs: specs}, nil
+}
+
+func run(ctx context.Context, cfg config) error {
+	sink := newSink(cfg.logDir, backendName, cfg.logMaxSize, cfg.logBackups)
+	log.SetOutput(sink)
+
 	if err := os.MkdirAll("tmp", 0o755); err != nil {
 		return fmt.Errorf("mkdir tmp: %w", err)
 	}
 
-	if err := build(ctx, binPath); err != nil {
+	if err := build(ctx, binPath, sink); err != nil {
 		return fmt.Errorf("initial build failed: %w", err)
 	}
 
-	supervisor := newSupervisor()
-	if err := supervisor.start(ctx); err != nil {
+	backend := newSupervisor(backendName, "", []string{binPath, binArg}, sink)
+	if err := backend.start(ctx); err != nil {
 		return fmt.Errorf("start child: %w", err)
 	}
+	children := startAuxProcs(ctx, cfg, backend)
 
 	watcher, err := fsnotify.NewWatcher()
 	if err != nil {
@@ -91,31 +132,50 @@ func run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			log.Printf("shutting down")
-			supervisor.stop()
+			stopAll(children)
 			return nil
 		case <-rebuilds:
-			handleRebuild(ctx, supervisor)
+			handleRebuild(ctx, backend, sink)
 		}
 	}
 }
 
-func handleRebuild(ctx context.Context, sup *supervisor) {
-	if err := build(ctx, nextBinPath); err != nil {
+// startAuxProcs launches the -proc children, each with its own rotating log
+// sink. A child that fails to start is reported loudly but does not abort the
+// loop (parity with the old backgrounded `bun run dev &` pipelines).
+func startAuxProcs(ctx context.Context, cfg config, backend *supervisor) []*supervisor {
+	children := make([]*supervisor, 0, len(cfg.procs)+1)
+	children = append(children, backend)
+	for i := range cfg.procs {
+		spec := &cfg.procs[i]
+		child := newSupervisor(spec.name, spec.dir, spec.argv, newSink(cfg.logDir, spec.name, cfg.logMaxSize, cfg.logBackups))
+		sinkLogf(child.sink, "supervising %s: %s (dir %s)", spec.name, strings.Join(spec.argv, " "), spec.dir)
+		if err := child.start(ctx); err != nil {
+			sinkLogf(child.sink, "start %s failed: %v", spec.name, err)
+			continue
+		}
+		children = append(children, child)
+	}
+	return children
+}
+
+func handleRebuild(ctx context.Context, backend *supervisor, sink io.Writer) {
+	if err := build(ctx, nextBinPath, sink); err != nil {
 		log.Printf("build failed (server still running):\n%v", err)
 		_ = os.Remove(nextBinPath)
 		return
 	}
-	sup.stop()
+	backend.stop()
 	if err := os.Rename(nextBinPath, binPath); err != nil {
 		log.Printf("rename: %v", err)
 		return
 	}
-	if err := sup.start(ctx); err != nil {
+	if err := backend.start(ctx); err != nil {
 		log.Printf("start child: %v", err)
 	}
 }
 
-func build(ctx context.Context, out string) error {
+func build(ctx context.Context, out string, sink io.Writer) error {
 	// -s -w strips debug symbols; cuts per-rebuild link time from ~6.5 s to ~2 s with no
 	// effect on runtime behavior. dlv attaches to source, not the binary symbols.
 	cmd := exec.CommandContext(ctx, "go", "build", "-ldflags", "-s -w", "-o", out, ".")
@@ -124,61 +184,11 @@ func build(ctx context.Context, out string) error {
 		return fmt.Errorf("%w\n%s", err, combined)
 	}
 	if len(combined) > 0 {
-		if _, werr := os.Stdout.Write(combined); werr != nil {
+		if _, werr := sink.Write(combined); werr != nil {
 			return fmt.Errorf("write build output: %w", werr)
 		}
 	}
 	return nil
-}
-
-type supervisor struct {
-	mu  sync.Mutex
-	cmd *exec.Cmd
-}
-
-func newSupervisor() *supervisor {
-	return &supervisor{}
-}
-
-func (s *supervisor) start(ctx context.Context) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	cmd := exec.CommandContext(ctx, binPath, binArg)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = os.Environ()
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	s.cmd = cmd
-	go func() {
-		_ = cmd.Wait()
-	}()
-	return nil
-}
-
-func (s *supervisor) stop() {
-	s.mu.Lock()
-	cmd := s.cmd
-	s.cmd = nil
-	s.mu.Unlock()
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	_ = cmd.Process.Signal(syscall.SIGINT)
-	done := make(chan struct{})
-	go func() {
-		_, _ = cmd.Process.Wait()
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(graceTimeout):
-		log.Printf("child did not exit within %s, killing", graceTimeout)
-		_ = cmd.Process.Kill()
-		<-done
-	}
 }
 
 func debounce(ctx context.Context, watcher *fsnotify.Watcher, out chan<- struct{}) {
