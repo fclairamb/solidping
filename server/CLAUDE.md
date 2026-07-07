@@ -15,7 +15,7 @@ This file provides backend-specific guidance for the SolidPing monitoring system
 
 ### Development
 - **Build and test**: `make build`
-- **Run development server**: `make run` or `make dev` (hot reload via `cmd/devloop`, build-then-swap so the API stays up across rebuilds)
+- **Run development server**: `make run` or `make dev` (hot reload via `cmd/devloop`, build-then-swap so the API stays up across rebuilds; devloop also supervises the dash0/status0 dev servers and size-rotates `logs/<name>.log` with `.1`/`.2` backups)
 - **Database migrations**: `./solidping migrate`
 - **Run tests**: `make gotest` (uses gotestsum for enhanced test output)
 - **Generate code**: `make generate` (includes OpenAPI client generation and frontend codegen)
