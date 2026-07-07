@@ -2,8 +2,11 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/fclairamb/solidping/server/internal/db"
 	"github.com/fclairamb/solidping/server/internal/db/models"
@@ -277,6 +280,12 @@ func (s *Service) GetIncidentNotification(
 func (s *Service) GetOrgNotification(
 	ctx context.Context, orgUID, notifUID string,
 ) (*models.IncidentNotificationRow, error) {
+	// uid is a uuid-typed column; a non-UUID value errors on the implicit
+	// cast instead of matching zero rows, so short-circuit to ErrNoRows.
+	if _, err := uuid.Parse(notifUID); err != nil {
+		return nil, sql.ErrNoRows
+	}
+
 	var raw incidentNotificationRawRow
 
 	err := s.db.NewSelect().
