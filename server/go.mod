@@ -40,7 +40,7 @@ require (
 	github.com/likexian/whois v1.15.7
 	github.com/likexian/whois-parser v1.24.21
 	github.com/microsoft/go-mssqldb v1.10.0
-	github.com/oapi-codegen/oapi-codegen/v2 v2.7.1
+	github.com/oapi-codegen/oapi-codegen/v2 v2.7.2
 	github.com/oapi-codegen/runtime v1.4.2
 	github.com/ohler55/ojg v1.28.2
 	github.com/pkg/sftp v1.13.10
