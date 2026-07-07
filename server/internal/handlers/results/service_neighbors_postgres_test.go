@@ -29,10 +29,9 @@ func TestGetResultNeighbors_Postgres(t *testing.T) {
 	ctx := t.Context()
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        15445,
-		RunMode:     "test",
+		Embedded: true,
+		Port:     15445,
+		RunMode:  "test",
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)

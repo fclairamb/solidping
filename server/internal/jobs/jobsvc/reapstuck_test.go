@@ -3,7 +3,6 @@ package jobsvc_test
 import (
 	"context"
 	"encoding/json"
-	"os"
 	"testing"
 	"time"
 
@@ -244,11 +243,7 @@ func TestReapStuckJobsPostgres(t *testing.T) {
 	r := require.New(t)
 	ctx := t.Context()
 
-	tempDir, err := os.MkdirTemp("", "jobsvc-reap-pg-*")
-	r.NoError(err)
-	t.Cleanup(func() { _ = os.RemoveAll(tempDir) })
-
-	dbSvc, err := postgres.NewEmbedded(ctx, tempDir, 5447, false, "", false)
+	dbSvc, err := postgres.NewEmbedded(ctx, "jobsvc-reapstuck", 5447, false, "", false)
 	r.NoError(err, "failed to start embedded postgres")
 	require.NoError(t, dbSvc.Initialize(ctx))
 	t.Cleanup(func() { _ = dbSvc.Close() })

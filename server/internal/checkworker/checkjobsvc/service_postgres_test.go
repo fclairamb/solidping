@@ -37,10 +37,9 @@ func TestClaimJobsBoundedClaimAheadWindow_Postgres(t *testing.T) {
 	r := require.New(t)
 
 	dbSvc, err := postgres.New(ctx, &postgres.Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        15437,
-		RunMode:     "test",
+		Embedded: true,
+		Port:     15437,
+		RunMode:  "test",
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)

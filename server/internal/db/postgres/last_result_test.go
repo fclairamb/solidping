@@ -56,10 +56,9 @@ func TestGetLastResultForChecks_ReturnsOneRowPerCheck_Postgres(t *testing.T) {
 	r := require.New(t)
 
 	s, err := New(ctx, &Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        portLastResult,
-		RunMode:     runModeTest,
+		Embedded: true,
+		Port:     portLastResult,
+		RunMode:  runModeTest,
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
@@ -111,10 +110,9 @@ func TestGetLastResultForChecks_FiltersByOrganization_Postgres(t *testing.T) {
 	r := require.New(t)
 
 	s, err := New(ctx, &Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        portLastResult + 1,
-		RunMode:     runModeTest,
+		Embedded: true,
+		Port:     portLastResult + 1,
+		RunMode:  runModeTest,
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
