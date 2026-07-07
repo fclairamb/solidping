@@ -27,6 +27,14 @@ export interface LiveEventsCallbacks {
   onUpdate: (scope: LiveScope, kinds: string[]) => void;
   /** Server asked for a full resync (bus transport gap): invalidate every subscribed scope once. */
   onResync: () => void;
+  /**
+   * Server rejected a subscribe/unsubscribe for this scope (`error` frame
+   * that echoes a recognizable `entity`, e.g. NOT_FOUND for a slug used where
+   * only a UID resolves). Per-message and non-fatal — the socket stays open
+   * and other scopes are unaffected. Frames that don't echo a recognizable
+   * entity (malformed-message / unknown-type errors) are not reported here.
+   */
+  onScopeError: (scope: LiveScope, error: { code: string; title: string }) => void;
   /** Socket dropped; the manager will retry with backoff. */
   onDisconnected: () => void;
   /**
@@ -42,6 +50,8 @@ interface ServerMessage {
   entity?: string;
   uid?: string;
   kinds?: unknown;
+  code?: string;
+  title?: string;
 }
 
 const LIVE_ENTITIES: readonly LiveEntity[] = [
@@ -326,10 +336,22 @@ function connectOnce(
         case "resync":
           callbacks.onResync();
           break;
+        case "error":
+          // Per-message and non-fatal — the socket stays open. Only report
+          // errors that echo a recognizable entity (NOT_FOUND,
+          // VALIDATION_ERROR, CONCURRENCY_LIMITED, INTERNAL_ERROR from
+          // handleSubscribe); the global "malformed message"/"unknown type"
+          // errors echo an empty entity and are silently dropped here, same
+          // as today.
+          if (isLiveEntity(msg.entity) && typeof msg.code === "string" && typeof msg.title === "string") {
+            callbacks.onScopeError(
+              { entity: msg.entity, uid: msg.uid },
+              { code: msg.code, title: msg.title },
+            );
+          }
+          break;
         default:
-          // Unknown server->client type (forward compat) or "error" — errors
-          // are per-message and non-fatal; the registry that issued the
-          // subscribe/unsubscribe doesn't currently need to observe them.
+          // Unknown server->client type (forward compat) — ignored.
           break;
       }
     };

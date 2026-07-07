@@ -314,6 +314,8 @@
     },
     "checkDetails": "Prüfungsdetails",
     "pendingFirstRun": "Erste Ausführung läuft …",
+    "liveUnavailable": "Live-Updates nicht verfügbar",
+    "liveUnavailableTooltip": "Live-Updates sind für diese Prüfung nicht verfügbar ({{title}}) — es wird auf Polling zurückgegriffen.",
     "dutyCycle": {
       "title": "Diese Prüfung belegt {{duty}} % der Zeit einen Monitoring-Slot",
       "description": "Jede Ausführung dauert etwa {{cost}} bei einem Intervall von {{period}} — diese Prüfung hält also {{duty}} % der Zeit einen Runner belegt. Erhöhen Sie das Intervall, um Monitoring-Kapazität freizugeben."
