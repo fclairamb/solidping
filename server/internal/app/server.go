@@ -195,12 +195,11 @@ func NewServer(ctx context.Context, cfg *config.Config) (*Server, error) {
 		}
 	case "postgres-embedded":
 		dbService, err = postgres.New(ctx, &postgres.Config{
-			Embedded:    true,
-			EmbeddedDir: "/tmp/solidping-postgres-test",
-			Port:        embeddedPostgresPort,
-			LogSQL:      cfg.Database.LogSQL,
-			RunMode:     cfg.RunMode,
-			Reset:       cfg.Database.Reset,
+			Embedded: true,
+			Port:     embeddedPostgresPort,
+			LogSQL:   cfg.Database.LogSQL,
+			RunMode:  cfg.RunMode,
+			Reset:    cfg.Database.Reset,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to create embedded PostgreSQL service: %w", err)

@@ -332,9 +332,8 @@ func openDB(ctx context.Context, cfg *config.Config) (db.Service, error) {
 		return postgres.New(ctx, &postgres.Config{DSN: cfg.Database.URL, Embedded: false})
 	case "postgres-embedded":
 		return postgres.New(ctx, &postgres.Config{
-			Embedded:    true,
-			EmbeddedDir: "/tmp/solidping-postgres-test",
-			Port:        embeddedPostgresPort,
+			Embedded: true,
+			Port:     embeddedPostgresPort,
 		})
 	case "sqlite":
 		return sqlite.New(ctx, sqlite.Config{DataDir: cfg.Database.Dir, InMemory: false})
@@ -359,9 +358,8 @@ func runMigrations(ctx context.Context, cfg *config.Config) error {
 		})
 	case "postgres-embedded":
 		svc, err = postgres.New(ctx, &postgres.Config{
-			Embedded:    true,
-			EmbeddedDir: "/tmp/solidping-postgres-test",
-			Port:        embeddedPostgresPort,
+			Embedded: true,
+			Port:     embeddedPostgresPort,
 		})
 	case "sqlite":
 		svc, err = sqlite.New(ctx, sqlite.Config{

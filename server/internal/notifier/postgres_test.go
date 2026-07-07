@@ -19,17 +19,9 @@ func TestPgEventNotifier(t *testing.T) {
 		t.Skip("Skipping PostgreSQL notifier test in short mode")
 	}
 
-	// Create embedded PostgreSQL instance
-	tempDir, err := os.MkdirTemp("", "pg-notifier-test-*")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(tempDir)
-	})
-
 	ctx := t.Context()
 	port := uint32(15436)
-	svc, err := postgres.NewEmbedded(ctx, tempDir, port, false, "", false)
+	svc, err := postgres.NewEmbedded(ctx, "notifier", port, false, "", false)
 	require.NoError(t, err, "Failed to create PostgreSQL service")
 
 	t.Cleanup(func() {
@@ -327,17 +319,9 @@ func TestPgEventNotifier_factory(t *testing.T) {
 		t.Skip("Skipping PostgreSQL notifier test in short mode")
 	}
 
-	// Create embedded PostgreSQL instance
-	tempDir, err := os.MkdirTemp("", "pg-notifier-factory-test-*")
-	require.NoError(t, err)
-
-	t.Cleanup(func() {
-		_ = os.RemoveAll(tempDir)
-	})
-
 	ctx := t.Context()
 	port := uint32(15437)
-	svc, err := postgres.NewEmbedded(ctx, tempDir, port, false, "", false)
+	svc, err := postgres.NewEmbedded(ctx, "notifier-factory", port, false, "", false)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

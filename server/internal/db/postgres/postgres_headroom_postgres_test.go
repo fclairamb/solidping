@@ -48,10 +48,9 @@ func startEmbeddedForHeadroomTest(t *testing.T, port uint32) (*Service, func(rol
 	ctx := context.Background()
 
 	dbSvc, err := New(ctx, &Config{
-		Embedded:    true,
-		EmbeddedDir: t.TempDir(),
-		Port:        port,
-		RunMode:     "test",
+		Embedded: true,
+		Port:     port,
+		RunMode:  "test",
 	})
 	if err != nil {
 		t.Skipf("embedded postgres unavailable: %v", err)
