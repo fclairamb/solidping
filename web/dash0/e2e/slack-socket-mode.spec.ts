@@ -1,6 +1,5 @@
-import { test, expect, type Page } from "./fixtures";
+import { test, expect, API_BASE, type Page } from "./fixtures";
 
-const API_BASE = "http://localhost:4000";
 const SYSTEM_PARAMS_URL = "**/api/v1/system/parameters";
 const SOCKET_STATUS_URL = "**/api/v1/integrations/slack/socket/status";
 
