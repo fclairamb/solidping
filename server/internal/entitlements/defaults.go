@@ -68,13 +68,16 @@ const (
 // Display identity shown on the usage page when a row has none of its
 // own (see Service.merge). SaaS mirrors billing's Free plan identity;
 // self-hosted gets a plain label so it never claims to be "Free".
-var (
+const (
 	displayNameSaaS  = "Free"
 	displayEmojiSaaS = "🆓"
 
 	displayNameSelfHosted  = "Self-hosted"
 	displayEmojiSelfHosted = "🏠"
 )
+
+// strPtr is a tiny helper for default-defining string pointers, mirroring Int.
+func strPtr(s string) *string { return &s }
 
 // DefaultsFor returns the in-memory seed for a fresh org under the
 // given deployment mode. SaaS caps mirror the billing Free plan
@@ -93,8 +96,8 @@ func DefaultsFor(mode string) Entitlements {
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
 			},
 			Source:       models.EntitlementSourceDefault,
-			DisplayName:  &displayNameSaaS,
-			DisplayEmoji: &displayEmojiSaaS,
+			DisplayName:  strPtr(displayNameSaaS),
+			DisplayEmoji: strPtr(displayEmojiSaaS),
 		}
 	case config.DeploymentModeSelfHosted:
 		return Entitlements{
@@ -102,8 +105,8 @@ func DefaultsFor(mode string) Entitlements {
 				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
-			DisplayName:  &displayNameSelfHosted,
-			DisplayEmoji: &displayEmojiSelfHosted,
+			DisplayName:  strPtr(displayNameSelfHosted),
+			DisplayEmoji: strPtr(displayEmojiSelfHosted),
 		}
 	default:
 		slog.Warn("unknown deployment mode; falling back to self-hosted entitlement defaults",
@@ -114,8 +117,8 @@ func DefaultsFor(mode string) Entitlements {
 				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
 			},
 			Source:       models.EntitlementSourceDefault,
-			DisplayName:  &displayNameSelfHosted,
-			DisplayEmoji: &displayEmojiSelfHosted,
+			DisplayName:  strPtr(displayNameSelfHosted),
+			DisplayEmoji: strPtr(displayEmojiSelfHosted),
 		}
 	}
 }
