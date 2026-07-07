@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strconv"
 	"sync"
 )
@@ -161,4 +162,18 @@ func (m *multiSink) Write(data []byte) (int, error) {
 		_, _ = writer.Write(data)
 	}
 	return len(data), nil
+}
+
+// newSink builds the output destination for one supervised stream: always the
+// terminal, plus a size-rotated <name>.log when a log directory is configured.
+func newSink(logDir, name string, maxSize int64, backups int) io.Writer {
+	if logDir == "" {
+		return os.Stdout
+	}
+	if err := os.MkdirAll(logDir, 0o755); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "[devloop] cannot create log dir %s: %v (file logging disabled)\n", logDir, err)
+		return os.Stdout
+	}
+	rotating := newRotatingWriter(filepath.Join(logDir, name+".log"), maxSize, backups)
+	return &multiSink{writers: []io.Writer{os.Stdout, rotating}}
 }
