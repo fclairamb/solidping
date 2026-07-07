@@ -22,7 +22,7 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     // Click on Incidents in the sidebar to navigate
-    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
 
     // Wait for navigation to complete
     await page.waitForURL(/\/incidents/);
@@ -48,7 +48,7 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     // Navigate to incidents page via sidebar
-    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
     await page.waitForURL(/\/incidents/);
     await page.waitForLoadState("networkidle");
 
@@ -95,7 +95,7 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     // Navigate to incidents page via sidebar
-    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
     await page.waitForURL(/\/incidents/);
     await page.waitForLoadState("networkidle");
 
@@ -146,7 +146,7 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     // Navigate to incidents page via sidebar
-    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
     await page.waitForURL(/\/incidents/);
     await page.waitForLoadState("networkidle");
 
@@ -226,7 +226,7 @@ test.describe("Incidents", () => {
     const page = authenticatedPage;
 
     // Navigate to incidents page via sidebar
-    await page.getByRole("link", { name: "Incidents" }).click();
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Incidents" }).click();
     await page.waitForURL(/\/incidents/);
     await page.waitForLoadState("networkidle");
 
