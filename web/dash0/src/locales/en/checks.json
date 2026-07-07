@@ -359,6 +359,8 @@
     },
     "checkDetails": "Check Details",
     "pendingFirstRun": "Pending first run…",
+    "liveUnavailable": "Live updates unavailable",
+    "liveUnavailableTooltip": "Live updates are unavailable for this check ({{title}}) — falling back to polling.",
     "dutyCycle": {
       "title": "This check occupies a monitoring slot {{duty}}% of the time",
       "description": "Each run takes about {{cost}} with a period of {{period}}, so this check keeps a runner busy {{duty}}% of the time. Increase its period to free monitoring capacity."
