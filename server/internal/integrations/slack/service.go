@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/url"
+	"slices"
 	"strings"
 	"time"
 
@@ -126,6 +127,11 @@ type Service struct {
 	authService      *auth.Service
 	checksService    *checks.Service
 	incidentsService IncidentService
+
+	// newAPIClient builds the Slack Web API client used for outbound calls.
+	// Tests override it to point at an httptest fake Slack server (mirrors
+	// SlackSocketSupervisor.dialClient).
+	newAPIClient func(token string) *Client
 }
 
 // NewService creates a new Slack integration service.
@@ -142,6 +148,7 @@ func NewService(
 		authService:      authService,
 		checksService:    checksService,
 		incidentsService: incidentsService,
+		newAPIClient:     NewClient,
 	}
 }
 
@@ -826,7 +833,7 @@ func (s *Service) GetClient(ctx context.Context, teamID string) (*Client, error)
 		return nil, fmt.Errorf("failed to parse settings: %w", err)
 	}
 
-	return NewClient(settings.AccessToken), nil
+	return s.newAPIClient(settings.AccessToken), nil
 }
 
 // CreateCheckResult contains the result of creating a check via Slack.
@@ -905,7 +912,7 @@ func (s *Service) SetDefaultChannel(ctx context.Context, teamID, channelID strin
 	}
 
 	// Get channel name for display (best effort)
-	client := NewClient(settings.AccessToken)
+	client := s.newAPIClient(settings.AccessToken)
 	channelName := ""
 
 	channels, err := client.ListChannels(ctx)
@@ -998,6 +1005,16 @@ type SlackDestinationUser struct { //nolint:revive // prefix is intentional disa
 	RealName string `json:"realName"`
 }
 
+// displayName is the label the dashboard shows for a DM target (real name,
+// falling back to the Slack username) and therefore the picker sort key.
+func (u SlackDestinationUser) displayName() string {
+	if u.RealName != "" {
+		return u.RealName
+	}
+
+	return u.Name
+}
+
 // SlackDestinationsResponse is returned by GetDestinations.
 // The Slack prefix disambiguates from other response types in the same package.
 type SlackDestinationsResponse struct { //nolint:revive // prefix is intentional disambiguation
@@ -1052,7 +1069,7 @@ func (s *Service) GetDestinations(
 		return nil, ErrSlackNotConnected
 	}
 
-	client := NewClient(settings.AccessToken)
+	client := s.newAPIClient(settings.AccessToken)
 
 	// Fetch channels and users in parallel.
 	var (
@@ -1096,6 +1113,16 @@ func (s *Service) GetDestinations(
 			RealName: u.RealName,
 		})
 	}
+
+	// Slack returns both lists in arbitrary (roughly creation) order and the
+	// dashboard picker mirrors it — sort so entries are findable.
+	slices.SortFunc(channels, func(a, b SlackChannel) int {
+		return strings.Compare(strings.ToLower(a.Name), strings.ToLower(b.Name))
+	})
+
+	slices.SortFunc(users, func(a, b SlackDestinationUser) int {
+		return strings.Compare(strings.ToLower(a.displayName()), strings.ToLower(b.displayName()))
+	})
 
 	return &SlackDestinationsResponse{
 		Channels: channels,

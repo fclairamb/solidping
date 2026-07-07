@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -29,6 +30,20 @@ const (
 	DefaultTimeout = 30 * time.Second
 )
 
+// Cursor pagination settings for Slack list APIs (conversations.list,
+// users.list). Slack returns ~100 items per call by default and signals more
+// data via response_metadata.next_cursor — ignoring the cursor silently
+// truncates large workspaces.
+const (
+	// listPageSize is the per-page limit requested from Slack list APIs
+	// (200 is Slack's recommended maximum page size).
+	listPageSize = 200
+	// maxListPages caps cursor-pagination loops (listPageSize*maxListPages =
+	// 5000 items). If the cap is hit, a warning is logged and the partial
+	// list is returned rather than looping forever.
+	maxListPages = 25
+)
+
 // Slack API request payload field keys.
 const (
 	apiKeyChannel = "channel"
@@ -41,15 +56,23 @@ const (
 type Client struct {
 	httpClient *http.Client
 	token      string
+	baseURL    string
 }
 
-// NewClient creates a new Slack API client.
+// NewClient creates a new Slack API client targeting the real Slack API.
 func NewClient(token string) *Client {
+	return NewClientWithBaseURL(token, SlackAPIBaseURL)
+}
+
+// NewClientWithBaseURL creates a Slack API client targeting a custom API base
+// URL. Intended for tests that point the client at an httptest fake server.
+func NewClientWithBaseURL(token, baseURL string) *Client {
 	return &Client{
 		httpClient: &http.Client{
 			Timeout: DefaultTimeout,
 		},
-		token: token,
+		token:   token,
+		baseURL: baseURL,
 	}
 }
 
@@ -314,49 +337,118 @@ func FetchOpenIDUserInfo(ctx context.Context, userAccessToken string) (*OpenIDUs
 	return &userInfo, nil
 }
 
-// ListChannels lists public and private channels the bot has access to.
-func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
-	var result struct {
-		OK       bool      `json:"ok"`
-		Channels []Channel `json:"channels"`
+// paginate drives a cursor-pagination loop over a Slack list API. fetchPage
+// is called with the current cursor ("" on the first call) and returns the
+// next cursor; an empty next cursor ends the loop. If maxListPages is reached
+// while Slack still returns a cursor, a warning is logged and the pages
+// fetched so far are kept rather than looping forever.
+func paginate(ctx context.Context, method string, fetchPage func(cursor string) (string, error)) error {
+	cursor := ""
+
+	for range maxListPages {
+		next, err := fetchPage(cursor)
+		if err != nil {
+			return err
+		}
+
+		if next == "" {
+			return nil
+		}
+
+		cursor = next
 	}
 
-	if err := c.callAPI(ctx, "conversations.list", map[string]any{
-		"types":            "public_channel,private_channel",
-		"exclude_archived": true,
-	}, &result); err != nil {
-		return nil, err
-	}
+	slog.WarnContext(ctx, "Slack list API pagination hit the page cap, returning a partial list",
+		"method", method,
+		"max_pages", maxListPages,
+	)
 
-	return result.Channels, nil
+	return nil
 }
 
-// ListUsers lists non-bot, non-deleted workspace members.
-func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
-	var result struct {
-		OK      bool        `json:"ok"`
-		Members []SlackUser `json:"members"`
-	}
+// ListChannels lists public and private channels the bot has access to,
+// following cursor pagination so workspaces with more than one page of
+// channels are fully listed.
+func (c *Client) ListChannels(ctx context.Context) ([]Channel, error) {
+	const method = "conversations.list"
 
-	if err := c.callAPI(ctx, "users.list", map[string]any{}, &result); err != nil {
+	channels := make([]Channel, 0, listPageSize)
+
+	err := paginate(ctx, method, func(cursor string) (string, error) {
+		payload := map[string]any{
+			"types":            "public_channel,private_channel",
+			"exclude_archived": true,
+			"limit":            listPageSize,
+		}
+		if cursor != "" {
+			payload["cursor"] = cursor
+		}
+
+		var result struct {
+			OK               bool             `json:"ok"`
+			Channels         []Channel        `json:"channels"`
+			ResponseMetadata ResponseMetadata `json:"response_metadata"` //nolint:tagliatelle // Slack API field
+		}
+
+		if err := c.callAPI(ctx, method, payload, &result); err != nil {
+			return "", err
+		}
+
+		channels = append(channels, result.Channels...)
+
+		return result.ResponseMetadata.NextCursor, nil
+	})
+	if err != nil {
 		return nil, err
 	}
 
-	filtered := make([]SlackUser, 0, len(result.Members))
+	return channels, nil
+}
 
-	for i := range result.Members {
-		u := result.Members[i]
-		if !u.IsBot && !u.Deleted {
-			filtered = append(filtered, u)
+// ListUsers lists non-bot, non-deleted workspace members, following cursor
+// pagination so large workspaces are fully listed.
+func (c *Client) ListUsers(ctx context.Context) ([]SlackUser, error) {
+	const method = "users.list"
+
+	users := make([]SlackUser, 0, listPageSize)
+
+	err := paginate(ctx, method, func(cursor string) (string, error) {
+		payload := map[string]any{
+			"limit": listPageSize,
 		}
+		if cursor != "" {
+			payload["cursor"] = cursor
+		}
+
+		var result struct {
+			OK               bool             `json:"ok"`
+			Members          []SlackUser      `json:"members"`
+			ResponseMetadata ResponseMetadata `json:"response_metadata"` //nolint:tagliatelle // Slack API field
+		}
+
+		if err := c.callAPI(ctx, method, payload, &result); err != nil {
+			return "", err
+		}
+
+		for i := range result.Members {
+			u := result.Members[i]
+			if !u.IsBot && !u.Deleted {
+				users = append(users, u)
+			}
+		}
+
+		return result.ResponseMetadata.NextCursor, nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	return filtered, nil
+	return users, nil
 }
 
 // callAPI makes a Slack API call.
 func (c *Client) callAPI(ctx context.Context, method string, payload map[string]any, result any) error {
-	url := fmt.Sprintf("%s/%s", SlackAPIBaseURL, method)
+	url := fmt.Sprintf("%s/%s", c.baseURL, method)
 
 	body, err := json.Marshal(payload)
 	if err != nil {
