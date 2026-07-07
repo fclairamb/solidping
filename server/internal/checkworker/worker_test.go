@@ -883,8 +883,10 @@ func TestSaveErrorResultFallsBackToWorkerRegion(t *testing.T) {
 		Where("status != ?", int(models.ResultStatusCreated)).
 		Scan(ctx))
 	require.NotNil(t, result.Status)
-	assert.Equal(t, int(checkerdef.StatusError), *result.Status, "precondition: this must actually be the error-result branch")
-	require.NotNil(t, result.Region, "error result.Region must fall back to the worker's own region instead of staying NULL")
+	assert.Equal(t, int(checkerdef.StatusError), *result.Status,
+		"precondition: this must actually be the error-result branch")
+	require.NotNil(t, result.Region,
+		"error result.Region must fall back to the worker's own region instead of staying NULL")
 	assert.Equal(t, testRegion, *result.Region)
 }
 
@@ -938,7 +940,8 @@ func TestSaveResultKeepsExplicitJobRegion(t *testing.T) {
 		Where("status != ?", int(models.ResultStatusCreated)).
 		Scan(ctx))
 	require.NotNil(t, result.Region)
-	assert.Equal(t, assignedRegion, *result.Region, "an explicitly assigned job region must win over the worker's own region")
+	assert.Equal(t, assignedRegion, *result.Region,
+		"an explicitly assigned job region must win over the worker's own region")
 }
 
 //nolint:paralleltest // Test uses shared database state
