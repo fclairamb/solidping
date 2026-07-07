@@ -1,6 +1,4 @@
-import { test, expect } from "./fixtures";
-
-const API_BASE = "http://localhost:4000";
+import { test, expect, API_BASE } from "./fixtures";
 
 test.describe("Incident notifications", () => {
   test("Notifications card renders on incident detail page", async ({
