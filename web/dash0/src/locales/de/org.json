@@ -21,7 +21,6 @@
     "title": "Nutzung",
     "description": "Die Grenzwerte Ihres Tarifs und Ihr aktueller Verbrauch.",
     "plan": "Aktueller Tarif",
-    "freePlan": "Kostenlos",
     "checks": "Prüfungen",
     "checksPerMinute": "Prüfungen pro Minute",
     "ssoUsers": "SSO-Benutzer",

@@ -53,14 +53,33 @@ type Resolved struct {
 func Int(i int) *int { return &i }
 
 // Default cap values per deployment mode.
+//
+// SaaS defaults MUST stay in sync with solidping-billing's Free SKU
+// (solidping-billing/server/internal/plans/plans.go) — this is the
+// "billing service never reconciled us yet" fallback for a fresh SaaS
+// org, and it must render/enforce identically to the real Free plan
+// until billing writes its own org_entitlements row.
 const (
 	defaultMaxSSOUsersSelfHosted  = 30
+	defaultMaxChecksSaaS          = 10
 	defaultMaxChecksPerMinuteSaaS = 6
 )
 
+// Display identity shown on the usage page when a row has none of its
+// own (see Service.merge). SaaS mirrors billing's Free plan identity;
+// self-hosted gets a plain label so it never claims to be "Free".
+var (
+	displayNameSaaS  = "Free"
+	displayEmojiSaaS = "🆓"
+
+	displayNameSelfHosted  = "Self-hosted"
+	displayEmojiSelfHosted = "🏠"
+)
+
 // DefaultsFor returns the in-memory seed for a fresh org under the
-// given deployment mode. SaaS caps aggregate check rate; self-hosted
-// caps SSO seats. Anything else is nil = unlimited.
+// given deployment mode. SaaS caps mirror the billing Free plan
+// (checks + aggregate check rate); self-hosted caps SSO seats.
+// Anything else is nil = unlimited.
 //
 // Unknown modes log a warning and fall back to self-hosted defaults
 // rather than booting unbounded — startup validation should have caught
@@ -70,16 +89,21 @@ func DefaultsFor(mode string) Entitlements {
 	case config.DeploymentModeSaaS:
 		return Entitlements{
 			Limits: Limits{
+				MaxChecks:          Int(defaultMaxChecksSaaS),
 				MaxChecksPerMinute: Int(defaultMaxChecksPerMinuteSaaS),
 			},
-			Source: models.EntitlementSourceDefault,
+			Source:       models.EntitlementSourceDefault,
+			DisplayName:  &displayNameSaaS,
+			DisplayEmoji: &displayEmojiSaaS,
 		}
 	case config.DeploymentModeSelfHosted:
 		return Entitlements{
 			Limits: Limits{
 				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
 			},
-			Source: models.EntitlementSourceDefault,
+			Source:       models.EntitlementSourceDefault,
+			DisplayName:  &displayNameSelfHosted,
+			DisplayEmoji: &displayEmojiSelfHosted,
 		}
 	default:
 		slog.Warn("unknown deployment mode; falling back to self-hosted entitlement defaults",
@@ -89,7 +113,9 @@ func DefaultsFor(mode string) Entitlements {
 			Limits: Limits{
 				MaxSSOUsers: Int(defaultMaxSSOUsersSelfHosted),
 			},
-			Source: models.EntitlementSourceDefault,
+			Source:       models.EntitlementSourceDefault,
+			DisplayName:  &displayNameSelfHosted,
+			DisplayEmoji: &displayEmojiSelfHosted,
 		}
 	}
 }
