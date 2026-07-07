@@ -72,6 +72,15 @@ export const test = base.extend<
     });
     const page = await context.newPage();
 
+    // The old fixture ended with the browser sitting on the post-login
+    // landing page (/orgs/test, per spec #46) after driving the login form.
+    // Consumers rely on that: several tests assert page.url() or read
+    // dashboard content without navigating anywhere themselves first. A
+    // fresh context here starts at about:blank, so reproduce the same
+    // landing state explicitly instead of just restoring cookies/storage.
+    await page.goto("orgs/test");
+    await page.waitForLoadState("networkidle");
+
     // eslint-disable-next-line react-hooks/rules-of-hooks
     await use(page);
 
