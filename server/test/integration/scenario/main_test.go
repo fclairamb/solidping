@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	inst, startErr := embeddedpg.Start(embeddedpg.Options{
+	inst, startErr := embeddedpg.Start(&embeddedpg.Options{
 		Suite:    "scenario",
 		Port:     uint32(port),
 		Database: scenarioPGDBName,

@@ -124,12 +124,12 @@ func TestSweepOrphans_UnrelatedDirIsIgnored(t *testing.T) {
 func TestSweepOrphans_ConcurrentSuitesDoNotSweepEachOther(t *testing.T) {
 	t.Parallel()
 
-	sleepA := exec.Command("sleep", "30")
+	sleepA := exec.CommandContext(t.Context(), "sleep", "30")
 	require.NoError(t, sleepA.Start())
 
 	t.Cleanup(func() { _ = sleepA.Process.Kill() })
 
-	sleepB := exec.Command("sleep", "30")
+	sleepB := exec.CommandContext(t.Context(), "sleep", "30")
 	require.NoError(t, sleepB.Start())
 
 	t.Cleanup(func() { _ = sleepB.Process.Kill() })

@@ -205,7 +205,10 @@ func New(ctx context.Context, cfg *Config) (*Service, error) {
 func NewEmbedded(
 	_ context.Context, suite string, port uint32, logSQL bool, runMode string, reset bool,
 ) (*Service, error) {
-	inst, err := embeddedpg.Start(embeddedpg.Options{
+	// contextcheck: the watchdog subprocess embeddedpg.Start spawns is
+	// intentionally detached from any request/caller context — it must
+	// outlive it.
+	inst, err := embeddedpg.Start(&embeddedpg.Options{ //nolint:contextcheck
 		Suite: suite,
 		Port:  port,
 		StartParameters: map[string]string{

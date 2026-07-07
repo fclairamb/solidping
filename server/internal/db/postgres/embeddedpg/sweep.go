@@ -1,7 +1,9 @@
 package embeddedpg
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,11 +14,15 @@ import (
 	"time"
 )
 
+// errPostmasterPIDEmpty is returned when postmaster.pid exists but contains
+// no lines to parse a PID from.
+var errPostmasterPIDEmpty = errors.New("postmaster.pid is empty")
+
 // legacyPrefixes are directory-name prefixes used by call sites before they
 // were migrated onto this package's unified naming scheme. The sweep
 // recognizes them for one transition period so pre-existing orphans (and any
 // leftovers from a partially-migrated deploy) still get cleaned up.
-var legacyPrefixes = []string{
+var legacyPrefixes = []string{ //nolint:gochecknoglobals // package-level constant list
 	"solidping-scenario-pg-",
 	"pg-notifier-test-",
 	"pg-notifier-factory-test-",
@@ -165,7 +171,7 @@ func readPostmasterPID(dataDir string) (int, error) {
 
 	lines := strings.SplitN(string(data), "\n", 2)
 	if len(lines) == 0 {
-		return 0, fmt.Errorf("postmaster.pid is empty") //nolint:err113 // internal sweep diagnostic
+		return 0, errPostmasterPIDEmpty
 	}
 
 	pid, parseErr := strconv.Atoi(strings.TrimSpace(lines[0]))
@@ -181,7 +187,9 @@ func readPostmasterPID(dataDir string) (int, error) {
 // process found via postmaster.pid or pgrep: a stale PID could have been
 // recycled by an unrelated process since the data dir was abandoned.
 func commandLineContains(pid int, needle string) bool {
-	out, err := exec.Command("ps", "-o", "command=", "-p", strconv.Itoa(pid)).Output() //nolint:noctx // short-lived diagnostic subprocess
+	cmd := exec.CommandContext(context.Background(), "ps", "-o", "command=", "-p", strconv.Itoa(pid))
+
+	out, err := cmd.Output()
 	if err != nil {
 		return false
 	}
@@ -220,7 +228,9 @@ func killPostgresForDataDir(dataDir string) {
 // the process command line directly via pgrep, then re-verifying via ps
 // before killing — same PID-reuse guard as killPostgresForDataDir.
 func sweepFallbackPgrep() {
-	out, err := exec.Command("pgrep", "-f", "solidping-embedded-pg|solidping-scenario-pg").Output() //nolint:noctx // short-lived diagnostic subprocess
+	cmd := exec.CommandContext(context.Background(), "pgrep", "-f", "solidping-embedded-pg|solidping-scenario-pg")
+
+	out, err := cmd.Output()
 	if err != nil {
 		// pgrep exits non-zero when there are no matches — not an error worth logging.
 		return

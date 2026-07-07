@@ -1,10 +1,12 @@
 package embeddedpg
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"syscall"
 )
 
@@ -60,8 +62,13 @@ func startWatchdog(ownerPID int, dataDir string) *watchdogHandle {
 		return nil
 	}
 
-	cmd := exec.Command("sh", "-c", watchdogScript, "watchdog",
-		fmt.Sprintf("%d", ownerPID), fmt.Sprintf("%d", pgPID), dataDir)
+	// context.Background(): this process is intentionally detached and
+	// outlives the caller (that's the entire point of the watchdog), so no
+	// context should ever cancel it — CommandContext is used here purely to
+	// satisfy the noctx linter's requirement that subprocess launches carry
+	// an explicit context.
+	cmd := exec.CommandContext(context.Background(), "sh", "-c", watchdogScript, "watchdog",
+		strconv.Itoa(ownerPID), strconv.Itoa(pgPID), dataDir)
 
 	// Detach stdio so nothing ties the watchdog's pipes back to the parent.
 	cmd.Stdin = nil

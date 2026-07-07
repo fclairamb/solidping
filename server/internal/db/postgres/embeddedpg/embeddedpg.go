@@ -34,6 +34,8 @@ const ownerMarkerFile = "owner.json"
 
 // sweepOnce ensures the startup sweep (Part B) runs at most once per
 // process, before the first instance is started.
+//
+//nolint:gochecknoglobals // intentional: sweep must run once per process, not once per Instance
 var sweepOnce sync.Once
 
 // Options configures a new embedded-PostgreSQL instance.
@@ -111,7 +113,7 @@ func (i *Instance) Stop() error {
 // (once per process), starts a new embedded-PostgreSQL instance in it, and
 // spawns a parent-death watchdog. Callers must call Stop on the returned
 // Instance when done (normally via t.Cleanup).
-func Start(opts Options) (*Instance, error) {
+func Start(opts *Options) (*Instance, error) {
 	sweepOnce.Do(func() { sweepOrphans(os.TempDir()) })
 
 	suite := opts.Suite
@@ -159,7 +161,7 @@ func Start(opts Options) (*Instance, error) {
 		}
 	}
 
-	pg := embeddedpostgres.NewDatabase(
+	embeddedPG := embeddedpostgres.NewDatabase(
 		embeddedpostgres.DefaultConfig().
 			Port(port).
 			Database(database).
@@ -169,7 +171,7 @@ func Start(opts Options) (*Instance, error) {
 			StartParameters(startParams),
 	)
 
-	if startErr := pg.Start(); startErr != nil {
+	if startErr := embeddedPG.Start(); startErr != nil {
 		_ = os.RemoveAll(dataDir)
 
 		return nil, fmt.Errorf("failed to start embedded postgres: %w", startErr)
@@ -182,7 +184,7 @@ func Start(opts Options) (*Instance, error) {
 	inst := &Instance{
 		dataDir: dataDir,
 		dsn:     dsn,
-		pg:      pg,
+		pg:      embeddedPG,
 	}
 
 	// The watchdog is best-effort infrastructure hardening: if it fails to
