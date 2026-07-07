@@ -239,33 +239,32 @@ run-test: build ## Build and run the application in test mode
 	@echo "Running application in test mode..."
 	@SP_RUNMODE=test ./$(APP_NAME) serve
 
+# devloop supervises all dev processes (backend rebuild loop + the two bun dev
+# servers) as one foreground tree, and size-rotates each stream into
+# $(LOG_DIR)/<name>.log (.1/.2 backups). No tee, no backgrounded pipelines.
+DEVLOOP_LOG_FLAGS := -log-dir $(CURDIR)/$(LOG_DIR)
+DEVLOOP_PROCS := -proc "dash0:$(CURDIR)/$(DASH0_DIR):bun run dev" -proc "status0:$(CURDIR)/$(STATUS0_DIR):bun run dev"
+
 dev: kill ## Run backend, dash0 and status0 in development mode
 	@echo "Running application in development mode..."
-	@mkdir -p $(LOG_DIR)
-	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
-	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" SP_PROFILER_ENABLED=true \
+		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-test: kill ## Run backend, dash0 and status0 in development test mode
 	@echo "Running application in development test mode..."
-	@mkdir -p $(LOG_DIR)
-	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
-	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
-	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && SP_RUNMODE=test SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
+		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 dev-saas: kill ## Run backend (SaaS mode) + dash0 + status0 — pairs with ../solidping-billing `make dev`
 	@echo "Running application in SaaS mode (billing via ../solidping-billing on :4050)..."
 	@echo "  upgrade URL template: $(SAAS_UPGRADE_URL)"
-	@mkdir -p $(LOG_DIR)
-	@cd $(DASH0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/dash0.log &
-	@cd $(STATUS0_DIR) && bun run dev 2>&1 | tee $(CURDIR)/$(LOG_DIR)/status0.log &
 	@cd $(BACK_DIR) && \
 		SP_DEPLOYMENT_MODE=saas \
 		SP_ENTITLEMENTS_SERVICE_TOKEN="$(SAAS_BILLING_TOKEN)" \
 		SP_ENTITLEMENTS_UPGRADE_URL_TEMPLATE="$(SAAS_UPGRADE_URL)" \
 		SP_ENTITLEMENTS_ADMIN_WRITES_ENABLED=true \
 		SP_REDIRECTS="/dash0:localhost:5174/dash0,/status0:localhost:5175/status0" \
-		go run ./cmd/devloop 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+		go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS) $(DEVLOOP_PROCS)
 
 clean: ## Remove built binaries and dash artifacts
 	@echo "Cleaning build artifacts..."
@@ -337,10 +336,9 @@ dev-docs: ## Start docs (Docusaurus) dev server on :3000
 	@echo "Starting docs dev server..."
 	@cd $(DOCS_DIR) && bun run gen-api-docs && bun run start
 
-dev-backend: ## Start backend development server
+dev-backend: ## Start backend development server (hot reload via cmd/devloop, rotating log)
 	@echo "Starting backend dev server..."
-	@mkdir -p $(LOG_DIR)
-	@cd $(BACK_DIR) && go run . serve 2>&1 | tee $(CURDIR)/$(LOG_DIR)/backend.log
+	@cd $(BACK_DIR) && go run ./cmd/devloop $(DEVLOOP_LOG_FLAGS)
 
 deps: ## Install all dependencies
 	@echo "Installing backend dependencies..."
