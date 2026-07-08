@@ -1,0 +1,447 @@
+package auth
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/coreos/go-oidc/v3/oidc"
+	"golang.org/x/oauth2"
+
+	"github.com/fclairamb/solidping/server/internal/config"
+	"github.com/fclairamb/solidping/server/internal/db"
+	"github.com/fclairamb/solidping/server/internal/db/models"
+)
+
+// Generic OIDC specific errors.
+var (
+	ErrOIDCNotConfigured = errors.New("generic OIDC provider is not configured")
+	ErrOIDCDiscovery     = errors.New("oidc discovery failed")
+	ErrOIDCTokenExchange = errors.New("oidc token exchange failed")
+	ErrOIDCNoIDToken     = errors.New("oidc token response did not include an id_token")
+	ErrOIDCTokenInvalid  = errors.New("oidc id token validation failed")
+)
+
+const (
+	oidcOAuthStatePrefix = "oauth_state:oidc:"
+	oidcOAuthStateTTL    = 10 * time.Minute
+	oidcDiscoveryTimeout = 15 * time.Second
+
+	// Standard OIDC claim names used when the corresponding *Claim config
+	// field is left blank.
+	oidcDefaultEmailClaim  = "email"
+	oidcDefaultNameClaim   = "name"
+	oidcDefaultAvatarClaim = "picture"
+)
+
+// OIDCOAuthResult contains the result of a successful generic OIDC flow.
+type OIDCOAuthResult struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresIn    int
+	OrgSlug      string
+	UserUID      string
+}
+
+// oidcUserInfo is the set of claims extracted from a validated ID token, per
+// the configured (or default) claim mappings.
+type oidcUserInfo struct {
+	Subject       string
+	Email         string
+	EmailVerified bool
+	// hasEmailVerified is true when the "email_verified" claim was present in
+	// the token at all. Many enterprise IdPs never set it; when absent we
+	// trust the IdP-asserted email rather than rejecting every login.
+	hasEmailVerifiedClaim bool
+	Name                  string
+	AvatarURL             string
+}
+
+// OIDCOAuthService handles generic OpenID Connect authentication logic.
+//
+// Exactly one issuer is supported (spec 2026-07-08-08, part 1 — global-only,
+// single instance). Discovery and the JWKS key set are cached in-process and
+// only re-fetched when the configured issuer URL changes, so a super-admin
+// edit to the config takes effect on the next login without a restart.
+type OIDCOAuthService struct {
+	db          db.Service
+	cfg         *config.Config
+	authService *Service
+	httpClient  *http.Client
+
+	mu           sync.Mutex
+	cachedIssuer string
+	provider     *oidc.Provider
+}
+
+// NewOIDCOAuthService creates a new generic OIDC service.
+func NewOIDCOAuthService(dbService db.Service, cfg *config.Config, authService *Service) *OIDCOAuthService {
+	return &OIDCOAuthService{
+		db:          dbService,
+		cfg:         cfg,
+		authService: authService,
+		httpClient:  &http.Client{Timeout: defaultTimeout},
+	}
+}
+
+// GenerateOAuthState creates a new OAuth state and stores it in the database.
+func (s *OIDCOAuthService) GenerateOAuthState(ctx context.Context, redirectURI, orgSlug string) (string, error) {
+	nonceBytes := make([]byte, 32)
+	if _, err := rand.Read(nonceBytes); err != nil {
+		return "", fmt.Errorf("failed to generate nonce: %w", err)
+	}
+
+	nonce := base64.URLEncoding.EncodeToString(nonceBytes)
+
+	state := OAuthState{
+		Nonce:       nonce,
+		RedirectURI: redirectURI,
+		OrgSlug:     orgSlug,
+		CreatedAt:   time.Now().Unix(),
+	}
+
+	stateJSON, err := json.Marshal(state)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal state: %w", err)
+	}
+
+	stateValue := &models.JSONMap{"state": string(stateJSON)}
+	ttl := oidcOAuthStateTTL
+
+	if err := s.db.SetStateEntry(ctx, nil, oidcOAuthStatePrefix+nonce, stateValue, &ttl); err != nil {
+		return "", fmt.Errorf("failed to store state: %w", err)
+	}
+
+	return nonce, nil
+}
+
+// ValidateOAuthState validates and consumes an OAuth state.
+func (s *OIDCOAuthService) ValidateOAuthState(ctx context.Context, stateParam string) (*OAuthState, error) {
+	entry, err := s.db.GetStateEntry(ctx, nil, oidcOAuthStatePrefix+stateParam)
+	if err != nil || entry == nil {
+		return nil, ErrInvalidOAuthState
+	}
+
+	// Delete state (one-time use)
+	_, _ = s.db.DeleteStateEntry(ctx, nil, oidcOAuthStatePrefix+stateParam)
+
+	stateJSON, ok := (*entry.Value)["state"].(string)
+	if !ok {
+		return nil, ErrInvalidOAuthState
+	}
+
+	var state OAuthState
+	if err := json.Unmarshal([]byte(stateJSON), &state); err != nil {
+		return nil, ErrInvalidOAuthState
+	}
+
+	if time.Now().Unix()-state.CreatedAt > int64(oidcOAuthStateTTL.Seconds()) {
+		return nil, ErrInvalidOAuthState
+	}
+
+	return &state, nil
+}
+
+// providerAndVerifier lazily performs OIDC discovery against the configured
+// issuer URL (and fetches its JWKS lazily, on first token verification) and
+// caches the result until the issuer URL changes.
+func (s *OIDCOAuthService) providerAndVerifier(ctx context.Context) (*oidc.Provider, *oidc.IDTokenVerifier, error) {
+	issuer := strings.TrimSpace(s.cfg.OIDC.IssuerURL)
+	if !s.cfg.OIDC.Enabled || issuer == "" || s.cfg.OIDC.ClientID == "" || s.cfg.OIDC.ClientSecret == "" {
+		return nil, nil, ErrOIDCNotConfigured
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.provider == nil || s.cachedIssuer != issuer {
+		discoveryCtx, cancel := context.WithTimeout(ctx, oidcDiscoveryTimeout)
+		defer cancel()
+
+		discoveryCtx = oidc.ClientContext(discoveryCtx, s.httpClient)
+
+		provider, err := oidc.NewProvider(discoveryCtx, issuer)
+		if err != nil {
+			return nil, nil, fmt.Errorf("%w: %w", ErrOIDCDiscovery, err)
+		}
+
+		s.provider = provider
+		s.cachedIssuer = issuer
+	}
+
+	// ClientID check is mandatory (SkipClientIDCheck stays false): this is
+	// what ties the validated token to *our* client registration with the
+	// IdP, not just any client of the same issuer.
+	verifier := s.provider.Verifier(&oidc.Config{ClientID: s.cfg.OIDC.ClientID})
+
+	return s.provider, verifier, nil
+}
+
+// oauth2Config builds the OAuth2 client config for the current provider,
+// performing discovery if not already cached.
+func (s *OIDCOAuthService) oauth2Config(ctx context.Context) (*oauth2.Config, error) {
+	provider, _, err := s.providerAndVerifier(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	scopes := s.scopes()
+
+	return &oauth2.Config{
+		ClientID:     s.cfg.OIDC.ClientID,
+		ClientSecret: s.cfg.OIDC.ClientSecret,
+		Endpoint:     provider.Endpoint(),
+		RedirectURL:  s.getCallbackURL(),
+		Scopes:       scopes,
+	}, nil
+}
+
+// scopes returns the configured scope list, always including "openid".
+func (s *OIDCOAuthService) scopes() []string {
+	fields := strings.Fields(s.cfg.OIDC.Scopes)
+	if len(fields) == 0 {
+		return []string{oidc.ScopeOpenID, "email", "profile"}
+	}
+
+	for _, sc := range fields {
+		if sc == oidc.ScopeOpenID {
+			return fields
+		}
+	}
+
+	return append([]string{oidc.ScopeOpenID}, fields...)
+}
+
+// HandleCallback processes the OAuth callback from the generic OIDC provider:
+// exchanges the code, validates the ID token (issuer, audience, signature via
+// JWKS, expiry), maps claims, and resolves/creates the local user.
+func (s *OIDCOAuthService) HandleCallback(ctx context.Context, code, orgSlug string) (*OIDCOAuthResult, error) {
+	oauth2Cfg, err := s.oauth2Config(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	exchangeCtx := oidc.ClientContext(ctx, s.httpClient)
+
+	token, err := oauth2Cfg.Exchange(exchangeCtx, code)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrOIDCTokenExchange, err)
+	}
+
+	rawIDToken, ok := token.Extra("id_token").(string)
+	if !ok || rawIDToken == "" {
+		return nil, ErrOIDCNoIDToken
+	}
+
+	_, verifier, err := s.providerAndVerifier(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// This is the security-critical step: Verify checks the signature
+	// against the IdP's published JWKS, the issuer, the audience (our
+	// client ID), and the expiry.
+	idToken, err := verifier.Verify(exchangeCtx, rawIDToken)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %w", ErrOIDCTokenInvalid, err)
+	}
+
+	var claims map[string]any
+	if err := idToken.Claims(&claims); err != nil {
+		return nil, fmt.Errorf("%w: failed to parse claims: %w", ErrOIDCTokenInvalid, err)
+	}
+
+	userInfo := s.mapClaims(idToken.Subject, claims)
+
+	if userInfo.Email == "" {
+		return nil, ErrEmailNotVerified
+	}
+
+	if userInfo.hasEmailVerifiedClaim && !userInfo.EmailVerified {
+		return nil, ErrEmailNotVerified
+	}
+
+	// Look up organization by slug
+	org, err := s.db.GetOrganizationBySlug(ctx, orgSlug)
+	if err != nil {
+		return nil, fmt.Errorf("organization not found: %w", err)
+	}
+
+	// Find or create user
+	user, err := s.findOrCreateUser(ctx, userInfo)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find/create user: %w", err)
+	}
+
+	// Ensure organization membership (enforces maxSsoUsers via CheckSSOSlot)
+	member, err := s.ensureMembership(ctx, org.UID, user.UID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to ensure membership: %w", err)
+	}
+
+	// Auto-join matching orgs
+	s.authService.autoJoinMatchingOrgs(ctx, user.UID, user.Email)
+
+	// Generate tokens
+	tokens, err := s.authService.GenerateTokensForOAuth(ctx, user, org, string(member.Role))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate tokens: %w", err)
+	}
+
+	return &OIDCOAuthResult{
+		AccessToken:  tokens.AccessToken,
+		RefreshToken: tokens.RefreshToken,
+		ExpiresIn:    tokens.ExpiresIn,
+		OrgSlug:      org.Slug,
+		UserUID:      user.UID,
+	}, nil
+}
+
+// mapClaims extracts email/name/avatar from the validated ID token's claims,
+// using the configured claim names with standard-claim fallbacks.
+func (s *OIDCOAuthService) mapClaims(subject string, claims map[string]any) *oidcUserInfo {
+	emailClaim := s.cfg.OIDC.EmailClaim
+	if emailClaim == "" {
+		emailClaim = oidcDefaultEmailClaim
+	}
+
+	nameClaim := s.cfg.OIDC.NameClaim
+	if nameClaim == "" {
+		nameClaim = oidcDefaultNameClaim
+	}
+
+	avatarClaim := s.cfg.OIDC.AvatarClaim
+	if avatarClaim == "" {
+		avatarClaim = oidcDefaultAvatarClaim
+	}
+
+	info := &oidcUserInfo{
+		Subject:       subject,
+		Email:         claimString(claims, emailClaim),
+		Name:          claimString(claims, nameClaim),
+		AvatarURL:     claimString(claims, avatarClaim),
+		EmailVerified: true,
+	}
+
+	if v, ok := claims["email_verified"]; ok {
+		info.hasEmailVerifiedClaim = true
+		if b, ok := v.(bool); ok {
+			info.EmailVerified = b
+		}
+	}
+
+	if info.Name == "" {
+		info.Name = info.Email
+	}
+
+	return info
+}
+
+// claimString reads a string-valued claim, returning "" when absent or of
+// another type.
+func claimString(claims map[string]any, key string) string {
+	if v, ok := claims[key].(string); ok {
+		return v
+	}
+
+	return ""
+}
+
+// findOrCreateUser finds or creates a user by generic OIDC identity.
+func (s *OIDCOAuthService) findOrCreateUser(ctx context.Context, userInfo *oidcUserInfo) (*models.User, error) {
+	// Check by OIDC subject first (via user_providers)
+	provider, err := s.db.GetUserProviderByProviderID(ctx, models.ProviderTypeOIDC, userInfo.Subject)
+	if err == nil && provider != nil {
+		return s.db.GetUser(ctx, provider.UserUID)
+	}
+
+	// Check by email
+	user, err := s.db.GetUserByEmail(ctx, userInfo.Email)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get user by email: %w", err)
+	}
+
+	// Create new user if not found
+	if user == nil {
+		user = models.NewUser(userInfo.Email)
+		user.Name = userInfo.Name
+		user.AvatarURL = userInfo.AvatarURL
+
+		now := time.Now()
+		user.EmailVerifiedAt = &now
+
+		if err := s.db.CreateUser(ctx, user); err != nil {
+			return nil, fmt.Errorf("failed to create user: %w", err)
+		}
+	}
+
+	// Link OIDC provider if not already linked
+	if provider == nil {
+		provider = models.NewUserProvider(user.UID, models.ProviderTypeOIDC, userInfo.Subject)
+
+		if err := s.db.CreateUserProvider(ctx, provider); err != nil {
+			return nil, fmt.Errorf("failed to create user provider: %w", err)
+		}
+	}
+
+	return user, nil
+}
+
+// ensureMembership ensures user is a member of the organization.
+func (s *OIDCOAuthService) ensureMembership(
+	ctx context.Context, orgUID, userUID string,
+) (*models.OrganizationMember, error) {
+	// Check existing membership
+	member, err := s.db.GetMemberByUserAndOrg(ctx, userUID, orgUID)
+	if err == nil {
+		return member, nil
+	}
+
+	if !errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("failed to get member: %w", err)
+	}
+
+	// Determine role (first user = admin). Group/role mapping from IdP
+	// claims is out of scope for this first pass (see spec open questions).
+	role := models.MemberRoleUser
+
+	members, err := s.db.ListMembersByOrg(ctx, orgUID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list members: %w", err)
+	}
+
+	if len(members) == 0 {
+		role = models.MemberRoleAdmin
+	}
+
+	// Enforce MaxSSOUsers before creating the membership. The very first
+	// member of an org bypasses any cap (count=0 < cap) so bootstrapping
+	// always succeeds.
+	if err := s.authService.CheckSSOSlot(ctx, orgUID); err != nil {
+		return nil, err
+	}
+
+	// Create membership
+	member = models.NewOrganizationMember(orgUID, userUID, role)
+	now := time.Now()
+	member.JoinedAt = &now
+
+	if err := s.db.CreateOrganizationMember(ctx, member); err != nil {
+		return nil, fmt.Errorf("failed to create member: %w", err)
+	}
+
+	return member, nil
+}
+
+// getCallbackURL returns the OAuth callback URL for the generic OIDC provider.
+func (s *OIDCOAuthService) getCallbackURL() string {
+	return s.cfg.Server.BaseURL + "/api/v1/auth/oidc/callback"
+}
