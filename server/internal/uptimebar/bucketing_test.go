@@ -280,7 +280,7 @@ func TestBucketAvailability_DenseRowsFillAllBuckets(t *testing.T) {
 			todayStart := now.Truncate(24 * time.Hour)
 			bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
 
-			var results []*models.Result
+			results := make([]*models.Result, 0, n-1+50)
 
 			// One day-tier rollup row per day for every day except today.
 			for i := 1; i < n; i++ {
@@ -335,7 +335,7 @@ func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
 	todayStart := now.Truncate(24 * time.Hour)
 	bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
 
-	var results []*models.Result
+	results := make([]*models.Result, 0, 100+n)
 
 	// c1: dense — many raw rows, all "today" (the newest possible rows).
 	for i := range 100 {
