@@ -2129,6 +2129,10 @@ export function useAcceptInvite() {
 // Org settings hooks
 export interface OrgSettings {
   registrationEmailPattern: string;
+  // Org-level auth.session_max_duration override, in seconds. Absent/null
+  // when the org has no override and inherits the system-wide default (see
+  // server OrgSettingsResponse — spec 2026-07-08-01 B.4).
+  sessionMaxDurationSeconds?: number | null;
 }
 
 export function useOrgSettings(org: string) {
@@ -2139,10 +2143,17 @@ export function useOrgSettings(org: string) {
   });
 }
 
+export interface UpdateOrgSettingsRequest {
+  registrationEmailPattern?: string;
+  // A value <= 0 clears the override (org reverts to inheriting the
+  // system-wide value); omit the field entirely to leave it untouched.
+  sessionMaxDurationSeconds?: number;
+}
+
 export function useUpdateOrgSettings(org: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { registrationEmailPattern: string }) =>
+    mutationFn: (data: UpdateOrgSettingsRequest) =>
       apiFetch<OrgSettings>(`/api/v1/orgs/${org}/settings`, {
         method: "PATCH",
         body: JSON.stringify(data),
