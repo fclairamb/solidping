@@ -100,28 +100,29 @@ func buildIncidentURL(orgSlug, incidentUID string) string {
 // "</script>" breakout even though the values we pass it are already
 // path-validated — escape defensively regardless of provenance.
 func jsStringLiteral(s string) string {
-	b, err := json.Marshal(s)
+	encoded, err := json.Marshal(s)
 	if err != nil {
 		// json.Marshal of a plain string cannot fail in practice; fall back
 		// to an empty literal rather than ever emitting unescaped content.
 		return `""`
 	}
 
-	return string(b)
+	return string(encoded)
 }
 
 // renderAckPage builds a complete HTML document for one of the magic-link
-// outcomes. title/h1/icon/body/headExtra are either compile-time constants
-// or values that have already been through html.EscapeString/jsStringLiteral
-// by the caller — no further escaping happens here.
-func renderAckPage(title, h1, icon, body, headExtra string) string {
+// outcomes. title/heading/icon/body/headExtra are either compile-time
+// constants or values that have already been through
+// html.EscapeString/jsStringLiteral by the caller — no further escaping
+// happens here.
+func renderAckPage(title, heading, icon, body, headExtra string) string {
 	return `<!doctype html>` +
 		`<html lang="en"><head><meta charset="utf-8"><title>` + title + `</title>` +
 		`<meta name="viewport" content="width=device-width,initial-scale=1">` +
 		headExtra +
 		ackPageStyle +
 		`</head><body><div class="card"><div class="wordmark">SolidPing</div>` +
-		icon + `<h1>` + h1 + `</h1>` + body + `</div></body></html>`
+		icon + `<h1>` + heading + `</h1>` + body + `</div></body></html>`
 }
 
 // ackPageKind enumerates the magic-link outcomes — kept as constants
@@ -144,13 +145,13 @@ const (
 // redirectURL must already be a validated path (see buildIncidentURL) — it
 // is escaped here for each of its two distinct contexts (an HTML attribute
 // and a JS string literal) rather than trusted as pre-escaped.
-func successRedirectFragment(redirectURL string) (headExtra, body string) {
+func successRedirectFragment(redirectURL string) (string, string) {
 	htmlURL := html.EscapeString(redirectURL)
 	jsURL := jsStringLiteral(redirectURL)
 
-	headExtra = `<meta http-equiv="refresh" content="3;url=` + htmlURL + `">`
+	headExtra := `<meta http-equiv="refresh" content="3;url=` + htmlURL + `">`
 
-	body = `<p>Thanks — the incident has been acknowledged.</p>` +
+	body := `<p>Thanks — the incident has been acknowledged.</p>` +
 		`<p>Redirecting to the incident in ` +
 		`<span id="ack-countdown" class="ack-countdown">3</span>…</p>` +
 		`<p><a id="ack-now" class="ack-now" href="` + htmlURL + `">Go to the incident now</a></p>` +
@@ -171,17 +172,17 @@ func successRedirectFragment(redirectURL string) (headExtra, body string) {
 	return headExtra, body
 }
 
-// pageContent returns the (title, h1, icon, body, headExtra) for each
+// pageContent returns the (title, heading, icon, body, headExtra) for each
 // outcome. Centralized so the writer doesn't need a switch and the
 // renderAckPage helper stays content-agnostic. orgSlug/incidentUID are only
 // used (and only meaningful) for ackHTMLSuccess — the other kinds ignore
 // them, so callers can pass them through unconditionally.
-func pageContent(kind ackPageKind, orgSlug, incidentUID string) (title, h1, icon, body, headExtra string) {
-	icon = ackIcon(kind)
+func pageContent(kind ackPageKind, orgSlug, incidentUID string) (string, string, string, string, string) {
+	icon := ackIcon(kind)
 
 	switch kind {
 	case ackHTMLSuccess:
-		headExtra, body = successRedirectFragment(buildIncidentURL(orgSlug, incidentUID))
+		headExtra, body := successRedirectFragment(buildIncidentURL(orgSlug, incidentUID))
 
 		return "Incident acknowledged", "Incident acknowledged", icon, body, headExtra
 	case ackHTMLExpired:
@@ -225,8 +226,8 @@ func pageContent(kind ackPageKind, orgSlug, incidentUID string) (title, h1, icon
 // ignored — the connection is likely already gone in that case, and there's
 // nothing useful to do beyond log.
 func writeAckHTML(writer http.ResponseWriter, status int, kind ackPageKind, orgSlug, incidentUID string) {
-	title, h1, icon, body, headExtra := pageContent(kind, orgSlug, incidentUID)
-	page := renderAckPage(title, h1, icon, body, headExtra)
+	title, heading, icon, body, headExtra := pageContent(kind, orgSlug, incidentUID)
+	page := renderAckPage(title, heading, icon, body, headExtra)
 
 	writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	writer.Header().Set("Cache-Control", "no-store")
