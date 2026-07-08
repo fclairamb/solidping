@@ -1,4 +1,30 @@
-import { test, expect } from "./fixtures";
+import type { WebSocket } from "@playwright/test";
+import { test, expect, type Page } from "./fixtures";
+
+/** Waits for the next `/events/ws` socket to open and reach the `hello`
+ * (authenticated) state. Mirrors live-updates.spec.ts's waitForLiveSubscribed
+ * but stops at `hello` rather than `subscribed` — this file cares about
+ * re-authentication after a 4401, not the subscribe/hint pipeline. */
+async function waitForLiveSocketHello(page: Page): Promise<WebSocket> {
+  const ws = await page.waitForEvent("websocket", {
+    predicate: (socket) => socket.url().includes("/events/ws"),
+    timeout: 15000,
+  });
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error("timed out waiting for a hello frame")),
+      15000
+    );
+    ws.on("framereceived", (frame) => {
+      const text = typeof frame.payload === "string" ? frame.payload : "";
+      if (text.includes('"type":"hello"')) {
+        clearTimeout(timer);
+        resolve();
+      }
+    });
+  });
+  return ws;
+}
 
 // Requires a server started with a short SP_AUTH_ACCESS_TOKEN_EXPIRY (e.g.
 // SP_AUTH_ACCESS_TOKEN_EXPIRY=10s) so the access-token lifetime can actually
@@ -57,6 +83,55 @@ test.describe("Session continuity past access-token expiry", () => {
     // The checks list is real authenticated content — its presence proves
     // the session survived, not just that the page didn't crash.
     await expect(page.getByRole("heading", { name: /checks/i }).first()).toBeVisible();
+  });
+
+  // Spec 2026-07-08-01 acceptance criterion (the primary one): "a logged-in
+  // dashboard left open across an access-token expiry keeps working — API
+  // calls succeed and the live socket re-authenticates with a fresh token
+  // after the 4401 — with no re-login." The two tests above prove API calls
+  // survive (via a reload after the wait); this one proves the live socket
+  // itself recovers on its own, with the tab left open the whole time — no
+  // reload, no user interaction.
+  test("the live socket reconnects with a fresh token after a 4401 close, with no reload", async ({
+    authenticatedPage,
+  }) => {
+    test.setTimeout(120_000);
+
+    const page = authenticatedPage;
+    const expirySeconds = configuredExpirySeconds!;
+
+    await page.goto("orgs/test/checks");
+    await page.waitForLoadState("networkidle");
+
+    // The first socket authenticates with the token minted at login.
+    await waitForLiveSocketHello(page);
+
+    // Wait past expiry with NO reload and no interaction. The server closes
+    // the now-expired socket with 4401; live-socket.ts's onclose handler
+    // refreshes before reconnecting (A.2/A.3), and the next attempt should
+    // reach `hello` again — proving the *socket itself* recovered, not just
+    // that a later reload picked up a fresh token.
+    const secondHello = waitForLiveSocketHello(page);
+    await Promise.race([
+      secondHello,
+      page.waitForTimeout((expirySeconds + 30) * 1000).then(() => {
+        throw new Error("no second authenticated socket within the expected window");
+      }),
+    ]);
+
+    // The tab never left the checks page — no redirect, no reload.
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page).toHaveURL(/\/checks/);
+
+    // A plain authenticated API call also still succeeds, proving the
+    // refreshed token is usable outside the socket too.
+    const token = await page.evaluate(() =>
+      window.localStorage.getItem("solidping_session_token")
+    );
+    const resp = await page.request.get("/api/v1/orgs/test/checks?limit=1", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(resp.status()).toBe(200);
   });
 
   test("the proactive timer refreshes before the user does anything", async ({
