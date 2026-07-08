@@ -15,7 +15,7 @@ import {
   getExpiresAt,
   getExpiresInSeconds,
 } from "@/api/client";
-import { refreshAccessToken, shouldRefreshNow } from "@/lib/token-refresh";
+import { refreshAccessToken, refreshWithOutcome, shouldRefreshNow } from "@/lib/token-refresh";
 
 interface User {
   email: string;
@@ -140,6 +140,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!token) {
       setIsLoading(false);
       return;
+    }
+
+    // Legacy/partial session: an access token with no expiry metadata (a
+    // session predating expires_at tracking, or one of the funnel-audit
+    // paths that used to drop it — see api/client.ts setSession) can't be
+    // scheduled by the proactive timer (shouldRefreshNow needs both fields)
+    // and won't reliably 401 soon on its own. Refresh once, up front, so it
+    // either lands on solid footing (full session with a refresh token) or
+    // is cleared immediately instead of coasting until a surprise 401 (spec
+    // A.4).
+    if (getExpiresAt() === null) {
+      const outcome = await refreshWithOutcome();
+      if (!outcome.accessToken && outcome.failureReason !== "network-error") {
+        // escalate() inside token-refresh.ts already cleared the session
+        // and redirected to login — nothing left to validate.
+        setIsLoading(false);
+        return;
+      }
     }
 
     try {

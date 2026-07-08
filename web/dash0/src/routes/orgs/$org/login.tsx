@@ -37,7 +37,15 @@ import { classifyPasskeyError } from "@/lib/passkey-error";
 
 export const Route = createFileRoute("/orgs/$org/login")({
   validateSearch: (search: Record<string, unknown>) => ({
-    session_expired: search.session_expired === "true",
+    // TanStack Router's default search parser already coerces "true"/"false"
+    // query-string values to native booleans before validateSearch runs, so
+    // a bare `=== "true"` string comparison silently always evaluates to
+    // false — the same bug class already worked around in jobs.*.tsx's
+    // `allOrgs` param. Without this, a full-page redirect to
+    // `?session_expired=true` (api/client.ts's redirectToExpiredLogin, used
+    // by every escalating refresh failure) landed on the login page with
+    // the "your session expired" banner silently suppressed.
+    session_expired: search.session_expired === true || search.session_expired === "true",
     returnTo: typeof search.returnTo === "string" ? search.returnTo : undefined,
   }),
   component: LoginPage,

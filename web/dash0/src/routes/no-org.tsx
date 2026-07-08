@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 import { AuroraPanel } from "@/components/ui/aurora-panel";
 import { AlertCircle, Loader2, X } from "lucide-react";
-import { ApiError, setToken } from "@/api/client";
+import { ApiError } from "@/api/client";
 import {
   useCreateOrg,
   useCreateMembershipRequest,
@@ -102,7 +102,6 @@ function CreateOrgCard() {
     setError(null);
     try {
       const result = await createOrg.mutateAsync({ name, slug });
-      if (result.accessToken) setToken(result.accessToken);
       navigate({ to: "/orgs/$org", params: { org: result.slug } });
     } catch (err) {
       setError(err instanceof ApiError ? err.message : t("unexpectedError"));

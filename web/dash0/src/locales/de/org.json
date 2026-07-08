@@ -15,7 +15,12 @@
     "testMatch": "✓ entspricht dem Muster",
     "testNoMatch": "✗ entspricht dem Muster nicht",
     "saved": "Einstellungen gespeichert.",
-    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten"
+    "unexpectedError": "Ein unerwarteter Fehler ist aufgetreten",
+    "sessionDuration": "Sitzungsdauer",
+    "sessionDurationFullDescription": "Legen Sie eine feste Obergrenze für die Dauer einer Anmeldesitzung fest, unabhängig von der Aktivität. Leer lassen, um den Plattform-Standard zu verwenden (unbegrenzt, sofern kein systemweites Limit gesetzt ist).",
+    "sessionDurationHoursLabel": "Maximale Sitzungsdauer (Stunden)",
+    "sessionDurationPlaceholder": "Unbegrenzt",
+    "sessionDurationHelp": "Sobald festgelegt, läuft die Sitzung nach dieser Anzahl von Stunden nach der Anmeldung zwangsweise ab, auch wenn der Benutzer aktiv bleibt — unabhängig vom 7-tägigen Inaktivitäts-Timeout."
   },
   "usage": {
     "title": "Nutzung",

@@ -3,6 +3,7 @@ package systemconfig
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
@@ -186,6 +187,48 @@ func TestKnownPasswordKeys(t *testing.T) {
 // (web/dash0/src/routes/orgs/$org/server.performance.tsx) writes, and verifies
 // the JSON-float64 coercion onto cfg.Server.Scheduling.FastLaneReserved. If
 // either side drifts, saving from the UI silently stops applying.
+// TestKnownSessionMaxDurationKey verifies auth.session_max_duration is
+// registered like the other known parameters: correct key string, an
+// ApplyFunc that coerces JSON-decoded float64 seconds (and plain int) onto
+// cfg.Auth.SessionMaxDuration, and an EnvVar matching what applyAuthEnv reads
+// directly via os.Getenv (bypassing koanf's underscore-collapsing env
+// loader, same as every other multi-word auth.* knob).
+func TestKnownSessionMaxDurationKey(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	r.Equal("auth.session_max_duration", string(KeySessionMaxDuration))
+
+	var def ParameterDefinition
+
+	found := false
+
+	for _, d := range getKnownParameters() {
+		if d.Key == KeySessionMaxDuration {
+			def, found = d, true
+
+			break
+		}
+	}
+
+	r.True(found, "auth.session_max_duration must be a known parameter")
+	r.NotNil(def.ApplyFunc)
+	r.False(def.Secret)
+	r.Equal("SP_AUTH_SESSION_MAX_DURATION", def.EnvVar)
+
+	cfg := &config.Config{}
+	def.ApplyFunc(cfg, float64(7200)) // JSON-decoded numbers arrive as float64
+	r.Equal(7200*time.Second, cfg.Auth.SessionMaxDuration)
+	def.ApplyFunc(cfg, 3600)
+	r.Equal(3600*time.Second, cfg.Auth.SessionMaxDuration)
+
+	// A negative value is treated as unset (no sensible meaning), not
+	// clamped or zeroed — the prior value is left alone.
+	def.ApplyFunc(cfg, float64(-1))
+	r.Equal(3600*time.Second, cfg.Auth.SessionMaxDuration)
+}
+
 func TestKnownSchedulingFastLaneReservedKey(t *testing.T) {
 	t.Parallel()
 
