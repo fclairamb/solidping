@@ -22,7 +22,11 @@ import (
 //
 //	i × basePeriod after region 0, the round-robin leveling the user expects.
 //
-// next   = smallest t > now with t.Unix() ≡ phase (mod jobPeriod)
+// next   = now stepped forward 1..jobPeriod whole seconds to the next t with
+//
+//	t.Unix() ≡ phase (mod jobPeriod). A call already inside the
+//	phase-aligned second gets a full period, never the current second —
+//	a run that just completed on its tick must not immediately re-fire.
 //
 // A late or missed run resumes at the next phase-aligned tick: no drift, no
 // lockstep, self-healing after any outage length.
@@ -70,12 +74,18 @@ func RegionIndex(region *string, regions []string) int {
 	return 0
 }
 
-// NextAligned returns the smallest instant strictly after now whose Unix
-// second is congruent to this job's phase modulo jobPeriod. basePeriod is the
-// check's pre-split period (used only to derive the jitter and the region
-// spacing); jobPeriod is the actual period this job fires on (the post-split
-// period for multi-region checks, or basePeriod itself for single/no-region
-// jobs).
+// NextAligned returns now advanced by a whole number of seconds — at least 1,
+// at most jobPeriod — to the next instant whose Unix second is congruent to
+// this job's phase modulo jobPeriod (now's sub-second component is carried
+// over). In particular, when now already sits inside the phase-aligned
+// second, the result is a full jobPeriod later: a check that just fired on
+// its tick must not re-fire within the same second. Callers comparing the
+// result against their own earlier clock sample must allow for the gap
+// between the two reads on top of the [1s, jobPeriod] guarantee. basePeriod
+// is the check's pre-split period (used only to derive the jitter and the
+// region spacing); jobPeriod is the actual period this job fires on (the
+// post-split period for multi-region checks, or basePeriod itself for
+// single/no-region jobs).
 //
 // basePeriod <= 0 or jobPeriod <= 0 falls back to now.Add(jobPeriod) — this
 // should not happen in practice (reconcile never produces a zero period) but
