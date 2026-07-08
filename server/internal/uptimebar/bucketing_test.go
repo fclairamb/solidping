@@ -2,6 +2,8 @@ package uptimebar
 
 import (
 	"context"
+	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -10,7 +12,12 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 )
 
-// fakeLister returns a fixed result set, capturing the filter it was called with.
+// fakeLister returns a fixed result set, capturing the filter it was called
+// with. It mimics the real DB's "ORDER BY period_start DESC" + "LIMIT" behavior
+// (see postgres.ListResults / sqlite.ListResults) so tests can catch a
+// regression where a row-count Limit gets reintroduced: without this fidelity,
+// the fake would just return the whole fixture regardless of Limit and the
+// truncation bug would go undetected.
 type fakeLister struct {
 	results   []*models.Result
 	gotFilter *models.ListResultsFilter
@@ -21,7 +28,17 @@ func (f *fakeLister) ListResults(
 ) (*models.ListResultsResponse, error) {
 	f.gotFilter = filter
 
-	return &models.ListResultsResponse{Results: f.results}, nil
+	sorted := make([]*models.Result, len(f.results))
+	copy(sorted, f.results)
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].PeriodStart.After(sorted[j].PeriodStart)
+	})
+
+	if filter.Limit > 0 && filter.Limit < len(sorted) {
+		sorted = sorted[:filter.Limit]
+	}
+
+	return &models.ListResultsResponse{Results: sorted}, nil
 }
 
 func rawRow(checkUID string, status models.ResultStatus, start time.Time, dur float32) *models.Result {
@@ -45,6 +62,8 @@ func hourRow(checkUID string, total, success int, start time.Time) *models.Resul
 		SuccessfulChecks: &success,
 	}
 }
+
+// dayRow is defined in window_test.go (same package) and reused here.
 
 // TestBucketStats_AvailabilityPct covers the empty/non-empty distinction the
 // caller uses to choose between a real status and "no data".
@@ -217,7 +236,10 @@ func TestBucketAvailability_MultiCheckSingleQuery(t *testing.T) {
 	r.InDelta(0.0, c2, 0.0001)
 
 	r.NotNil(lister.gotFilter)
-	r.Equal(24*2, lister.gotFilter.Limit, "limit is windowBuckets × len(checkUIDs)")
+	r.Equal(0, lister.gotFilter.Limit,
+		"no row-count limit: a bucket can be fed by many rows, so limiting by "+
+			"windowBuckets × len(checkUIDs) truncates dense windows (see "+
+			"TestBucketAvailability_DenseRowsFillAllBuckets)")
 	r.ElementsMatch(
 		[]string{models.PeriodTypeRaw, models.PeriodTypeHour, models.PeriodTypeDay},
 		lister.gotFilter.PeriodTypes,
@@ -236,4 +258,108 @@ func TestBucketAvailability_NoChecks(t *testing.T) {
 	r.NoError(err)
 	r.Empty(out)
 	r.Nil(lister.gotFilter, "no query is issued when there are no checks")
+}
+
+// TestBucketAvailability_DenseRowsFillAllBuckets is the direct regression for
+// the reported bug: a check whose window contains far more rows than buckets
+// (dense today-only raw rows + one day rollup per older day) must have every
+// bucket that has data filled, for all three long-range periods — not just the
+// newest 1-3 days. Before the fix, Limit = n*len(checkUIDs) truncated the
+// period_start-DESC-ordered query to the newest rows only, so older buckets
+// silently read "no data" even though rows existed for them.
+func TestBucketAvailability_DenseRowsFillAllBuckets(t *testing.T) {
+	t.Parallel()
+
+	for _, n := range []int{7, 30, 90} {
+		t.Run(fmt.Sprintf("%dd", n), func(t *testing.T) {
+			t.Parallel()
+
+			r := require.New(t)
+
+			now := time.Now().UTC()
+			todayStart := now.Truncate(24 * time.Hour)
+			bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
+
+			var results []*models.Result
+
+			// One day-tier rollup row per day for every day except today.
+			for i := 1; i < n; i++ {
+				day := todayStart.Add(-time.Duration(i) * 24 * time.Hour)
+				results = append(results, dayRow("c1", 100, 100, day))
+			}
+
+			// Dense raw rows for "today" — far more than one row, simulating
+			// frequent per-region probing that hasn't rolled up yet. This is
+			// what pushed the old Limit (n*len(checkUIDs)) past capacity and
+			// squeezed out the older day rows.
+			for i := range 50 {
+				results = append(
+					results,
+					rawRow("c1", models.ResultStatusUp, todayStart.Add(time.Duration(i)*time.Minute), 40),
+				)
+			}
+
+			lister := &fakeLister{results: results}
+
+			out, err := BucketAvailability(
+				context.Background(), lister, "org", []string{"c1"}, 24*time.Hour, bucketStart, n,
+			)
+			r.NoError(err)
+
+			byBucket := out["c1"]
+			r.Len(byBucket, n, "every bucket in the window must be filled, not just the newest few")
+
+			for i := range n {
+				bucket := bucketStart.Add(time.Duration(i) * 24 * time.Hour)
+				_, ok := byBucket[bucket]
+				r.True(ok, "bucket %d (%s) must have data", i, bucket)
+			}
+		})
+	}
+}
+
+// TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks is the status-page
+// regression: a busy page batches several checks into ONE query
+// (badges/service.go and statuspages/service.go share this exact call). Before
+// the fix, a Limit shared across all checks in one DESC-ordered query meant a
+// single dense/chatty check could crowd out another check's older buckets —
+// or the whole other check — entirely.
+func TestBucketAvailability_MultiCheckDoesNotStarveOlderChecks(t *testing.T) {
+	t.Parallel()
+
+	r := require.New(t)
+
+	const n = 30
+
+	now := time.Now().UTC()
+	todayStart := now.Truncate(24 * time.Hour)
+	bucketStart := todayStart.Add(-time.Duration(n-1) * 24 * time.Hour)
+
+	var results []*models.Result
+
+	// c1: dense — many raw rows, all "today" (the newest possible rows).
+	for i := range 100 {
+		results = append(
+			results,
+			rawRow("c1", models.ResultStatusUp, todayStart.Add(time.Duration(i)*time.Minute), 40),
+		)
+	}
+
+	// c2: sparse but spans the entire window — one day-tier row per day,
+	// including today. Even today's c2 row (PeriodStart = todayStart exactly)
+	// sorts older than every c1 row above (all strictly after todayStart).
+	for i := range n {
+		day := todayStart.Add(-time.Duration(i) * 24 * time.Hour)
+		results = append(results, dayRow("c2", 100, 100, day))
+	}
+
+	lister := &fakeLister{results: results}
+
+	out, err := BucketAvailability(
+		context.Background(), lister, "org", []string{"c1", "c2"}, 24*time.Hour, bucketStart, n,
+	)
+	r.NoError(err)
+
+	r.Len(out["c2"], n, "c1's dense recent rows must not starve c2's older buckets out of the shared query")
+	r.NotEmpty(out["c1"], "c1 itself must still be present")
 }
