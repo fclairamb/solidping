@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.1](https://github.com/fclairamb/solidping/compare/v0.2.0...v0.2.1) (2026-07-08)
+
+
+### Features
+
+* **dash0:** one-click MCP connector setup — AI assistants page with a URL-only OAuth flow, per-client icons, shared copy/collapsible code primitives ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **dash0:** Recent activity links directly to the originating incident/check and shows the channel name; incident lifecycle events enriched with check UID/name ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **entitlements:** SaaS Free-plan defaults now match the billing Free plan (10 checks, 6/min, no SSO), with a backend-driven "Free"/"Team"/"Self-hosted" plan display identity ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **devloop:** `make dev`/`make dev-test` supervise dash0 and status0 with size-rotated per-process logs instead of unbounded raw output ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+
+
+### Bug Fixes
+
+* **checks:** list endpoint no longer overfetches O(retention) raw rows per check for `lastResult` — one row per check via `DISTINCT ON` ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **e2e:** dashboard E2E suite flaked on per-test login contention; authenticate once per Playwright worker instead of once per test ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **db:** embedded-Postgres orphan sweep + watchdog reclaims leaked dev/test instances left behind by crashed processes ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **realtime:** check-detail live subscription used the URL slug instead of the canonical uid, silently breaking live updates on slug-based check URLs ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **e2e:** hardcoded `localhost:4000` in several spec files ignored `E2E_BASE_URL`, breaking test runs against non-default servers ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **checkworker:** check results fell back to a null region for default-region checks instead of the executing worker's own region ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **notifications:** a malformed notification UID errored on the Postgres `uuid` column cast instead of rendering the friendly not-found state ([#111](https://github.com/fclairamb/solidping/issues/111)) ([d105be4](https://github.com/fclairamb/solidping/commit/d105be45792a8648aa551c853da95c98e83b98b7))
+* **dash0:** live-socket CONNECTING crash + route-level error boundaries ([#108](https://github.com/fclairamb/solidping/issues/108)) ([008c015](https://github.com/fclairamb/solidping/commit/008c015761d958b53f32ec1a956f0300230af7b1))
+* **deps:** update go dependencies (non-major) ([#109](https://github.com/fclairamb/solidping/issues/109)) ([ec616d4](https://github.com/fclairamb/solidping/commit/ec616d4759118d4027cb673909b57bc876dcd554))
+* **deps:** update module github.com/oapi-codegen/oapi-codegen/v2 to v2.7.2 ([#110](https://github.com/fclairamb/solidping/issues/110)) ([09d6ad0](https://github.com/fclairamb/solidping/commit/09d6ad0890c752442cc7a26f96227e7866da7502))
+* **deps:** update module github.com/ohler55/ojg to v1.28.2 ([#107](https://github.com/fclairamb/solidping/issues/107)) ([335615c](https://github.com/fclairamb/solidping/commit/335615c7db9ef8b3abb0233ccff3e2f4d17792ac))
+* **deps:** update module github.com/wneessen/go-mail to v0.8.0 ([#103](https://github.com/fclairamb/solidping/issues/103)) ([aa533c1](https://github.com/fclairamb/solidping/commit/aa533c104e173acf220848e1797f8b94e18ae4a5))
+* Slack multi-org, region filtering, mail-checker hang fixes, live-status dot ([#100](https://github.com/fclairamb/solidping/issues/100)) ([35f3aa2](https://github.com/fclairamb/solidping/commit/35f3aa23d8f20b605313ed94159942a10c7a6bef))
+
 ## [0.2.0](https://github.com/fclairamb/solidping/compare/v0.1.0...v0.2.0) (2026-07-04)
 
 
