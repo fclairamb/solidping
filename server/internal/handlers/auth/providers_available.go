@@ -92,6 +92,19 @@ func (h *ProvidersHandler) ListProviders(writer http.ResponseWriter, _ bunrouter
 		})
 	}
 
+	if h.cfg.OIDC.Enabled && h.cfg.OIDC.IssuerURL != "" &&
+		h.cfg.OIDC.ClientID != "" && h.cfg.OIDC.ClientSecret != "" {
+		name := h.cfg.OIDC.DisplayName
+		if name == "" {
+			name = "SSO"
+		}
+
+		providers = append(providers, ProviderInfo{
+			Name: name,
+			Type: "oidc",
+		})
+	}
+
 	return h.WriteJSON(writer, http.StatusOK, ProvidersResponse{
 		Data:                providers,
 		RegistrationEnabled: h.cfg.Auth.RegistrationEmailPattern != "",

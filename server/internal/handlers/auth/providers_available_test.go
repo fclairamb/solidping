@@ -21,6 +21,13 @@ func TestListProviders(t *testing.T) {
 		enabled      bool
 	}
 
+	type oidcCfg struct {
+		issuerURL    string
+		clientID     string
+		clientSecret string
+		enabled      bool
+	}
+
 	type expected struct {
 		Slack     bool
 		Google    bool
@@ -28,6 +35,7 @@ func TestListProviders(t *testing.T) {
 		Microsoft bool
 		GitLab    bool
 		Discord   bool
+		OIDC      bool
 	}
 
 	cases := []struct {
@@ -38,6 +46,7 @@ func TestListProviders(t *testing.T) {
 		microsoft providerCfg
 		slack     providerCfg
 		discord   providerCfg
+		oidc      oidcCfg
 		want      expected
 	}{
 		{
@@ -69,6 +78,21 @@ func TestListProviders(t *testing.T) {
 			slack:     providerCfg{clientID: "id", clientSecret: "secret", enabled: false},
 			discord:   providerCfg{clientID: "id", clientSecret: "secret", enabled: true},
 			want:      expected{Google: true, GitLab: true, Microsoft: true, Discord: true},
+		},
+		{
+			name: "oidc configured and enabled shows oidc",
+			oidc: oidcCfg{issuerURL: "https://idp.example.com", clientID: "id", clientSecret: "secret", enabled: true},
+			want: expected{OIDC: true},
+		},
+		{
+			name: "oidc missing issuer url hides it even when enabled",
+			oidc: oidcCfg{clientID: "id", clientSecret: "secret", enabled: true},
+			want: expected{},
+		},
+		{
+			name: "oidc configured but disabled hides it",
+			oidc: oidcCfg{issuerURL: "https://idp.example.com", clientID: "id", clientSecret: "secret", enabled: false},
+			want: expected{},
 		},
 	}
 
@@ -109,6 +133,12 @@ func TestListProviders(t *testing.T) {
 					ClientID:     tc.discord.clientID,
 					ClientSecret: tc.discord.clientSecret,
 				},
+				OIDC: config.OIDCOAuthConfig{
+					Enabled:      tc.oidc.enabled,
+					IssuerURL:    tc.oidc.issuerURL,
+					ClientID:     tc.oidc.clientID,
+					ClientSecret: tc.oidc.clientSecret,
+				},
 			}
 
 			h := NewProvidersHandler(cfg, nil)
@@ -136,6 +166,8 @@ func TestListProviders(t *testing.T) {
 					got.GitLab = true
 				case "discord":
 					got.Discord = true
+				case "oidc":
+					got.OIDC = true
 				}
 			}
 

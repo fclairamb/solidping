@@ -536,6 +536,15 @@ func (s *Server) SetupRoutes(ctx context.Context) {
 		discordAuth.GET("/callback", discordOAuthHandler.Callback)
 	}
 
+	// Generic OIDC routes (org-scoped, public)
+	if s.config.OIDC.Enabled && s.config.OIDC.IssuerURL != "" && s.config.OIDC.ClientID != "" {
+		oidcOAuthService := auth.NewOIDCOAuthService(s.dbService, s.config, s.authService)
+		oidcOAuthHandler := auth.NewOIDCOAuthHandler(oidcOAuthService, s.config)
+		oidcAuth := api.NewGroup("/auth/oidc")
+		oidcAuth.GET("/login", oidcOAuthHandler.Login)
+		oidcAuth.GET("/callback", oidcOAuthHandler.Callback)
+	}
+
 	// Auth providers endpoint (public)
 	providersHandler := auth.NewProvidersHandler(s.config, passkeyService.Enabled)
 	api.GET("/auth/providers", providersHandler.ListProviders)
