@@ -80,6 +80,18 @@ const (
 	KeyAggregationRetentionHour ParameterKey = "aggregation.retention_hour"
 	KeyAggregationRetentionDay  ParameterKey = "aggregation.retention_day"
 
+	// Generic OAuth2/OIDC provider keys (spec 2026-07-08-08, part 1). Global-only,
+	// single instance — see config.OIDCOAuthConfig.
+	KeyOIDCEnabled      ParameterKey = "auth.oidc.enabled"
+	KeyOIDCDisplayName  ParameterKey = "auth.oidc.display_name"
+	KeyOIDCIssuerURL    ParameterKey = "auth.oidc.issuer_url"
+	KeyOIDCClientID     ParameterKey = "auth.oidc.client_id"
+	KeyOIDCClientSecret ParameterKey = "auth.oidc.client_secret"
+	KeyOIDCScopes       ParameterKey = "auth.oidc.scopes"
+	KeyOIDCEmailClaim   ParameterKey = "auth.oidc.email_claim"
+	KeyOIDCNameClaim    ParameterKey = "auth.oidc.name_claim"
+	KeyOIDCAvatarClaim  ParameterKey = "auth.oidc.avatar_claim"
+
 	// Password-hashing policy keys. These mutate cfg.Auth.Password.* and take
 	// effect after a restart, when the policy is re-resolved from the overlaid
 	// config (see app.Server.InitializeSystemConfig). Numeric values arrive as
@@ -562,6 +574,94 @@ func getKnownParameters() []ParameterDefinition {
 			Secret: false,
 			ApplyFunc: func(cfg *config.Config, value any) {
 				cfg.Discord.Enabled = parseBool(value, cfg.Discord.Enabled)
+			},
+		},
+		{
+			Key:    KeyOIDCEnabled,
+			EnvVar: "SP_OIDC_ENABLED",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				cfg.OIDC.Enabled = parseBool(value, cfg.OIDC.Enabled)
+			},
+		},
+		{
+			Key:    KeyOIDCDisplayName,
+			EnvVar: "SP_OIDC_DISPLAY_NAME",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.DisplayName = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCIssuerURL,
+			EnvVar: "SP_OIDC_ISSUER_URL",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.IssuerURL = strings.TrimSpace(v)
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCClientID,
+			EnvVar: "SP_OIDC_CLIENT_ID",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.ClientID = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCClientSecret,
+			EnvVar: "SP_OIDC_CLIENT_SECRET",
+			Secret: true,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.ClientSecret = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCScopes,
+			EnvVar: "SP_OIDC_SCOPES",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.Scopes = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCEmailClaim,
+			EnvVar: "SP_OIDC_EMAIL_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.EmailClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCNameClaim,
+			EnvVar: "SP_OIDC_NAME_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.NameClaim = v
+				}
+			},
+		},
+		{
+			Key:    KeyOIDCAvatarClaim,
+			EnvVar: "SP_OIDC_AVATAR_CLAIM",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				if v, ok := value.(string); ok {
+					cfg.OIDC.AvatarClaim = v
+				}
 			},
 		},
 		{
