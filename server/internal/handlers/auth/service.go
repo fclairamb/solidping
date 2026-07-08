@@ -27,6 +27,7 @@ import (
 	"github.com/fclairamb/solidping/server/internal/db/models"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobdef"
 	"github.com/fclairamb/solidping/server/internal/jobs/jobsvc"
+	"github.com/fclairamb/solidping/server/internal/systemconfig"
 	"github.com/fclairamb/solidping/server/internal/utils/passwords"
 )
 
@@ -582,7 +583,7 @@ func (s *Service) completeLogin(
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &resolvedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, resolvedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 
@@ -1000,6 +1001,75 @@ func (s *Service) roleForOrg(ctx context.Context, user *models.User, orgUID stri
 	return string(membership.Role), nil
 }
 
+// resolveSessionMaxDuration returns the effective hard cap on session
+// lifetime for orgUID: an org-scoped auth.session_max_duration parameter
+// override (spec B.2), falling back to the system-wide value already
+// overlaid onto s.cfg (config.AuthConfig) at startup
+// (systemconfig.KeySessionMaxDuration — editable at runtime via
+// PUT /api/v1/system/parameters, effective on restart like every other
+// system parameter), falling back to 0 (no cap —
+// today's behavior, only the sliding RefreshTokenExpiry idle window
+// applies). orgUID may be empty (no org resolved yet) — that's simply
+// "no org override to check."
+//
+// A per-call DB read for the org override is fine: this is only invoked at
+// refresh-token mint/slide time, which is rare compared to request volume.
+// Cache like patCacheDuration if that ever shows up in a profile.
+func (s *Service) resolveSessionMaxDuration(ctx context.Context, orgUID string) time.Duration {
+	if orgUID != "" {
+		param, err := s.db.GetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
+		if err != nil {
+			slog.WarnContext(ctx, "failed to read org session_max_duration override; falling back to system default",
+				"error", err, "orgUID", orgUID)
+		} else if seconds, ok := parseParamSeconds(param); ok && seconds > 0 {
+			return time.Duration(seconds) * time.Second
+		}
+	}
+
+	return s.cfg.SessionMaxDuration
+}
+
+// parseParamSeconds extracts an integer seconds value from a parameter row's
+// JSON value (stored as {"value": <number>} by Set{Org,System}Parameter).
+// Returns false for a nil param (no override set) or an unparseable value.
+func parseParamSeconds(param *models.Parameter) (int, bool) {
+	if param == nil {
+		return 0, false
+	}
+
+	switch v := param.Value["value"].(type) {
+	case float64:
+		return int(v), true
+	case int:
+		return v, true
+	default:
+		return 0, false
+	}
+}
+
+// refreshTokenExpiry computes a refresh-token row's expires_at for a mint
+// (loginTime == now) or slide (loginTime == the row's original CreatedAt)
+// operation: now + cfg.RefreshTokenExpiry (the sliding idle window this
+// already was), capped to loginTime + session_max_duration when an org or
+// system override sets an absolute maximum session lifetime (spec B.3 —
+// "measured from login", so sliding can never extend a session past the
+// cap). This is the single replacement for every direct
+// s.cfg.RefreshTokenExpiry read at mint/slide sites.
+func (s *Service) refreshTokenExpiry(ctx context.Context, orgUID string, loginTime, now time.Time) time.Time {
+	slidingExpiry := now.Add(s.cfg.RefreshTokenExpiry)
+
+	maxDuration := s.resolveSessionMaxDuration(ctx, orgUID)
+	if maxDuration <= 0 {
+		return slidingExpiry
+	}
+
+	if hardCap := loginTime.Add(maxDuration); hardCap.Before(slidingExpiry) {
+		return hardCap
+	}
+
+	return slidingExpiry
+}
+
 // slideSessionExpiry extends a refresh-token row's expires_at to
 // now + refresh_token_expiry on activity, so an active session never hits
 // the idle TTL. Gated by the same hourly write granularity already used for
@@ -1014,7 +1084,12 @@ func (s *Service) slideSessionExpiry(ctx context.Context, token *models.UserToke
 		return
 	}
 
-	newExpiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	orgUID := ""
+	if token.OrganizationUID != nil {
+		orgUID = *token.OrganizationUID
+	}
+
+	newExpiresAt := s.refreshTokenExpiry(ctx, orgUID, token.CreatedAt, now)
 	update := models.UserTokenUpdate{LastActiveAt: &now, ExpiresAt: &newExpiresAt}
 
 	if updateErr := s.db.UpdateUserToken(ctx, token.UID, update); updateErr != nil {
@@ -1634,7 +1709,7 @@ func (s *Service) SwitchOrg(
 
 	// Store refresh token in database
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
@@ -1832,7 +1907,7 @@ func (s *Service) GenerateTokensForOAuth(
 	// Store refresh token in database
 	now := time.Now()
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{
@@ -2075,7 +2150,7 @@ func (s *Service) ConfirmRegistration(ctx context.Context, token string) (*Login
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "registration"}}
@@ -2828,7 +2903,7 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &matchedOrg.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, matchedOrg.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{keyCreatedWith: map[string]any{"method": "invitation"}}
@@ -3322,7 +3397,7 @@ func (s *Service) completeLoginAfter2FA(
 	}
 
 	refreshToken := models.NewUserToken(user.UID, &org.UID, refreshTokenValue, models.TokenTypeRefresh)
-	expiresAt := now.Add(s.cfg.RefreshTokenExpiry)
+	expiresAt := s.refreshTokenExpiry(ctx, org.UID, now, now)
 	refreshToken.ExpiresAt = &expiresAt
 	refreshToken.LastActiveAt = &now
 	refreshToken.Properties = models.JSONMap{

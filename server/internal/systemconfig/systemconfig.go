@@ -12,6 +12,7 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/fclairamb/solidping/server/internal/config"
 	"github.com/fclairamb/solidping/server/internal/db"
@@ -39,6 +40,16 @@ const (
 	KeyEmailInsecure            ParameterKey = "email.insecure_skip_verify"
 	KeyRegistrationEmailPattern ParameterKey = "auth.registration_email_pattern"
 	KeyEmailProtocol            ParameterKey = "email.protocol"
+
+	// KeySessionMaxDuration is the global (system-wide) hard cap on session
+	// lifetime in seconds, measured from login (spec
+	// 2026-07-08-01-per-org-session-duration-and-longer-token-refresh). An
+	// org may override it with a parameter row of the same key
+	// (organization_uid set) — see handlers/auth.Service.resolveSessionMaxDuration,
+	// which resolves org parameter → this system value → 0 (unlimited).
+	// Unset/zero means unlimited, matching today's behavior (only the
+	// sliding RefreshTokenExpiry idle window applies).
+	KeySessionMaxDuration ParameterKey = "auth.session_max_duration"
 
 	KeyGoogleClientID           ParameterKey = "auth.google.client_id"
 	KeyGoogleClientSecret       ParameterKey = "auth.google.client_secret"
@@ -285,6 +296,19 @@ func getKnownParameters() []ParameterDefinition {
 			ApplyFunc: func(cfg *config.Config, value any) {
 				if v, ok := value.(string); ok {
 					cfg.Auth.RegistrationEmailPattern = v
+				}
+			},
+		},
+		{
+			Key:    KeySessionMaxDuration,
+			EnvVar: "SP_AUTH_SESSION_MAX_DURATION",
+			Secret: false,
+			ApplyFunc: func(cfg *config.Config, value any) {
+				// Seconds; 0 (or unset) means unlimited. Negative values are
+				// treated as unset rather than clamped, since a negative cap
+				// has no sensible meaning.
+				if seconds, ok := parseInt(value); ok && seconds >= 0 {
+					cfg.Auth.SessionMaxDuration = time.Duration(seconds) * time.Second
 				}
 			},
 		},

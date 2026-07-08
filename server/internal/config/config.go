@@ -365,12 +365,21 @@ type AggregationConfig struct {
 
 // AuthConfig contains authentication configuration.
 type AuthConfig struct {
-	JWTSecret                string         `koanf:"jwt_secret"`
-	AccessTokenExpiry        time.Duration  `koanf:"access_token_expiry"`
-	RefreshTokenExpiry       time.Duration  `koanf:"refresh_token_expiry"`
-	RegistrationEmailPattern string         `koanf:"registration_email_pattern"`
-	WebAuthn                 WebAuthnConfig `koanf:"webauthn"`
-	Password                 PasswordConfig `koanf:"password"`
+	JWTSecret                string        `koanf:"jwt_secret"`
+	AccessTokenExpiry        time.Duration `koanf:"access_token_expiry"`
+	RefreshTokenExpiry       time.Duration `koanf:"refresh_token_expiry"`
+	RegistrationEmailPattern string        `koanf:"registration_email_pattern"`
+	// SessionMaxDuration is a hard absolute cap on session lifetime,
+	// measured from login — unlike RefreshTokenExpiry (a sliding *idle*
+	// window), this bounds total session length even under continuous
+	// activity. Zero (the default) means unlimited: today's behavior, only
+	// the sliding window applies. Overlaid from the
+	// systemconfig.KeySessionMaxDuration system parameter at startup; an
+	// org-scoped override of the same parameter key takes precedence over
+	// this value (see handlers/auth.Service.resolveSessionMaxDuration).
+	SessionMaxDuration time.Duration  `koanf:"session_max_duration"`
+	WebAuthn           WebAuthnConfig `koanf:"webauthn"`
+	Password           PasswordConfig `koanf:"password"`
 }
 
 // PasswordConfig selects the password-hashing algorithm and its cost
