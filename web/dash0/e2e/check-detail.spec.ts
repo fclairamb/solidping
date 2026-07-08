@@ -470,6 +470,139 @@ test.describe("Check Detail Page", () => {
     });
   });
 
+  test("Response Times chart: a down result stays visible via a red gradient stop and an always-on dot above the density threshold", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+    const now = Date.now();
+    const downUid = "eu1-down-result";
+
+    // Mock a dense two-region dataset (90 points/region = 180 total, above
+    // the 150-point dots-density threshold) with a single down result buried
+    // in the middle of the eu-1 series — the exact "outage invisible in a
+    // dense Day view" scenario from the spec.
+    const pointsPerRegion = 90;
+    const intervalMs = 10 * 60_000;
+    const downIndex = 45;
+    await page.route("**/api/v1/orgs/*/results*", (route) => {
+      const url = route.request().url();
+      if (!url.includes("/results")) return route.continue();
+      const points: Record<string, unknown>[] = [];
+      for (let i = 0; i < pointsPerRegion; i++) {
+        const ts = now - (pointsPerRegion - i) * intervalMs;
+        points.push({
+          uid: `us1-${i}`,
+          durationMs: 55 + (i % 3) * 5,
+          status: "up",
+          region: "us-1",
+          periodStart: new Date(ts).toISOString(),
+          periodType: "raw",
+        });
+        const isDown = i === downIndex;
+        points.push({
+          uid: isDown ? downUid : `eu1-${i}`,
+          durationMs: isDown ? 5000 : 650 + (i % 3) * 10,
+          status: isDown ? "down" : "up",
+          region: "eu-1",
+          periodStart: new Date(ts + 30_000).toISOString(),
+          periodType: "raw",
+        });
+      }
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: points,
+          pagination: { total: points.length, size: points.length },
+        }),
+      });
+    });
+
+    await page.route("**/api/v1/orgs/*/regions*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          data: [
+            { slug: "us-1", emoji: "🇺🇸", name: "US East" },
+            { slug: "eu-1", emoji: "🇪🇺", name: "EU West" },
+          ],
+          defaultRegions: ["us-1"],
+        }),
+      })
+    );
+
+    await page.route(`**/api/v1/orgs/*/checks/*/results/${downUid}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          uid: downUid,
+          durationMs: 5000,
+          status: "down",
+          region: "eu-1",
+          periodStart: new Date(now - (pointsPerRegion - downIndex) * intervalMs).toISOString(),
+          periodType: "raw",
+        }),
+      })
+    );
+
+    await page.route("**/api/v1/orgs/*/incidents*", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ data: [], pagination: { total: 0, size: 0 } }),
+      })
+    );
+
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Dense Down Dot ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/dense-down-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.locator(".recharts-wrapper")).toBeVisible({ timeout: 15000 });
+
+    // (a) The failing region's own gradient def carries a red (COLOR_DOWN)
+    // stop; the healthy region's gradient does not.
+    const COLOR_DOWN = "hsl(0, 72%, 51%)";
+    const euStopColors = await page
+      .locator("#rt-region-eu-1 stop")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("stop-color")));
+    const usStopColors = await page
+      .locator("#rt-region-us-1 stop")
+      .evaluateAll((els) => els.map((el) => el.getAttribute("stop-color")));
+    expect(euStopColors).toContain(COLOR_DOWN);
+    expect(usStopColors).not.toContain(COLOR_DOWN);
+
+    // (b) Despite 180 total points (above the 150-point dots-density
+    // threshold), exactly the one down result renders a real per-point dot —
+    // every other point renders as an invisible <g/>. Scope to
+    // `.recharts-area-dots` (the persistent per-point dot layer) rather than
+    // every `circle` in the chart: recharts also renders a transient
+    // `.recharts-active-dot` wherever the mouse last happened to hover
+    // (including leftover pointer position from prior test steps), which is
+    // unrelated to the density-threshold behavior under test.
+    const persistentDots = page.locator(".recharts-wrapper .recharts-area-dots circle");
+    await expect(persistentDots).toHaveCount(1);
+    await expect(persistentDots.first()).toHaveAttribute("fill", COLOR_DOWN);
+
+    // (c) The down dot is clickable and pins its result.
+    await persistentDots.first().hover({ force: true });
+    await persistentDots.first().click({ force: true });
+    await expect(page.getByTestId("pinned-result-box")).toBeVisible({
+      timeout: 5000,
+    });
+  });
+
   test("Recent Results: region filter narrows the list server-side and a row badge click selects that region", async ({
     authenticatedPage,
   }) => {
