@@ -2947,6 +2947,14 @@ func (s *Service) AcceptInvite(ctx context.Context, req AcceptInviteRequest) (*L
 // OrgSettingsResponse contains org settings.
 type OrgSettingsResponse struct {
 	RegistrationEmailPattern string `json:"registrationEmailPattern"`
+	// SessionMaxDurationSeconds is this org's auth.session_max_duration
+	// override, in seconds, or nil when the org has no override and
+	// inherits the system-wide value (spec B.2/B.4). The UI shows the
+	// effective/inherited value separately via
+	// GET /api/v1/system/parameters (super-admin) — this field is only the
+	// org-level override itself, so the settings page can distinguish "not
+	// set" from "explicitly set to the same number".
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds,omitempty"`
 }
 
 // GetOrgSettings returns settings for an organization.
@@ -2968,12 +2976,30 @@ func (s *Service) GetOrgSettings(ctx context.Context, orgSlug string) (*OrgSetti
 		}
 	}
 
-	return &OrgSettingsResponse{RegistrationEmailPattern: pattern}, nil
+	sessionParam, err := s.db.GetOrgParameter(ctx, org.UID, string(systemconfig.KeySessionMaxDuration))
+	if err != nil {
+		return nil, err
+	}
+
+	var sessionMaxDurationSeconds *int
+	if seconds, ok := parseParamSeconds(sessionParam); ok {
+		sessionMaxDurationSeconds = &seconds
+	}
+
+	return &OrgSettingsResponse{
+		RegistrationEmailPattern:  pattern,
+		SessionMaxDurationSeconds: sessionMaxDurationSeconds,
+	}, nil
 }
 
 // UpdateOrgSettingsRequest contains the request data for updating org settings.
 type UpdateOrgSettingsRequest struct {
 	RegistrationEmailPattern *string `json:"registrationEmailPattern"`
+	// SessionMaxDurationSeconds, when present: a value <= 0 clears the org
+	// override (the org falls back to the system-wide value); a positive
+	// value sets/replaces it. Omit the field entirely to leave the
+	// override untouched.
+	SessionMaxDurationSeconds *int `json:"sessionMaxDurationSeconds"`
 }
 
 // UpdateOrgSettings updates settings for an organization.
@@ -2991,6 +3017,12 @@ func (s *Service) UpdateOrgSettings(
 		}
 	}
 
+	if req.SessionMaxDurationSeconds != nil {
+		if updateErr := s.updateSessionMaxDuration(ctx, org.UID, *req.SessionMaxDurationSeconds); updateErr != nil {
+			return nil, updateErr
+		}
+	}
+
 	return s.GetOrgSettings(ctx, orgSlug)
 }
 
@@ -3004,6 +3036,17 @@ func (s *Service) updateEmailPattern(ctx context.Context, orgUID, pattern string
 	}
 
 	return s.db.SetOrgParameter(ctx, orgUID, "registration.email_pattern", pattern, false)
+}
+
+// updateSessionMaxDuration sets or clears the org's auth.session_max_duration
+// override. seconds <= 0 clears it (the org reverts to inheriting the
+// system-wide value); a positive value sets/replaces it.
+func (s *Service) updateSessionMaxDuration(ctx context.Context, orgUID string, seconds int) error {
+	if seconds <= 0 {
+		return s.db.DeleteOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration))
+	}
+
+	return s.db.SetOrgParameter(ctx, orgUID, string(systemconfig.KeySessionMaxDuration), seconds, false)
 }
 
 // scopesFromProperties extracts the scopes list previously stored on a

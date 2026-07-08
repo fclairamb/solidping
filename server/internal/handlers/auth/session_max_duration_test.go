@@ -170,3 +170,54 @@ func TestOrgWithoutSessionCapFollowsSystemParameter(t *testing.T) {
 	r.WithinDuration(loginTime.Add(3*time.Hour), *refreshRow.ExpiresAt, 5*time.Second,
 		"an org with no override must follow the system-wide session_max_duration")
 }
+
+// TestOrgSettingsSessionMaxDurationRoundTrip is the API-surface leg of
+// B.4: the org override round-trips through GetOrgSettings/UpdateOrgSettings
+// (the same service methods the org settings PATCH the dash0 UI calls), and
+// a non-positive value clears it back to "inherit".
+func TestOrgSettingsSessionMaxDurationRoundTrip(t *testing.T) {
+	t.Parallel()
+	r := require.New(t)
+
+	svc, dbSvc, ctx := setupAuthTestService(t)
+
+	org := models.NewOrganization("settings-cap-org", "Settings Cap Org")
+	r.NoError(dbSvc.CreateOrganization(ctx, org))
+
+	// No override set yet: nil, not zero — the settings page must be able
+	// to tell "not set" apart from "explicitly set to 0".
+	settings, err := svc.GetOrgSettings(ctx, "settings-cap-org")
+	r.NoError(err)
+	r.Nil(settings.SessionMaxDurationSeconds)
+
+	// Setting the override round-trips through Get.
+	seconds := 14400 // 4 hours
+	settings, err = svc.UpdateOrgSettings(ctx, "settings-cap-org", UpdateOrgSettingsRequest{
+		SessionMaxDurationSeconds: &seconds,
+	})
+	r.NoError(err)
+	r.NotNil(settings.SessionMaxDurationSeconds)
+	r.Equal(seconds, *settings.SessionMaxDurationSeconds)
+
+	settings, err = svc.GetOrgSettings(ctx, "settings-cap-org")
+	r.NoError(err)
+	r.NotNil(settings.SessionMaxDurationSeconds)
+	r.Equal(seconds, *settings.SessionMaxDurationSeconds)
+
+	// A request that omits the field entirely must not touch the override.
+	pattern := ""
+	settings, err = svc.UpdateOrgSettings(ctx, "settings-cap-org", UpdateOrgSettingsRequest{
+		RegistrationEmailPattern: &pattern,
+	})
+	r.NoError(err)
+	r.NotNil(settings.SessionMaxDurationSeconds)
+	r.Equal(seconds, *settings.SessionMaxDurationSeconds)
+
+	// A non-positive value clears the override back to "inherit".
+	cleared := 0
+	settings, err = svc.UpdateOrgSettings(ctx, "settings-cap-org", UpdateOrgSettingsRequest{
+		SessionMaxDurationSeconds: &cleared,
+	})
+	r.NoError(err)
+	r.Nil(settings.SessionMaxDurationSeconds)
+}
