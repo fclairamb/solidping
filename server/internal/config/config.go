@@ -835,6 +835,7 @@ func Load() (*Config, error) {
 	}
 
 	applyRateLimitingEnv(&cfg.Server.RateLimiting)
+	applyAuthEnv(&cfg.Auth)
 	applyPasswordHashingEnv(&cfg.Auth.Password)
 	applyFileStorageEnv(&cfg.FileStorage)
 	applyWebPushEnv(&cfg.WebPush)
@@ -1038,6 +1039,26 @@ func applyRealtimeEnv(cfg *RealtimeConfig) {
 	if v := os.Getenv("SP_REALTIME_MAX_SUBSCRIPTIONS_PER_CONNECTION"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil {
 			cfg.MaxSubscriptionsPerConnection = n
+		}
+	}
+}
+
+// applyAuthEnv reads the multi-word SP_AUTH_* token-lifetime knobs koanf's
+// env loader cannot bind (it collapses underscores to dots, so
+// SP_AUTH_ACCESS_TOKEN_EXPIRY would map to auth.access.token.expiry and miss
+// the snake_case koanf tag "access_token_expiry"). Used by
+// e2e/session-continuity.spec.ts and similar manual test setups that need a
+// short-lived access/refresh token without touching the YAML config. See
+// project_koanf_env_quirk.
+func applyAuthEnv(cfg *AuthConfig) {
+	if v := os.Getenv("SP_AUTH_ACCESS_TOKEN_EXPIRY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.AccessTokenExpiry = d
+		}
+	}
+	if v := os.Getenv("SP_AUTH_REFRESH_TOKEN_EXPIRY"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			cfg.RefreshTokenExpiry = d
 		}
 	}
 }

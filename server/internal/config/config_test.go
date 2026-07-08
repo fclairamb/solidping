@@ -340,6 +340,40 @@ func TestApplyProfilerEnv(t *testing.T) {
 // TestApplyRealtimeEnv confirms the multi-word SP_REALTIME_* knobs land on the
 // snake_case-tagged RealtimeConfig fields despite koanf's env underscore→dot
 // collapse. Uses t.Setenv, which is incompatible with t.Parallel.
+// TestApplyAuthEnv confirms SP_AUTH_ACCESS_TOKEN_EXPIRY/SP_AUTH_REFRESH_TOKEN_EXPIRY
+// land on the snake_case-tagged AuthConfig fields despite koanf's env
+// underscore→dot collapse. Discovered via a real E2E run of
+// e2e/session-continuity.spec.ts (its documented side-car recipe silently
+// no-op'd on this env var, since koanf's plain env loader would have mapped
+// it to auth.access.token.expiry and missed the "access_token_expiry" tag).
+// Uses t.Setenv, which is incompatible with t.Parallel.
+func TestApplyAuthEnv(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_ACCESS_TOKEN_EXPIRY", "10s")
+	t.Setenv("SP_AUTH_REFRESH_TOKEN_EXPIRY", "48h")
+
+	cfg := AuthConfig{AccessTokenExpiry: time.Hour, RefreshTokenExpiry: 7 * 24 * time.Hour}
+	applyAuthEnv(&cfg)
+
+	r.Equal(10*time.Second, cfg.AccessTokenExpiry)
+	r.Equal(48*time.Hour, cfg.RefreshTokenExpiry)
+}
+
+// TestApplyAuthEnv_InvalidKeepsExisting mirrors the other applyXEnv
+// "invalid input" tests: an unparseable duration must not zero out or
+// otherwise corrupt the existing value.
+func TestApplyAuthEnv_InvalidKeepsExisting(t *testing.T) {
+	r := require.New(t)
+
+	t.Setenv("SP_AUTH_ACCESS_TOKEN_EXPIRY", "not-a-duration")
+
+	cfg := AuthConfig{AccessTokenExpiry: time.Hour}
+	applyAuthEnv(&cfg)
+
+	r.Equal(time.Hour, cfg.AccessTokenExpiry)
+}
+
 func TestApplyRealtimeEnv(t *testing.T) {
 	r := require.New(t)
 
