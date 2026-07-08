@@ -1036,4 +1036,41 @@ test.describe("Check Detail Page", () => {
     await expect(page.getByRole("button", { name: /Disable/ })).toBeVisible();
     await expect(dot).toHaveAttribute("data-disabled", "false");
   });
+
+  test("direct URL navigation with graphFull=true activates the chart's full-range toggle", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Create a check so we have a detail page to visit.
+    await page.getByTestId("app-sidebar").getByRole("link", { name: "Checks" }).click();
+    await page.waitForURL(/\/checks/);
+    await page.waitForLoadState("networkidle");
+    await page.getByTestId("new-check-button").click();
+    await page.waitForURL(/\/checks\/new/);
+    await page.waitForLoadState("networkidle");
+
+    const checkName = `E2E Graph Full ${Date.now()}`;
+    await page.getByTestId("check-name-input").fill(checkName);
+    await page.getByTestId("check-url-input").fill("https://example.com/graph-full-test");
+    await page.getByTestId("check-submit-button").click();
+
+    await page.waitForURL(/\/checks\/[0-9a-f]{8}-/, { timeout: 10000 });
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByRole("heading", { name: checkName })).toBeVisible();
+
+    // Regression test for the validateSearch boolean-coercion bug: TanStack
+    // Router already parses "?graphFull=true" into a native boolean before
+    // validateSearch runs, so a bare `=== "true"` string comparison there
+    // always evaluated to false and silently dropped the filter. This only
+    // reproduces via a real URL round-trip (in-app clicks build the search
+    // object directly), so navigate with page.goto rather than driving the
+    // toggle through the UI.
+    await page.goto(`${page.url()}?graphFull=true`);
+    await page.waitForLoadState("networkidle");
+
+    await expect(
+      page.getByTestId("response-time-chart-full-range-toggle")
+    ).toHaveAttribute("data-state", "checked");
+  });
 });

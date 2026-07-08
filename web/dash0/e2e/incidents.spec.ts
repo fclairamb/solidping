@@ -263,4 +263,40 @@ test.describe("Incidents", () => {
       });
     }
   });
+
+  test("direct URL navigation with showSuppressed=true activates the toggle", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    // Regression test for the validateSearch boolean-coercion bug: TanStack
+    // Router already parses "?showSuppressed=true" into a native boolean
+    // before validateSearch runs, so a bare `=== "true"` string comparison
+    // there always evaluated to false and silently dropped the filter. This
+    // only reproduces via a real URL round-trip (in-app clicks build the
+    // search object directly), so navigate with page.goto rather than
+    // driving the toggle through the UI.
+    await page.goto("orgs/test/incidents?showSuppressed=true");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByRole("heading", { name: "Incidents" })).toBeVisible();
+    await expect(page.getByTestId("incidents-show-suppressed-toggle")).toHaveAttribute(
+      "data-state",
+      "checked"
+    );
+  });
+
+  test("direct URL navigation without showSuppressed leaves the toggle off", async ({
+    authenticatedPage,
+  }) => {
+    const page = authenticatedPage;
+
+    await page.goto("orgs/test/incidents");
+    await page.waitForLoadState("networkidle");
+
+    await expect(page.getByTestId("incidents-show-suppressed-toggle")).toHaveAttribute(
+      "data-state",
+      "unchecked"
+    );
+  });
 });

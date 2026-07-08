@@ -760,6 +760,7 @@ export function ResponseTimeChart({
               checked={fullRange}
               onCheckedChange={updateFullRange}
               className="scale-75"
+              data-testid="response-time-chart-full-range-toggle"
             />
             <span className="hidden sm:inline">{t("detail.chart.fullRange")}</span>
           </label>
